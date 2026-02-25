@@ -7,7 +7,7 @@ export interface MessageData {
 	content: string;
 }
 
-export interface PlainMessage {
+export interface Message {
 	id: string;
 	chatId: string;
 	data: MessageData;
@@ -16,7 +16,7 @@ export interface PlainMessage {
 }
 
 export class MessageService {
-	static async create(chatId: string, data: MessageData): Promise<PlainMessage> {
+	static async create(chatId: string, data: MessageData): Promise<Message> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
@@ -43,14 +43,14 @@ export class MessageService {
 		return { id, chatId, data, createdAt: now, updatedAt: now };
 	}
 
-	static async getByChatId(chatId: string): Promise<PlainMessage[]> {
+	static async getByChatId(chatId: string): Promise<Message[]> {
 		const { masterKey } = getActiveSession();
 		const records = await localDB.getByIndex<MessageRecord>('messages', 'chatId', chatId, 200, 0);
 		
 		// Sort by createdAt ascending (oldest first for chat view)
 		records.sort((a, b) => a.createdAt - b.createdAt);
 		
-		const results: PlainMessage[] = [];
+		const results: Message[] = [];
 		for (const record of records) {
 			const dataDec = await decryptText(masterKey, {
 				ciphertext: record.encryptedData,
@@ -67,7 +67,7 @@ export class MessageService {
 		return results;
 	}
 
-	static async update(id: string, data: Partial<MessageData>): Promise<PlainMessage | null> {
+	static async update(id: string, data: Partial<MessageData>): Promise<Message | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<MessageRecord>('messages', id);
 		if (!record || record.isDeleted) return null;

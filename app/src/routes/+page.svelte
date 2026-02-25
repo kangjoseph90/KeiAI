@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { initSession, getActiveSession } from '$lib/session';
-	import { CharacterService, type PlainCharacter } from '$lib/services/character';
-	import { ChatService, type PlainChat } from '$lib/services/chat';
-	import { MessageService, type PlainMessage } from '$lib/services/message';
+	import { CharacterService, type Character } from '$lib/services/character';
+	import { ChatService, type Chat } from '$lib/services/chat';
+	import { MessageService, type Message } from '$lib/services/message';
 
 	let ready = false;
 	let errorMsg = '';
@@ -12,12 +12,12 @@
 	let view: 'characters' | 'chats' | 'chat' = 'characters';
 
 	// Data
-	let characters: PlainCharacter[] = [];
-	let chats: PlainChat[] = [];
-	let messages: PlainMessage[] = [];
+	let characters: Character[] = [];
+	let chats: Chat[] = [];
+	let messages: Message[] = [];
 
-	let selectedChar: PlainCharacter | null = null;
-	let selectedChat: PlainChat | null = null;
+	let selectedChar: Character | null = null;
+	let selectedChat: Chat | null = null;
 
 	// Form Inputs
 	let newCharName = '';
@@ -49,7 +49,7 @@
 		await loadCharacters();
 	}
 
-	async function handleSelectCharacter(char: PlainCharacter) {
+	async function handleSelectCharacter(char: Character) {
 		selectedChar = char;
 		view = 'chats';
 		await loadChats();
@@ -68,7 +68,7 @@
 		await loadChats();
 	}
 
-	async function handleSelectChat(chat: PlainChat) {
+	async function handleSelectChat(chat: Chat) {
 		selectedChat = chat;
 		view = 'chat';
 		await loadMessages();

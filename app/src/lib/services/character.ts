@@ -12,7 +12,7 @@ export interface CharacterData {
 	greetingMessage?: string;
 }
 
-export interface PlainCharacter {
+export interface Character {
 	id: string;
 	summary: CharacterSummary;
 	data?: CharacterData;
@@ -21,7 +21,7 @@ export interface PlainCharacter {
 }
 
 export class CharacterService {
-	static async create(summary: CharacterSummary, data: CharacterData): Promise<PlainCharacter> {
+	static async create(summary: CharacterSummary, data: CharacterData): Promise<Character> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
@@ -46,11 +46,11 @@ export class CharacterService {
 		return { id, summary, data, createdAt: now, updatedAt: now };
 	}
 
-	static async getAll(): Promise<PlainCharacter[]> {
+	static async getAll(): Promise<Character[]> {
 		const { masterKey, userId } = getActiveSession();
 		const records = await localDB.getAll<CharacterRecord>('characters', userId);
 		
-		const results: PlainCharacter[] = [];
+		const results: Character[] = [];
 		for (const record of records) {
 			const sumDec = await decryptText(masterKey, {
 				ciphertext: record.encryptedSummary,
@@ -66,7 +66,7 @@ export class CharacterService {
 		return results;
 	}
 
-	static async getById(id: string): Promise<PlainCharacter | null> {
+	static async getById(id: string): Promise<Character | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<CharacterRecord>('characters', id);
 		if (!record || record.isDeleted) return null;
@@ -89,7 +89,7 @@ export class CharacterService {
 		};
 	}
 
-	static async update(id: string, summary: Partial<CharacterSummary>, data?: Partial<CharacterData>): Promise<PlainCharacter | null> {
+	static async update(id: string, summary: Partial<CharacterSummary>, data?: Partial<CharacterData>): Promise<Character | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<CharacterRecord>('characters', id);
 		if (!record || record.isDeleted) return null;

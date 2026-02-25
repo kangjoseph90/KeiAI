@@ -6,7 +6,7 @@ export interface ChatSummary {
 	lastMessagePreview: string;
 }
 
-export interface PlainChat {
+export interface Chat {
 	id: string;
 	characterId: string;
 	summary: ChatSummary;
@@ -15,7 +15,7 @@ export interface PlainChat {
 }
 
 export class ChatService {
-	static async create(characterId: string, title: string): Promise<PlainChat> {
+	static async create(characterId: string, title: string): Promise<Chat> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
@@ -39,12 +39,12 @@ export class ChatService {
 		return { id, characterId, summary, createdAt: now, updatedAt: now };
 	}
 
-	static async getByCharacterId(characterId: string): Promise<PlainChat[]> {
+	static async getByCharacterId(characterId: string): Promise<Chat[]> {
 		const { masterKey } = getActiveSession();
 		// We use index search on 'characterId' implemented in DexieAdapter
 		const records = await localDB.getByIndex<ChatRecord>('chats', 'characterId', characterId, 100, 0);
 		
-		const results: PlainChat[] = [];
+		const results: Chat[] = [];
 		for (const record of records) {
 			const sumDec = await decryptText(masterKey, {
 				ciphertext: record.encryptedSummary,
@@ -84,7 +84,7 @@ export class ChatService {
 		await localDB.putRecord('chats', record);
 	}
 
-	static async update(id: string, summary: Partial<ChatSummary>): Promise<PlainChat | null> {
+	static async update(id: string, summary: Partial<ChatSummary>): Promise<Chat | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatRecord>('chats', id);
 		if (!record || record.isDeleted) return null;

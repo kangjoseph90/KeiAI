@@ -1,7 +1,7 @@
 import { writable, get } from 'svelte/store';
-import { CharacterService, type PlainCharacter } from '../services/character.js';
-import { ChatService, type PlainChat } from '../services/chat.js';
-import { MessageService, type PlainMessage } from '../services/message.js';
+import { CharacterService, type Character } from '../services/character.js';
+import { ChatService, type Chat } from '../services/chat.js';
+import { MessageService, type Message } from '../services/message.js';
 
 import { SettingsService, type AppSettings } from '../services/settings.js';
 
@@ -10,7 +10,7 @@ import { SettingsService, type AppSettings } from '../services/settings.js';
 // ==========================================
 
 export const appSettings = writable<AppSettings | null>(null);
-export const globalCharacters = writable<PlainCharacter[]>([]);
+export const globalCharacters = writable<Character[]>([]);
 
 // Initialize Global Layer
 export async function loadGlobalState() {
@@ -54,8 +54,8 @@ export async function deleteCharacter(id: string) {
 // Level 2: Active Character Context
 // ==========================================
 
-export const activeCharacter = writable<PlainCharacter | null>(null);
-export const activeCharacterChats = writable<PlainChat[]>([]);
+export const activeCharacter = writable<Character | null>(null);
+export const activeCharacterChats = writable<Chat[]>([]);
 
 export async function selectCharacter(characterId: string) {
 	// Clean up lower layers to free memory
@@ -113,8 +113,8 @@ export async function deleteChat(chatId: string) {
 // Level 3: Active Chat Context
 // ==========================================
 
-export const activeChat = writable<PlainChat | null>(null);
-export const activeMessages = writable<PlainMessage[]>([]);
+export const activeChat = writable<Chat | null>(null);
+export const activeMessages = writable<Message[]>([]);
 
 export async function selectChat(chatId: string) {
 	// Note: You might want a dedicated ChatService.getById if you need full chat rules/lorebooks
