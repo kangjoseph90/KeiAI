@@ -97,3 +97,20 @@ export async function unwrapMasterKey(
 
 	return masterKey;
 }
+
+/**
+ * Unwrap master key and return raw bytes instead of CryptoKey.
+ * Used by auth flows that need raw bytes for local DB storage.
+ */
+export async function unwrapMasterKeyRaw(
+	ciphertext: Bytes,
+	iv: Bytes,
+	wrappingKeyBytes: Bytes
+): Promise<Bytes> {
+	const wrappingKey = await importWrappingKey(wrappingKeyBytes);
+	const rawMaster = new Uint8Array(
+		(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, wrappingKey, ciphertext)) as ArrayBuffer
+	);
+	wrappingKeyBytes.fill(0);
+	return rawMaster;
+}

@@ -1,4 +1,4 @@
-import { getActiveSession, encryptText, decryptText } from '../crypto/engine.js';
+import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type MessageRecord } from '../db/index.js';
 import { ChatService } from './chat.js';
 

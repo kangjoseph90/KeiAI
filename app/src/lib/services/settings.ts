@@ -1,4 +1,4 @@
-import { encryptText, decryptText, getActiveSession } from '../crypto/engine.js';
+import { encryptText, decryptText, getActiveSession } from '../session.js';
 import { localDB, type SettingsRecord } from '../db/index.js';
 
 export interface AppSettings {

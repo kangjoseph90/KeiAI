@@ -1,4 +1,4 @@
-import { getActiveSession, encryptText, decryptText } from '../crypto/engine.js';
+import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type CharacterRecord } from '../db/index.js';
 
 export interface CharacterSummary {

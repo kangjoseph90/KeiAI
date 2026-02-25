@@ -1,24 +1,24 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { initSession, getActiveSession } from '$lib/crypto/engine';
+	import { initSession, getActiveSession } from '$lib/session';
 	import { CharacterService, type PlainCharacter } from '$lib/services/character';
 	import { ChatService, type PlainChat } from '$lib/services/chat';
 	import { MessageService, type PlainMessage } from '$lib/services/message';
 
 	let ready = false;
 	let errorMsg = '';
-	
+
 	// Navigation State
 	let view: 'characters' | 'chats' | 'chat' = 'characters';
-	
+
 	// Data
 	let characters: PlainCharacter[] = [];
 	let chats: PlainChat[] = [];
 	let messages: PlainMessage[] = [];
-	
+
 	let selectedChar: PlainCharacter | null = null;
 	let selectedChat: PlainChat | null = null;
-	
+
 	// Form Inputs
 	let newCharName = '';
 	let newChatTitle = '';
@@ -29,7 +29,7 @@
 			await initSession();
 			ready = true;
 			await loadCharacters();
-		} catch(err: any) {
+		} catch (err: any) {
 			errorMsg = err.message;
 		}
 	});
@@ -88,12 +88,12 @@
 		// User writes
 		await MessageService.create(selectedChat.id, { role: 'user', content: userText });
 		await loadMessages();
-		
+
 		// Bot replies (mock)
 		setTimeout(async () => {
 			if (!selectedChat) return;
-			await MessageService.create(selectedChat.id, { 
-				role: 'char', 
+			await MessageService.create(selectedChat.id, {
+				role: 'char',
 				content: `[E2EE Bot] Received securely: "${userText}"`
 			});
 			await loadMessages();
@@ -123,11 +123,16 @@
 		<p>Initializing Secure Local Session...</p>
 	{:else}
 		<!-- Header -->
-		<div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #ccc; padding-bottom: 15px; margin-bottom: 20px;">
+		<div
+			style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #ccc; padding-bottom: 15px; margin-bottom: 20px;"
+		>
 			<h2 style="margin: 0;">
-				{#if view === 'characters'} Characters
-				{:else if view === 'chats'} {selectedChar?.summary.name}'s Chats
-				{:else if view === 'chat'} Chat: {selectedChat?.summary.title}
+				{#if view === 'characters'}
+					Characters
+				{:else if view === 'chats'}
+					{selectedChar?.summary.name}'s Chats
+				{:else if view === 'chat'}
+					Chat: {selectedChat?.summary.title}
 				{/if}
 			</h2>
 			{#if view !== 'characters'}
@@ -138,13 +143,17 @@
 		<!-- View: Characters -->
 		{#if view === 'characters'}
 			<div style="display: flex; gap: 10px; margin-bottom: 20px;">
-				<input bind:value={newCharName} placeholder="New Character Name" style="flex:1; padding: 8px;" />
+				<input
+					bind:value={newCharName}
+					placeholder="New Character Name"
+					style="flex:1; padding: 8px;"
+				/>
 				<button on:click={handleCreateCharacter}>Create</button>
 			</div>
 
 			<div style="display: flex; flex-direction: column; gap: 10px;">
 				{#each characters as char}
-					<div 
+					<div
 						style="padding: 15px; background: #f4f4f4; border-radius: 8px; cursor: pointer; border: 1px solid transparent;"
 						on:click={() => handleSelectCharacter(char)}
 						on:keydown={(e) => e.key === 'Enter' && handleSelectCharacter(char)}
@@ -155,20 +164,26 @@
 						<p style="margin: 0; font-size: 0.9em; color: #555;">{char.summary.shortDescription}</p>
 					</div>
 				{:else}
-					<p style="color: #888;">No characters created yet. They will be encrypted in IndexedDB!</p>
+					<p style="color: #888;">
+						No characters created yet. They will be encrypted in IndexedDB!
+					</p>
 				{/each}
 			</div>
 
-		<!-- View: Chats -->
+			<!-- View: Chats -->
 		{:else if view === 'chats'}
 			<div style="display: flex; gap: 10px; margin-bottom: 20px;">
-				<input bind:value={newChatTitle} placeholder="New Chat Title" style="flex:1; padding: 8px;" />
+				<input
+					bind:value={newChatTitle}
+					placeholder="New Chat Title"
+					style="flex:1; padding: 8px;"
+				/>
 				<button on:click={handleCreateChat}>Start Chat</button>
 			</div>
 
 			<div style="display: flex; flex-direction: column; gap: 10px;">
 				{#each chats as chat}
-					<div 
+					<div
 						style="padding: 15px; background: #eef7ff; border-radius: 8px; cursor: pointer;"
 						on:click={() => handleSelectChat(chat)}
 						on:keydown={(e) => e.key === 'Enter' && handleSelectChat(chat)}
@@ -185,17 +200,22 @@
 				{/each}
 			</div>
 
-		<!-- View: Chatting -->
+			<!-- View: Chatting -->
 		{:else if view === 'chat'}
-			<div style="background: #fafafa; border: 1px solid #eee; border-radius: 8px; height: 400px; display: flex; flex-direction: column;">
-				
+			<div
+				style="background: #fafafa; border: 1px solid #eee; border-radius: 8px; height: 400px; display: flex; flex-direction: column;"
+			>
 				<!-- Messages Area -->
-				<div style="flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px;">
+				<div
+					style="flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px;"
+				>
 					{#each messages as msg}
-						<div style="align-self: {msg.data.role === 'user' ? 'flex-end' : 'flex-start'}; 
+						<div
+							style="align-self: {msg.data.role === 'user' ? 'flex-end' : 'flex-start'}; 
 									background: {msg.data.role === 'user' ? '#007BFF' : '#E9ECEF'}; 
 									color: {msg.data.role === 'user' ? '#FFF' : '#000'}; 
-									padding: 8px 14px; border-radius: 12px; max-width: 80%;">
+									padding: 8px 14px; border-radius: 12px; max-width: 80%;"
+						>
 							{msg.data.content}
 						</div>
 					{/each}
@@ -203,13 +223,15 @@
 
 				<!-- Input Area -->
 				<div style="padding: 10px; border-top: 1px solid #ccc; display: flex; gap: 10px;">
-					<input 
-						bind:value={newMessageText} 
+					<input
+						bind:value={newMessageText}
 						on:keydown={(e) => e.key === 'Enter' && handleSendMessage()}
-						placeholder="Type an encrypted message..." 
-						style="flex: 1; padding: 10px; border-radius: 20px; border: 1px solid #ccc;" 
+						placeholder="Type an encrypted message..."
+						style="flex: 1; padding: 10px; border-radius: 20px; border: 1px solid #ccc;"
 					/>
-					<button on:click={handleSendMessage} style="border-radius: 20px; padding: 0 20px;">Send</button>
+					<button on:click={handleSendMessage} style="border-radius: 20px; padding: 0 20px;"
+						>Send</button
+					>
 				</div>
 			</div>
 		{/if}
