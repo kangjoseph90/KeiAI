@@ -1,64 +1,49 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
-import { localDB, type CharacterRecord } from '../db/index.js';
+import {
+	localDB,
+	type CharacterSummaryRecord,
+	type CharacterDataRecord
+} from '../db/index.js';
 
-export interface CharacterSummary {
+// ─── Domain Types ────────────────────────────────────────────────────
+
+export interface CharacterSummaryFields {
 	name: string;
 	shortDescription: string;
 	avatarAssetId?: string;
 }
 
-export interface CharacterData {
+export interface CharacterDataFields {
 	systemPrompt: string;
 	greetingMessage?: string;
 }
 
-export interface Character {
+export interface Character extends CharacterSummaryFields {
 	id: string;
-	summary: CharacterSummary;
-	data?: CharacterData;
 	createdAt: number;
 	updatedAt: number;
 }
 
+export interface CharacterDetail extends Character {
+	data: CharacterDataFields;
+}
+
+// ─── Service ─────────────────────────────────────────────────────────
+
 export class CharacterService {
-	static async create(summary: CharacterSummary, data: CharacterData): Promise<Character> {
+	/** List all characters (summary only — characterData table untouched) */
+	static async list(): Promise<Character[]> {
 		const { masterKey, userId } = getActiveSession();
-		const id = crypto.randomUUID();
-		const now = Date.now();
+		const records = await localDB.getAll<CharacterSummaryRecord>('characterSummaries', userId);
 
-		const sumEnc = await encryptText(masterKey, JSON.stringify(summary));
-		const dataEnc = await encryptText(masterKey, JSON.stringify(data));
-
-		const record: CharacterRecord = {
-			id,
-			userId,
-			createdAt: now,
-			updatedAt: now,
-			isDeleted: false,
-			encryptedSummary: sumEnc.ciphertext,
-			summaryIv: sumEnc.iv,
-			encryptedData: dataEnc.ciphertext,
-			dataIv: dataEnc.iv
-		};
-
-		await localDB.putRecord('characters', record);
-
-		return { id, summary, data, createdAt: now, updatedAt: now };
-	}
-
-	static async getAll(): Promise<Character[]> {
-		const { masterKey, userId } = getActiveSession();
-		const records = await localDB.getAll<CharacterRecord>('characters', userId);
-		
 		const results: Character[] = [];
 		for (const record of records) {
-			const sumDec = await decryptText(masterKey, {
-				ciphertext: record.encryptedSummary,
-				iv: record.summaryIv
-			});
+			const fields: CharacterSummaryFields = JSON.parse(
+				await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+			);
 			results.push({
 				id: record.id,
-				summary: JSON.parse(sumDec),
+				...fields,
 				createdAt: record.createdAt,
 				updatedAt: record.updatedAt
 			});
@@ -66,69 +51,100 @@ export class CharacterService {
 		return results;
 	}
 
-	static async getById(id: string): Promise<Character | null> {
+	/** Get full character (summary + data) */
+	static async getDetail(id: string): Promise<CharacterDetail | null> {
 		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<CharacterRecord>('characters', id);
-		if (!record || record.isDeleted) return null;
 
-		const sumDec = await decryptText(masterKey, {
-			ciphertext: record.encryptedSummary,
-			iv: record.summaryIv
-		});
-		const dataDec = await decryptText(masterKey, {
-			ciphertext: record.encryptedData,
-			iv: record.dataIv
-		});
+		const rec = await localDB.getRecord<CharacterSummaryRecord>('characterSummaries', id);
+		if (!rec || rec.isDeleted) return null;
+
+		const dataRec = await localDB.getRecord<CharacterDataRecord>('characterData', id);
+		if (!dataRec || dataRec.isDeleted) return null;
+
+		const fields: CharacterSummaryFields = JSON.parse(
+			await decryptText(masterKey, { ciphertext: rec.encryptedData, iv: rec.encryptedDataIV })
+		);
+		const data: CharacterDataFields = JSON.parse(
+			await decryptText(masterKey, { ciphertext: dataRec.encryptedData, iv: dataRec.encryptedDataIV })
+		);
 
 		return {
-			id: record.id,
-			summary: JSON.parse(sumDec),
-			data: JSON.parse(dataDec),
-			createdAt: record.createdAt,
-			updatedAt: record.updatedAt
+			id: rec.id,
+			...fields,
+			data,
+			createdAt: rec.createdAt,
+			updatedAt: Math.max(rec.updatedAt, dataRec.updatedAt)
 		};
 	}
 
-	static async update(id: string, summary: Partial<CharacterSummary>, data?: Partial<CharacterData>): Promise<Character | null> {
+	/** Create a character (writes to both tables) */
+	static async create(
+		fields: CharacterSummaryFields,
+		data: CharacterDataFields
+	): Promise<CharacterDetail> {
+		const { masterKey, userId } = getActiveSession();
+		const id = crypto.randomUUID();
+		const now = Date.now();
+
+		const fieldsEnc = await encryptText(masterKey, JSON.stringify(fields));
+		const dataEnc = await encryptText(masterKey, JSON.stringify(data));
+
+		await localDB.putRecord<CharacterSummaryRecord>('characterSummaries', {
+			id, userId, createdAt: now, updatedAt: now, isDeleted: false,
+			encryptedData: fieldsEnc.ciphertext, encryptedDataIV: fieldsEnc.iv
+		});
+		await localDB.putRecord<CharacterDataRecord>('characterData', {
+			id, userId, createdAt: now, updatedAt: now, isDeleted: false,
+			encryptedData: dataEnc.ciphertext, encryptedDataIV: dataEnc.iv
+		});
+
+		return { id, ...fields, data, createdAt: now, updatedAt: now };
+	}
+
+	/** Update summary only (e.g. rename) — does NOT touch characterData */
+	static async updateSummary(
+		id: string,
+		changes: Partial<CharacterSummaryFields>
+	): Promise<Character | null> {
 		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<CharacterRecord>('characters', id);
+		const record = await localDB.getRecord<CharacterSummaryRecord>('characterSummaries', id);
 		if (!record || record.isDeleted) return null;
 
-		const sumDec = await decryptText(masterKey, { ciphertext: record.encryptedSummary, iv: record.summaryIv });
-		const currentSummary: CharacterSummary = JSON.parse(sumDec);
-		const newSummary = { ...currentSummary, ...summary };
-		
-		const sumEnc = await encryptText(masterKey, JSON.stringify(newSummary));
-		record.encryptedSummary = sumEnc.ciphertext;
-		record.summaryIv = sumEnc.iv;
+		const current: CharacterSummaryFields = JSON.parse(
+			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+		);
+		const updated = { ...current, ...changes };
+		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
-		let newData: CharacterData | undefined;
-		if (data) {
-			const dataDec = await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.dataIv });
-			const currentData: CharacterData = JSON.parse(dataDec);
-			newData = { ...currentData, ...data };
-			
-			const dataEnc = await encryptText(masterKey, JSON.stringify(newData));
-			record.encryptedData = dataEnc.ciphertext;
-			record.dataIv = dataEnc.iv;
-		} else {
-			const dataDec = await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.dataIv });
-			newData = JSON.parse(dataDec);
-		}
-
+		record.encryptedData = enc.ciphertext;
+		record.encryptedDataIV = enc.iv;
 		record.updatedAt = Date.now();
-		await localDB.putRecord('characters', record);
+		await localDB.putRecord('characterSummaries', record);
 
-		return {
-			id: record.id,
-			summary: newSummary,
-			data: newData,
-			createdAt: record.createdAt,
-			updatedAt: record.updatedAt
-		};
+		return { id, ...updated, createdAt: record.createdAt, updatedAt: record.updatedAt };
 	}
 
+	/** Update data only (e.g. edit system prompt) — does NOT touch summary */
+	static async updateData(id: string, changes: Partial<CharacterDataFields>): Promise<void> {
+		const { masterKey } = getActiveSession();
+		const record = await localDB.getRecord<CharacterDataRecord>('characterData', id);
+		if (!record || record.isDeleted) return;
+
+		const current: CharacterDataFields = JSON.parse(
+			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+		);
+		const updated = { ...current, ...changes };
+		const enc = await encryptText(masterKey, JSON.stringify(updated));
+
+		record.encryptedData = enc.ciphertext;
+		record.encryptedDataIV = enc.iv;
+		record.updatedAt = Date.now();
+		await localDB.putRecord('characterData', record);
+	}
+
+	/** Soft-delete (both tables) */
 	static async delete(id: string): Promise<void> {
-		await localDB.softDeleteRecord('characters', id);
+		await localDB.softDeleteRecord('characterSummaries', id);
+		await localDB.softDeleteRecord('characterData', id);
 	}
 }

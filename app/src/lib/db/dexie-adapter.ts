@@ -1,5 +1,8 @@
 /**
- * Dexie-based Local Database Adapter (for Web/PWA)
+ * Dexie-based Local Database Adapter (Web / PWA)
+ *
+ *   All encrypted tables share { id, [FK?], userId, …, data, iv }.
+ *   Old v1/v2 tables (`characters`, `chats`) are dropped.
  */
 import Dexie, { type Table } from 'dexie';
 import type {
@@ -7,29 +10,32 @@ import type {
 	TableName,
 	BaseRecord,
 	UserRecord,
-	CharacterRecord,
-	ChatRecord,
+	CharacterSummaryRecord,
+	CharacterDataRecord,
+	ChatSummaryRecord,
+	ChatDataRecord,
 	MessageRecord,
 	SettingsRecord
 } from './types.js';
 
 class DexieStore extends Dexie {
 	users!: Table<UserRecord, string>;
-	characters!: Table<CharacterRecord, string>;
-	chats!: Table<ChatRecord, string>;
+	characterSummaries!: Table<CharacterSummaryRecord, string>;
+	characterData!: Table<CharacterDataRecord, string>;
+	chatSummaries!: Table<ChatSummaryRecord, string>;
+	chatData!: Table<ChatDataRecord, string>;
 	messages!: Table<MessageRecord, string>;
 	settings!: Table<SettingsRecord, string>;
 
 	constructor() {
 		super('KeiLocalDB');
 
-		// Indexed fields for where() clauses. 
-		// First item is Primary Key.
-		// Encrypted Uint8Array fields are NOT indexed.
 		this.version(1).stores({
-			users: 'id, isGuest',
-			characters: 'id, userId, updatedAt, isDeleted',
-			chats: 'id, userId, characterId, updatedAt, isDeleted',
+			users: 'id, userId, isGuest',
+			characterSummaries: 'id, userId, updatedAt, isDeleted',
+			characterData: 'id, userId, updatedAt, isDeleted',
+			chatSummaries: 'id, userId, characterId, updatedAt, isDeleted',
+			chatData: 'id, userId, updatedAt, isDeleted',
 			messages: 'id, userId, chatId, updatedAt, isDeleted',
 			settings: 'id, userId, updatedAt, isDeleted'
 		});
@@ -43,17 +49,16 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 		this.db = new DexieStore();
 	}
 
-	private getTable(tableName: TableName): Table<any, string> {
-		return this.db[tableName] as any;
+	private getTable<T extends BaseRecord>(tableName: TableName): Table<T, string> {
+		return this.db[tableName] as unknown as Table<T, string>;
 	}
 
 	async getRecord<T extends BaseRecord>(tableName: TableName, id: string): Promise<T | undefined> {
-		return await this.getTable(tableName).get(id);
+		return await this.getTable<T>(tableName).get(id);
 	}
 
 	async putRecord<T extends BaseRecord>(tableName: TableName, record: T): Promise<void> {
-		record.updatedAt = Date.now();
-		await this.getTable(tableName).put(record);
+		await this.getTable<T>(tableName).put(record);
 	}
 
 	async putRecords<T extends BaseRecord>(tableName: TableName, records: T[]): Promise<void> {
@@ -63,11 +68,11 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 				record.updatedAt = now;
 			}
 		}
-		await this.getTable(tableName).bulkPut(records);
+		await this.getTable<T>(tableName).bulkPut(records);
 	}
 
 	async softDeleteRecord(tableName: TableName, id: string): Promise<void> {
-		const table = this.getTable(tableName);
+		const table = this.getTable<BaseRecord>(tableName);
 		const record = await table.get(id);
 		if (record) {
 			record.isDeleted = true;
@@ -77,10 +82,10 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 	}
 
 	async getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]> {
-		return (await this.getTable(tableName)
+		return (await this.getTable<T>(tableName)
 			.where('userId')
 			.equals(userId)
-			.filter((record) => !record.isDeleted)
+			.filter((record: T) => !record.isDeleted)
 			.sortBy('updatedAt')) as T[];
 	}
 
@@ -91,10 +96,10 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 		limit: number = 50,
 		offset: number = 0
 	): Promise<T[]> {
-		return (await this.getTable(tableName)
+		return (await this.getTable<T>(tableName)
 			.where(indexName)
 			.equals(indexValue)
-			.filter((record) => !record.isDeleted)
+			.filter((record: T) => !record.isDeleted)
 			.offset(offset)
 			.limit(limit)
 			.toArray()) as T[];
@@ -105,13 +110,13 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 		userId: string,
 		sinceUpdatedAt: number
 	): Promise<T[]> {
-		return (await this.getTable(tableName)
+		return (await this.getTable<T>(tableName)
 			.where('userId')
 			.equals(userId)
-			.filter((record) => record.updatedAt > sinceUpdatedAt)
+			.filter((record: T) => (record.updatedAt ?? 0) > sinceUpdatedAt)
 			.toArray()) as T[];
 	}
 }
 
-// Global default adapter (currently hardcoded to Dexie for Web)
+/** Global default adapter */
 export const localDB: IDatabaseAdapter = new DexieDatabaseAdapter();

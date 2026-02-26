@@ -1,177 +1,205 @@
-import { writable, get } from 'svelte/store';
-import { CharacterService, type Character } from '../services/character.js';
-import { ChatService, type Chat } from '../services/chat.js';
-import { MessageService, type Message } from '../services/message.js';
+/**
+ * Svelte Store — 3-Layer In-Memory State
+ *
+ * Level 1 (Global):    characters (summaries), appSettings   — always loaded
+ * Level 2 (Character): activeCharacter (detail), activeChats — loaded on select
+ * Level 3 (Chat):      activeChat (detail), messages         — loaded on enter
+ *
+ * Leaving a layer clears its plaintext from memory.
+ * Cross-service orchestration lives here, not inside services.
+ */
 
+import { writable, get } from 'svelte/store';
+import {
+	CharacterService,
+	type Character,
+	type CharacterDetail,
+	type CharacterSummaryFields,
+	type CharacterDataFields
+} from '../services/character.js';
+import {
+	ChatService,
+	type Chat,
+	type ChatDetail,
+	type ChatSummaryFields,
+	type ChatDataFields
+} from '../services/chat.js';
+import { MessageService, type Message } from '../services/message.js';
 import { SettingsService, type AppSettings } from '../services/settings.js';
 
-// ==========================================
-// Level 1: Global State (Always loaded)
-// ==========================================
+// ══════════════════════════════════════════════════
+// Level 1: Global State (always loaded)
+// ══════════════════════════════════════════════════
 
 export const appSettings = writable<AppSettings | null>(null);
-export const globalCharacters = writable<Character[]>([]);
+export const characters = writable<Character[]>([]);
 
-// Initialize Global Layer
 export async function loadGlobalState() {
-	const settings = await SettingsService.get();
-	appSettings.set(settings);
-
-	const chars = await CharacterService.getAll();
-	globalCharacters.set(chars);
+	appSettings.set(await SettingsService.get());
+	characters.set(await CharacterService.list());
 }
 
-// Global Level Actions
-export async function updateSettings(newSettings: Partial<AppSettings>) {
-	const current = get(appSettings) || {};
-	const updated = { ...current, ...newSettings } as AppSettings;
+export async function updateSettings(changes: Partial<AppSettings>) {
+	const current = get(appSettings) || ({} as AppSettings);
+	const updated = { ...current, ...changes } as AppSettings;
 	await SettingsService.update(updated);
 	appSettings.set(updated);
 }
 
-export async function createCharacter(name: string, description: string, prompt: string) {
-	await CharacterService.create({ name, shortDescription: description }, { systemPrompt: prompt });
-	await loadGlobalState();
-}
-
-export async function updateCharacter(id: string, summary: Partial<import('../services/character.js').CharacterSummary>, data?: Partial<import('../services/character.js').CharacterData>) {
-	await CharacterService.update(id, summary, data);
-	await loadGlobalState();
-	if (get(activeCharacter)?.id === id) {
-		await selectCharacter(id);
-	}
+export async function createCharacter(
+	name: string,
+	shortDescription: string,
+	systemPrompt: string,
+	greetingMessage?: string
+) {
+	await CharacterService.create({ name, shortDescription }, { systemPrompt, greetingMessage });
+	characters.set(await CharacterService.list());
 }
 
 export async function deleteCharacter(id: string) {
 	await CharacterService.delete(id);
-	await loadGlobalState();
+	characters.set(await CharacterService.list());
 	if (get(activeCharacter)?.id === id) {
 		clearActiveCharacter();
 	}
 }
 
-// ==========================================
+// ══════════════════════════════════════════════════
 // Level 2: Active Character Context
-// ==========================================
+// ══════════════════════════════════════════════════
 
-export const activeCharacter = writable<Character | null>(null);
-export const activeCharacterChats = writable<Chat[]>([]);
+export const activeCharacter = writable<CharacterDetail | null>(null);
+export const activeChats = writable<Chat[]>([]);
 
 export async function selectCharacter(characterId: string) {
-	// Clean up lower layers to free memory
-	activeChat.set(null);
-	activeMessages.set([]);
-	activeCharacterChats.set([]);
+	clearActiveChat();
+	activeChats.set([]);
 
-	// Fetch requested character full data and their chat summaries
-	const char = await CharacterService.getById(characterId);
-	if (!char) {
-		activeCharacter.set(null);
-		return;
+	const detail = await CharacterService.getDetail(characterId);
+	activeCharacter.set(detail);
+
+	if (detail) {
+		activeChats.set(await ChatService.listByCharacter(characterId));
 	}
-	activeCharacter.set(char);
-
-	const chats = await ChatService.getByCharacterId(characterId);
-	activeCharacterChats.set(chats);
 }
 
 export function clearActiveCharacter() {
 	activeCharacter.set(null);
-	activeCharacterChats.set([]);
+	activeChats.set([]);
 	clearActiveChat();
 }
 
-// Character Level Actions
+export async function updateCharacterSummary(
+	id: string,
+	changes: Partial<CharacterSummaryFields>
+) {
+	await CharacterService.updateSummary(id, changes);
+	characters.set(await CharacterService.list());
+	if (get(activeCharacter)?.id === id) {
+		activeCharacter.set(await CharacterService.getDetail(id));
+	}
+}
+
+export async function updateCharacterData(id: string, changes: Partial<CharacterDataFields>) {
+	await CharacterService.updateData(id, changes);
+	if (get(activeCharacter)?.id === id) {
+		activeCharacter.set(await CharacterService.getDetail(id));
+	}
+}
+
+// Character-level actions
+
 export async function createChat(title: string) {
 	const char = get(activeCharacter);
 	if (!char) return;
 	await ChatService.create(char.id, title);
-	await refreshActiveCharacterChats();
+	activeChats.set(await ChatService.listByCharacter(char.id));
 }
 
-export async function updateChat(chatId: string, summary: Partial<import('../services/chat.js').ChatSummary>) {
-	await ChatService.update(chatId, summary);
-	await refreshActiveCharacterChats();
-	// If it's the active chat, update its local copy
-	const currentActChat = get(activeChat);
-	if (currentActChat && currentActChat.id === chatId) {
-        // Technically just the summary changed
-		activeChat.set({ ...currentActChat, summary: { ...currentActChat.summary, ...summary } });
+export async function updateChat(chatId: string, changes: Partial<ChatSummaryFields>) {
+	await ChatService.updateSummary(chatId, changes);
+	await refreshActiveChats();
+	const current = get(activeChat);
+	if (current?.id === chatId) {
+		activeChat.set(await ChatService.getDetail(chatId));
+	}
+}
+
+export async function updateChatData(chatId: string, changes: Partial<ChatDataFields>) {
+	await ChatService.updateData(chatId, changes);
+	const current = get(activeChat);
+	if (current?.id === chatId) {
+		activeChat.set(await ChatService.getDetail(chatId));
 	}
 }
 
 export async function deleteChat(chatId: string) {
 	await ChatService.delete(chatId);
-	await refreshActiveCharacterChats();
+	await refreshActiveChats();
 	if (get(activeChat)?.id === chatId) {
 		clearActiveChat();
 	}
 }
 
-
-// ==========================================
+// ══════════════════════════════════════════════════
 // Level 3: Active Chat Context
-// ==========================================
+// ══════════════════════════════════════════════════
 
-export const activeChat = writable<Chat | null>(null);
-export const activeMessages = writable<Message[]>([]);
+export const activeChat = writable<ChatDetail | null>(null);
+export const messages = writable<Message[]>([]);
 
 export async function selectChat(chatId: string) {
-	// Note: You might want a dedicated ChatService.getById if you need full chat rules/lorebooks
-	// For now, we find the summary from the active character's list
-	const chats = get(activeCharacterChats);
-	const chat = chats.find(c => c.id === chatId) || null;
-	activeChat.set(chat);
-
-	if (chat) {
-		const msgs = await MessageService.getByChatId(chatId);
-		activeMessages.set(msgs);
-	} else {
-		activeMessages.set([]);
-	}
+	const detail = await ChatService.getDetail(chatId);
+	activeChat.set(detail);
+	messages.set(detail ? await MessageService.listByChat(chatId) : []);
 }
 
 export function clearActiveChat() {
 	activeChat.set(null);
-	activeMessages.set([]); // Free memory
+	messages.set([]);
 }
 
-// Helper: Quick Refresh of a specific layer
-export async function refreshActiveCharacterChats() {
-	const char = get(activeCharacter);
-	if (char) {
-		const chats = await ChatService.getByCharacterId(char.id);
-		activeCharacterChats.set(chats);
-	}
+export async function sendMessage(role: 'user' | 'char' | 'system', content: string) {
+	const chat = get(activeChat);
+	if (!chat) return;
+
+	await MessageService.create(chat.id, { role, content });
+
+	// Orchestration: update chat preview
+	await ChatService.updateSummary(chat.id, {
+		lastMessagePreview: content.substring(0, 50)
+	});
+
+	messages.set(await MessageService.listByChat(chat.id));
+	await refreshActiveChats();
 }
 
-export async function refreshActiveMessages() {
+export async function updateMessage(msgId: string, content: string) {
+	const chat = get(activeChat);
+	if (!chat) return;
+
+	await MessageService.update(msgId, { content });
+	await ChatService.updateSummary(chat.id, {
+		lastMessagePreview: content.substring(0, 50)
+	});
+
+	messages.set(await MessageService.listByChat(chat.id));
+	await refreshActiveChats();
+}
+
+export async function deleteMessage(msgId: string) {
+	await MessageService.delete(msgId);
 	const chat = get(activeChat);
 	if (chat) {
-		const msgs = await MessageService.getByChatId(chat.id);
-		activeMessages.set(msgs);
+		messages.set(await MessageService.listByChat(chat.id));
 	}
 }
 
-// Chat Level Actions (Messages)
-export async function sendChatMessage(role: 'user' | 'char' | 'system', content: string) {
-	const chat = get(activeChat);
-	if (!chat) return;
-	await MessageService.create(chat.id, { role, content });
-	await refreshActiveMessages();
-	await refreshActiveCharacterChats(); // Updates preview in the chat list
-}
+// ─── Internal ────────────────────────────────────────────────────────
 
-export async function updateChatMessage(msgId: string, content: string) {
-	const chat = get(activeChat);
-	if (!chat) return;
-	await MessageService.update(msgId, { content });
-	await refreshActiveMessages();
-	await refreshActiveCharacterChats(); // Might update preview if it was the last message
-}
-
-export async function deleteChatMessage(msgId: string) {
-	await MessageService.delete(msgId);
-	await refreshActiveMessages();
-	await refreshActiveCharacterChats();
+async function refreshActiveChats() {
+	const char = get(activeCharacter);
+	if (char) {
+		activeChats.set(await ChatService.listByCharacter(char.id));
+	}
 }

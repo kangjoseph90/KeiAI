@@ -1,131 +1,115 @@
-import { pb } from './pb.ts';
-import { getActiveSession } from '../session.js';
-import { toBase64, fromBase64 } from '../crypto/index.js';
-import { localDB, type TableName, type BaseRecord } from '../db/index.ts';
-
 /**
  * Blind Synchronization Engine
- * Pushes local encrypted bytes to PocketBase.
- * Pulls latest encrypted bytes from PocketBase and overrides local DB.
- * The server never knows what it is syncing.
+ *
+ * Pushes/pulls encrypted byte arrays between local Dexie and PocketBase.
+ * The server never decrypts or inspects any data.
  */
+
+import { pb } from './pb.js';
+import { getActiveSession } from '../session.js';
+import { toBase64, fromBase64 } from '../crypto/index.js';
+import { localDB, type TableName, type BaseRecord } from '../db/index.js';
+
 export class SyncService {
-	// Tables to sync. Keep the order logical (Parents before children)
-	private static TABLES: TableName[] = ['characters', 'chats', 'messages', 'settings'];
+	private static TABLES: TableName[] = [
+		'characterSummaries',
+		'characterData',
+		'chatSummaries',
+		'chatData',
+		'messages',
+		'settings'
+	];
 
-	/**
-	 * Run a full bi-directional sync
-	 */
 	static async syncAll(): Promise<void> {
-		if (!pb.authStore.isValid) return; // Must be logged in
+		if (!pb.authStore.isValid) return;
 		const { userId, isGuest } = getActiveSession();
-		if (isGuest) return; // Guests don't sync
+		if (isGuest) return;
 
-		console.log('🔄 Starting E2EE Blind Sync...');
-
+		console.log('Starting E2EE Blind Sync...');
 		for (const table of this.TABLES) {
 			await this.syncTable(table, userId);
 		}
-
-		console.log('✅ Sync Complete.');
+		console.log('Sync Complete.');
 	}
 
 	private static async syncTable(tableName: TableName, userId: string): Promise<void> {
-		// 1. Get the last time we synced this specific table
 		const syncKey = `lastSync_${tableName}_${userId}`;
-		const lastSyncTimeStr = localStorage.getItem(syncKey) || '0';
-		const lastSyncTime = parseInt(lastSyncTimeStr, 10);
-		
+		const lastSyncTime = parseInt(localStorage.getItem(syncKey) || '0', 10);
 		const syncStartTime = Date.now();
 
-		// --- 2. PUSH: Send local offline changes to Server ---
+		// --- PUSH ---
 		const unsyncedLocal = await localDB.getUnsyncedChanges(tableName, userId, lastSyncTime);
 		if (unsyncedLocal.length > 0) {
-			console.log(`Pushing ${unsyncedLocal.length} records to PocketBase for ${tableName}...`);
+			console.log(`Pushing ${unsyncedLocal.length} records for ${tableName}...`);
 			for (const record of unsyncedLocal) {
-				const pbPayload = this.localToPbRecord(record);
+				const payload = this.localToPbRecord(record);
 				try {
-					// We use upsert logic. In PB, you generally check if it exists or use a custom endpoint.
-					// For standard PB setup, try create, catch and update.
-					// *NOTE*: Using client-supplied IDs requires `id` field to be 15 chars alphanumeric in PB config,
-					// OR you send the UUID as a separate `clientId` column and use that to search/update.
 					try {
-						await pb.collection(tableName).create(pbPayload);
-					} catch (e: any) {
-						if (e.status === 400) {
-							// Exists, update it
-							await pb.collection(tableName).update(record.id, pbPayload);
+						await pb.collection(tableName).create(payload);
+					} catch (e) {
+						const err = e as { status?: number };
+						if (err && err.status === 400) {
+							await pb.collection(tableName).update(record.id, payload);
 						} else {
 							throw e;
 						}
 					}
 				} catch (err) {
-					console.error(`Failed to push record ${record.id} in ${tableName}`, err);
+					console.error(`Failed to push ${record.id} in ${tableName}`, err);
 				}
 			}
 		}
 
-		// --- 3. PULL: Get fresh encrypted blobs from Server ---
+		// --- PULL ---
 		try {
-			// PocketBase filter syntax
+			const sinceISO = new Date(lastSyncTime).toISOString().replace('T', ' ');
 			const serverChanges = await pb.collection(tableName).getFullList({
-				filter: `updatedAt > ${lastSyncTime}`,
+				filter: `updatedAt > '${sinceISO}'`,
 				sort: 'updatedAt'
 			});
 
 			if (serverChanges.length > 0) {
-				console.log(`Pulling ${serverChanges.length} fresh records from server for ${tableName}...`);
-				
-				const recordsToPut: BaseRecord[] = [];
-				for (const pbRecord of serverChanges) {
-					recordsToPut.push(this.pbToLocalRecord(pbRecord));
-				}
-
-				// Slam them straight into Dexie. No decryption needed!
-				await localDB.putRecords(tableName, recordsToPut);
+				console.log(`Pulling ${serverChanges.length} records for ${tableName}...`);
+				const records: BaseRecord[] = serverChanges.map((r) => this.pbToLocalRecord(r));
+				await localDB.putRecords(tableName, records);
 			}
 
-			// Update last sync time
 			localStorage.setItem(syncKey, syncStartTime.toString());
-
 		} catch (err) {
-			console.error(`Failed to pull records for ${tableName}`, err);
+			console.error(`Failed to pull for ${tableName}`, err);
 		}
 	}
 
-	/**
-	 * Convert local JS Object with Unit8Arrays to PocketBase JSON Payload
-	 * Arrays are Base64 encoded for transport.
-	 */
-	private static localToPbRecord(record: any): any {
-		const payload = { ...record };
-		
-		// Convert Uint8Array to string (Base64) for JSON transport
+	/** Uint8Array → Base64 for JSON transport */
+	private static localToPbRecord(record: BaseRecord): Record<string, unknown> {
+		const payload = { ...record } as Record<string, unknown>;
 		for (const key of Object.keys(payload)) {
 			if (payload[key] instanceof Uint8Array) {
 				payload[key] = toBase64(payload[key] as Uint8Array<ArrayBuffer>);
 			}
 		}
-		
 		return payload;
 	}
 
-	/**
-	 * Convert PocketBase JSON payload back to local JS Object with Uint8Arrays
-	 */
-	private static pbToLocalRecord(pbRecord: any): any {
+	/** Base64 → Uint8Array for local storage */
+	private static pbToLocalRecord(pbRecord: Record<string, unknown>): BaseRecord {
 		const record = { ...pbRecord };
-		
-		// You normally need strict type mapping here, but a quick heuristic for 
-		// our schema is identifying known Encrypted/IV fields.
-		const byteFields = ['encryptedSummary', 'summaryIv', 'encryptedData', 'dataIv', 'masterKey'];
-		
-		for (const field of byteFields) {
-			if (typeof record[field] === 'string') {
-				record[field] = fromBase64(record[field]);
+		// Symmetric with localToPbRecord: detect all base64-encoded byte fields
+		for (const key of Object.keys(record)) {
+			const val = record[key];
+			if (typeof val === 'string' && this.isBase64ByteField(key)) {
+				record[key] = fromBase64(val);
 			}
 		}
+		return record as unknown as BaseRecord;
+	}
 
-		return record;
+	/** Fields that are byte arrays when stored locally */
+	private static readonly BYTE_FIELD_NAMES = new Set([
+		'encryptedData', 'encryptedDataIV', 'masterKey'
+	]);
+
+	private static isBase64ByteField(fieldName: string): boolean {
+		return this.BYTE_FIELD_NAMES.has(fieldName);
 	}
 }

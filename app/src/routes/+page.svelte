@@ -1,23 +1,18 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { initSession, getActiveSession } from '$lib/session';
-	import { CharacterService, type Character } from '$lib/services/character';
-	import { ChatService, type Chat } from '$lib/services/chat';
-	import { MessageService, type Message } from '$lib/services/message';
+	import { initSession } from '$lib/session';
+	import {
+		characters, loadGlobalState, createCharacter, selectCharacter,
+		activeCharacter, activeChats, clearActiveCharacter,
+		createChat, selectChat, activeChat, messages, clearActiveChat,
+		sendMessage
+	} from '$lib/stores';
 
 	let ready = false;
 	let errorMsg = '';
 
 	// Navigation State
 	let view: 'characters' | 'chats' | 'chat' = 'characters';
-
-	// Data
-	let characters: Character[] = [];
-	let chats: Chat[] = [];
-	let messages: Message[] = [];
-
-	let selectedChar: Character | null = null;
-	let selectedChat: Chat | null = null;
 
 	// Form Inputs
 	let newCharName = '';
@@ -27,76 +22,54 @@
 	onMount(async () => {
 		try {
 			await initSession();
+			await loadGlobalState();
 			ready = true;
-			await loadCharacters();
 		} catch (err: any) {
 			errorMsg = err.message;
 		}
 	});
 
 	// --- Character Level ---
-	async function loadCharacters() {
-		characters = await CharacterService.getAll();
-	}
-
 	async function handleCreateCharacter() {
 		if (!newCharName.trim()) return;
-		await CharacterService.create(
-			{ name: newCharName, shortDescription: 'An offline-first character' },
-			{ systemPrompt: 'You are a highly capable AI running via E2EE datastore.' }
+		await createCharacter(
+			newCharName,
+			'An offline-first character',
+			'You are a highly capable AI running via E2EE datastore.'
 		);
 		newCharName = '';
-		await loadCharacters();
 	}
 
-	async function handleSelectCharacter(char: Character) {
-		selectedChar = char;
+	async function handleSelectCharacter(charId: string) {
+		await selectCharacter(charId);
 		view = 'chats';
-		await loadChats();
 	}
 
 	// --- Chat Level ---
-	async function loadChats() {
-		if (!selectedChar) return;
-		chats = await ChatService.getByCharacterId(selectedChar.id);
-	}
-
 	async function handleCreateChat() {
-		if (!newChatTitle.trim() || !selectedChar) return;
-		await ChatService.create(selectedChar.id, newChatTitle);
+		if (!newChatTitle.trim() || !$activeCharacter) return;
+		await createChat(newChatTitle);
 		newChatTitle = '';
-		await loadChats();
 	}
 
-	async function handleSelectChat(chat: Chat) {
-		selectedChat = chat;
+	async function handleSelectChat(chatId: string) {
+		await selectChat(chatId);
 		view = 'chat';
-		await loadMessages();
 	}
 
 	// --- Message Level ---
-	async function loadMessages() {
-		if (!selectedChat) return;
-		messages = await MessageService.getByChatId(selectedChat.id);
-	}
-
 	async function handleSendMessage() {
-		if (!newMessageText.trim() || !selectedChat) return;
+		if (!newMessageText.trim() || !$activeChat) return;
 		const userText = newMessageText;
 		newMessageText = '';
 
 		// User writes
-		await MessageService.create(selectedChat.id, { role: 'user', content: userText });
-		await loadMessages();
+		await sendMessage('user', userText);
 
 		// Bot replies (mock)
 		setTimeout(async () => {
-			if (!selectedChat) return;
-			await MessageService.create(selectedChat.id, {
-				role: 'char',
-				content: `[E2EE Bot] Received securely: "${userText}"`
-			});
-			await loadMessages();
+			if (!$activeChat) return;
+			await sendMessage('char', `[E2EE Bot] Received securely: "${userText}"`);
 		}, 600);
 	}
 
@@ -104,12 +77,10 @@
 	function handleGoBack() {
 		if (view === 'chat') {
 			view = 'chats';
-			selectedChat = null;
-			loadChats(); // refresh preview text
+			clearActiveChat();
 		} else if (view === 'chats') {
 			view = 'characters';
-			selectedChar = null;
-			loadCharacters();
+			clearActiveCharacter();
 		}
 	}
 </script>
@@ -130,9 +101,9 @@
 				{#if view === 'characters'}
 					Characters
 				{:else if view === 'chats'}
-					{selectedChar?.summary.name}'s Chats
+					{$activeCharacter?.name}'s Chats
 				{:else if view === 'chat'}
-					Chat: {selectedChat?.summary.title}
+					Chat: {$activeChat?.title}
 				{/if}
 			</h2>
 			{#if view !== 'characters'}
@@ -152,16 +123,16 @@
 			</div>
 
 			<div style="display: flex; flex-direction: column; gap: 10px;">
-				{#each characters as char}
+				{#each $characters as char}
 					<div
 						style="padding: 15px; background: #f4f4f4; border-radius: 8px; cursor: pointer; border: 1px solid transparent;"
-						on:click={() => handleSelectCharacter(char)}
-						on:keydown={(e) => e.key === 'Enter' && handleSelectCharacter(char)}
+						on:click={() => handleSelectCharacter(char.id)}
+						on:keydown={(e) => e.key === 'Enter' && handleSelectCharacter(char.id)}
 						role="button"
 						tabindex="0"
 					>
-						<h3 style="margin: 0 0 5px 0;">{char.summary.name}</h3>
-						<p style="margin: 0; font-size: 0.9em; color: #555;">{char.summary.shortDescription}</p>
+						<h3 style="margin: 0 0 5px 0;">{char.name}</h3>
+						<p style="margin: 0; font-size: 0.9em; color: #555;">{char.shortDescription}</p>
 					</div>
 				{:else}
 					<p style="color: #888;">
@@ -182,17 +153,17 @@
 			</div>
 
 			<div style="display: flex; flex-direction: column; gap: 10px;">
-				{#each chats as chat}
+				{#each $activeChats as chat}
 					<div
 						style="padding: 15px; background: #eef7ff; border-radius: 8px; cursor: pointer;"
-						on:click={() => handleSelectChat(chat)}
-						on:keydown={(e) => e.key === 'Enter' && handleSelectChat(chat)}
+						on:click={() => handleSelectChat(chat.id)}
+						on:keydown={(e) => e.key === 'Enter' && handleSelectChat(chat.id)}
 						role="button"
 						tabindex="0"
 					>
-						<h4 style="margin: 0 0 5px 0;">{chat.summary.title}</h4>
+						<h4 style="margin: 0 0 5px 0;">{chat.title}</h4>
 						<p style="margin: 0; font-size: 0.85em; color: #666;">
-							{chat.summary.lastMessagePreview || 'No messages yet...'}
+							{chat.lastMessagePreview || 'No messages yet...'}
 						</p>
 					</div>
 				{:else}
@@ -209,14 +180,14 @@
 				<div
 					style="flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px;"
 				>
-					{#each messages as msg}
+					{#each $messages as msg}
 						<div
-							style="align-self: {msg.data.role === 'user' ? 'flex-end' : 'flex-start'}; 
-									background: {msg.data.role === 'user' ? '#007BFF' : '#E9ECEF'}; 
-									color: {msg.data.role === 'user' ? '#FFF' : '#000'}; 
+							style="align-self: {msg.role === 'user' ? 'flex-end' : 'flex-start'};
+									background: {msg.role === 'user' ? '#007BFF' : '#E9ECEF'};
+									color: {msg.role === 'user' ? '#FFF' : '#000'};
 									padding: 8px 14px; border-radius: 12px; max-width: 80%;"
 						>
-							{msg.data.content}
+							{msg.content}
 						</div>
 					{/each}
 				</div>

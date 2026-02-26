@@ -1,77 +1,84 @@
 /**
- * Local Database Adapter Types for KeiAI
- * 
- * Defines the generic interface that any local database implementation
- * (Dexie for web, Tauri SQLite for desktop, Capacitor SQLite for mobile) must follow.
+ * Local Database Types — KeiAI
+ *
+ * Every table (except `users`) has the exact same shape:
+ *   id, [FK?], userId, createdAt, updatedAt, isDeleted, data, iv
+ *
+ * `data` is always an AES-GCM encrypted JSON blob.
+ * `iv`   is the random nonce used to encrypt that blob.
+ *
+ * Entities that need list previews are split into two tables:
+ *   *Summaries  — lightweight, always loaded for lists
+ *   *Data       — heavy, loaded only when the entity is opened
+ * Both tables share the same `id` for a given entity.
  */
-
-// List of all managed tables
-export type TableName = 'users' | 'characters' | 'chats' | 'messages' | 'settings';
-
-/**
- * Base record structure required for all entities to support sync.
- */
-export interface BaseRecord {
-	id: string; // UUID v4
-	userId: string; // Owner of this data
-	createdAt: number; // Unix timestamp
-	updatedAt: number; // For LWW (Last-Write-Wins) syncing
-	isDeleted: boolean; // Logical deletion (Tombstone) for syncing
-}
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
-// ─── Entities ─────────────────────────────────────────────────────────
+// ─── Table Registry ──────────────────────────────────────────────────
+
+export type TableName =
+	| 'users'
+	| 'characterSummaries'
+	| 'characterData'
+	| 'chatSummaries'
+	| 'chatData'
+	| 'messages'
+	| 'settings';
+
+// ─── Base Types ──────────────────────────────────────────────────────
+
+export interface BaseRecord {
+	id: string;
+	userId: string;
+	createdAt: number;
+	updatedAt: number;
+	isDeleted: boolean;
+}
+
+/** Standard encrypted payload — used by every table except `users` */
+export interface EncryptedRecord extends BaseRecord {
+	encryptedData: Bytes; // AES-GCM ciphertext of JSON.stringify(...)
+	encryptedDataIV: Bytes; // Random 12-byte nonce
+}
+
+// ─── Users (special — master key can't encrypt itself) ───────────────
 
 export interface UserRecord extends BaseRecord {
 	isGuest: boolean;
-	masterKey: Bytes; // Keep as bytes for now; later we'll move to OS secure storage
+	masterKey: Bytes;
 }
 
-export interface CharacterRecord extends BaseRecord {
-	encryptedSummary: Bytes; // Decrypted: { name, avatarAssetId, shortDescription }
-	summaryIv: Bytes;
+// ─── Characters ──────────────────────────────────────────────────────
 
-	encryptedData: Bytes; // Decrypted: { systemPrompt, advancedConfig, scenarios, etc. }
-	dataIv: Bytes;
+export type CharacterSummaryRecord = EncryptedRecord;
+export type CharacterDataRecord = EncryptedRecord;
+
+// ─── Chats ───────────────────────────────────────────────────────────
+
+export interface ChatSummaryRecord extends EncryptedRecord {
+	characterId: string;
+}
+export type ChatDataRecord = EncryptedRecord;
+
+// ─── Messages ────────────────────────────────────────────────────────
+
+export interface MessageRecord extends EncryptedRecord {
+	chatId: string;
 }
 
-export interface ChatRecord extends BaseRecord {
-	characterId: string; // Foreign Key
-	encryptedSummary: Bytes; // Decrypted: { title, lastMessagePreview }
-	summaryIv: Bytes;
-}
+// ─── Settings ────────────────────────────────────────────────────────
 
-export interface MessageRecord extends BaseRecord {
-	chatId: string; // Foreign Key
-	encryptedData: Bytes; // Decrypted: { role, content, hasEdits, etc. }
-	dataIv: Bytes;
-}
+export type SettingsRecord = EncryptedRecord;
 
-export interface SettingsRecord extends BaseRecord {
-	encryptedData: Bytes; // Global settings payload
-	dataIv: Bytes;
-}
-
-// ─── Adapter Interface ────────────────────────────────────────────────
+// ─── Adapter Interface ──────────────────────────────────────────────
 
 export interface IDatabaseAdapter {
-	/** Retrieve a single record by ID */
 	getRecord<T extends BaseRecord>(tableName: TableName, id: string): Promise<T | undefined>;
-	
-	/** Insert or update a single record */
 	putRecord<T extends BaseRecord>(tableName: TableName, record: T): Promise<void>;
-	
-	/** Bulk insert/update records (efficient for sync) */
 	putRecords<T extends BaseRecord>(tableName: TableName, records: T[]): Promise<void>;
-	
-	/** Logically delete a record (sets isDeleted = true) */
 	softDeleteRecord(tableName: TableName, id: string): Promise<void>;
-
-	/** Get all non-deleted records for a specific user */
 	getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]>;
-	
-	/** Map to a specific index (e.g. chatId) with pagination */
 	getByIndex<T extends BaseRecord>(
 		tableName: TableName,
 		indexName: string,
@@ -79,8 +86,6 @@ export interface IDatabaseAdapter {
 		limit?: number,
 		offset?: number
 	): Promise<T[]>;
-
-	/** Fetch all records modified after a given timestamp (for sync) */
 	getUnsyncedChanges<T extends BaseRecord>(
 		tableName: TableName,
 		userId: string,

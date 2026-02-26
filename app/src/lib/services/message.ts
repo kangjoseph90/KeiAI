@@ -1,65 +1,41 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type MessageRecord } from '../db/index.js';
-import { ChatService } from './chat.js';
 
-export interface MessageData {
+// ─── Domain Types ────────────────────────────────────────────────────
+
+export interface MessageFields {
 	role: 'user' | 'char' | 'system';
 	content: string;
 }
 
-export interface Message {
+export interface Message extends MessageFields {
 	id: string;
 	chatId: string;
-	data: MessageData;
 	createdAt: number;
 	updatedAt: number;
 }
 
+// ─── Service ─────────────────────────────────────────────────────────
+
 export class MessageService {
-	static async create(chatId: string, data: MessageData): Promise<Message> {
-		const { masterKey, userId } = getActiveSession();
-		const id = crypto.randomUUID();
-		const now = Date.now();
-
-		const dataEnc = await encryptText(masterKey, JSON.stringify(data));
-
-		const record: MessageRecord = {
-			id,
-			userId,
-			chatId,
-			createdAt: now,
-			updatedAt: now,
-			isDeleted: false,
-			encryptedData: dataEnc.ciphertext,
-			dataIv: dataEnc.iv
-		};
-
-		await localDB.putRecord('messages', record);
-		
-		// Update chat preview using plain text 
-		// (This internally encrypts the preview inside ChatRecord summary!)
-		await ChatService.updatePreview(chatId, data.content.substring(0, 50));
-
-		return { id, chatId, data, createdAt: now, updatedAt: now };
-	}
-
-	static async getByChatId(chatId: string): Promise<Message[]> {
+	/** List messages for a chat (oldest first) */
+	static async listByChat(chatId: string, limit = 200, offset = 0): Promise<Message[]> {
 		const { masterKey } = getActiveSession();
-		const records = await localDB.getByIndex<MessageRecord>('messages', 'chatId', chatId, 200, 0);
-		
-		// Sort by createdAt ascending (oldest first for chat view)
+		const records = await localDB.getByIndex<MessageRecord>(
+			'messages', 'chatId', chatId, limit, offset
+		);
+
 		records.sort((a, b) => a.createdAt - b.createdAt);
-		
+
 		const results: Message[] = [];
 		for (const record of records) {
-			const dataDec = await decryptText(masterKey, {
-				ciphertext: record.encryptedData,
-				iv: record.dataIv
-			});
+			const fields: MessageFields = JSON.parse(
+				await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+			);
 			results.push({
 				id: record.id,
 				chatId: record.chatId,
-				data: JSON.parse(dataDec),
+				...fields,
 				createdAt: record.createdAt,
 				updatedAt: record.updatedAt
 			});
@@ -67,35 +43,49 @@ export class MessageService {
 		return results;
 	}
 
-	static async update(id: string, data: Partial<MessageData>): Promise<Message | null> {
+	/** Create a message */
+	static async create(chatId: string, fields: MessageFields): Promise<Message> {
+		const { masterKey, userId } = getActiveSession();
+		const id = crypto.randomUUID();
+		const now = Date.now();
+
+		const enc = await encryptText(masterKey, JSON.stringify(fields));
+
+		await localDB.putRecord<MessageRecord>('messages', {
+			id, userId, chatId, createdAt: now, updatedAt: now, isDeleted: false,
+			encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+		});
+
+		return { id, chatId, ...fields, createdAt: now, updatedAt: now };
+	}
+
+	/** Update a message */
+	static async update(id: string, changes: Partial<MessageFields>): Promise<Message | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<MessageRecord>('messages', id);
 		if (!record || record.isDeleted) return null;
 
-		const dataDec = await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.dataIv });
-		const currentData: MessageData = JSON.parse(dataDec);
-		const newData = { ...currentData, ...data };
+		const current: MessageFields = JSON.parse(
+			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+		);
+		const updated = { ...current, ...changes };
+		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
-		const dataEnc = await encryptText(masterKey, JSON.stringify(newData));
-		record.encryptedData = dataEnc.ciphertext;
-		record.dataIv = dataEnc.iv;
+		record.encryptedData = enc.ciphertext;
+		record.encryptedDataIV = enc.iv;
 		record.updatedAt = Date.now();
-
 		await localDB.putRecord('messages', record);
-
-		if (data.content !== undefined) {
-			await ChatService.updatePreview(record.chatId, data.content.substring(0, 50));
-		}
 
 		return {
 			id: record.id,
 			chatId: record.chatId,
-			data: newData,
+			...updated,
 			createdAt: record.createdAt,
 			updatedAt: record.updatedAt
 		};
 	}
 
+	/** Soft-delete a message */
 	static async delete(id: string): Promise<void> {
 		await localDB.softDeleteRecord('messages', id);
 	}

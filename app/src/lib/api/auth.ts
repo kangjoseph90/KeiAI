@@ -157,17 +157,9 @@ export class AuthService {
 			})
 		});
 
-		// 5. Set local session
-		const memoryKey = await importMasterKey(rawM, false);
-		const userId = crypto.randomUUID();
-		await localDB.putRecord('users', {
-			id: userId, userId, createdAt: Date.now(), updatedAt: Date.now(),
-			isDeleted: false, isGuest: false, masterKey: new Uint8Array(rawM)
-		} as UserRecord);
-		setSession(userId, memoryKey, false);
+		// 5. Login with the new credentials — this creates the local user
+		//    record with the correct PB server userId and sets the session.
 		rawM.fill(0);
-
-		// 6. Login with the new credentials to adopt PB userId
 		await this.login(email, newPassword);
 
 		return newRecovery.recoveryCode.fullCode;
