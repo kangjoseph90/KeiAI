@@ -1,6 +1,10 @@
 /**
  * Auth API — All account flows in single-call functions.
  * Uses pure crypto utilities + session manager. No multi-step dance.
+ *
+ * Master key extractability lifecycle:
+ *   Guest  (extractable: true)  → register() → Registered (extractable: false)
+ *   Registered (extractable: false) → unlinkAccount() → Guest (extractable: true)
  */
 
 import { pb } from './pb.js';
@@ -21,7 +25,9 @@ import {
 	getActiveSession,
 	setSession,
 	clearSession,
-	importMasterKey
+	importMasterKey,
+	lockMasterKey,
+	unlockMasterKey
 } from '../session.js';
 import { localDB, type UserRecord } from '../db/index.js';
 
@@ -29,22 +35,20 @@ export class AuthService {
 	/**
 	 * Register: Link current guest account to a new server account.
 	 * Returns the 16-char recovery code that UI must force user to save.
+	 * After successful registration, the local master key is downgraded to extractable: false.
 	 */
 	static async register(email: string, password: string): Promise<string> {
-		const { userId } = getActiveSession();
-		const user = await localDB.getRecord<UserRecord>('users', userId);
-		if (!user) throw new Error('No active user record.');
+		const { userId, masterKey } = getActiveSession();
 
 		// Derive keys
 		const salt = generateSalt();
 		const { loginKey, encryptionKey } = await deriveKeys(password, salt);
 
-		// Wrap M with Y
-		const masterKeyExt = await importMasterKey(user.masterKey, true);
-		const wrapped = await wrapMasterKey(masterKeyExt, encryptionKey);
+		// Wrap M with Y — works because guest key is extractable: true
+		const wrapped = await wrapMasterKey(masterKey, encryptionKey);
 
 		// Recovery data
-		const recovery = await createRecoveryData(masterKeyExt);
+		const recovery = await createRecoveryData(masterKey);
 		encryptionKey.fill(0);
 
 		// Send to PocketBase
@@ -60,11 +64,6 @@ export class AuthService {
 			recoveryAuthTokenHash: toBase64(recovery.recoveryAuthTokenHash)
 		});
 
-		// Mark local user as non-guest
-		user.isGuest = false;
-		user.updatedAt = Date.now();
-		await localDB.putRecord('users', user);
-
 		// Login to adopt the PocketBase UUID
 		await this.login(email, password);
 
@@ -74,6 +73,7 @@ export class AuthService {
 	/**
 	 * Login: Single-call E2EE login.
 	 * Fetches salt → derives X,Y → auths with X → unwraps M(Y) → sets session.
+	 * Stores the master key as extractable: false (registered user).
 	 */
 	static async login(email: string, password: string): Promise<void> {
 		// 1. Fetch salt
@@ -86,16 +86,16 @@ export class AuthService {
 		// 3. Auth with X
 		const authData = await pb.collection('users').authWithPassword(email, toBase64(loginKey));
 
-		// 4. Unwrap M(Y) with Y
+		// 4. Unwrap M(Y) with Y → get raw bytes
 		const rawM = await unwrapMasterKeyRaw(
 			fromBase64(authData.record.encryptedMasterKey),
 			fromBase64(authData.record.masterKeyIv),
 			encryptionKey
 		);
 
-		// 5. Save to local DB and set session
+		// 5. Import as non-extractable CryptoKey and store directly
 		const serverUserId = authData.record.id;
-		const memoryKey = await importMasterKey(rawM, false);
+		const lockedKey = await importMasterKey(rawM, false);
 
 		await localDB.putRecord('users', {
 			id: serverUserId,
@@ -104,10 +104,10 @@ export class AuthService {
 			updatedAt: Date.now(),
 			isDeleted: false,
 			isGuest: false,
-			masterKey: new Uint8Array(rawM)
+			masterKey: lockedKey
 		} as UserRecord);
 
-		setSession(serverUserId, memoryKey, false);
+		setSession(serverUserId, lockedKey, false);
 		rawM.fill(0);
 	}
 
@@ -167,25 +167,35 @@ export class AuthService {
 
 	/**
 	 * Change password while logged in.
+	 * Gets raw M from server's M(Y) using old password.
 	 */
 	static async changePassword(oldPassword: string, newPassword: string): Promise<void> {
 		const { userId } = getActiveSession();
-		const user = await localDB.getRecord<UserRecord>('users', userId);
-		if (!user) throw new Error('No active user record.');
+		const email = pb.authStore.record?.email;
+		if (!email) throw new Error('Not logged in to PocketBase.');
 
-		// Re-wrap M with new password
-		const masterKeyExt = await importMasterKey(user.masterKey, true);
+		// 1. Fetch salt and derive old keys
+		const oldSaltResp = await pb.send(`/api/salt/${encodeURIComponent(email)}`, { method: 'GET' });
+		const oldKeys = await deriveKeys(oldPassword, fromBase64(oldSaltResp.salt));
+
+		// 2. Fetch encrypted M from server and unwrap with old Y
+		const record = pb.authStore.record;
+		if (!record) throw new Error('Not authenticated.');
+		const rawM = await unwrapMasterKeyRaw(
+			fromBase64(record.encryptedMasterKey),
+			fromBase64(record.masterKeyIv),
+			oldKeys.encryptionKey
+		);
+
+		// 3. Re-wrap M with new password
+		const masterKeyExt = await importMasterKey(rawM, true);
 		const newSalt = generateSalt();
 		const newKeys = await deriveKeys(newPassword, newSalt);
 		const newWrapped = await wrapMasterKey(masterKeyExt, newKeys.encryptionKey);
 		newKeys.encryptionKey.fill(0);
+		rawM.fill(0);
 
-		// Update server
-		// NOTE: PocketBase requires oldPassword for password change via its API. 
-		// We need the old X for this. Derive it.
-		const oldSaltResp = await pb.send(`/api/salt/${encodeURIComponent(pb.authStore.record?.email || '')}`, { method: 'GET' });
-		const oldKeys = await deriveKeys(oldPassword, fromBase64(oldSaltResp.salt));
-
+		// 4. Update server
 		await pb.collection('users').update(userId, {
 			oldPassword: toBase64(oldKeys.loginKey),
 			password: toBase64(newKeys.loginKey),
@@ -195,6 +205,37 @@ export class AuthService {
 			masterKeyIv: toBase64(newWrapped.iv)
 		});
 		oldKeys.encryptionKey.fill(0);
+	}
+
+	/**
+	 * Unlink account: Revert to guest mode.
+	 * Requires current password to retrieve raw M from server, then upgrades local key back to extractable: true.
+	 */
+	static async unlinkAccount(password: string): Promise<void> {
+		const { userId } = getActiveSession();
+		const email = pb.authStore.record?.email;
+		if (!email) throw new Error('Not logged in to PocketBase.');
+
+		// 1. Get raw M from server M(Y)
+		const saltResp = await pb.send(`/api/salt/${encodeURIComponent(email)}`, { method: 'GET' });
+		const keys = await deriveKeys(password, fromBase64(saltResp.salt));
+
+		const record = pb.authStore.record;
+		if (!record) throw new Error('Not authenticated.');
+		const rawM = await unwrapMasterKeyRaw(
+			fromBase64(record.encryptedMasterKey),
+			fromBase64(record.masterKeyIv),
+			keys.encryptionKey
+		);
+		keys.encryptionKey.fill(0);
+
+		// 2. Delete server account
+		await pb.collection('users').delete(userId);
+		pb.authStore.clear();
+
+		// 3. Upgrade local key to extractable: true (guest state)
+		await unlockMasterKey(userId, rawM);
+		rawM.fill(0);
 	}
 
 	static logout(): void {

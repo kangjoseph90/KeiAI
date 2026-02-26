@@ -42,11 +42,18 @@ export interface EncryptedRecord extends BaseRecord {
 	encryptedDataIV: Bytes; // Random 12-byte nonce
 }
 
-// ─── Users (special — master key can't encrypt itself) ───────────────
+// ─── Users ───────────────
+//
+// masterKey is stored as a CryptoKey object directly in IndexedDB
+// (via Structured Clone), not as raw bytes. This prevents XSS from
+// exfiltrating key material.
+//
+//   Guest:      extractable: true  (needed to create M(Y) on registration)
+//   Registered: extractable: false (raw bytes can never be exported)
 
 export interface UserRecord extends BaseRecord {
 	isGuest: boolean;
-	masterKey: Bytes;
+	masterKey: CryptoKey;
 }
 
 // ─── Characters ──────────────────────────────────────────────────────
