@@ -26,8 +26,13 @@
     - [1차 통신] 이메일을 보내 salt 획득 -> [로컬 연산] X, Y 조립 -> [2차 통신] X를 보내 인증 토큰(JWT 등) 발급. 이후 통신은 이 토큰으로 처리.
     - 만약 다른 기기에서 로그인 시, 서버에서 받은 M(Y)를 Y로 풀어 M을 획득 후 로컬 DB의 기존 게스트 데이터들을 새 M으로 몽땅 재암호화(Merge) 진행.
 - 마스터 키(M) 로컬 보관:
-    - 메모리에 풀려있는 진짜 열쇠 M은 `extractable: false` 옵션을 걸어 생성/임포트(Web Crypto API).
-    - XSS 같은 악성 스크립트가 로컬에서 키의 Raw Byte를 탈취하는 것을 원천 차단.
+    - M을 raw bytes가 아닌 `CryptoKey` 객체 자체를 IndexedDB에 저장 (Structured Clone 활용).
+    - XSS 공격자가 IndexedDB를 읽어도 opaque한 CryptoKey 핸들만 얻으며, `extractable: false`이면 `exportKey()`가 에러를 던져 raw bytes 탈취가 불가능.
+    - extractable 여부는 유저의 계정 상태에 따라 달라지는 라이프사이클로 관리:
+        - 게스트: `extractable: true` — 나중에 M(Y)를 만들 능력이 있어야 하므로 추출 가능.
+        - 회원가입 직후: `login()` 흐름이 M을 `extractable: false`로 재임포트 → IndexedDB에 덮어씀 (lockMasterKey).
+        - 비밀번호 변경: 로컬 CryptoKey(non-extractable)를 건드리지 않고, 서버의 M(Y)를 old 비밀번호로 언래핑해 raw M 획득 → 재래핑.
+        - 계정 연결 해제(탈퇴/unlink): 서버 M(Y)에서 raw M을 획득한 뒤 로컬 CryptoKey를 `extractable: true`로 교체 (unlockMasterKey) → 게스트 상태로 복귀, 로컬 데이터는 그대로 유지.
 
 4. 데이터 저장 메커니즘 (Data at Rest)
 
