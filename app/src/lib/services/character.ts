@@ -164,10 +164,10 @@ export class CharacterService {
 	}
 
 	/** Update data only */
-	static async updateData(id: string, changes: Partial<CharacterDataFields>): Promise<void> {
+	static async updateData(id: string, changes: Partial<CharacterDataFields>): Promise<{ updatedAt: number } | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<CharacterDataRecord>('characterData', id);
-		if (!record || record.isDeleted) return;
+		if (!record || record.isDeleted) return null;
 
 		const current: CharacterDataFields = JSON.parse(
 			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
@@ -179,6 +179,8 @@ export class CharacterService {
 		record.encryptedDataIV = enc.iv;
 		record.updatedAt = Date.now();
 		await localDB.putRecord('characterData', record);
+
+		return { updatedAt: record.updatedAt };
 	}
 
 	static async delete(id: string): Promise<void> {

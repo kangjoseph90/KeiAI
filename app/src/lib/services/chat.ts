@@ -147,10 +147,10 @@ export class ChatService {
 	}
 
 	/** Update summary only */
-	static async updateSummary(id: string, changes: Partial<ChatSummaryFields>): Promise<void> {
+	static async updateSummary(id: string, changes: Partial<ChatSummaryFields>): Promise<Chat | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
-		if (!record || record.isDeleted) return;
+		if (!record || record.isDeleted) return null;
 
 		const current: ChatSummaryFields = JSON.parse(
 			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
@@ -162,13 +162,15 @@ export class ChatService {
 		record.encryptedDataIV = enc.iv;
 		record.updatedAt = Date.now();
 		await localDB.putRecord('chatSummaries', record);
+
+		return { id, ...updated, createdAt: record.createdAt, updatedAt: record.updatedAt };
 	}
 
 	/** Update data only */
-	static async updateData(id: string, changes: Partial<ChatDataFields>): Promise<void> {
+	static async updateData(id: string, changes: Partial<ChatDataFields>): Promise<{ updatedAt: number } | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatDataRecord>('chatData', id);
-		if (!record || record.isDeleted) return;
+		if (!record || record.isDeleted) return null;
 
 		const current: ChatDataFields = JSON.parse(
 			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
@@ -180,6 +182,8 @@ export class ChatService {
 		record.encryptedDataIV = enc.iv;
 		record.updatedAt = Date.now();
 		await localDB.putRecord('chatData', record);
+
+		return { updatedAt: record.updatedAt };
 	}
 
 	/** Cascade soft-delete: owned lorebooks, scripts, messages, then chat itself */

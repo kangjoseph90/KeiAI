@@ -180,10 +180,10 @@ export class PromptPresetService {
 	static async updateSummary(
 		id: string,
 		changes: Partial<PromptPresetSummaryFields>
-	): Promise<void> {
+	): Promise<PromptPreset | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<PromptPresetSummaryRecord>('promptPresetSummaries', id);
-		if (!record || record.isDeleted) return;
+		if (!record || record.isDeleted) return null;
 
 		const current: PromptPresetSummaryFields = JSON.parse(
 			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
@@ -195,13 +195,18 @@ export class PromptPresetService {
 		record.encryptedDataIV = enc.iv;
 		record.updatedAt = Date.now();
 		await localDB.putRecord('promptPresetSummaries', record);
+
+		return { id, ...updated, createdAt: record.createdAt, updatedAt: record.updatedAt };
 	}
 
 	/** Update data only */
-	static async updateData(id: string, changes: Partial<PromptPresetDataFields>): Promise<void> {
+	static async updateData(
+		id: string,
+		changes: Partial<PromptPresetDataFields>
+	): Promise<{ updatedAt: number } | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
-		if (!record || record.isDeleted) return;
+		if (!record || record.isDeleted) return null;
 
 		const current: PromptPresetDataFields = JSON.parse(
 			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
@@ -213,6 +218,8 @@ export class PromptPresetService {
 		record.encryptedDataIV = enc.iv;
 		record.updatedAt = Date.now();
 		await localDB.putRecord('promptPresetData', record);
+
+		return { updatedAt: record.updatedAt };
 	}
 
 	static async delete(id: string): Promise<void> {

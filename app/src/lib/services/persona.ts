@@ -130,10 +130,10 @@ export class PersonaService {
 	}
 
 	/** Update summary only */
-	static async updateSummary(id: string, changes: Partial<PersonaSummaryFields>): Promise<void> {
+	static async updateSummary(id: string, changes: Partial<PersonaSummaryFields>): Promise<Persona | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<PersonaSummaryRecord>('personaSummaries', id);
-		if (!record || record.isDeleted) return;
+		if (!record || record.isDeleted) return null;
 
 		const current: PersonaSummaryFields = JSON.parse(
 			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
@@ -145,13 +145,15 @@ export class PersonaService {
 		record.encryptedDataIV = enc.iv;
 		record.updatedAt = Date.now();
 		await localDB.putRecord('personaSummaries', record);
+
+		return { id, ...updated, createdAt: record.createdAt, updatedAt: record.updatedAt };
 	}
 
 	/** Update data only */
-	static async updateData(id: string, changes: Partial<PersonaDataFields>): Promise<void> {
+	static async updateData(id: string, changes: Partial<PersonaDataFields>): Promise<{ updatedAt: number } | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<PersonaDataRecord>('personaData', id);
-		if (!record || record.isDeleted) return;
+		if (!record || record.isDeleted) return null;
 
 		const current: PersonaDataFields = JSON.parse(
 			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
@@ -163,6 +165,8 @@ export class PersonaService {
 		record.encryptedDataIV = enc.iv;
 		record.updatedAt = Date.now();
 		await localDB.putRecord('personaData', record);
+
+		return { updatedAt: record.updatedAt };
 	}
 
 	/** Cascade delete: owned modules, lorebooks, scripts, then persona */

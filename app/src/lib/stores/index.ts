@@ -142,8 +142,10 @@ export async function createPersona(fields: PersonaSummaryFields, data: PersonaD
 }
 
 export async function updatePersonaSummary(id: string, changes: Partial<PersonaSummaryFields>) {
-	await PersonaService.updateSummary(id, changes);
-	personas.update((list) => list.map((p) => (p.id === id ? { ...p, ...changes } : p)));
+	const updated = await PersonaService.updateSummary(id, changes);
+	if (updated) {
+		personas.update((list) => list.map((p) => (p.id === id ? updated : p)));
+	}
 }
 
 export async function updatePersonaData(id: string, changes: Partial<PersonaDataFields>) {
@@ -192,14 +194,18 @@ export async function createPreset(
 }
 
 export async function updatePresetSummary(id: string, changes: Partial<PromptPresetSummaryFields>) {
-	await PromptPresetService.updateSummary(id, changes);
-	promptPresets.update((list) => list.map((p) => (p.id === id ? { ...p, ...changes } : p)));
-	activePreset.update((p) => (p && p.id === id ? { ...p, ...changes } : p));
+	const updated = await PromptPresetService.updateSummary(id, changes);
+	if (updated) {
+		promptPresets.update((list) => list.map((p) => (p.id === id ? updated : p)));
+		activePreset.update((p) => (p && p.id === id ? { ...p, ...updated } : p));
+	}
 }
 
 export async function updatePresetData(id: string, changes: Partial<PromptPresetDataFields>) {
-	await PromptPresetService.updateData(id, changes);
-	activePreset.update((p) => (p && p.id === id ? { ...p, data: { ...p.data, ...changes } } : p));
+	const result = await PromptPresetService.updateData(id, changes);
+	if (result) {
+		activePreset.update((p) => (p && p.id === id ? { ...p, data: { ...p.data, ...changes }, updatedAt: result.updatedAt } : p));
+	}
 }
 
 export async function deletePreset(id: string) {
@@ -254,8 +260,10 @@ export async function updateCharacterSummary(id: string, changes: Partial<Charac
 }
 
 export async function updateCharacterData(id: string, changes: Partial<CharacterDataFields>) {
-	await CharacterService.updateData(id, changes);
-	activeCharacter.update((c) => (c && c.id === id ? { ...c, data: { ...c.data, ...changes } } : c));
+	const result = await CharacterService.updateData(id, changes);
+	if (result) {
+		activeCharacter.update((c) => (c && c.id === id ? { ...c, data: { ...c.data, ...changes }, updatedAt: result.updatedAt } : c));
+	}
 }
 
 // Character-level actions
@@ -280,14 +288,18 @@ export async function createChat(title: string) {
 }
 
 export async function updateChat(chatId: string, changes: Partial<ChatSummaryFields>) {
-	await ChatService.updateSummary(chatId, changes);
-	activeChats.update((list) => list.map((c) => (c.id === chatId ? { ...c, ...changes } : c)));
-	activeChat.update((c) => (c && c.id === chatId ? { ...c, ...changes } : c));
+	const updated = await ChatService.updateSummary(chatId, changes);
+	if (updated) {
+		activeChats.update((list) => list.map((c) => (c.id === chatId ? updated : c)));
+		activeChat.update((c) => (c && c.id === chatId ? { ...c, ...updated } : c));
+	}
 }
 
 export async function updateChatData(chatId: string, changes: Partial<ChatDataFields>) {
-	await ChatService.updateData(chatId, changes);
-	activeChat.update((c) => (c && c.id === chatId ? { ...c, data: { ...c.data, ...changes } } : c));
+	const result = await ChatService.updateData(chatId, changes);
+	if (result) {
+		activeChat.update((c) => (c && c.id === chatId ? { ...c, data: { ...c.data, ...changes }, updatedAt: result.updatedAt } : c));
+	}
 }
 
 export async function deleteChat(chatId: string) {
@@ -347,24 +359,28 @@ export async function sendMessage(role: 'user' | 'char' | 'system', content: str
 	const preview = content.substring(0, 50);
 
 	// Parallelise: message creation and chat preview update are independent
-	const [newMessage] = await Promise.all([
+	const [newMessage, updatedChat] = await Promise.all([
 		MessageService.create(chat.id, { role, content }),
 		ChatService.updateSummary(chat.id, { lastMessagePreview: preview })
 	]);
 
 	messages.update((prev) => [...prev, newMessage]);
-	activeChats.update((list) =>
-		list.map((c) => (c.id === chat.id ? { ...c, lastMessagePreview: preview } : c))
-	);
-	activeChat.update((c) => (c ? { ...c, lastMessagePreview: preview } : c));
+	if (updatedChat) {
+		activeChats.update((list) =>
+			list.map((c) => (c.id === chat.id ? updatedChat : c))
+		);
+		activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
+	}
 }
 
 export async function updateMessage(msgId: string, content: string) {
 	const chat = get(activeChat);
 	if (!chat) return;
 
-	await MessageService.update(msgId, { content });
-	messages.update((list) => list.map((m) => (m.id === msgId ? { ...m, content } : m)));
+	const updatedMsg = await MessageService.update(msgId, { content });
+	if (updatedMsg) {
+		messages.update((list) => list.map((m) => (m.id === msgId ? updatedMsg : m)));
+	}
 
 	// Only update chat preview if the edited message is the last one
 	const currentMessages = get(messages);
@@ -372,11 +388,13 @@ export async function updateMessage(msgId: string, content: string) {
 		currentMessages.length > 0 && currentMessages[currentMessages.length - 1].id === msgId;
 	if (isLastMessage) {
 		const preview = content.substring(0, 50);
-		await ChatService.updateSummary(chat.id, { lastMessagePreview: preview });
-		activeChats.update((list) =>
-			list.map((c) => (c.id === chat.id ? { ...c, lastMessagePreview: preview } : c))
-		);
-		activeChat.update((c) => (c ? { ...c, lastMessagePreview: preview } : c));
+		const updatedChat = await ChatService.updateSummary(chat.id, { lastMessagePreview: preview });
+		if (updatedChat) {
+			activeChats.update((list) =>
+				list.map((c) => (c.id === chat.id ? updatedChat : c))
+			);
+			activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
+		}
 	}
 }
 
