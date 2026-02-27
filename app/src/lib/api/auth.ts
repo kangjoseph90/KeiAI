@@ -26,7 +26,6 @@ import {
 	setSession,
 	clearSession,
 	importMasterKey,
-	lockMasterKey,
 	unlockMasterKey
 } from '../session.js';
 import { localDB, type UserRecord } from '../db/index.js';
@@ -38,7 +37,7 @@ export class AuthService {
 	 * After successful registration, the local master key is downgraded to extractable: false.
 	 */
 	static async register(email: string, password: string): Promise<string> {
-		const { userId, masterKey } = getActiveSession();
+		const { masterKey } = getActiveSession();
 
 		// Derive keys
 		const salt = generateSalt();

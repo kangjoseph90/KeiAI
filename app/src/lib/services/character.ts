@@ -170,7 +170,7 @@ export class CharacterService {
 
 	static async delete(id: string): Promise<void> {
 		await localDB.transaction([
-			'chatSummaries', 'chatData', 'lorebooks', 'scripts', 'characterSummaries', 'characterData'
+			'chatSummaries', 'chatData', 'lorebooks', 'scripts', 'messages', 'characterSummaries', 'characterData'
 		], 'rw', async () => {
 			const chatIds = (await localDB.getByIndex('chatSummaries', 'characterId', id)).map(c => c.id);
 			for (const chatId of chatIds) {

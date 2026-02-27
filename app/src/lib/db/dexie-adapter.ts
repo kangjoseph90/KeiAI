@@ -181,7 +181,7 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 	}
 
 	async getAssetsByUser(userId: string, kind?: 'regular' | 'inlay'): Promise<AssetRecord[]> {
-		let collection = this.db.assets.where('userId').equals(userId);
+		const collection = this.db.assets.where('userId').equals(userId);
 		if (kind) {
 			return await collection.filter(r => r.kind === kind).toArray();
 		}

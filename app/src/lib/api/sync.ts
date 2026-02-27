@@ -101,6 +101,19 @@ export class SyncService {
 				record[key] = fromBase64(val);
 			}
 		}
+
+		if (typeof record.createdAt === 'string') {
+			record.createdAt = new Date(record.createdAt).getTime();
+		} else if (typeof record.created === 'string' && !record.createdAt) {
+			record.createdAt = new Date(record.created).getTime();
+		}
+
+		if (typeof record.updatedAt === 'string') {
+			record.updatedAt = new Date(record.updatedAt).getTime();
+		} else if (typeof record.updated === 'string' && !record.updatedAt) {
+			record.updatedAt = new Date(record.updated).getTime();
+		}
+
 		return record as unknown as BaseRecord;
 	}
 
