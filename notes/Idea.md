@@ -88,27 +88,44 @@
     - 모든 엔티티의 암호화 Blob은 두 테이블로 나뉠 수 있음: Summary(목록용 최소 정보)와 Data(무거운 본문).
     - 두 테이블은 같은 id를 공유. Summary는 목록 화면 진입 시 일괄 로드, Data는 해당 엔티티를 열었을 때만 로드.
     - 분리 기준: "주요 네비게이션 목록이 있고 + Data가 무거운" 경우에만 적용. 나머지는 단일 EncryptedRecord로 간결하게.
-    - 분리 적용 대상: 캐릭터, 채팅, 프롬프트 프리셋.
-    - 단일 테이블 대상: 로어북, 스크립트, 모듈, 페르소나, 설정.
+    - 분리 적용 대상: 캐릭터, 채팅, 프롬프트 프리셋, 페르소나 (아바타 표시 + 수십 개 축적 가능).
+    - 단일 테이블 대상: 로어북, 스크립트, 모듈, 플러그인, 설정.
 - 부모-자식 관계에서의 원칙:
     - 부모 엔티티가 자식의 미리보기 데이터를 복사해서 들고 있으면 안 된다 (데이터 중복 방지).
     - 미리보기가 필요하면 항상 자식의 Summary 테이블을 쿼리.
 
 9. 관계 패턴 (Relationship Patterns)
 
-- 1:N 관계 (부모 → 자식): 자식 테이블의 평문 FK 컬럼으로 표현.
-    - 예: ChatSummaryRecord.characterId, MessageRecord.chatId.
-    - 이유: "이 캐릭터의 채팅 목록", "이 채팅방의 메시지 목록"처럼 부모 기준으로 자식을 빠르게 쿼리해야 하므로 DB 인덱스 필수.
-    - 트레이드오프: 서버에 "이 유저의 A 캐릭터에 채팅방이 3개" 같은 메타데이터가 노출됨. 쿼리 성능을 위한 최소한의 양보.
-- N:M 관계 (공유 자원 참조): 소비자(부모)의 암호화된 Data Blob 내부에 Array<{ id, enabled }> 형태로 저장.
-    - 예: ChatDataFields.lorebookRefs, CharacterDataFields.scriptRefs.
-    - 이유: 별도 맵핑 테이블로 만들면 "누가 무엇을 쓰는지" 메타데이터가 평문 노출. Blob 안에 숨김.
-    - enabled 플래그: 같은 로어북이라도 A 채팅방에서는 켜고, B 채팅방에서는 끌 수 있도록 참조하는 쪽에서 개별 관리.
-- 참조 무결성: Loose Coupling (느슨한 결합).
+- 통일 원칙: "목록을 보여주는 쪽(부모)이 자식의 ID 리스트, 순서, 폴더 정보, 상태를 소유한다."
+- 공유 타입:
+    - OrderedRef: { id, sortOrder, folderId? } — 1:N 자식 참조용.
+    - ResourceRef extends OrderedRef: { id, sortOrder, folderId?, enabled } — N:M 공유 자원 참조용.
+    - FolderDef: { id, name, sortOrder, color?, parentId? } — 폴더 정의 (부모 Blob에 저장).
+    - AssetEntry: { name, assetId } — 에셋 이름→ID 매핑 (엔티티별 매니페스트).
+- 소유 관계 (1:N, Deep Copy):
+    - 부모의 암호화 Blob에 OrderedRef[] 또는 ResourceRef[]로 자식 ID를 소유.
+    - 삭제 시 cascade: 부모 삭제 → 소유 자식 일괄 soft-delete.
+    - 대상: 로어북, 스크립트는 항상 부모가 소유 (공유 시 Deep Copy).
+    - 소유 트리:
+        - settings → 캐릭터, 모듈, 플러그인, 페르소나, 프리셋, 로어북, 스크립트
+        - 캐릭터 → 채팅, 페르소나, 로어북, 스크립트, 모듈, 플러그인 등 하위 엔티티 관리 (실제 소유는 최상위 Settings 또는 독립적, 연결은 Refs)
+        - 채팅 → (소유하는 하위 자원 없음. 관련된 로어북/스크립트는 채팅의 소유자(ownerId/characterId)를 따르거나, 채팅 자체의 ownerId를 가지도록 구조 변경됨. 현재는 characterId를 따라감)
+        - 모듈 → 로어북, 스크립트
+        - 페르소나 → 로어북, 스크립트, 모듈
+    - 유일한 FK 예외: messages.chatId — 고볼륨 + createdAt 정렬 + softDeleteByIndex 벌크 삭제.
+- 참조 관계 (N:M, Shared Reference):
+    - 소비자의 암호화 Blob에 ResourceRef[]로 참조만 보유. 삭제 영향 없음.
+    - enabled 플래그: 동일 자원이라도 컨텍스트마다 개별 ON/OFF.
+    - 대상: 모듈, 플러그인, 페르소나, 프리셋.
+    - 예: characterData.moduleRefs (참조), characterData.lorebookRefs (소유).
+- 폴더 관리:
+    - 자식의 소속 폴더: refs[].folderId로 표현.
+    - 폴더 정의: 부모의 Blob에 FolderDef[] 배열 (이름, 색, 중첩 등). 매우 소량.
+    - 예: settings.folders.characters, characterData.chatFolders.
+- 참조 무결성: Loose Coupling.
     - E2EE 환경에서는 FOREIGN KEY ON DELETE CASCADE 불가능.
-    - 공유 자원 삭제 시 참조자의 Data Blob을 일괄 복호화/수정하지 않음 (성능 재앙).
-    - 대신 Graceful Degradation + Self-Healing: 삭제된 참조를 만나면 조용히 무시하고, 기회가 될 때 슬쩍 정리.
-    - DB에는 진실의 원천(Source of Truth)만 저장. refCount 같은 파생값(Derived Value)은 저장하지 않음 (동기화/크래시 시 어긋남).
+    - 참조 자원 삭제 시 참조자의 Blob 일괄 수정 불필요 → Graceful Degradation + Self-Healing.
+    - DB에는 진실의 원천(Source of Truth)만 저장. 파생값 저장하지 않음.
 
 10. 공유 자원 메모리 관리 (Reference Counting)
 
@@ -129,18 +146,19 @@
 
 11. 모듈 시스템 (Module System)
 
-- 모듈의 정의: 로어북, 스크립트 등을 하나로 묶은 그룹 컨테이너(플레이리스트). 새로운 데이터를 소유(Own)하는 것이 아니라, 기존 공유 자원들을 묶어서 참조(Group & Reference).
+- 모듈의 정의: 로어북, 스크립트 등을 하나로 묶은 그룹 컨테이너. 모듈은 로어북/스크립트를 소유(Own)한다 (Deep Copy).
 - DB 스키마: 단일 EncryptedRecord (modules 테이블).
 - ModuleFields 내부 구조:
     - name, description.
-    - lorebookRefs: Array<{ id, enabled }>.
-    - scriptRefs: Array<{ id, enabled }>.
-- 참조 방식: 소비자(캐릭터, 챗 등)의 Data Blob에 moduleRefs: Array<{ id, enabled }> (N:M 원칙).
+    - lorebookRefs: ResourceRef[] (소유).
+    - scriptRefs: ResourceRef[] (소유).
+- 참조 방식: 모듈 자체는 N:M 공유 자원. 소비자의 Data Blob에 moduleRefs: ResourceRef[] (참조).
+- 삭제 캐스케이드: 모듈 삭제 → 소유 로어북/스크립트 일괄 삭제.
 - 이중 토글 (Two-Layer Toggle):
     - 소비자 레벨: moduleRefs에서 모듈 자체 ON/OFF.
     - 모듈 내부 레벨: 모듈 안의 개별 로어북/스크립트 ON/OFF.
-    - 모듈이 OFF → 안의 자원들 통째로 프롬프트 엔진 스킵. 하지만 메모리에는 남아있어 UI에서 열람 가능.
-- 같은 자원이 직접 참조 + 모듈 참조로 중복되는 경우: 어느 한 출처라도 활성(enabled=true)이면 프롬프트 엔진에서 실행.
+    - 모듈이 OFF → 안의 자원들 통째로 프롬프트 엔진 스킵.
+- 같은 자원이 직접 소유 + 모듈 소유로 중복되는 경우: 별개의 Deep Copy이므로 각각 독립.
 
 12. 프롬프트 프리셋 (Prompt Presets)
 
@@ -161,14 +179,19 @@
     - 일반 에셋 (Regular): 캐릭터 아바타, 배경, 감정 이미지 등. ID = SHA-256 해시 (콘텐츠 기반 중복 방지).
         - Private: 로컬 전용, 기기간 동기화 ✗. 게스트 모드 기본값.
         - Public: CDN 공개. 허브(Hub)에 공유한 봇에 적용. 다른 유저가 CDN을 통해 접근 가능.
-    - 인레이 에셋 (Inlay): 유저 업로드 또는 AI 생성 에셋. ID = UUID. 항상 Private. 메시지 텍스트 내 {{inlay::id}} 파싱으로 렌더링.
-- 단일 테이블: 일반 에셋과 인레이 에셋을 하나의 assets 테이블에 저장. ID 체계(SHA-256 vs UUID)가 달라 충돌 없음. kind 필드로 구분.
+    - 인레이 에셋 (Inlay): 유저 업로드 또는 AI 생성 에셋. 항상 Private. 메시지 텍스트 내 {{inlay::hash}} 파싱으로 렌더링.
+- 단일 테이블: 일반 에셋과 인레이 에셋을 하나의 assets 테이블에 저장. 모든 에셋의 ID = SHA-256 콘텐츠 해시 (중복 방지 통일). kind 필드로 구분.
 - 저장 방식: 모든 로컬 에셋은 평문 바이너리로 저장 (암호화 ✗). 빠른 접근 + 동기화 불필요.
 - AssetRecord 스키마 (EncryptedRecord가 아닌 별도 인터페이스):
-    - id (hash 또는 UUID), userId, kind ('regular' | 'inlay'), visibility ('private' | 'public').
+    - id (SHA-256 해시), userId, kind ('regular' | 'inlay'), visibility ('private' | 'public').
     - mimeType, data (Blob, 평문 바이너리).
     - cdnUrl (public 전환 후 CDN 주소), selfHostedUrl (셀프호스팅 PB 업로드 시).
-- 에셋 참조: 캐릭터/모듈의 Data Blob에 에셋 ID 목록, 메시지 텍스트에 {{inlay::uuid}} 형태.
+- 에셋 참조 패턴:
+    - 직접 참조 (ID): avatarAssetId 등 시스템이 직접 로드하는 필드.
+    - 이름 기반 참조: AssetEntry[] 매니페스트로 name→assetId 매핑. AI/스크립트가 {{asset::이름}} 형태로 호출.
+    - 인레이 참조: 메시지 텍스트에 {{inlay::hash}} 형태. 채팅 내 이미지.
+    - 이름 충돌 없음: 매니페스트는 엔티티 스코프이므로 글로벌 이름 충돌 불가.
+- 런타임 에셋 캐시: Store에 activeAssets(Map<assetId, ObjectURL>)와 assetNameMap(Map<name, assetId>) 유지. 레이어 전환 시 revokeObjectURL 호출.
 - 게스트 모드: Public 에셋 개념 없음. 모든 에셋은 Private.
 - 로그인 모드: Private → Public 전환 가능 (CDN 업로드). 인레이 → Public 전환 불가.
 - 셀프호스팅 모드: Private/인레이 에셋도 자기 PocketBase 서버에 업로드 가능 (개인 CDN 효과로 기기간 동기화).
@@ -186,16 +209,17 @@
 15. 전체 테이블 목록 (Table Registry)
 
 - 암호화 테이블 (EncryptedRecord 기반, blind sync 대상):
-    - users — 특수 (평문 MasterKey 저장)
-    - characterSummaries / characterData — Summary + Data 분리
-    - chatSummaries / chatData — Summary + Data 분리, FK: characterId
-    - messages — 단일, FK: chatId
+    - users — 특수 (CryptoKey 저장)
+    - characterSummaries / characterData — Summary + Data 분리 (소유: chatRefs, lorebookRefs, scriptRefs. 참조: moduleRefs. 에셋: assets)
+    - chatSummaries / chatData — Summary + Data 분리 (characterId 평문 FK 보유. 소유 자원 직접 없음. 참조: moduleRefs, lorebookRefs, scriptRefs)
+    - messages — 단일, 평문 FK: chatId (createdAt 정렬, softDeleteByIndex 벌크 삭제)
+    - personaSummaries / personaData — Summary + Data 분리 (소유: lorebookRefs, scriptRefs. 참조: moduleRefs)
     - promptPresetSummaries / promptPresetData — Summary + Data 분리
-    - personas — 단일
-    - lorebooks — 단일
-    - scripts — 단일
-    - modules — 단일
-    - settings — 단일
+    - modules — 단일 (소유: lorebookRefs, scriptRefs)
+    - plugins — 단일
+    - lorebooks — 단일 (항상 부모 소유, Deep Copy)
+    - scripts — 단일 (항상 부모 소유, Deep Copy)
+    - settings — 단일 (최상위 엔티티 refs[] + folders + 앱 설정)
     - roomKeys — 단일, FK: roomId (미래)
 - 에셋 테이블 (평문, 동기화 대상 아님):
     - assets — 별도 인터페이스 (kind: regular/inlay, visibility: private/public)

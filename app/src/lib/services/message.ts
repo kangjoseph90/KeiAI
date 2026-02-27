@@ -19,7 +19,11 @@ export interface Message extends MessageFields {
 
 export class MessageService {
 	/** List messages for a chat (oldest first) */
-	static async listByChat(chatId: string, limit = 200, offset = 0): Promise<Message[]> {
+	static async listByChat(
+		chatId: string,
+		limit = 200,
+		offset = 0
+	): Promise<Message[]> {
 		const { masterKey } = getActiveSession();
 		const records = await localDB.getByIndex<MessageRecord>(
 			'messages', 'chatId', chatId, limit, offset
@@ -44,7 +48,10 @@ export class MessageService {
 	}
 
 	/** Create a message */
-	static async create(chatId: string, fields: MessageFields): Promise<Message> {
+	static async create(
+		chatId: string,
+		fields: MessageFields
+	): Promise<Message> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
@@ -60,7 +67,10 @@ export class MessageService {
 	}
 
 	/** Update a message */
-	static async update(id: string, changes: Partial<MessageFields>): Promise<Message | null> {
+	static async update(
+		id: string,
+		changes: Partial<MessageFields>
+	): Promise<Message | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<MessageRecord>('messages', id);
 		if (!record || record.isDeleted) return null;

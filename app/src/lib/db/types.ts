@@ -1,19 +1,39 @@
 /**
  * Local Database Types — KeiAI
  *
- * Every table (except `users`) has the exact same shape:
- *   id, [FK?], userId, createdAt, updatedAt, isDeleted, data, iv
+ * Relationship patterns:
+ *   1:N — Parent's encrypted blob holds OrderedRef[] of child IDs
+ *         (order + folder managed by parent). Exception: messages use chatId FK.
+ *   N:M — Consumer's encrypted blob holds ResourceRef[] with per-context state.
  *
- * `data` is always an AES-GCM encrypted JSON blob.
- * `iv`   is the random nonce used to encrypt that blob.
- *
- * Entities that need list previews are split into two tables:
- *   *Summaries  — lightweight, always loaded for lists
- *   *Data       — heavy, loaded only when the entity is opened
- * Both tables share the same `id` for a given entity.
+ * Every table (except `users` and `assets`) stores AES-GCM encrypted JSON blobs.
+ * Entities needing list previews are split into Summary + Data tables.
  */
 
 type Bytes = Uint8Array<ArrayBuffer>;
+
+// ─── Shared Reference Types ─────────────────────────────────────────
+
+/** Ordered reference for 1:N parent→child lists */
+export interface OrderedRef {
+	id: string;
+	sortOrder: string; // Fractional index for ordering
+	folderId?: string;
+}
+
+/** Reference with per-context state for N:M relationships */
+export interface ResourceRef extends OrderedRef {
+	enabled: boolean;
+}
+
+/** Folder definition (stored in parent's blob) */
+export interface FolderDef {
+	id: string;
+	name: string;
+	sortOrder: string;
+	color?: string;
+	parentId?: string; // Nested folders
+}
 
 // ─── Table Registry ──────────────────────────────────────────────────
 
@@ -24,7 +44,15 @@ export type TableName =
 	| 'chatSummaries'
 	| 'chatData'
 	| 'messages'
-	| 'settings';
+	| 'settings'
+	| 'personaSummaries'
+	| 'personaData'
+	| 'lorebooks'
+	| 'scripts'
+	| 'modules'
+	| 'plugins'
+	| 'promptPresetSummaries'
+	| 'promptPresetData';
 
 // ─── Base Types ──────────────────────────────────────────────────────
 
@@ -42,7 +70,7 @@ export interface EncryptedRecord extends BaseRecord {
 	encryptedDataIV: Bytes; // Random 12-byte nonce
 }
 
-// ─── Users ───────────────
+// ─── Users (special — master key can't encrypt itself) ───────────────
 //
 // masterKey is stored as a CryptoKey object directly in IndexedDB
 // (via Structured Clone), not as raw bytes. This prevents XSS from
@@ -56,19 +84,21 @@ export interface UserRecord extends BaseRecord {
 	masterKey: CryptoKey;
 }
 
-// ─── Characters ──────────────────────────────────────────────────────
+// ─── Characters (Summary + Data) ─────────────────────────────────────
 
 export type CharacterSummaryRecord = EncryptedRecord;
 export type CharacterDataRecord = EncryptedRecord;
 
-// ─── Chats ───────────────────────────────────────────────────────────
+// ─── Chats (Summary + Data) ───
 
 export interface ChatSummaryRecord extends EncryptedRecord {
 	characterId: string;
 }
-export type ChatDataRecord = EncryptedRecord;
+export interface ChatDataRecord extends EncryptedRecord {
+	characterId: string;
+}
 
-// ─── Messages ────────────────────────────────────────────────────────
+// ─── Messages ─────
 
 export interface MessageRecord extends EncryptedRecord {
 	chatId: string;
@@ -78,6 +108,46 @@ export interface MessageRecord extends EncryptedRecord {
 
 export type SettingsRecord = EncryptedRecord;
 
+// ─── Personas (Summary + Data) ───────────────────────────────────────
+
+export type PersonaSummaryRecord = EncryptedRecord;
+export type PersonaDataRecord = EncryptedRecord;
+
+// ─── Single-table entities ───────────────────────────────────────────
+
+export interface LorebookRecord extends EncryptedRecord {
+	ownerId: string;
+}
+export interface ScriptRecord extends EncryptedRecord {
+	ownerId: string;
+}
+export type ModuleRecord = EncryptedRecord;
+export type PluginRecord = EncryptedRecord;
+
+// ─── Prompt Presets (Summary + Data) ─────────────────────────────────
+
+export type PromptPresetSummaryRecord = EncryptedRecord;
+export type PromptPresetDataRecord = EncryptedRecord;
+
+// ─── Assets (separate system — plaintext, no sync) ───────────────────
+
+export interface AssetRecord {
+	id: string; // SHA-256 content hash
+	userId: string;
+	kind: 'regular' | 'inlay';
+	visibility: 'private' | 'public';
+	mimeType: string;
+	data: Blob;
+	cdnUrl?: string;
+	selfHostedUrl?: string;
+	createdAt: number;
+}
+
+export interface AssetEntry {
+	name: string;
+	assetId: string;
+}
+
 // ─── Adapter Interface ──────────────────────────────────────────────
 
 export interface IDatabaseAdapter {
@@ -85,6 +155,7 @@ export interface IDatabaseAdapter {
 	putRecord<T extends BaseRecord>(tableName: TableName, record: T): Promise<void>;
 	putRecords<T extends BaseRecord>(tableName: TableName, records: T[]): Promise<void>;
 	softDeleteRecord(tableName: TableName, id: string): Promise<void>;
+	softDeleteByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<void>;
 	getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]>;
 	getByIndex<T extends BaseRecord>(
 		tableName: TableName,
@@ -98,4 +169,5 @@ export interface IDatabaseAdapter {
 		userId: string,
 		sinceUpdatedAt: number
 	): Promise<T[]>;
+	transaction<R>(tables: TableName[], mode: 'r' | 'rw', callback: () => Promise<R>): Promise<R>;
 }
