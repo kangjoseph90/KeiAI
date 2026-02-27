@@ -176,28 +176,95 @@
 
 - 핵심 원칙: E2EE 세계(암호화 + blind sync)와 에셋 세계(평문 + CDN/로컬)는 완전히 분리. 둘 사이는 오직 ID 문자열 참조로만 연결.
 - 에셋 분류 체계:
-    - 일반 에셋 (Regular): 캐릭터 아바타, 배경, 감정 이미지 등. ID = SHA-256 해시 (콘텐츠 기반 중복 방지).
-        - Private: 로컬 전용, 기기간 동기화 ✗. 게스트 모드 기본값.
-        - Public: CDN 공개. 허브(Hub)에 공유한 봇에 적용. 다른 유저가 CDN을 통해 접근 가능.
-    - 인레이 에셋 (Inlay): 유저 업로드 또는 AI 생성 에셋. 항상 Private. 메시지 텍스트 내 {{inlay::hash}} 파싱으로 렌더링.
-- 단일 테이블: 일반 에셋과 인레이 에셋을 하나의 assets 테이블에 저장. 모든 에셋의 ID = SHA-256 콘텐츠 해시 (중복 방지 통일). kind 필드로 구분.
-- 저장 방식: 모든 로컬 에셋은 평문 바이너리로 저장 (암호화 ✗). 빠른 접근 + 동기화 불필요.
+    - 퍼블릭 에셋 (Public): Hub(커뮤니티)에 공개된 에셋. CDN(Cloudflare R2)에 평문으로 저장.
+        - 생성 경로: 유저가 Hub에 봇/모듈을 공유할 때 프라이빗 에셋이 퍼블릭으로 전환(CDN 업로드).
+        - 소비 방식: 다른 유저가 Hub에서 다운로드 시, 로컬 DB에는 CDN URL 참조만 저장 (Thin Client). 에셋 바이너리를 로컬에 복사하지 않음.
+        - CDN이 이미지를 캐싱하므로 Hub 갤러리 렌더링이 극도로 빠름.
+        - 영구 유지: 한번 CDN에 올라간 퍼블릭 에셋은 영구 보존.
+    - 프라이빗 에셋 (Private): 유저 개인 소유 에셋. 캐릭터 아바타, 배경, 감정 이미지 등.
+        - Local-First: 로컬 DB(IndexedDB)에 평문 바이너리로 저장. 오프라인에서도 즉시 렌더링.
+        - 동기화(Sync): 로그인 시, E2EE 암호화하여 오브젝트 스토리지(PB 서버 디스크 또는 Backblaze B2)에 업로드. CDN이 아닌 단순 보관용 스토리지 사용 (개인 데이터에 CDN 캐싱 불필요).
+        - 용량 제한: 무료 유저에게 총 동기화 용량 제한 (예: 50MB). 초과 시 동기화만 중지, 로컬 작동은 정상.
+        - 용량 확보 전략: Hub에 봇 공유(퍼블릭 전환) → 프라이빗 용량 회수. 또는 Pro 구독으로 용량 확대.
+    - 인레이 에셋 (Inlay): 채팅 중 생성되는 일시적 에셋. 유저 업로드 사진, AI 생성 이미지 등.
+        - 기본 동기화 OFF: 로컬 DB에만 평문 저장. 가장 프라이버시가 중요한 데이터.
+        - 설정에서 동기화 ON 시: 프라이빗 에셋과 동일 취급 (E2EE → 오브젝트 스토리지). 동기화 용량을 소모함.
+- 전환 규칙:
+    - 프라이빗 → 퍼블릭: 가능 (Hub에 봇/모듈 공유 시). 프라이빗 동기화 용량이 회수됨.
+    - 퍼블릭 → 프라이빗: 불가. 한번 공개된 에셋은 CDN에 영구 유지.
+    - 인레이 → 퍼블릭: 불가.
+- ID 체계: 모든 에셋의 ID = SHA-256 콘텐츠 해시 (중복 방지 통일).
+- 단일 테이블: 일반 에셋과 인레이 에셋을 하나의 assets 테이블에 저장. kind 필드로 구분.
 - AssetRecord 스키마 (EncryptedRecord가 아닌 별도 인터페이스):
     - id (SHA-256 해시), userId, kind ('regular' | 'inlay'), visibility ('private' | 'public').
-    - mimeType, data (Blob, 평문 바이너리).
-    - cdnUrl (public 전환 후 CDN 주소), selfHostedUrl (셀프호스팅 PB 업로드 시).
+    - mimeType.
+    - data (Blob, 평문 바이너리) — 로컬 DB 전용, 프라이빗/인레이만.
+    - cdnUrl (퍼블릭 에셋의 CDN 주소).
+    - syncUrl (프라이빗 동기화 시 오브젝트 스토리지 주소).
 - 에셋 참조 패턴:
     - 직접 참조 (ID): avatarAssetId 등 시스템이 직접 로드하는 필드.
     - 이름 기반 참조: AssetEntry[] 매니페스트로 name→assetId 매핑. AI/스크립트가 {{asset::이름}} 형태로 호출.
     - 인레이 참조: 메시지 텍스트에 {{inlay::hash}} 형태. 채팅 내 이미지.
     - 이름 충돌 없음: 매니페스트는 엔티티 스코프이므로 글로벌 이름 충돌 불가.
-- 런타임 에셋 캐시: Store에 activeAssets(Map<assetId, ObjectURL>)와 assetNameMap(Map<name, assetId>) 유지. 레이어 전환 시 revokeObjectURL 호출.
-- 게스트 모드: Public 에셋 개념 없음. 모든 에셋은 Private.
-- 로그인 모드: Private → Public 전환 가능 (CDN 업로드). 인레이 → Public 전환 불가.
-- 셀프호스팅 모드: Private/인레이 에셋도 자기 PocketBase 서버에 업로드 가능 (개인 CDN 효과로 기기간 동기화).
-- 동기화 정리: Private/인레이 에셋은 기기간 동기화 ✗. 동기화를 원하면 Public 전환 또는 셀프호스팅 사용.
+- 런타임 에셋 로딩:
+    - 프라이빗/인레이: 로컬 DB에서 Blob 로드 → createObjectURL로 렌더링. 레이어 전환 시 revokeObjectURL 호출.
+    - 퍼블릭: CDN URL을 <img src>에 직접 바인딩. 브라우저 네트워크 캐시 활용.
+- 동기화 저장소 분리:
+    - 퍼블릭 에셋 → Cloudflare R2 + CDN (Egress 무료, 대량 조회에 최적).
+    - 프라이빗 에셋 → PB 서버 디스크 (초기) 또는 Backblaze B2 (스케일 시, GB당 $0.006). CDN 불필요.
+    - 인레이 에셋 → 동기화 OFF 시 저장소 불필요. ON 시 프라이빗과 동일.
+- BYOD (Bring Your Own Drive):
+    - 유저 개인 클라우드 스토리지(구글 드라이브, WebDAV, S3 호환) 연동 옵션.
+    - E2EE 암호화된 Blob을 유저의 개인 드라이브에 직접 동기화.
+    - 운영자 서버 비용 제로, 유저 무제한 용량. 궁극의 프라이버시 보장.
+    - 구현: 클라이언트 단에서 드라이브 API 토큰 관리. 서버 개입 없음.
+- 게스트 모드: 퍼블릭 에셋은 URL 참조로 사용 가능. 프라이빗/인레이는 로컬 전용. 동기화 불가.
+- 로그인 모드: 프라이빗 에셋 동기화 활성화 (용량 제한). 프라이빗 → 퍼블릭 전환 가능.
+- 셀프호스팅 모드: 자기 PocketBase 서버에 프라이빗/인레이 에셋 동기화 (개인 서버 용량 무제한).
 
-14. 멀티 채팅방 확장 (Multi-User Room — 미래)
+14. 허브 & 익스포트 전략 (Hub & Export Strategy)
+
+- Hub 업로드 (공유):
+    - 유저가 봇/모듈을 Hub에 공유 시, 관련 프라이빗 에셋이 퍼블릭으로 전환 (CDN 업로드).
+    - 봇 설정(JSON)은 CDN URL을 참조하는 형태로 Hub 서버에 제출.
+    - 프라이빗 동기화 용량이 회수되므로, 공유가 곧 용량 확보 수단.
+- Hub 다운로드 (임포트):
+    - 다른 유저가 Hub에서 봇을 다운로드 시, 로컬 DB에는 CDN URL 참조만 저장.
+    - 에셋 바이너리를 로컬에 복사하지 않으므로 즉시 임포트 완료 (Thin Client).
+    - 브라우저 네트워크 캐시가 자동으로 이미지를 캐싱하여 빠른 렌더링.
+    - 원본 작성자가 에셋 삭제 시 → "로컬에 영구 소장(Convert to Private)" 버튼으로 유저가 선택적 백업 가능.
+- 파일 Export (로컬 파일로 내보내기):
+    - V2 Character Card Spec 호환: 대표 썸네일 PNG 메타데이터에 범용 JSON 삽입.
+    - 에셋 처리: 프라이빗 에셋은 Base64 인라인, 퍼블릭 에셋은 CDN URL 유지.
+    - Export 옵션 2가지:
+        1. "가볍게 내보내기 (링크 전용)": 퍼블릭 에셋은 URL로만 남겨 파일 가볍게.
+        2. "독립형 내보내기 (영구 보관)": 모든 에셋을 Base64로 인라인 포함.
+    - KeiAI 확장 필드: keiai_extensions에 로어북 모듈 참조, 동기화 속성 등 고급 설정 저장. 타 플랫폼에서는 무시되나 KeiAI에서는 완전 복원.
+- 파일 Import (로컬 파일 불러오기):
+    - V2 PNG/JSON, .charx(Risu), KeiAI 확장 포맷 지원.
+    - 인라인 에셋(Base64)은 프라이빗 에셋으로 로컬 DB에 저장.
+    - URL 참조 에셋은 URL 그대로 유지 (Thin Client).
+    - 모든 Import 데이터는 로컬 DB에만 저장 (서버 통신 없음, 오프라인 가능).
+
+15. 수익 모델 (Revenue Model)
+
+- 핵심 철학: "로컬에서 노는 건 무료. 클라우드 서비스는 유료." 서버 비용이 극소이므로 소수의 결제 유저만으로도 손익분기.
+- Free (무료):
+    - 앱 다운로드 및 1기기 로컬 사용 무제한.
+    - 프라이빗 에셋 동기화 용량 제한 (예: 50MB).
+    - Hub 봇 다운로드/업로드 무제한 (퍼블릭 에셋은 CDN 비용이 낮으므로).
+- Pro 구독 (월 $4~5):
+    - 프라이빗 에셋 동기화 용량 확대 (예: 5~10GB).
+    - BYOD (Bring Your Own Drive) 연동 기능.
+    - 인레이 에셋 동기화 옵션 해금.
+    - 프리미엄 테마, 채팅 말풍선 스킨 등 코스메틱.
+- 용량 확보 선순환 (Flywheel):
+    - 무료 유저의 동기화 용량이 꽉 참 → 두 가지 선택:
+        1. Hub에 봇 공유 (프라이빗→퍼블릭 전환) → 프라이빗 용량 회수 + 커뮤니티 성장.
+        2. Pro 구독으로 용량 확대 → 수익 창출.
+    - 어느 쪽이든 플랫폼에 이득인 완벽한 선순환 구조.
+
+16. 멀티 채팅방 확장 (Multi-User Room — 미래)
 
 - 핵심 원칙: "개인 금고(Personal Vault)"와 "공유 방(Shared Room)"은 완전히 다른 보안 도메인. 유저의 명시적 행위(업로드)를 통해서만 데이터가 경계를 넘어감.
 - 보안 모델: Room Key 방식 (Signal Sender Keys, Matrix Megolm 유사).
@@ -206,7 +273,7 @@
 - Room Key 저장: 기존 E2EE 철학에 따라 EncryptedRecord로 저장 (roomKeys 테이블, FK: roomId). MasterKey로 암호화 → blind sync 대상.
 - 개인 자산 공유 흐름: 유저가 "이 캐릭터를 방에 올릴게" → 로컬 금고에서 복호화 → Room Key로 재암호화 → 서버에 업로드. 원본은 그대로 보존 (사본 격리).
 
-15. 전체 테이블 목록 (Table Registry)
+17. 전체 테이블 목록 (Table Registry)
 
 - 암호화 테이블 (EncryptedRecord 기반, blind sync 대상):
     - users — 특수 (CryptoKey 저장)
@@ -221,5 +288,5 @@
     - scripts — 단일 (항상 부모 소유, Deep Copy)
     - settings — 단일 (최상위 엔티티 refs[] + folders + 앱 설정)
     - roomKeys — 단일, FK: roomId (미래)
-- 에셋 테이블 (평문, 동기화 대상 아님):
-    - assets — 별도 인터페이스 (kind: regular/inlay, visibility: private/public)
+- 에셋 테이블 (별도 인터페이스, E2EE 동기화 루프 밖):
+    - assets — kind: regular/inlay, visibility: private/public. 프라이빗은 E2EE→오브젝트 스토리지 동기화(용량 제한), 퍼블릭은 CDN(R2) 평문 저장.
