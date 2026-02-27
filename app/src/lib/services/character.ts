@@ -172,6 +172,12 @@ export class CharacterService {
 		await localDB.transaction([
 			'chatSummaries', 'chatData', 'lorebooks', 'scripts', 'characterSummaries', 'characterData'
 		], 'rw', async () => {
+			const chatIds = (await localDB.getByIndex('chatSummaries', 'characterId', id)).map(c => c.id);
+			for (const chatId of chatIds) {
+				await localDB.softDeleteByIndex('messages', 'chatId', chatId);
+				await localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId);
+				await localDB.softDeleteByIndex('scripts', 'ownerId', chatId);
+			}
 			await localDB.softDeleteByIndex('chatSummaries', 'characterId', id);
 			await localDB.softDeleteByIndex('chatData', 'characterId', id);
 			await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
