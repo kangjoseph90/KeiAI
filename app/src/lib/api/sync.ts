@@ -17,7 +17,15 @@ export class SyncService {
 		'chatSummaries',
 		'chatData',
 		'messages',
-		'settings'
+		'settings',
+		'personaSummaries',
+		'personaData',
+		'lorebooks',
+		'scripts',
+		'modules',
+		'plugins',
+		'promptPresetSummaries',
+		'promptPresetData'
 	];
 
 	static async syncAll(): Promise<void> {

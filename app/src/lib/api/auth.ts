@@ -29,7 +29,7 @@ import {
 	lockMasterKey,
 	unlockMasterKey
 } from '../session.js';
-import { localDB, type UserRecord } from '../db/index.js';
+import { localDB, type UserRecord, type BaseRecord, type TableName } from '../db/index.js';
 
 export class AuthService {
 	/**
@@ -38,7 +38,7 @@ export class AuthService {
 	 * After successful registration, the local master key is downgraded to extractable: false.
 	 */
 	static async register(email: string, password: string): Promise<string> {
-		const { userId, masterKey } = getActiveSession();
+		const { userId: guestUserId, masterKey } = getActiveSession();
 
 		// Derive keys
 		const salt = generateSalt();
@@ -63,9 +63,44 @@ export class AuthService {
 			recoveryMasterKeyIv: toBase64(recovery.encryptedRecoveryMasterKeyIV),
 			recoveryAuthTokenHash: toBase64(recovery.recoveryAuthTokenHash)
 		});
+		loginKey.fill(0);
 
 		// Login to adopt the PocketBase UUID
 		await this.login(email, password);
+
+		// Migrate all guest data to the new server userId so existing records remain accessible
+		const { userId: serverUserId } = getActiveSession();
+		if (guestUserId !== serverUserId) {
+			const MIGRATE_TABLES: TableName[] = [
+				'characterSummaries',
+				'characterData',
+				'chatSummaries',
+				'chatData',
+				'messages',
+				'settings',
+				'personaSummaries',
+				'personaData',
+				'lorebooks',
+				'scripts',
+				'modules',
+				'plugins',
+				'promptPresetSummaries',
+				'promptPresetData'
+			];
+			for (const table of MIGRATE_TABLES) {
+				const records = await localDB.getAll<BaseRecord>(table, guestUserId);
+				if (records.length > 0) {
+					await localDB.putRecords(table, records.map((r) => ({ ...r, userId: serverUserId })));
+				}
+			}
+			// Migrate assets (plaintext, separate table)
+			const assets = await localDB.getAssetsByUser(guestUserId);
+			for (const asset of assets) {
+				await localDB.putAsset({ ...asset, userId: serverUserId });
+			}
+			// Mark old guest user record as deleted
+			await localDB.softDeleteRecord('users', guestUserId);
+		}
 
 		return recovery.recoveryCode.fullCode;
 	}
@@ -144,6 +179,7 @@ export class AuthService {
 		// 4. Push new credentials to server
 		await pb.send(`/api/recover-account/${encodeURIComponent(email)}`, {
 			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
 				authTokenHash: toBase64(oldAuthHash),
 				password: toBase64(newKeys.loginKey),
