@@ -34,7 +34,6 @@ import { SettingsService, type AppSettings } from '../services/settings.js';
 import {
 	PersonaService,
 	type Persona,
-	type PersonaDetail,
 	type PersonaSummaryFields,
 	type PersonaDataFields
 } from '../services/persona.js';
@@ -45,11 +44,9 @@ import {
 	type PromptPresetSummaryFields,
 	type PromptPresetDataFields
 } from '../services/promptPreset.js';
-import { LorebookService, type Lorebook } from '../services/lorebook.js';
-import { ScriptService, type Script } from '../services/script.js';
-import { ModuleService, type Module } from '../services/module.js';
-import { PluginService, type Plugin } from '../services/plugin.js';
+import type { Lorebook, Script, Module, Plugin } from '../services';
 import type { OrderedRef } from '../db/index.js';
+import { generateKeyBetween } from 'fractional-indexing';
 
 // ══════════════════════════════════════════════════
 // Level 1: Global State (always loaded)
@@ -61,17 +58,23 @@ export const personas = writable<Persona[]>([]);
 export const promptPresets = writable<PromptPreset[]>([]);
 
 export async function loadGlobalState() {
-	appSettings.set(await SettingsService.get());
-	characters.set(await CharacterService.list());
-	personas.set(await PersonaService.list());
-	promptPresets.set(await PromptPresetService.list());
+	const [settings, charList, personaList, presetList] = await Promise.all([
+		SettingsService.get(),
+		CharacterService.list(),
+		PersonaService.list(),
+		PromptPresetService.list()
+	]);
+	appSettings.set(settings);
+	characters.set(charList);
+	personas.set(personaList);
+	promptPresets.set(presetList);
 }
 
 export async function updateSettings(changes: Partial<AppSettings>) {
 	const current = get(appSettings) || ({} as AppSettings);
 	const updated = { ...current, ...changes } as AppSettings;
-	await SettingsService.update(updated);
 	appSettings.set(updated);
+	await SettingsService.update(updated);
 }
 
 // ─── Character CRUD ──────────────────────────────────────────────────
@@ -87,15 +90,18 @@ export async function createCharacter(
 		{ systemPrompt, greetingMessage, chatRefs: [] }
 	);
 
+	const { data: _data, ...summary } = detail;
+	characters.update((list) => [...list, summary as Character]);
+
 	// Add to settings' characterRefs
 	const settings = get(appSettings);
 	if (settings) {
-		const refs = settings.characterRefs || [];
-		refs.push({ id: detail.id, sortOrder: generateSortOrder(refs) });
-		await updateSettings({ characterRefs: refs });
+		const existing = settings.characterRefs || [];
+		await updateSettings({
+			characterRefs: [...existing, { id: detail.id, sortOrder: generateSortOrder(existing) }]
+		});
 	}
 
-	characters.set(await CharacterService.list());
 	return detail;
 }
 
@@ -105,11 +111,12 @@ export async function deleteCharacter(id: string) {
 	// Remove from settings' characterRefs
 	const settings = get(appSettings);
 	if (settings) {
-		const refs = (settings.characterRefs || []).filter(r => r.id !== id);
-		await updateSettings({ characterRefs: refs });
+		await updateSettings({
+			characterRefs: (settings.characterRefs || []).filter((r) => r.id !== id)
+		});
 	}
 
-	characters.set(await CharacterService.list());
+	characters.update((list) => list.filter((c) => c.id !== id));
 	if (get(activeCharacter)?.id === id) {
 		clearActiveCharacter();
 	}
@@ -117,25 +124,26 @@ export async function deleteCharacter(id: string) {
 
 // ─── Persona CRUD ────────────────────────────────────────────────────
 
-export async function createPersona(
-	fields: PersonaSummaryFields,
-	data: PersonaDataFields
-) {
-	const persona = await PersonaService.create(fields, data);
+export async function createPersona(fields: PersonaSummaryFields, data: PersonaDataFields) {
+	const detail = await PersonaService.create(fields, data);
+
+	const { data: _data, ...summary } = detail;
+	personas.update((list) => [...list, summary as Persona]);
 
 	const settings = get(appSettings);
 	if (settings) {
-		const refs = settings.personaRefs || [];
-		refs.push({ id: persona.id, sortOrder: generateSortOrder(refs) });
-		await updateSettings({ personaRefs: refs });
+		const existing = settings.personaRefs || [];
+		await updateSettings({
+			personaRefs: [...existing, { id: detail.id, sortOrder: generateSortOrder(existing) }]
+		});
 	}
 
-	personas.set(await PersonaService.list());
+	return detail;
 }
 
 export async function updatePersonaSummary(id: string, changes: Partial<PersonaSummaryFields>) {
 	await PersonaService.updateSummary(id, changes);
-	personas.set(await PersonaService.list());
+	personas.update((list) => list.map((p) => (p.id === id ? { ...p, ...changes } : p)));
 }
 
 export async function updatePersonaData(id: string, changes: Partial<PersonaDataFields>) {
@@ -147,11 +155,12 @@ export async function deletePersona(id: string) {
 
 	const settings = get(appSettings);
 	if (settings) {
-		const refs = (settings.personaRefs || []).filter(r => r.id !== id);
-		await updateSettings({ personaRefs: refs });
+		await updateSettings({
+			personaRefs: (settings.personaRefs || []).filter((r) => r.id !== id)
+		});
 	}
 
-	personas.set(await PersonaService.list());
+	personas.update((list) => list.filter((p) => p.id !== id));
 }
 
 // ─── Prompt Preset CRUD ──────────────────────────────────────────────
@@ -168,30 +177,29 @@ export async function createPreset(
 ) {
 	const detail = await PromptPresetService.create(fields, data);
 
+	const { data: _data, ...summary } = detail;
+	promptPresets.update((list) => [...list, summary as PromptPreset]);
+
 	const settings = get(appSettings);
 	if (settings) {
-		const refs = settings.presetRefs || [];
-		refs.push({ id: detail.id, sortOrder: generateSortOrder(refs) });
-		await updateSettings({ presetRefs: refs });
+		const existing = settings.presetRefs || [];
+		await updateSettings({
+			presetRefs: [...existing, { id: detail.id, sortOrder: generateSortOrder(existing) }]
+		});
 	}
 
-	promptPresets.set(await PromptPresetService.list());
 	return detail;
 }
 
 export async function updatePresetSummary(id: string, changes: Partial<PromptPresetSummaryFields>) {
 	await PromptPresetService.updateSummary(id, changes);
-	promptPresets.set(await PromptPresetService.list());
-	if (get(activePreset)?.id === id) {
-		activePreset.set(await PromptPresetService.getDetail(id));
-	}
+	promptPresets.update((list) => list.map((p) => (p.id === id ? { ...p, ...changes } : p)));
+	activePreset.update((p) => (p && p.id === id ? { ...p, ...changes } : p));
 }
 
 export async function updatePresetData(id: string, changes: Partial<PromptPresetDataFields>) {
 	await PromptPresetService.updateData(id, changes);
-	if (get(activePreset)?.id === id) {
-		activePreset.set(await PromptPresetService.getDetail(id));
-	}
+	activePreset.update((p) => (p && p.id === id ? { ...p, data: { ...p.data, ...changes } } : p));
 }
 
 export async function deletePreset(id: string) {
@@ -199,11 +207,12 @@ export async function deletePreset(id: string) {
 
 	const settings = get(appSettings);
 	if (settings) {
-		const refs = (settings.presetRefs || []).filter(r => r.id !== id);
-		await updateSettings({ presetRefs: refs });
+		await updateSettings({
+			presetRefs: (settings.presetRefs || []).filter((r) => r.id !== id)
+		});
 	}
 
-	promptPresets.set(await PromptPresetService.list());
+	promptPresets.update((list) => list.filter((p) => p.id !== id));
 	if (get(activePreset)?.id === id) {
 		activePreset.set(null);
 	}
@@ -224,13 +233,9 @@ export async function selectCharacter(characterId: string) {
 	activeCharacter.set(detail);
 
 	if (detail) {
-		// Fetch chats by IDs from character's chatRefs (ordered)
 		const chatIds = (detail.data.chatRefs ?? []).map((r: OrderedRef) => r.id);
 		const chats = await ChatService.getMany(chatIds);
-		// Sort by chatRefs order
-		const orderMap = new Map((detail.data.chatRefs ?? []).map((r: OrderedRef, i: number) => [r.id, i]));
-		chats.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
-		activeChats.set(chats);
+		activeChats.set(sortChatsByRefs(chats, detail.data.chatRefs ?? []));
 	}
 }
 
@@ -240,22 +245,17 @@ export function clearActiveCharacter() {
 	clearActiveChat();
 }
 
-export async function updateCharacterSummary(
-	id: string,
-	changes: Partial<CharacterSummaryFields>
-) {
-	await CharacterService.updateSummary(id, changes);
-	characters.set(await CharacterService.list());
-	if (get(activeCharacter)?.id === id) {
-		activeCharacter.set(await CharacterService.getDetail(id));
+export async function updateCharacterSummary(id: string, changes: Partial<CharacterSummaryFields>) {
+	const updated = await CharacterService.updateSummary(id, changes);
+	if (updated) {
+		characters.update((list) => list.map((c) => (c.id === id ? updated : c)));
+		activeCharacter.update((c) => (c && c.id === id ? { ...c, ...updated } : c));
 	}
 }
 
 export async function updateCharacterData(id: string, changes: Partial<CharacterDataFields>) {
 	await CharacterService.updateData(id, changes);
-	if (get(activeCharacter)?.id === id) {
-		activeCharacter.set(await CharacterService.getDetail(id));
-	}
+	activeCharacter.update((c) => (c && c.id === id ? { ...c, data: { ...c.data, ...changes } } : c));
 }
 
 // Character-level actions
@@ -266,48 +266,41 @@ export async function createChat(title: string) {
 
 	const chat = await ChatService.create(char.id, title);
 
-	// Add to character's chatRefs
-	const chatRefs = [...(char.data.chatRefs ?? []), { id: chat.id, sortOrder: generateSortOrder(char.data.chatRefs ?? []) }];
+	// Build updated chatRefs
+	const existing = char.data.chatRefs ?? [];
+	const chatRefs: OrderedRef[] = [
+		...existing,
+		{ id: chat.id, sortOrder: generateSortOrder(existing) }
+	];
 	await CharacterService.updateData(char.id, { chatRefs });
 
-	// Refresh
-	activeCharacter.set(await CharacterService.getDetail(char.id));
-	const updatedChar = get(activeCharacter);
-	if (updatedChar) {
-		const chatIds = (updatedChar.data.chatRefs ?? []).map((r: OrderedRef) => r.id);
-		activeChats.set(await ChatService.getMany(chatIds));
-	}
+	activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, chatRefs } } : c));
+	activeChats.update((list) => [...list, chat]);
+	return chat;
 }
 
 export async function updateChat(chatId: string, changes: Partial<ChatSummaryFields>) {
 	await ChatService.updateSummary(chatId, changes);
-	await refreshActiveChats();
-	const current = get(activeChat);
-	if (current?.id === chatId) {
-		activeChat.set(await ChatService.getDetail(chatId));
-	}
+	activeChats.update((list) => list.map((c) => (c.id === chatId ? { ...c, ...changes } : c)));
+	activeChat.update((c) => (c && c.id === chatId ? { ...c, ...changes } : c));
 }
 
 export async function updateChatData(chatId: string, changes: Partial<ChatDataFields>) {
 	await ChatService.updateData(chatId, changes);
-	const current = get(activeChat);
-	if (current?.id === chatId) {
-		activeChat.set(await ChatService.getDetail(chatId));
-	}
+	activeChat.update((c) => (c && c.id === chatId ? { ...c, data: { ...c.data, ...changes } } : c));
 }
 
 export async function deleteChat(chatId: string) {
 	await ChatService.delete(chatId);
 
-	// Remove from character's chatRefs
 	const char = get(activeCharacter);
 	if (char) {
 		const chatRefs = (char.data.chatRefs ?? []).filter((r: OrderedRef) => r.id !== chatId);
 		await CharacterService.updateData(char.id, { chatRefs });
-		activeCharacter.set(await CharacterService.getDetail(char.id));
+		activeCharacter.set({ ...char, data: { ...char.data, chatRefs } });
+		activeChats.update((list) => list.filter((c) => c.id !== chatId));
 	}
 
-	await refreshActiveChats();
 	if (get(activeChat)?.id === chatId) {
 		clearActiveChat();
 	}
@@ -351,15 +344,19 @@ export async function sendMessage(role: 'user' | 'char' | 'system', content: str
 	const chat = get(activeChat);
 	if (!chat) return;
 
-	await MessageService.create(chat.id, { role, content });
+	const preview = content.substring(0, 50);
 
-	// Orchestration: update chat preview
-	await ChatService.updateSummary(chat.id, {
-		lastMessagePreview: content.substring(0, 50)
-	});
+	// Parallelise: message creation and chat preview update are independent
+	const [newMessage] = await Promise.all([
+		MessageService.create(chat.id, { role, content }),
+		ChatService.updateSummary(chat.id, { lastMessagePreview: preview })
+	]);
 
-	messages.set(await MessageService.listByChat(chat.id));
-	await refreshActiveChats();
+	messages.update((prev) => [...prev, newMessage]);
+	activeChats.update((list) =>
+		list.map((c) => (c.id === chat.id ? { ...c, lastMessagePreview: preview } : c))
+	);
+	activeChat.update((c) => (c ? { ...c, lastMessagePreview: preview } : c));
 }
 
 export async function updateMessage(msgId: string, content: string) {
@@ -367,40 +364,46 @@ export async function updateMessage(msgId: string, content: string) {
 	if (!chat) return;
 
 	await MessageService.update(msgId, { content });
-	await ChatService.updateSummary(chat.id, {
-		lastMessagePreview: content.substring(0, 50)
-	});
+	messages.update((list) => list.map((m) => (m.id === msgId ? { ...m, content } : m)));
 
-	messages.set(await MessageService.listByChat(chat.id));
-	await refreshActiveChats();
+	// Only update chat preview if the edited message is the last one
+	const currentMessages = get(messages);
+	const isLastMessage =
+		currentMessages.length > 0 && currentMessages[currentMessages.length - 1].id === msgId;
+	if (isLastMessage) {
+		const preview = content.substring(0, 50);
+		await ChatService.updateSummary(chat.id, { lastMessagePreview: preview });
+		activeChats.update((list) =>
+			list.map((c) => (c.id === chat.id ? { ...c, lastMessagePreview: preview } : c))
+		);
+		activeChat.update((c) => (c ? { ...c, lastMessagePreview: preview } : c));
+	}
 }
 
 export async function deleteMessage(msgId: string) {
 	await MessageService.delete(msgId);
-	const chat = get(activeChat);
-	if (chat) {
-		messages.set(await MessageService.listByChat(chat.id));
-	}
+	messages.update((list) => list.filter((m) => m.id !== msgId));
 }
 
 // ─── Internal ────────────────────────────────────────────────────────
 
-async function refreshActiveChats() {
-	const char = get(activeCharacter);
-	if (char) {
-		const chatIds = (char.data.chatRefs ?? []).map((r: OrderedRef) => r.id);
-		const chats = await ChatService.getMany(chatIds);
-		const orderMap = new Map((char.data.chatRefs ?? []).map((r: OrderedRef, i: number) => [r.id, i]));
-		chats.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
-		activeChats.set(chats);
-	}
+/**
+ * Sort a chat list to match the order defined by an OrderedRef array.
+ * Extracted to avoid duplication between selectCharacter and former refreshActiveChats.
+ */
+function sortChatsByRefs(chats: Chat[], refs: OrderedRef[]): Chat[] {
+	const orderMap = new Map(refs.map((r, i) => [r.id, i]));
+	return [...chats].sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
 }
 
-/** Generate a simple sort order key for appending to the end of a list */
-function generateSortOrder(existingRefs: OrderedRef[]): string {
-	if (existingRefs.length === 0) return 'a0';
+/** Generate a fractional sort order key for appending to the end of a list */
+export function generateSortOrder(existingRefs: OrderedRef[]): string {
+	if (existingRefs.length === 0) return generateKeyBetween(null, null);
 	const lastOrder = existingRefs[existingRefs.length - 1].sortOrder;
-	// Simple increment — proper fractional indexing can be swapped in later
-	const num = parseInt(lastOrder.slice(1), 36) + 1;
-	return 'a' + num.toString(36);
+	return generateKeyBetween(lastOrder, null);
+}
+
+/** Helper for drag-and-drop to reorder between two existing keys (null means start/end) */
+export function reorderKeyBetween(prevKey: string | null, nextKey: string | null): string {
+	return generateKeyBetween(prevKey, nextKey);
 }
