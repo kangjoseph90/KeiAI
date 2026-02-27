@@ -162,7 +162,11 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 			.toArray()) as T[];
 	}
 
-	async transaction<R>(tables: TableName[], mode: 'r' | 'rw', callback: () => Promise<R>): Promise<R> {
+	async transaction<R>(
+		tables: TableName[],
+		mode: 'r' | 'rw',
+		callback: () => Promise<R>
+	): Promise<R> {
 		return await this.db.transaction(mode as unknown as any, tables, callback);
 	}
 
@@ -183,7 +187,7 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 	async getAssetsByUser(userId: string, kind?: 'regular' | 'inlay'): Promise<AssetRecord[]> {
 		const collection = this.db.assets.where('userId').equals(userId);
 		if (kind) {
-			return await collection.filter(r => r.kind === kind).toArray();
+			return await collection.filter((r) => r.kind === kind).toArray();
 		}
 		return await collection.toArray();
 	}

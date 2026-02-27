@@ -67,13 +67,9 @@ export function splitRecoveryCode(code: string): RecoveryCodeParts {
 export async function deriveRecoveryKey(frontHalf: string): Promise<Bytes> {
 	const encoder = new TextEncoder();
 
-	const baseKey = await crypto.subtle.importKey(
-		'raw',
-		encoder.encode(frontHalf),
-		'PBKDF2',
-		false,
-		['deriveBits']
-	);
+	const baseKey = await crypto.subtle.importKey('raw', encoder.encode(frontHalf), 'PBKDF2', false, [
+		'deriveBits'
+	]);
 
 	// Use a domain-separated fixed salt for recovery key derivation
 	const salt = encoder.encode('kei:recovery-key-derivation');
@@ -164,13 +160,10 @@ export async function recoverMasterKey(
 	);
 
 	// Import as non-extractable
-	const masterKey = await crypto.subtle.importKey(
-		'raw',
-		rawMaster,
-		{ name: 'AES-GCM' },
-		false,
-		['encrypt', 'decrypt']
-	);
+	const masterKey = await crypto.subtle.importKey('raw', rawMaster, { name: 'AES-GCM' }, false, [
+		'encrypt',
+		'decrypt'
+	]);
 
 	rawMaster.fill(0);
 	recoveryKeyZ.fill(0);

@@ -114,9 +114,15 @@ export class AuthService {
 	 * Recover password using the 16-char analog recovery code.
 	 * Returns the NEW recovery code that replaces the old one.
 	 */
-	static async recoverPassword(email: string, recoveryCode: string, newPassword: string): Promise<string> {
+	static async recoverPassword(
+		email: string,
+		recoveryCode: string,
+		newPassword: string
+	): Promise<string> {
 		// 1. Fetch recovery bundle M(Z)
-		const resp = await pb.send(`/api/recovery-bundle/${encodeURIComponent(email)}`, { method: 'GET' });
+		const resp = await pb.send(`/api/recovery-bundle/${encodeURIComponent(email)}`, {
+			method: 'GET'
+		});
 		const bundle: RecoveryBundle = {
 			encryptedRecoveryMasterKey: fromBase64(resp.encryptedRecoveryMasterKey),
 			encryptedRecoveryMasterKeyIV: fromBase64(resp.encryptedRecoveryMasterKeyIV)

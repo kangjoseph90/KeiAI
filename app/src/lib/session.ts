@@ -56,7 +56,11 @@ export function clearSession(): void {
  * Boot the app session.
  * Restores an existing user from local DB, or creates a new guest.
  */
-export async function initSession(): Promise<{ userId: string; masterKey: CryptoKey; isGuest: boolean }> {
+export async function initSession(): Promise<{
+	userId: string;
+	masterKey: CryptoKey;
+	isGuest: boolean;
+}> {
 	const savedUserId = localStorage.getItem('activeUserId');
 
 	if (savedUserId) {
@@ -75,7 +79,11 @@ export async function initSession(): Promise<{ userId: string; masterKey: Crypto
  * Create a brand new offline guest user with a fresh master key.
  * The key is generated with extractable: true so that when the user
  */
-export async function createGuestUser(): Promise<{ userId: string; masterKey: CryptoKey; isGuest: boolean }> {
+export async function createGuestUser(): Promise<{
+	userId: string;
+	masterKey: CryptoKey;
+	isGuest: boolean;
+}> {
 	const id = crypto.randomUUID();
 	const guestKey = await generateMasterKey(); // extractable: true
 
@@ -101,12 +109,11 @@ export async function createGuestUser(): Promise<{ userId: string; masterKey: Cr
  * Called after successful registration.
  */
 export async function lockMasterKey(userId: string, masterKey: CryptoKey): Promise<void> {
-	const rawM = new Uint8Array(
-		(await crypto.subtle.exportKey('raw', masterKey)) as ArrayBuffer
-	);
-	const lockedKey = await crypto.subtle.importKey(
-		'raw', rawM, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']
-	);
+	const rawM = new Uint8Array((await crypto.subtle.exportKey('raw', masterKey)) as ArrayBuffer);
+	const lockedKey = await crypto.subtle.importKey('raw', rawM, { name: 'AES-GCM' }, false, [
+		'encrypt',
+		'decrypt'
+	]);
 	rawM.fill(0);
 
 	const user = await localDB.getRecord<UserRecord>('users', userId);
@@ -126,7 +133,11 @@ export async function lockMasterKey(userId: string, masterKey: CryptoKey): Promi
  */
 export async function unlockMasterKey(userId: string, rawMasterKey: Bytes): Promise<void> {
 	const unlockedKey = await crypto.subtle.importKey(
-		'raw', rawMasterKey, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']
+		'raw',
+		rawMasterKey,
+		{ name: 'AES-GCM' },
+		true,
+		['encrypt', 'decrypt']
 	);
 
 	const user = await localDB.getRecord<UserRecord>('users', userId);
@@ -153,5 +164,8 @@ export async function decryptText(masterKey: CryptoKey, data: EncryptedData): Pr
 // ─── Internal Helpers ────────────────────────────────────────────────
 
 export async function importMasterKey(raw: Bytes, extractable: boolean): Promise<CryptoKey> {
-	return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, extractable, ['encrypt', 'decrypt']);
+	return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, extractable, [
+		'encrypt',
+		'decrypt'
+	]);
 }

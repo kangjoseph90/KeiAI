@@ -2,9 +2,18 @@
 	import { onMount } from 'svelte';
 	import { initSession } from '$lib/session';
 	import {
-		characters, loadGlobalState, createCharacter, selectCharacter,
-		activeCharacter, activeChats, clearActiveCharacter,
-		createChat, selectChat, activeChat, messages, clearActiveChat,
+		characters,
+		loadGlobalState,
+		createCharacter,
+		selectCharacter,
+		activeCharacter,
+		activeChats,
+		clearActiveCharacter,
+		createChat,
+		selectChat,
+		activeChat,
+		messages,
+		clearActiveChat,
 		sendMessage
 	} from '$lib/stores';
 

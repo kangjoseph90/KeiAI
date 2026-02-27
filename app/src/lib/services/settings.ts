@@ -1,10 +1,5 @@
 import { encryptText, decryptText, getActiveSession } from '../session.js';
-import {
-	localDB,
-	type SettingsRecord,
-	type OrderedRef,
-	type FolderDef
-} from '../db/index.js';
+import { localDB, type SettingsRecord, type OrderedRef, type FolderDef } from '../db/index.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -66,8 +61,13 @@ export class SettingsService {
 		const createdAt = existing.length > 0 ? existing[0].createdAt : Date.now();
 
 		await localDB.putRecord<SettingsRecord>('settings', {
-			id, userId, createdAt, updatedAt: Date.now(), isDeleted: false,
-			encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+			id,
+			userId,
+			createdAt,
+			updatedAt: Date.now(),
+			isDeleted: false,
+			encryptedData: enc.ciphertext,
+			encryptedDataIV: enc.iv
 		});
 	}
 }

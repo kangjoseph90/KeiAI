@@ -49,11 +49,16 @@ export class PersonaService {
 		const results: Persona[] = [];
 		for (const record of records) {
 			const fields: PersonaSummaryFields = JSON.parse(
-				await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+				await decryptText(masterKey, {
+					ciphertext: record.encryptedData,
+					iv: record.encryptedDataIV
+				})
 			);
 			results.push({
-				id: record.id, ...fields,
-				createdAt: record.createdAt, updatedAt: record.updatedAt
+				id: record.id,
+				...fields,
+				createdAt: record.createdAt,
+				updatedAt: record.updatedAt
 			});
 		}
 		return results;
@@ -73,11 +78,16 @@ export class PersonaService {
 			await decryptText(masterKey, { ciphertext: rec.encryptedData, iv: rec.encryptedDataIV })
 		);
 		const data: PersonaDataFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: dataRec.encryptedData, iv: dataRec.encryptedDataIV })
+			await decryptText(masterKey, {
+				ciphertext: dataRec.encryptedData,
+				iv: dataRec.encryptedDataIV
+			})
 		);
 
 		return {
-			id: rec.id, ...fields, data,
+			id: rec.id,
+			...fields,
+			data,
 			createdAt: rec.createdAt,
 			updatedAt: Math.max(rec.updatedAt, dataRec.updatedAt)
 		};
@@ -97,12 +107,22 @@ export class PersonaService {
 
 		await localDB.transaction(['personaSummaries', 'personaData'], 'rw', async () => {
 			await localDB.putRecord<PersonaSummaryRecord>('personaSummaries', {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: fieldsEnc.ciphertext, encryptedDataIV: fieldsEnc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: fieldsEnc.ciphertext,
+				encryptedDataIV: fieldsEnc.iv
 			});
 			await localDB.putRecord<PersonaDataRecord>('personaData', {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: dataEnc.ciphertext, encryptedDataIV: dataEnc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: dataEnc.ciphertext,
+				encryptedDataIV: dataEnc.iv
 			});
 		});
 
@@ -147,13 +167,15 @@ export class PersonaService {
 
 	/** Cascade delete: owned modules, lorebooks, scripts, then persona */
 	static async delete(id: string): Promise<void> {
-		await localDB.transaction([
-			'lorebooks', 'scripts', 'personaSummaries', 'personaData'
-		], 'rw', async () => {
-			await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-			await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-			await localDB.softDeleteRecord('personaSummaries', id);
-			await localDB.softDeleteRecord('personaData', id);
-		});
+		await localDB.transaction(
+			['lorebooks', 'scripts', 'personaSummaries', 'personaData'],
+			'rw',
+			async () => {
+				await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
+				await localDB.softDeleteByIndex('scripts', 'ownerId', id);
+				await localDB.softDeleteRecord('personaSummaries', id);
+				await localDB.softDeleteRecord('personaData', id);
+			}
+		);
 	}
 }

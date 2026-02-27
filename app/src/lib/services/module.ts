@@ -1,10 +1,5 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
-import {
-	localDB,
-	type ModuleRecord,
-	type ResourceRef,
-	type FolderDef
-} from '../db/index.js';
+import { localDB, type ModuleRecord, type ResourceRef, type FolderDef } from '../db/index.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -14,11 +9,11 @@ export interface ModuleFields {
 
 	lorebookRefs?: ResourceRef[];
 	scriptRefs?: ResourceRef[];
-    
-    refFolders?: {
-        lorebooks?: FolderDef[];
-        scripts?: FolderDef[];
-    };
+
+	refFolders?: {
+		lorebooks?: FolderDef[];
+		scripts?: FolderDef[];
+	};
 }
 
 export interface Module extends ModuleFields {
@@ -37,11 +32,16 @@ export class ModuleService {
 		const results: Module[] = [];
 		for (const record of records) {
 			const fields: ModuleFields = JSON.parse(
-				await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+				await decryptText(masterKey, {
+					ciphertext: record.encryptedData,
+					iv: record.encryptedDataIV
+				})
 			);
 			results.push({
-				id: record.id, ...fields,
-				createdAt: record.createdAt, updatedAt: record.updatedAt
+				id: record.id,
+				...fields,
+				createdAt: record.createdAt,
+				updatedAt: record.updatedAt
 			});
 		}
 		return results;
@@ -74,8 +74,13 @@ export class ModuleService {
 		const enc = await encryptText(masterKey, JSON.stringify(fields));
 
 		await localDB.putRecord<ModuleRecord>('modules', {
-			id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-			encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+			id,
+			userId,
+			createdAt: now,
+			updatedAt: now,
+			isDeleted: false,
+			encryptedData: enc.ciphertext,
+			encryptedDataIV: enc.iv
 		});
 
 		return { id, ...fields, createdAt: now, updatedAt: now };

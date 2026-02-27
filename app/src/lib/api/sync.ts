@@ -119,7 +119,9 @@ export class SyncService {
 
 	/** Fields that are byte arrays when stored locally */
 	private static readonly BYTE_FIELD_NAMES = new Set([
-		'encryptedData', 'encryptedDataIV', 'masterKey'
+		'encryptedData',
+		'encryptedDataIV',
+		'masterKey'
 	]);
 
 	private static isBase64ByteField(fieldName: string): boolean {

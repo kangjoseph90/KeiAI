@@ -13,8 +13,17 @@ export interface PromptPresetSummaryFields {
 }
 
 export interface PromptTemplateEntry {
-	type: 'system' | 'jailbreak' | 'description' | 'persona' | 'lorebook'
-		| 'chat' | 'memory' | 'authornote' | 'postEverything' | 'plain';
+	type:
+		| 'system'
+		| 'jailbreak'
+		| 'description'
+		| 'persona'
+		| 'lorebook'
+		| 'chat'
+		| 'memory'
+		| 'authornote'
+		| 'postEverything'
+		| 'plain';
 	role: 'system' | 'user' | 'assistant';
 	content?: string;
 }
@@ -79,16 +88,24 @@ export class PromptPresetService {
 	/** List all presets (summary only) */
 	static async list(): Promise<PromptPreset[]> {
 		const { masterKey, userId } = getActiveSession();
-		const records = await localDB.getAll<PromptPresetSummaryRecord>('promptPresetSummaries', userId);
+		const records = await localDB.getAll<PromptPresetSummaryRecord>(
+			'promptPresetSummaries',
+			userId
+		);
 
 		const results: PromptPreset[] = [];
 		for (const record of records) {
 			const fields: PromptPresetSummaryFields = JSON.parse(
-				await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+				await decryptText(masterKey, {
+					ciphertext: record.encryptedData,
+					iv: record.encryptedDataIV
+				})
 			);
 			results.push({
-				id: record.id, ...fields,
-				createdAt: record.createdAt, updatedAt: record.updatedAt
+				id: record.id,
+				...fields,
+				createdAt: record.createdAt,
+				updatedAt: record.updatedAt
 			});
 		}
 		return results;
@@ -108,11 +125,16 @@ export class PromptPresetService {
 			await decryptText(masterKey, { ciphertext: rec.encryptedData, iv: rec.encryptedDataIV })
 		);
 		const data: PromptPresetDataFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: dataRec.encryptedData, iv: dataRec.encryptedDataIV })
+			await decryptText(masterKey, {
+				ciphertext: dataRec.encryptedData,
+				iv: dataRec.encryptedDataIV
+			})
 		);
 
 		return {
-			id: rec.id, ...fields, data,
+			id: rec.id,
+			...fields,
+			data,
 			createdAt: rec.createdAt,
 			updatedAt: Math.max(rec.updatedAt, dataRec.updatedAt)
 		};
@@ -132,12 +154,22 @@ export class PromptPresetService {
 
 		await localDB.transaction(['promptPresetSummaries', 'promptPresetData'], 'rw', async () => {
 			await localDB.putRecord<PromptPresetSummaryRecord>('promptPresetSummaries', {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: fieldsEnc.ciphertext, encryptedDataIV: fieldsEnc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: fieldsEnc.ciphertext,
+				encryptedDataIV: fieldsEnc.iv
 			});
 			await localDB.putRecord<PromptPresetDataRecord>('promptPresetData', {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: dataEnc.ciphertext, encryptedDataIV: dataEnc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: dataEnc.ciphertext,
+				encryptedDataIV: dataEnc.iv
 			});
 		});
 
@@ -145,7 +177,10 @@ export class PromptPresetService {
 	}
 
 	/** Update summary only */
-	static async updateSummary(id: string, changes: Partial<PromptPresetSummaryFields>): Promise<void> {
+	static async updateSummary(
+		id: string,
+		changes: Partial<PromptPresetSummaryFields>
+	): Promise<void> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<PromptPresetSummaryRecord>('promptPresetSummaries', id);
 		if (!record || record.isDeleted) return;

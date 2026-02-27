@@ -60,7 +60,10 @@ export class CharacterService {
 		const results: Character[] = [];
 		for (const record of records) {
 			const fields: CharacterSummaryFields = JSON.parse(
-				await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+				await decryptText(masterKey, {
+					ciphertext: record.encryptedData,
+					iv: record.encryptedDataIV
+				})
 			);
 			results.push({
 				id: record.id,
@@ -86,7 +89,10 @@ export class CharacterService {
 			await decryptText(masterKey, { ciphertext: rec.encryptedData, iv: rec.encryptedDataIV })
 		);
 		const data: CharacterDataFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: dataRec.encryptedData, iv: dataRec.encryptedDataIV })
+			await decryptText(masterKey, {
+				ciphertext: dataRec.encryptedData,
+				iv: dataRec.encryptedDataIV
+			})
 		);
 
 		return {
@@ -112,12 +118,22 @@ export class CharacterService {
 
 		await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
 			await localDB.putRecord<CharacterSummaryRecord>('characterSummaries', {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: fieldsEnc.ciphertext, encryptedDataIV: fieldsEnc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: fieldsEnc.ciphertext,
+				encryptedDataIV: fieldsEnc.iv
 			});
 			await localDB.putRecord<CharacterDataRecord>('characterData', {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: dataEnc.ciphertext, encryptedDataIV: dataEnc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: dataEnc.ciphertext,
+				encryptedDataIV: dataEnc.iv
 			});
 		});
 
@@ -148,10 +164,7 @@ export class CharacterService {
 	}
 
 	/** Update data only */
-	static async updateData(
-		id: string,
-		changes: Partial<CharacterDataFields>
-	): Promise<void> {
+	static async updateData(id: string, changes: Partial<CharacterDataFields>): Promise<void> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<CharacterDataRecord>('characterData', id);
 		if (!record || record.isDeleted) return;
@@ -169,21 +182,33 @@ export class CharacterService {
 	}
 
 	static async delete(id: string): Promise<void> {
-		await localDB.transaction([
-			'chatSummaries', 'chatData', 'lorebooks', 'scripts', 'messages', 'characterSummaries', 'characterData'
-		], 'rw', async () => {
-			const chatIds = (await localDB.getByIndex('chatSummaries', 'characterId', id)).map(c => c.id);
-			for (const chatId of chatIds) {
-				await localDB.softDeleteByIndex('messages', 'chatId', chatId);
-				await localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId);
-				await localDB.softDeleteByIndex('scripts', 'ownerId', chatId);
+		await localDB.transaction(
+			[
+				'chatSummaries',
+				'chatData',
+				'lorebooks',
+				'scripts',
+				'messages',
+				'characterSummaries',
+				'characterData'
+			],
+			'rw',
+			async () => {
+				const chatIds = (await localDB.getByIndex('chatSummaries', 'characterId', id)).map(
+					(c) => c.id
+				);
+				for (const chatId of chatIds) {
+					await localDB.softDeleteByIndex('messages', 'chatId', chatId);
+					await localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId);
+					await localDB.softDeleteByIndex('scripts', 'ownerId', chatId);
+				}
+				await localDB.softDeleteByIndex('chatSummaries', 'characterId', id);
+				await localDB.softDeleteByIndex('chatData', 'characterId', id);
+				await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
+				await localDB.softDeleteByIndex('scripts', 'ownerId', id);
+				await localDB.softDeleteRecord('characterSummaries', id);
+				await localDB.softDeleteRecord('characterData', id);
 			}
-			await localDB.softDeleteByIndex('chatSummaries', 'characterId', id);
-			await localDB.softDeleteByIndex('chatData', 'characterId', id);
-			await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-			await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-			await localDB.softDeleteRecord('characterSummaries', id);
-			await localDB.softDeleteRecord('characterData', id);
-		});
+		);
 	}
 }

@@ -4,7 +4,12 @@
  */
 
 export { generateSalt, deriveKeys } from './kdf.js';
-export { generateMasterKey, wrapMasterKey, unwrapMasterKey, unwrapMasterKeyRaw } from './masterKey.js';
+export {
+	generateMasterKey,
+	wrapMasterKey,
+	unwrapMasterKey,
+	unwrapMasterKeyRaw
+} from './masterKey.js';
 export { encrypt, decrypt, encryptBytes, decryptBytes } from './encryption.js';
 export {
 	createRecoveryData,

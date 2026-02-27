@@ -64,10 +64,7 @@ export async function deriveKeys(password: string, salt: Bytes): Promise<Derived
  * @param rawKey - 32-byte key material (Y or Z)
  * @param extractable - whether the resulting key can be exported (usually false)
  */
-export async function importWrappingKey(
-	rawKey: Bytes,
-	extractable = false
-): Promise<CryptoKey> {
+export async function importWrappingKey(rawKey: Bytes, extractable = false): Promise<CryptoKey> {
 	return crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, extractable, [
 		'encrypt',
 		'decrypt'

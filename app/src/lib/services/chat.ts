@@ -62,7 +62,10 @@ export class ChatService {
 			if (!record || record.isDeleted) continue;
 
 			const fields: ChatSummaryFields = JSON.parse(
-				await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+				await decryptText(masterKey, {
+					ciphertext: record.encryptedData,
+					iv: record.encryptedDataIV
+				})
 			);
 			results.push({
 				id: record.id,
@@ -88,7 +91,10 @@ export class ChatService {
 			await decryptText(masterKey, { ciphertext: rec.encryptedData, iv: rec.encryptedDataIV })
 		);
 		const data: ChatDataFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: dataRec.encryptedData, iv: dataRec.encryptedDataIV })
+			await decryptText(masterKey, {
+				ciphertext: dataRec.encryptedData,
+				iv: dataRec.encryptedDataIV
+			})
 		);
 
 		return {
@@ -116,12 +122,24 @@ export class ChatService {
 
 		await localDB.transaction(['chatSummaries', 'chatData'], 'rw', async () => {
 			await localDB.putRecord<ChatSummaryRecord>('chatSummaries', {
-				id, userId, characterId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: summaryEnc.ciphertext, encryptedDataIV: summaryEnc.iv
+				id,
+				userId,
+				characterId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: summaryEnc.ciphertext,
+				encryptedDataIV: summaryEnc.iv
 			});
 			await localDB.putRecord<ChatDataRecord>('chatData', {
-				id, userId, characterId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: dataEnc.ciphertext, encryptedDataIV: dataEnc.iv
+				id,
+				userId,
+				characterId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: dataEnc.ciphertext,
+				encryptedDataIV: dataEnc.iv
 			});
 		});
 
@@ -129,10 +147,7 @@ export class ChatService {
 	}
 
 	/** Update summary only */
-	static async updateSummary(
-		id: string,
-		changes: Partial<ChatSummaryFields>
-	): Promise<void> {
+	static async updateSummary(id: string, changes: Partial<ChatSummaryFields>): Promise<void> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
 		if (!record || record.isDeleted) return;
@@ -150,10 +165,7 @@ export class ChatService {
 	}
 
 	/** Update data only */
-	static async updateData(
-		id: string,
-		changes: Partial<ChatDataFields>
-	): Promise<void> {
+	static async updateData(id: string, changes: Partial<ChatDataFields>): Promise<void> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatDataRecord>('chatData', id);
 		if (!record || record.isDeleted) return;
@@ -172,14 +184,16 @@ export class ChatService {
 
 	/** Cascade soft-delete: owned lorebooks, scripts, messages, then chat itself */
 	static async delete(id: string): Promise<void> {
-		await localDB.transaction([
-			'lorebooks', 'scripts', 'messages', 'chatSummaries', 'chatData'
-		], 'rw', async () => {
-			await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-			await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-			await localDB.softDeleteByIndex('messages', 'chatId', id);
-			await localDB.softDeleteRecord('chatSummaries', id);
-			await localDB.softDeleteRecord('chatData', id);
-		});
+		await localDB.transaction(
+			['lorebooks', 'scripts', 'messages', 'chatSummaries', 'chatData'],
+			'rw',
+			async () => {
+				await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
+				await localDB.softDeleteByIndex('scripts', 'ownerId', id);
+				await localDB.softDeleteByIndex('messages', 'chatId', id);
+				await localDB.softDeleteRecord('chatSummaries', id);
+				await localDB.softDeleteRecord('chatData', id);
+			}
+		);
 	}
 }

@@ -35,11 +35,16 @@ export class LorebookService {
 		const results: Lorebook[] = [];
 		for (const record of records) {
 			const fields: LorebookFields = JSON.parse(
-				await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+				await decryptText(masterKey, {
+					ciphertext: record.encryptedData,
+					iv: record.encryptedDataIV
+				})
 			);
 			results.push({
-				id: record.id, ...fields,
-				createdAt: record.createdAt, updatedAt: record.updatedAt
+				id: record.id,
+				...fields,
+				createdAt: record.createdAt,
+				updatedAt: record.updatedAt
 			});
 		}
 		return results;
@@ -66,27 +71,27 @@ export class LorebookService {
 		return results;
 	}
 
-	static async create(
-		ownerId: string,
-		fields: LorebookFields
-	): Promise<Lorebook> {
+	static async create(ownerId: string, fields: LorebookFields): Promise<Lorebook> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
 		const enc = await encryptText(masterKey, JSON.stringify(fields));
 
 		await localDB.putRecord<LorebookRecord>('lorebooks', {
-			id, userId, ownerId, createdAt: now, updatedAt: now, isDeleted: false,
-			encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+			id,
+			userId,
+			ownerId,
+			createdAt: now,
+			updatedAt: now,
+			isDeleted: false,
+			encryptedData: enc.ciphertext,
+			encryptedDataIV: enc.iv
 		});
 
 		return { id, ...fields, createdAt: now, updatedAt: now };
 	}
 
-	static async update(
-		id: string,
-		changes: Partial<LorebookFields>
-	): Promise<Lorebook | null> {
+	static async update(id: string, changes: Partial<LorebookFields>): Promise<Lorebook | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
 		if (!record || record.isDeleted) return null;

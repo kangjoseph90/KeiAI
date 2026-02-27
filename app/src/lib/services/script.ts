@@ -33,11 +33,16 @@ export class ScriptService {
 		const results: Script[] = [];
 		for (const record of records) {
 			const fields: ScriptFields = JSON.parse(
-				await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+				await decryptText(masterKey, {
+					ciphertext: record.encryptedData,
+					iv: record.encryptedDataIV
+				})
 			);
 			results.push({
-				id: record.id, ...fields,
-				createdAt: record.createdAt, updatedAt: record.updatedAt
+				id: record.id,
+				...fields,
+				createdAt: record.createdAt,
+				updatedAt: record.updatedAt
 			});
 		}
 		return results;
@@ -63,27 +68,27 @@ export class ScriptService {
 		return results;
 	}
 
-	static async create(
-		ownerId: string,
-		fields: ScriptFields
-	): Promise<Script> {
+	static async create(ownerId: string, fields: ScriptFields): Promise<Script> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
 		const enc = await encryptText(masterKey, JSON.stringify(fields));
 
 		await localDB.putRecord<ScriptRecord>('scripts', {
-			id, userId, ownerId, createdAt: now, updatedAt: now, isDeleted: false,
-			encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+			id,
+			userId,
+			ownerId,
+			createdAt: now,
+			updatedAt: now,
+			isDeleted: false,
+			encryptedData: enc.ciphertext,
+			encryptedDataIV: enc.iv
 		});
 
 		return { id, ...fields, createdAt: now, updatedAt: now };
 	}
 
-	static async update(
-		id: string,
-		changes: Partial<ScriptFields>
-	): Promise<Script | null> {
+	static async update(id: string, changes: Partial<ScriptFields>): Promise<Script | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ScriptRecord>('scripts', id);
 		if (!record || record.isDeleted) return null;
