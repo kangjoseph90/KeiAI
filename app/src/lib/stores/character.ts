@@ -3,7 +3,7 @@ import { CharacterService, type Character, type CharacterDetail, type CharacterS
 import { ChatService } from '../services/chat.js';
 import { LorebookService, ScriptService, type LorebookFields, type ScriptFields } from '../services';
 import type { OrderedRef } from '../db/index.js';
-import { clearActiveChat, sortChatsByRefs } from './chat.js';
+import { clearActiveChat, sortChatsByRefs, selectChat } from './chat.js';
 import { updateSettings } from './settings.js';
 import { generateSortOrder, sortByRefs } from './ordering.js';
 import {
@@ -64,6 +64,10 @@ export async function selectCharacter(characterId: string) {
 	]);
 	characterLorebooks.set(sortByRefs(lorebooks, detail.data.lorebookRefs ?? []));
 	characterScripts.set(sortByRefs(scripts, detail.data.scriptRefs ?? []));
+
+	if (detail.data.lastActiveChatId && chatList.some(c => c.id === detail.data.lastActiveChatId)) {
+		await selectChat(detail.data.lastActiveChatId, characterId);
+	}
 }
 
 export function clearActiveCharacter() {

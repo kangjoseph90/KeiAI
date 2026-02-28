@@ -36,6 +36,17 @@ export async function selectChat(chatId: string, characterId: string) {
 
 	const lorebooks = await LorebookService.listByOwner(chatId);
 	chatLorebooks.set(sortByRefs(lorebooks, detail.data.lorebookRefs ?? []));
+
+	// Save last active chat to character
+	const result = await CharacterService.updateData(characterId, { lastActiveChatId: chatId });
+	if (!result) return;
+	activeCharacter.update((c) => (
+		c ? { 
+			...c, 
+			data: { ...c.data, lastActiveChatId: chatId }, 
+			updatedAt: result.updatedAt 
+		} : c
+	));
 }
 
 export function clearActiveChat() {

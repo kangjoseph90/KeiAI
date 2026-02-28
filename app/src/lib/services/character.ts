@@ -17,6 +17,7 @@ export interface CharacterSummaryFields {
 }
 
 export interface CharacterDataRefs {
+	lastActiveChatId?: string;
 	chatRefs?: OrderedRef[];
 	moduleRefs?: OrderedRef[];
 	lorebookRefs?: OrderedRef[];
