@@ -235,7 +235,7 @@ export class PromptPresetService {
 		const { masterKey } = getActiveSession();
 		let updatedSummary: PromptPresetSummaryFields | undefined;
 		let updatedData: PromptPresetDataFields | undefined;
-		let finalUpdatedAt = Date.now();
+		const finalUpdatedAt = Date.now();
 
 		await localDB.transaction(['promptPresetSummaries', 'promptPresetData'], 'rw', async () => {
 			if (summaryChanges) {

@@ -2,7 +2,6 @@ import { get } from 'svelte/store';
 import {
 	PromptPresetService,
 	type PromptPreset,
-	type PromptPresetDetail,
 	type PromptPresetSummaryFields,
 	type PromptPresetDataFields
 } from '../services/promptPreset.js';
@@ -33,6 +32,7 @@ export async function createPreset(
 
 	const detail = await PromptPresetService.create(fields, data);
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const { data: _data, ...summary } = detail;
 	promptPresets.update((list) => [...list, summary as PromptPreset]);
 	const existing = settings.presetRefs || [];

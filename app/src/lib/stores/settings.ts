@@ -33,7 +33,7 @@ export async function createGlobalFolder(
 	const newFolder = {
 		id: crypto.randomUUID(),
 		name,
-		sortOrder: generateSortOrder(typeFolders as any),
+		sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
 		parentId
 	};
 
@@ -124,5 +124,5 @@ export async function moveGlobalItem(
 		};
 	});
 
-	await updateSettings({ [refKey]: updatedRefs } as any);
+	await updateSettings({ [refKey]: updatedRefs } as Partial<AppSettings>);
 }

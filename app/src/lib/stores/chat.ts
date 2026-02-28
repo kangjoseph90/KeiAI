@@ -2,7 +2,6 @@ import { get } from 'svelte/store';
 import {
 	ChatService,
 	type Chat,
-	type ChatDetail,
 	type ChatSummaryFields,
 	type ChatDataFields,
 	type ChatDataContent
@@ -308,7 +307,7 @@ export async function createChatFolder(chatId: string, name: string, parentId?: 
 	const newFolder = {
 		id: crypto.randomUUID(),
 		name,
-		sortOrder: generateSortOrder(lorebookFolders as any),
+		sortOrder: generateSortOrder(lorebookFolders as OrderedRef[]),
 		parentId
 	};
 

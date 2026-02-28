@@ -150,8 +150,8 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 	async getRecordsBackward<T extends BaseRecord>(
 		tableName: TableName,
 		indexName: string,
-		lowerBound: any[], // e.g. [chatId, 0]
-		upperBound: any[], // e.g. [chatId, cursorTime]
+		lowerBound: unknown[], // e.g. [chatId, 0]
+		upperBound: unknown[], // e.g. [chatId, cursorTime]
 		limit: number = 50
 	): Promise<T[]> {
 		return (await this.getTable<T>(tableName)
@@ -166,8 +166,8 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 	async getRecordsForward<T extends BaseRecord>(
 		tableName: TableName,
 		indexName: string,
-		lowerBound: any[],
-		upperBound: any[],
+		lowerBound: unknown[],
+		upperBound: unknown[],
 		limit: number = 50
 	): Promise<T[]> {
 		return (await this.getTable<T>(tableName)
@@ -195,6 +195,7 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 		mode: 'r' | 'rw',
 		callback: () => Promise<R>
 	): Promise<R> {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		return await this.db.transaction(mode as unknown as any, tables, callback);
 	}
 

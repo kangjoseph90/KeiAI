@@ -1,8 +1,6 @@
 import { get } from 'svelte/store';
 import {
 	CharacterService,
-	type Character,
-	type CharacterDetail,
 	type CharacterSummaryFields,
 	type CharacterDataFields,
 	type CharacterDataContent
@@ -288,7 +286,7 @@ export async function createCharacterFolder(
 	const newFolder = {
 		id: crypto.randomUUID(),
 		name,
-		sortOrder: generateSortOrder(typeFolders as any),
+		sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
 		parentId
 	};
 

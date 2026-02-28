@@ -1,10 +1,5 @@
 import { get } from 'svelte/store';
-import {
-	ModuleService,
-	type Module,
-	type ModuleFields,
-	type ModuleContent
-} from '../services/module.js';
+import { ModuleService, type ModuleFields, type ModuleContent } from '../services/module.js';
 import { LorebookService, type LorebookFields } from '../services/lorebook.js';
 import { ScriptService, type ScriptFields } from '../services/script.js';
 import type { OrderedRef, FolderDef } from '../db/index.js';
@@ -196,7 +191,7 @@ export async function createModuleFolder(
 	const newFolder = {
 		id: crypto.randomUUID(),
 		name,
-		sortOrder: generateSortOrder(typeFolders as any),
+		sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
 		parentId
 	};
 

@@ -198,7 +198,7 @@ export class CharacterService {
 		const { masterKey } = getActiveSession();
 		let updatedSummary: CharacterSummaryFields | undefined;
 		let updatedData: CharacterDataFields | undefined;
-		let finalUpdatedAt = Date.now();
+		const finalUpdatedAt = Date.now();
 
 		await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
 			if (summaryChanges) {

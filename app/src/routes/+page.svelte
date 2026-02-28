@@ -33,8 +33,8 @@
 			await initSession();
 			await loadGlobalState();
 			ready = true;
-		} catch (err: any) {
-			errorMsg = err.message;
+		} catch (err) {
+			errorMsg = err instanceof Error ? err.message : String(err);
 		}
 	});
 
@@ -132,7 +132,7 @@
 			</div>
 
 			<div style="display: flex; flex-direction: column; gap: 10px;">
-				{#each $characters as char}
+				{#each $characters as char (char.id)}
 					<div
 						style="padding: 15px; background: #f4f4f4; border-radius: 8px; cursor: pointer; border: 1px solid transparent;"
 						on:click={() => handleSelectCharacter(char.id)}
@@ -162,7 +162,7 @@
 			</div>
 
 			<div style="display: flex; flex-direction: column; gap: 10px;">
-				{#each $chats as chat}
+				{#each $chats as chat (chat.id)}
 					<div
 						style="padding: 15px; background: #eef7ff; border-radius: 8px; cursor: pointer;"
 						on:click={() => handleSelectChat(chat.id)}
@@ -189,7 +189,7 @@
 				<div
 					style="flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px;"
 				>
-					{#each $messages as msg}
+					{#each $messages as msg (msg.id)}
 						<div
 							style="align-self: {msg.role === 'user' ? 'flex-end' : 'flex-start'};
 									background: {msg.role === 'user' ? '#007BFF' : '#E9ECEF'};

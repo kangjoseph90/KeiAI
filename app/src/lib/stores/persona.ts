@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import { PersonaService, type Persona, type PersonaFields } from '../services/persona.js';
+import { PersonaService, type PersonaFields } from '../services/persona.js';
 import { updateSettings } from './settings.js';
 import { generateSortOrder, sortByRefs } from './ordering.js';
 import { personas, appSettings } from './state.js';

@@ -218,7 +218,7 @@ export class ChatService {
 		const { masterKey } = getActiveSession();
 		let updatedSummary: (ChatSummaryFields & { characterId: string }) | undefined;
 		let updatedData: ChatDataFields | undefined;
-		let finalUpdatedAt = Date.now();
+		const finalUpdatedAt = Date.now();
 
 		await localDB.transaction(['chatSummaries', 'chatData'], 'rw', async () => {
 			if (summaryChanges) {
