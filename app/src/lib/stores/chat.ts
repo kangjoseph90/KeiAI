@@ -140,6 +140,32 @@ export async function deleteChat(chatId: string) {
 
 // ─── Chat-owned Message CRUD ─────────────────────────────────────
 
+export async function loadOlderMessages(limit = 50) {
+	const chat = get(activeChat);
+	const msgs = get(messages);
+	if (!chat || msgs.length === 0) return;
+
+	const oldestCursor = msgs[0].sortOrder;
+	const olderMsgs = await MessageService.getMessagesBefore(chat.id, oldestCursor, limit);
+	
+	if (olderMsgs.length > 0) {
+		messages.update(list => [...olderMsgs, ...list]);
+	}
+}
+
+export async function loadNewerMessages(limit = 50) {
+	const chat = get(activeChat);
+	const msgs = get(messages);
+	if (!chat || msgs.length === 0) return;
+
+	const newestCursor = msgs[msgs.length - 1].sortOrder;
+	const newerMsgs = await MessageService.getMessagesAfter(chat.id, newestCursor, limit);
+
+	if (newerMsgs.length > 0) {
+		messages.update(list => [...list, ...newerMsgs]);
+	}
+}
+
 export async function sendMessage(role: 'user' | 'char' | 'system', content: string) {
 	const chat = get(activeChat);
 	if (!chat) return;

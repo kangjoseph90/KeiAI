@@ -60,6 +60,39 @@ export class MessageService {
 		}));
 	}
 
+	static async getMessagesAfter(
+		chatId: string,
+		cursorSortOrder: string = '',
+		limit = 50
+	): Promise<Message[]> {
+		const { masterKey } = getActiveSession();
+
+		const records = await localDB.getRecordsForward<MessageRecord>(
+			'messages',
+			'[chatId+sortOrder]',
+			[chatId, cursorSortOrder],
+			[chatId, '\uffff'],
+			limit
+		);
+
+		return Promise.all(records.map(async (record) => {
+			const fields: MessageFields = JSON.parse(
+				await decryptText(masterKey, {
+					ciphertext: record.encryptedData,
+					iv: record.encryptedDataIV
+				})
+			);
+			return {
+				id: record.id,
+				chatId: record.chatId,
+				sortOrder: record.sortOrder,
+				...fields,
+				createdAt: record.createdAt,
+				updatedAt: record.updatedAt
+			};
+		}));
+	}
+
 	/**
 	 * Yields messages backward from cursorTime
 	 * Used by prompt builder for efficient token-budget limited generation
@@ -78,6 +111,47 @@ export class MessageService {
 				'[chatId+sortOrder]',
 				[chatId, ''], // lower bound
 				[chatId, currentCursor], // upper bound (exclusive)
+				batchSize
+			);
+
+			if (records.length === 0) break;
+
+			for (const record of records) {
+				const fields: MessageFields = JSON.parse(
+					await decryptText(masterKey, {
+						ciphertext: record.encryptedData,
+						iv: record.encryptedDataIV
+					})
+				);
+				
+				yield {
+					id: record.id,
+					chatId: record.chatId,
+					sortOrder: record.sortOrder,
+					...fields,
+					createdAt: record.createdAt,
+					updatedAt: record.updatedAt
+				};
+				
+				currentCursor = record.sortOrder;
+			}
+		}
+	}
+
+	static async *generateMessagesForward(
+		chatId: string,
+		cursorSortOrder: string = '',
+		batchSize = 20
+	): AsyncGenerator<Message, void, unknown> {
+		const { masterKey } = getActiveSession();
+		let currentCursor = cursorSortOrder;
+
+		while (true) {
+			const records = await localDB.getRecordsForward<MessageRecord>(
+				'messages',
+				'[chatId+sortOrder]',
+				[chatId, currentCursor], // lower bound
+				[chatId, '\uffff'], // upper bound
 				batchSize
 			);
 

@@ -174,6 +174,13 @@ export interface IDatabaseAdapter {
 		upperBound: any[],
 		limit?: number
 	): Promise<T[]>;
+	getRecordsForward<T extends BaseRecord>(
+		tableName: TableName,
+		indexName: string,
+		lowerBound: any[],
+		upperBound: any[],
+		limit?: number
+	): Promise<T[]>;
 	getUnsyncedChanges<T extends BaseRecord>(
 		tableName: TableName,
 		userId: string,

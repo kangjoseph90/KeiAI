@@ -163,6 +163,21 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 			.toArray()) as T[];
 	}
 
+	async getRecordsForward<T extends BaseRecord>(
+		tableName: TableName,
+		indexName: string,
+		lowerBound: any[],
+		upperBound: any[],
+		limit: number = 50
+	): Promise<T[]> {
+		return (await this.getTable<T>(tableName)
+			.where(indexName)
+			.between(lowerBound, upperBound, false, false) // Exclusive bounds
+			.filter((record: T) => !record.isDeleted)
+			.limit(limit)
+			.toArray()) as T[];
+	}
+
 	async getUnsyncedChanges<T extends BaseRecord>(
 		tableName: TableName,
 		userId: string,
