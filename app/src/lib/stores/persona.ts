@@ -1,11 +1,17 @@
 import { get } from 'svelte/store';
 import { PersonaService, type Persona, type PersonaFields } from '../services/persona.js';
 import { updateSettings } from './settings.js';
-import { generateSortOrder } from './ordering.js';
+import { generateSortOrder, sortByRefs } from './ordering.js';
 import { personas, appSettings } from './state.js';
 
 export async function loadPersonas() {
-	personas.set(await PersonaService.list());
+	const settings = get(appSettings);
+	const list = await PersonaService.list();
+	if (settings?.personaRefs) {
+		personas.set(sortByRefs(list, settings.personaRefs));
+	} else {
+		personas.set(list);
+	}
 }
 
 export async function createPersona(fields: PersonaFields) {

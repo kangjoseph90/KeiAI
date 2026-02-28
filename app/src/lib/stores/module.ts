@@ -4,19 +4,28 @@ import { LorebookService, type LorebookFields } from '../services/lorebook.js';
 import { ScriptService, type ScriptFields } from '../services/script.js';
 import type { OrderedRef } from '../db/index.js';
 import { updateSettings } from './settings.js';
-import { generateSortOrder } from './ordering.js';
+import { generateSortOrder, sortByRefs } from './ordering.js';
 import { modules, appSettings, moduleResources } from './state.js';
 
 export async function loadModules() {
+	const settings = get(appSettings);
 	const mods = await ModuleService.list();
-	modules.set(mods);
+
+	if (settings?.moduleRefs) {
+		modules.set(sortByRefs(mods, settings.moduleRefs));
+	} else {
+		modules.set(mods);
+	}
 
 	const entries = await Promise.all(mods.map(async (mod) => {
 		const [lorebooks, scripts] = await Promise.all([
 			LorebookService.listByOwner(mod.id),
 			ScriptService.listByOwner(mod.id)
 		]);
-		return [mod.id, { lorebooks, scripts }] as const;
+		return [mod.id, { 
+			lorebooks: sortByRefs(lorebooks, mod.lorebookRefs ?? []), 
+			scripts: sortByRefs(scripts, mod.scriptRefs ?? []) 
+		}] as const;
 	}));
 
 	moduleResources.set(new Map(entries));

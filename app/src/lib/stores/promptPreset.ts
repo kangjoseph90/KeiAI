@@ -1,11 +1,17 @@
 import { get } from 'svelte/store';
 import { PromptPresetService, type PromptPreset, type PromptPresetDetail, type PromptPresetSummaryFields, type PromptPresetDataFields } from '../services/promptPreset.js';
 import { updateSettings } from './settings.js';
-import { generateSortOrder } from './ordering.js';
+import { generateSortOrder, sortByRefs } from './ordering.js';
 import { promptPresets, activePreset, appSettings } from './state.js';
 
 export async function loadPresets() {
-	promptPresets.set(await PromptPresetService.list());
+	const settings = get(appSettings);
+	const list = await PromptPresetService.list();
+	if (settings?.presetRefs) {
+		promptPresets.set(sortByRefs(list, settings.presetRefs));
+	} else {
+		promptPresets.set(list);
+	}
 }
 
 export async function selectPreset(id: string) {

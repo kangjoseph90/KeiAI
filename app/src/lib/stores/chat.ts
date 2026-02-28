@@ -4,7 +4,7 @@ import { MessageService } from '../services/message.js';
 import { LorebookService, type LorebookFields } from '../services/lorebook.js';
 import { CharacterService } from '../services/character.js';
 import type { OrderedRef } from '../db/index.js';
-import { generateSortOrder } from './ordering.js';
+import { generateSortOrder, sortByRefs } from './ordering.js';
 import {
 	chats, activeChat, activeCharacter, messages,
 	chatLorebooks,
@@ -31,10 +31,11 @@ export async function selectChat(chatId: string, characterId: string) {
 	activeChat.set(detail);
 	if (!detail) return;
 
-	messages.set(await MessageService.listByChat(chatId));
+	// Load the 50 most recent messages initially
+	messages.set(await MessageService.getMessagesBefore(chatId, '\uffff', 50));
 
 	const lorebooks = await LorebookService.listByOwner(chatId);
-	chatLorebooks.set(lorebooks)
+	chatLorebooks.set(sortByRefs(lorebooks, detail.data.lorebookRefs ?? []));
 }
 
 export function clearActiveChat() {

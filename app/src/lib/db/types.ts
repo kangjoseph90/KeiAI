@@ -99,8 +99,13 @@ export interface ChatDataRecord extends EncryptedRecord {
 
 // ─── Messages ─────
 
+// Exception to the 1:N pattern: Messages manage their own sortOrder.
+// Since chats can easily exceed 10,000+ messages, storing an OrderedRef[] in the parent's
+// encrypted blob would require O(n) AES-GCM decryption/encryption on every single message sent.
+// Using a database index [chatId+sortOrder] ensures O(1) writes and faster pagination.
 export interface MessageRecord extends EncryptedRecord {
 	chatId: string;
+	sortOrder: string;
 }
 
 // ─── Settings ────────────────────────────────────────────────────────
@@ -161,6 +166,13 @@ export interface IDatabaseAdapter {
 		indexValue: string,
 		limit?: number,
 		offset?: number
+	): Promise<T[]>;
+	getRecordsBackward<T extends BaseRecord>(
+		tableName: TableName,
+		indexName: string,
+		lowerBound: any[],
+		upperBound: any[],
+		limit?: number
 	): Promise<T[]>;
 	getUnsyncedChanges<T extends BaseRecord>(
 		tableName: TableName,

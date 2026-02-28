@@ -5,7 +5,7 @@ import { LorebookService, ScriptService, type LorebookFields, type ScriptFields 
 import type { OrderedRef } from '../db/index.js';
 import { clearActiveChat, sortChatsByRefs } from './chat.js';
 import { updateSettings } from './settings.js';
-import { generateSortOrder } from './ordering.js';
+import { generateSortOrder, sortByRefs } from './ordering.js';
 import {
 	characters, activeCharacter, characterLorebooks, characterScripts, characterModules,
 	chats, modules, appSettings
@@ -35,7 +35,13 @@ export const DEFAULT_CHARACTER_DATA: CharacterDataFields = {
 }
 
 export async function loadCharacters() {
-	characters.set(await CharacterService.list());
+	const settings = get(appSettings);
+	const list = await CharacterService.list();
+	if (settings?.characterRefs) {
+		characters.set(sortByRefs(list, settings.characterRefs));
+	} else {
+		characters.set(list);
+	}
 }
 
 export async function selectCharacter(characterId: string) {
@@ -56,8 +62,8 @@ export async function selectCharacter(characterId: string) {
 		LorebookService.listByOwner(characterId),
 		ScriptService.listByOwner(characterId)
 	]);
-	characterLorebooks.set(lorebooks)
-	characterScripts.set(scripts)
+	characterLorebooks.set(sortByRefs(lorebooks, detail.data.lorebookRefs ?? []));
+	characterScripts.set(sortByRefs(scripts, detail.data.scriptRefs ?? []));
 }
 
 export function clearActiveCharacter() {

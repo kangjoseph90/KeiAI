@@ -1,5 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type MessageRecord } from '../db/index.js';
+import { generateKeyBetween } from 'fractional-indexing';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -11,6 +12,7 @@ export interface MessageFields {
 export interface Message extends MessageFields {
 	id: string;
 	chatId: string;
+	sortOrder: string;
 	createdAt: number;
 	updatedAt: number;
 }
@@ -18,22 +20,27 @@ export interface Message extends MessageFields {
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class MessageService {
-	/** List messages for a chat (oldest first) */
-	static async listByChat(
-		chatId: string, 
-		limit = 200, 
-		offset = 0
+	/** 
+	 * Cursor-based pagination for UI (loads older messages) 
+	 * Returns messages sorted ascending (oldest first) within the batch
+	 */
+	static async getMessagesBefore(
+		chatId: string,
+		cursorSortOrder: string = '\uffff',
+		limit = 50
 	): Promise<Message[]> {
 		const { masterKey } = getActiveSession();
-		const records = await localDB.getByIndex<MessageRecord>(
+		const records = await localDB.getRecordsBackward<MessageRecord>(
 			'messages',
-			'chatId',
-			chatId,
-			limit,
-			offset
+			'[chatId+sortOrder]',
+			[chatId, ''],
+			[chatId, cursorSortOrder],
+			limit
 		);
 
-		records.sort((a, b) => a.createdAt - b.createdAt);
+		// The results are in reverse order (newest to oldest), so we need to reverse
+		// them again to get an oldest-to-newest ordering for the UI to prepend.
+		records.reverse();
 
 		return Promise.all(records.map(async (record) => {
 			const fields: MessageFields = JSON.parse(
@@ -45,11 +52,57 @@ export class MessageService {
 			return {
 				id: record.id,
 				chatId: record.chatId,
+				sortOrder: record.sortOrder,
 				...fields,
 				createdAt: record.createdAt,
 				updatedAt: record.updatedAt
 			};
 		}));
+	}
+
+	/**
+	 * Yields messages backward from cursorTime
+	 * Used by prompt builder for efficient token-budget limited generation
+	 */
+	static async *generateMessagesBackward(
+		chatId: string,
+		cursorSortOrder: string = '\uffff',
+		batchSize = 20
+	): AsyncGenerator<Message, void, unknown> {
+		const { masterKey } = getActiveSession();
+		let currentCursor = cursorSortOrder;
+
+		while (true) {
+			const records = await localDB.getRecordsBackward<MessageRecord>(
+				'messages',
+				'[chatId+sortOrder]',
+				[chatId, ''], // lower bound
+				[chatId, currentCursor], // upper bound (exclusive)
+				batchSize
+			);
+
+			if (records.length === 0) break;
+
+			for (const record of records) {
+				const fields: MessageFields = JSON.parse(
+					await decryptText(masterKey, {
+						ciphertext: record.encryptedData,
+						iv: record.encryptedDataIV
+					})
+				);
+				
+				yield {
+					id: record.id,
+					chatId: record.chatId,
+					sortOrder: record.sortOrder,
+					...fields,
+					createdAt: record.createdAt,
+					updatedAt: record.updatedAt
+				};
+				
+				currentCursor = record.sortOrder;
+			}
+		}
 	}
 
 	static async get(id: string): Promise<Message | null> {
@@ -66,6 +119,7 @@ export class MessageService {
 		return {
 			id: record.id,
 			chatId: record.chatId,
+			sortOrder: record.sortOrder,
 			...fields,
 			createdAt: record.createdAt,
 			updatedAt: record.updatedAt
@@ -75,11 +129,28 @@ export class MessageService {
 	/** Create a message */
 	static async create(
 		chatId: string, 
-		fields: MessageFields
+		fields: MessageFields,
+		providedSortOrder?: string
 	): Promise<Message> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
+
+		let sortOrder = providedSortOrder;
+		if (!sortOrder) {
+			const lastRecords = await localDB.getRecordsBackward<MessageRecord>(
+				'messages',
+				'[chatId+sortOrder]',
+				[chatId, ''],
+				[chatId, '\uffff'],
+				1
+			);
+			if (lastRecords.length > 0) {
+				sortOrder = generateKeyBetween(lastRecords[0].sortOrder, null);
+			} else {
+				sortOrder = String(now).padStart(16, '0');
+			}
+		}
 
 		const enc = await encryptText(masterKey, JSON.stringify(fields));
 
@@ -87,6 +158,7 @@ export class MessageService {
 			id,
 			userId,
 			chatId,
+			sortOrder,
 			createdAt: now,
 			updatedAt: now,
 			isDeleted: false,
@@ -94,7 +166,14 @@ export class MessageService {
 			encryptedDataIV: enc.iv
 		});
 
-		return { id, chatId, ...fields, createdAt: now, updatedAt: now };
+		return { 
+			id, 
+			chatId, 
+			sortOrder, 
+			...fields, 
+			createdAt: now, 
+			updatedAt: now 
+		};
 	}
 
 	/** Update a message */
@@ -120,6 +199,7 @@ export class MessageService {
 		return {
 			id: record.id,
 			chatId: record.chatId,
+			sortOrder: record.sortOrder,
 			...updated,
 			createdAt: record.createdAt,
 			updatedAt: record.updatedAt

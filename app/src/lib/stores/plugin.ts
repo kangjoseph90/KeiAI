@@ -1,11 +1,17 @@
 import { get } from 'svelte/store';
 import { PluginService, type Plugin, type PluginFields } from '../services/plugin.js';
 import { updateSettings } from './settings.js';
-import { generateSortOrder } from './ordering.js';
+import { generateSortOrder, sortByRefs } from './ordering.js';
 import { plugins, appSettings } from './state.js';
 
 export async function loadPlugins() {
-	plugins.set(await PluginService.list());
+	const settings = get(appSettings);
+	const list = await PluginService.list();
+	if (settings?.pluginRefs) {
+		plugins.set(sortByRefs(list, settings.pluginRefs));
+	} else {
+		plugins.set(list);
+	}
 }
 
 export async function createPlugin(fields: PluginFields) {

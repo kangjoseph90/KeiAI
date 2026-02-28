@@ -53,7 +53,7 @@ class DexieStore extends Dexie {
 			characterData: 'id, userId, updatedAt, isDeleted',
 			chatSummaries: 'id, userId, characterId, updatedAt, isDeleted',
 			chatData: 'id, userId, characterId, updatedAt, isDeleted',
-			messages: 'id, userId, chatId, updatedAt, isDeleted',
+			messages: 'id, userId, chatId, [chatId+sortOrder], updatedAt, isDeleted',
 			settings: 'id, userId, updatedAt, isDeleted',
 			personas: 'id, userId, updatedAt, isDeleted',
 			lorebooks: 'id, userId, ownerId, updatedAt, isDeleted',
@@ -144,6 +144,22 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 			.filter((record: T) => !record.isDeleted)
 			.offset(offset)
 			.limit(limit)
+			.toArray()) as T[];
+	}
+
+	async getRecordsBackward<T extends BaseRecord>(
+		tableName: TableName,
+		indexName: string,
+		lowerBound: any[], // e.g. [chatId, 0]
+		upperBound: any[], // e.g. [chatId, cursorTime]
+		limit: number = 50
+	): Promise<T[]> {
+		return (await this.getTable<T>(tableName)
+			.where(indexName)
+			.between(lowerBound, upperBound, false, false) // Exclusive bounds
+			.reverse()
+			.filter((record: T) => !record.isDeleted)
+			.limit(limit) // Read in batches for generator
 			.toArray()) as T[];
 	}
 
