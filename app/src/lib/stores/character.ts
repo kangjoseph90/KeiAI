@@ -210,3 +210,129 @@ export async function deleteCharacterScript(characterId: string, scriptId: strin
 		characterScripts.update((list) => list.filter((s) => s.id !== scriptId));
 	}
 }
+
+// ─── Character-owned Folder & Item Management ──────────────────────
+
+export type CharacterFolderType = 'chats' | 'lorebooks' | 'scripts' | 'modules';
+
+export async function createCharacterFolder(characterId: string, folderType: CharacterFolderType, name: string, parentId?: string) {
+	const char = get(activeCharacter);
+	if (!char || char.id !== characterId) return;
+
+	const folders = char.data.folders ?? {};
+	const typeFolders = folders[folderType] ?? [];
+	
+	const newFolder = {
+		id: crypto.randomUUID(),
+		name,
+		sortOrder: generateSortOrder(typeFolders as any),
+		parentId
+	};
+
+	const updatedFolders = {
+		...folders,
+		[folderType]: [...typeFolders, newFolder]
+	};
+
+	const result = await CharacterService.updateData(characterId, { folders: updatedFolders });
+	if (result) {
+		activeCharacter.update((c) => (
+			c ? {
+				...c,
+				data: { ...c.data, folders: updatedFolders },
+				updatedAt: result.updatedAt
+			} : c
+		));
+	}
+	return newFolder;
+}
+
+export async function updateCharacterFolder(characterId: string, folderType: CharacterFolderType, folderId: string, changes: Partial<{name: string, color: string, parentId: string, sortOrder: string}>) {
+	const char = get(activeCharacter);
+	if (!char || char.id !== characterId) return;
+
+	const folders = char.data.folders ?? {};
+	const typeFolders = folders[folderType] ?? [];
+	
+	const updatedTypeFolders = typeFolders.map(f => {
+		if (f.id !== folderId) return f;
+		return {
+			...f,
+			...changes
+		};
+	});
+	
+	const updatedFolders = {
+		...folders,
+		[folderType]: updatedTypeFolders
+	};
+
+	const result = await CharacterService.updateData(characterId, { folders: updatedFolders });
+	if (!result) return;
+	activeCharacter.update((c) => (
+		c ? {
+			...c,
+			data: { ...c.data, folders: updatedFolders },
+			updatedAt: result.updatedAt
+		} : c
+	));
+}
+
+export async function deleteCharacterFolder(characterId: string, folderType: CharacterFolderType, folderId: string) {
+	const char = get(activeCharacter);
+	if (!char || char.id !== characterId) return;
+
+	const folders = char.data.folders ?? {};
+	const typeFolders = folders[folderType] ?? [];
+	
+	const updatedTypeFolders = typeFolders.filter(f => f.id !== folderId);
+	
+	const updatedFolders = {
+		...folders,
+		[folderType]: updatedTypeFolders
+	};
+
+	const result = await CharacterService.updateData(characterId, { folders: updatedFolders });
+	if (!result) return;
+	activeCharacter.update((c) => (
+		c ? {
+			...c,
+			data: { ...c.data, folders: updatedFolders },
+			updatedAt: result.updatedAt
+		} : c
+	));
+}
+
+export async function moveCharacterItem(characterId: string, folderType: CharacterFolderType, itemId: string, newFolderId?: string, newSortOrder?: string) {
+	const char = get(activeCharacter);
+	if (!char || char.id !== characterId) return;
+
+	let refKey: keyof typeof char.data;
+	switch (folderType) {
+		case 'chats': refKey = 'chatRefs'; break;
+		case 'lorebooks': refKey = 'lorebookRefs'; break;
+		case 'scripts': refKey = 'scriptRefs'; break;
+		case 'modules': refKey = 'moduleRefs'; break;
+		default: return;
+	}
+
+	const refs = (char.data[refKey] as OrderedRef[]) ?? [];
+	const updatedRefs = refs.map(ref => {
+		if (ref.id !== itemId) return ref;
+		return {
+			...ref,
+			folderId: newFolderId,
+			sortOrder: newSortOrder ?? ref.sortOrder // Only update sortOrder if explicitly provided
+		};
+	});
+
+	const result = await CharacterService.updateData(characterId, { [refKey]: updatedRefs });
+	if (!result) return;
+	activeCharacter.update((c) => (
+		c ? {
+			...c,
+			data: { ...c.data, [refKey]: updatedRefs },
+			updatedAt: result.updatedAt
+		} : c
+	));
+}

@@ -230,3 +230,88 @@ export async function deleteChatLorebook(chatId: string, lorebookId: string) {
 		chatLorebooks.update((list) => list.filter((lb) => lb.id !== lorebookId));
 	}
 }
+
+// ─── Chat-owned Folder & Item Management ──────────────────────
+
+export async function createChatFolder(chatId: string, name: string, parentId?: string) {
+	const chat = get(activeChat);
+	if (!chat || chat.id !== chatId) return;
+
+	const folders = chat.data.folders ?? {};
+	const lorebookFolders = folders.lorebooks ?? [];
+	
+	const newFolder = {
+		id: crypto.randomUUID(),
+		name,
+		sortOrder: generateSortOrder(lorebookFolders as any),
+		parentId
+	};
+
+	const updatedFolders = {
+		...folders,
+		lorebooks: [...lorebookFolders, newFolder]
+	};
+
+	const result = await ChatService.updateData(chatId, { folders: updatedFolders });
+	if (result) {
+		activeChat.update((c) => (c ? { ...c, data: { ...c.data, folders: updatedFolders }, updatedAt: result.updatedAt } : c));
+	}
+	return newFolder;
+}
+
+export async function updateChatFolder(chatId: string, folderId: string, changes: Partial<{name: string, color: string, parentId: string, sortOrder: string}>) {
+	const chat = get(activeChat);
+	if (!chat || chat.id !== chatId) return;
+
+	const folders = chat.data.folders ?? {};
+	const lorebookFolders = folders.lorebooks ?? [];
+	
+	const updatedLorebookFolders = lorebookFolders.map(f => f.id === folderId ? { ...f, ...changes } : f);
+	
+	const updatedFolders = {
+		...folders,
+		lorebooks: updatedLorebookFolders
+	};
+
+	const result = await ChatService.updateData(chatId, { folders: updatedFolders });
+	if (!result) return;
+	activeChat.update((c) => (c ? { ...c, data: { ...c.data, folders: updatedFolders }, updatedAt: result.updatedAt } : c));
+}
+
+export async function deleteChatFolder(chatId: string, folderId: string) {
+	const chat = get(activeChat);
+	if (!chat || chat.id !== chatId) return;
+
+	const folders = chat.data.folders ?? {};
+	const lorebookFolders = folders.lorebooks ?? [];
+	
+	const updatedLorebookFolders = lorebookFolders.filter(f => f.id !== folderId);
+	
+	const updatedFolders = {
+		...folders,
+		lorebooks: updatedLorebookFolders
+	};
+
+	const result = await ChatService.updateData(chatId, { folders: updatedFolders });
+	if (!result) return;
+	activeChat.update((c) => (c ? { ...c, data: { ...c.data, folders: updatedFolders }, updatedAt: result.updatedAt } : c));
+}
+
+export async function moveChatLorebook(chatId: string, lorebookId: string, newFolderId?: string, newSortOrder?: string) {
+	const chat = get(activeChat);
+	if (!chat || chat.id !== chatId) return;
+
+	const refs = (chat.data.lorebookRefs as OrderedRef[]) ?? [];
+	const updatedRefs = refs.map(ref => {
+		if (ref.id !== lorebookId) return ref;
+		return {
+			...ref,
+			folderId: newFolderId,
+			sortOrder: newSortOrder ?? ref.sortOrder
+		};
+	});
+
+	const result = await ChatService.updateData(chatId, { lorebookRefs: updatedRefs });
+	if (!result) return;
+	activeChat.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs: updatedRefs }, updatedAt: result.updatedAt } : c));
+}

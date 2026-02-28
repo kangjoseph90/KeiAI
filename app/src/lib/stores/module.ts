@@ -2,7 +2,7 @@ import { get } from 'svelte/store';
 import { ModuleService, type Module, type ModuleFields, type ModuleContent } from '../services/module.js';
 import { LorebookService, type LorebookFields } from '../services/lorebook.js';
 import { ScriptService, type ScriptFields } from '../services/script.js';
-import type { OrderedRef } from '../db/index.js';
+import type { OrderedRef, FolderDef } from '../db/index.js';
 import { updateSettings } from './settings.js';
 import { generateSortOrder, sortByRefs } from './ordering.js';
 import { modules, appSettings, moduleResources } from './state.js';
@@ -150,4 +150,98 @@ export async function deleteModuleScript(moduleId: string, scriptId: string) {
 		if (entry) m.set(moduleId, { ...entry, scripts: entry.scripts.filter((s) => s.id !== scriptId) });
 		return m;
 	});
+}
+
+// ─── Module-owned Folder & Item Management ──────────────────────
+
+export type ModuleFolderType = 'lorebooks' | 'scripts';
+
+export async function createModuleFolder(moduleId: string, folderType: ModuleFolderType, name: string, parentId?: string) {
+	const mod = get(modules).find((m) => m.id === moduleId);
+	if (!mod) return;
+
+	const folders = mod.folders ?? {};
+	const typeFolders = folders[folderType] ?? [];
+	
+	const newFolder = {
+		id: crypto.randomUUID(),
+		name,
+		sortOrder: generateSortOrder(typeFolders as any),
+		parentId
+	};
+
+	const updatedFolders = {
+		...folders,
+		[folderType]: [...typeFolders, newFolder]
+	};
+
+	const result = await ModuleService.update(moduleId, { folders: updatedFolders });
+	if (result) {
+		modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders, updatedAt: result.updatedAt } : m)));
+	}
+	return newFolder;
+}
+
+export async function updateModuleFolder(moduleId: string, folderType: ModuleFolderType, folderId: string, changes: Partial<{name: string, color: string, parentId: string, sortOrder: string}>) {
+	const mod = get(modules).find((m) => m.id === moduleId);
+	if (!mod) return;
+
+	const folders = mod.folders ?? {};
+	const typeFolders = folders[folderType] ?? [];
+	
+	const updatedTypeFolders = typeFolders.map((f: FolderDef) => f.id === folderId ? { ...f, ...changes } : f);
+	
+	const updatedFolders = {
+		...folders,
+		[folderType]: updatedTypeFolders
+	};
+
+	const result = await ModuleService.update(moduleId, { folders: updatedFolders });
+	if (!result) return;
+	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders, updatedAt: result.updatedAt } : m)));
+}
+
+export async function deleteModuleFolder(moduleId: string, folderType: ModuleFolderType, folderId: string) {
+	const mod = get(modules).find((m) => m.id === moduleId);
+	if (!mod) return;
+
+	const folders = mod.folders ?? {};
+	const typeFolders = folders[folderType] ?? [];
+	
+	const updatedTypeFolders = typeFolders.filter((f: FolderDef) => f.id !== folderId);
+	
+	const updatedFolders = {
+		...folders,
+		[folderType]: updatedTypeFolders
+	};
+
+	const result = await ModuleService.update(moduleId, { folders: updatedFolders });
+	if (!result) return;
+	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders, updatedAt: result.updatedAt } : m)));
+}
+
+export async function moveModuleItem(moduleId: string, folderType: ModuleFolderType, itemId: string, newFolderId?: string, newSortOrder?: string) {
+	const mod = get(modules).find((m) => m.id === moduleId);
+	if (!mod) return;
+
+	let refKey: keyof typeof mod;
+	switch (folderType) {
+		case 'lorebooks': refKey = 'lorebookRefs'; break;
+		case 'scripts': refKey = 'scriptRefs'; break;
+		default: return;
+	}
+
+	const refs = (mod[refKey] as OrderedRef[]) ?? [];
+	const updatedRefs = refs.map(ref => {
+		if (ref.id !== itemId) return ref;
+		return {
+			...ref,
+			folderId: newFolderId,
+			sortOrder: newSortOrder ?? ref.sortOrder
+		};
+	});
+
+	const result = await ModuleService.update(moduleId, { [refKey]: updatedRefs });
+	if (!result) return;
+	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, [refKey]: updatedRefs, updatedAt: result.updatedAt } : m)));
 }
