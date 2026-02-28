@@ -19,7 +19,11 @@ export interface Message extends MessageFields {
 
 export class MessageService {
 	/** List messages for a chat (oldest first) */
-	static async listByChat(chatId: string, limit = 200, offset = 0): Promise<Message[]> {
+	static async listByChat(
+		chatId: string, 
+		limit = 200, 
+		offset = 0
+	): Promise<Message[]> {
 		const { masterKey } = getActiveSession();
 		const records = await localDB.getByIndex<MessageRecord>(
 			'messages',
@@ -31,27 +35,48 @@ export class MessageService {
 
 		records.sort((a, b) => a.createdAt - b.createdAt);
 
-		const results: Message[] = [];
-		for (const record of records) {
+		return Promise.all(records.map(async (record) => {
 			const fields: MessageFields = JSON.parse(
 				await decryptText(masterKey, {
 					ciphertext: record.encryptedData,
 					iv: record.encryptedDataIV
 				})
 			);
-			results.push({
+			return {
 				id: record.id,
 				chatId: record.chatId,
 				...fields,
 				createdAt: record.createdAt,
 				updatedAt: record.updatedAt
-			});
-		}
-		return results;
+			};
+		}));
+	}
+
+	static async get(id: string): Promise<Message | null> {
+		const { masterKey } = getActiveSession();
+		const record = await localDB.getRecord<MessageRecord>('messages', id);
+		if (!record || record.isDeleted) return null;
+
+		const fields: MessageFields = JSON.parse(
+			await decryptText(masterKey, {
+				ciphertext: record.encryptedData,
+				iv: record.encryptedDataIV
+			})
+		);
+		return {
+			id: record.id,
+			chatId: record.chatId,
+			...fields,
+			createdAt: record.createdAt,
+			updatedAt: record.updatedAt
+		};
 	}
 
 	/** Create a message */
-	static async create(chatId: string, fields: MessageFields): Promise<Message> {
+	static async create(
+		chatId: string, 
+		fields: MessageFields
+	): Promise<Message> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
@@ -73,7 +98,10 @@ export class MessageService {
 	}
 
 	/** Update a message */
-	static async update(id: string, changes: Partial<MessageFields>): Promise<Message | null> {
+	static async update(
+		id: string, 
+		changes: Partial<MessageFields>
+	): Promise<Message | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<MessageRecord>('messages', id);
 		if (!record || record.isDeleted) return null;

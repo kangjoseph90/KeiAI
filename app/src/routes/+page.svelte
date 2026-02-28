@@ -7,7 +7,7 @@
 		createCharacter,
 		selectCharacter,
 		activeCharacter,
-		activeChats,
+		chats,
 		clearActiveCharacter,
 		createChat,
 		selectChat,
@@ -42,9 +42,10 @@
 	async function handleCreateCharacter() {
 		if (!newCharName.trim()) return;
 		await createCharacter(
-			newCharName,
-			'An offline-first character',
-			'You are a highly capable AI running via E2EE datastore.'
+			{
+				name: newCharName,
+				shortDescription: 'An offline-first character',
+			}
 		);
 		newCharName = '';
 	}
@@ -62,7 +63,8 @@
 	}
 
 	async function handleSelectChat(chatId: string) {
-		await selectChat(chatId);
+		if (!$activeCharacter) return;
+		await selectChat(chatId, $activeCharacter.id);
 		view = 'chat';
 	}
 
@@ -162,7 +164,7 @@
 			</div>
 
 			<div style="display: flex; flex-direction: column; gap: 10px;">
-				{#each $activeChats as chat}
+				{#each $chats as chat}
 					<div
 						style="padding: 15px; background: #eef7ff; border-radius: 8px; cursor: pointer;"
 						on:click={() => handleSelectChat(chat.id)}

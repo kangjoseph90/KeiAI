@@ -16,8 +16,7 @@ import type {
 	ChatDataRecord,
 	MessageRecord,
 	SettingsRecord,
-	PersonaSummaryRecord,
-	PersonaDataRecord,
+	PersonaRecord,
 	LorebookRecord,
 	ScriptRecord,
 	ModuleRecord,
@@ -35,8 +34,7 @@ class DexieStore extends Dexie {
 	chatData!: Table<ChatDataRecord, string>;
 	messages!: Table<MessageRecord, string>;
 	settings!: Table<SettingsRecord, string>;
-	personaSummaries!: Table<PersonaSummaryRecord, string>;
-	personaData!: Table<PersonaDataRecord, string>;
+	personas!: Table<PersonaRecord, string>;
 	lorebooks!: Table<LorebookRecord, string>;
 	scripts!: Table<ScriptRecord, string>;
 	modules!: Table<ModuleRecord, string>;
@@ -57,8 +55,7 @@ class DexieStore extends Dexie {
 			chatData: 'id, userId, characterId, updatedAt, isDeleted',
 			messages: 'id, userId, chatId, updatedAt, isDeleted',
 			settings: 'id, userId, updatedAt, isDeleted',
-			personaSummaries: 'id, userId, updatedAt, isDeleted',
-			personaData: 'id, userId, updatedAt, isDeleted',
+			personas: 'id, userId, updatedAt, isDeleted',
 			lorebooks: 'id, userId, ownerId, updatedAt, isDeleted',
 			scripts: 'id, userId, ownerId, updatedAt, isDeleted',
 			modules: 'id, userId, updatedAt, isDeleted',

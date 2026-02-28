@@ -45,8 +45,7 @@ export type TableName =
 	| 'chatData'
 	| 'messages'
 	| 'settings'
-	| 'personaSummaries'
-	| 'personaData'
+	| 'personas'
 	| 'lorebooks'
 	| 'scripts'
 	| 'modules'
@@ -108,10 +107,9 @@ export interface MessageRecord extends EncryptedRecord {
 
 export type SettingsRecord = EncryptedRecord;
 
-// ─── Personas (Summary + Data) ───────────────────────────────────────
+// ─── Personas ────────────────────────────────────────────────────────
 
-export type PersonaSummaryRecord = EncryptedRecord;
-export type PersonaDataRecord = EncryptedRecord;
+export type PersonaRecord = EncryptedRecord;
 
 // ─── Single-table entities ───────────────────────────────────────────
 

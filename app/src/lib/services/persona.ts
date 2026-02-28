@@ -1,141 +1,94 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
-import {
-	localDB,
-	type PersonaSummaryRecord,
-	type PersonaDataRecord,
-	type ResourceRef,
-	type FolderDef,
-	type AssetEntry
-} from '../db/index.js';
+import { localDB, type PersonaRecord, type AssetEntry } from '../db/index.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
-export interface PersonaSummaryFields {
+export interface PersonaFields {
 	name: string;
 	avatarAssetId?: string;
-}
-
-export interface PersonaDataFields {
 	description: string;
-	moduleRefs?: ResourceRef[];
-	lorebookRefs?: ResourceRef[];
-	scriptRefs?: ResourceRef[];
-	refFolders?: {
-		modules?: FolderDef[];
-		lorebooks?: FolderDef[];
-		scripts?: FolderDef[];
-	};
 	assets?: AssetEntry[];
 }
 
-export interface Persona extends PersonaSummaryFields {
+export interface Persona extends PersonaFields {
 	id: string;
 	createdAt: number;
 	updatedAt: number;
 }
 
-export interface PersonaDetail extends Persona {
-	data: PersonaDataFields;
-}
-
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class PersonaService {
-	/** List all persona summaries */
+	/** List all personas */
 	static async list(): Promise<Persona[]> {
 		const { masterKey, userId } = getActiveSession();
-		const records = await localDB.getAll<PersonaSummaryRecord>('personaSummaries', userId);
+		const records = await localDB.getAll<PersonaRecord>('personas', userId);
 
-		const results: Persona[] = [];
-		for (const record of records) {
-			const fields: PersonaSummaryFields = JSON.parse(
+		return Promise.all(records.map(async (record) => {
+			const fields: PersonaFields = JSON.parse(
 				await decryptText(masterKey, {
 					ciphertext: record.encryptedData,
 					iv: record.encryptedDataIV
 				})
 			);
-			results.push({
+			return {
 				id: record.id,
 				...fields,
 				createdAt: record.createdAt,
 				updatedAt: record.updatedAt
-			});
-		}
-		return results;
+			};
+		}));
 	}
 
-	/** Get full persona data */
-	static async getDetail(id: string): Promise<PersonaDetail | null> {
+	static async get(id: string): Promise<Persona | null> {
 		const { masterKey } = getActiveSession();
+		const record = await localDB.getRecord<PersonaRecord>('personas', id);
+		if (!record || record.isDeleted) return null;
 
-		const rec = await localDB.getRecord<PersonaSummaryRecord>('personaSummaries', id);
-		if (!rec || rec.isDeleted) return null;
-
-		const dataRec = await localDB.getRecord<PersonaDataRecord>('personaData', id);
-		if (!dataRec || dataRec.isDeleted) return null;
-
-		const fields: PersonaSummaryFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: rec.encryptedData, iv: rec.encryptedDataIV })
-		);
-		const data: PersonaDataFields = JSON.parse(
+		const fields: PersonaFields = JSON.parse(
 			await decryptText(masterKey, {
-				ciphertext: dataRec.encryptedData,
-				iv: dataRec.encryptedDataIV
+				ciphertext: record.encryptedData,
+				iv: record.encryptedDataIV
 			})
 		);
-
 		return {
-			id: rec.id,
+			id: record.id,
 			...fields,
-			data,
-			createdAt: rec.createdAt,
-			updatedAt: Math.max(rec.updatedAt, dataRec.updatedAt)
+			createdAt: record.createdAt,
+			updatedAt: record.updatedAt
 		};
 	}
 
-	/** Create a persona - caller must add to parent's personaRefs */
-	static async create(
-		fields: PersonaSummaryFields,
-		data: PersonaDataFields
-	): Promise<PersonaDetail> {
+	/** Create a persona */
+	static async create(fields: PersonaFields): Promise<Persona> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
+		const enc = await encryptText(masterKey, JSON.stringify(fields));
 
-		const fieldsEnc = await encryptText(masterKey, JSON.stringify(fields));
-		const dataEnc = await encryptText(masterKey, JSON.stringify(data));
-
-		await localDB.transaction(['personaSummaries', 'personaData'], 'rw', async () => {
-			await localDB.putRecord<PersonaSummaryRecord>('personaSummaries', {
-				id,
-				userId,
-				createdAt: now,
-				updatedAt: now,
-				isDeleted: false,
-				encryptedData: fieldsEnc.ciphertext,
-				encryptedDataIV: fieldsEnc.iv
-			});
-			await localDB.putRecord<PersonaDataRecord>('personaData', {
-				id,
-				userId,
-				createdAt: now,
-				updatedAt: now,
-				isDeleted: false,
-				encryptedData: dataEnc.ciphertext,
-				encryptedDataIV: dataEnc.iv
-			});
+		await localDB.putRecord<PersonaRecord>('personas', {
+			id,
+			userId,
+			createdAt: now,
+			updatedAt: now,
+			isDeleted: false,
+			encryptedData: enc.ciphertext,
+			encryptedDataIV: enc.iv
 		});
 
-		return { id, ...fields, data, createdAt: now, updatedAt: now };
+		return { id, ...fields, createdAt: now, updatedAt: now };
 	}
 
-	/** Update summary only */
-	static async updateSummary(id: string, changes: Partial<PersonaSummaryFields>): Promise<Persona | null> {
+	/** Update a persona */
+	static async update(
+		id: string, 
+		changes: Partial<PersonaFields>
+	): Promise<Persona | null> {
 		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<PersonaSummaryRecord>('personaSummaries', id);
+		const record = await localDB.getRecord<PersonaRecord>('personas', id);
 		if (!record || record.isDeleted) return null;
 
-		const current: PersonaSummaryFields = JSON.parse(
+		const current: PersonaFields = JSON.parse(
 			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
 		);
 		const updated = { ...current, ...changes };
@@ -144,42 +97,13 @@ export class PersonaService {
 		record.encryptedData = enc.ciphertext;
 		record.encryptedDataIV = enc.iv;
 		record.updatedAt = Date.now();
-		await localDB.putRecord('personaSummaries', record);
+		await localDB.putRecord('personas', record);
 
 		return { id, ...updated, createdAt: record.createdAt, updatedAt: record.updatedAt };
 	}
 
-	/** Update data only */
-	static async updateData(id: string, changes: Partial<PersonaDataFields>): Promise<{ updatedAt: number } | null> {
-		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<PersonaDataRecord>('personaData', id);
-		if (!record || record.isDeleted) return null;
-
-		const current: PersonaDataFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
-		const updated = { ...current, ...changes };
-		const enc = await encryptText(masterKey, JSON.stringify(updated));
-
-		record.encryptedData = enc.ciphertext;
-		record.encryptedDataIV = enc.iv;
-		record.updatedAt = Date.now();
-		await localDB.putRecord('personaData', record);
-
-		return { updatedAt: record.updatedAt };
-	}
-
-	/** Cascade delete: owned modules, lorebooks, scripts, then persona */
+	/** Delete a persona */
 	static async delete(id: string): Promise<void> {
-		await localDB.transaction(
-			['lorebooks', 'scripts', 'personaSummaries', 'personaData'],
-			'rw',
-			async () => {
-				await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-				await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-				await localDB.softDeleteRecord('personaSummaries', id);
-				await localDB.softDeleteRecord('personaData', id);
-			}
-		);
+		await localDB.softDeleteRecord('personas', id);
 	}
 }

@@ -93,22 +93,20 @@ export class PromptPresetService {
 			userId
 		);
 
-		const results: PromptPreset[] = [];
-		for (const record of records) {
+		return Promise.all(records.map(async (record) => {
 			const fields: PromptPresetSummaryFields = JSON.parse(
 				await decryptText(masterKey, {
 					ciphertext: record.encryptedData,
 					iv: record.encryptedDataIV
 				})
 			);
-			results.push({
+			return {
 				id: record.id,
 				...fields,
 				createdAt: record.createdAt,
 				updatedAt: record.updatedAt
-			});
-		}
-		return results;
+			};
+		}));
 	}
 
 	/** Get full preset (summary + data) */
@@ -142,14 +140,14 @@ export class PromptPresetService {
 
 	/** Create a preset (writes to both tables) */
 	static async create(
-		fields: PromptPresetSummaryFields,
+		summary: PromptPresetSummaryFields,
 		data: PromptPresetDataFields = defaultPresetData
 	): Promise<PromptPresetDetail> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
 
-		const fieldsEnc = await encryptText(masterKey, JSON.stringify(fields));
+		const summaryEnc = await encryptText(masterKey, JSON.stringify(summary));
 		const dataEnc = await encryptText(masterKey, JSON.stringify(data));
 
 		await localDB.transaction(['promptPresetSummaries', 'promptPresetData'], 'rw', async () => {
@@ -159,8 +157,8 @@ export class PromptPresetService {
 				createdAt: now,
 				updatedAt: now,
 				isDeleted: false,
-				encryptedData: fieldsEnc.ciphertext,
-				encryptedDataIV: fieldsEnc.iv
+				encryptedData: summaryEnc.ciphertext,
+				encryptedDataIV: summaryEnc.iv
 			});
 			await localDB.putRecord<PromptPresetDataRecord>('promptPresetData', {
 				id,
@@ -173,7 +171,7 @@ export class PromptPresetService {
 			});
 		});
 
-		return { id, ...fields, data, createdAt: now, updatedAt: now };
+		return { id, ...summary, data, createdAt: now, updatedAt: now };
 	}
 
 	/** Update summary only */

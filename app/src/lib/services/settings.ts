@@ -1,5 +1,5 @@
 import { encryptText, decryptText, getActiveSession } from '../session.js';
-import { localDB, type SettingsRecord, type OrderedRef, type FolderDef } from '../db/index.js';
+import { localDB, type SettingsRecord, type OrderedRef, type FolderDef, type ResourceRef } from '../db/index.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -12,20 +12,16 @@ export interface AppSettings {
 	// 1:N — workspace holds ordered refs for top-level entities
 	characterRefs?: OrderedRef[];
 	personaRefs?: OrderedRef[];
-	lorebookRefs?: OrderedRef[];
-	scriptRefs?: OrderedRef[];
-	moduleRefs?: OrderedRef[];
-	pluginRefs?: OrderedRef[];
 	presetRefs?: OrderedRef[];
+	moduleRefs?: ResourceRef[];
+	pluginRefs?: ResourceRef[];
 	// Folder definitions for each top-level list
 	folders?: {
 		characters?: FolderDef[];
 		personas?: FolderDef[];
-		lorebooks?: FolderDef[];
-		scripts?: FolderDef[];
+		presets?: FolderDef[];
 		modules?: FolderDef[];
 		plugins?: FolderDef[];
-		presets?: FolderDef[];
 	};
 }
 
@@ -39,15 +35,15 @@ const defaultSettings: AppSettings = {
 export class SettingsService {
 	static async get(): Promise<AppSettings> {
 		const { masterKey, userId } = getActiveSession();
-		const records = await localDB.getAll<SettingsRecord>('settings', userId);
+		const record = await localDB.getRecord<SettingsRecord>('settings', userId);
 
-		if (records.length === 0) {
+		if (!record || record.isDeleted) {
 			return { ...defaultSettings };
 		}
 
 		const dec = await decryptText(masterKey, {
-			ciphertext: records[0].encryptedData,
-			iv: records[0].encryptedDataIV
+			ciphertext: record.encryptedData,
+			iv: record.encryptedDataIV
 		});
 		return { ...defaultSettings, ...JSON.parse(dec) };
 	}
@@ -56,14 +52,12 @@ export class SettingsService {
 		const { masterKey, userId } = getActiveSession();
 		const enc = await encryptText(masterKey, JSON.stringify(settings));
 
-		const existing = await localDB.getAll<SettingsRecord>('settings', userId);
-		const id = existing.length > 0 ? existing[0].id : crypto.randomUUID();
-		const createdAt = existing.length > 0 ? existing[0].createdAt : Date.now();
+		const existing = await localDB.getRecord<SettingsRecord>('settings', userId);
 
 		await localDB.putRecord<SettingsRecord>('settings', {
-			id,
+			id: userId,
 			userId,
-			createdAt,
+			createdAt: existing?.createdAt ?? Date.now(),
 			updatedAt: Date.now(),
 			isDeleted: false,
 			encryptedData: enc.ciphertext,

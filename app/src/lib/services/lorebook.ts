@@ -3,8 +3,8 @@ import { localDB, type LorebookRecord } from '../db/index.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
-export interface LorebookEntry {
-	id: string;
+export interface LorebookFields {
+	name: string;
 	keys: string[];
 	content: string;
 	insertionDepth: number;
@@ -13,14 +13,9 @@ export interface LorebookEntry {
 	probability?: number;
 }
 
-export interface LorebookFields {
-	name: string;
-	description: string;
-	entries: LorebookEntry[];
-}
-
 export interface Lorebook extends LorebookFields {
 	id: string;
+	ownerId: string;
 	createdAt: number;
 	updatedAt: number;
 }
@@ -28,26 +23,25 @@ export interface Lorebook extends LorebookFields {
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class LorebookService {
-	static async list(): Promise<Lorebook[]> {
-		const { masterKey, userId } = getActiveSession();
-		const records = await localDB.getAll<LorebookRecord>('lorebooks', userId);
-
-		const results: Lorebook[] = [];
-		for (const record of records) {
+	/** List lorebooks owned by a specific parent (character, chat, module) */
+	static async listByOwner(ownerId: string): Promise<Lorebook[]> {
+		const { masterKey } = getActiveSession();
+		const records = await localDB.getByIndex<LorebookRecord>('lorebooks', 'ownerId', ownerId);
+		return Promise.all(records.map(async (record) => {
 			const fields: LorebookFields = JSON.parse(
 				await decryptText(masterKey, {
 					ciphertext: record.encryptedData,
 					iv: record.encryptedDataIV
 				})
 			);
-			results.push({
+			return {
 				id: record.id,
+				ownerId: record.ownerId,
 				...fields,
 				createdAt: record.createdAt,
 				updatedAt: record.updatedAt
-			});
-		}
-		return results;
+			};
+		}));
 	}
 
 	static async get(id: string): Promise<Lorebook | null> {
@@ -56,22 +50,24 @@ export class LorebookService {
 		if (!record || record.isDeleted) return null;
 
 		const fields: LorebookFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+			await decryptText(masterKey, {
+				ciphertext: record.encryptedData,
+				iv: record.encryptedDataIV
+			})
 		);
-		return { id: record.id, ...fields, createdAt: record.createdAt, updatedAt: record.updatedAt };
+		return {
+			id: record.id,
+			ownerId: record.ownerId,
+			...fields,
+			createdAt: record.createdAt,
+			updatedAt: record.updatedAt
+		};
 	}
 
-	/** Batch fetch by IDs — used by chat controller to load all connected lorebooks */
-	static async getMany(ids: string[]): Promise<Lorebook[]> {
-		const results: Lorebook[] = [];
-		for (const id of ids) {
-			const lb = await this.get(id);
-			if (lb) results.push(lb);
-		}
-		return results;
-	}
-
-	static async create(ownerId: string, fields: LorebookFields): Promise<Lorebook> {
+	static async create(
+		ownerId: string, 
+		fields: LorebookFields
+	): Promise<Lorebook> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
@@ -88,10 +84,19 @@ export class LorebookService {
 			encryptedDataIV: enc.iv
 		});
 
-		return { id, ...fields, createdAt: now, updatedAt: now };
+		return {
+			id,
+			ownerId,
+			...fields,
+			createdAt: now,
+			updatedAt: now
+		};
 	}
 
-	static async update(id: string, changes: Partial<LorebookFields>): Promise<Lorebook | null> {
+	static async update(
+		id: string, 
+		changes: Partial<LorebookFields>
+	): Promise<Lorebook | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
 		if (!record || record.isDeleted) return null;
@@ -107,7 +112,13 @@ export class LorebookService {
 		record.updatedAt = Date.now();
 		await localDB.putRecord('lorebooks', record);
 
-		return { id, ...updated, createdAt: record.createdAt, updatedAt: record.updatedAt };
+		return {
+			id,
+			ownerId: record.ownerId,
+			...updated,
+			createdAt: record.createdAt,
+			updatedAt: record.updatedAt
+		};
 	}
 
 	static async delete(id: string): Promise<void> {

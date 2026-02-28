@@ -4,7 +4,6 @@ import {
 	type CharacterSummaryRecord,
 	type CharacterDataRecord,
 	type OrderedRef,
-	type ResourceRef,
 	type FolderDef,
 	type AssetEntry
 } from '../db/index.js';
@@ -17,27 +16,27 @@ export interface CharacterSummaryFields {
 	avatarAssetId?: string;
 }
 
-export interface CharacterDataFields {
-	systemPrompt: string;
-	greetingMessage?: string;
-	// 1:N — parent holds ordered child list
+export interface CharacterDataRefs {
 	chatRefs?: OrderedRef[];
-	// N:M — consumer holds refs with per-context state
-	moduleRefs?: ResourceRef[];
-	lorebookRefs?: ResourceRef[];
-	scriptRefs?: ResourceRef[];
-	promptPresetId?: string;
+	moduleRefs?: OrderedRef[];
+	lorebookRefs?: OrderedRef[];
+	scriptRefs?: OrderedRef[];
 	personaId?: string;
-	// Folder definitions
-	refFolders?: {
+	folders?: {
 		chats?: FolderDef[];
 		modules?: FolderDef[];
 		lorebooks?: FolderDef[];
 		scripts?: FolderDef[];
 	};
-	// Assets
 	assets?: AssetEntry[];
 }
+
+export interface CharacterDataContent {
+	systemPrompt: string;
+	greetingMessage?: string;
+}
+
+export interface CharacterDataFields extends CharacterDataContent, CharacterDataRefs {}
 
 export interface Character extends CharacterSummaryFields {
 	id: string;
@@ -56,23 +55,20 @@ export class CharacterService {
 	static async list(): Promise<Character[]> {
 		const { masterKey, userId } = getActiveSession();
 		const records = await localDB.getAll<CharacterSummaryRecord>('characterSummaries', userId);
-
-		const results: Character[] = [];
-		for (const record of records) {
+		return Promise.all(records.map(async (record) => {
 			const fields: CharacterSummaryFields = JSON.parse(
 				await decryptText(masterKey, {
 					ciphertext: record.encryptedData,
 					iv: record.encryptedDataIV
 				})
 			);
-			results.push({
+			return {
 				id: record.id,
 				...fields,
 				createdAt: record.createdAt,
 				updatedAt: record.updatedAt
-			});
-		}
-		return results;
+			};
+		}))
 	}
 
 	/** Get full character data */
@@ -106,14 +102,14 @@ export class CharacterService {
 
 	/** Create a character - caller must add to parent's characterRefs */
 	static async create(
-		fields: CharacterSummaryFields,
+		summary: CharacterSummaryFields,
 		data: CharacterDataFields
 	): Promise<CharacterDetail> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
 
-		const fieldsEnc = await encryptText(masterKey, JSON.stringify(fields));
+		const summaryEnc = await encryptText(masterKey, JSON.stringify(summary));
 		const dataEnc = await encryptText(masterKey, JSON.stringify(data));
 
 		await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
@@ -123,8 +119,8 @@ export class CharacterService {
 				createdAt: now,
 				updatedAt: now,
 				isDeleted: false,
-				encryptedData: fieldsEnc.ciphertext,
-				encryptedDataIV: fieldsEnc.iv
+				encryptedData: summaryEnc.ciphertext,
+				encryptedDataIV: summaryEnc.iv
 			});
 			await localDB.putRecord<CharacterDataRecord>('characterData', {
 				id,
@@ -137,7 +133,7 @@ export class CharacterService {
 			});
 		});
 
-		return { id, ...fields, data, createdAt: now, updatedAt: now };
+		return { id, ...summary, data, createdAt: now, updatedAt: now };
 	}
 
 	/** Update summary only */
@@ -164,7 +160,10 @@ export class CharacterService {
 	}
 
 	/** Update data only */
-	static async updateData(id: string, changes: Partial<CharacterDataFields>): Promise<{ updatedAt: number } | null> {
+	static async updateData(
+		id: string, 
+		changes: Partial<CharacterDataFields>
+	): Promise<{ updatedAt: number } | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<CharacterDataRecord>('characterData', id);
 		if (!record || record.isDeleted) return null;

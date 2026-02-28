@@ -10,8 +10,8 @@ import {
 	localDB,
 	type ChatSummaryRecord,
 	type ChatDataRecord,
-	type ResourceRef,
-	type FolderDef
+	type FolderDef,
+	type OrderedRef
 } from '../db/index.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
@@ -21,26 +21,23 @@ export interface ChatSummaryFields {
 	lastMessagePreview: string;
 }
 
-export interface ChatDataFields {
-	systemPromptOverride?: string;
-	// N:M refs with per-context state
-	moduleRefs?: ResourceRef[];
-	lorebookRefs?: ResourceRef[];
-	scriptRefs?: ResourceRef[];
-	promptPresetId?: string;
-	personaId?: string;
-	// Folder definitions
-	refFolders?: {
-		modules?: FolderDef[];
+export interface ChatDataRefs {
+	lorebookRefs?: OrderedRef[];
+	folders?: {
 		lorebooks?: FolderDef[];
-		scripts?: FolderDef[];
 	};
-	// Chat variables (set by scripts)
+}
+
+export interface ChatDataContent {
+	systemPromptOverride?: string;
 	variables?: Record<string, unknown>;
 }
 
+export interface ChatDataFields extends ChatDataContent, ChatDataRefs {}
+
 export interface Chat extends ChatSummaryFields {
 	id: string;
+	characterId: string;
 	createdAt: number;
 	updatedAt: number;
 }
@@ -52,29 +49,25 @@ export interface ChatDetail extends Chat {
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class ChatService {
-	/** Batch fetch chats summaries by IDs */
-	static async getMany(ids: string[]): Promise<Chat[]> {
+	static async listByCharacter(characterId: string): Promise<Chat[]> {
 		const { masterKey } = getActiveSession();
-		const results: Chat[] = [];
-
-		for (const id of ids) {
-			const record = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
-			if (!record || record.isDeleted) continue;
-
+		const records = await localDB.getByIndex<ChatSummaryRecord>('chatSummaries', 'characterId', characterId, 10000);
+		
+		return Promise.all(records.map(async (record) => {
 			const fields: ChatSummaryFields = JSON.parse(
 				await decryptText(masterKey, {
 					ciphertext: record.encryptedData,
 					iv: record.encryptedDataIV
 				})
 			);
-			results.push({
+			return {
 				id: record.id,
+				characterId: record.characterId,
 				...fields,
 				createdAt: record.createdAt,
 				updatedAt: record.updatedAt
-			});
-		}
-		return results;
+			};
+		}));
 	}
 
 	/** Get full chat data */
@@ -99,6 +92,7 @@ export class ChatService {
 
 		return {
 			id: rec.id,
+			characterId: rec.characterId,
 			...fields,
 			data,
 			createdAt: rec.createdAt,
@@ -109,15 +103,14 @@ export class ChatService {
 	/** Create a chat - caller must add to parent's chatRefs */
 	static async create(
 		characterId: string,
-		title: string,
+		summary: ChatSummaryFields,
 		data: ChatDataFields = {}
 	): Promise<ChatDetail> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
 
-		const fields: ChatSummaryFields = { title, lastMessagePreview: '' };
-		const summaryEnc = await encryptText(masterKey, JSON.stringify(fields));
+		const summaryEnc = await encryptText(masterKey, JSON.stringify(summary));
 		const dataEnc = await encryptText(masterKey, JSON.stringify(data));
 
 		await localDB.transaction(['chatSummaries', 'chatData'], 'rw', async () => {
@@ -143,11 +136,21 @@ export class ChatService {
 			});
 		});
 
-		return { id, ...fields, data, createdAt: now, updatedAt: now };
+		return {
+			id,
+			characterId,
+			...summary,
+			data,
+			createdAt: now,
+			updatedAt: now
+		};
 	}
 
 	/** Update summary only */
-	static async updateSummary(id: string, changes: Partial<ChatSummaryFields>): Promise<Chat | null> {
+	static async updateSummary(
+		id: string, 
+		changes: Partial<ChatSummaryFields>
+	): Promise<Chat | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
 		if (!record || record.isDeleted) return null;
@@ -163,11 +166,20 @@ export class ChatService {
 		record.updatedAt = Date.now();
 		await localDB.putRecord('chatSummaries', record);
 
-		return { id, ...updated, createdAt: record.createdAt, updatedAt: record.updatedAt };
+		return {
+			id,
+			characterId: record.characterId,
+			...updated,
+			createdAt: record.createdAt,
+			updatedAt: record.updatedAt
+		};
 	}
 
 	/** Update data only */
-	static async updateData(id: string, changes: Partial<ChatDataFields>): Promise<{ updatedAt: number } | null> {
+	static async updateData(
+		id: string, 
+		changes: Partial<ChatDataFields>
+	): Promise<{ updatedAt: number } | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatDataRecord>('chatData', id);
 		if (!record || record.isDeleted) return null;

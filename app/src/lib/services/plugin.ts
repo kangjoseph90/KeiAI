@@ -30,22 +30,20 @@ export class PluginService {
 		const { masterKey, userId } = getActiveSession();
 		const records = await localDB.getAll<PluginRecord>('plugins', userId);
 
-		const results: Plugin[] = [];
-		for (const record of records) {
+		return Promise.all(records.map(async (record) => {
 			const fields: PluginFields = JSON.parse(
 				await decryptText(masterKey, {
 					ciphertext: record.encryptedData,
 					iv: record.encryptedDataIV
 				})
 			);
-			results.push({
+			return {
 				id: record.id,
 				...fields,
 				createdAt: record.createdAt,
 				updatedAt: record.updatedAt
-			});
-		}
-		return results;
+			};
+		}));
 	}
 
 	static async get(id: string): Promise<Plugin | null> {
@@ -54,18 +52,17 @@ export class PluginService {
 		if (!record || record.isDeleted) return null;
 
 		const fields: PluginFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
+			await decryptText(masterKey, {
+				ciphertext: record.encryptedData,
+				iv: record.encryptedDataIV
+			})
 		);
-		return { id: record.id, ...fields, createdAt: record.createdAt, updatedAt: record.updatedAt };
-	}
-
-	static async getMany(ids: string[]): Promise<Plugin[]> {
-		const results: Plugin[] = [];
-		for (const id of ids) {
-			const p = await this.get(id);
-			if (p) results.push(p);
-		}
-		return results;
+		return {
+			id: record.id,
+			...fields,
+			createdAt: record.createdAt,
+			updatedAt: record.updatedAt
+		};
 	}
 
 	static async create(fields: PluginFields): Promise<Plugin> {
@@ -87,7 +84,10 @@ export class PluginService {
 		return { id, ...fields, createdAt: now, updatedAt: now };
 	}
 
-	static async update(id: string, changes: Partial<PluginFields>): Promise<Plugin | null> {
+	static async update(
+		id: string, 
+		changes: Partial<PluginFields>
+	): Promise<Plugin | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<PluginRecord>('plugins', id);
 		if (!record || record.isDeleted) return null;
