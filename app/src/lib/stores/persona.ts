@@ -9,16 +9,15 @@ export async function loadPersonas() {
 }
 
 export async function createPersona(fields: PersonaFields) {
+	const settings = get(appSettings);
+	if (!settings) return;
+
 	const persona = await PersonaService.create(fields);
 	personas.update((list) => [...list, persona]);
-
-	const settings = get(appSettings);
-	if (settings) {
-		const existing = settings.personaRefs || [];
-		await updateSettings({
-			personaRefs: [...existing, { id: persona.id, sortOrder: generateSortOrder(existing) }]
-		});
-	}
+	const existing = settings.personaRefs || [];
+	await updateSettings({
+		personaRefs: [...existing, { id: persona.id, sortOrder: generateSortOrder(existing) }]
+	});
 
 	return persona;
 }
@@ -31,14 +30,13 @@ export async function updatePersona(id: string, changes: Partial<PersonaFields>)
 }
 
 export async function deletePersona(id: string) {
-	await PersonaService.delete(id);
-
 	const settings = get(appSettings);
-	if (settings) {
-		await updateSettings({
-			personaRefs: (settings.personaRefs || []).filter((r) => r.id !== id)
-		});
-	}
+	if (!settings) return;
+
+	await PersonaService.delete(id);
+	await updateSettings({
+		personaRefs: (settings.personaRefs || []).filter((r) => r.id !== id)
+	});
 
 	personas.update((list) => list.filter((p) => p.id !== id));
 }

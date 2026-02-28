@@ -23,17 +23,16 @@ export async function loadModules() {
 }
 
 export async function createModule(fields: ModuleFields) {
+	const settings = get(appSettings);
+	if (!settings) return;
+
 	const mod = await ModuleService.create(fields);
 	modules.update((list) => [...list, mod]);
 	moduleResources.update((map) => new Map(map).set(mod.id, { lorebooks: [], scripts: [] }));
-
-	const settings = get(appSettings);
-	if (settings) {
-		const existing = settings.moduleRefs || [];
-		await updateSettings({
-			moduleRefs: [...existing, { id: mod.id, sortOrder: generateSortOrder(existing), enabled: true }]
-		});
-	}
+	const existing = settings.moduleRefs || [];
+	await updateSettings({
+		moduleRefs: [...existing, { id: mod.id, sortOrder: generateSortOrder(existing), enabled: true }]
+	});
 
 	return mod;
 }
@@ -46,14 +45,13 @@ export async function updateModule(id: string, changes: Partial<ModuleContent>) 
 }
 
 export async function deleteModule(id: string) {
-	await ModuleService.delete(id);
-
 	const settings = get(appSettings);
-	if (settings) {
-		await updateSettings({
-			moduleRefs: (settings.moduleRefs || []).filter((r) => r.id !== id)
-		});
-	}
+	if (!settings) return;
+
+	await ModuleService.delete(id);
+	await updateSettings({
+		moduleRefs: (settings.moduleRefs || []).filter((r) => r.id !== id)
+	});
 
 	modules.update((list) => list.filter((m) => m.id !== id));
 	moduleResources.update((map) => { const m = new Map(map); m.delete(id); return m; });

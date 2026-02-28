@@ -16,18 +16,17 @@ export async function createPreset(
 	fields: PromptPresetSummaryFields,
 	data?: PromptPresetDataFields
 ) {
+	const settings = get(appSettings);
+	if (!settings) return;
+
 	const detail = await PromptPresetService.create(fields, data);
 
 	const { data: _data, ...summary } = detail;
 	promptPresets.update((list) => [...list, summary as PromptPreset]);
-
-	const settings = get(appSettings);
-	if (settings) {
-		const existing = settings.presetRefs || [];
-		await updateSettings({
-			presetRefs: [...existing, { id: detail.id, sortOrder: generateSortOrder(existing) }]
-		});
-	}
+	const existing = settings.presetRefs || [];
+	await updateSettings({
+		presetRefs: [...existing, { id: detail.id, sortOrder: generateSortOrder(existing) }]
+	});
 
 	return detail;
 }
@@ -48,14 +47,13 @@ export async function updatePresetData(id: string, changes: Partial<PromptPreset
 }
 
 export async function deletePreset(id: string) {
-	await PromptPresetService.delete(id);
-
 	const settings = get(appSettings);
-	if (settings) {
-		await updateSettings({
-			presetRefs: (settings.presetRefs || []).filter((r) => r.id !== id)
-		});
-	}
+	if (!settings) return;
+
+	await PromptPresetService.delete(id);
+	await updateSettings({
+		presetRefs: (settings.presetRefs || []).filter((r) => r.id !== id)
+	});
 
 	promptPresets.update((list) => list.filter((p) => p.id !== id));
 	if (get(activePreset)?.id === id) {

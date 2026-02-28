@@ -155,8 +155,28 @@ export async function updateMessage(msgId: string, content: string) {
 }
 
 export async function deleteMessage(msgId: string) {
+	const chat = get(activeChat);
+	const currentMessages = get(messages);
+	const isLastMessage =
+		currentMessages.length > 0 && currentMessages[currentMessages.length - 1].id === msgId;
+
 	await MessageService.delete(msgId);
 	messages.update((list) => list.filter((m) => m.id !== msgId));
+
+	if (chat && isLastMessage) {
+		const remainingMessages = get(messages);
+		const preview =
+			remainingMessages.length > 0
+				? remainingMessages[remainingMessages.length - 1].content.substring(0, 50)
+				: '';
+		const updatedChat = await ChatService.updateSummary(chat.id, { lastMessagePreview: preview });
+		if (updatedChat) {
+			chats.update((list) =>
+				list.map((c) => (c.id === chat.id ? updatedChat : c))
+			);
+			activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
+		}
+	}
 }
 
 export function sortChatsByRefs(chats: Chat[], refs: OrderedRef[]): Chat[] {

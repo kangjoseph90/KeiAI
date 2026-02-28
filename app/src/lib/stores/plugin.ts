@@ -9,16 +9,15 @@ export async function loadPlugins() {
 }
 
 export async function createPlugin(fields: PluginFields) {
+	const settings = get(appSettings);
+	if (!settings) return;
+
 	const plugin = await PluginService.create(fields);
 	plugins.update((list) => [...list, plugin]);
-
-	const settings = get(appSettings);
-	if (settings) {
-		const existing = settings.pluginRefs || [];
-		await updateSettings({
-			pluginRefs: [...existing, { id: plugin.id, sortOrder: generateSortOrder(existing), enabled: true }]
-		});
-	}
+	const existing = settings.pluginRefs || [];
+	await updateSettings({
+		pluginRefs: [...existing, { id: plugin.id, sortOrder: generateSortOrder(existing), enabled: true }]
+	});
 
 	return plugin;
 }
@@ -31,14 +30,13 @@ export async function updatePlugin(id: string, changes: Partial<PluginFields>) {
 }
 
 export async function deletePlugin(id: string) {
-	await PluginService.delete(id);
-
 	const settings = get(appSettings);
-	if (settings) {
-		await updateSettings({
-			pluginRefs: (settings.pluginRefs || []).filter((r) => r.id !== id)
-		});
-	}
+	if (!settings) return;
+
+	await PluginService.delete(id);
+	await updateSettings({
+		pluginRefs: (settings.pluginRefs || []).filter((r) => r.id !== id)
+	});
 
 	plugins.update((list) => list.filter((p) => p.id !== id));
 }

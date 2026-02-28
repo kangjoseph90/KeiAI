@@ -104,15 +104,15 @@ export async function createCharacter(
     summary: CharacterSummaryFields = DEFAULT_CHARACTER_SUMMARY,
     data: CharacterDataFields = DEFAULT_CHARACTER_DATA
 ) {
+	const settings = get(appSettings);
+	if (!settings) return;
+
     const detail = await CharacterService.create(summary, data);
     if (!detail) return; // TODO: Error handling
 
     characters.update((list) => [...list, detail]);
 
     // Add to settings' characterRefs
-    const settings = get(appSettings);
-	if (!settings) return;
-
     const existingRefs = settings.characterRefs || [];
     await updateSettings({
         characterRefs: [
@@ -128,10 +128,10 @@ export async function createCharacter(
 }
 
 export async function deleteCharacter(characterId: string) {
-    await CharacterService.delete(characterId);
+	const settings = get(appSettings);
+	if (!settings) return;
 
-    const settings = get(appSettings);
-    if (!settings) return;
+    await CharacterService.delete(characterId);
 
     await updateSettings({
         characterRefs: (settings.characterRefs || []).filter((r) => r.id !== characterId)
