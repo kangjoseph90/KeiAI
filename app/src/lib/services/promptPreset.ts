@@ -220,6 +220,61 @@ export class PromptPresetService {
 		return { updatedAt: record.updatedAt };
 	}
 
+	/** Update summary and/or data transactionally */
+	static async update(
+		id: string,
+		summaryChanges?: Partial<PromptPresetSummaryFields>,
+		dataChanges?: Partial<PromptPresetDataFields>
+	): Promise<{ summary?: PromptPresetSummaryFields; data?: PromptPresetDataFields; updatedAt: number } | null> {
+		const { masterKey } = getActiveSession();
+		let updatedSummary: PromptPresetSummaryFields | undefined;
+		let updatedData: PromptPresetDataFields | undefined;
+		let finalUpdatedAt = Date.now();
+
+		await localDB.transaction(['promptPresetSummaries', 'promptPresetData'], 'rw', async () => {
+			if (summaryChanges) {
+				const summaryRecord = await localDB.getRecord<PromptPresetSummaryRecord>('promptPresetSummaries', id);
+				if (!summaryRecord || summaryRecord.isDeleted) return;
+				
+				const currentSummary: PromptPresetSummaryFields = JSON.parse(
+					await decryptText(masterKey, { ciphertext: summaryRecord.encryptedData, iv: summaryRecord.encryptedDataIV })
+				);
+				const mergedSummary = { ...currentSummary, ...summaryChanges };
+				const enc = await encryptText(masterKey, JSON.stringify(mergedSummary));
+				summaryRecord.encryptedData = enc.ciphertext;
+				summaryRecord.encryptedDataIV = enc.iv;
+				summaryRecord.updatedAt = finalUpdatedAt;
+				await localDB.putRecord('promptPresetSummaries', summaryRecord);
+				updatedSummary = mergedSummary;
+			}
+
+			if (dataChanges) {
+				const dataRecord = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
+				if (!dataRecord || dataRecord.isDeleted) return;
+				
+				const currentData: PromptPresetDataFields = JSON.parse(
+					await decryptText(masterKey, { ciphertext: dataRecord.encryptedData, iv: dataRecord.encryptedDataIV })
+				);
+				const mergedData = { ...currentData, ...dataChanges };
+				const enc = await encryptText(masterKey, JSON.stringify(mergedData));
+				
+				dataRecord.encryptedData = enc.ciphertext;
+				dataRecord.encryptedDataIV = enc.iv;
+				dataRecord.updatedAt = finalUpdatedAt;
+				await localDB.putRecord('promptPresetData', dataRecord);
+				updatedData = mergedData;
+			}
+		});
+
+		if (!updatedSummary && !updatedData) return null;
+
+		return {
+			summary: updatedSummary,
+			data: updatedData,
+			updatedAt: finalUpdatedAt
+		};
+	}
+
 	static async delete(id: string): Promise<void> {
 		await localDB.transaction(['promptPresetSummaries', 'promptPresetData'], 'rw', async () => {
 			await localDB.softDeleteRecord('promptPresetSummaries', id);

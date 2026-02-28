@@ -110,6 +110,26 @@ export async function updateCharacterData(characterId: string, changes: Partial<
 	));
 }
 
+export async function updateCharacterFull(characterId: string, summaryChanges: Partial<CharacterSummaryFields>, dataChanges: Partial<CharacterDataContent>) {
+	const result = await CharacterService.update(characterId, summaryChanges, dataChanges);
+	if (!result) return;
+	
+	if (result.summary) {
+		characters.update((list) => list.map((c) => (c.id === characterId ? { ...c, ...result.summary, updatedAt: result.updatedAt } : c)));
+	}
+	activeCharacter.update((c) => {
+		if (c && c.id === characterId) {
+			return {
+				...c,
+				...(result.summary || {}),
+				data: { ...c.data, ...(result.data || {}) },
+				updatedAt: result.updatedAt
+			};
+		}
+		return c;
+	});
+}
+
 export async function createCharacter(
     summary: CharacterSummaryFields = DEFAULT_CHARACTER_SUMMARY,
     data: CharacterDataFields = DEFAULT_CHARACTER_DATA

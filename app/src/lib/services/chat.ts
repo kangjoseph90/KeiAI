@@ -198,6 +198,59 @@ export class ChatService {
 		return { updatedAt: record.updatedAt };
 	}
 
+	/** Update summary and/or data transactionally */
+	static async update(
+		id: string,
+		summaryChanges?: Partial<ChatSummaryFields>,
+		dataChanges?: Partial<ChatDataFields>
+	): Promise<{ summary?: ChatSummaryFields & { characterId: string }; data?: ChatDataFields; updatedAt: number } | null> {
+		const { masterKey } = getActiveSession();
+		let updatedSummary: (ChatSummaryFields & { characterId: string }) | undefined;
+		let updatedData: ChatDataFields | undefined;
+		let finalUpdatedAt = Date.now();
+
+		await localDB.transaction(['chatSummaries', 'chatData'], 'rw', async () => {
+			if (summaryChanges) {
+				const summaryRecord = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
+				if (!summaryRecord || summaryRecord.isDeleted) return;
+				
+				const currentSummary: ChatSummaryFields = JSON.parse(
+					await decryptText(masterKey, { ciphertext: summaryRecord.encryptedData, iv: summaryRecord.encryptedDataIV })
+				);
+				const mergedSummary = { ...currentSummary, ...summaryChanges };
+				const enc = await encryptText(masterKey, JSON.stringify(mergedSummary));
+				summaryRecord.encryptedData = enc.ciphertext;
+				summaryRecord.encryptedDataIV = enc.iv;
+				summaryRecord.updatedAt = finalUpdatedAt;
+				await localDB.putRecord('chatSummaries', summaryRecord);
+				updatedSummary = { ...mergedSummary, characterId: summaryRecord.characterId };
+			}
+
+			if (dataChanges) {
+				const dataRecord = await localDB.getRecord<ChatDataRecord>('chatData', id);
+				if (!dataRecord || dataRecord.isDeleted) return;
+				
+				const currentData: ChatDataFields = JSON.parse(
+					await decryptText(masterKey, { ciphertext: dataRecord.encryptedData, iv: dataRecord.encryptedDataIV })
+				);
+				updatedData = { ...currentData, ...dataChanges };
+				const enc = await encryptText(masterKey, JSON.stringify(updatedData));
+				dataRecord.encryptedData = enc.ciphertext;
+				dataRecord.encryptedDataIV = enc.iv;
+				dataRecord.updatedAt = finalUpdatedAt;
+				await localDB.putRecord('chatData', dataRecord);
+			}
+		});
+
+		if (!updatedSummary && !updatedData) return null;
+
+		return {
+			summary: updatedSummary,
+			data: updatedData,
+			updatedAt: finalUpdatedAt
+		};
+	}
+
 	/** Cascade soft-delete: owned lorebooks, scripts, messages, then chat itself */
 	static async delete(id: string): Promise<void> {
 		await localDB.transaction(

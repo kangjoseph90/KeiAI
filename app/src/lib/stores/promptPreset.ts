@@ -52,6 +52,26 @@ export async function updatePresetData(id: string, changes: Partial<PromptPreset
 	}
 }
 
+export async function updatePresetFull(id: string, summaryChanges: Partial<PromptPresetSummaryFields>, dataChanges: Partial<PromptPresetDataFields>) {
+	const result = await PromptPresetService.update(id, summaryChanges, dataChanges);
+	if (!result) return;
+	
+	if (result.summary) {
+		promptPresets.update((list) => list.map((p) => (p.id === id ? { ...p, ...result.summary, updatedAt: result.updatedAt } : p)));
+	}
+	activePreset.update((p) => {
+		if (p && p.id === id) {
+			return {
+				...p,
+				...(result.summary || {}),
+				data: { ...p.data, ...(result.data || {}) },
+				updatedAt: result.updatedAt
+			};
+		}
+		return p;
+	});
+}
+
 export async function deletePreset(id: string) {
 	const settings = get(appSettings);
 	if (!settings) return;

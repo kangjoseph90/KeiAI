@@ -101,6 +101,26 @@ export async function updateChatData(chatId: string, changes: Partial<ChatDataCo
 	}
 }
 
+export async function updateChatFull(chatId: string, summaryChanges: Partial<ChatSummaryFields>, dataChanges: Partial<ChatDataContent>) {
+	const result = await ChatService.update(chatId, summaryChanges, dataChanges);
+	if (!result) return;
+	
+	if (result.summary) {
+		chats.update((list) => list.map((c) => (c.id === chatId ? { ...c, ...result.summary, updatedAt: result.updatedAt } : c)));
+	}
+	activeChat.update((c) => {
+		if (c && c.id === chatId) {
+			return {
+				...c,
+				...(result.summary || {}),
+				data: { ...c.data, ...(result.data || {}) },
+				updatedAt: result.updatedAt
+			};
+		}
+		return c;
+	});
+}
+
 export async function deleteChat(chatId: string) {
 	await ChatService.delete(chatId);
 

@@ -183,6 +183,59 @@ export class CharacterService {
 		return { updatedAt: record.updatedAt };
 	}
 
+	/** Update summary and/or data transactionally */
+	static async update(
+		id: string,
+		summaryChanges?: Partial<CharacterSummaryFields>,
+		dataChanges?: Partial<CharacterDataFields>
+	): Promise<{ summary?: CharacterSummaryFields; data?: CharacterDataFields; updatedAt: number } | null> {
+		const { masterKey } = getActiveSession();
+		let updatedSummary: CharacterSummaryFields | undefined;
+		let updatedData: CharacterDataFields | undefined;
+		let finalUpdatedAt = Date.now();
+
+		await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
+			if (summaryChanges) {
+				const summaryRecord = await localDB.getRecord<CharacterSummaryRecord>('characterSummaries', id);
+				if (!summaryRecord || summaryRecord.isDeleted) return;
+				
+				const currentSummary: CharacterSummaryFields = JSON.parse(
+					await decryptText(masterKey, { ciphertext: summaryRecord.encryptedData, iv: summaryRecord.encryptedDataIV })
+				);
+				updatedSummary = { ...currentSummary, ...summaryChanges };
+				const enc = await encryptText(masterKey, JSON.stringify(updatedSummary));
+				summaryRecord.encryptedData = enc.ciphertext;
+				summaryRecord.encryptedDataIV = enc.iv;
+				summaryRecord.updatedAt = finalUpdatedAt;
+				await localDB.putRecord('characterSummaries', summaryRecord);
+			}
+
+			if (dataChanges) {
+				const dataRecord = await localDB.getRecord<CharacterDataRecord>('characterData', id);
+				if (!dataRecord || dataRecord.isDeleted) return;
+				
+				const currentData: CharacterDataFields = JSON.parse(
+					await decryptText(masterKey, { ciphertext: dataRecord.encryptedData, iv: dataRecord.encryptedDataIV })
+				);
+				updatedData = { ...currentData, ...dataChanges };
+				const enc = await encryptText(masterKey, JSON.stringify(updatedData));
+				dataRecord.encryptedData = enc.ciphertext;
+				dataRecord.encryptedDataIV = enc.iv;
+				dataRecord.updatedAt = finalUpdatedAt;
+				await localDB.putRecord('characterData', dataRecord);
+			}
+		});
+
+		if (!updatedSummary && !updatedData) return null;
+		// If only one was requested and the record was deleted, we still return what we have (or null).
+
+		return {
+			summary: updatedSummary,
+			data: updatedData,
+			updatedAt: finalUpdatedAt
+		};
+	}
+
 	static async delete(id: string): Promise<void> {
 		await localDB.transaction(
 			[
