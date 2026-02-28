@@ -19,13 +19,17 @@ export async function updateSettings(changes: Partial<AppSettings>) {
 
 export type GlobalFolderType = 'characters' | 'personas' | 'presets' | 'modules' | 'plugins';
 
-export async function createGlobalFolder(folderType: GlobalFolderType, name: string, parentId?: string) {
+export async function createGlobalFolder(
+	folderType: GlobalFolderType,
+	name: string,
+	parentId?: string
+) {
 	const settings = get(appSettings);
 	if (!settings) return;
 
 	const folders = settings.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
-	
+
 	const newFolder = {
 		id: crypto.randomUUID(),
 		name,
@@ -42,15 +46,19 @@ export async function createGlobalFolder(folderType: GlobalFolderType, name: str
 	return newFolder;
 }
 
-export async function updateGlobalFolder(folderType: GlobalFolderType, folderId: string, changes: Partial<{name: string, color: string, parentId: string, sortOrder: string}>) {
+export async function updateGlobalFolder(
+	folderType: GlobalFolderType,
+	folderId: string,
+	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
+) {
 	const settings = get(appSettings);
 	if (!settings) return;
 
 	const folders = settings.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
-	
-	const updatedTypeFolders = typeFolders.map(f => f.id === folderId ? { ...f, ...changes } : f);
-	
+
+	const updatedTypeFolders = typeFolders.map((f) => (f.id === folderId ? { ...f, ...changes } : f));
+
 	const updatedFolders = {
 		...folders,
 		[folderType]: updatedTypeFolders
@@ -65,9 +73,9 @@ export async function deleteGlobalFolder(folderType: GlobalFolderType, folderId:
 
 	const folders = settings.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
-	
-	const updatedTypeFolders = typeFolders.filter(f => f.id !== folderId);
-	
+
+	const updatedTypeFolders = typeFolders.filter((f) => f.id !== folderId);
+
 	const updatedFolders = {
 		...folders,
 		[folderType]: updatedTypeFolders
@@ -76,22 +84,38 @@ export async function deleteGlobalFolder(folderType: GlobalFolderType, folderId:
 	await updateSettings({ folders: updatedFolders });
 }
 
-export async function moveGlobalItem(folderType: GlobalFolderType, itemId: string, newFolderId?: string, newSortOrder?: string) {
+export async function moveGlobalItem(
+	folderType: GlobalFolderType,
+	itemId: string,
+	newFolderId?: string,
+	newSortOrder?: string
+) {
 	const settings = get(appSettings);
 	if (!settings) return;
 
 	let refKey: keyof typeof settings;
 	switch (folderType) {
-		case 'characters': refKey = 'characterRefs'; break;
-		case 'personas': refKey = 'personaRefs'; break;
-		case 'presets': refKey = 'presetRefs'; break;
-		case 'modules': refKey = 'moduleRefs'; break;
-		case 'plugins': refKey = 'pluginRefs'; break;
-		default: return;
+		case 'characters':
+			refKey = 'characterRefs';
+			break;
+		case 'personas':
+			refKey = 'personaRefs';
+			break;
+		case 'presets':
+			refKey = 'presetRefs';
+			break;
+		case 'modules':
+			refKey = 'moduleRefs';
+			break;
+		case 'plugins':
+			refKey = 'pluginRefs';
+			break;
+		default:
+			return;
 	}
 
 	const refs = (settings[refKey] as OrderedRef[]) ?? [];
-	const updatedRefs = refs.map(ref => {
+	const updatedRefs = refs.map((ref) => {
 		if (ref.id !== itemId) return ref;
 		return {
 			...ref,

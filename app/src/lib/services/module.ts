@@ -1,5 +1,11 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
-import { localDB, type ModuleRecord, type ResourceRef, type FolderDef, type OrderedRef } from '../db/index.js';
+import {
+	localDB,
+	type ModuleRecord,
+	type ResourceRef,
+	type FolderDef,
+	type OrderedRef
+} from '../db/index.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -32,20 +38,22 @@ export class ModuleService {
 		const { masterKey, userId } = getActiveSession();
 		const records = await localDB.getAll<ModuleRecord>('modules', userId);
 
-		return Promise.all(records.map(async (record) => {
-			const fields: ModuleFields = JSON.parse(
-				await decryptText(masterKey, {
-					ciphertext: record.encryptedData,
-					iv: record.encryptedDataIV
-				})
-			);
-			return {
-				id: record.id,
-				...fields,
-				createdAt: record.createdAt,
-				updatedAt: record.updatedAt
-			};
-		}));
+		return Promise.all(
+			records.map(async (record) => {
+				const fields: ModuleFields = JSON.parse(
+					await decryptText(masterKey, {
+						ciphertext: record.encryptedData,
+						iv: record.encryptedDataIV
+					})
+				);
+				return {
+					id: record.id,
+					...fields,
+					createdAt: record.createdAt,
+					updatedAt: record.updatedAt
+				};
+			})
+		);
 	}
 
 	static async get(id: string): Promise<Module | null> {
@@ -86,10 +94,7 @@ export class ModuleService {
 		return { id, ...fields, createdAt: now, updatedAt: now };
 	}
 
-	static async update(
-		id: string, 
-		changes: Partial<ModuleFields>
-	): Promise<Module | null> {
+	static async update(id: string, changes: Partial<ModuleFields>): Promise<Module | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ModuleRecord>('modules', id);
 		if (!record || record.isDeleted) return null;

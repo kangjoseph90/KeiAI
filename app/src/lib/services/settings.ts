@@ -1,5 +1,11 @@
 import { encryptText, decryptText, getActiveSession } from '../session.js';
-import { localDB, type SettingsRecord, type OrderedRef, type FolderDef, type ResourceRef } from '../db/index.js';
+import {
+	localDB,
+	type SettingsRecord,
+	type OrderedRef,
+	type FolderDef,
+	type ResourceRef
+} from '../db/index.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 

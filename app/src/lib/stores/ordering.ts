@@ -1,5 +1,5 @@
-import type { OrderedRef } from "$lib/db";
-import { generateKeyBetween } from "fractional-indexing";
+import type { OrderedRef } from '$lib/db';
+import { generateKeyBetween } from 'fractional-indexing';
 
 /** Generate a fractional sort order key for appending to the end of a list */
 export function generateSortOrder(existingRefs: OrderedRef[]): string {
@@ -13,7 +13,7 @@ export function reorderKeyBetween(prevKey: string | null, nextKey: string | null
 	return generateKeyBetween(prevKey, nextKey);
 }
 
-/** 
+/**
  * Sorts an array of entities based on the sortOrder defined in a corresponding array of OrderedRefs.
  * Entities missing from the refs array are pushed to the end or sorted by ID.
  */

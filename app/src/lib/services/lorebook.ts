@@ -27,21 +27,23 @@ export class LorebookService {
 	static async listByOwner(ownerId: string): Promise<Lorebook[]> {
 		const { masterKey } = getActiveSession();
 		const records = await localDB.getByIndex<LorebookRecord>('lorebooks', 'ownerId', ownerId);
-		return Promise.all(records.map(async (record) => {
-			const fields: LorebookFields = JSON.parse(
-				await decryptText(masterKey, {
-					ciphertext: record.encryptedData,
-					iv: record.encryptedDataIV
-				})
-			);
-			return {
-				id: record.id,
-				ownerId: record.ownerId,
-				...fields,
-				createdAt: record.createdAt,
-				updatedAt: record.updatedAt
-			};
-		}));
+		return Promise.all(
+			records.map(async (record) => {
+				const fields: LorebookFields = JSON.parse(
+					await decryptText(masterKey, {
+						ciphertext: record.encryptedData,
+						iv: record.encryptedDataIV
+					})
+				);
+				return {
+					id: record.id,
+					ownerId: record.ownerId,
+					...fields,
+					createdAt: record.createdAt,
+					updatedAt: record.updatedAt
+				};
+			})
+		);
 	}
 
 	static async get(id: string): Promise<Lorebook | null> {
@@ -64,10 +66,7 @@ export class LorebookService {
 		};
 	}
 
-	static async create(
-		ownerId: string, 
-		fields: LorebookFields
-	): Promise<Lorebook> {
+	static async create(ownerId: string, fields: LorebookFields): Promise<Lorebook> {
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
@@ -93,10 +92,7 @@ export class LorebookService {
 		};
 	}
 
-	static async update(
-		id: string, 
-		changes: Partial<LorebookFields>
-	): Promise<Lorebook | null> {
+	static async update(id: string, changes: Partial<LorebookFields>): Promise<Lorebook | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
 		if (!record || record.isDeleted) return null;

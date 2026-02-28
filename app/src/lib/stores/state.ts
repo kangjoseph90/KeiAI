@@ -28,10 +28,13 @@ export const modules = writable<Module[]>([]);
 export const plugins = writable<Plugin[]>([]);
 
 export const moduleResources = writable(
-    new Map<string, {
-        lorebooks: Lorebook[];
-        scripts: Script[];
-    }>()
+	new Map<
+		string,
+		{
+			lorebooks: Lorebook[];
+			scripts: Script[];
+		}
+	>()
 );
 
 // ─── Level 2 (Character Context) ────────────────────────────────────
@@ -58,37 +61,34 @@ export const hasActiveCharacter = derived(activeCharacter, (c) => !!c);
 export const activeChatId = derived(activeChat, (c) => c?.id);
 export const hasActiveChat = derived(activeChat, (c) => !!c);
 
-export const activeModuleIds = derived(
-    [appSettings, activeCharacter],
-    ([settings, char]) => {
-        const ids = new Set<string>();
-        for (const r of settings?.moduleRefs ?? []) {
-            if (r.enabled) ids.add(r.id);
-        }
-        for (const r of char?.data.moduleRefs ?? []) {
-            ids.add(r.id);
-        }
-        return ids;
-    }
-);
+export const activeModuleIds = derived([appSettings, activeCharacter], ([settings, char]) => {
+	const ids = new Set<string>();
+	for (const r of settings?.moduleRefs ?? []) {
+		if (r.enabled) ids.add(r.id);
+	}
+	for (const r of char?.data.moduleRefs ?? []) {
+		ids.add(r.id);
+	}
+	return ids;
+});
 
 export const allLorebooks = derived(
-  [characterLorebooks, chatLorebooks, moduleResources, activeModuleIds],
-  ([charLB, chatLB, resMap, activeIds]) => {
-    const modLB = [...activeIds].flatMap((id) => resMap.get(id)?.lorebooks ?? []);
-    return [...modLB, ...charLB, ...chatLB];
-  }
+	[characterLorebooks, chatLorebooks, moduleResources, activeModuleIds],
+	([charLB, chatLB, resMap, activeIds]) => {
+		const modLB = [...activeIds].flatMap((id) => resMap.get(id)?.lorebooks ?? []);
+		return [...modLB, ...charLB, ...chatLB];
+	}
 );
 
 export const allScripts = derived(
-  [characterScripts, moduleResources, activeModuleIds],
-  ([charSC, resMap, activeIds]) => {
-    const modSC = [...activeIds].flatMap((id) => resMap.get(id)?.scripts ?? []);
-    return [...modSC, ...charSC];
-  }
+	[characterScripts, moduleResources, activeModuleIds],
+	([charSC, resMap, activeIds]) => {
+		const modSC = [...activeIds].flatMap((id) => resMap.get(id)?.scripts ?? []);
+		return [...modSC, ...charSC];
+	}
 );
 
 export const activePersona = derived(
-  [activeCharacter, personas],
-  ([char, list]) => list.find((p) => p.id === char?.data.personaId) ?? null
+	[activeCharacter, personas],
+	([char, list]) => list.find((p) => p.id === char?.data.personaId) ?? null
 );

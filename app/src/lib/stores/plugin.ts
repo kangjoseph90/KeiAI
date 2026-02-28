@@ -22,7 +22,10 @@ export async function createPlugin(fields: PluginFields) {
 	plugins.update((list) => [...list, plugin]);
 	const existing = settings.pluginRefs || [];
 	await updateSettings({
-		pluginRefs: [...existing, { id: plugin.id, sortOrder: generateSortOrder(existing), enabled: true }]
+		pluginRefs: [
+			...existing,
+			{ id: plugin.id, sortOrder: generateSortOrder(existing), enabled: true }
+		]
 	});
 
 	return plugin;

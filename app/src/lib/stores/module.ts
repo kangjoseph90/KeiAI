@@ -1,5 +1,10 @@
 import { get } from 'svelte/store';
-import { ModuleService, type Module, type ModuleFields, type ModuleContent } from '../services/module.js';
+import {
+	ModuleService,
+	type Module,
+	type ModuleFields,
+	type ModuleContent
+} from '../services/module.js';
 import { LorebookService, type LorebookFields } from '../services/lorebook.js';
 import { ScriptService, type ScriptFields } from '../services/script.js';
 import type { OrderedRef, FolderDef } from '../db/index.js';
@@ -17,16 +22,21 @@ export async function loadModules() {
 		modules.set(mods);
 	}
 
-	const entries = await Promise.all(mods.map(async (mod) => {
-		const [lorebooks, scripts] = await Promise.all([
-			LorebookService.listByOwner(mod.id),
-			ScriptService.listByOwner(mod.id)
-		]);
-		return [mod.id, { 
-			lorebooks: sortByRefs(lorebooks, mod.lorebookRefs ?? []), 
-			scripts: sortByRefs(scripts, mod.scriptRefs ?? []) 
-		}] as const;
-	}));
+	const entries = await Promise.all(
+		mods.map(async (mod) => {
+			const [lorebooks, scripts] = await Promise.all([
+				LorebookService.listByOwner(mod.id),
+				ScriptService.listByOwner(mod.id)
+			]);
+			return [
+				mod.id,
+				{
+					lorebooks: sortByRefs(lorebooks, mod.lorebookRefs ?? []),
+					scripts: sortByRefs(scripts, mod.scriptRefs ?? [])
+				}
+			] as const;
+		})
+	);
 
 	moduleResources.set(new Map(entries));
 }
@@ -63,7 +73,11 @@ export async function deleteModule(id: string) {
 	});
 
 	modules.update((list) => list.filter((m) => m.id !== id));
-	moduleResources.update((map) => { const m = new Map(map); m.delete(id); return m; });
+	moduleResources.update((map) => {
+		const m = new Map(map);
+		m.delete(id);
+		return m;
+	});
 }
 
 // ─── Module-owned Lorebook CRUD ─────────────────────────────────────
@@ -75,7 +89,10 @@ export async function createModuleLorebook(moduleId: string, fields: LorebookFie
 	const mod = get(modules).find((m) => m.id === moduleId);
 	if (mod) {
 		const existing = mod.lorebookRefs ?? [];
-		const lorebookRefs: OrderedRef[] = [...existing, { id: lb.id, sortOrder: generateSortOrder(existing) }];
+		const lorebookRefs: OrderedRef[] = [
+			...existing,
+			{ id: lb.id, sortOrder: generateSortOrder(existing) }
+		];
 		await ModuleService.update(moduleId, { lorebookRefs });
 		modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, lorebookRefs } : m)));
 	}
@@ -106,7 +123,11 @@ export async function deleteModuleLorebook(moduleId: string, lorebookId: string)
 	moduleResources.update((map) => {
 		const m = new Map(map);
 		const entry = m.get(moduleId);
-		if (entry) m.set(moduleId, { ...entry, lorebooks: entry.lorebooks.filter((lb) => lb.id !== lorebookId) });
+		if (entry)
+			m.set(moduleId, {
+				...entry,
+				lorebooks: entry.lorebooks.filter((lb) => lb.id !== lorebookId)
+			});
 		return m;
 	});
 }
@@ -119,7 +140,10 @@ export async function createModuleScript(moduleId: string, fields: ScriptFields)
 	const mod = get(modules).find((m) => m.id === moduleId);
 	if (mod) {
 		const existing = mod.scriptRefs ?? [];
-		const scriptRefs: OrderedRef[] = [...existing, { id: sc.id, sortOrder: generateSortOrder(existing) }];
+		const scriptRefs: OrderedRef[] = [
+			...existing,
+			{ id: sc.id, sortOrder: generateSortOrder(existing) }
+		];
 		await ModuleService.update(moduleId, { scriptRefs });
 		modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, scriptRefs } : m)));
 	}
@@ -147,7 +171,8 @@ export async function deleteModuleScript(moduleId: string, scriptId: string) {
 	moduleResources.update((map) => {
 		const m = new Map(map);
 		const entry = m.get(moduleId);
-		if (entry) m.set(moduleId, { ...entry, scripts: entry.scripts.filter((s) => s.id !== scriptId) });
+		if (entry)
+			m.set(moduleId, { ...entry, scripts: entry.scripts.filter((s) => s.id !== scriptId) });
 		return m;
 	});
 }
@@ -156,13 +181,18 @@ export async function deleteModuleScript(moduleId: string, scriptId: string) {
 
 export type ModuleFolderType = 'lorebooks' | 'scripts';
 
-export async function createModuleFolder(moduleId: string, folderType: ModuleFolderType, name: string, parentId?: string) {
+export async function createModuleFolder(
+	moduleId: string,
+	folderType: ModuleFolderType,
+	name: string,
+	parentId?: string
+) {
 	const mod = get(modules).find((m) => m.id === moduleId);
 	if (!mod) return;
 
 	const folders = mod.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
-	
+
 	const newFolder = {
 		id: crypto.randomUUID(),
 		name,
@@ -177,20 +207,31 @@ export async function createModuleFolder(moduleId: string, folderType: ModuleFol
 
 	const result = await ModuleService.update(moduleId, { folders: updatedFolders });
 	if (result) {
-		modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders, updatedAt: result.updatedAt } : m)));
+		modules.update((list) =>
+			list.map((m) =>
+				m.id === moduleId ? { ...m, folders: updatedFolders, updatedAt: result.updatedAt } : m
+			)
+		);
 	}
 	return newFolder;
 }
 
-export async function updateModuleFolder(moduleId: string, folderType: ModuleFolderType, folderId: string, changes: Partial<{name: string, color: string, parentId: string, sortOrder: string}>) {
+export async function updateModuleFolder(
+	moduleId: string,
+	folderType: ModuleFolderType,
+	folderId: string,
+	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
+) {
 	const mod = get(modules).find((m) => m.id === moduleId);
 	if (!mod) return;
 
 	const folders = mod.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
-	
-	const updatedTypeFolders = typeFolders.map((f: FolderDef) => f.id === folderId ? { ...f, ...changes } : f);
-	
+
+	const updatedTypeFolders = typeFolders.map((f: FolderDef) =>
+		f.id === folderId ? { ...f, ...changes } : f
+	);
+
 	const updatedFolders = {
 		...folders,
 		[folderType]: updatedTypeFolders
@@ -198,18 +239,26 @@ export async function updateModuleFolder(moduleId: string, folderType: ModuleFol
 
 	const result = await ModuleService.update(moduleId, { folders: updatedFolders });
 	if (!result) return;
-	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders, updatedAt: result.updatedAt } : m)));
+	modules.update((list) =>
+		list.map((m) =>
+			m.id === moduleId ? { ...m, folders: updatedFolders, updatedAt: result.updatedAt } : m
+		)
+	);
 }
 
-export async function deleteModuleFolder(moduleId: string, folderType: ModuleFolderType, folderId: string) {
+export async function deleteModuleFolder(
+	moduleId: string,
+	folderType: ModuleFolderType,
+	folderId: string
+) {
 	const mod = get(modules).find((m) => m.id === moduleId);
 	if (!mod) return;
 
 	const folders = mod.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
-	
+
 	const updatedTypeFolders = typeFolders.filter((f: FolderDef) => f.id !== folderId);
-	
+
 	const updatedFolders = {
 		...folders,
 		[folderType]: updatedTypeFolders
@@ -217,22 +266,37 @@ export async function deleteModuleFolder(moduleId: string, folderType: ModuleFol
 
 	const result = await ModuleService.update(moduleId, { folders: updatedFolders });
 	if (!result) return;
-	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders, updatedAt: result.updatedAt } : m)));
+	modules.update((list) =>
+		list.map((m) =>
+			m.id === moduleId ? { ...m, folders: updatedFolders, updatedAt: result.updatedAt } : m
+		)
+	);
 }
 
-export async function moveModuleItem(moduleId: string, folderType: ModuleFolderType, itemId: string, newFolderId?: string, newSortOrder?: string) {
+export async function moveModuleItem(
+	moduleId: string,
+	folderType: ModuleFolderType,
+	itemId: string,
+	newFolderId?: string,
+	newSortOrder?: string
+) {
 	const mod = get(modules).find((m) => m.id === moduleId);
 	if (!mod) return;
 
 	let refKey: keyof typeof mod;
 	switch (folderType) {
-		case 'lorebooks': refKey = 'lorebookRefs'; break;
-		case 'scripts': refKey = 'scriptRefs'; break;
-		default: return;
+		case 'lorebooks':
+			refKey = 'lorebookRefs';
+			break;
+		case 'scripts':
+			refKey = 'scriptRefs';
+			break;
+		default:
+			return;
 	}
 
 	const refs = (mod[refKey] as OrderedRef[]) ?? [];
-	const updatedRefs = refs.map(ref => {
+	const updatedRefs = refs.map((ref) => {
 		if (ref.id !== itemId) return ref;
 		return {
 			...ref,
@@ -243,5 +307,9 @@ export async function moveModuleItem(moduleId: string, folderType: ModuleFolderT
 
 	const result = await ModuleService.update(moduleId, { [refKey]: updatedRefs });
 	if (!result) return;
-	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, [refKey]: updatedRefs, updatedAt: result.updatedAt } : m)));
+	modules.update((list) =>
+		list.map((m) =>
+			m.id === moduleId ? { ...m, [refKey]: updatedRefs, updatedAt: result.updatedAt } : m
+		)
+	);
 }

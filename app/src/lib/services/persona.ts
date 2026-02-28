@@ -24,20 +24,22 @@ export class PersonaService {
 		const { masterKey, userId } = getActiveSession();
 		const records = await localDB.getAll<PersonaRecord>('personas', userId);
 
-		return Promise.all(records.map(async (record) => {
-			const fields: PersonaFields = JSON.parse(
-				await decryptText(masterKey, {
-					ciphertext: record.encryptedData,
-					iv: record.encryptedDataIV
-				})
-			);
-			return {
-				id: record.id,
-				...fields,
-				createdAt: record.createdAt,
-				updatedAt: record.updatedAt
-			};
-		}));
+		return Promise.all(
+			records.map(async (record) => {
+				const fields: PersonaFields = JSON.parse(
+					await decryptText(masterKey, {
+						ciphertext: record.encryptedData,
+						iv: record.encryptedDataIV
+					})
+				);
+				return {
+					id: record.id,
+					...fields,
+					createdAt: record.createdAt,
+					updatedAt: record.updatedAt
+				};
+			})
+		);
 	}
 
 	static async get(id: string): Promise<Persona | null> {
@@ -80,10 +82,7 @@ export class PersonaService {
 	}
 
 	/** Update a persona */
-	static async update(
-		id: string, 
-		changes: Partial<PersonaFields>
-	): Promise<Persona | null> {
+	static async update(id: string, changes: Partial<PersonaFields>): Promise<Persona | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<PersonaRecord>('personas', id);
 		if (!record || record.isDeleted) return null;

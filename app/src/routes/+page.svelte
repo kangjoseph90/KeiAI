@@ -41,12 +41,10 @@
 	// --- Character Level ---
 	async function handleCreateCharacter() {
 		if (!newCharName.trim()) return;
-		await createCharacter(
-			{
-				name: newCharName,
-				shortDescription: 'An offline-first character',
-			}
-		);
+		await createCharacter({
+			name: newCharName,
+			shortDescription: 'An offline-first character'
+		});
 		newCharName = '';
 	}
 

@@ -51,23 +51,30 @@ export interface ChatDetail extends Chat {
 export class ChatService {
 	static async listByCharacter(characterId: string): Promise<Chat[]> {
 		const { masterKey } = getActiveSession();
-		const records = await localDB.getByIndex<ChatSummaryRecord>('chatSummaries', 'characterId', characterId, 10000);
-		
-		return Promise.all(records.map(async (record) => {
-			const fields: ChatSummaryFields = JSON.parse(
-				await decryptText(masterKey, {
-					ciphertext: record.encryptedData,
-					iv: record.encryptedDataIV
-				})
-			);
-			return {
-				id: record.id,
-				characterId: record.characterId,
-				...fields,
-				createdAt: record.createdAt,
-				updatedAt: record.updatedAt
-			};
-		}));
+		const records = await localDB.getByIndex<ChatSummaryRecord>(
+			'chatSummaries',
+			'characterId',
+			characterId,
+			10000
+		);
+
+		return Promise.all(
+			records.map(async (record) => {
+				const fields: ChatSummaryFields = JSON.parse(
+					await decryptText(masterKey, {
+						ciphertext: record.encryptedData,
+						iv: record.encryptedDataIV
+					})
+				);
+				return {
+					id: record.id,
+					characterId: record.characterId,
+					...fields,
+					createdAt: record.createdAt,
+					updatedAt: record.updatedAt
+				};
+			})
+		);
 	}
 
 	/** Get full chat data */
@@ -148,7 +155,7 @@ export class ChatService {
 
 	/** Update summary only */
 	static async updateSummary(
-		id: string, 
+		id: string,
 		changes: Partial<ChatSummaryFields>
 	): Promise<Chat | null> {
 		const { masterKey } = getActiveSession();
@@ -177,7 +184,7 @@ export class ChatService {
 
 	/** Update data only */
 	static async updateData(
-		id: string, 
+		id: string,
 		changes: Partial<ChatDataFields>
 	): Promise<{ updatedAt: number } | null> {
 		const { masterKey } = getActiveSession();
@@ -203,7 +210,11 @@ export class ChatService {
 		id: string,
 		summaryChanges?: Partial<ChatSummaryFields>,
 		dataChanges?: Partial<ChatDataFields>
-	): Promise<{ summary?: ChatSummaryFields & { characterId: string }; data?: ChatDataFields; updatedAt: number } | null> {
+	): Promise<{
+		summary?: ChatSummaryFields & { characterId: string };
+		data?: ChatDataFields;
+		updatedAt: number;
+	} | null> {
 		const { masterKey } = getActiveSession();
 		let updatedSummary: (ChatSummaryFields & { characterId: string }) | undefined;
 		let updatedData: ChatDataFields | undefined;
@@ -213,9 +224,12 @@ export class ChatService {
 			if (summaryChanges) {
 				const summaryRecord = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
 				if (!summaryRecord || summaryRecord.isDeleted) return;
-				
+
 				const currentSummary: ChatSummaryFields = JSON.parse(
-					await decryptText(masterKey, { ciphertext: summaryRecord.encryptedData, iv: summaryRecord.encryptedDataIV })
+					await decryptText(masterKey, {
+						ciphertext: summaryRecord.encryptedData,
+						iv: summaryRecord.encryptedDataIV
+					})
 				);
 				const mergedSummary = { ...currentSummary, ...summaryChanges };
 				const enc = await encryptText(masterKey, JSON.stringify(mergedSummary));
@@ -229,9 +243,12 @@ export class ChatService {
 			if (dataChanges) {
 				const dataRecord = await localDB.getRecord<ChatDataRecord>('chatData', id);
 				if (!dataRecord || dataRecord.isDeleted) return;
-				
+
 				const currentData: ChatDataFields = JSON.parse(
-					await decryptText(masterKey, { ciphertext: dataRecord.encryptedData, iv: dataRecord.encryptedDataIV })
+					await decryptText(masterKey, {
+						ciphertext: dataRecord.encryptedData,
+						iv: dataRecord.encryptedDataIV
+					})
 				);
 				updatedData = { ...currentData, ...dataChanges };
 				const enc = await encryptText(masterKey, JSON.stringify(updatedData));

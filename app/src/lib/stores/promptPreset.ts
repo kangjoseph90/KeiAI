@@ -1,5 +1,11 @@
 import { get } from 'svelte/store';
-import { PromptPresetService, type PromptPreset, type PromptPresetDetail, type PromptPresetSummaryFields, type PromptPresetDataFields } from '../services/promptPreset.js';
+import {
+	PromptPresetService,
+	type PromptPreset,
+	type PromptPresetDetail,
+	type PromptPresetSummaryFields,
+	type PromptPresetDataFields
+} from '../services/promptPreset.js';
 import { updateSettings } from './settings.js';
 import { generateSortOrder, sortByRefs } from './ordering.js';
 import { promptPresets, activePreset, appSettings } from './state.js';
@@ -48,16 +54,24 @@ export async function updatePresetSummary(id: string, changes: Partial<PromptPre
 export async function updatePresetData(id: string, changes: Partial<PromptPresetDataFields>) {
 	const result = await PromptPresetService.updateData(id, changes);
 	if (result) {
-		activePreset.update((p) => (p && p.id === id ? { ...p, data: { ...p.data, ...changes }, updatedAt: result.updatedAt } : p));
+		activePreset.update((p) =>
+			p && p.id === id ? { ...p, data: { ...p.data, ...changes }, updatedAt: result.updatedAt } : p
+		);
 	}
 }
 
-export async function updatePresetFull(id: string, summaryChanges: Partial<PromptPresetSummaryFields>, dataChanges: Partial<PromptPresetDataFields>) {
+export async function updatePresetFull(
+	id: string,
+	summaryChanges: Partial<PromptPresetSummaryFields>,
+	dataChanges: Partial<PromptPresetDataFields>
+) {
 	const result = await PromptPresetService.update(id, summaryChanges, dataChanges);
 	if (!result) return;
-	
+
 	if (result.summary) {
-		promptPresets.update((list) => list.map((p) => (p.id === id ? { ...p, ...result.summary, updatedAt: result.updatedAt } : p)));
+		promptPresets.update((list) =>
+			list.map((p) => (p.id === id ? { ...p, ...result.summary, updatedAt: result.updatedAt } : p))
+		);
 	}
 	activePreset.update((p) => {
 		if (p && p.id === id) {

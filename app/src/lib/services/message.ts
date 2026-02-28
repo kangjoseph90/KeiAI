@@ -20,8 +20,8 @@ export interface Message extends MessageFields {
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class MessageService {
-	/** 
-	 * Cursor-based pagination for UI (loads older messages) 
+	/**
+	 * Cursor-based pagination for UI (loads older messages)
 	 * Returns messages sorted ascending (oldest first) within the batch
 	 */
 	static async getMessagesBefore(
@@ -42,22 +42,24 @@ export class MessageService {
 		// them again to get an oldest-to-newest ordering for the UI to prepend.
 		records.reverse();
 
-		return Promise.all(records.map(async (record) => {
-			const fields: MessageFields = JSON.parse(
-				await decryptText(masterKey, {
-					ciphertext: record.encryptedData,
-					iv: record.encryptedDataIV
-				})
-			);
-			return {
-				id: record.id,
-				chatId: record.chatId,
-				sortOrder: record.sortOrder,
-				...fields,
-				createdAt: record.createdAt,
-				updatedAt: record.updatedAt
-			};
-		}));
+		return Promise.all(
+			records.map(async (record) => {
+				const fields: MessageFields = JSON.parse(
+					await decryptText(masterKey, {
+						ciphertext: record.encryptedData,
+						iv: record.encryptedDataIV
+					})
+				);
+				return {
+					id: record.id,
+					chatId: record.chatId,
+					sortOrder: record.sortOrder,
+					...fields,
+					createdAt: record.createdAt,
+					updatedAt: record.updatedAt
+				};
+			})
+		);
 	}
 
 	static async getMessagesAfter(
@@ -75,22 +77,24 @@ export class MessageService {
 			limit
 		);
 
-		return Promise.all(records.map(async (record) => {
-			const fields: MessageFields = JSON.parse(
-				await decryptText(masterKey, {
-					ciphertext: record.encryptedData,
-					iv: record.encryptedDataIV
-				})
-			);
-			return {
-				id: record.id,
-				chatId: record.chatId,
-				sortOrder: record.sortOrder,
-				...fields,
-				createdAt: record.createdAt,
-				updatedAt: record.updatedAt
-			};
-		}));
+		return Promise.all(
+			records.map(async (record) => {
+				const fields: MessageFields = JSON.parse(
+					await decryptText(masterKey, {
+						ciphertext: record.encryptedData,
+						iv: record.encryptedDataIV
+					})
+				);
+				return {
+					id: record.id,
+					chatId: record.chatId,
+					sortOrder: record.sortOrder,
+					...fields,
+					createdAt: record.createdAt,
+					updatedAt: record.updatedAt
+				};
+			})
+		);
 	}
 
 	/**
@@ -123,7 +127,7 @@ export class MessageService {
 						iv: record.encryptedDataIV
 					})
 				);
-				
+
 				yield {
 					id: record.id,
 					chatId: record.chatId,
@@ -132,7 +136,7 @@ export class MessageService {
 					createdAt: record.createdAt,
 					updatedAt: record.updatedAt
 				};
-				
+
 				currentCursor = record.sortOrder;
 			}
 		}
@@ -164,7 +168,7 @@ export class MessageService {
 						iv: record.encryptedDataIV
 					})
 				);
-				
+
 				yield {
 					id: record.id,
 					chatId: record.chatId,
@@ -173,7 +177,7 @@ export class MessageService {
 					createdAt: record.createdAt,
 					updatedAt: record.updatedAt
 				};
-				
+
 				currentCursor = record.sortOrder;
 			}
 		}
@@ -202,7 +206,7 @@ export class MessageService {
 
 	/** Create a message */
 	static async create(
-		chatId: string, 
+		chatId: string,
 		fields: MessageFields,
 		providedSortOrder?: string
 	): Promise<Message> {
@@ -240,21 +244,18 @@ export class MessageService {
 			encryptedDataIV: enc.iv
 		});
 
-		return { 
-			id, 
-			chatId, 
-			sortOrder, 
-			...fields, 
-			createdAt: now, 
-			updatedAt: now 
+		return {
+			id,
+			chatId,
+			sortOrder,
+			...fields,
+			createdAt: now,
+			updatedAt: now
 		};
 	}
 
 	/** Update a message */
-	static async update(
-		id: string, 
-		changes: Partial<MessageFields>
-	): Promise<Message | null> {
+	static async update(id: string, changes: Partial<MessageFields>): Promise<Message | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<MessageRecord>('messages', id);
 		if (!record || record.isDeleted) return null;
