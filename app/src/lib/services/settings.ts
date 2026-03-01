@@ -6,7 +6,7 @@ import {
 	type FolderDef,
 	type ResourceRef
 } from '../db/index.js';
-import { applyDefaults } from '../utils/defaults.js';
+import { deepMerge } from '../utils/defaults.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -57,7 +57,7 @@ export class SettingsService {
 			ciphertext: record.encryptedData,
 			iv: record.encryptedDataIV
 		});
-		return applyDefaults(defaultSettings as AppSettings, JSON.parse(dec));
+		return deepMerge(defaultSettings as AppSettings, JSON.parse(dec));
 	}
 
 	static async set(settings: AppSettings): Promise<void> {
@@ -86,7 +86,7 @@ export class SettingsService {
 		if (!record || record.isDeleted) {
 			current = { ...defaultSettings } as AppSettings;
 		} else {
-			current = applyDefaults(
+			current = deepMerge(
 				defaultSettings as AppSettings,
 				JSON.parse(
 					await decryptText(masterKey, {
@@ -97,7 +97,7 @@ export class SettingsService {
 			);
 		}
 
-		const updated: AppSettings = { ...current, ...changes };
+		const updated: AppSettings = deepMerge(current, changes as Record<string, unknown>);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		await localDB.putRecord<SettingsRecord>('settings', {

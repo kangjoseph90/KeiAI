@@ -1,6 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type PersonaRecord, type AssetEntry } from '../db/index.js';
-import { applyDefaults } from '../utils/defaults.js';
+import { deepMerge } from '../utils/defaults.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ function decryptFields(masterKey: CryptoKey, record: PersonaRecord): Promise<Per
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => applyDefaults(defaultPersonaFields, JSON.parse(dec)));
+	}).then((dec) => deepMerge(defaultPersonaFields, JSON.parse(dec)));
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -95,7 +95,7 @@ export class PersonaService {
 		if (!record || record.isDeleted) return null;
 
 		const current = await decryptFields(masterKey, record);
-		const updated: PersonaFields = { ...current, ...changes };
+		const updated: PersonaFields = deepMerge(current, changes as Record<string, unknown>);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;

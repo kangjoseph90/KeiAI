@@ -1,6 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type ScriptRecord } from '../db/index.js';
-import { applyDefaults } from '../utils/defaults.js';
+import { deepMerge } from '../utils/defaults.js';
 import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ function decryptFields(masterKey: CryptoKey, record: ScriptRecord): Promise<Scri
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => applyDefaults(defaultScriptFields, JSON.parse(dec)));
+	}).then((dec) => deepMerge(defaultScriptFields, JSON.parse(dec)));
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ export class ScriptService {
 		}
 
 		const current = await decryptFields(masterKey, record);
-		const updated: ScriptFields = { ...current, ...changes };
+		const updated: ScriptFields = deepMerge(current, changes as Record<string, unknown>);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;

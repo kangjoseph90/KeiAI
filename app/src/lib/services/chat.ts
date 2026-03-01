@@ -13,7 +13,7 @@ import {
 	type FolderDef,
 	type OrderedRef
 } from '../db/index.js';
-import { applyDefaults } from '../utils/defaults.js';
+import { deepMerge } from '../utils/defaults.js';
 import { assertCharacterExists, assertChatOwnedByCharacter } from './guards.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
@@ -66,14 +66,14 @@ function decryptSummaryFields(
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => applyDefaults(defaultSummaryFields, JSON.parse(dec)));
+	}).then((dec) => deepMerge(defaultSummaryFields, JSON.parse(dec)));
 }
 
 function decryptDataFields(masterKey: CryptoKey, record: ChatDataRecord): Promise<ChatDataFields> {
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => applyDefaults(defaultDataFields, JSON.parse(dec)));
+	}).then((dec) => deepMerge(defaultDataFields, JSON.parse(dec)));
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -183,7 +183,7 @@ export class ChatService {
 		if (!record || record.isDeleted) return null;
 
 		const current = await decryptSummaryFields(masterKey, record);
-		const updated: ChatSummaryFields = { ...current, ...changes };
+		const updated: ChatSummaryFields = deepMerge(current, changes as Record<string, unknown>);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -210,7 +210,7 @@ export class ChatService {
 		if (!record || record.isDeleted) return null;
 
 		const current = await decryptDataFields(masterKey, record);
-		const updated = { ...current, ...changes };
+		const updated = deepMerge(current, changes as Record<string, unknown>);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -235,39 +235,42 @@ export class ChatService {
 		const finalUpdatedAt = Date.now();
 
 		await localDB.transaction(['chatSummaries', 'chatData'], 'rw', async () => {
+			// Read both records upfront — ensures no partial writes if one is missing
+			const summaryRecord = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
+			const dataRecord = await localDB.getRecord<ChatDataRecord>('chatData', id);
+			if (
+				!summaryRecord ||
+				summaryRecord.isDeleted ||
+				!dataRecord ||
+				dataRecord.isDeleted
+			) {
+				return;
+			}
+
+			characterId = summaryRecord.characterId;
+			createdAt = summaryRecord.createdAt;
+
 			if (summaryChanges) {
-				const summaryRecord = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
-				if (!summaryRecord || summaryRecord.isDeleted) return;
 				const currentSummary = await decryptSummaryFields(masterKey, summaryRecord);
-				updatedSummary = { ...currentSummary, ...summaryChanges };
+				updatedSummary = deepMerge(currentSummary, summaryChanges as Record<string, unknown>);
 				const summaryEnc = await encryptText(masterKey, JSON.stringify(updatedSummary));
 				summaryRecord.encryptedData = summaryEnc.ciphertext;
 				summaryRecord.encryptedDataIV = summaryEnc.iv;
 				summaryRecord.updatedAt = finalUpdatedAt;
 				await localDB.putRecord('chatSummaries', summaryRecord);
-				characterId = summaryRecord.characterId;
-				createdAt = summaryRecord.createdAt;
 			} else {
-				const summaryRecord = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
-				if (!summaryRecord || summaryRecord.isDeleted) return;
 				updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
-				characterId = summaryRecord.characterId;
-				createdAt = summaryRecord.createdAt;
 			}
 
 			if (dataChanges) {
-				const dataRecord = await localDB.getRecord<ChatDataRecord>('chatData', id);
-				if (!dataRecord || dataRecord.isDeleted) return;
 				const currentData = await decryptDataFields(masterKey, dataRecord);
-				updatedData = { ...currentData, ...dataChanges };
+				updatedData = deepMerge(currentData, dataChanges as Record<string, unknown>);
 				const dataEnc = await encryptText(masterKey, JSON.stringify(updatedData));
 				dataRecord.encryptedData = dataEnc.ciphertext;
 				dataRecord.encryptedDataIV = dataEnc.iv;
 				dataRecord.updatedAt = finalUpdatedAt;
 				await localDB.putRecord('chatData', dataRecord);
 			} else {
-				const dataRecord = await localDB.getRecord<ChatDataRecord>('chatData', id);
-				if (!dataRecord || dataRecord.isDeleted) return;
 				updatedData = await decryptDataFields(masterKey, dataRecord);
 			}
 		});

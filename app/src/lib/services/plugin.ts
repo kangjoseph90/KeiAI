@@ -1,6 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type PluginRecord } from '../db/index.js';
-import { applyDefaults } from '../utils/defaults.js';
+import { deepMerge } from '../utils/defaults.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ function decryptFields(masterKey: CryptoKey, record: PluginRecord): Promise<Plug
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => applyDefaults(defaultPluginFields, JSON.parse(dec)));
+	}).then((dec) => deepMerge(defaultPluginFields, JSON.parse(dec)));
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ export class PluginService {
 		if (!record || record.isDeleted) return null;
 
 		const current = await decryptFields(masterKey, record);
-		const updated: PluginFields = { ...current, ...changes };
+		const updated: PluginFields = deepMerge(current, changes as Record<string, unknown>);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;

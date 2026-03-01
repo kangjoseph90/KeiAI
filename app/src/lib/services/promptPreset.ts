@@ -4,7 +4,7 @@ import {
 	type PromptPresetSummaryRecord,
 	type PromptPresetDataRecord
 } from '../db/index.js';
-import { applyDefaults } from '../utils/defaults.js';
+import { deepMerge } from '../utils/defaults.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -97,7 +97,7 @@ function decryptSummaryFields(
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => applyDefaults(defaultPresetSummary, JSON.parse(dec)));
+	}).then((dec) => deepMerge(defaultPresetSummary, JSON.parse(dec)));
 }
 
 function decryptDataFields(
@@ -107,7 +107,7 @@ function decryptDataFields(
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => applyDefaults(defaultPresetData, JSON.parse(dec)));
+	}).then((dec) => deepMerge(defaultPresetData, JSON.parse(dec)));
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -202,7 +202,7 @@ export class PromptPresetService {
 		if (!record || record.isDeleted) return null;
 
 		const current = await decryptSummaryFields(masterKey, record);
-		const updated: PromptPresetSummaryFields = { ...current, ...changes };
+		const updated: PromptPresetSummaryFields = deepMerge(current, changes as Record<string, unknown>);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -223,7 +223,7 @@ export class PromptPresetService {
 		if (!record || record.isDeleted) return null;
 
 		const current = await decryptDataFields(masterKey, record);
-		const updated: PromptPresetDataFields = { ...current, ...changes };
+		const updated: PromptPresetDataFields = deepMerge(current, changes as Record<string, unknown>);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -247,43 +247,44 @@ export class PromptPresetService {
 		const finalUpdatedAt = Date.now();
 
 		await localDB.transaction(['promptPresetSummaries', 'promptPresetData'], 'rw', async () => {
+			// Read both records upfront — ensures no partial writes if one is missing
+			const summaryRecord = await localDB.getRecord<PromptPresetSummaryRecord>(
+				'promptPresetSummaries',
+				id
+			);
+			const dataRecord = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
+			if (
+				!summaryRecord ||
+				summaryRecord.isDeleted ||
+				!dataRecord ||
+				dataRecord.isDeleted
+			) {
+				return;
+			}
+
+			createdAt = summaryRecord.createdAt;
+
 			if (summaryChanges) {
-				const summaryRecord = await localDB.getRecord<PromptPresetSummaryRecord>(
-					'promptPresetSummaries',
-					id
-				);
-				if (!summaryRecord || summaryRecord.isDeleted) return;
 				const currentSummary = await decryptSummaryFields(masterKey, summaryRecord);
-				updatedSummary = { ...currentSummary, ...summaryChanges };
+				updatedSummary = deepMerge(currentSummary, summaryChanges as Record<string, unknown>);
 				const summaryEnc = await encryptText(masterKey, JSON.stringify(updatedSummary));
 				summaryRecord.encryptedData = summaryEnc.ciphertext;
 				summaryRecord.encryptedDataIV = summaryEnc.iv;
 				summaryRecord.updatedAt = finalUpdatedAt;
 				await localDB.putRecord('promptPresetSummaries', summaryRecord);
-				createdAt = summaryRecord.createdAt;
 			} else {
-				const summaryRecord = await localDB.getRecord<PromptPresetSummaryRecord>(
-					'promptPresetSummaries',
-					id
-				);
-				if (!summaryRecord || summaryRecord.isDeleted) return;
 				updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
-				createdAt = summaryRecord.createdAt;
 			}
 
 			if (dataChanges) {
-				const dataRecord = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
-				if (!dataRecord || dataRecord.isDeleted) return;
 				const currentData = await decryptDataFields(masterKey, dataRecord);
-				updatedData = { ...currentData, ...dataChanges };
+				updatedData = deepMerge(currentData, dataChanges as Record<string, unknown>);
 				const dataEnc = await encryptText(masterKey, JSON.stringify(updatedData));
 				dataRecord.encryptedData = dataEnc.ciphertext;
 				dataRecord.encryptedDataIV = dataEnc.iv;
 				dataRecord.updatedAt = finalUpdatedAt;
 				await localDB.putRecord('promptPresetData', dataRecord);
 			} else {
-				const dataRecord = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
-				if (!dataRecord || dataRecord.isDeleted) return;
 				updatedData = await decryptDataFields(masterKey, dataRecord);
 			}
 		});

@@ -1,6 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type LorebookRecord } from '../db/index.js';
-import { applyDefaults } from '../utils/defaults.js';
+import { deepMerge } from '../utils/defaults.js';
 import { assertLorebookOwnedBy, assertOwnedResourceParentExists } from './guards.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ function decryptFields(masterKey: CryptoKey, record: LorebookRecord): Promise<Lo
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => applyDefaults(defaultLorebookFields, JSON.parse(dec)));
+	}).then((dec) => deepMerge(defaultLorebookFields, JSON.parse(dec)));
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ export class LorebookService {
 		}
 
 		const current = await decryptFields(masterKey, record);
-		const updated: LorebookFields = { ...current, ...changes };
+		const updated: LorebookFields = deepMerge(current, changes as Record<string, unknown>);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;

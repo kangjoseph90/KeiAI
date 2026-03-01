@@ -1,7 +1,7 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type MessageRecord } from '../db/index.js';
 import { generateKeyBetween } from 'fractional-indexing';
-import { applyDefaults } from '../utils/defaults.js';
+import { deepMerge } from '../utils/defaults.js';
 import { assertChatExists, assertMessageInChat } from './guards.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ function decryptFields(masterKey: CryptoKey, record: MessageRecord): Promise<Mes
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => applyDefaults(defaultMessageFields, JSON.parse(dec)));
+	}).then((dec) => deepMerge(defaultMessageFields, JSON.parse(dec)));
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -263,7 +263,7 @@ export class MessageService {
 		}
 
 		const current = await decryptFields(masterKey, record);
-		const updated: MessageFields = { ...current, ...changes };
+		const updated: MessageFields = deepMerge(current, changes as Record<string, unknown>);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;

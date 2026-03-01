@@ -1,6 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type ModuleRecord, type FolderDef, type OrderedRef } from '../db/index.js';
-import { applyDefaults } from '../utils/defaults.js';
+import { deepMerge } from '../utils/defaults.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ function decryptFields(masterKey: CryptoKey, record: ModuleRecord): Promise<Modu
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => applyDefaults(defaultModuleFields, JSON.parse(dec)));
+	}).then((dec) => deepMerge(defaultModuleFields, JSON.parse(dec)));
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ export class ModuleService {
 		if (!record || record.isDeleted) return null;
 
 		const current = await decryptFields(masterKey, record);
-		const updated: ModuleFields = { ...current, ...changes };
+		const updated: ModuleFields = deepMerge(current, changes as Record<string, unknown>);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
