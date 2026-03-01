@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 import { PersonaService, type PersonaFields } from '../services/persona.js';
-import { updateSettings } from './settings.js';
-import { generateSortOrder, sortByRefs } from './ordering.js';
+import { SettingsService } from '../services';
+import { generateSortOrder, sortByRefs } from '../utils/ordering.js';
 import { personas, appSettings } from './state.js';
 
 export async function loadPersonas() {
@@ -21,9 +21,9 @@ export async function createPersona(fields: PersonaFields) {
 	const persona = await PersonaService.create(fields);
 	personas.update((list) => [...list, persona]);
 	const existing = settings.personaRefs || [];
-	await updateSettings({
-		personaRefs: [...existing, { id: persona.id, sortOrder: generateSortOrder(existing) }]
-	});
+	const personaRefs = [...existing, { id: persona.id, sortOrder: generateSortOrder(existing) }];
+	const updatedSettings = await SettingsService.update({ personaRefs });
+	if (updatedSettings) appSettings.set(updatedSettings);
 
 	return persona;
 }
@@ -40,9 +40,9 @@ export async function deletePersona(id: string) {
 	if (!settings) return;
 
 	await PersonaService.delete(id);
-	await updateSettings({
-		personaRefs: (settings.personaRefs || []).filter((r) => r.id !== id)
-	});
+	const personaRefs = (settings.personaRefs || []).filter((r) => r.id !== id);
+	const updatedSettings = await SettingsService.update({ personaRefs });
+	if (updatedSettings) appSettings.set(updatedSettings);
 
 	personas.update((list) => list.filter((p) => p.id !== id));
 }

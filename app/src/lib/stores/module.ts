@@ -3,8 +3,8 @@ import { ModuleService, type ModuleFields, type ModuleContent } from '../service
 import { LorebookService, type LorebookFields } from '../services/lorebook.js';
 import { ScriptService, type ScriptFields } from '../services/script.js';
 import type { OrderedRef, FolderDef } from '../db/index.js';
-import { updateSettings } from './settings.js';
-import { generateSortOrder, sortByRefs } from './ordering.js';
+import { SettingsService } from '../services';
+import { generateSortOrder, sortByRefs } from '../utils/ordering.js';
 import { modules, appSettings, moduleResources } from './state.js';
 
 export async function loadModules() {
@@ -41,12 +41,17 @@ export async function createModule(fields: ModuleFields) {
 	if (!settings) return;
 
 	const mod = await ModuleService.create(fields);
+	const existing = settings.moduleRefs || [];
+	const moduleRefs = [...existing, { id: mod.id, sortOrder: generateSortOrder(existing), enabled: true }];
+	const updatedSettings = await SettingsService.update({ moduleRefs });
+	if (!updatedSettings) {
+		await ModuleService.delete(mod.id);
+		return;
+	}
+
 	modules.update((list) => [...list, mod]);
 	moduleResources.update((map) => new Map(map).set(mod.id, { lorebooks: [], scripts: [] }));
-	const existing = settings.moduleRefs || [];
-	await updateSettings({
-		moduleRefs: [...existing, { id: mod.id, sortOrder: generateSortOrder(existing), enabled: true }]
-	});
+	appSettings.set(updatedSettings);
 
 	return mod;
 }
@@ -61,11 +66,20 @@ export async function updateModule(id: string, changes: Partial<ModuleContent>) 
 export async function deleteModule(id: string) {
 	const settings = get(appSettings);
 	if (!settings) return;
+	const existingRefs = settings.moduleRefs || [];
+	const moduleRefs = existingRefs.filter((r) => r.id !== id);
+	const updatedSettings = await SettingsService.update({ moduleRefs });
+	if (!updatedSettings) return;
 
-	await ModuleService.delete(id);
-	await updateSettings({
-		moduleRefs: (settings.moduleRefs || []).filter((r) => r.id !== id)
-	});
+	try {
+		await ModuleService.delete(id);
+	} catch (error) {
+		const rolledBackSettings = await SettingsService.update({ moduleRefs: existingRefs });
+		if (rolledBackSettings) appSettings.set(rolledBackSettings);
+		throw error;
+	}
+
+	appSettings.set(updatedSettings);
 
 	modules.update((list) => list.filter((m) => m.id !== id));
 	moduleResources.update((map) => {
@@ -104,7 +118,7 @@ export async function createModuleLorebook(moduleId: string, fields: LorebookFie
 }
 
 export async function deleteModuleLorebook(moduleId: string, lorebookId: string) {
-	await LorebookService.delete(lorebookId);
+	await LorebookService.delete(lorebookId, moduleId);
 
 	// Update module's lorebookRefs
 	const mod = get(modules).find((m) => m.id === moduleId);
@@ -154,7 +168,7 @@ export async function createModuleScript(moduleId: string, fields: ScriptFields)
 }
 
 export async function deleteModuleScript(moduleId: string, scriptId: string) {
-	await ScriptService.delete(scriptId);
+	await ScriptService.delete(scriptId, moduleId);
 
 	const mod = get(modules).find((m) => m.id === moduleId);
 	if (mod) {

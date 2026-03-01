@@ -6,15 +6,19 @@ import {
 	type FolderDef,
 	type ResourceRef
 } from '../db/index.js';
+import { applyDefaults } from '../utils/defaults.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
-export interface AppSettings {
+export interface AppSettingsContent {
 	theme: 'light' | 'dark' | 'system';
 	apiKeys: {
 		openai?: string;
 		anthropic?: string;
 	};
+}
+
+export interface AppSettingsRefs {
 	// 1:N — workspace holds ordered refs for top-level entities
 	characterRefs?: OrderedRef[];
 	personaRefs?: OrderedRef[];
@@ -31,7 +35,9 @@ export interface AppSettings {
 	};
 }
 
-const defaultSettings: AppSettings = {
+export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}
+
+const defaultSettings: AppSettingsContent = {
 	theme: 'system',
 	apiKeys: {}
 };
@@ -51,10 +57,10 @@ export class SettingsService {
 			ciphertext: record.encryptedData,
 			iv: record.encryptedDataIV
 		});
-		return { ...defaultSettings, ...JSON.parse(dec) };
+		return applyDefaults(defaultSettings as AppSettings, JSON.parse(dec));
 	}
 
-	static async update(settings: AppSettings): Promise<void> {
+	static async set(settings: AppSettings): Promise<void> {
 		const { masterKey, userId } = getActiveSession();
 		const enc = await encryptText(masterKey, JSON.stringify(settings));
 
@@ -69,5 +75,41 @@ export class SettingsService {
 			encryptedData: enc.ciphertext,
 			encryptedDataIV: enc.iv
 		});
+	}
+
+	/** Partial update — read-modify-write with merge */
+	static async update(changes: Partial<AppSettings>): Promise<AppSettings | null> {
+		const { masterKey, userId } = getActiveSession();
+		const record = await localDB.getRecord<SettingsRecord>('settings', userId);
+
+		let current: AppSettings;
+		if (!record || record.isDeleted) {
+			current = { ...defaultSettings } as AppSettings;
+		} else {
+			current = applyDefaults(
+				defaultSettings as AppSettings,
+				JSON.parse(
+					await decryptText(masterKey, {
+						ciphertext: record.encryptedData,
+						iv: record.encryptedDataIV
+					})
+				)
+			);
+		}
+
+		const updated: AppSettings = { ...current, ...changes };
+		const enc = await encryptText(masterKey, JSON.stringify(updated));
+
+		await localDB.putRecord<SettingsRecord>('settings', {
+			id: userId,
+			userId,
+			createdAt: record?.createdAt ?? Date.now(),
+			updatedAt: Date.now(),
+			isDeleted: false,
+			encryptedData: enc.ciphertext,
+			encryptedDataIV: enc.iv
+		});
+
+		return updated;
 	}
 }

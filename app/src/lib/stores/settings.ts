@@ -1,18 +1,16 @@
 import { get } from 'svelte/store';
-import { SettingsService, type AppSettings } from '../services';
+import { SettingsService, type AppSettingsContent, type AppSettings } from '../services';
 import { appSettings } from './state.js';
 import type { OrderedRef } from '../db/index.js';
-import { generateSortOrder } from './ordering.js';
+import { generateSortOrder } from '../utils/ordering.js';
 
 export async function loadSettings() {
 	appSettings.set(await SettingsService.get());
 }
 
-export async function updateSettings(changes: Partial<AppSettings>) {
-	const current = get(appSettings) || ({} as AppSettings);
-	const updated = { ...current, ...changes } as AppSettings;
-	await SettingsService.update(updated);
-	appSettings.set(updated);
+export async function updateSettings(changes: Partial<AppSettingsContent>) {
+	const updated = await SettingsService.update(changes);
+	if (updated) appSettings.set(updated);
 }
 
 // ─── Global Folder & Item Management ──────────────────────
@@ -42,7 +40,8 @@ export async function createGlobalFolder(
 		[folderType]: [...typeFolders, newFolder]
 	};
 
-	await updateSettings({ folders: updatedFolders });
+	const updated = await SettingsService.update({ folders: updatedFolders });
+	if (updated) appSettings.set(updated);
 	return newFolder;
 }
 
@@ -64,7 +63,8 @@ export async function updateGlobalFolder(
 		[folderType]: updatedTypeFolders
 	};
 
-	await updateSettings({ folders: updatedFolders });
+	const updated = await SettingsService.update({ folders: updatedFolders });
+	if (updated) appSettings.set(updated);
 }
 
 export async function deleteGlobalFolder(folderType: GlobalFolderType, folderId: string) {
@@ -81,7 +81,8 @@ export async function deleteGlobalFolder(folderType: GlobalFolderType, folderId:
 		[folderType]: updatedTypeFolders
 	};
 
-	await updateSettings({ folders: updatedFolders });
+	const updated = await SettingsService.update({ folders: updatedFolders });
+	if (updated) appSettings.set(updated);
 }
 
 export async function moveGlobalItem(
@@ -93,7 +94,7 @@ export async function moveGlobalItem(
 	const settings = get(appSettings);
 	if (!settings) return;
 
-	let refKey: keyof typeof settings;
+	let refKey: keyof AppSettings;
 	switch (folderType) {
 		case 'characters':
 			refKey = 'characterRefs';
@@ -124,5 +125,6 @@ export async function moveGlobalItem(
 		};
 	});
 
-	await updateSettings({ [refKey]: updatedRefs } as Partial<AppSettings>);
+	const updated = await SettingsService.update({ [refKey]: updatedRefs } as Partial<AppSettings>);
+	if (updated) appSettings.set(updated);
 }

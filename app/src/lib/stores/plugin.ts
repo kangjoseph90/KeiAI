@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 import { PluginService, type PluginFields } from '../services/plugin.js';
-import { updateSettings } from './settings.js';
-import { generateSortOrder, sortByRefs } from './ordering.js';
+import { SettingsService } from '../services';
+import { generateSortOrder, sortByRefs } from '../utils/ordering.js';
 import { plugins, appSettings } from './state.js';
 
 export async function loadPlugins() {
@@ -21,12 +21,12 @@ export async function createPlugin(fields: PluginFields) {
 	const plugin = await PluginService.create(fields);
 	plugins.update((list) => [...list, plugin]);
 	const existing = settings.pluginRefs || [];
-	await updateSettings({
-		pluginRefs: [
-			...existing,
-			{ id: plugin.id, sortOrder: generateSortOrder(existing), enabled: true }
-		]
-	});
+	const pluginRefs = [
+		...existing,
+		{ id: plugin.id, sortOrder: generateSortOrder(existing), enabled: true }
+	];
+	const updatedSettings = await SettingsService.update({ pluginRefs });
+	if (updatedSettings) appSettings.set(updatedSettings);
 
 	return plugin;
 }
@@ -43,9 +43,9 @@ export async function deletePlugin(id: string) {
 	if (!settings) return;
 
 	await PluginService.delete(id);
-	await updateSettings({
-		pluginRefs: (settings.pluginRefs || []).filter((r) => r.id !== id)
-	});
+	const pluginRefs = (settings.pluginRefs || []).filter((r) => r.id !== id);
+	const updatedSettings = await SettingsService.update({ pluginRefs });
+	if (updatedSettings) appSettings.set(updatedSettings);
 
 	plugins.update((list) => list.filter((p) => p.id !== id));
 }

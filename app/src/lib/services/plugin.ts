@@ -1,5 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type PluginRecord } from '../db/index.js';
+import { applyDefaults } from '../utils/defaults.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -23,6 +24,26 @@ export interface Plugin extends PluginFields {
 	updatedAt: number;
 }
 
+// ─── Defaults ────────────────────────────────────────────────────────
+
+const defaultPluginFields: PluginFields = {
+	name: '',
+	description: '',
+	version: '',
+	code: '',
+	config: {},
+	hooks: []
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function decryptFields(masterKey: CryptoKey, record: PluginRecord): Promise<PluginFields> {
+	return decryptText(masterKey, {
+		ciphertext: record.encryptedData,
+		iv: record.encryptedDataIV
+	}).then((dec) => applyDefaults(defaultPluginFields, JSON.parse(dec)));
+}
+
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class PluginService {
@@ -32,12 +53,7 @@ export class PluginService {
 
 		return Promise.all(
 			records.map(async (record) => {
-				const fields: PluginFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: record.encryptedData,
-						iv: record.encryptedDataIV
-					})
-				);
+				const fields = await decryptFields(masterKey, record);
 				return {
 					id: record.id,
 					...fields,
@@ -53,12 +69,7 @@ export class PluginService {
 		const record = await localDB.getRecord<PluginRecord>('plugins', id);
 		if (!record || record.isDeleted) return null;
 
-		const fields: PluginFields = JSON.parse(
-			await decryptText(masterKey, {
-				ciphertext: record.encryptedData,
-				iv: record.encryptedDataIV
-			})
-		);
+		const fields = await decryptFields(masterKey, record);
 		return {
 			id: record.id,
 			...fields,
@@ -91,10 +102,8 @@ export class PluginService {
 		const record = await localDB.getRecord<PluginRecord>('plugins', id);
 		if (!record || record.isDeleted) return null;
 
-		const current: PluginFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
-		const updated = { ...current, ...changes };
+		const current = await decryptFields(masterKey, record);
+		const updated: PluginFields = { ...current, ...changes };
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;

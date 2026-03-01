@@ -1,5 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type PersonaRecord, type AssetEntry } from '../db/index.js';
+import { applyDefaults } from '../utils/defaults.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -16,6 +17,22 @@ export interface Persona extends PersonaFields {
 	updatedAt: number;
 }
 
+// ─── Defaults ────────────────────────────────────────────────────────
+
+const defaultPersonaFields: PersonaFields = {
+	name: '',
+	description: ''
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function decryptFields(masterKey: CryptoKey, record: PersonaRecord): Promise<PersonaFields> {
+	return decryptText(masterKey, {
+		ciphertext: record.encryptedData,
+		iv: record.encryptedDataIV
+	}).then((dec) => applyDefaults(defaultPersonaFields, JSON.parse(dec)));
+}
+
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class PersonaService {
@@ -26,12 +43,7 @@ export class PersonaService {
 
 		return Promise.all(
 			records.map(async (record) => {
-				const fields: PersonaFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: record.encryptedData,
-						iv: record.encryptedDataIV
-					})
-				);
+				const fields = await decryptFields(masterKey, record);
 				return {
 					id: record.id,
 					...fields,
@@ -47,12 +59,7 @@ export class PersonaService {
 		const record = await localDB.getRecord<PersonaRecord>('personas', id);
 		if (!record || record.isDeleted) return null;
 
-		const fields: PersonaFields = JSON.parse(
-			await decryptText(masterKey, {
-				ciphertext: record.encryptedData,
-				iv: record.encryptedDataIV
-			})
-		);
+		const fields = await decryptFields(masterKey, record);
 		return {
 			id: record.id,
 			...fields,
@@ -87,10 +94,8 @@ export class PersonaService {
 		const record = await localDB.getRecord<PersonaRecord>('personas', id);
 		if (!record || record.isDeleted) return null;
 
-		const current: PersonaFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
-		const updated = { ...current, ...changes };
+		const current = await decryptFields(masterKey, record);
+		const updated: PersonaFields = { ...current, ...changes };
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;

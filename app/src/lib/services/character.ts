@@ -7,6 +7,7 @@ import {
 	type FolderDef,
 	type AssetEntry
 } from '../db/index.js';
+import { applyDefaults } from '../utils/defaults.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -49,6 +50,39 @@ export interface CharacterDetail extends Character {
 	data: CharacterDataFields;
 }
 
+// ─── Defaults ────────────────────────────────────────────────────────
+
+const defaultSummaryFields: CharacterSummaryFields = {
+	name: '',
+	shortDescription: ''
+};
+
+const defaultDataFields: CharacterDataFields = {
+	systemPrompt: ''
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function decryptSummaryFields(
+	masterKey: CryptoKey,
+	record: CharacterSummaryRecord
+): Promise<CharacterSummaryFields> {
+	return decryptText(masterKey, {
+		ciphertext: record.encryptedData,
+		iv: record.encryptedDataIV
+	}).then((dec) => applyDefaults(defaultSummaryFields, JSON.parse(dec)));
+}
+
+function decryptDataFields(
+	masterKey: CryptoKey,
+	record: CharacterDataRecord
+): Promise<CharacterDataFields> {
+	return decryptText(masterKey, {
+		ciphertext: record.encryptedData,
+		iv: record.encryptedDataIV
+	}).then((dec) => applyDefaults(defaultDataFields, JSON.parse(dec)));
+}
+
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class CharacterService {
@@ -58,12 +92,7 @@ export class CharacterService {
 		const records = await localDB.getAll<CharacterSummaryRecord>('characterSummaries', userId);
 		return Promise.all(
 			records.map(async (record) => {
-				const fields: CharacterSummaryFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: record.encryptedData,
-						iv: record.encryptedDataIV
-					})
-				);
+				const fields = await decryptSummaryFields(masterKey, record);
 				return {
 					id: record.id,
 					...fields,
@@ -84,15 +113,8 @@ export class CharacterService {
 		const dataRec = await localDB.getRecord<CharacterDataRecord>('characterData', id);
 		if (!dataRec || dataRec.isDeleted) return null;
 
-		const fields: CharacterSummaryFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: rec.encryptedData, iv: rec.encryptedDataIV })
-		);
-		const data: CharacterDataFields = JSON.parse(
-			await decryptText(masterKey, {
-				ciphertext: dataRec.encryptedData,
-				iv: dataRec.encryptedDataIV
-			})
-		);
+		const fields = await decryptSummaryFields(masterKey, rec);
+		const data = await decryptDataFields(masterKey, dataRec);
 
 		return {
 			id: rec.id,
@@ -148,10 +170,8 @@ export class CharacterService {
 		const record = await localDB.getRecord<CharacterSummaryRecord>('characterSummaries', id);
 		if (!record || record.isDeleted) return null;
 
-		const current: CharacterSummaryFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
-		const updated = { ...current, ...changes };
+		const current = await decryptSummaryFields(masterKey, record);
+		const updated: CharacterSummaryFields = { ...current, ...changes };
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -166,15 +186,13 @@ export class CharacterService {
 	static async updateData(
 		id: string,
 		changes: Partial<CharacterDataFields>
-	): Promise<{ updatedAt: number } | null> {
+	): Promise<{ data: CharacterDataFields; updatedAt: number } | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<CharacterDataRecord>('characterData', id);
 		if (!record || record.isDeleted) return null;
 
-		const current: CharacterDataFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
-		const updated = { ...current, ...changes };
+		const current = await decryptDataFields(masterKey, record);
+		const updated: CharacterDataFields = { ...current, ...changes };
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -182,7 +200,7 @@ export class CharacterService {
 		record.updatedAt = Date.now();
 		await localDB.putRecord('characterData', record);
 
-		return { updatedAt: record.updatedAt };
+		return { data: updated, updatedAt: record.updatedAt };
 	}
 
 	/** Update summary and/or data transactionally */
@@ -190,14 +208,11 @@ export class CharacterService {
 		id: string,
 		summaryChanges?: Partial<CharacterSummaryFields>,
 		dataChanges?: Partial<CharacterDataFields>
-	): Promise<{
-		summary?: CharacterSummaryFields;
-		data?: CharacterDataFields;
-		updatedAt: number;
-	} | null> {
+	): Promise<CharacterDetail | null> {
 		const { masterKey } = getActiveSession();
 		let updatedSummary: CharacterSummaryFields | undefined;
 		let updatedData: CharacterDataFields | undefined;
+		let createdAt: number | undefined;
 		const finalUpdatedAt = Date.now();
 
 		await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
@@ -207,46 +222,48 @@ export class CharacterService {
 					id
 				);
 				if (!summaryRecord || summaryRecord.isDeleted) return;
-
-				const currentSummary: CharacterSummaryFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: summaryRecord.encryptedData,
-						iv: summaryRecord.encryptedDataIV
-					})
-				);
+				const currentSummary = await decryptSummaryFields(masterKey, summaryRecord);
 				updatedSummary = { ...currentSummary, ...summaryChanges };
-				const enc = await encryptText(masterKey, JSON.stringify(updatedSummary));
-				summaryRecord.encryptedData = enc.ciphertext;
-				summaryRecord.encryptedDataIV = enc.iv;
+				const summaryEnc = await encryptText(masterKey, JSON.stringify(updatedSummary));
+				summaryRecord.encryptedData = summaryEnc.ciphertext;
+				summaryRecord.encryptedDataIV = summaryEnc.iv;
 				summaryRecord.updatedAt = finalUpdatedAt;
 				await localDB.putRecord('characterSummaries', summaryRecord);
+				createdAt = summaryRecord.createdAt;
+			} else {
+				const summaryRecord = await localDB.getRecord<CharacterSummaryRecord>(
+					'characterSummaries',
+					id
+				);
+				if (!summaryRecord || summaryRecord.isDeleted) return;
+				updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
+				createdAt = summaryRecord.createdAt;
 			}
 
 			if (dataChanges) {
 				const dataRecord = await localDB.getRecord<CharacterDataRecord>('characterData', id);
 				if (!dataRecord || dataRecord.isDeleted) return;
-
-				const currentData: CharacterDataFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: dataRecord.encryptedData,
-						iv: dataRecord.encryptedDataIV
-					})
-				);
+				const currentData = await decryptDataFields(masterKey, dataRecord);
 				updatedData = { ...currentData, ...dataChanges };
-				const enc = await encryptText(masterKey, JSON.stringify(updatedData));
-				dataRecord.encryptedData = enc.ciphertext;
-				dataRecord.encryptedDataIV = enc.iv;
+				const dataEnc = await encryptText(masterKey, JSON.stringify(updatedData));
+				dataRecord.encryptedData = dataEnc.ciphertext;
+				dataRecord.encryptedDataIV = dataEnc.iv;
 				dataRecord.updatedAt = finalUpdatedAt;
 				await localDB.putRecord('characterData', dataRecord);
+			} else {
+				const dataRecord = await localDB.getRecord<CharacterDataRecord>('characterData', id);
+				if (!dataRecord || dataRecord.isDeleted) return;
+				updatedData = await decryptDataFields(masterKey, dataRecord);
 			}
 		});
 
-		if (!updatedSummary && !updatedData) return null;
-		// If only one was requested and the record was deleted, we still return what we have (or null).
+		if (!updatedSummary || !updatedData || createdAt === undefined) return null;
 
 		return {
-			summary: updatedSummary,
+			id,
+			...updatedSummary,
 			data: updatedData,
+			createdAt,
 			updatedAt: finalUpdatedAt
 		};
 	}
@@ -264,9 +281,10 @@ export class CharacterService {
 			],
 			'rw',
 			async () => {
-				const chatIds = (await localDB.getByIndex('chatSummaries', 'characterId', id)).map(
-					(c) => c.id
-				);
+				// `getByIndex` limits to 50 results by default. Since a character can yield >50 chats, we explicitly use Number.MAX_SAFE_INTEGER
+				const chatIds = (
+					await localDB.getByIndex('chatSummaries', 'characterId', id, Number.MAX_SAFE_INTEGER)
+				).map((c) => c.id);
 				for (const chatId of chatIds) {
 					await localDB.softDeleteByIndex('messages', 'chatId', chatId);
 					await localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId);

@@ -1,12 +1,11 @@
 import { get } from 'svelte/store';
 import {
 	PromptPresetService,
-	type PromptPreset,
 	type PromptPresetSummaryFields,
 	type PromptPresetDataFields
 } from '../services/promptPreset.js';
-import { updateSettings } from './settings.js';
-import { generateSortOrder, sortByRefs } from './ordering.js';
+import { SettingsService } from '../services';
+import { generateSortOrder, sortByRefs } from '../utils/ordering.js';
 import { promptPresets, activePreset, appSettings } from './state.js';
 
 export async function loadPresets() {
@@ -32,13 +31,11 @@ export async function createPreset(
 
 	const detail = await PromptPresetService.create(fields, data);
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	const { data: _data, ...summary } = detail;
-	promptPresets.update((list) => [...list, summary as PromptPreset]);
+	promptPresets.update((list) => [...list, detail]);
 	const existing = settings.presetRefs || [];
-	await updateSettings({
-		presetRefs: [...existing, { id: detail.id, sortOrder: generateSortOrder(existing) }]
-	});
+	const presetRefs = [...existing, { id: detail.id, sortOrder: generateSortOrder(existing) }];
+	const updatedSettings = await SettingsService.update({ presetRefs });
+	if (updatedSettings) appSettings.set(updatedSettings);
 
 	return detail;
 }
@@ -55,7 +52,7 @@ export async function updatePresetData(id: string, changes: Partial<PromptPreset
 	const result = await PromptPresetService.updateData(id, changes);
 	if (result) {
 		activePreset.update((p) =>
-			p && p.id === id ? { ...p, data: { ...p.data, ...changes }, updatedAt: result.updatedAt } : p
+			p && p.id === id ? { ...p, data: result.data, updatedAt: result.updatedAt } : p
 		);
 	}
 }
@@ -68,22 +65,8 @@ export async function updatePresetFull(
 	const result = await PromptPresetService.update(id, summaryChanges, dataChanges);
 	if (!result) return;
 
-	if (result.summary) {
-		promptPresets.update((list) =>
-			list.map((p) => (p.id === id ? { ...p, ...result.summary, updatedAt: result.updatedAt } : p))
-		);
-	}
-	activePreset.update((p) => {
-		if (p && p.id === id) {
-			return {
-				...p,
-				...(result.summary || {}),
-				data: { ...p.data, ...(result.data || {}) },
-				updatedAt: result.updatedAt
-			};
-		}
-		return p;
-	});
+	promptPresets.update((list) => list.map((p) => (p.id === id ? result : p)));
+	activePreset.update((p) => (p && p.id === id ? result : p));
 }
 
 export async function deletePreset(id: string) {
@@ -91,9 +74,9 @@ export async function deletePreset(id: string) {
 	if (!settings) return;
 
 	await PromptPresetService.delete(id);
-	await updateSettings({
-		presetRefs: (settings.presetRefs || []).filter((r) => r.id !== id)
-	});
+	const presetRefs = (settings.presetRefs || []).filter((r) => r.id !== id);
+	const updatedSettings = await SettingsService.update({ presetRefs });
+	if (updatedSettings) appSettings.set(updatedSettings);
 
 	promptPresets.update((list) => list.filter((p) => p.id !== id));
 	if (get(activePreset)?.id === id) {

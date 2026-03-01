@@ -13,6 +13,8 @@ import {
 	type FolderDef,
 	type OrderedRef
 } from '../db/index.js';
+import { applyDefaults } from '../utils/defaults.js';
+import { assertCharacterExists, assertChatOwnedByCharacter } from './guards.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -46,6 +48,34 @@ export interface ChatDetail extends Chat {
 	data: ChatDataFields;
 }
 
+// ─── Defaults ────────────────────────────────────────────────────────
+
+const defaultSummaryFields: ChatSummaryFields = {
+	title: '',
+	lastMessagePreview: ''
+};
+
+const defaultDataFields: ChatDataFields = {};
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function decryptSummaryFields(
+	masterKey: CryptoKey,
+	record: ChatSummaryRecord
+): Promise<ChatSummaryFields> {
+	return decryptText(masterKey, {
+		ciphertext: record.encryptedData,
+		iv: record.encryptedDataIV
+	}).then((dec) => applyDefaults(defaultSummaryFields, JSON.parse(dec)));
+}
+
+function decryptDataFields(masterKey: CryptoKey, record: ChatDataRecord): Promise<ChatDataFields> {
+	return decryptText(masterKey, {
+		ciphertext: record.encryptedData,
+		iv: record.encryptedDataIV
+	}).then((dec) => applyDefaults(defaultDataFields, JSON.parse(dec)));
+}
+
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class ChatService {
@@ -55,17 +85,12 @@ export class ChatService {
 			'chatSummaries',
 			'characterId',
 			characterId,
-			10000
+			Number.MAX_SAFE_INTEGER
 		);
 
 		return Promise.all(
 			records.map(async (record) => {
-				const fields: ChatSummaryFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: record.encryptedData,
-						iv: record.encryptedDataIV
-					})
-				);
+				const fields = await decryptSummaryFields(masterKey, record);
 				return {
 					id: record.id,
 					characterId: record.characterId,
@@ -87,15 +112,8 @@ export class ChatService {
 		const dataRec = await localDB.getRecord<ChatDataRecord>('chatData', id);
 		if (!dataRec || dataRec.isDeleted) return null;
 
-		const fields: ChatSummaryFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: rec.encryptedData, iv: rec.encryptedDataIV })
-		);
-		const data: ChatDataFields = JSON.parse(
-			await decryptText(masterKey, {
-				ciphertext: dataRec.encryptedData,
-				iv: dataRec.encryptedDataIV
-			})
-		);
+		const fields = await decryptSummaryFields(masterKey, rec);
+		const data = await decryptDataFields(masterKey, dataRec);
 
 		return {
 			id: rec.id,
@@ -113,6 +131,8 @@ export class ChatService {
 		summary: ChatSummaryFields,
 		data: ChatDataFields = {}
 	): Promise<ChatDetail> {
+		await assertCharacterExists(characterId);
+
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
@@ -162,10 +182,8 @@ export class ChatService {
 		const record = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
 		if (!record || record.isDeleted) return null;
 
-		const current: ChatSummaryFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
-		const updated = { ...current, ...changes };
+		const current = await decryptSummaryFields(masterKey, record);
+		const updated: ChatSummaryFields = { ...current, ...changes };
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -186,14 +204,12 @@ export class ChatService {
 	static async updateData(
 		id: string,
 		changes: Partial<ChatDataFields>
-	): Promise<{ updatedAt: number } | null> {
+	): Promise<{ data: ChatDataFields; updatedAt: number } | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatDataRecord>('chatData', id);
 		if (!record || record.isDeleted) return null;
 
-		const current: ChatDataFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
+		const current = await decryptDataFields(masterKey, record);
 		const updated = { ...current, ...changes };
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
@@ -202,7 +218,7 @@ export class ChatService {
 		record.updatedAt = Date.now();
 		await localDB.putRecord('chatData', record);
 
-		return { updatedAt: record.updatedAt };
+		return { data: updated, updatedAt: record.updatedAt };
 	}
 
 	/** Update summary and/or data transactionally */
@@ -210,66 +226,70 @@ export class ChatService {
 		id: string,
 		summaryChanges?: Partial<ChatSummaryFields>,
 		dataChanges?: Partial<ChatDataFields>
-	): Promise<{
-		summary?: ChatSummaryFields & { characterId: string };
-		data?: ChatDataFields;
-		updatedAt: number;
-	} | null> {
+	): Promise<ChatDetail | null> {
 		const { masterKey } = getActiveSession();
-		let updatedSummary: (ChatSummaryFields & { characterId: string }) | undefined;
+		let updatedSummary: ChatSummaryFields | undefined;
 		let updatedData: ChatDataFields | undefined;
+		let characterId: string | undefined;
+		let createdAt: number | undefined;
 		const finalUpdatedAt = Date.now();
 
 		await localDB.transaction(['chatSummaries', 'chatData'], 'rw', async () => {
 			if (summaryChanges) {
 				const summaryRecord = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
 				if (!summaryRecord || summaryRecord.isDeleted) return;
-
-				const currentSummary: ChatSummaryFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: summaryRecord.encryptedData,
-						iv: summaryRecord.encryptedDataIV
-					})
-				);
-				const mergedSummary = { ...currentSummary, ...summaryChanges };
-				const enc = await encryptText(masterKey, JSON.stringify(mergedSummary));
-				summaryRecord.encryptedData = enc.ciphertext;
-				summaryRecord.encryptedDataIV = enc.iv;
+				const currentSummary = await decryptSummaryFields(masterKey, summaryRecord);
+				updatedSummary = { ...currentSummary, ...summaryChanges };
+				const summaryEnc = await encryptText(masterKey, JSON.stringify(updatedSummary));
+				summaryRecord.encryptedData = summaryEnc.ciphertext;
+				summaryRecord.encryptedDataIV = summaryEnc.iv;
 				summaryRecord.updatedAt = finalUpdatedAt;
 				await localDB.putRecord('chatSummaries', summaryRecord);
-				updatedSummary = { ...mergedSummary, characterId: summaryRecord.characterId };
+				characterId = summaryRecord.characterId;
+				createdAt = summaryRecord.createdAt;
+			} else {
+				const summaryRecord = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
+				if (!summaryRecord || summaryRecord.isDeleted) return;
+				updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
+				characterId = summaryRecord.characterId;
+				createdAt = summaryRecord.createdAt;
 			}
 
 			if (dataChanges) {
 				const dataRecord = await localDB.getRecord<ChatDataRecord>('chatData', id);
 				if (!dataRecord || dataRecord.isDeleted) return;
-
-				const currentData: ChatDataFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: dataRecord.encryptedData,
-						iv: dataRecord.encryptedDataIV
-					})
-				);
+				const currentData = await decryptDataFields(masterKey, dataRecord);
 				updatedData = { ...currentData, ...dataChanges };
-				const enc = await encryptText(masterKey, JSON.stringify(updatedData));
-				dataRecord.encryptedData = enc.ciphertext;
-				dataRecord.encryptedDataIV = enc.iv;
+				const dataEnc = await encryptText(masterKey, JSON.stringify(updatedData));
+				dataRecord.encryptedData = dataEnc.ciphertext;
+				dataRecord.encryptedDataIV = dataEnc.iv;
 				dataRecord.updatedAt = finalUpdatedAt;
 				await localDB.putRecord('chatData', dataRecord);
+			} else {
+				const dataRecord = await localDB.getRecord<ChatDataRecord>('chatData', id);
+				if (!dataRecord || dataRecord.isDeleted) return;
+				updatedData = await decryptDataFields(masterKey, dataRecord);
 			}
 		});
 
-		if (!updatedSummary && !updatedData) return null;
+		if (!updatedSummary || !updatedData || !characterId || createdAt === undefined) return null;
 
 		return {
-			summary: updatedSummary,
+			id,
+			characterId,
+			...updatedSummary,
 			data: updatedData,
+			createdAt,
 			updatedAt: finalUpdatedAt
 		};
 	}
 
 	/** Cascade soft-delete: owned lorebooks, scripts, messages, then chat itself */
-	static async delete(id: string): Promise<void> {
+	static async delete(id: string, expectedCharacterId?: string): Promise<void> {
+		if (expectedCharacterId) {
+			await assertChatOwnedByCharacter(id, expectedCharacterId);
+		}
+
 		await localDB.transaction(
 			['lorebooks', 'scripts', 'messages', 'chatSummaries', 'chatData'],
 			'rw',

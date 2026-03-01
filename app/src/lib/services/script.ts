@@ -1,5 +1,7 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type ScriptRecord } from '../db/index.js';
+import { applyDefaults } from '../utils/defaults.js';
+import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -18,22 +20,41 @@ export interface Script extends ScriptFields {
 	updatedAt: number;
 }
 
+// ─── Defaults ────────────────────────────────────────────────────────
+
+const defaultScriptFields: ScriptFields = {
+	name: '',
+	regex: '',
+	replacement: '',
+	placement: 'onInput',
+	enabled: true
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function decryptFields(masterKey: CryptoKey, record: ScriptRecord): Promise<ScriptFields> {
+	return decryptText(masterKey, {
+		ciphertext: record.encryptedData,
+		iv: record.encryptedDataIV
+	}).then((dec) => applyDefaults(defaultScriptFields, JSON.parse(dec)));
+}
+
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class ScriptService {
 	/** List scripts owned by a specific parent (character, module) */
 	static async listByOwner(ownerId: string): Promise<Script[]> {
 		const { masterKey } = getActiveSession();
-		const records = await localDB.getByIndex<ScriptRecord>('scripts', 'ownerId', ownerId);
+		const records = await localDB.getByIndex<ScriptRecord>(
+			'scripts',
+			'ownerId',
+			ownerId,
+			Number.MAX_SAFE_INTEGER
+		);
 
 		return Promise.all(
 			records.map(async (record) => {
-				const fields: ScriptFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: record.encryptedData,
-						iv: record.encryptedDataIV
-					})
-				);
+				const fields = await decryptFields(masterKey, record);
 				return {
 					id: record.id,
 					ownerId: record.ownerId,
@@ -50,12 +71,7 @@ export class ScriptService {
 		const record = await localDB.getRecord<ScriptRecord>('scripts', id);
 		if (!record || record.isDeleted) return null;
 
-		const fields: ScriptFields = JSON.parse(
-			await decryptText(masterKey, {
-				ciphertext: record.encryptedData,
-				iv: record.encryptedDataIV
-			})
-		);
+		const fields = await decryptFields(masterKey, record);
 		return {
 			id: record.id,
 			ownerId: record.ownerId,
@@ -66,6 +82,8 @@ export class ScriptService {
 	}
 
 	static async create(ownerId: string, fields: ScriptFields): Promise<Script> {
+		await assertOwnedResourceParentExists(ownerId);
+
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
@@ -91,15 +109,20 @@ export class ScriptService {
 		};
 	}
 
-	static async update(id: string, changes: Partial<ScriptFields>): Promise<Script | null> {
+	static async update(
+		id: string,
+		changes: Partial<ScriptFields>,
+		expectedOwnerId?: string
+	): Promise<Script | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ScriptRecord>('scripts', id);
 		if (!record || record.isDeleted) return null;
+		if (expectedOwnerId) {
+			await assertScriptOwnedBy(expectedOwnerId, id);
+		}
 
-		const current: ScriptFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
-		const updated = { ...current, ...changes };
+		const current = await decryptFields(masterKey, record);
+		const updated: ScriptFields = { ...current, ...changes };
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -116,7 +139,10 @@ export class ScriptService {
 		};
 	}
 
-	static async delete(id: string): Promise<void> {
+	static async delete(id: string, expectedOwnerId?: string): Promise<void> {
+		if (expectedOwnerId) {
+			await assertScriptOwnedBy(expectedOwnerId, id);
+		}
 		await localDB.softDeleteRecord('scripts', id);
 	}
 }

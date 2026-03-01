@@ -1,6 +1,8 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type MessageRecord } from '../db/index.js';
 import { generateKeyBetween } from 'fractional-indexing';
+import { applyDefaults } from '../utils/defaults.js';
+import { assertChatExists, assertMessageInChat } from './guards.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -15,6 +17,22 @@ export interface Message extends MessageFields {
 	sortOrder: string;
 	createdAt: number;
 	updatedAt: number;
+}
+
+// ─── Defaults ────────────────────────────────────────────────────────
+
+const defaultMessageFields: MessageFields = {
+	role: 'user',
+	content: ''
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function decryptFields(masterKey: CryptoKey, record: MessageRecord): Promise<MessageFields> {
+	return decryptText(masterKey, {
+		ciphertext: record.encryptedData,
+		iv: record.encryptedDataIV
+	}).then((dec) => applyDefaults(defaultMessageFields, JSON.parse(dec)));
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -44,12 +62,7 @@ export class MessageService {
 
 		return Promise.all(
 			records.map(async (record) => {
-				const fields: MessageFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: record.encryptedData,
-						iv: record.encryptedDataIV
-					})
-				);
+				const fields = await decryptFields(masterKey, record);
 				return {
 					id: record.id,
 					chatId: record.chatId,
@@ -79,12 +92,7 @@ export class MessageService {
 
 		return Promise.all(
 			records.map(async (record) => {
-				const fields: MessageFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: record.encryptedData,
-						iv: record.encryptedDataIV
-					})
-				);
+				const fields = await decryptFields(masterKey, record);
 				return {
 					id: record.id,
 					chatId: record.chatId,
@@ -121,12 +129,7 @@ export class MessageService {
 			if (records.length === 0) break;
 
 			for (const record of records) {
-				const fields: MessageFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: record.encryptedData,
-						iv: record.encryptedDataIV
-					})
-				);
+				const fields = await decryptFields(masterKey, record);
 
 				yield {
 					id: record.id,
@@ -162,12 +165,7 @@ export class MessageService {
 			if (records.length === 0) break;
 
 			for (const record of records) {
-				const fields: MessageFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: record.encryptedData,
-						iv: record.encryptedDataIV
-					})
-				);
+				const fields = await decryptFields(masterKey, record);
 
 				yield {
 					id: record.id,
@@ -188,12 +186,7 @@ export class MessageService {
 		const record = await localDB.getRecord<MessageRecord>('messages', id);
 		if (!record || record.isDeleted) return null;
 
-		const fields: MessageFields = JSON.parse(
-			await decryptText(masterKey, {
-				ciphertext: record.encryptedData,
-				iv: record.encryptedDataIV
-			})
-		);
+		const fields = await decryptFields(masterKey, record);
 		return {
 			id: record.id,
 			chatId: record.chatId,
@@ -210,6 +203,8 @@ export class MessageService {
 		fields: MessageFields,
 		providedSortOrder?: string
 	): Promise<Message> {
+		await assertChatExists(chatId);
+
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
@@ -226,7 +221,7 @@ export class MessageService {
 			if (lastRecords.length > 0) {
 				sortOrder = generateKeyBetween(lastRecords[0].sortOrder, null);
 			} else {
-				sortOrder = String(now).padStart(16, '0');
+				sortOrder = generateKeyBetween(null, null);
 			}
 		}
 
@@ -255,15 +250,20 @@ export class MessageService {
 	}
 
 	/** Update a message */
-	static async update(id: string, changes: Partial<MessageFields>): Promise<Message | null> {
+	static async update(
+		id: string,
+		changes: Partial<MessageFields>,
+		expectedChatId?: string
+	): Promise<Message | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<MessageRecord>('messages', id);
 		if (!record || record.isDeleted) return null;
+		if (expectedChatId) {
+			await assertMessageInChat(expectedChatId, id);
+		}
 
-		const current: MessageFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
-		const updated = { ...current, ...changes };
+		const current = await decryptFields(masterKey, record);
+		const updated: MessageFields = { ...current, ...changes };
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -272,7 +272,7 @@ export class MessageService {
 		await localDB.putRecord('messages', record);
 
 		return {
-			id: record.id,
+			id,
 			chatId: record.chatId,
 			sortOrder: record.sortOrder,
 			...updated,
@@ -282,7 +282,10 @@ export class MessageService {
 	}
 
 	/** Soft-delete a message */
-	static async delete(id: string): Promise<void> {
+	static async delete(id: string, expectedChatId?: string): Promise<void> {
+		if (expectedChatId) {
+			await assertMessageInChat(expectedChatId, id);
+		}
 		await localDB.softDeleteRecord('messages', id);
 	}
 }

@@ -14,8 +14,8 @@ import {
 } from '../services';
 import type { OrderedRef } from '../db/index.js';
 import { clearActiveChat, sortChatsByRefs, selectChat } from './chat.js';
-import { updateSettings } from './settings.js';
-import { generateSortOrder, sortByRefs } from './ordering.js';
+import { SettingsService } from '../services';
+import { generateSortOrder, sortByRefs } from '../utils/ordering.js';
 import {
 	characters,
 	activeCharacter,
@@ -61,13 +61,13 @@ export async function loadCharacters() {
 }
 
 export async function selectCharacter(characterId: string) {
-	clearActiveChat();
-
+	// 캐릭터 참조 검증
 	const detail = await CharacterService.getDetail(characterId);
-	activeCharacter.set(detail);
-
 	if (!detail) return; // TODO: Error handling
 
+	activeCharacter.set(detail);
+
+	clearActiveChat();
 	const chatList = await ChatService.listByCharacter(characterId);
 	chats.set(sortChatsByRefs(chatList, detail.data.chatRefs ?? []));
 
@@ -78,6 +78,7 @@ export async function selectCharacter(characterId: string) {
 		LorebookService.listByOwner(characterId),
 		ScriptService.listByOwner(characterId)
 	]);
+
 	characterLorebooks.set(sortByRefs(lorebooks, detail.data.lorebookRefs ?? []));
 	characterScripts.set(sortByRefs(scripts, detail.data.scriptRefs ?? []));
 
@@ -107,8 +108,7 @@ export async function updateCharacterSummary(
 		c && c.id === characterId
 			? {
 					...c,
-					...updated,
-					updatedAt: updated.updatedAt
+					...updated
 				}
 			: c
 	);
@@ -118,15 +118,15 @@ export async function updateCharacterData(
 	characterId: string,
 	changes: Partial<CharacterDataContent>
 ) {
-	const result = await CharacterService.updateData(characterId, changes);
-	if (!result) return; // TODO: Error handling
+	const updated = await CharacterService.updateData(characterId, changes);
+	if (!updated) return; // TODO: Error handling
 
 	activeCharacter.update((c) =>
 		c && c.id === characterId
 			? {
 					...c,
-					data: { ...c.data, ...changes },
-					updatedAt: result.updatedAt
+					data: updated.data,
+					updatedAt: updated.updatedAt
 				}
 			: c
 	);
@@ -140,21 +140,10 @@ export async function updateCharacterFull(
 	const result = await CharacterService.update(characterId, summaryChanges, dataChanges);
 	if (!result) return;
 
-	if (result.summary) {
-		characters.update((list) =>
-			list.map((c) =>
-				c.id === characterId ? { ...c, ...result.summary, updatedAt: result.updatedAt } : c
-			)
-		);
-	}
+	characters.update((list) => list.map((c) => (c.id === characterId ? result : c)));
 	activeCharacter.update((c) => {
 		if (c && c.id === characterId) {
-			return {
-				...c,
-				...(result.summary || {}),
-				data: { ...c.data, ...(result.data || {}) },
-				updatedAt: result.updatedAt
-			};
+			return result;
 		}
 		return c;
 	});
@@ -170,19 +159,20 @@ export async function createCharacter(
 	const detail = await CharacterService.create(summary, data);
 	if (!detail) return; // TODO: Error handling
 
-	characters.update((list) => [...list, detail]);
-
 	// Add to settings' characterRefs
 	const existingRefs = settings.characterRefs || [];
-	await updateSettings({
-		characterRefs: [
-			...existingRefs,
-			{
-				id: detail.id,
-				sortOrder: generateSortOrder(existingRefs)
-			}
-		]
-	});
+	const characterRefs = [
+		...existingRefs,
+		{ id: detail.id, sortOrder: generateSortOrder(existingRefs) }
+	];
+	const updatedSettings = await SettingsService.update({ characterRefs });
+	if (!updatedSettings) {
+		await CharacterService.delete(detail.id);
+		return;
+	}
+
+	characters.update((list) => [...list, detail]);
+	appSettings.set(updatedSettings);
 
 	return detail;
 }
@@ -190,12 +180,21 @@ export async function createCharacter(
 export async function deleteCharacter(characterId: string) {
 	const settings = get(appSettings);
 	if (!settings) return;
+	const existingRefs = settings.characterRefs || [];
+	const characterRefs = existingRefs.filter((r) => r.id !== characterId);
 
-	await CharacterService.delete(characterId);
+	const updatedSettings = await SettingsService.update({ characterRefs });
+	if (!updatedSettings) return;
 
-	await updateSettings({
-		characterRefs: (settings.characterRefs || []).filter((r) => r.id !== characterId)
-	});
+	try {
+		await CharacterService.delete(characterId);
+	} catch (error) {
+		const rolledBackSettings = await SettingsService.update({ characterRefs: existingRefs });
+		if (rolledBackSettings) appSettings.set(rolledBackSettings);
+		throw error;
+	}
+
+	appSettings.set(updatedSettings);
 
 	characters.update((list) => list.filter((c) => c.id !== characterId));
 	if (get(activeCharacter)?.id === characterId) {
@@ -224,7 +223,7 @@ export async function createCharacterLorebook(characterId: string, fields: Loreb
 }
 
 export async function deleteCharacterLorebook(characterId: string, lorebookId: string) {
-	await LorebookService.delete(lorebookId);
+	await LorebookService.delete(lorebookId, characterId);
 
 	const char = get(activeCharacter);
 	if (char && char.id === characterId) {
@@ -256,7 +255,7 @@ export async function createCharacterScript(characterId: string, fields: ScriptF
 }
 
 export async function deleteCharacterScript(characterId: string, scriptId: string) {
-	await ScriptService.delete(scriptId);
+	await ScriptService.delete(scriptId, characterId);
 
 	const char = get(activeCharacter);
 	if (char && char.id === characterId) {

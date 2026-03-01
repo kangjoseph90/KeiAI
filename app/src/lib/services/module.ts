@@ -1,11 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
-import {
-	localDB,
-	type ModuleRecord,
-	type ResourceRef,
-	type FolderDef,
-	type OrderedRef
-} from '../db/index.js';
+import { localDB, type ModuleRecord, type FolderDef, type OrderedRef } from '../db/index.js';
+import { applyDefaults } from '../utils/defaults.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -31,6 +26,22 @@ export interface Module extends ModuleFields {
 	updatedAt: number;
 }
 
+// ─── Defaults ────────────────────────────────────────────────────────
+
+const defaultModuleFields: ModuleFields = {
+	name: '',
+	description: ''
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function decryptFields(masterKey: CryptoKey, record: ModuleRecord): Promise<ModuleFields> {
+	return decryptText(masterKey, {
+		ciphertext: record.encryptedData,
+		iv: record.encryptedDataIV
+	}).then((dec) => applyDefaults(defaultModuleFields, JSON.parse(dec)));
+}
+
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class ModuleService {
@@ -40,12 +51,7 @@ export class ModuleService {
 
 		return Promise.all(
 			records.map(async (record) => {
-				const fields: ModuleFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: record.encryptedData,
-						iv: record.encryptedDataIV
-					})
-				);
+				const fields = await decryptFields(masterKey, record);
 				return {
 					id: record.id,
 					...fields,
@@ -61,12 +67,7 @@ export class ModuleService {
 		const record = await localDB.getRecord<ModuleRecord>('modules', id);
 		if (!record || record.isDeleted) return null;
 
-		const fields: ModuleFields = JSON.parse(
-			await decryptText(masterKey, {
-				ciphertext: record.encryptedData,
-				iv: record.encryptedDataIV
-			})
-		);
+		const fields = await decryptFields(masterKey, record);
 		return {
 			id: record.id,
 			...fields,
@@ -99,10 +100,8 @@ export class ModuleService {
 		const record = await localDB.getRecord<ModuleRecord>('modules', id);
 		if (!record || record.isDeleted) return null;
 
-		const current: ModuleFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
-		const updated = { ...current, ...changes };
+		const current = await decryptFields(masterKey, record);
+		const updated: ModuleFields = { ...current, ...changes };
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -111,6 +110,14 @@ export class ModuleService {
 		await localDB.putRecord('modules', record);
 
 		return { id, ...updated, createdAt: record.createdAt, updatedAt: record.updatedAt };
+	}
+
+	/** Update content fields only — safe entry point for store layer */
+	static async updateContent(
+		id: string,
+		changes: Partial<ModuleContent>
+	): Promise<Module | null> {
+		return this.update(id, changes);
 	}
 
 	static async delete(id: string): Promise<void> {

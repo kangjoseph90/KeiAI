@@ -4,6 +4,7 @@ import {
 	type PromptPresetSummaryRecord,
 	type PromptPresetDataRecord
 } from '../db/index.js';
+import { applyDefaults } from '../utils/defaults.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -56,6 +57,11 @@ export interface PromptPresetDetail extends PromptPreset {
 
 // ─── Defaults ────────────────────────────────────────────────────────
 
+export const defaultPresetSummary: PromptPresetSummaryFields = {
+	name: '',
+	description: ''
+};
+
 export const defaultPresetData: PromptPresetDataFields = {
 	templateOrder: [
 		{ type: 'system', role: 'system' },
@@ -82,6 +88,28 @@ export const defaultPresetData: PromptPresetDataFields = {
 	memoryTokensRatio: 0.2
 };
 
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function decryptSummaryFields(
+	masterKey: CryptoKey,
+	record: PromptPresetSummaryRecord
+): Promise<PromptPresetSummaryFields> {
+	return decryptText(masterKey, {
+		ciphertext: record.encryptedData,
+		iv: record.encryptedDataIV
+	}).then((dec) => applyDefaults(defaultPresetSummary, JSON.parse(dec)));
+}
+
+function decryptDataFields(
+	masterKey: CryptoKey,
+	record: PromptPresetDataRecord
+): Promise<PromptPresetDataFields> {
+	return decryptText(masterKey, {
+		ciphertext: record.encryptedData,
+		iv: record.encryptedDataIV
+	}).then((dec) => applyDefaults(defaultPresetData, JSON.parse(dec)));
+}
+
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class PromptPresetService {
@@ -95,12 +123,7 @@ export class PromptPresetService {
 
 		return Promise.all(
 			records.map(async (record) => {
-				const fields: PromptPresetSummaryFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: record.encryptedData,
-						iv: record.encryptedDataIV
-					})
-				);
+				const fields = await decryptSummaryFields(masterKey, record);
 				return {
 					id: record.id,
 					...fields,
@@ -121,15 +144,8 @@ export class PromptPresetService {
 		const dataRec = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
 		if (!dataRec || dataRec.isDeleted) return null;
 
-		const fields: PromptPresetSummaryFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: rec.encryptedData, iv: rec.encryptedDataIV })
-		);
-		const data: PromptPresetDataFields = JSON.parse(
-			await decryptText(masterKey, {
-				ciphertext: dataRec.encryptedData,
-				iv: dataRec.encryptedDataIV
-			})
-		);
+		const fields = await decryptSummaryFields(masterKey, rec);
+		const data = await decryptDataFields(masterKey, dataRec);
 
 		return {
 			id: rec.id,
@@ -185,10 +201,8 @@ export class PromptPresetService {
 		const record = await localDB.getRecord<PromptPresetSummaryRecord>('promptPresetSummaries', id);
 		if (!record || record.isDeleted) return null;
 
-		const current: PromptPresetSummaryFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
-		const updated = { ...current, ...changes };
+		const current = await decryptSummaryFields(masterKey, record);
+		const updated: PromptPresetSummaryFields = { ...current, ...changes };
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -203,15 +217,13 @@ export class PromptPresetService {
 	static async updateData(
 		id: string,
 		changes: Partial<PromptPresetDataFields>
-	): Promise<{ updatedAt: number } | null> {
+	): Promise<{ data: PromptPresetDataFields; updatedAt: number } | null> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
 		if (!record || record.isDeleted) return null;
 
-		const current: PromptPresetDataFields = JSON.parse(
-			await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV })
-		);
-		const updated = { ...current, ...changes };
+		const current = await decryptDataFields(masterKey, record);
+		const updated: PromptPresetDataFields = { ...current, ...changes };
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -219,7 +231,7 @@ export class PromptPresetService {
 		record.updatedAt = Date.now();
 		await localDB.putRecord('promptPresetData', record);
 
-		return { updatedAt: record.updatedAt };
+		return { data: updated, updatedAt: record.updatedAt };
 	}
 
 	/** Update summary and/or data transactionally */
@@ -227,14 +239,11 @@ export class PromptPresetService {
 		id: string,
 		summaryChanges?: Partial<PromptPresetSummaryFields>,
 		dataChanges?: Partial<PromptPresetDataFields>
-	): Promise<{
-		summary?: PromptPresetSummaryFields;
-		data?: PromptPresetDataFields;
-		updatedAt: number;
-	} | null> {
+	): Promise<PromptPresetDetail | null> {
 		const { masterKey } = getActiveSession();
 		let updatedSummary: PromptPresetSummaryFields | undefined;
 		let updatedData: PromptPresetDataFields | undefined;
+		let createdAt: number | undefined;
 		const finalUpdatedAt = Date.now();
 
 		await localDB.transaction(['promptPresetSummaries', 'promptPresetData'], 'rw', async () => {
@@ -244,48 +253,48 @@ export class PromptPresetService {
 					id
 				);
 				if (!summaryRecord || summaryRecord.isDeleted) return;
-
-				const currentSummary: PromptPresetSummaryFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: summaryRecord.encryptedData,
-						iv: summaryRecord.encryptedDataIV
-					})
-				);
-				const mergedSummary = { ...currentSummary, ...summaryChanges };
-				const enc = await encryptText(masterKey, JSON.stringify(mergedSummary));
-				summaryRecord.encryptedData = enc.ciphertext;
-				summaryRecord.encryptedDataIV = enc.iv;
+				const currentSummary = await decryptSummaryFields(masterKey, summaryRecord);
+				updatedSummary = { ...currentSummary, ...summaryChanges };
+				const summaryEnc = await encryptText(masterKey, JSON.stringify(updatedSummary));
+				summaryRecord.encryptedData = summaryEnc.ciphertext;
+				summaryRecord.encryptedDataIV = summaryEnc.iv;
 				summaryRecord.updatedAt = finalUpdatedAt;
 				await localDB.putRecord('promptPresetSummaries', summaryRecord);
-				updatedSummary = mergedSummary;
+				createdAt = summaryRecord.createdAt;
+			} else {
+				const summaryRecord = await localDB.getRecord<PromptPresetSummaryRecord>(
+					'promptPresetSummaries',
+					id
+				);
+				if (!summaryRecord || summaryRecord.isDeleted) return;
+				updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
+				createdAt = summaryRecord.createdAt;
 			}
 
 			if (dataChanges) {
 				const dataRecord = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
 				if (!dataRecord || dataRecord.isDeleted) return;
-
-				const currentData: PromptPresetDataFields = JSON.parse(
-					await decryptText(masterKey, {
-						ciphertext: dataRecord.encryptedData,
-						iv: dataRecord.encryptedDataIV
-					})
-				);
-				const mergedData = { ...currentData, ...dataChanges };
-				const enc = await encryptText(masterKey, JSON.stringify(mergedData));
-
-				dataRecord.encryptedData = enc.ciphertext;
-				dataRecord.encryptedDataIV = enc.iv;
+				const currentData = await decryptDataFields(masterKey, dataRecord);
+				updatedData = { ...currentData, ...dataChanges };
+				const dataEnc = await encryptText(masterKey, JSON.stringify(updatedData));
+				dataRecord.encryptedData = dataEnc.ciphertext;
+				dataRecord.encryptedDataIV = dataEnc.iv;
 				dataRecord.updatedAt = finalUpdatedAt;
 				await localDB.putRecord('promptPresetData', dataRecord);
-				updatedData = mergedData;
+			} else {
+				const dataRecord = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
+				if (!dataRecord || dataRecord.isDeleted) return;
+				updatedData = await decryptDataFields(masterKey, dataRecord);
 			}
 		});
 
-		if (!updatedSummary && !updatedData) return null;
+		if (!updatedSummary || !updatedData || createdAt === undefined) return null;
 
 		return {
-			summary: updatedSummary,
+			id,
+			...updatedSummary,
 			data: updatedData,
+			createdAt,
 			updatedAt: finalUpdatedAt
 		};
 	}
