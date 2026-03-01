@@ -31,11 +31,16 @@ export async function createPreset(
 
 	const detail = await PromptPresetService.create(fields, data);
 
-	promptPresets.update((list) => [...list, detail]);
 	const existing = settings.presetRefs || [];
 	const presetRefs = [...existing, { id: detail.id, sortOrder: generateSortOrder(existing) }];
 	const updatedSettings = await SettingsService.update({ presetRefs });
-	if (updatedSettings) appSettings.set(updatedSettings);
+	if (!updatedSettings) {
+		await PromptPresetService.delete(detail.id);
+		return;
+	}
+
+	promptPresets.update((list) => [...list, detail]);
+	appSettings.set(updatedSettings);
 
 	return detail;
 }
@@ -73,11 +78,20 @@ export async function deletePreset(id: string) {
 	const settings = get(appSettings);
 	if (!settings) return;
 
-	await PromptPresetService.delete(id);
-	const presetRefs = (settings.presetRefs || []).filter((r) => r.id !== id);
+	const existingRefs = settings.presetRefs || [];
+	const presetRefs = existingRefs.filter((r) => r.id !== id);
 	const updatedSettings = await SettingsService.update({ presetRefs });
-	if (updatedSettings) appSettings.set(updatedSettings);
+	if (!updatedSettings) return;
 
+	try {
+		await PromptPresetService.delete(id);
+	} catch (error) {
+		const rolledBackSettings = await SettingsService.update({ presetRefs: existingRefs });
+		if (rolledBackSettings) appSettings.set(rolledBackSettings);
+		throw error;
+	}
+
+	appSettings.set(updatedSettings);
 	promptPresets.update((list) => list.filter((p) => p.id !== id));
 	if (get(activePreset)?.id === id) {
 		activePreset.set(null);

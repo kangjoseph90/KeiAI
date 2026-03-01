@@ -19,11 +19,17 @@ export async function createPersona(fields: PersonaFields) {
 	if (!settings) return;
 
 	const persona = await PersonaService.create(fields);
-	personas.update((list) => [...list, persona]);
+
 	const existing = settings.personaRefs || [];
 	const personaRefs = [...existing, { id: persona.id, sortOrder: generateSortOrder(existing) }];
 	const updatedSettings = await SettingsService.update({ personaRefs });
-	if (updatedSettings) appSettings.set(updatedSettings);
+	if (!updatedSettings) {
+		await PersonaService.delete(persona.id);
+		return;
+	}
+
+	personas.update((list) => [...list, persona]);
+	appSettings.set(updatedSettings);
 
 	return persona;
 }
@@ -39,10 +45,19 @@ export async function deletePersona(id: string) {
 	const settings = get(appSettings);
 	if (!settings) return;
 
-	await PersonaService.delete(id);
-	const personaRefs = (settings.personaRefs || []).filter((r) => r.id !== id);
+	const existingRefs = settings.personaRefs || [];
+	const personaRefs = existingRefs.filter((r) => r.id !== id);
 	const updatedSettings = await SettingsService.update({ personaRefs });
-	if (updatedSettings) appSettings.set(updatedSettings);
+	if (!updatedSettings) return;
 
+	try {
+		await PersonaService.delete(id);
+	} catch (error) {
+		const rolledBackSettings = await SettingsService.update({ personaRefs: existingRefs });
+		if (rolledBackSettings) appSettings.set(rolledBackSettings);
+		throw error;
+	}
+
+	appSettings.set(updatedSettings);
 	personas.update((list) => list.filter((p) => p.id !== id));
 }
