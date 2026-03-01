@@ -187,16 +187,24 @@ export async function createChatLorebook(chatId: string, fields: LorebookFields)
 	const lb = await LorebookService.create(chatId, fields);
 
 	const chat = get(activeChat);
-	if (chat && chat.id === chatId) {
-		const existing = chat.data.lorebookRefs ?? [];
-		const lorebookRefs: OrderedRef[] = [
-			...existing,
-			{ id: lb.id, sortOrder: generateSortOrder(existing) }
-		];
-		await ChatService.updateData(chatId, { lorebookRefs });
-		activeChat.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs } } : c));
-		chatLorebooks.update((list) => [...list, lb]);
+	if (!chat || chat.id !== chatId) {
+		await LorebookService.delete(lb.id);
+		return;
 	}
+
+	const existing = chat.data.lorebookRefs ?? [];
+	const lorebookRefs: OrderedRef[] = [
+		...existing,
+		{ id: lb.id, sortOrder: generateSortOrder(existing) }
+	];
+	const result = await ChatService.updateData(chatId, { lorebookRefs });
+	if (!result) {
+		await LorebookService.delete(lb.id);
+		return;
+	}
+
+	activeChat.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs } } : c));
+	chatLorebooks.update((list) => [...list, lb]);
 
 	return lb;
 }

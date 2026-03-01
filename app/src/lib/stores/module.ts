@@ -94,19 +94,24 @@ export async function deleteModule(id: string) {
 export async function createModuleLorebook(moduleId: string, fields: LorebookFields) {
 	const lb = await LorebookService.create(moduleId, fields);
 
-	// Update module's lorebookRefs
 	const mod = get(modules).find((m) => m.id === moduleId);
-	if (mod) {
-		const existing = mod.lorebookRefs ?? [];
-		const lorebookRefs: OrderedRef[] = [
-			...existing,
-			{ id: lb.id, sortOrder: generateSortOrder(existing) }
-		];
-		await ModuleService.update(moduleId, { lorebookRefs });
-		modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, lorebookRefs } : m)));
+	if (!mod) {
+		await LorebookService.delete(lb.id);
+		return;
 	}
 
-	// Update moduleResources cache
+	const existing = mod.lorebookRefs ?? [];
+	const lorebookRefs: OrderedRef[] = [
+		...existing,
+		{ id: lb.id, sortOrder: generateSortOrder(existing) }
+	];
+	const result = await ModuleService.update(moduleId, { lorebookRefs });
+	if (!result) {
+		await LorebookService.delete(lb.id);
+		return;
+	}
+
+	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, lorebookRefs } : m)));
 	moduleResources.update((map) => {
 		const m = new Map(map);
 		const entry = m.get(moduleId) ?? { lorebooks: [], scripts: [] };
@@ -147,16 +152,23 @@ export async function createModuleScript(moduleId: string, fields: ScriptFields)
 	const sc = await ScriptService.create(moduleId, fields);
 
 	const mod = get(modules).find((m) => m.id === moduleId);
-	if (mod) {
-		const existing = mod.scriptRefs ?? [];
-		const scriptRefs: OrderedRef[] = [
-			...existing,
-			{ id: sc.id, sortOrder: generateSortOrder(existing) }
-		];
-		await ModuleService.update(moduleId, { scriptRefs });
-		modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, scriptRefs } : m)));
+	if (!mod) {
+		await ScriptService.delete(sc.id);
+		return;
 	}
 
+	const existing = mod.scriptRefs ?? [];
+	const scriptRefs: OrderedRef[] = [
+		...existing,
+		{ id: sc.id, sortOrder: generateSortOrder(existing) }
+	];
+	const result = await ModuleService.update(moduleId, { scriptRefs });
+	if (!result) {
+		await ScriptService.delete(sc.id);
+		return;
+	}
+
+	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, scriptRefs } : m)));
 	moduleResources.update((map) => {
 		const m = new Map(map);
 		const entry = m.get(moduleId) ?? { lorebooks: [], scripts: [] };

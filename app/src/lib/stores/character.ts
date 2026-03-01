@@ -208,16 +208,24 @@ export async function createCharacterLorebook(characterId: string, fields: Loreb
 	const lb = await LorebookService.create(characterId, fields);
 
 	const char = get(activeCharacter);
-	if (char && char.id === characterId) {
-		const existing = char.data.lorebookRefs ?? [];
-		const lorebookRefs: OrderedRef[] = [
-			...existing,
-			{ id: lb.id, sortOrder: generateSortOrder(existing) }
-		];
-		await CharacterService.updateData(characterId, { lorebookRefs });
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs } } : c));
-		characterLorebooks.update((list) => [...list, lb]);
+	if (!char || char.id !== characterId) {
+		await LorebookService.delete(lb.id);
+		return;
 	}
+
+	const existing = char.data.lorebookRefs ?? [];
+	const lorebookRefs: OrderedRef[] = [
+		...existing,
+		{ id: lb.id, sortOrder: generateSortOrder(existing) }
+	];
+	const result = await CharacterService.updateData(characterId, { lorebookRefs });
+	if (!result) {
+		await LorebookService.delete(lb.id);
+		return;
+	}
+
+	activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs } } : c));
+	characterLorebooks.update((list) => [...list, lb]);
 
 	return lb;
 }
@@ -240,16 +248,24 @@ export async function createCharacterScript(characterId: string, fields: ScriptF
 	const sc = await ScriptService.create(characterId, fields);
 
 	const char = get(activeCharacter);
-	if (char && char.id === characterId) {
-		const existing = char.data.scriptRefs ?? [];
-		const scriptRefs: OrderedRef[] = [
-			...existing,
-			{ id: sc.id, sortOrder: generateSortOrder(existing) }
-		];
-		await CharacterService.updateData(characterId, { scriptRefs });
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, scriptRefs } } : c));
-		characterScripts.update((list) => [...list, sc]);
+	if (!char || char.id !== characterId) {
+		await ScriptService.delete(sc.id);
+		return;
 	}
+
+	const existing = char.data.scriptRefs ?? [];
+	const scriptRefs: OrderedRef[] = [
+		...existing,
+		{ id: sc.id, sortOrder: generateSortOrder(existing) }
+	];
+	const result = await CharacterService.updateData(characterId, { scriptRefs });
+	if (!result) {
+		await ScriptService.delete(sc.id);
+		return;
+	}
+
+	activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, scriptRefs } } : c));
+	characterScripts.update((list) => [...list, sc]);
 
 	return sc;
 }
