@@ -50,15 +50,20 @@
 - 서버의 역할 (Blind Data Store):
   - 서버(PocketBase)는 데이터 내용(평문)을 전혀 모르는 단순 바이트 배열 창고 및 로그인 문지기로만 동작.
   - 보안이나 데이터 가공 로직을 서버에 둘 필요가 없어 개발 비용이 극단적으로 낮음.
+  - 단일 Go 바이너리라 Oracle Cloud 평생 무료 VPS(A1 인스턴스)에 올리는 것만으로 서버 비용 제로 달성 가능.
 - 커스텀 로그인 훅 (Authentication Flow):
   - 포켓베이스 내장 `authWithPassword`를 활용하되, 클라이언트에서 미리 "Salt"를 받아 파생키(X, Y)를 계산해야 함.
-  - `GET /api/salt/:email`: 비밀번호 인증 없이 이메일로 Salt만 반환하는 커스텀 JS 훅 구축.
+  - `GET /api/salt/:email`: 비밀번호 인증 없이 이메일로 Salt만 반환하는 커스텀 JS 훅 구축. (오픈소스로 공개하여 신뢰 확보)
   - 받아온 Salt로 클라이언트에서 X를 계산 후, 진짜 비밀번호 대신 X를 전송해 포켓베이스를 속임(안전하게 E2EE 구현).
 - 블라인드 동기화 춤 (Blind Sync Dance):
   - 로컬 DB와 포켓베이스 DB의 테이블 스키마는 동일(BaseRecord 형태).
   - [업로드/Push]: 오프라인에 쌓인 `lastSyncTime` 이후의 암호문 바이트 배열들을 서버에 그대로 Upsert.
   - [다운로드/Pull]: 타 기기에서 업로드된 서버의 최신 암호문들을 가져와 로컬 DB 덮어쓰기 (LWW: Last-Write-Wins 기반).
   - `Realtime Subscription` 웹소켓을 활용해 클라이언트 간 즉시 푸시/알림 가능.
+- 스케일업 전략 (단계별 확장):
+  - 1단계 (파일 외부 위임): 오라클 디스크가 꽉 차기 시작하면, PocketBase 관리자 설정에서 `Use S3 storage`를 켜고 Cloudflare R2(또는 Backblaze B2)를 연결. 무거운 이미지 파일들이 오라클을 거치지 않고 외부 스토리지로 빠짐.
+  - 2단계 (BYOD 위임): BYOD를 통해 헤비 유저의 암호화 데이터 동기화를 유저 본인의 구글 드라이브/WebDAV로 넘겨 서버 부하를 유저에게 분산.
+  - 3단계 (유료 VPS 이사): 텍스트 DB(`pb_data.db`)만으로도 용량이 부족해질 만큼 규모가 커지면(수익이 충분한 시점), 유료 VPS를 결제하고 DB 파일만 그대로 복사하여 이사. PocketBase 단일 바이너리 특성상 마이그레이션 비용 최소.
 
 6. 하이브리드 AI 프록싱 (API Routing)
 
@@ -66,8 +71,9 @@
   - 직접 요청 (Direct): 클라이언트 ➡️ OpenAI/Claude. 개발자 서버를 아예 거치지 않는 궁극의 프라이버시 (CORS 에러 감수).
   - 프록시 요청 (Proxy): 클라이언트 ➡️ 엣지 프록시 ➡️ OpenAI/Claude.
 - 프록시 서버 보안 원칙 (Stateless):
-  - Vercel Edge Functions, Cloudflare Workers 등 인메모리 환경 사용.
-  - DB 연결 없음, 로깅(console.log) 없음. 요청을 포워딩만 하고 메모리 즉시 소멸. 코드 오픈소스로 신뢰 확보.
+  - Cloudflare Workers 인메모리 환경 사용 (하루 10만 건까지 무료, 글로벌 엣지 자동 적용).
+  - DB 연결 없음, 로깅(console.log) 없음. 요청을 포워딩만 하고 메모리 즉시 소멸.
+  - 이 코드는 오픈소스로 공개하여 "키를 엿보지 않는다"는 것을 누구나 검증 가능하게 함. 유저가 직접 자신의 Cloudflare 계정에 1-Click Deploy 하여 쓸 수도 있음.
 
 7. 최악의 시나리오 대비 (계정 복구)
 
@@ -292,3 +298,23 @@
   - roomKeys — 단일, FK: roomId (미래)
 - 에셋 테이블 (별도 인터페이스, E2EE 동기화 루프 밖):
   - assets — kind: regular/inlay, visibility: private/public. 프라이빗은 E2EE→오브젝트 스토리지 동기화(용량 제한), 퍼블릭은 CDN(R2) 평문 저장.
+
+18. 인프라 구성 전략 (Zero-Cost Stack)
+
+- 핵심 철학: 인프라 비용은 0원에 수렴하게 만들고, 유저의 신뢰는 100%로 끌어올리며, 핵심 수익 모델은 완벽하게 방어한다.
+- 구성 요소 (MVP ~ 소규모 단계까지 비용 없이 운영 가능):
+  - 프론트엔드 (UI & E2EE 엔진): Cloudflare Pages. Svelte 정적 웹 클라이언트 배포. 무료 티어로 사실상 무제한 대역폭, 글로벌 CDN 자동 적용.
+  - 엣지 프록시 (API 라우터): Cloudflare Workers. 유저의 OpenAI/Claude API 키를 안전하게 포워딩하는 무상태 중계소. 하루 10만 건까지 무료.
+  - 데이터 백엔드 (비밀 금고): Oracle Cloud A1 VPS + PocketBase. 포켓베이스(단일 Go 바이너리)를 평생 무료 인스턴스에 올려 암호화된 E2EE 데이터와 프라이빗 파일을 로컬 디스크(`pb_data`)에 저장 및 동기화.
+  - 퍼블릭 에셋 스토리지 & CDN: Cloudflare R2. Hub에 공유된 평문 에셋(캐릭터 썸네일, 배경 등) 저장. AWS S3와 달리 Egress 비용 100% 무료.
+
+19. 오픈소스 전략 (Open Source vs Closed Source)
+
+- 핵심 원칙: 보안에 대한 신뢰는 코드로 증명하되, 서비스의 핵심 자산과 수익 모델은 철저히 방어한다.
+- 공개 영역 (Open-Source): 유저가 "내 데이터와 API 키가 안전한가?"를 직접 검증할 수 있는 보안 핵심 구역.
+  - 프론트엔드 E2EE 엔진 (Svelte 클라이언트): 브라우저 내에서 비밀번호로 KDF를 만들고 Dexie DB와 Svelte Store를 오가며 암복호화를 수행하는 로직, 프롬프트 조립 파이프라인.
+  - 엣지 프록시 (Cloudflare Workers): API 키와 프롬프트를 엿보거나 저장하지 않고 바이패스한다는 것을 증명하는 코드. 유저가 직접 자신의 CF 계정에 1-Click Deploy 가능.
+  - PocketBase 인증 훅: 이메일을 받으면 KDF용 Salt만 반환하는 `/api/salt/:email` 등 최소한의 보안 스니펫.
+- 비공개 영역 (Closed-Source): 서비스의 핵심 자산이자 수익 모델과 직결된 구역.
+  - 수익 및 구독 관리 로직: 결제사(Stripe/포트원 등) 웹훅 처리, 유저 등급(Free/Pro) 판별, 동기화 쿼터 계산 및 업로드 차단 로직. (우회 해킹 방지)
+  - Hub 커뮤니티 백엔드: 유저 공유 콘텐츠 서빙 로직. 공개 시 UI만 바꾼 클론 서비스가 동일한 생태계를 구축 가능하므로 절대 비공개. 플랫폼의 진짜 해자(Moat).
