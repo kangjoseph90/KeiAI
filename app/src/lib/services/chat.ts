@@ -238,12 +238,7 @@ export class ChatService {
 			// Read both records upfront — ensures no partial writes if one is missing
 			const summaryRecord = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
 			const dataRecord = await localDB.getRecord<ChatDataRecord>('chatData', id);
-			if (
-				!summaryRecord ||
-				summaryRecord.isDeleted ||
-				!dataRecord ||
-				dataRecord.isDeleted
-			) {
+			if (!summaryRecord || summaryRecord.isDeleted || !dataRecord || dataRecord.isDeleted) {
 				return;
 			}
 

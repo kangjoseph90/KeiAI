@@ -202,7 +202,10 @@ export class PromptPresetService {
 		if (!record || record.isDeleted) return null;
 
 		const current = await decryptSummaryFields(masterKey, record);
-		const updated: PromptPresetSummaryFields = deepMerge(current, changes as Record<string, unknown>);
+		const updated: PromptPresetSummaryFields = deepMerge(
+			current,
+			changes as Record<string, unknown>
+		);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -253,12 +256,7 @@ export class PromptPresetService {
 				id
 			);
 			const dataRecord = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
-			if (
-				!summaryRecord ||
-				summaryRecord.isDeleted ||
-				!dataRecord ||
-				dataRecord.isDeleted
-			) {
+			if (!summaryRecord || summaryRecord.isDeleted || !dataRecord || dataRecord.isDeleted) {
 				return;
 			}
 

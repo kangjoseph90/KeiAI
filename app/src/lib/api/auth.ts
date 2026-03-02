@@ -9,12 +9,7 @@
 
 import { pb } from './pb.js';
 import { cryptoWorker } from '../workers/index.js';
-import {
-	splitRecoveryCode,
-	toBase64,
-	fromBase64,
-	type RecoveryBundle
-} from '../crypto/index.js';
+import { splitRecoveryCode, toBase64, fromBase64, type RecoveryBundle } from '../crypto/index.js';
 import {
 	getActiveSession,
 	setSession,

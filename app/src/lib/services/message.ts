@@ -128,8 +128,13 @@ export class MessageService {
 
 			if (records.length === 0) break;
 
-			for (const record of records) {
-				const fields = await decryptFields(masterKey, record);
+			const decryptedFields = await Promise.all(
+				records.map((record) => decryptFields(masterKey, record))
+			);
+
+			for (let i = 0; i < records.length; i++) {
+				const record = records[i];
+				const fields = decryptedFields[i];
 
 				yield {
 					id: record.id,
@@ -164,8 +169,13 @@ export class MessageService {
 
 			if (records.length === 0) break;
 
-			for (const record of records) {
-				const fields = await decryptFields(masterKey, record);
+			const decryptedFields = await Promise.all(
+				records.map((record) => decryptFields(masterKey, record))
+			);
+
+			for (let i = 0; i < records.length; i++) {
+				const record = records[i];
+				const fields = decryptedFields[i];
 
 				yield {
 					id: record.id,
