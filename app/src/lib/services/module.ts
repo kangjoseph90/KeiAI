@@ -113,10 +113,7 @@ export class ModuleService {
 	}
 
 	/** Update content fields only — safe entry point for store layer */
-	static async updateContent(
-		id: string,
-		changes: Partial<ModuleContent>
-	): Promise<Module | null> {
+	static async updateContent(id: string, changes: Partial<ModuleContent>): Promise<Module | null> {
 		return this.update(id, changes);
 	}
 

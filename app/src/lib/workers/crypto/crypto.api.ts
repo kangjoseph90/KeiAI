@@ -51,16 +51,12 @@ const cryptoApi = {
 	): Promise<{ ciphertext: Bytes; iv: Bytes }> {
 		return wrapMasterKey(masterKey, wrappingKeyBytes);
 	},
-	unwrapMasterKeyRaw(
-		ciphertext: Bytes,
-		iv: Bytes,
-		wrappingKeyBytes: Bytes
-	): Promise<Bytes> {
+	unwrapMasterKeyRaw(ciphertext: Bytes, iv: Bytes, wrappingKeyBytes: Bytes): Promise<Bytes> {
 		return unwrapMasterKeyRaw(ciphertext, iv, wrappingKeyBytes);
 	},
 	// Note: unwrapMasterKey() is less useful here because it returns non-extractable CryptoKey
 	// inside the Worker, which we can't export back! We leave that to main thread.
-	
+
 	// Recovery
 	createRecoveryData(masterKey: CryptoKey) {
 		return createRecoveryData(masterKey);
@@ -70,8 +66,7 @@ const cryptoApi = {
 	},
 	hashRecoveryAuthToken(backHalf: string): Promise<Bytes> {
 		return hashRecoveryAuthToken(backHalf);
-	},
-
+	}
 };
 
 export type CryptoApi = typeof cryptoApi;

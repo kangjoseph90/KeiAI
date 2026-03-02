@@ -41,23 +41,25 @@ export class SyncService {
 		const unsyncedLocal = await localDB.getUnsyncedChanges(tableName, userId, lastSyncTime);
 		if (unsyncedLocal.length > 0) {
 			console.log(`Pushing ${unsyncedLocal.length} records for ${tableName}...`);
-			for (const record of unsyncedLocal) {
-				const payload = this.localToPbRecord(record);
-				try {
+			await Promise.all(
+				unsyncedLocal.map(async (record) => {
+					const payload = this.localToPbRecord(record);
 					try {
-						await pb.collection(tableName).create(payload);
-					} catch (e) {
-						const err = e as { status?: number };
-						if (err && err.status === 400) {
-							await pb.collection(tableName).update(record.id, payload);
-						} else {
-							throw e;
+						try {
+							await pb.collection(tableName).create(payload);
+						} catch (e) {
+							const err = e as { status?: number };
+							if (err && err.status === 400) {
+								await pb.collection(tableName).update(record.id, payload);
+							} else {
+								throw e;
+							}
 						}
+					} catch (err) {
+						console.error(`Failed to push ${record.id} in ${tableName}`, err);
 					}
-				} catch (err) {
-					console.error(`Failed to push ${record.id} in ${tableName}`, err);
-				}
-			}
+				})
+			);
 		}
 
 		// --- PULL ---
