@@ -63,7 +63,7 @@ export async function loadCharacters() {
 export async function selectCharacter(characterId: string) {
 	// 캐릭터 참조 검증
 	const detail = await CharacterService.getDetail(characterId);
-	if (!detail) return; // TODO: Error handling
+	if (!detail) throw new Error(`Character not found: ${characterId}`);
 
 	activeCharacter.set(detail);
 
@@ -101,7 +101,7 @@ export async function updateCharacterSummary(
 	changes: Partial<CharacterSummaryFields>
 ) {
 	const updated = await CharacterService.updateSummary(characterId, changes);
-	if (!updated) return; // TODO: Error handling
+	if (!updated) throw new Error(`Failed to update character summary: ${characterId}`);
 
 	characters.update((list) => list.map((c) => (c.id === characterId ? updated : c)));
 	activeCharacter.update((c) =>
@@ -119,7 +119,7 @@ export async function updateCharacterData(
 	changes: Partial<CharacterDataContent>
 ) {
 	const updated = await CharacterService.updateData(characterId, changes);
-	if (!updated) return; // TODO: Error handling
+	if (!updated) throw new Error(`Failed to update character data: ${characterId}`);
 
 	activeCharacter.update((c) =>
 		c && c.id === characterId
@@ -157,7 +157,7 @@ export async function createCharacter(
 	if (!settings) return;
 
 	const detail = await CharacterService.create(summary, data);
-	if (!detail) return; // TODO: Error handling
+	if (!detail) throw new Error('Failed to create character');
 
 	// Add to settings' characterRefs
 	const existingRefs = settings.characterRefs || [];
