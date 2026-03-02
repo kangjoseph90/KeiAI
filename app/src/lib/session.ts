@@ -9,7 +9,8 @@
  *   - Registered: CryptoKey with extractable: false (XSS cannot export raw bytes)
  */
 
-import { generateMasterKey, encrypt, decrypt, type EncryptedData } from './crypto/index.js';
+import { generateMasterKey, type EncryptedData } from './crypto/index.js';
+import { cryptoWorker } from './workers/index.js';
 import { localDB, type UserRecord } from './db/index.js';
 
 type Bytes = Uint8Array<ArrayBuffer>;
@@ -151,14 +152,14 @@ export async function unlockMasterKey(userId: string, rawMasterKey: Bytes): Prom
 	setSession(userId, unlockedKey, true);
 }
 
-// ─── Convenience Crypto Wrappers ─────────────────────────────────────
+// ─── Convenience Crypto Wrappers (delegated to Crypto Worker) ────────
 
 export async function encryptText(masterKey: CryptoKey, plaintext: string): Promise<EncryptedData> {
-	return encrypt(masterKey, plaintext);
+	return cryptoWorker.encrypt(masterKey, plaintext);
 }
 
 export async function decryptText(masterKey: CryptoKey, data: EncryptedData): Promise<string> {
-	return decrypt(masterKey, data);
+	return cryptoWorker.decrypt(masterKey, data);
 }
 
 // ─── Internal Helpers ────────────────────────────────────────────────
