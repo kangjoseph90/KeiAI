@@ -31,31 +31,37 @@
 			if (decrypted !== plaintext) {
 				throw new Error('Decrypted text does not match plaintext.');
 			}
-			
+
 			logMsg('\n--- Phase 2: KDF & Auth Tests ---');
-			
+
 			status = 'Testing KDF (PBKDF2)...';
 			const password = 'my-super-secret-password';
 			const salt = await cryptoWorker.generateSalt();
 			logMsg(`✅ Generated Salt (${salt.length} bytes)`);
-			
+
 			const keys = await cryptoWorker.deriveKeys(password, salt);
-			logMsg(`✅ Derived Keys: loginKey (${keys.loginKey.length} bytes), encryptionKey (${keys.encryptionKey.length} bytes)`);
-			
+			logMsg(
+				`✅ Derived Keys: loginKey (${keys.loginKey.length} bytes), encryptionKey (${keys.encryptionKey.length} bytes)`
+			);
+
 			status = 'Testing Master Key Wrap/Unwrap...';
 			const wrapped = await cryptoWorker.wrapMasterKey(masterKey, keys.encryptionKey);
 			logMsg(`✅ Wrapped Master Key. Ciphertext length: ${wrapped.ciphertext.length}`);
-			
-			const unwrappedRaw = await cryptoWorker.unwrapMasterKeyRaw(wrapped.ciphertext, wrapped.iv, keys.encryptionKey);
+
+			const unwrappedRaw = await cryptoWorker.unwrapMasterKeyRaw(
+				wrapped.ciphertext,
+				wrapped.iv,
+				keys.encryptionKey
+			);
 			logMsg(`✅ Unwrapped Master Key Raw (${unwrappedRaw.length} bytes)`);
-			
+
 			status = 'Testing Recovery...';
 			const recovery = await cryptoWorker.createRecoveryData(masterKey);
 			logMsg(`✅ Created Recovery Data. Code: ${recovery.recoveryCode.fullCode}`);
-			
+
 			const zKey = await cryptoWorker.deriveRecoveryKey(recovery.recoveryCode.frontHalf);
 			logMsg(`✅ Derived Recovery Key Z (${zKey.length} bytes)`);
-			
+
 			const authHash = await cryptoWorker.hashRecoveryAuthToken(recovery.recoveryCode.backHalf);
 			logMsg(`✅ Hashed Recovery Auth Token (${authHash.length} bytes)`);
 
@@ -72,7 +78,13 @@
 
 <div class="p-8 font-mono text-sm">
 	<h1 class="text-xl font-bold mb-4">Crypto Worker Test</h1>
-	<p class="font-bold mb-4" class:text-green-500={status.includes('Success')} class:text-red-500={status.includes('Error')}>{status}</p>
+	<p
+		class="font-bold mb-4"
+		class:text-green-500={status.includes('Success')}
+		class:text-red-500={status.includes('Error')}
+	>
+		{status}
+	</p>
 
 	<pre class="bg-gray-900 text-gray-100 p-4 rounded whitespace-pre-wrap">{log}</pre>
 </div>

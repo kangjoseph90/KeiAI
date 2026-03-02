@@ -42,7 +42,10 @@ export async function createModule(fields: ModuleFields) {
 
 	const mod = await ModuleService.create(fields);
 	const existing = settings.moduleRefs || [];
-	const moduleRefs = [...existing, { id: mod.id, sortOrder: generateSortOrder(existing), enabled: true }];
+	const moduleRefs = [
+		...existing,
+		{ id: mod.id, sortOrder: generateSortOrder(existing), enabled: true }
+	];
 	const updatedSettings = await SettingsService.update({ moduleRefs });
 	if (!updatedSettings) {
 		await ModuleService.delete(mod.id);
