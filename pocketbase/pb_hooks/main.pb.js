@@ -35,6 +35,24 @@ routerAdd("GET", "/api/recovery-bundle/:email", (c) => {
 
 // 3. Post New Account Data after Recovery
 routerAdd("POST", "/api/recover-account/:email", (c) => {
+    // Rate Limiting Logic (Max 5 requests per minute per IP)
+    const ip = c.realIP();
+    const storeKey = "recovery_rate_limit_" + ip;
+
+    let entry = $app.store().get(storeKey);
+    const now = Date.now();
+
+    if (!entry || now > entry.resetTime) {
+        entry = { count: 0, resetTime: now + 60000 }; // 1 minute window
+    }
+
+    if (entry.count >= 5) {
+        return c.json(429, { error: "Too many requests. Please try again later." });
+    }
+
+    entry.count++;
+    $app.store().set(storeKey, { count: entry.count, resetTime: entry.resetTime });
+
     let email = c.pathParam("email");
     
     // Parse the incoming JSON body
