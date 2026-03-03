@@ -1,6 +1,16 @@
-<script lang="ts">
+﻿<script lang="ts">
 	import { onMount } from 'svelte';
 	import { initSession } from '$lib/session';
+	import {
+		ArrowLeft, Check, ChevronRight, Layers, MessageSquare, Pencil, Plug,
+		Plus, RefreshCw, SendHorizontal, Settings, Trash2, User, Users, X, BookText
+	} from 'lucide-svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Separator } from '$lib/components/ui/separator/index.js';
+	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import {
 		appSettings,
 		loadGlobalState,
@@ -52,6 +62,15 @@
 
 	let ready = false;
 	let errorMsg = '';
+
+	const sidebarItems: { view: ViewMode; label: string; icon: any }[] = [
+		{ view: 'characters', label: 'Characters', icon: Users },
+		{ view: 'personas',   label: 'Personas',   icon: User },
+		{ view: 'presets',    label: 'Presets',     icon: BookText },
+		{ view: 'modules',    label: 'Modules',     icon: Layers },
+		{ view: 'plugins',    label: 'Plugins',     icon: Plug },
+		{ view: 'settings',   label: 'Settings',    icon: Settings },
+	];
 
 	// Navigation State
 	type ViewMode = 'characters' | 'chats' | 'chat' | 'personas' | 'presets' | 'modules' | 'plugins' | 'settings';
@@ -230,227 +249,264 @@
 
 </script>
 
-<main style="max-width: 800px; margin: 40px auto; font-family: sans-serif; display: flex; gap: 20px;">
+<main class="flex h-screen bg-background text-foreground overflow-hidden">
 	{#if errorMsg}
-		<div style="background: red; color: white; padding: 10px; width: 100%; position: absolute; top: 0; left: 0;">{errorMsg}</div>
+		<div class="absolute inset-x-0 top-0 z-50 bg-destructive px-4 py-2 text-center text-sm font-medium text-white">
+			{errorMsg}
+		</div>
 	{/if}
 
 	{#if !ready}
-		<p>Initializing Secure Local Session...</p>
+		<div class="flex flex-1 items-center justify-center">
+			<p class="text-muted-foreground text-sm">Initializing Secure Local Session...</p>
+		</div>
 	{:else}
 		<!-- Sidebar Navigation -->
-		<nav style="width: 150px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid #ccc; padding-right: 20px;">
-			<h3 style="margin-top: 0;">Menu</h3>
-			{#each ['characters', 'personas', 'presets', 'modules', 'plugins', 'settings'] as menuView}
-				<button 
-					on:click={() => switchView(menuView as ViewMode)}
-					style="padding: 10px; text-align: left; background: {view === menuView || (menuView === 'characters' && (view === 'chats' || view === 'chat')) ? '#007BFF' : '#f4f4f4'}; color: {view === menuView || (menuView === 'characters' && (view === 'chats' || view === 'chat')) ? 'white' : 'black'}; border: none; border-radius: 4px; cursor: pointer;"
+		<nav class="flex w-48 shrink-0 flex-col gap-1 border-r p-4">
+			<p class="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Menu</p>
+			{#each sidebarItems as item}
+				{@const isActive = view === item.view || (item.view === 'characters' && (view === 'chats' || view === 'chat'))}
+				<Button
+					variant={isActive ? 'default' : 'ghost'}
+					class="justify-start gap-2"
+					onclick={() => switchView(item.view)}
 				>
-					{menuView.charAt(0).toUpperCase() + menuView.slice(1)}
-				</button>
+					<item.icon class="size-4" />
+					{item.label}
+				</Button>
 			{/each}
 		</nav>
 
 		<!-- Main Content Area -->
-		<div style="flex: 1;">
+		<div class="flex flex-1 flex-col overflow-hidden">
 			<!-- Header -->
-			<div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #ccc; padding-bottom: 15px; margin-bottom: 20px;">
-				<h2 style="margin: 0;">
-					{#if view === 'characters'} Characters
-					{:else if view === 'chats'} {$activeCharacter?.name}'s Detail & Chats
-					{:else if view === 'chat'} Chat: {$activeChat?.title}
-					{:else if view === 'personas'} Personas
-					{:else if view === 'presets'} Prompt Presets
-					{:else if view === 'modules'} Modules
-					{:else if view === 'plugins'} Plugins
-					{:else if view === 'settings'} Global App Settings
+			<div class="flex shrink-0 items-center justify-between border-b px-6 py-4">
+				<h2 class="text-lg font-semibold">
+					{#if view === 'characters'}Characters
+					{:else if view === 'chats'}{$activeCharacter?.name}'s Chats
+					{:else if view === 'chat'}Chat: {$activeChat?.title}
+					{:else if view === 'personas'}Personas
+					{:else if view === 'presets'}Prompt Presets
+					{:else if view === 'modules'}Modules
+					{:else if view === 'plugins'}Plugins
+					{:else if view === 'settings'}Global App Settings
 					{/if}
 				</h2>
 				{#if view === 'chats' || view === 'chat'}
-					<button on:click={() => switchView(view === 'chat' ? 'chats' : 'characters')} style="padding: 5px 15px;">⬅ Back</button>
+					<Button variant="outline" size="sm" class="gap-1.5" onclick={() => switchView(view === 'chat' ? 'chats' : 'characters')}>
+						<ArrowLeft class="size-4" /> Back
+					</Button>
 				{/if}
 			</div>
 
-			<!-- Entity List Template Maker -->
-			{#snippet renderEntityList(items: any[], type: any, handleCrateFn: any, createPlaceholder: string)}
-				<div style="display: flex; gap: 10px; margin-bottom: 20px;">
-					<input bind:value={newNameInput} placeholder={createPlaceholder} style="flex:1; padding: 8px;" />
-					<button on:click={() => handleCrateFn(type)}>Create</button>
-				</div>
-				<div style="display: flex; flex-direction: column; gap: 10px;">
-					{#each items as item (item.id)}
-						<div style="padding: 15px; background: #f4f4f4; border-radius: 8px; border: 1px solid #ddd;">
-							{#if editModeId === item.id}
-								<div style="display: flex; gap: 10px;">
-									<input bind:value={editNameInput} style="flex:1; padding: 5px;" />
-									<button on:click={() => type === 'character' ? handleUpdateCharacter(item.id) : handleUpdate(type, item.id)}>Save</button>
-									<button on:click={() => editModeId = null}>Cancel</button>
-								</div>
-							{:else}
-								<div style="display: flex; justify-content: space-between; align-items: center;">
-									<div>
-										<h3 style="margin: 0 0 5px 0;">{item.name || item.title || 'Unnamed'}</h3>
-										<p style="margin: 0; font-size: 0.9em; color: #555;">{item.shortDescription || item.description || ''}</p>
-									</div>
-									<div style="display: flex; gap: 5px;">
-										<button on:click={(e) => { e.stopPropagation(); startEditMode(item.id, item.name || item.title || ''); }}>Edit</button>
-										<button on:click={(e) => { e.stopPropagation(); type === 'character' ? deleteCharacter(item.id) : handleDelete(type, item.id); }} style="background: #ff4444; color: white;">Del</button>
-									</div>
-								</div>
-							{/if}
-						</div>
-					{:else}
-						<p style="color: #888;">No items found.</p>
-					{/each}
-				</div>
-			{/snippet}
+			<!-- Scrollable Content -->
+			<div class="flex-1 overflow-y-auto p-6">
 
-			<!-- Render Specific Views -->
-			{#if view === 'characters'}
-				<div style="display: flex; gap: 10px; margin-bottom: 20px;">
-					<input bind:value={newNameInput} placeholder="New Character Name" style="flex:1; padding: 8px;" />
-					<button on:click={handleCreateCharacter}>Create</button>
-				</div>
-				<div style="display: flex; flex-direction: column; gap: 10px;">
-					{#each $characters as char (char.id)}
-						<!-- svelte-ignore a11y_click_events_have_key_events -->
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div style="padding: 15px; background: #f4f4f4; border-radius: 8px; border: 1px solid #ddd; cursor: pointer;" on:click={() => handleSelectCharacter(char.id)}>
-							{#if editModeId === char.id}
-								<div style="display: flex; gap: 10px;" on:click|stopPropagation={()=>{}}>
-									<input bind:value={editNameInput} style="flex:1; padding: 5px;" />
-									<button on:click={() => handleUpdateCharacter(char.id)}>Save</button>
-									<button on:click={() => editModeId = null}>Cancel</button>
-								</div>
-							{:else}
-								<div style="display: flex; justify-content: space-between; align-items: center;">
-									<div>
-										<h3 style="margin: 0 0 5px 0;">{char.name}</h3>
-										<p style="margin: 0; font-size: 0.9em; color: #555;">{char.shortDescription}</p>
-									</div>
-									<div style="display: flex; gap: 5px;">
-										<button on:click={(e) => { e.stopPropagation(); startEditMode(char.id, char.name); }}>Edit</button>
-										<button on:click={(e) => { e.stopPropagation(); deleteCharacter(char.id); }} style="background: #ff4444; color: white;">Del</button>
-									</div>
-								</div>
-							{/if}
-						</div>
-					{:else}
-						<p style="color: #888;">No characters created yet.</p>
-					{/each}
-				</div>
-
-			{:else if view === 'personas'} {@render renderEntityList($personas, 'persona', handleCreate, "New Persona Name")}
-			{:else if view === 'presets'}  {@render renderEntityList($presets, 'preset', handleCreate, "New Preset Name")}
-			{:else if view === 'modules'}  {@render renderEntityList($modules, 'module', handleCreate, "New Module Name")}
-			{:else if view === 'plugins'}  {@render renderEntityList($plugins, 'plugin', handleCreate, "New Plugin Name")}
-			
-			{:else if view === 'settings'}
-				<div style="padding: 15px; background: #f4f4f4; border-radius: 8px; border: 1px solid #ddd;">
-					<h3>App Settings</h3>
-					<pre style="background: #eee; padding: 10px; overflow-x: auto;">{JSON.stringify($appSettings, null, 2)}</pre>
-					<button on:click={handleToggleAppDebug}>Toggle Theme Setting (Test Update)</button>
-				</div>
-
-			{:else if view === 'chats'}
-				<div style="display: flex; gap: 20px;">
-					<!-- Left Col: Chats -->
-					<div style="flex: 2;">
-						<h3>Chats</h3>
-						<div style="display: flex; gap: 10px; margin-bottom: 20px;">
-							<input bind:value={newNameInput} placeholder="New Chat Title" style="flex:1; padding: 8px;" />
-							<button on:click={handleCreateChat}>Start Chat</button>
-						</div>
-
-						<div style="display: flex; flex-direction: column; gap: 10px;">
-							{#each $chats as chat (chat.id)}
-								<!-- svelte-ignore a11y_click_events_have_key_events -->
-								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<div style="padding: 15px; background: #eef7ff; border-radius: 8px; cursor: pointer; border: 1px solid #bce8f1;" on:click={() => handleSelectChat(chat.id)}>
-									{#if editModeId === chat.id}
-										<div style="display: flex; gap: 10px;" on:click|stopPropagation={()=>{}}>
-											<input bind:value={editNameInput} style="flex:1; padding: 5px;" />
-											<button on:click={() => handleUpdateChat(chat.id)}>Save</button>
-											<button on:click={() => editModeId = null}>Cancel</button>
+				<!-- Entity List Snippet -->
+				{#snippet renderEntityList(items: any[], type: any, handleCrateFn: any, createPlaceholder: string)}
+					<div class="mb-4 flex gap-2">
+						<Input bind:value={newNameInput} placeholder={createPlaceholder} class="flex-1" />
+						<Button class="gap-1.5" onclick={() => handleCrateFn(type)}><Plus class="size-4" /> Create</Button>
+					</div>
+					<div class="flex flex-col gap-2">
+						{#each items as item (item.id)}
+							<Card>
+								<CardContent class="p-4">
+									{#if editModeId === item.id}
+										<div class="flex gap-2">
+											<Input bind:value={editNameInput} class="flex-1" />
+											<Button size="sm" class="gap-1.5" onclick={() => type === 'character' ? handleUpdateCharacter(item.id) : handleUpdate(type, item.id)}><Check class="size-4" /> Save</Button>
+											<Button size="sm" variant="outline" class="gap-1.5" onclick={() => editModeId = null}><X class="size-4" /> Cancel</Button>
 										</div>
 									{:else}
-										<div style="display: flex; justify-content: space-between; align-items: center;">
+										<div class="flex items-center justify-between">
 											<div>
-												<h4 style="margin: 0 0 5px 0;">{chat.title}</h4>
-												<p style="margin: 0; font-size: 0.85em; color: #666;">{chat.lastMessagePreview || 'No messages yet...'}</p>
+												<p class="font-medium">{item.name || item.title || 'Unnamed'}</p>
+												{#if item.shortDescription || item.description}
+													<p class="text-sm text-muted-foreground">{item.shortDescription || item.description}</p>
+												{/if}
 											</div>
-											<div style="display: flex; gap: 5px;">
-												<button on:click={(e) => { e.stopPropagation(); startEditMode(chat.id, chat.title); }}>Edit</button>
-												<button on:click={(e) => { e.stopPropagation(); handleDeleteChat(chat.id); }} style="background: #ff4444; color: white;">Del</button>
+											<div class="flex gap-1">
+												<Button size="sm" variant="outline" onclick={(e) => { e.stopPropagation(); startEditMode(item.id, item.name || item.title || ''); }}><Pencil class="size-4" /></Button>
+												<Button size="sm" variant="destructive" onclick={(e) => { e.stopPropagation(); type === 'character' ? deleteCharacter(item.id) : handleDelete(type, item.id); }}><Trash2 class="size-4" /></Button>
 											</div>
 										</div>
 									{/if}
-								</div>
-							{:else}
-								<p style="color: #888;">No chats for this character yet.</p>
-							{/each}
-						</div>
+								</CardContent>
+							</Card>
+						{:else}
+							<p class="text-sm text-muted-foreground">No items found.</p>
+						{/each}
 					</div>
+				{/snippet}
 
-					<!-- Right Col: Character Owned Items -->
-					<div style="flex: 1; border-left: 1px solid #eee; padding-left: 20px;">
-						<h3>Char Lorebooks</h3>
-						{@render renderEntityList($characterLorebooks, 'characterLorebook', handleCreate, "Name")}
-						<h3 style="margin-top: 30px;">Char Scripts</h3>
-						{@render renderEntityList($characterScripts, 'characterScript', handleCreate, "Name")}
+				<!-- Characters View -->
+				{#if view === 'characters'}
+					<div class="mb-4 flex gap-2">
+						<Input bind:value={newNameInput} placeholder="New Character Name" class="flex-1" />
+						<Button class="gap-1.5" onclick={handleCreateCharacter}><Plus class="size-4" /> Create</Button>
 					</div>
-				</div>
-
-			{:else if view === 'chat'}
-				<div style="display: flex; gap: 20px;">
-					<!-- Left Col: Chatting -->
-					<div style="flex: 2; background: #fafafa; border: 1px solid #eee; border-radius: 8px; height: 600px; display: flex; flex-direction: column;">
-						<!-- Messages Area -->
-						<div style="flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 15px;">
-							{#each $messages as msg (msg.id)}
-								<div style="align-self: {msg.role === 'user' ? 'flex-end' : 'flex-start'}; max-width: 80%; width: 100%;">
-									<div style="display: flex; justify-content: {msg.role === 'user' ? 'flex-end' : 'flex-start'}; gap: 5px; margin-bottom: 2px;">
-										{#if msg.role === 'user'}
-											<button on:click={() => { editModeId = msg.id; editMessageText = msg.content; }} style="font-size: 0.7em; padding: 2px 5px;">Edit</button>
-											<button on:click={() => handleDeleteMessage(msg.id)} style="font-size: 0.7em; padding: 2px 5px; background: #ff4444; color: white;">Del</button>
-										{/if}
-									</div>
-									{#if editModeId === msg.id}
-										<div style="display: flex; flex-direction: column; gap: 5px;">
-											<textarea bind:value={editMessageText} style="width: 100%; min-height: 60px; padding: 8px;"></textarea>
-											<div style="display: flex; gap: 5px; justify-content: flex-end;">
-												<button on:click={() => handleUpdateMessage(msg.id)}>Save</button>
-												<button on:click={() => editModeId = null}>Cancel</button>
-											</div>
+					<div class="flex flex-col gap-2">
+						{#each $characters as char (char.id)}
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<Card class="cursor-pointer transition-colors hover:bg-accent" onclick={() => handleSelectCharacter(char.id)}>
+								<CardContent class="p-4">
+									{#if editModeId === char.id}
+										<div class="flex gap-2" onclick={(e) => e.stopPropagation()}>
+											<Input bind:value={editNameInput} class="flex-1" />
+											<Button size="sm" class="gap-1.5" onclick={() => handleUpdateCharacter(char.id)}><Check class="size-4" /> Save</Button>
+											<Button size="sm" variant="outline" class="gap-1.5" onclick={() => editModeId = null}><X class="size-4" /> Cancel</Button>
 										</div>
 									{:else}
-										<div style="background: {msg.role === 'user' ? '#007BFF' : '#E9ECEF'}; color: {msg.role === 'user' ? '#FFF' : '#000'}; padding: 10px 14px; border-radius: 12px; display: inline-block;">
-											{msg.content}
+										<div class="flex items-center justify-between">
+											<div class="flex items-center gap-2">
+												<ChevronRight class="size-4 text-muted-foreground" />
+												<div>
+													<p class="font-medium">{char.name}</p>
+													<p class="text-sm text-muted-foreground">{char.shortDescription}</p>
+												</div>
+											</div>
+											<div class="flex gap-1">
+												<Button size="sm" variant="outline" onclick={(e) => { e.stopPropagation(); startEditMode(char.id, char.name); }}><Pencil class="size-4" /></Button>
+												<Button size="sm" variant="destructive" onclick={(e) => { e.stopPropagation(); deleteCharacter(char.id); }}><Trash2 class="size-4" /></Button>
+											</div>
 										</div>
 									{/if}
+								</CardContent>
+							</Card>
+						{:else}
+							<p class="text-sm text-muted-foreground">No characters created yet.</p>
+						{/each}
+					</div>
+
+				<!-- Simple Entity Views -->
+				{:else if view === 'personas'} {@render renderEntityList($personas, 'persona', handleCreate, "New Persona Name")}
+				{:else if view === 'presets'}  {@render renderEntityList($presets, 'preset', handleCreate, "New Preset Name")}
+				{:else if view === 'modules'}  {@render renderEntityList($modules, 'module', handleCreate, "New Module Name")}
+				{:else if view === 'plugins'}  {@render renderEntityList($plugins, 'plugin', handleCreate, "New Plugin Name")}
+
+				<!-- Settings View -->
+				{:else if view === 'settings'}
+					<Card>
+						<CardHeader>
+							<CardTitle>App Settings</CardTitle>
+						</CardHeader>
+						<CardContent class="flex flex-col gap-4">
+							<pre class="rounded-md bg-muted p-4 text-xs overflow-x-auto">{JSON.stringify($appSettings, null, 2)}</pre>
+							<Button variant="outline" class="gap-1.5" onclick={handleToggleAppDebug}><RefreshCw class="size-4" /> Toggle Theme Setting</Button>
+						</CardContent>
+					</Card>
+
+				<!-- Chats View -->
+				{:else if view === 'chats'}
+					<div class="flex gap-6">
+						<!-- Chats List -->
+						<div class="flex [flex:2] flex-col gap-3">
+							<h3 class="font-semibold">Chats</h3>
+							<div class="flex gap-2">
+								<Input bind:value={newNameInput} placeholder="New Chat Title" class="flex-1" />
+								<Button class="gap-1.5" onclick={handleCreateChat}><MessageSquare class="size-4" /> Start Chat</Button>
+							</div>
+							<div class="flex flex-col gap-2">
+								{#each $chats as chat (chat.id)}
+									<!-- svelte-ignore a11y_click_events_have_key_events -->
+									<!-- svelte-ignore a11y_no_static_element_interactions -->
+									<Card class="cursor-pointer transition-colors hover:bg-accent" onclick={() => handleSelectChat(chat.id)}>
+										<CardContent class="p-4">
+											{#if editModeId === chat.id}
+												<div class="flex gap-2" onclick={(e) => e.stopPropagation()}>
+													<Input bind:value={editNameInput} class="flex-1" />
+													<Button size="sm" class="gap-1.5" onclick={() => handleUpdateChat(chat.id)}><Check class="size-4" /> Save</Button>
+													<Button size="sm" variant="outline" class="gap-1.5" onclick={() => editModeId = null}><X class="size-4" /> Cancel</Button>
+												</div>
+											{:else}
+												<div class="flex items-center justify-between">
+													<div class="flex items-center gap-2">
+														<MessageSquare class="size-4 shrink-0 text-muted-foreground" />
+														<div>
+															<p class="font-medium">{chat.title}</p>
+															<p class="text-xs text-muted-foreground">{chat.lastMessagePreview || 'No messages yet...'}</p>
+														</div>
+													</div>
+													<div class="flex gap-1">
+														<Button size="sm" variant="outline" onclick={(e) => { e.stopPropagation(); startEditMode(chat.id, chat.title); }}><Pencil class="size-4" /></Button>
+														<Button size="sm" variant="destructive" onclick={(e) => { e.stopPropagation(); handleDeleteChat(chat.id); }}><Trash2 class="size-4" /></Button>
+													</div>
+												</div>
+											{/if}
+										</CardContent>
+									</Card>
+								{:else}
+									<p class="text-sm text-muted-foreground">No chats for this character yet.</p>
+								{/each}
+							</div>
+						</div>
+
+						<!-- Character-Owned Items -->
+						<div class="flex flex-1 flex-col gap-3 border-l pl-6">
+							<h3 class="font-semibold">Char Lorebooks</h3>
+							{@render renderEntityList($characterLorebooks, 'characterLorebook', handleCreate, "Name")}
+							<Separator class="my-2" />
+							<h3 class="font-semibold">Char Scripts</h3>
+							{@render renderEntityList($characterScripts, 'characterScript', handleCreate, "Name")}
+						</div>
+					</div>
+
+				<!-- Chat View -->
+				{:else if view === 'chat'}
+					<div class="flex gap-6 h-full">
+						<!-- Message Area -->
+						<div class="flex [flex:2] flex-col rounded-lg border bg-card h-[calc(100vh-130px)]">
+							<ScrollArea class="flex-1 p-4">
+								<div class="flex flex-col gap-4">
+									{#each $messages as msg (msg.id)}
+										<div class="flex flex-col gap-1 {msg.role === 'user' ? 'items-end' : 'items-start'} max-w-[80%] {msg.role === 'user' ? 'self-end' : 'self-start'}">
+											{#if msg.role === 'user'}
+												<div class="flex gap-1">
+										<Button size="sm" variant="ghost" class="h-6 w-6 p-0" onclick={() => { editModeId = msg.id; editMessageText = msg.content; }}><Pencil class="size-3" /></Button>
+										<Button size="sm" variant="ghost" class="h-6 w-6 p-0 text-destructive" onclick={() => handleDeleteMessage(msg.id)}><Trash2 class="size-3" /></Button>
+												</div>
+											{/if}
+											{#if editModeId === msg.id}
+												<div class="flex w-full flex-col gap-2">
+													<Textarea bind:value={editMessageText} class="min-h-16 w-full" />
+													<div class="flex justify-end gap-2">
+												<Button size="sm" class="gap-1.5" onclick={() => handleUpdateMessage(msg.id)}><Check class="size-4" /> Save</Button>
+												<Button size="sm" variant="outline" class="gap-1.5" onclick={() => editModeId = null}><X class="size-4" /> Cancel</Button>
+													</div>
+												</div>
+											{:else}
+												<div class="rounded-2xl px-4 py-2 text-sm {msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}">
+													{msg.content}
+												</div>
+											{/if}
+										</div>
+									{/each}
 								</div>
-							{/each}
+							</ScrollArea>
+
+							<!-- Message Input -->
+							<div class="flex gap-2 border-t p-3">
+								<Input
+									bind:value={newMessageText}
+									onkeydown={(e) => e.key === 'Enter' && handleSendMessage()}
+									placeholder="Type an encrypted message..."
+									class="flex-1"
+								/>
+								<Button class="gap-1.5" onclick={handleSendMessage}><SendHorizontal class="size-4" /> Send</Button>
+							</div>
 						</div>
 
-						<!-- Input Area -->
-						<div style="padding: 10px; border-top: 1px solid #ccc; display: flex; gap: 10px;">
-							<input
-								bind:value={newMessageText}
-								on:keydown={(e) => e.key === 'Enter' && handleSendMessage()}
-								placeholder="Type an encrypted message..."
-								style="flex: 1; padding: 10px; border-radius: 20px; border: 1px solid #ccc;"
-							/>
-							<button on:click={handleSendMessage} style="border-radius: 20px; padding: 0 20px;">Send</button>
+						<!-- Chat Lorebooks -->
+						<div class="flex flex-1 flex-col gap-3 border-l pl-6">
+							<h3 class="font-semibold">Chat Lorebooks</h3>
+							{@render renderEntityList($chatLorebooks, 'chatLorebook', handleCreate, "Name")}
 						</div>
 					</div>
+				{/if}
 
-					<!-- Right Col: Chat Lorebooks -->
-					<div style="flex: 1; border-left: 1px solid #eee; padding-left: 20px;">
-						<h3>Chat Lorebooks</h3>
-						{@render renderEntityList($chatLorebooks, 'chatLorebook', handleCreate, "Name")}
-					</div>
-				</div>
-			{/if}
+			</div>
 		</div>
 	{/if}
 </main>
