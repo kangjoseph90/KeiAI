@@ -11,7 +11,7 @@ import type { Character, CharacterDetail } from '../services/character.js';
 import type { Chat, ChatDetail } from '../services/chat.js';
 import type { Message } from '../services/message.js';
 import type { Persona } from '../services/persona.js';
-import type { PromptPreset, PromptPresetDetail } from '../services/promptPreset.js';
+import type { Preset, PresetDetail } from '../services/preset.js';
 import type { Module } from '../services/module.js';
 import type { Plugin } from '../services/plugin.js';
 import type { Lorebook } from '../services/lorebook.js';
@@ -23,7 +23,7 @@ export const appSettings = writable<AppSettings | null>(null);
 // ─── Level 1 (Global Lists) ─────────────────────────────────────────
 export const characters = writable<Character[]>([]);
 export const personas = writable<Persona[]>([]);
-export const promptPresets = writable<PromptPreset[]>([]);
+export const presets = writable<Preset[]>([]);
 export const modules = writable<Module[]>([]);
 export const plugins = writable<Plugin[]>([]);
 
@@ -50,7 +50,7 @@ export const chatLorebooks = writable<Lorebook[]>([]);
 export const messages = writable<Message[]>([]);
 
 // ─── Context Resources ─────────────────────────────────────────────────
-export const activePreset = writable<PromptPresetDetail | null>(null);
+export const activePreset = writable<PresetDetail | null>(null);
 export const activeLorebooks = writable<Lorebook[]>([]);
 export const activeScripts = writable<Script[]>([]);
 

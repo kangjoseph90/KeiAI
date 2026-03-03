@@ -26,7 +26,7 @@
 		createPersona,
 		updatePersona,
 		deletePersona,
-		promptPresets,
+		presets,
 		createPreset,
 		updatePresetSummary,
 		deletePreset,
@@ -341,7 +341,7 @@
 				</div>
 
 			{:else if view === 'personas'} {@render renderEntityList($personas, 'persona', handleCreate, "New Persona Name")}
-			{:else if view === 'presets'}  {@render renderEntityList($promptPresets, 'preset', handleCreate, "New Preset Name")}
+			{:else if view === 'presets'}  {@render renderEntityList($presets, 'preset', handleCreate, "New Preset Name")}
 			{:else if view === 'modules'}  {@render renderEntityList($modules, 'module', handleCreate, "New Module Name")}
 			{:else if view === 'plugins'}  {@render renderEntityList($plugins, 'plugin', handleCreate, "New Plugin Name")}
 			

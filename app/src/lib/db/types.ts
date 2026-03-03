@@ -50,8 +50,8 @@ export type TableName =
 	| 'scripts'
 	| 'modules'
 	| 'plugins'
-	| 'promptPresetSummaries'
-	| 'promptPresetData';
+	| 'presetSummaries'
+	| 'presetData';
 
 // ─── Base Types ──────────────────────────────────────────────────────
 
@@ -127,10 +127,10 @@ export interface ScriptRecord extends EncryptedRecord {
 export type ModuleRecord = EncryptedRecord;
 export type PluginRecord = EncryptedRecord;
 
-// ─── Prompt Presets (Summary + Data) ─────────────────────────────────
+// ─── Presets (Summary + Data) ────────────────────────────────────────
 
-export type PromptPresetSummaryRecord = EncryptedRecord;
-export type PromptPresetDataRecord = EncryptedRecord;
+export type PresetSummaryRecord = EncryptedRecord;
+export type PresetDataRecord = EncryptedRecord;
 
 // ─── Assets (separate system — plaintext, no sync) ───────────────────
 
