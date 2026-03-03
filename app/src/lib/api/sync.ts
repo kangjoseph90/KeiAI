@@ -25,11 +25,9 @@ export class SyncService {
 		const { userId, isGuest } = getActiveSession();
 		if (isGuest) return;
 
-		console.log('Starting E2EE Blind Sync...');
 		for (const table of this.TABLES) {
 			await this.syncTable(table, userId);
 		}
-		console.log('Sync Complete.');
 	}
 
 	private static async syncTable(tableName: TableName, userId: string): Promise<void> {
@@ -40,7 +38,6 @@ export class SyncService {
 		// --- PUSH ---
 		const unsyncedLocal = await localDB.getUnsyncedChanges(tableName, userId, lastSyncTime);
 		if (unsyncedLocal.length > 0) {
-			console.log(`Pushing ${unsyncedLocal.length} records for ${tableName}...`);
 			for (const record of unsyncedLocal) {
 				const payload = this.localToPbRecord(record);
 				try {
@@ -69,7 +66,6 @@ export class SyncService {
 			});
 
 			if (serverChanges.length > 0) {
-				console.log(`Pulling ${serverChanges.length} records for ${tableName}...`);
 				const records: BaseRecord[] = serverChanges.map((r) => this.pbToLocalRecord(r));
 				await localDB.putRecords(tableName, records);
 			}
