@@ -3,6 +3,7 @@ import { localDB, type MessageRecord } from '../db/index.js';
 import { generateKeyBetween } from 'fractional-indexing';
 import { deepMerge } from '../utils/defaults.js';
 import { assertChatExists, assertMessageInChat } from './guards.js';
+import { AppError } from '../errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -15,8 +16,6 @@ export interface Message extends MessageFields {
 	id: string;
 	chatId: string;
 	sortOrder: string;
-	createdAt: number;
-	updatedAt: number;
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────
@@ -32,7 +31,11 @@ function decryptFields(masterKey: CryptoKey, record: MessageRecord): Promise<Mes
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => deepMerge(defaultMessageFields, JSON.parse(dec)));
+	})
+		.then((dec) => deepMerge(defaultMessageFields, JSON.parse(dec)))
+		.catch((error) => {
+			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt message', error);
+		});
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -67,9 +70,7 @@ export class MessageService {
 					id: record.id,
 					chatId: record.chatId,
 					sortOrder: record.sortOrder,
-					...fields,
-					createdAt: record.createdAt,
-					updatedAt: record.updatedAt
+					...fields
 				};
 			})
 		);
@@ -97,9 +98,7 @@ export class MessageService {
 					id: record.id,
 					chatId: record.chatId,
 					sortOrder: record.sortOrder,
-					...fields,
-					createdAt: record.createdAt,
-					updatedAt: record.updatedAt
+					...fields
 				};
 			})
 		);
@@ -135,9 +134,7 @@ export class MessageService {
 					id: record.id,
 					chatId: record.chatId,
 					sortOrder: record.sortOrder,
-					...fields,
-					createdAt: record.createdAt,
-					updatedAt: record.updatedAt
+					...fields
 				};
 
 				currentCursor = record.sortOrder;
@@ -171,9 +168,7 @@ export class MessageService {
 					id: record.id,
 					chatId: record.chatId,
 					sortOrder: record.sortOrder,
-					...fields,
-					createdAt: record.createdAt,
-					updatedAt: record.updatedAt
+					...fields
 				};
 
 				currentCursor = record.sortOrder;
@@ -191,19 +186,19 @@ export class MessageService {
 			id: record.id,
 			chatId: record.chatId,
 			sortOrder: record.sortOrder,
-			...fields,
-			createdAt: record.createdAt,
-			updatedAt: record.updatedAt
+			...fields
 		};
 	}
 
 	/** Create a message */
 	static async create(
 		chatId: string,
-		fields: MessageFields,
+		fields: Partial<MessageFields> = {},
 		providedSortOrder?: string
 	): Promise<Message> {
 		await assertChatExists(chatId);
+
+		const resolved: MessageFields = deepMerge(defaultMessageFields, fields as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
@@ -225,28 +220,18 @@ export class MessageService {
 			}
 		}
 
-		const enc = await encryptText(masterKey, JSON.stringify(fields));
+		try {
+			const enc = await encryptText(masterKey, JSON.stringify(resolved));
+			await localDB.putRecord<MessageRecord>('messages', {
+				id, userId, chatId, sortOrder, createdAt: now, updatedAt: now, isDeleted: false,
+				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+			});
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to create message', error);
+		}
 
-		await localDB.putRecord<MessageRecord>('messages', {
-			id,
-			userId,
-			chatId,
-			sortOrder,
-			createdAt: now,
-			updatedAt: now,
-			isDeleted: false,
-			encryptedData: enc.ciphertext,
-			encryptedDataIV: enc.iv
-		});
-
-		return {
-			id,
-			chatId,
-			sortOrder,
-			...fields,
-			createdAt: now,
-			updatedAt: now
-		};
+		return { id, chatId, sortOrder, ...resolved };
 	}
 
 	/** Update a message */
@@ -254,31 +239,31 @@ export class MessageService {
 		id: string,
 		changes: Partial<MessageFields>,
 		expectedChatId?: string
-	): Promise<Message | null> {
+	): Promise<Message> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<MessageRecord>('messages', id);
-		if (!record || record.isDeleted) return null;
+		if (!record || record.isDeleted) {
+			throw new AppError('NOT_FOUND', `Message not found: ${id}`);
+		}
 		if (expectedChatId) {
 			await assertMessageInChat(expectedChatId, id);
 		}
 
-		const current = await decryptFields(masterKey, record);
-		const updated: MessageFields = deepMerge(current, changes as Record<string, unknown>);
-		const enc = await encryptText(masterKey, JSON.stringify(updated));
+		try {
+			const current = await decryptFields(masterKey, record);
+			const updated: MessageFields = deepMerge(current, changes as Record<string, unknown>);
+			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
-		record.encryptedData = enc.ciphertext;
-		record.encryptedDataIV = enc.iv;
-		record.updatedAt = Date.now();
-		await localDB.putRecord('messages', record);
+			record.encryptedData = enc.ciphertext;
+			record.encryptedDataIV = enc.iv;
+			record.updatedAt = Date.now();
+			await localDB.putRecord('messages', record);
 
-		return {
-			id,
-			chatId: record.chatId,
-			sortOrder: record.sortOrder,
-			...updated,
-			createdAt: record.createdAt,
-			updatedAt: record.updatedAt
-		};
+			return { id, chatId: record.chatId, sortOrder: record.sortOrder, ...updated };
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update message', error);
+		}
 	}
 
 	/** Soft-delete a message */
@@ -286,6 +271,11 @@ export class MessageService {
 		if (expectedChatId) {
 			await assertMessageInChat(expectedChatId, id);
 		}
-		await localDB.softDeleteRecord('messages', id);
+		try {
+			await localDB.softDeleteRecord('messages', id);
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to delete message', error);
+		}
 	}
 }

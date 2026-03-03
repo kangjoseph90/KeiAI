@@ -8,6 +8,7 @@ import {
 	type AssetEntry
 } from '../db/index.js';
 import { deepMerge } from '../utils/defaults.js';
+import { AppError } from '../errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -42,8 +43,6 @@ export interface CharacterDataFields extends CharacterDataContent, CharacterData
 
 export interface Character extends CharacterSummaryFields {
 	id: string;
-	createdAt: number;
-	updatedAt: number;
 }
 
 export interface CharacterDetail extends Character {
@@ -70,7 +69,11 @@ function decryptSummaryFields(
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => deepMerge(defaultSummaryFields, JSON.parse(dec)));
+	})
+		.then((dec) => deepMerge(defaultSummaryFields, JSON.parse(dec)))
+		.catch((error) => {
+			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt character summary', error);
+		});
 }
 
 function decryptDataFields(
@@ -80,7 +83,11 @@ function decryptDataFields(
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => deepMerge(defaultDataFields, JSON.parse(dec)));
+	})
+		.then((dec) => deepMerge(defaultDataFields, JSON.parse(dec)))
+		.catch((error) => {
+			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt character data', error);
+		});
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -95,9 +102,7 @@ export class CharacterService {
 				const fields = await decryptSummaryFields(masterKey, record);
 				return {
 					id: record.id,
-					...fields,
-					createdAt: record.createdAt,
-					updatedAt: record.updatedAt
+					...fields
 				};
 			})
 		);
@@ -119,88 +124,108 @@ export class CharacterService {
 		return {
 			id: rec.id,
 			...fields,
-			data,
-			createdAt: rec.createdAt,
-			updatedAt: Math.max(rec.updatedAt, dataRec.updatedAt)
+			data
 		};
 	}
 
 	/** Create a character - caller must add to parent's characterRefs */
 	static async create(
-		summary: CharacterSummaryFields,
-		data: CharacterDataFields
+		summary: Partial<CharacterSummaryFields> = {},
+		data: Partial<CharacterDataFields> = {}
 	): Promise<CharacterDetail> {
+		const resolvedSummary: CharacterSummaryFields = deepMerge(defaultSummaryFields, summary as Record<string, unknown>);
+		const resolvedData: CharacterDataFields = deepMerge(defaultDataFields, data as Record<string, unknown>);
+
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
 
-		const summaryEnc = await encryptText(masterKey, JSON.stringify(summary));
-		const dataEnc = await encryptText(masterKey, JSON.stringify(data));
+		try {
+			const summaryEnc = await encryptText(masterKey, JSON.stringify(resolvedSummary));
+			const dataEnc = await encryptText(masterKey, JSON.stringify(resolvedData));
 
-		await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
-			await localDB.putRecord<CharacterSummaryRecord>('characterSummaries', {
-				id,
-				userId,
-				createdAt: now,
-				updatedAt: now,
-				isDeleted: false,
-				encryptedData: summaryEnc.ciphertext,
-				encryptedDataIV: summaryEnc.iv
+			await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
+				await localDB.putRecord<CharacterSummaryRecord>('characterSummaries', {
+					id,
+					userId,
+					createdAt: now,
+					updatedAt: now,
+					isDeleted: false,
+					encryptedData: summaryEnc.ciphertext,
+					encryptedDataIV: summaryEnc.iv
+				});
+				await localDB.putRecord<CharacterDataRecord>('characterData', {
+					id,
+					userId,
+					createdAt: now,
+					updatedAt: now,
+					isDeleted: false,
+					encryptedData: dataEnc.ciphertext,
+					encryptedDataIV: dataEnc.iv
+				});
 			});
-			await localDB.putRecord<CharacterDataRecord>('characterData', {
-				id,
-				userId,
-				createdAt: now,
-				updatedAt: now,
-				isDeleted: false,
-				encryptedData: dataEnc.ciphertext,
-				encryptedDataIV: dataEnc.iv
-			});
-		});
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to create character', error);
+		}
 
-		return { id, ...summary, data, createdAt: now, updatedAt: now };
+		return { id, ...resolvedSummary, data: resolvedData };
 	}
 
 	/** Update summary only */
 	static async updateSummary(
 		id: string,
 		changes: Partial<CharacterSummaryFields>
-	): Promise<Character | null> {
+	): Promise<Character> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<CharacterSummaryRecord>('characterSummaries', id);
-		if (!record || record.isDeleted) return null;
+		if (!record || record.isDeleted) {
+			throw new AppError('NOT_FOUND', 'Character not found');
+		}
 
-		const current = await decryptSummaryFields(masterKey, record);
-		const updated: CharacterSummaryFields = deepMerge(current, changes as Record<string, unknown>);
-		const enc = await encryptText(masterKey, JSON.stringify(updated));
+		try {
+			const current = await decryptSummaryFields(masterKey, record);
+			const updated: CharacterSummaryFields = deepMerge(current, changes as Record<string, unknown>);
+			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
-		record.encryptedData = enc.ciphertext;
-		record.encryptedDataIV = enc.iv;
-		record.updatedAt = Date.now();
-		await localDB.putRecord('characterSummaries', record);
+			record.encryptedData = enc.ciphertext;
+			record.encryptedDataIV = enc.iv;
+			record.updatedAt = Date.now();
+			await localDB.putRecord('characterSummaries', record);
 
-		return { id, ...updated, createdAt: record.createdAt, updatedAt: record.updatedAt };
+			return { id, ...updated };
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update character summary', error);
+		}
 	}
 
 	/** Update data only */
 	static async updateData(
 		id: string,
 		changes: Partial<CharacterDataFields>
-	): Promise<{ data: CharacterDataFields; updatedAt: number } | null> {
+	): Promise<CharacterDataFields> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<CharacterDataRecord>('characterData', id);
-		if (!record || record.isDeleted) return null;
+		if (!record || record.isDeleted) {
+			throw new AppError('NOT_FOUND', 'Character not found');
+		}
 
-		const current = await decryptDataFields(masterKey, record);
-		const updated: CharacterDataFields = deepMerge(current, changes as Record<string, unknown>);
-		const enc = await encryptText(masterKey, JSON.stringify(updated));
+		try {
+			const current = await decryptDataFields(masterKey, record);
+			const updated: CharacterDataFields = deepMerge(current, changes as Record<string, unknown>);
+			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
-		record.encryptedData = enc.ciphertext;
-		record.encryptedDataIV = enc.iv;
-		record.updatedAt = Date.now();
-		await localDB.putRecord('characterData', record);
+			record.encryptedData = enc.ciphertext;
+			record.encryptedDataIV = enc.iv;
+			record.updatedAt = Date.now();
+			await localDB.putRecord('characterData', record);
 
-		return { data: updated, updatedAt: record.updatedAt };
+			return updated;
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update character data', error);
+		}
 	}
 
 	/** Update summary and/or data transactionally */
@@ -208,96 +233,102 @@ export class CharacterService {
 		id: string,
 		summaryChanges?: Partial<CharacterSummaryFields>,
 		dataChanges?: Partial<CharacterDataFields>
-	): Promise<CharacterDetail | null> {
+	): Promise<CharacterDetail> {
 		const { masterKey } = getActiveSession();
 		let updatedSummary: CharacterSummaryFields | undefined;
 		let updatedData: CharacterDataFields | undefined;
-		let createdAt: number | undefined;
 		const finalUpdatedAt = Date.now();
 
-		await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
-			// Read both records upfront — ensures no partial writes if one is missing
-			const summaryRecord = await localDB.getRecord<CharacterSummaryRecord>(
-				'characterSummaries',
-				id
-			);
-			const dataRecord = await localDB.getRecord<CharacterDataRecord>('characterData', id);
-			if (
-				!summaryRecord ||
-				summaryRecord.isDeleted ||
-				!dataRecord ||
-				dataRecord.isDeleted
-			) {
-				return;
-			}
+		try {
+			await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
+				// Read both records upfront — ensures no partial writes if one is missing
+				const summaryRecord = await localDB.getRecord<CharacterSummaryRecord>(
+					'characterSummaries',
+					id
+				);
+				const dataRecord = await localDB.getRecord<CharacterDataRecord>('characterData', id);
+				if (
+					!summaryRecord ||
+					summaryRecord.isDeleted ||
+					!dataRecord ||
+					dataRecord.isDeleted
+				) {
+					throw new AppError('NOT_FOUND', 'Character not found');
+				}
 
-			createdAt = summaryRecord.createdAt;
+				if (summaryChanges) {
+					const currentSummary = await decryptSummaryFields(masterKey, summaryRecord);
+					updatedSummary = deepMerge(currentSummary, summaryChanges as Record<string, unknown>);
+					const summaryEnc = await encryptText(masterKey, JSON.stringify(updatedSummary));
+					summaryRecord.encryptedData = summaryEnc.ciphertext;
+					summaryRecord.encryptedDataIV = summaryEnc.iv;
+					summaryRecord.updatedAt = finalUpdatedAt;
+					await localDB.putRecord('characterSummaries', summaryRecord);
+				} else {
+					updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
+				}
 
-			if (summaryChanges) {
-				const currentSummary = await decryptSummaryFields(masterKey, summaryRecord);
-				updatedSummary = deepMerge(currentSummary, summaryChanges as Record<string, unknown>);
-				const summaryEnc = await encryptText(masterKey, JSON.stringify(updatedSummary));
-				summaryRecord.encryptedData = summaryEnc.ciphertext;
-				summaryRecord.encryptedDataIV = summaryEnc.iv;
-				summaryRecord.updatedAt = finalUpdatedAt;
-				await localDB.putRecord('characterSummaries', summaryRecord);
-			} else {
-				updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
-			}
+				if (dataChanges) {
+					const currentData = await decryptDataFields(masterKey, dataRecord);
+					updatedData = deepMerge(currentData, dataChanges as Record<string, unknown>);
+					const dataEnc = await encryptText(masterKey, JSON.stringify(updatedData));
+					dataRecord.encryptedData = dataEnc.ciphertext;
+					dataRecord.encryptedDataIV = dataEnc.iv;
+					dataRecord.updatedAt = finalUpdatedAt;
+					await localDB.putRecord('characterData', dataRecord);
+				} else {
+					updatedData = await decryptDataFields(masterKey, dataRecord);
+				}
+			});
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update character', error);
+		}
 
-			if (dataChanges) {
-				const currentData = await decryptDataFields(masterKey, dataRecord);
-				updatedData = deepMerge(currentData, dataChanges as Record<string, unknown>);
-				const dataEnc = await encryptText(masterKey, JSON.stringify(updatedData));
-				dataRecord.encryptedData = dataEnc.ciphertext;
-				dataRecord.encryptedDataIV = dataEnc.iv;
-				dataRecord.updatedAt = finalUpdatedAt;
-				await localDB.putRecord('characterData', dataRecord);
-			} else {
-				updatedData = await decryptDataFields(masterKey, dataRecord);
-			}
-		});
-
-		if (!updatedSummary || !updatedData || createdAt === undefined) return null;
+		if (!updatedSummary || !updatedData) {
+			throw new AppError('NOT_FOUND', 'Character not found');
+		}
 
 		return {
 			id,
 			...updatedSummary,
-			data: updatedData,
-			createdAt,
-			updatedAt: finalUpdatedAt
+			data: updatedData
 		};
 	}
 
 	static async delete(id: string): Promise<void> {
-		await localDB.transaction(
-			[
-				'chatSummaries',
-				'chatData',
-				'lorebooks',
-				'scripts',
-				'messages',
-				'characterSummaries',
-				'characterData'
-			],
-			'rw',
-			async () => {
-				// `getByIndex` limits to 50 results by default. Since a character can yield >50 chats, we explicitly use Number.MAX_SAFE_INTEGER
-				const chatIds = (
-					await localDB.getByIndex('chatSummaries', 'characterId', id, Number.MAX_SAFE_INTEGER)
-				).map((c) => c.id);
-				for (const chatId of chatIds) {
-					await localDB.softDeleteByIndex('messages', 'chatId', chatId);
-					await localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId);
-					await localDB.softDeleteByIndex('scripts', 'ownerId', chatId);
+		try {
+			await localDB.transaction(
+				[
+					'chatSummaries',
+					'chatData',
+					'lorebooks',
+					'scripts',
+					'messages',
+					'characterSummaries',
+					'characterData'
+				],
+				'rw',
+				async () => {
+					const chatIds = (
+						await localDB.getByIndex('chatSummaries', 'characterId', id, Number.MAX_SAFE_INTEGER)
+					).map((c) => c.id);
+					for (const chatId of chatIds) {
+						await localDB.softDeleteByIndex('messages', 'chatId', chatId);
+						await localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId);
+						await localDB.softDeleteByIndex('scripts', 'ownerId', chatId);
+					}
+					await localDB.softDeleteByIndex('chatSummaries', 'characterId', id);
+					await localDB.softDeleteByIndex('chatData', 'characterId', id);
+					await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
+					await localDB.softDeleteByIndex('scripts', 'ownerId', id);
+					await localDB.softDeleteRecord('characterSummaries', id);
+					await localDB.softDeleteRecord('characterData', id);
 				}
-				await localDB.softDeleteByIndex('chatSummaries', 'characterId', id);
-				await localDB.softDeleteByIndex('chatData', 'characterId', id);
-				await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-				await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-				await localDB.softDeleteRecord('characterSummaries', id);
-				await localDB.softDeleteRecord('characterData', id);
-			}
-		);
+			);
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to delete character', error);
+		}
 	}
 }

@@ -2,6 +2,7 @@ import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type LorebookRecord } from '../db/index.js';
 import { deepMerge } from '../utils/defaults.js';
 import { assertLorebookOwnedBy, assertOwnedResourceParentExists } from './guards.js';
+import { AppError } from '../errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -18,8 +19,6 @@ export interface LorebookFields {
 export interface Lorebook extends LorebookFields {
 	id: string;
 	ownerId: string;
-	createdAt: number;
-	updatedAt: number;
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────
@@ -38,7 +37,11 @@ function decryptFields(masterKey: CryptoKey, record: LorebookRecord): Promise<Lo
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => deepMerge(defaultLorebookFields, JSON.parse(dec)));
+	})
+		.then((dec) => deepMerge(defaultLorebookFields, JSON.parse(dec)))
+		.catch((error) => {
+			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt lorebook', error);
+		});
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -59,9 +62,7 @@ export class LorebookService {
 				return {
 					id: record.id,
 					ownerId: record.ownerId,
-					...fields,
-					createdAt: record.createdAt,
-					updatedAt: record.updatedAt
+					...fields
 				};
 			})
 		);
@@ -76,74 +77,73 @@ export class LorebookService {
 		return {
 			id: record.id,
 			ownerId: record.ownerId,
-			...fields,
-			createdAt: record.createdAt,
-			updatedAt: record.updatedAt
+			...fields
 		};
 	}
 
-	static async create(ownerId: string, fields: LorebookFields): Promise<Lorebook> {
+	static async create(ownerId: string, fields: Partial<LorebookFields> = {}): Promise<Lorebook> {
 		await assertOwnedResourceParentExists(ownerId);
+
+		const resolved: LorebookFields = deepMerge(defaultLorebookFields, fields as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
-		const enc = await encryptText(masterKey, JSON.stringify(fields));
 
-		await localDB.putRecord<LorebookRecord>('lorebooks', {
-			id,
-			userId,
-			ownerId,
-			createdAt: now,
-			updatedAt: now,
-			isDeleted: false,
-			encryptedData: enc.ciphertext,
-			encryptedDataIV: enc.iv
-		});
+		try {
+			const enc = await encryptText(masterKey, JSON.stringify(resolved));
+			await localDB.putRecord<LorebookRecord>('lorebooks', {
+				id, userId, ownerId, createdAt: now, updatedAt: now, isDeleted: false,
+				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+			});
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to create lorebook', error);
+		}
 
-		return {
-			id,
-			ownerId,
-			...fields,
-			createdAt: now,
-			updatedAt: now
-		};
+		return { id, ownerId, ...resolved };
 	}
 
 	static async update(
 		id: string,
 		changes: Partial<LorebookFields>,
 		expectedOwnerId?: string
-	): Promise<Lorebook | null> {
+	): Promise<Lorebook> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
-		if (!record || record.isDeleted) return null;
+		if (!record || record.isDeleted) {
+			throw new AppError('NOT_FOUND', `Lorebook not found: ${id}`);
+		}
 		if (expectedOwnerId) {
 			await assertLorebookOwnedBy(expectedOwnerId, id);
 		}
 
-		const current = await decryptFields(masterKey, record);
-		const updated: LorebookFields = deepMerge(current, changes as Record<string, unknown>);
-		const enc = await encryptText(masterKey, JSON.stringify(updated));
+		try {
+			const current = await decryptFields(masterKey, record);
+			const updated: LorebookFields = deepMerge(current, changes as Record<string, unknown>);
+			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
-		record.encryptedData = enc.ciphertext;
-		record.encryptedDataIV = enc.iv;
-		record.updatedAt = Date.now();
-		await localDB.putRecord('lorebooks', record);
+			record.encryptedData = enc.ciphertext;
+			record.encryptedDataIV = enc.iv;
+			record.updatedAt = Date.now();
+			await localDB.putRecord('lorebooks', record);
 
-		return {
-			id,
-			ownerId: record.ownerId,
-			...updated,
-			createdAt: record.createdAt,
-			updatedAt: record.updatedAt
-		};
+			return { id, ownerId: record.ownerId, ...updated };
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update lorebook', error);
+		}
 	}
 
 	static async delete(id: string, expectedOwnerId?: string): Promise<void> {
 		if (expectedOwnerId) {
 			await assertLorebookOwnedBy(expectedOwnerId, id);
 		}
-		await localDB.softDeleteRecord('lorebooks', id);
+		try {
+			await localDB.softDeleteRecord('lorebooks', id);
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to delete lorebook', error);
+		}
 	}
 }
