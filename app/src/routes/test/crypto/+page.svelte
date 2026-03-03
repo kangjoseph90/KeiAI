@@ -2,9 +2,13 @@
 	import { onMount } from 'svelte';
 	import { cryptoWorker } from '$lib/workers/index.js';
 	import { generateMasterKey } from '$lib/crypto/index.js';
+	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
+	import { Badge, type BadgeVariant } from '$lib/components/ui/badge/index.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 
-	let log = '';
-	let status = 'Waiting...';
+	let log = $state('');
+	let status = $state('Waiting...');
+	let statusVariant = $state<BadgeVariant>('secondary');
 
 	function logMsg(msg: string) {
 		log += msg + '\n';
@@ -14,6 +18,7 @@
 	onMount(async () => {
 		try {
 			status = 'Running worker tests...';
+			statusVariant = 'secondary';
 			const masterKey = await generateMasterKey();
 			logMsg('✅ Master key generated on main thread.');
 
@@ -35,6 +40,7 @@
 			logMsg('\n--- Phase 2: KDF & Auth Tests ---');
 			
 			status = 'Testing KDF (PBKDF2)...';
+			statusVariant = 'secondary';
 			const password = 'my-super-secret-password';
 			const salt = await cryptoWorker.generateSalt();
 			logMsg(`✅ Generated Salt (${salt.length} bytes)`);
@@ -60,9 +66,11 @@
 			logMsg(`✅ Hashed Recovery Auth Token (${authHash.length} bytes)`);
 
 			status = 'All Tests Passed! 🎉';
+			statusVariant = 'default';
 			logMsg('\n✅ Complete Match & Verification.');
 		} catch (err: unknown) {
 			status = 'Error ❌';
+			statusVariant = 'destructive';
 			const error = err as Error;
 			logMsg(`❌ Worker Test Failed: ${error.message}`);
 			console.error(err);
@@ -70,9 +78,21 @@
 	});
 </script>
 
-<div class="p-8 font-mono text-sm">
-	<h1 class="text-xl font-bold mb-4">Crypto Worker Test</h1>
-	<p class="font-bold mb-4" class:text-green-500={status.includes('Success')} class:text-red-500={status.includes('Error')}>{status}</p>
-
-	<pre class="bg-gray-900 text-gray-100 p-4 rounded whitespace-pre-wrap">{log}</pre>
+<div class="flex min-h-screen items-start justify-center bg-background p-8">
+	<Card class="w-full max-w-3xl">
+		<CardHeader>
+			<CardTitle class="flex items-center gap-3 font-mono">
+				Crypto Worker Test
+				<Badge variant={statusVariant}>{status}</Badge>
+			</CardTitle>
+		</CardHeader>
+		<CardContent>
+			<ScrollArea class="h-96 rounded-md border bg-muted">
+				<div class="p-4">
+					<pre class="whitespace-pre-wrap font-mono text-sm text-muted-foreground">{log ||
+							'Waiting for test results...'}</pre>
+				</div>
+			</ScrollArea>
+		</CardContent>
+	</Card>
 </div>
