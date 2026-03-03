@@ -222,7 +222,12 @@ export class CharacterService {
 				id
 			);
 			const dataRecord = await localDB.getRecord<CharacterDataRecord>('characterData', id);
-			if (!summaryRecord || summaryRecord.isDeleted || !dataRecord || dataRecord.isDeleted) {
+			if (
+				!summaryRecord ||
+				summaryRecord.isDeleted ||
+				!dataRecord ||
+				dataRecord.isDeleted
+			) {
 				return;
 			}
 

@@ -51,7 +51,11 @@ const cryptoApi = {
 	): Promise<{ ciphertext: Bytes; iv: Bytes }> {
 		return wrapMasterKey(masterKey, wrappingKeyBytes);
 	},
-	unwrapMasterKeyRaw(ciphertext: Bytes, iv: Bytes, wrappingKeyBytes: Bytes): Promise<Bytes> {
+	unwrapMasterKeyRaw(
+		ciphertext: Bytes,
+		iv: Bytes,
+		wrappingKeyBytes: Bytes
+	): Promise<Bytes> {
 		return unwrapMasterKeyRaw(ciphertext, iv, wrappingKeyBytes);
 	},
 	// Note: unwrapMasterKey() is less useful here because it returns non-extractable CryptoKey
@@ -66,7 +70,8 @@ const cryptoApi = {
 	},
 	hashRecoveryAuthToken(backHalf: string): Promise<Bytes> {
 		return hashRecoveryAuthToken(backHalf);
-	}
+	},
+
 };
 
 export type CryptoApi = typeof cryptoApi;

@@ -34,8 +34,11 @@ function getCryptoWorker(): Comlink.Remote<CryptoApi> {
  * Lazily spawns the worker on first property access.
  * CryptoKey arguments are transferred via Structured Clone (browser-native).
  */
-export const cryptoWorker: Comlink.Remote<CryptoApi> = new Proxy({} as Comlink.Remote<CryptoApi>, {
-	get(_, prop) {
-		return Reflect.get(getCryptoWorker(), prop);
+export const cryptoWorker: Comlink.Remote<CryptoApi> = new Proxy(
+	{} as Comlink.Remote<CryptoApi>,
+	{
+		get(_, prop) {
+			return Reflect.get(getCryptoWorker(), prop);
+		}
 	}
-});
+);
