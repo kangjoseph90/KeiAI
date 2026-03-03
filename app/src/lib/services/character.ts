@@ -107,14 +107,17 @@ export class CharacterService {
 	static async getDetail(id: string): Promise<CharacterDetail | null> {
 		const { masterKey } = getActiveSession();
 
-		const rec = await localDB.getRecord<CharacterSummaryRecord>('characterSummaries', id);
-		if (!rec || rec.isDeleted) return null;
+		const [rec, dataRec] = await Promise.all([
+			localDB.getRecord<CharacterSummaryRecord>('characterSummaries', id),
+			localDB.getRecord<CharacterDataRecord>('characterData', id)
+		]);
 
-		const dataRec = await localDB.getRecord<CharacterDataRecord>('characterData', id);
-		if (!dataRec || dataRec.isDeleted) return null;
+		if (!rec || rec.isDeleted || !dataRec || dataRec.isDeleted) return null;
 
-		const fields = await decryptSummaryFields(masterKey, rec);
-		const data = await decryptDataFields(masterKey, dataRec);
+		const [fields, data] = await Promise.all([
+			decryptSummaryFields(masterKey, rec),
+			decryptDataFields(masterKey, dataRec)
+		]);
 
 		return {
 			id: rec.id,
@@ -222,12 +225,7 @@ export class CharacterService {
 				id
 			);
 			const dataRecord = await localDB.getRecord<CharacterDataRecord>('characterData', id);
-			if (
-				!summaryRecord ||
-				summaryRecord.isDeleted ||
-				!dataRecord ||
-				dataRecord.isDeleted
-			) {
+			if (!summaryRecord || summaryRecord.isDeleted || !dataRecord || dataRecord.isDeleted) {
 				return;
 			}
 

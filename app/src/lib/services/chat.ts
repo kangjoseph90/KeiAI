@@ -106,14 +106,17 @@ export class ChatService {
 	static async getDetail(id: string): Promise<ChatDetail | null> {
 		const { masterKey } = getActiveSession();
 
-		const rec = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
-		if (!rec || rec.isDeleted) return null;
+		const [rec, dataRec] = await Promise.all([
+			localDB.getRecord<ChatSummaryRecord>('chatSummaries', id),
+			localDB.getRecord<ChatDataRecord>('chatData', id)
+		]);
 
-		const dataRec = await localDB.getRecord<ChatDataRecord>('chatData', id);
-		if (!dataRec || dataRec.isDeleted) return null;
+		if (!rec || rec.isDeleted || !dataRec || dataRec.isDeleted) return null;
 
-		const fields = await decryptSummaryFields(masterKey, rec);
-		const data = await decryptDataFields(masterKey, dataRec);
+		const [fields, data] = await Promise.all([
+			decryptSummaryFields(masterKey, rec),
+			decryptDataFields(masterKey, dataRec)
+		]);
 
 		return {
 			id: rec.id,
@@ -238,12 +241,7 @@ export class ChatService {
 			// Read both records upfront — ensures no partial writes if one is missing
 			const summaryRecord = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
 			const dataRecord = await localDB.getRecord<ChatDataRecord>('chatData', id);
-			if (
-				!summaryRecord ||
-				summaryRecord.isDeleted ||
-				!dataRecord ||
-				dataRecord.isDeleted
-			) {
+			if (!summaryRecord || summaryRecord.isDeleted || !dataRecord || dataRecord.isDeleted) {
 				return;
 			}
 

@@ -138,14 +138,17 @@ export class PromptPresetService {
 	static async getDetail(id: string): Promise<PromptPresetDetail | null> {
 		const { masterKey } = getActiveSession();
 
-		const rec = await localDB.getRecord<PromptPresetSummaryRecord>('promptPresetSummaries', id);
-		if (!rec || rec.isDeleted) return null;
+		const [rec, dataRec] = await Promise.all([
+			localDB.getRecord<PromptPresetSummaryRecord>('promptPresetSummaries', id),
+			localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id)
+		]);
 
-		const dataRec = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
-		if (!dataRec || dataRec.isDeleted) return null;
+		if (!rec || rec.isDeleted || !dataRec || dataRec.isDeleted) return null;
 
-		const fields = await decryptSummaryFields(masterKey, rec);
-		const data = await decryptDataFields(masterKey, dataRec);
+		const [fields, data] = await Promise.all([
+			decryptSummaryFields(masterKey, rec),
+			decryptDataFields(masterKey, dataRec)
+		]);
 
 		return {
 			id: rec.id,
@@ -202,7 +205,10 @@ export class PromptPresetService {
 		if (!record || record.isDeleted) return null;
 
 		const current = await decryptSummaryFields(masterKey, record);
-		const updated: PromptPresetSummaryFields = deepMerge(current, changes as Record<string, unknown>);
+		const updated: PromptPresetSummaryFields = deepMerge(
+			current,
+			changes as Record<string, unknown>
+		);
 		const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 		record.encryptedData = enc.ciphertext;
@@ -253,12 +259,7 @@ export class PromptPresetService {
 				id
 			);
 			const dataRecord = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
-			if (
-				!summaryRecord ||
-				summaryRecord.isDeleted ||
-				!dataRecord ||
-				dataRecord.isDeleted
-			) {
+			if (!summaryRecord || summaryRecord.isDeleted || !dataRecord || dataRecord.isDeleted) {
 				return;
 			}
 
