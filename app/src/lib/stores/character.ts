@@ -157,7 +157,7 @@ export async function createCharacter(
 	if (!settings) return;
 
 	const detail = await CharacterService.create(summary, data);
-	if (!detail) return; // TODO: Error handling
+	if (!detail) throw new Error('Failed to create character');
 
 	// Add to settings' characterRefs
 	const existingRefs = settings.characterRefs || [];
