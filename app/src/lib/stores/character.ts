@@ -68,10 +68,6 @@ export async function selectCharacter(characterId: string): Promise<void> {
 
 	characterLorebooks.set(sortByRefs(lorebooks, detail.data.lorebookRefs ?? []));
 	characterScripts.set(sortByRefs(scripts, detail.data.scriptRefs ?? []));
-
-	if (detail.data.lastActiveChatId && chatList.some((c) => c.id === detail.data.lastActiveChatId)) {
-		await selectChat(detail.data.lastActiveChatId, characterId);
-	}
 }
 
 export function clearActiveCharacter(): void {
