@@ -1,10 +1,11 @@
 import { get } from 'svelte/store';
-import { PluginService, type PluginFields } from '../services/plugin.js';
+import { PluginService, type PluginFields, type Plugin } from '../services/plugin.js';
 import { SettingsService } from '../services';
 import { generateSortOrder, sortByRefs } from '../utils/ordering.js';
 import { plugins, appSettings } from './state.js';
+import { AppError } from '../errors.js';
 
-export async function loadPlugins() {
+export async function loadPlugins(): Promise<void> {
 	const settings = get(appSettings);
 	const list = await PluginService.list();
 	if (settings?.pluginRefs) {
@@ -14,53 +15,64 @@ export async function loadPlugins() {
 	}
 }
 
-export async function createPlugin(fields: PluginFields) {
-	const settings = get(appSettings);
-	if (!settings) return;
+export async function createPlugin(fields: Partial<PluginFields>): Promise<Plugin> {
+	const settings = get(appSettings) || await SettingsService.get();
 
-	const plugin = await PluginService.create(fields);
-
-	const existing = settings.pluginRefs || [];
-	const pluginRefs = [
-		...existing,
-		{ id: plugin.id, sortOrder: generateSortOrder(existing), enabled: true }
-	];
-	const updatedSettings = await SettingsService.update({ pluginRefs });
-	if (!updatedSettings) {
-		await PluginService.delete(plugin.id);
-		return;
+	if (!settings) {
+		throw new AppError('NOT_FOUND', 'Settings not found');
 	}
 
+	// Create Record in DB
+	const plugin = await PluginService.create(fields);
+
+	// Add to parent's refs
+	const existingRefs = settings.pluginRefs || [];
+	const pluginRefs = [
+		...existingRefs,
+		{ id: plugin.id, sortOrder: generateSortOrder(existingRefs), enabled: true }
+	];
+	try {
+		await SettingsService.update({ pluginRefs });
+	} catch (error) {
+		// If parent's refs update fails, roll back DB
+		await PluginService.delete(plugin.id);
+		throw error;
+	}
+
+	// Update Store
+	appSettings.update((s) => (s ? { ...s, pluginRefs } : s));
 	plugins.update((list) => [...list, plugin]);
-	appSettings.set(updatedSettings);
 
 	return plugin;
 }
 
-export async function updatePlugin(id: string, changes: Partial<PluginFields>) {
+export async function updatePlugin(id: string, changes: Partial<PluginFields>): Promise<void> {
 	const updated = await PluginService.update(id, changes);
-	if (updated) {
-		plugins.update((list) => list.map((p) => (p.id === id ? updated : p)));
-	}
+	plugins.update((list) => list.map((p) => (p.id === id ? updated : p)));
 }
 
-export async function deletePlugin(id: string) {
-	const settings = get(appSettings);
-	if (!settings) return;
+export async function deletePlugin(id: string): Promise<void> {
+	const settings = get(appSettings) || await SettingsService.get();
 
+	if (!settings) {
+		throw new AppError('NOT_FOUND', 'Settings not found');
+	}
+
+	// Remove from parent's refs
 	const existingRefs = settings.pluginRefs || [];
 	const pluginRefs = existingRefs.filter((r) => r.id !== id);
-	const updatedSettings = await SettingsService.update({ pluginRefs });
-	if (!updatedSettings) return;
+	await SettingsService.update({ pluginRefs });
 
+	// Remove record from DB
 	try {
 		await PluginService.delete(id);
 	} catch (error) {
-		const rolledBackSettings = await SettingsService.update({ pluginRefs: existingRefs });
-		if (rolledBackSettings) appSettings.set(rolledBackSettings);
+		// If DB delete fails, roll back parent's refs
+		await SettingsService.update({ pluginRefs: existingRefs });
 		throw error;
 	}
 
-	appSettings.set(updatedSettings);
+	// Update Store
+	appSettings.update((s) => (s ? { ...s, pluginRefs } : s));
 	plugins.update((list) => list.filter((p) => p.id !== id));
 }

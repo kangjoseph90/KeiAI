@@ -2,6 +2,7 @@ import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type ScriptRecord } from '../db/index.js';
 import { deepMerge } from '../utils/defaults.js';
 import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards.js';
+import { AppError } from '../errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -16,8 +17,6 @@ export interface ScriptFields {
 export interface Script extends ScriptFields {
 	id: string;
 	ownerId: string;
-	createdAt: number;
-	updatedAt: number;
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────
@@ -36,7 +35,11 @@ function decryptFields(masterKey: CryptoKey, record: ScriptRecord): Promise<Scri
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => deepMerge(defaultScriptFields, JSON.parse(dec)));
+	})
+		.then((dec) => deepMerge(defaultScriptFields, JSON.parse(dec)))
+		.catch((error) => {
+			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt script', error);
+		});
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -58,9 +61,7 @@ export class ScriptService {
 				return {
 					id: record.id,
 					ownerId: record.ownerId,
-					...fields,
-					createdAt: record.createdAt,
-					updatedAt: record.updatedAt
+					...fields
 				};
 			})
 		);
@@ -75,74 +76,73 @@ export class ScriptService {
 		return {
 			id: record.id,
 			ownerId: record.ownerId,
-			...fields,
-			createdAt: record.createdAt,
-			updatedAt: record.updatedAt
+			...fields
 		};
 	}
 
-	static async create(ownerId: string, fields: ScriptFields): Promise<Script> {
+	static async create(ownerId: string, fields: Partial<ScriptFields> = {}): Promise<Script> {
 		await assertOwnedResourceParentExists(ownerId);
+
+		const resolved: ScriptFields = deepMerge(defaultScriptFields, fields as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
-		const enc = await encryptText(masterKey, JSON.stringify(fields));
 
-		await localDB.putRecord<ScriptRecord>('scripts', {
-			id,
-			userId,
-			ownerId,
-			createdAt: now,
-			updatedAt: now,
-			isDeleted: false,
-			encryptedData: enc.ciphertext,
-			encryptedDataIV: enc.iv
-		});
+		try {
+			const enc = await encryptText(masterKey, JSON.stringify(resolved));
+			await localDB.putRecord<ScriptRecord>('scripts', {
+				id, userId, ownerId, createdAt: now, updatedAt: now, isDeleted: false,
+				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+			});
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to create script', error);
+		}
 
-		return {
-			id,
-			ownerId,
-			...fields,
-			createdAt: now,
-			updatedAt: now
-		};
+		return { id, ownerId, ...resolved };
 	}
 
 	static async update(
 		id: string,
 		changes: Partial<ScriptFields>,
 		expectedOwnerId?: string
-	): Promise<Script | null> {
+	): Promise<Script> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ScriptRecord>('scripts', id);
-		if (!record || record.isDeleted) return null;
+		if (!record || record.isDeleted) {
+			throw new AppError('NOT_FOUND', `Script not found: ${id}`);
+		}
 		if (expectedOwnerId) {
 			await assertScriptOwnedBy(expectedOwnerId, id);
 		}
 
-		const current = await decryptFields(masterKey, record);
-		const updated: ScriptFields = deepMerge(current, changes as Record<string, unknown>);
-		const enc = await encryptText(masterKey, JSON.stringify(updated));
+		try {
+			const current = await decryptFields(masterKey, record);
+			const updated: ScriptFields = deepMerge(current, changes as Record<string, unknown>);
+			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
-		record.encryptedData = enc.ciphertext;
-		record.encryptedDataIV = enc.iv;
-		record.updatedAt = Date.now();
-		await localDB.putRecord('scripts', record);
+			record.encryptedData = enc.ciphertext;
+			record.encryptedDataIV = enc.iv;
+			record.updatedAt = Date.now();
+			await localDB.putRecord('scripts', record);
 
-		return {
-			id,
-			ownerId: record.ownerId,
-			...updated,
-			createdAt: record.createdAt,
-			updatedAt: record.updatedAt
-		};
+			return { id, ownerId: record.ownerId, ...updated };
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update script', error);
+		}
 	}
 
 	static async delete(id: string, expectedOwnerId?: string): Promise<void> {
 		if (expectedOwnerId) {
 			await assertScriptOwnedBy(expectedOwnerId, id);
 		}
-		await localDB.softDeleteRecord('scripts', id);
+		try {
+			await localDB.softDeleteRecord('scripts', id);
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to delete script', error);
+		}
 	}
 }

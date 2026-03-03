@@ -1,6 +1,7 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type ModuleRecord, type FolderDef, type OrderedRef } from '../db/index.js';
 import { deepMerge } from '../utils/defaults.js';
+import { AppError } from '../errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -22,8 +23,6 @@ export interface ModuleFields extends ModuleContent, ModuleRefs {}
 
 export interface Module extends ModuleFields {
 	id: string;
-	createdAt: number;
-	updatedAt: number;
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────
@@ -39,7 +38,11 @@ function decryptFields(masterKey: CryptoKey, record: ModuleRecord): Promise<Modu
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
-	}).then((dec) => deepMerge(defaultModuleFields, JSON.parse(dec)));
+	})
+		.then((dec) => deepMerge(defaultModuleFields, JSON.parse(dec)))
+		.catch((error) => {
+			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt module', error);
+		});
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -54,9 +57,7 @@ export class ModuleService {
 				const fields = await decryptFields(masterKey, record);
 				return {
 					id: record.id,
-					...fields,
-					createdAt: record.createdAt,
-					updatedAt: record.updatedAt
+					...fields
 				};
 			})
 		);
@@ -70,61 +71,73 @@ export class ModuleService {
 		const fields = await decryptFields(masterKey, record);
 		return {
 			id: record.id,
-			...fields,
-			createdAt: record.createdAt,
-			updatedAt: record.updatedAt
+			...fields
 		};
 	}
 
-	static async create(fields: ModuleFields): Promise<Module> {
+	static async create(fields: Partial<ModuleFields> = {}): Promise<Module> {
+		const resolved: ModuleFields = deepMerge(defaultModuleFields, fields as Record<string, unknown>);
+
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
 		const now = Date.now();
-		const enc = await encryptText(masterKey, JSON.stringify(fields));
 
-		await localDB.putRecord<ModuleRecord>('modules', {
-			id,
-			userId,
-			createdAt: now,
-			updatedAt: now,
-			isDeleted: false,
-			encryptedData: enc.ciphertext,
-			encryptedDataIV: enc.iv
-		});
+		try {
+			const enc = await encryptText(masterKey, JSON.stringify(resolved));
+			await localDB.putRecord<ModuleRecord>('modules', {
+				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
+				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+			});
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to create module', error);
+		}
 
-		return { id, ...fields, createdAt: now, updatedAt: now };
+		return { id, ...resolved };
 	}
 
-	static async update(id: string, changes: Partial<ModuleFields>): Promise<Module | null> {
+	static async update(id: string, changes: Partial<ModuleFields>): Promise<Module> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ModuleRecord>('modules', id);
-		if (!record || record.isDeleted) return null;
+		if (!record || record.isDeleted) {
+			throw new AppError('NOT_FOUND', `Module not found: ${id}`);
+		}
 
-		const current = await decryptFields(masterKey, record);
-		const updated: ModuleFields = deepMerge(current, changes as Record<string, unknown>);
-		const enc = await encryptText(masterKey, JSON.stringify(updated));
+		try {
+			const current = await decryptFields(masterKey, record);
+			const updated: ModuleFields = deepMerge(current, changes as Record<string, unknown>);
+			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
-		record.encryptedData = enc.ciphertext;
-		record.encryptedDataIV = enc.iv;
-		record.updatedAt = Date.now();
-		await localDB.putRecord('modules', record);
+			record.encryptedData = enc.ciphertext;
+			record.encryptedDataIV = enc.iv;
+			record.updatedAt = Date.now();
+			await localDB.putRecord('modules', record);
 
-		return { id, ...updated, createdAt: record.createdAt, updatedAt: record.updatedAt };
+			return { id, ...updated };
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update module', error);
+		}
 	}
 
 	/** Update content fields only — safe entry point for store layer */
 	static async updateContent(
 		id: string,
 		changes: Partial<ModuleContent>
-	): Promise<Module | null> {
+	): Promise<Module> {
 		return this.update(id, changes);
 	}
 
 	static async delete(id: string): Promise<void> {
-		await localDB.transaction(['lorebooks', 'scripts', 'modules'], 'rw', async () => {
-			await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-			await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-			await localDB.softDeleteRecord('modules', id);
-		});
+		try {
+			await localDB.transaction(['lorebooks', 'scripts', 'modules'], 'rw', async () => {
+				await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
+				await localDB.softDeleteByIndex('scripts', 'ownerId', id);
+				await localDB.softDeleteRecord('modules', id);
+			});
+		} catch (error) {
+			if (error instanceof AppError) throw error;
+			throw new AppError('DB_WRITE_FAILED', 'Failed to delete module', error);
+		}
 	}
 }

@@ -11,14 +11,18 @@ import { MessageService, type MessageFields } from '../services/message.js';
 import { ChatService } from '../services/chat.js';
 import { messages, chats, activeChat, activeChatId } from './state.js';
 
-export async function loadInitialMessages(chatId: string, limit = 50) {
+/**
+ * Service errors propagate to the caller — this function does not catch them.
+ * Callers (e.g. route load functions) are responsible for error boundaries.
+ */
+export async function loadInitialMessages(chatId: string, limit = 50): Promise<void> {
 	const initialMsgs = await MessageService.getMessagesBefore(chatId, '\uffff', limit);
 	if (get(activeChatId) === chatId) {
 		messages.set(initialMsgs);
 	}
 }
 
-export async function loadOlderMessages(chatId: string, limit = 50) {
+export async function loadOlderMessages(chatId: string, limit = 50): Promise<void> {
 	const msgs = get(messages);
 	if (msgs.length === 0) return;
 
@@ -31,7 +35,7 @@ export async function loadOlderMessages(chatId: string, limit = 50) {
 	}
 }
 
-export async function loadNewerMessages(chatId: string, limit = 50) {
+export async function loadNewerMessages(chatId: string, limit = 50): Promise<void> {
 	const msgs = get(messages);
 	if (msgs.length === 0) return;
 
@@ -44,8 +48,8 @@ export async function loadNewerMessages(chatId: string, limit = 50) {
 	}
 }
 
-export async function createMessage(chatId: string, fields: MessageFields) {
-	const preview = fields.content.substring(0, 50);
+export async function createMessage(chatId: string, fields: Partial<MessageFields>): Promise<void> {
+	const preview = fields.content?.substring(0, 50) ?? '';
 
 	// DB writes — always happen with explicit chatId
 	const [newMessage, updatedChat] = await Promise.all([
@@ -55,19 +59,15 @@ export async function createMessage(chatId: string, fields: MessageFields) {
 
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) !== chatId) return;
-
 	messages.update((prev) => [...prev, newMessage]);
-	if (updatedChat) {
-		chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
-		activeChat.update((c) => (c && c.id === chatId ? { ...c, ...updatedChat } : c));
-	}
+	chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
+	activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
 }
 
-export async function updateMessage(msgId: string, changes: Partial<MessageFields>) {
+export async function updateMessage(msgId: string, changes: Partial<MessageFields>): Promise<void> {
 	// DB write — always happens
 	const currentChatId = get(activeChatId);
 	const updated = await MessageService.update(msgId, changes, currentChatId ?? undefined);
-	if (!updated) return;
 
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) !== updated.chatId) return;
@@ -83,14 +83,12 @@ export async function updateMessage(msgId: string, changes: Partial<MessageField
 		const updatedChat = await ChatService.updateSummary(updated.chatId, {
 			lastMessagePreview: preview
 		});
-		if (updatedChat && get(activeChatId) === updated.chatId) {
-			chats.update((list) => list.map((c) => (c.id === updated.chatId ? updatedChat : c)));
-			activeChat.update((c) => (c && c.id === updated.chatId ? { ...c, ...updatedChat } : c));
-		}
+		chats.update((list) => list.map((c) => (c.id === updated.chatId ? updatedChat : c)));
+		activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
 	}
 }
 
-export async function deleteMessage(chatId: string, msgId: string) {
+export async function deleteMessage(chatId: string, msgId: string): Promise<void> {
 	const currentMessages = get(messages);
 	const isLastMessage =
 		currentMessages.length > 0 && currentMessages[currentMessages.length - 1].id === msgId;
@@ -110,9 +108,7 @@ export async function deleteMessage(chatId: string, msgId: string) {
 				? remainingMessages[remainingMessages.length - 1].content.substring(0, 50)
 				: '';
 		const updatedChat = await ChatService.updateSummary(chatId, { lastMessagePreview: preview });
-		if (updatedChat && get(activeChatId) === chatId) {
-			chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
-			activeChat.update((c) => (c && c.id === chatId ? { ...c, ...updatedChat } : c));
-		}
+		chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
+		activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
 	}
 }

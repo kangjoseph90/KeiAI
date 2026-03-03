@@ -2,14 +2,15 @@ import { get } from 'svelte/store';
 import {
 	ChatService,
 	type Chat,
+	type ChatDetail,
 	type ChatSummaryFields,
 	type ChatDataFields,
 	type ChatDataContent
 } from '../services/chat.js';
 import { MessageService } from '../services/message.js';
-import { LorebookService, type LorebookFields } from '../services/lorebook.js';
+import { LorebookService, type LorebookFields, type Lorebook } from '../services/lorebook.js';
 import { CharacterService } from '../services/character.js';
-import type { OrderedRef } from '../db/index.js';
+import type { OrderedRef, FolderDef } from '../db/index.js';
 import { generateSortOrder, sortByRefs } from '../utils/ordering.js';
 import {
 	chats,
@@ -17,28 +18,18 @@ import {
 	activeCharacter,
 	messages,
 	chatLorebooks,
-	activeCharacterId
+	activeCharacterId,
+	activeChatId
 } from './state.js';
 import { loadInitialMessages } from './message.js';
+import { AppError } from '../errors.js';
 
-export const DEFAULT_CHAT_SUMMARY: ChatSummaryFields = {
-	title: 'New Chat',
-	lastMessagePreview: ''
-};
-
-export const DEFAULT_CHAT_DATA: ChatDataFields = {
-	systemPromptOverride: '',
-	lorebookRefs: [],
-	folders: {
-		lorebooks: []
-	}
-};
-
-export async function selectChat(chatId: string, characterId: string) {
-	// 참조 데이터 검증
+export async function selectChat(chatId: string, characterId: string): Promise<void> {
 	const detail = await ChatService.getDetail(chatId);
-	if (!detail || detail.characterId !== characterId || characterId !== get(activeCharacterId))
-		return;
+
+	if (!detail) {
+		throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+	}
 
 	// 검증 성공 시 채팅 로드
 	clearActiveChat();
@@ -50,19 +41,13 @@ export async function selectChat(chatId: string, characterId: string) {
 	chatLorebooks.set(sortByRefs(lorebooks, detail.data.lorebookRefs ?? []));
 
 	// 캐릭터 채팅 페이지 업데이트
-	const result = await CharacterService.updateData(characterId, { lastActiveChatId: chatId });
-	activeCharacter.update((c) =>
-		c && c.id === characterId && result // 마지막으로 active 캐릭터 참조 검증
-			? {
-					...c,
-					data: result.data,
-					updatedAt: result.updatedAt
-				}
-			: c
-	);
+	const data = await CharacterService.updateData(characterId, { lastActiveChatId: chatId });
+	if (characterId === get(activeCharacterId)) {
+		activeCharacter.update((c) => (c ? { ...c, data } : c));
+	}
 }
 
-export function clearActiveChat() {
+export function clearActiveChat(): void {
 	activeChat.set(null);
 	chatLorebooks.set([]);
 	messages.set([]);
@@ -70,55 +55,56 @@ export function clearActiveChat() {
 
 export async function createChat(
 	characterId: string,
-	summary: ChatSummaryFields = DEFAULT_CHAT_SUMMARY,
-	data: ChatDataFields = DEFAULT_CHAT_DATA
-) {
-	const char = get(activeCharacter);
-	if (!char || char.id !== characterId) return;
+	summary: Partial<ChatSummaryFields> = {},
+	data: Partial<ChatDataFields> = {}
+): Promise<ChatDetail> {
+	// Use cached active character if possible
+	const char = characterId === get(activeCharacterId)
+		? get(activeCharacter)
+		: await CharacterService.getDetail(characterId);
 
-	// DB writes — always happen with explicit characterId
-	const chat = await ChatService.create(characterId, summary, data);
-	const existing = char.data.chatRefs ?? [];
-	const chatRefs: OrderedRef[] = [
-		...existing,
-		{ id: chat.id, sortOrder: generateSortOrder(existing) }
-	];
-	const updatedCharacterData = await CharacterService.updateData(characterId, { chatRefs });
-	if (!updatedCharacterData) {
-		await ChatService.delete(chat.id, characterId);
-		return;
+	if (!char) {
+		throw new AppError(`NOT_FOUND`, `Character not found`);
 	}
 
-	// Store update — guard against context change
-	if (get(activeCharacterId) !== characterId) return chat;
+	// Create Record in DB
+	const chat = await ChatService.create(characterId, summary, data);
 
-	activeCharacter.update((c) =>
-		c && c.id === characterId
-			? {
-					...c,
-					data: { ...c.data, chatRefs },
-					updatedAt: updatedCharacterData.updatedAt
-				}
-			: c
-	);
-	chats.update((list) => [...list, chat]);
+	// Update parent's refs
+	const existingRefs = char.data.chatRefs || [];
+	const chatRefs: OrderedRef[] = [
+		...existingRefs,
+		{ id: chat.id, sortOrder: generateSortOrder(existingRefs) }
+	];
+	try {
+		await CharacterService.updateData(characterId, { chatRefs });
+	} catch (error) {
+		// If parent's refs update fails, roll back DB
+		await ChatService.delete(chat.id, characterId);
+		throw error;
+	}
+
+	// Update Store
+	if (characterId === get(activeCharacterId)) {
+		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, chatRefs } } : c));
+		chats.update((list) => [...list, chat]);
+	}
+	
 	return chat;
 }
 
-export async function updateChat(chatId: string, changes: Partial<ChatSummaryFields>) {
+export async function updateChat(chatId: string, changes: Partial<ChatSummaryFields>): Promise<void> {
 	const updated = await ChatService.updateSummary(chatId, changes);
-	if (updated) {
-		chats.update((list) => list.map((c) => (c.id === chatId ? updated : c)));
-		activeChat.update((c) => (c && c.id === chatId ? { ...c, ...updated } : c));
+	chats.update((list) => list.map((c) => (c.id === chatId ? updated : c)));
+	if (chatId === get(activeChatId)) {
+		activeChat.update((c) => (c ? { ...c, ...updated } : c));
 	}
 }
 
-export async function updateChatData(chatId: string, changes: Partial<ChatDataContent>) {
-	const updated = await ChatService.updateData(chatId, changes);
-	if (updated) {
-		activeChat.update((c) =>
-			c && c.id === chatId ? { ...c, data: updated.data, updatedAt: updated.updatedAt } : c
-		);
+export async function updateChatData(chatId: string, changes: Partial<ChatDataContent>): Promise<void> {
+	const data = await ChatService.updateData(chatId, changes);
+	if (chatId === get(activeChatId)) {
+		activeChat.update((c) => (c ? { ...c, data } : c));
 	}
 }
 
@@ -126,48 +112,44 @@ export async function updateChatFull(
 	chatId: string,
 	summaryChanges: Partial<ChatSummaryFields>,
 	dataChanges: Partial<ChatDataContent>
-) {
+): Promise<void> {
 	const result = await ChatService.update(chatId, summaryChanges, dataChanges);
-	if (!result) return;
-
 	chats.update((list) => list.map((c) => (c.id === chatId ? result : c)));
-	activeChat.update((c) => {
-		if (c && c.id === chatId) {
-			return result;
-		}
-		return c;
-	});
+	if (chatId === get(activeChatId)) {
+		activeChat.set(result);
+	}
 }
 
-export async function deleteChat(chatId: string, characterId: string) {
-	const char = get(activeCharacter);
-	if (char && char.id === characterId) {
-		const previousChatRefs = char.data.chatRefs ?? [];
-		const chatRefs = (char.data.chatRefs ?? []).filter((r: OrderedRef) => r.id !== chatId);
-		const updatedCharacterData = await CharacterService.updateData(characterId, { chatRefs });
-		if (!updatedCharacterData) return;
+export async function deleteChat(chatId: string, characterId: string): Promise<void> {
+	// Use cached active character if possible
+	const char = characterId === get(activeCharacterId)
+		? get(activeCharacter)
+		: await CharacterService.getDetail(characterId);
 
-		try {
-			await ChatService.delete(chatId, characterId);
-		} catch (error) {
-			await CharacterService.updateData(characterId, { chatRefs: previousChatRefs });
-			throw error;
-		}
-
-		// Store update — guard against context change
-		if (get(activeCharacterId) === characterId) {
-			activeCharacter.set({
-				...char,
-				data: { ...char.data, chatRefs },
-				updatedAt: updatedCharacterData.updatedAt
-			});
-			chats.update((list) => list.filter((c) => c.id !== chatId));
-		}
-	} else {
-		await ChatService.delete(chatId);
+	if (!char) {
+		throw new AppError(`NOT_FOUND`, `Character not found`);
 	}
 
-	if (get(activeChat)?.id === chatId) {
+	// Remove from parent's refs
+	const existingRefs = char.data.chatRefs || [];
+	const chatRefs = existingRefs.filter((r) => r.id !== chatId);
+	await CharacterService.updateData(characterId, { chatRefs });
+
+	try {
+		await ChatService.delete(chatId, characterId);
+	} catch (error) {
+		// If DB delete fails, roll back parent's refs
+		await CharacterService.updateData(characterId, { chatRefs: existingRefs });
+		throw error;
+	}
+
+	// Update Store
+	if (characterId === get(activeCharacterId)) {
+		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, chatRefs } } : c));
+		chats.update((list) => list.filter((c) => c.id !== chatId));
+	}
+
+	if (chatId === get(activeChatId)) {
 		clearActiveChat();
 	}
 }
@@ -183,39 +165,67 @@ export function sortChatsByRefs(chats: Chat[], refs: OrderedRef[]): Chat[] {
 
 // ─── Chat-owned Lorebook CRUD ─────────────────────────────────────
 
-export async function createChatLorebook(chatId: string, fields: LorebookFields) {
+export async function createChatLorebook(chatId: string, fields: Partial<LorebookFields>): Promise<Lorebook> {
+	// Use cached active chat if possible
+	const chat = chatId === get(activeChatId)
+		? get(activeChat)
+		: await ChatService.getDetail(chatId);
+
+	if (!chat) {
+		throw new AppError(`NOT_FOUND`, `Chat not found`);
+	}
+
+	// Create Record in DB
 	const lb = await LorebookService.create(chatId, fields);
 
-	const chat = get(activeChat);
-	if (!chat || chat.id !== chatId) {
-		await LorebookService.delete(lb.id);
-		return;
-	}
-
-	const existing = chat.data.lorebookRefs ?? [];
+	// Update parent's refs
+	const existingRefs = chat.data.lorebookRefs || [];
 	const lorebookRefs: OrderedRef[] = [
-		...existing,
-		{ id: lb.id, sortOrder: generateSortOrder(existing) }
+		...existingRefs,
+		{ id: lb.id, sortOrder: generateSortOrder(existingRefs) }
 	];
-	const result = await ChatService.updateData(chatId, { lorebookRefs });
-	if (!result) {
+	try {
+		await ChatService.updateData(chatId, { lorebookRefs });
+	} catch (error) {
+		// If parent's refs update fails, roll back DB
 		await LorebookService.delete(lb.id);
-		return;
+		throw error;
 	}
 
-	activeChat.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs } } : c));
-	chatLorebooks.update((list) => [...list, lb]);
+	// Update Store
+	if (chatId === get(activeChatId)) {
+		activeChat.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs } } : c));
+		chatLorebooks.update((list) => [...list, lb]);
+	}
 
 	return lb;
 }
 
-export async function deleteChatLorebook(chatId: string, lorebookId: string) {
-	await LorebookService.delete(lorebookId, chatId);
+export async function deleteChatLorebook(chatId: string, lorebookId: string): Promise<void> {
+	// Use cached active chat if possible
+	const chat = chatId === get(activeChatId)
+		? get(activeChat)
+		: await ChatService.getDetail(chatId);
 
-	const chat = get(activeChat);
-	if (chat && chat.id === chatId) {
-		const lorebookRefs = (chat.data.lorebookRefs ?? []).filter((r) => r.id !== lorebookId);
-		await ChatService.updateData(chatId, { lorebookRefs });
+	if (!chat) {
+		throw new AppError(`NOT_FOUND`, `Chat not found`);
+	}
+
+	// Remove from parent's refs
+	const existingRefs = chat.data.lorebookRefs || [];
+	const lorebookRefs = existingRefs.filter((r) => r.id !== lorebookId);
+	await ChatService.updateData(chatId, { lorebookRefs });
+
+	try {
+		await LorebookService.delete(lorebookId, chatId);
+	} catch (error) {
+		// If DB delete fails, roll back parent's refs
+		await ChatService.updateData(chatId, { lorebookRefs: existingRefs });
+		throw error;
+	}
+
+	// Update Store
+	if (chatId === get(activeChatId)) {
 		activeChat.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs } } : c));
 		chatLorebooks.update((list) => list.filter((lb) => lb.id !== lorebookId));
 	}
@@ -223,9 +233,19 @@ export async function deleteChatLorebook(chatId: string, lorebookId: string) {
 
 // ─── Chat-owned Folder & Item Management ──────────────────────
 
-export async function createChatFolder(chatId: string, name: string, parentId?: string) {
-	const chat = get(activeChat);
-	if (!chat || chat.id !== chatId) return;
+export async function createChatFolder(
+	chatId: string,
+	name: string,
+	parentId?: string
+): Promise<FolderDef> {
+	// Use cached active chat if possible
+	const chat = chatId === get(activeChatId)
+		? get(activeChat)
+		: await ChatService.getDetail(chatId);
+
+	if (!chat) {
+		throw new AppError(`NOT_FOUND`, `Chat not found`);
+	}
 
 	const folders = chat.data.folders ?? {};
 	const lorebookFolders = folders.lorebooks ?? [];
@@ -237,17 +257,16 @@ export async function createChatFolder(chatId: string, name: string, parentId?: 
 		parentId
 	};
 
-	const updatedFolders = {
-		...folders,
-		lorebooks: [...lorebookFolders, newFolder]
-	};
+	const updatedFolders = { ...folders, lorebooks: [...lorebookFolders, newFolder] };
 
-	const result = await ChatService.updateData(chatId, { folders: updatedFolders });
-	if (result) {
+	await ChatService.updateData(chatId, { folders: updatedFolders });
+
+	if (chatId === get(activeChatId)) {
 		activeChat.update((c) =>
-			c ? { ...c, data: { ...c.data, folders: updatedFolders }, updatedAt: result.updatedAt } : c
+			c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c
 		);
 	}
+	
 	return newFolder;
 }
 
@@ -255,9 +274,15 @@ export async function updateChatFolder(
 	chatId: string,
 	folderId: string,
 	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
-) {
-	const chat = get(activeChat);
-	if (!chat || chat.id !== chatId) return;
+): Promise<void> {
+	// Use cached active chat if possible
+	const chat = chatId === get(activeChatId)
+		? get(activeChat)
+		: await ChatService.getDetail(chatId);
+
+	if (!chat) {
+		throw new AppError(`NOT_FOUND`, `Chat not found`);
+	}
 
 	const folders = chat.data.folders ?? {};
 	const lorebookFolders = folders.lorebooks ?? [];
@@ -271,16 +296,24 @@ export async function updateChatFolder(
 		lorebooks: updatedLorebookFolders
 	};
 
-	const result = await ChatService.updateData(chatId, { folders: updatedFolders });
-	if (!result) return;
-	activeChat.update((c) =>
-		c ? { ...c, data: { ...c.data, folders: updatedFolders }, updatedAt: result.updatedAt } : c
-	);
+	await ChatService.updateData(chatId, { folders: updatedFolders });
+	
+	if (chatId === get(activeChatId)) {
+		activeChat.update((c) =>
+			c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c
+		);
+	}
 }
 
-export async function deleteChatFolder(chatId: string, folderId: string) {
-	const chat = get(activeChat);
-	if (!chat || chat.id !== chatId) return;
+export async function deleteChatFolder(chatId: string, folderId: string): Promise<void> {
+	// Use cached active chat if possible
+	const chat = chatId === get(activeChatId)
+		? get(activeChat)
+		: await ChatService.getDetail(chatId);
+
+	if (!chat) {
+		throw new AppError(`NOT_FOUND`, `Chat not found`);
+	}
 
 	const folders = chat.data.folders ?? {};
 	const lorebookFolders = folders.lorebooks ?? [];
@@ -292,11 +325,13 @@ export async function deleteChatFolder(chatId: string, folderId: string) {
 		lorebooks: updatedLorebookFolders
 	};
 
-	const result = await ChatService.updateData(chatId, { folders: updatedFolders });
-	if (!result) return;
-	activeChat.update((c) =>
-		c ? { ...c, data: { ...c.data, folders: updatedFolders }, updatedAt: result.updatedAt } : c
-	);
+	await ChatService.updateData(chatId, { folders: updatedFolders });
+	
+	if (chatId === get(activeChatId)) {
+		activeChat.update((c) =>
+			c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c
+		);
+	}
 }
 
 export async function moveChatLorebook(
@@ -304,9 +339,15 @@ export async function moveChatLorebook(
 	lorebookId: string,
 	newFolderId?: string,
 	newSortOrder?: string
-) {
-	const chat = get(activeChat);
-	if (!chat || chat.id !== chatId) return;
+): Promise<void> {
+	// Use cached active chat if possible
+	const chat = chatId === get(activeChatId)
+		? get(activeChat)
+		: await ChatService.getDetail(chatId);
+
+	if (!chat) {
+		throw new AppError(`NOT_FOUND`, `Chat not found`);
+	}
 
 	const refs = (chat.data.lorebookRefs as OrderedRef[]) ?? [];
 	const updatedRefs = refs.map((ref) => {
@@ -318,9 +359,11 @@ export async function moveChatLorebook(
 		};
 	});
 
-	const result = await ChatService.updateData(chatId, { lorebookRefs: updatedRefs });
-	if (!result) return;
-	activeChat.update((c) =>
-		c ? { ...c, data: { ...c.data, lorebookRefs: updatedRefs }, updatedAt: result.updatedAt } : c
-	);
+	await ChatService.updateData(chatId, { lorebookRefs: updatedRefs });
+	
+	if (chatId === get(activeChatId)) {
+		activeChat.update((c) =>
+			c ? { ...c, data: { ...c.data, lorebookRefs: updatedRefs } } : c
+		);
+	}
 }

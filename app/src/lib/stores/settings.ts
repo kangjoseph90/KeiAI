@@ -1,16 +1,21 @@
 import { get } from 'svelte/store';
 import { SettingsService, type AppSettingsContent, type AppSettings } from '../services';
 import { appSettings } from './state.js';
-import type { OrderedRef } from '../db/index.js';
+import type { OrderedRef, FolderDef } from '../db/index.js';
 import { generateSortOrder } from '../utils/ordering.js';
+import { AppError } from '../errors.js';
 
-export async function loadSettings() {
+/**
+ * Service errors propagate to the caller — this function does not catch them.
+ * Callers (e.g. route load functions) are responsible for error boundaries.
+ */
+export async function loadSettings(): Promise<void> {
 	appSettings.set(await SettingsService.get());
 }
 
-export async function updateSettings(changes: Partial<AppSettingsContent>) {
+export async function updateSettings(changes: Partial<AppSettingsContent>): Promise<void> {
 	const updated = await SettingsService.update(changes);
-	if (updated) appSettings.set(updated);
+	appSettings.set(updated);
 }
 
 // ─── Global Folder & Item Management ──────────────────────
@@ -21,27 +26,27 @@ export async function createGlobalFolder(
 	folderType: GlobalFolderType,
 	name: string,
 	parentId?: string
-) {
-	const settings = get(appSettings);
-	if (!settings) return;
+): Promise<FolderDef> {
+	const settings = get(appSettings) || await SettingsService.get();
+
+	if (!settings) {
+		throw new AppError('NOT_FOUND', 'Settings not found');
+	}
 
 	const folders = settings.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
 
-	const newFolder = {
+	const newFolder: FolderDef = {
 		id: crypto.randomUUID(),
 		name,
 		sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
 		parentId
 	};
 
-	const updatedFolders = {
-		...folders,
-		[folderType]: [...typeFolders, newFolder]
-	};
+	const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
 
 	const updated = await SettingsService.update({ folders: updatedFolders });
-	if (updated) appSettings.set(updated);
+	appSettings.set(updated);
 	return newFolder;
 }
 
@@ -49,40 +54,38 @@ export async function updateGlobalFolder(
 	folderType: GlobalFolderType,
 	folderId: string,
 	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
-) {
-	const settings = get(appSettings);
-	if (!settings) return;
+): Promise<void> {
+	const settings = get(appSettings) || await SettingsService.get();
+
+	if (!settings) {
+		throw new AppError('NOT_FOUND', 'Settings not found');
+	}
 
 	const folders = settings.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
 
 	const updatedTypeFolders = typeFolders.map((f) => (f.id === folderId ? { ...f, ...changes } : f));
 
-	const updatedFolders = {
-		...folders,
-		[folderType]: updatedTypeFolders
-	};
+	const updatedFolders = { ...folders, [folderType]: updatedTypeFolders };
 
 	const updated = await SettingsService.update({ folders: updatedFolders });
-	if (updated) appSettings.set(updated);
+	appSettings.set(updated);
 }
 
-export async function deleteGlobalFolder(folderType: GlobalFolderType, folderId: string) {
-	const settings = get(appSettings);
-	if (!settings) return;
+export async function deleteGlobalFolder(folderType: GlobalFolderType, folderId: string): Promise<void> {
+	const settings = get(appSettings) || await SettingsService.get();
+
+	if (!settings) {
+		throw new AppError('NOT_FOUND', 'Settings not found');
+	}
 
 	const folders = settings.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
 
-	const updatedTypeFolders = typeFolders.filter((f) => f.id !== folderId);
-
-	const updatedFolders = {
-		...folders,
-		[folderType]: updatedTypeFolders
-	};
+	const updatedFolders = { ...folders, [folderType]: typeFolders.filter((f) => f.id !== folderId) };
 
 	const updated = await SettingsService.update({ folders: updatedFolders });
-	if (updated) appSettings.set(updated);
+	appSettings.set(updated);
 }
 
 export async function moveGlobalItem(
@@ -90,9 +93,12 @@ export async function moveGlobalItem(
 	itemId: string,
 	newFolderId?: string,
 	newSortOrder?: string
-) {
-	const settings = get(appSettings);
-	if (!settings) return;
+): Promise<void> {
+	const settings = get(appSettings) || await SettingsService.get();
+
+	if (!settings) {
+		throw new AppError('NOT_FOUND', 'Settings not found');
+	}
 
 	let refKey: keyof AppSettings;
 	switch (folderType) {
@@ -126,5 +132,5 @@ export async function moveGlobalItem(
 	});
 
 	const updated = await SettingsService.update({ [refKey]: updatedRefs } as Partial<AppSettings>);
-	if (updated) appSettings.set(updated);
+	appSettings.set(updated);
 }
