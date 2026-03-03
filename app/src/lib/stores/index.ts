@@ -1,7 +1,7 @@
 /**
  * Svelte Store — 3-Layer In-Memory State
  *
- * Level 1 (Global):    characters, personas, promptPresets, modules, plugins, appSettings
+ * Level 1 (Global):    characters, personas, presets, modules, plugins, appSettings
  * Level 2 (Character): activeCharacter (detail), activeChats — loaded on select
  * Level 3 (Chat):      activeChat (detail), messages, chatLorebooks, chatScripts — loaded on enter
  *
@@ -23,7 +23,7 @@ import { loadSettings } from './settings.js';
 import { loadModules } from './module.js';
 import { loadPlugins } from './plugin.js';
 import { loadPersonas } from './persona.js';
-import { loadPresets } from './promptPreset.js';
+import { loadPresets } from './preset.js';
 import { loadCharacters } from './character.js';
 
 // ─── Re-export writable stores as readonly ──────────────────────────
@@ -32,7 +32,7 @@ import * as StoreState from './state.js';
 export const appSettings = readonly(StoreState.appSettings);
 export const characters = readonly(StoreState.characters);
 export const personas = readonly(StoreState.personas);
-export const promptPresets = readonly(StoreState.promptPresets);
+export const presets = readonly(StoreState.presets);
 export const modules = readonly(StoreState.modules);
 export const plugins = readonly(StoreState.plugins);
 export const moduleResources = readonly(StoreState.moduleResources);
@@ -63,7 +63,7 @@ export {
 export * from './settings.js';
 export * from './character.js';
 export * from './persona.js';
-export * from './promptPreset.js';
+export * from './preset.js';
 export * from './chat.js';
 export * from './module.js';
 export * from './plugin.js';

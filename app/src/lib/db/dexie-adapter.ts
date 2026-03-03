@@ -21,8 +21,8 @@ import type {
 	ScriptRecord,
 	ModuleRecord,
 	PluginRecord,
-	PromptPresetSummaryRecord,
-	PromptPresetDataRecord,
+	PresetSummaryRecord,
+	PresetDataRecord,
 	AssetRecord
 } from './types.js';
 
@@ -39,14 +39,14 @@ class DexieStore extends Dexie {
 	scripts!: Table<ScriptRecord, string>;
 	modules!: Table<ModuleRecord, string>;
 	plugins!: Table<PluginRecord, string>;
-	promptPresetSummaries!: Table<PromptPresetSummaryRecord, string>;
-	promptPresetData!: Table<PromptPresetDataRecord, string>;
+	presetSummaries!: Table<PresetSummaryRecord, string>;
+	presetData!: Table<PresetDataRecord, string>;
 	assets!: Table<AssetRecord, string>;
 
 	constructor() {
 		super('KeiLocalDB');
 
-		this.version(4).stores({
+		this.version(5).stores({
 			// Encrypted tables (blind sync targets)
 			users: 'id, userId, isGuest',
 			characterSummaries: 'id, userId, updatedAt, isDeleted',
@@ -60,8 +60,8 @@ class DexieStore extends Dexie {
 			scripts: 'id, userId, ownerId, updatedAt, isDeleted',
 			modules: 'id, userId, updatedAt, isDeleted',
 			plugins: 'id, userId, updatedAt, isDeleted',
-			promptPresetSummaries: 'id, userId, updatedAt, isDeleted',
-			promptPresetData: 'id, userId, updatedAt, isDeleted',
+			presetSummaries: 'id, userId, updatedAt, isDeleted',
+			presetData: 'id, userId, updatedAt, isDeleted',
 
 			// Asset table (plaintext, no sync)
 			assets: 'id, userId, kind, visibility, mimeType, createdAt'

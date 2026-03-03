@@ -1,15 +1,15 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import {
 	localDB,
-	type PromptPresetSummaryRecord,
-	type PromptPresetDataRecord
+	type PresetSummaryRecord,
+	type PresetDataRecord
 } from '../db/index.js';
 import { deepMerge } from '../utils/defaults.js';
 import { AppError } from '../errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
-export interface PromptPresetSummaryFields {
+export interface PresetSummaryFields {
 	name: string;
 	description: string;
 }
@@ -30,7 +30,8 @@ export interface PromptTemplateEntry {
 	content?: string;
 }
 
-export interface PromptPresetDataFields {
+export interface PresetDataFields {
+	model: string;
 	templateOrder: PromptTemplateEntry[];
 	authorsNote: string;
 	authorsNoteDepth: number;
@@ -46,22 +47,23 @@ export interface PromptPresetDataFields {
 	memoryTokensRatio: number;
 }
 
-export interface PromptPreset extends PromptPresetSummaryFields {
+export interface Preset extends PresetSummaryFields {
 	id: string;
 }
 
-export interface PromptPresetDetail extends PromptPreset {
-	data: PromptPresetDataFields;
+export interface PresetDetail extends Preset {
+	data: PresetDataFields;
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────
 
-export const defaultPresetSummary: PromptPresetSummaryFields = {
+export const defaultPresetSummary: PresetSummaryFields = {
 	name: '',
 	description: ''
 };
 
-export const defaultPresetData: PromptPresetDataFields = {
+export const defaultPresetData: PresetDataFields = {
+	model: '',
 	templateOrder: [
 		{ type: 'system', role: 'system' },
 		{ type: 'description', role: 'system' },
@@ -91,42 +93,39 @@ export const defaultPresetData: PromptPresetDataFields = {
 
 function decryptSummaryFields(
 	masterKey: CryptoKey,
-	record: PromptPresetSummaryRecord
-): Promise<PromptPresetSummaryFields> {
+	record: PresetSummaryRecord
+): Promise<PresetSummaryFields> {
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
 	})
 		.then((dec) => deepMerge(defaultPresetSummary, JSON.parse(dec)))
 		.catch((error) => {
-			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt prompt preset summary', error);
+			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt preset summary', error);
 		});
 }
 
 function decryptDataFields(
 	masterKey: CryptoKey,
-	record: PromptPresetDataRecord
-): Promise<PromptPresetDataFields> {
+	record: PresetDataRecord
+): Promise<PresetDataFields> {
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
 	})
 		.then((dec) => deepMerge(defaultPresetData, JSON.parse(dec)))
 		.catch((error) => {
-			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt prompt preset data', error);
+			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt preset data', error);
 		});
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
 
-export class PromptPresetService {
+export class PresetService {
 	/** List all presets (summary only) */
-	static async list(): Promise<PromptPreset[]> {
+	static async list(): Promise<Preset[]> {
 		const { masterKey, userId } = getActiveSession();
-		const records = await localDB.getAll<PromptPresetSummaryRecord>(
-			'promptPresetSummaries',
-			userId
-		);
+		const records = await localDB.getAll<PresetSummaryRecord>('presetSummaries', userId);
 
 		return Promise.all(
 			records.map(async (record) => {
@@ -140,13 +139,13 @@ export class PromptPresetService {
 	}
 
 	/** Get full preset (summary + data) */
-	static async getDetail(id: string): Promise<PromptPresetDetail | null> {
+	static async getDetail(id: string): Promise<PresetDetail | null> {
 		const { masterKey } = getActiveSession();
 
-		const rec = await localDB.getRecord<PromptPresetSummaryRecord>('promptPresetSummaries', id);
+		const rec = await localDB.getRecord<PresetSummaryRecord>('presetSummaries', id);
 		if (!rec || rec.isDeleted) return null;
 
-		const dataRec = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
+		const dataRec = await localDB.getRecord<PresetDataRecord>('presetData', id);
 		if (!dataRec || dataRec.isDeleted) return null;
 
 		const fields = await decryptSummaryFields(masterKey, rec);
@@ -161,11 +160,11 @@ export class PromptPresetService {
 
 	/** Create a preset (writes to both tables) */
 	static async create(
-		summary: Partial<PromptPresetSummaryFields> = {},
-		data: Partial<PromptPresetDataFields> = {}
-	): Promise<PromptPresetDetail> {
-		const resolvedSummary: PromptPresetSummaryFields = deepMerge(defaultPresetSummary, summary as Record<string, unknown>);
-		const resolvedData: PromptPresetDataFields = deepMerge(defaultPresetData, data as Record<string, unknown>);
+		summary: Partial<PresetSummaryFields> = {},
+		data: Partial<PresetDataFields> = {}
+	): Promise<PresetDetail> {
+		const resolvedSummary: PresetSummaryFields = deepMerge(defaultPresetSummary, summary as Record<string, unknown>);
+		const resolvedData: PresetDataFields = deepMerge(defaultPresetData, data as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
@@ -175,19 +174,19 @@ export class PromptPresetService {
 			const summaryEnc = await encryptText(masterKey, JSON.stringify(resolvedSummary));
 			const dataEnc = await encryptText(masterKey, JSON.stringify(resolvedData));
 
-			await localDB.transaction(['promptPresetSummaries', 'promptPresetData'], 'rw', async () => {
-				await localDB.putRecord<PromptPresetSummaryRecord>('promptPresetSummaries', {
+			await localDB.transaction(['presetSummaries', 'presetData'], 'rw', async () => {
+				await localDB.putRecord<PresetSummaryRecord>('presetSummaries', {
 					id, userId, createdAt: now, updatedAt: now, isDeleted: false,
 					encryptedData: summaryEnc.ciphertext, encryptedDataIV: summaryEnc.iv
 				});
-				await localDB.putRecord<PromptPresetDataRecord>('promptPresetData', {
+				await localDB.putRecord<PresetDataRecord>('presetData', {
 					id, userId, createdAt: now, updatedAt: now, isDeleted: false,
 					encryptedData: dataEnc.ciphertext, encryptedDataIV: dataEnc.iv
 				});
 			});
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to create prompt preset', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to create preset', error);
 		}
 
 		return { id, ...resolvedSummary, data: resolvedData };
@@ -196,85 +195,85 @@ export class PromptPresetService {
 	/** Update summary only */
 	static async updateSummary(
 		id: string,
-		changes: Partial<PromptPresetSummaryFields>
-	): Promise<PromptPreset> {
+		changes: Partial<PresetSummaryFields>
+	): Promise<Preset> {
 		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<PromptPresetSummaryRecord>('promptPresetSummaries', id);
+		const record = await localDB.getRecord<PresetSummaryRecord>('presetSummaries', id);
 		if (!record || record.isDeleted) {
-			throw new AppError('NOT_FOUND', `Prompt preset not found: ${id}`);
+			throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 		}
 
 		try {
 			const current = await decryptSummaryFields(masterKey, record);
-			const updated: PromptPresetSummaryFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: PresetSummaryFields = deepMerge(current, changes as Record<string, unknown>);
 			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 			record.encryptedData = enc.ciphertext;
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
-			await localDB.putRecord('promptPresetSummaries', record);
+			await localDB.putRecord('presetSummaries', record);
 
 			return { id, ...updated };
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to update prompt preset summary', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update preset summary', error);
 		}
 	}
 
 	/** Update data only */
 	static async updateData(
 		id: string,
-		changes: Partial<PromptPresetDataFields>
-	): Promise<PromptPresetDataFields> {
+		changes: Partial<PresetDataFields>
+	): Promise<PresetDataFields> {
 		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
+		const record = await localDB.getRecord<PresetDataRecord>('presetData', id);
 		if (!record || record.isDeleted) {
-			throw new AppError('NOT_FOUND', `Prompt preset not found: ${id}`);
+			throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 		}
 
 		try {
 			const current = await decryptDataFields(masterKey, record);
-			const updated: PromptPresetDataFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: PresetDataFields = deepMerge(current, changes as Record<string, unknown>);
 			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 			record.encryptedData = enc.ciphertext;
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
-			await localDB.putRecord('promptPresetData', record);
+			await localDB.putRecord('presetData', record);
 
 			return updated;
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to update prompt preset data', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update preset data', error);
 		}
 	}
 
 	/** Update summary and/or data transactionally */
 	static async update(
 		id: string,
-		summaryChanges?: Partial<PromptPresetSummaryFields>,
-		dataChanges?: Partial<PromptPresetDataFields>
-	): Promise<PromptPresetDetail> {
+		summaryChanges?: Partial<PresetSummaryFields>,
+		dataChanges?: Partial<PresetDataFields>
+	): Promise<PresetDetail> {
 		const { masterKey } = getActiveSession();
-		let updatedSummary: PromptPresetSummaryFields | undefined;
-		let updatedData: PromptPresetDataFields | undefined;
+		let updatedSummary: PresetSummaryFields | undefined;
+		let updatedData: PresetDataFields | undefined;
 		const finalUpdatedAt = Date.now();
 
 		try {
-			await localDB.transaction(['promptPresetSummaries', 'promptPresetData'], 'rw', async () => {
+			await localDB.transaction(['presetSummaries', 'presetData'], 'rw', async () => {
 				// Read both records upfront — ensures no partial writes if one is missing
-				const summaryRecord = await localDB.getRecord<PromptPresetSummaryRecord>(
-					'promptPresetSummaries',
+				const summaryRecord = await localDB.getRecord<PresetSummaryRecord>(
+					'presetSummaries',
 					id
 				);
-				const dataRecord = await localDB.getRecord<PromptPresetDataRecord>('promptPresetData', id);
+				const dataRecord = await localDB.getRecord<PresetDataRecord>('presetData', id);
 				if (
 					!summaryRecord ||
 					summaryRecord.isDeleted ||
 					!dataRecord ||
 					dataRecord.isDeleted
 				) {
-					throw new AppError('NOT_FOUND', `Prompt preset not found: ${id}`);
+					throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 				}
 
 				if (summaryChanges) {
@@ -284,7 +283,7 @@ export class PromptPresetService {
 					summaryRecord.encryptedData = summaryEnc.ciphertext;
 					summaryRecord.encryptedDataIV = summaryEnc.iv;
 					summaryRecord.updatedAt = finalUpdatedAt;
-					await localDB.putRecord('promptPresetSummaries', summaryRecord);
+					await localDB.putRecord('presetSummaries', summaryRecord);
 				} else {
 					updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
 				}
@@ -296,18 +295,18 @@ export class PromptPresetService {
 					dataRecord.encryptedData = dataEnc.ciphertext;
 					dataRecord.encryptedDataIV = dataEnc.iv;
 					dataRecord.updatedAt = finalUpdatedAt;
-					await localDB.putRecord('promptPresetData', dataRecord);
+					await localDB.putRecord('presetData', dataRecord);
 				} else {
 					updatedData = await decryptDataFields(masterKey, dataRecord);
 				}
 			});
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to update prompt preset', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update preset', error);
 		}
 
 		if (!updatedSummary || !updatedData) {
-			throw new AppError('NOT_FOUND', `Prompt preset not found: ${id}`);
+			throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 		}
 
 		return {
@@ -319,13 +318,13 @@ export class PromptPresetService {
 
 	static async delete(id: string): Promise<void> {
 		try {
-			await localDB.transaction(['promptPresetSummaries', 'promptPresetData'], 'rw', async () => {
-				await localDB.softDeleteRecord('promptPresetSummaries', id);
-				await localDB.softDeleteRecord('promptPresetData', id);
+			await localDB.transaction(['presetSummaries', 'presetData'], 'rw', async () => {
+				await localDB.softDeleteRecord('presetSummaries', id);
+				await localDB.softDeleteRecord('presetData', id);
 			});
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to delete prompt preset', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to delete preset', error);
 		}
 	}
 }

@@ -1,13 +1,13 @@
 import { get } from 'svelte/store';
 import {
-	PromptPresetService,
-	type PromptPresetSummaryFields,
-	type PromptPresetDataFields,
-	type PromptPresetDetail
-} from '../services/promptPreset.js';
-import { SettingsService } from '../services';
+	PresetService,
+	type PresetSummaryFields,
+	type PresetDataFields,
+	type PresetDetail
+} from '../services/preset.js';
+import { SettingsService } from '../services/index.js';
 import { generateSortOrder, sortByRefs } from '../utils/ordering.js';
-import { promptPresets, activePreset, appSettings } from './state.js';
+import { presets, activePreset, appSettings } from './state.js';
 import { AppError } from '../errors.js';
 
 /**
@@ -16,24 +16,24 @@ import { AppError } from '../errors.js';
  */
 export async function loadPresets(): Promise<void> {
 	const settings = get(appSettings);
-	const list = await PromptPresetService.list();
+	const list = await PresetService.list();
 	if (settings?.presetRefs) {
-		promptPresets.set(sortByRefs(list, settings.presetRefs));
+		presets.set(sortByRefs(list, settings.presetRefs));
 	} else {
-		promptPresets.set(list);
+		presets.set(list);
 	}
 }
 
 export async function selectPreset(id: string): Promise<void> {
-	activePreset.set(await PromptPresetService.getDetail(id));
+	activePreset.set(await PresetService.getDetail(id));
 
 	// TODO: Update settings with selected preset
 }
 
 export async function createPreset(
-	fields: Partial<PromptPresetSummaryFields>,
-	data?: Partial<PromptPresetDataFields>
-): Promise<PromptPresetDetail> {
+	fields: Partial<PresetSummaryFields>,
+	data?: Partial<PresetDataFields>
+): Promise<PresetDetail> {
 	const settings = get(appSettings) || await SettingsService.get();
 
 	if (!settings) {
@@ -41,7 +41,7 @@ export async function createPreset(
 	}
 
 	// Create Record in DB
-	const detail = await PromptPresetService.create(fields, data);
+	const detail = await PresetService.create(fields, data);
 
 	// Add to parent's refs
 	const existingRefs = settings.presetRefs || [];
@@ -50,25 +50,25 @@ export async function createPreset(
 		await SettingsService.update({ presetRefs });
 	} catch (error) {
 		// If parent's refs update fails, roll back DB
-		await PromptPresetService.delete(detail.id);
+		await PresetService.delete(detail.id);
 		throw error;
 	}
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, presetRefs } : s));
-	promptPresets.update((list) => [...list, detail]);
+	presets.update((list) => [...list, detail]);
 
 	return detail;
 }
 
-export async function updatePresetSummary(id: string, changes: Partial<PromptPresetSummaryFields>): Promise<void> {
-	const updated = await PromptPresetService.updateSummary(id, changes);
-	promptPresets.update((list) => list.map((p) => (p.id === id ? updated : p)));
+export async function updatePresetSummary(id: string, changes: Partial<PresetSummaryFields>): Promise<void> {
+	const updated = await PresetService.updateSummary(id, changes);
+	presets.update((list) => list.map((p) => (p.id === id ? updated : p)));
 	activePreset.update((p) => (p && p.id === id ? { ...p, ...updated } : p));
 }
 
-export async function updatePresetData(id: string, changes: Partial<PromptPresetDataFields>): Promise<void> {
-	const data = await PromptPresetService.updateData(id, changes);
+export async function updatePresetData(id: string, changes: Partial<PresetDataFields>): Promise<void> {
+	const data = await PresetService.updateData(id, changes);
 	activePreset.update((p) =>
 		p && p.id === id ? { ...p, data } : p
 	);
@@ -76,11 +76,11 @@ export async function updatePresetData(id: string, changes: Partial<PromptPreset
 
 export async function updatePresetFull(
 	id: string,
-	summaryChanges: Partial<PromptPresetSummaryFields>,
-	dataChanges: Partial<PromptPresetDataFields>
+	summaryChanges: Partial<PresetSummaryFields>,
+	dataChanges: Partial<PresetDataFields>
 ): Promise<void> {
-	const result = await PromptPresetService.update(id, summaryChanges, dataChanges);
-	promptPresets.update((list) => list.map((p) => (p.id === id ? result : p)));
+	const result = await PresetService.update(id, summaryChanges, dataChanges);
+	presets.update((list) => list.map((p) => (p.id === id ? result : p)));
 	activePreset.update((p) => (p && p.id === id ? result : p));
 }
 
@@ -98,7 +98,7 @@ export async function deletePreset(id: string): Promise<void> {
 
 	// Remove record from DB
 	try {
-		await PromptPresetService.delete(id);
+		await PresetService.delete(id);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
 		await SettingsService.update({ presetRefs: existingRefs });
@@ -107,7 +107,7 @@ export async function deletePreset(id: string): Promise<void> {
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, presetRefs } : s));
-	promptPresets.update((list) => list.filter((p) => p.id !== id));
+	presets.update((list) => list.filter((p) => p.id !== id));
 	if (get(activePreset)?.id === id) {
 		activePreset.set(null);
 	}
