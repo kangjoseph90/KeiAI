@@ -6,10 +6,10 @@ import {
 	type ChatSummaryFields,
 	type ChatDataFields,
 	type ChatDataContent
-} from '../services/domain/chat.js';
-import { MessageService } from '../services/domain/message.js';
-import { LorebookService, type LorebookFields, type Lorebook } from '../services/domain/lorebook.js';
-import { CharacterService } from '../services/domain/character.js';
+} from '../services/chat.js';
+import { MessageService } from '../services/message.js';
+import { LorebookService, type LorebookFields, type Lorebook } from '../services/lorebook.js';
+import { CharacterService } from '../services/character.js';
 import type { OrderedRef, FolderDef } from '../adapters/db/index.js';
 import { generateSortOrder, sortByRefs } from '../shared/ordering.js';
 import {

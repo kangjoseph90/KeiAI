@@ -4,8 +4,8 @@ import {
 	type PresetSummaryFields,
 	type PresetDataFields,
 	type PresetDetail
-} from '../services/domain/preset.js';
-import { SettingsService } from '../services/domain/index.js';
+} from '../services/preset.js';
+import { SettingsService } from '../services/index.js';
 import { generateSortOrder, sortByRefs } from '../shared/ordering.js';
 import { presets, activePreset, appSettings } from './state.js';
 import { AppError } from '../shared/errors.js';

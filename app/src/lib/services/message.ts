@@ -1,9 +1,9 @@
-import { getActiveSession, encryptText, decryptText } from '../../session.js';
-import { localDB, type MessageRecord } from '../../adapters/db/index.js';
+import { getActiveSession, encryptText, decryptText } from '../session.js';
+import { localDB, type MessageRecord } from '../adapters/db/index.js';
 import { generateKeyBetween } from 'fractional-indexing';
-import { deepMerge } from '../../shared/defaults.js';
+import { deepMerge } from '../shared/defaults.js';
 import { assertChatExists, assertMessageInChat } from './guards.js';
-import { AppError } from '../../shared/errors.js';
+import { AppError } from '../shared/errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 

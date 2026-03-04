@@ -6,16 +6,16 @@
  */
 
 import { derived, writable } from 'svelte/store';
-import type { AppSettings } from '../services/domain/settings.js';
-import type { Character, CharacterDetail } from '../services/domain/character.js';
-import type { Chat, ChatDetail } from '../services/domain/chat.js';
-import type { Message } from '../services/domain/message.js';
-import type { Persona } from '../services/domain/persona.js';
-import type { Preset, PresetDetail } from '../services/domain/preset.js';
-import type { Module } from '../services/domain/module.js';
-import type { Plugin } from '../services/domain/plugin.js';
-import type { Lorebook } from '../services/domain/lorebook.js';
-import type { Script } from '../services/domain/script.js';
+import type { AppSettings } from '../services/settings.js';
+import type { Character, CharacterDetail } from '../services/character.js';
+import type { Chat, ChatDetail } from '../services/chat.js';
+import type { Message } from '../services/message.js';
+import type { Persona } from '../services/persona.js';
+import type { Preset, PresetDetail } from '../services/preset.js';
+import type { Module } from '../services/module.js';
+import type { Plugin } from '../services/plugin.js';
+import type { Lorebook } from '../services/lorebook.js';
+import type { Script } from '../services/script.js';
 
 // ─── Level 0 (Global Settings) ──────────────────────────────────────
 export const appSettings = writable<AppSettings | null>(null);

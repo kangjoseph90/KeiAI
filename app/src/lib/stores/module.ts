@@ -1,9 +1,9 @@
 import { get } from 'svelte/store';
-import { ModuleService, type ModuleFields, type ModuleContent, type Module } from '../services/domain/module.js';
-import { LorebookService, type LorebookFields, type Lorebook } from '../services/domain/lorebook.js';
-import { ScriptService, type ScriptFields, type Script } from '../services/domain/script.js';
+import { ModuleService, type ModuleFields, type ModuleContent, type Module } from '../services/module.js';
+import { LorebookService, type LorebookFields, type Lorebook } from '../services/lorebook.js';
+import { ScriptService, type ScriptFields, type Script } from '../services/script.js';
 import type { OrderedRef, FolderDef } from '../adapters/db/index.js';
-import { SettingsService } from '../services/domain/index.js';
+import { SettingsService } from '../services/index.js';
 import { generateSortOrder, sortByRefs } from '../shared/ordering.js';
 import { modules, appSettings, moduleResources } from './state.js';
 import { AppError } from '../shared/errors.js';
