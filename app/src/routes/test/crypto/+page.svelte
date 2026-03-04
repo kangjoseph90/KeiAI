@@ -1,7 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { cryptoWorker } from '$lib/workers/index.js';
-	import { generateMasterKey } from '$lib/crypto/index.js';
+	import {
+		generateMasterKey,
+		encrypt,
+		decrypt,
+		generateSalt,
+		deriveKeys,
+		wrapMasterKey,
+		unwrapMasterKeyRaw,
+		createRecoveryData,
+		deriveRecoveryKey,
+		hashRecoveryAuthToken
+	} from '$lib/crypto/index.js';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
 	import { Badge, type BadgeVariant } from '$lib/components/ui/badge/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -17,7 +27,7 @@
 
 	onMount(async () => {
 		try {
-			status = 'Running worker tests...';
+			status = 'Running crypto tests...';
 			statusVariant = 'secondary';
 			const masterKey = await generateMasterKey();
 			logMsg('✅ Master key generated on main thread.');
@@ -25,13 +35,13 @@
 			const plaintext = 'Hello, Web Worker Crypto!';
 			logMsg(`Plaintext: "${plaintext}"`);
 
-			const encrypted = await cryptoWorker.encrypt(masterKey, plaintext);
+			const encrypted = await encrypt(masterKey, plaintext);
 			logMsg(
-				`✅ Encrypted via Worker. Ciphertext length: ${encrypted.ciphertext.length}, IV length: ${encrypted.iv.length}`
+				`✅ Encrypted. Ciphertext length: ${encrypted.ciphertext.length}, IV length: ${encrypted.iv.length}`
 			);
 
-			const decrypted = await cryptoWorker.decrypt(masterKey, encrypted);
-			logMsg(`✅ Decrypted via Worker. Result: "${decrypted}"`);
+			const decrypted = await decrypt(masterKey, encrypted);
+			logMsg(`✅ Decrypted. Result: "${decrypted}"`);
 
 			if (decrypted !== plaintext) {
 				throw new Error('Decrypted text does not match plaintext.');
@@ -42,27 +52,27 @@
 			status = 'Testing KDF (PBKDF2)...';
 			statusVariant = 'secondary';
 			const password = 'my-super-secret-password';
-			const salt = await cryptoWorker.generateSalt();
+			const salt = await generateSalt();
 			logMsg(`✅ Generated Salt (${salt.length} bytes)`);
 			
-			const keys = await cryptoWorker.deriveKeys(password, salt);
+			const keys = await deriveKeys(password, salt);
 			logMsg(`✅ Derived Keys: loginKey (${keys.loginKey.length} bytes), encryptionKey (${keys.encryptionKey.length} bytes)`);
 			
 			status = 'Testing Master Key Wrap/Unwrap...';
-			const wrapped = await cryptoWorker.wrapMasterKey(masterKey, keys.encryptionKey);
+			const wrapped = await wrapMasterKey(masterKey, keys.encryptionKey);
 			logMsg(`✅ Wrapped Master Key. Ciphertext length: ${wrapped.ciphertext.length}`);
 			
-			const unwrappedRaw = await cryptoWorker.unwrapMasterKeyRaw(wrapped.ciphertext, wrapped.iv, keys.encryptionKey);
+			const unwrappedRaw = await unwrapMasterKeyRaw(wrapped.ciphertext, wrapped.iv, keys.encryptionKey);
 			logMsg(`✅ Unwrapped Master Key Raw (${unwrappedRaw.length} bytes)`);
 			
 			status = 'Testing Recovery...';
-			const recovery = await cryptoWorker.createRecoveryData(masterKey);
+			const recovery = await createRecoveryData(masterKey);
 			logMsg(`✅ Created Recovery Data. Code: ${recovery.recoveryCode.fullCode}`);
 			
-			const zKey = await cryptoWorker.deriveRecoveryKey(recovery.recoveryCode.frontHalf);
+			const zKey = await deriveRecoveryKey(recovery.recoveryCode.frontHalf);
 			logMsg(`✅ Derived Recovery Key Z (${zKey.length} bytes)`);
 			
-			const authHash = await cryptoWorker.hashRecoveryAuthToken(recovery.recoveryCode.backHalf);
+			const authHash = await hashRecoveryAuthToken(recovery.recoveryCode.backHalf);
 			logMsg(`✅ Hashed Recovery Auth Token (${authHash.length} bytes)`);
 
 			status = 'All Tests Passed! 🎉';
@@ -72,7 +82,7 @@
 			status = 'Error ❌';
 			statusVariant = 'destructive';
 			const error = err as Error;
-			logMsg(`❌ Worker Test Failed: ${error.message}`);
+			logMsg(`❌ Crypto Test Failed: ${error.message}`);
 			console.error(err);
 		}
 	});
@@ -82,7 +92,7 @@
 	<Card class="w-full max-w-3xl">
 		<CardHeader>
 			<CardTitle class="flex items-center gap-3 font-mono">
-				Crypto Worker Test
+				Crypto Test
 				<Badge variant={statusVariant}>{status}</Badge>
 			</CardTitle>
 		</CardHeader>
