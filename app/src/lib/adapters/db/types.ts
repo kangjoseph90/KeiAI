@@ -16,7 +16,6 @@ type Bytes = Uint8Array<ArrayBuffer>;
 // ─── Table Registry ──────────────────────────────────────────────────
 
 export type TableName =
-	| 'users'
 	| 'characterSummaries'
 	| 'characterData'
 	| 'chatSummaries'
@@ -47,20 +46,6 @@ export interface BaseRecord {
 export interface EncryptedRecord extends BaseRecord {
 	encryptedData: Bytes; // AES-GCM ciphertext of JSON.stringify(...)
 	encryptedDataIV: Bytes; // Random 12-byte nonce
-}
-
-// ─── Users (special — master key can't encrypt itself) ───────────────
-//
-// masterKey is stored as a CryptoKey object directly in IndexedDB
-// (via Structured Clone), not as raw bytes. This prevents XSS from
-// exfiltrating key material.
-//
-//   Guest:      extractable: true  (needed to create M(Y) on registration)
-//   Registered: extractable: false (raw bytes can never be exported)
-
-export interface UserRecord extends BaseRecord {
-	isGuest: boolean;
-	masterKey: CryptoKey;
 }
 
 // ─── Characters (Summary + Data) ─────────────────────────────────────

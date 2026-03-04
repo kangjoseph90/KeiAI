@@ -28,7 +28,7 @@ import {
 	importMasterKey,
 	unlockMasterKey
 } from '../../session.js';
-import { localDB, type UserRecord } from '../../adapters/db/index.js';
+import { appUser, type UserRecord } from '../../adapters/user/index.js';
 
 export class AuthService {
 	/**
@@ -96,7 +96,7 @@ export class AuthService {
 		const serverUserId = authData.record.id;
 		const lockedKey = await importMasterKey(rawM, false);
 
-		await localDB.putRecord('users', {
+		await appUser.saveUser({
 			id: serverUserId,
 			userId: serverUserId,
 			createdAt: Date.now(),
@@ -104,7 +104,7 @@ export class AuthService {
 			isDeleted: false,
 			isGuest: false,
 			masterKey: lockedKey
-		} as UserRecord);
+		});
 
 		await setSession(serverUserId, lockedKey, false);
 		rawM.fill(0);

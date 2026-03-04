@@ -9,7 +9,6 @@ import type {
 	IDatabaseAdapter,
 	TableName,
 	BaseRecord,
-	UserRecord,
 	CharacterSummaryRecord,
 	CharacterDataRecord,
 	ChatSummaryRecord,
@@ -28,7 +27,6 @@ import type {
 } from './types.js';
 
 class DexieStore extends Dexie {
-	users!: Table<UserRecord, string>;
 	characterSummaries!: Table<CharacterSummaryRecord, string>;
 	characterData!: Table<CharacterDataRecord, string>;
 	chatSummaries!: Table<ChatSummaryRecord, string>;
@@ -50,7 +48,6 @@ class DexieStore extends Dexie {
 
 		this.version(6).stores({
 			// Encrypted tables (Blind Sync targets)
-			users: 'id, userId, isGuest',
 			characterSummaries: 'id, userId, updatedAt, isDeleted',
 			characterData: 'id, userId, updatedAt, isDeleted',
 			chatSummaries: 'id, userId, characterId, updatedAt, isDeleted',
