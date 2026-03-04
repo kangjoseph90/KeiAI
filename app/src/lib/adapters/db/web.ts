@@ -23,6 +23,8 @@ import type {
 	PluginRecord,
 	PresetSummaryRecord,
 	PresetDataRecord,
+	AssetRecord,
+	CacheRegistryRecord,
 } from './types.js';
 
 class DexieStore extends Dexie {
@@ -40,12 +42,14 @@ class DexieStore extends Dexie {
 	plugins!: Table<PluginRecord, string>;
 	presetSummaries!: Table<PresetSummaryRecord, string>;
 	presetData!: Table<PresetDataRecord, string>;
+	assets!: Table<AssetRecord, string>;
+	cacheRegistry!: Table<CacheRegistryRecord, string>;
 
 	constructor() {
 		super('KeiLocalDB');
 
-		this.version(5).stores({
-			// Encrypted tables (blind sync targets)
+		this.version(6).stores({
+			// Encrypted tables (Blind Sync targets)
 			users: 'id, userId, isGuest',
 			characterSummaries: 'id, userId, updatedAt, isDeleted',
 			characterData: 'id, userId, updatedAt, isDeleted',
@@ -60,6 +64,9 @@ class DexieStore extends Dexie {
 			plugins: 'id, userId, updatedAt, isDeleted',
 			presetSummaries: 'id, userId, updatedAt, isDeleted',
 			presetData: 'id, userId, updatedAt, isDeleted',
+			assets: 'id, userId, updatedAt, isDeleted',
+			// Local-only tables (never synced)
+			cacheRegistry: 'id, lastAccessedAt',
 		});
 	}
 }

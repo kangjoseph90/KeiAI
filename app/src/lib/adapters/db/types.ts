@@ -6,7 +6,8 @@
  *         (order + folder managed by parent). Exception: messages use chatId FK.
  *   N:M — Consumer's encrypted blob holds ResourceRef[] with per-context state.
  *
- * Every table (except `users` and `assets`) stores AES-GCM encrypted JSON blobs.
+ * Every table (except `users`) stores AES-GCM encrypted JSON blobs.
+ * The `cacheRegistry` table is a local-only LRU eviction ledger and is never synced.
  * Entities needing list previews are split into Summary + Data tables.
  */
 
@@ -51,7 +52,9 @@ export type TableName =
 	| 'modules'
 	| 'plugins'
 	| 'presetSummaries'
-	| 'presetData';
+	| 'presetData'
+	| 'assets'
+	| 'cacheRegistry';
 	
 // ─── Base Types ──────────────────────────────────────────────────────
 
@@ -131,6 +134,29 @@ export type PluginRecord = EncryptedRecord;
 
 export type PresetSummaryRecord = EncryptedRecord;
 export type PresetDataRecord = EncryptedRecord;
+
+// ─── Assets ────────────────────────────────────────────────────────
+//
+// All asset kinds (private, inlay, public) live in the same EncryptedRecord table.
+// encryptedData contains: { kind, mimeType, remoteUrl? }
+//   - remoteUrl absent  → local-only asset (never evictable)
+//   - remoteUrl present → remote asset (local storage = LRU cache)
+
+export type AssetRecord = EncryptedRecord;
+
+// ─── Cache Registry ─────────────────────────────────────────────────
+//
+// LOCAL-ONLY table — never synced to the server.
+// Tracks remote asset caches stored in IStorageAdapter so the LRU eviction
+// logic knows which files are safe to delete.
+// Files present in IStorageAdapter but NOT in cacheRegistry = persistent
+// local-only assets → must never be evicted.
+
+export interface CacheRegistryRecord {
+	id: string;          // Asset UUID (same key used in IStorageAdapter)
+	lastAccessedAt: number; // Unix ms — updated every time the asset is rendered
+	size: number;        // Bytes on disk — used to calculate total cache size
+}
 
 // ─── Adapter Interface ──────────────────────────────────────────────
 

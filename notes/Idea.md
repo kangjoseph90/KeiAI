@@ -182,53 +182,71 @@
 
 13. 에셋 시스템 (Asset System)
 
-- 핵심 원칙: E2EE 세계(암호화 + blind sync)와 에셋 세계(평문 + CDN/로컬)는 완전히 분리. 둘 사이는 오직 ID 문자열 참조로만 연결.
+- 핵심 원칙: E2EE 세계(암호화 + blind sync)와 에셋 세계(평문 바이너리 + 스토리지)는 완전히 분리. 둘 사이는 오직 UUID 문자열 참조로만 연결.
 - 에셋 분류 체계:
-  - 퍼블릭 에셋 (Public): Hub(커뮤니티)에 공개된 에셋. CDN(Cloudflare R2)에 평문으로 저장.
-    - 생성 경로: 유저가 Hub에 봇/모듈을 공유할 때 프라이빗 에셋이 퍼블릭으로 전환(CDN 업로드).
-    - 소비 방식: 다른 유저가 Hub에서 다운로드 시, 로컬 DB에는 CDN URL 참조만 저장 (Thin Client). 에셋 바이너리를 로컬에 복사하지 않음.
-    - CDN이 이미지를 캐싱하므로 Hub 갤러리 렌더링이 극도로 빠름.
-    - 영구 유지: 한번 CDN에 올라간 퍼블릭 에셋은 영구 보존.
   - 프라이빗 에셋 (Private): 유저 개인 소유 에셋. 캐릭터 아바타, 배경, 감정 이미지 등.
-    - Local-First: 로컬 DB(IndexedDB)에 평문 바이너리로 저장. 오프라인에서도 즉시 렌더링.
-    - 동기화(Sync): 로그인 시, E2EE 암호화하여 오브젝트 스토리지(PB 서버 디스크 또는 Backblaze B2)에 업로드. CDN이 아닌 단순 보관용 스토리지 사용 (개인 데이터에 CDN 캐싱 불필요).
+    - Local-First: 로컬 스토리지(OPFS 또는 Tauri FS)에 평문 바이너리로 저장. 오프라인에서도 즉시 렌더링.
+    - 동기화(Sync): 로그인 시 E2EE 암호화하여 오브젝트 스토리지에 업로드. 파일명은 HMAC-SHA256(MasterKey, UUID)로 은닉 (Blind Hash). 용량 제한 있음.
     - 용량 제한: 무료 유저에게 총 동기화 용량 제한 (예: 50MB). 초과 시 동기화만 중지, 로컬 작동은 정상.
-    - 용량 확보 전략: Hub에 봇 공유(퍼블릭 전환) → 프라이빗 용량 회수. 또는 Pro 구독으로 용량 확대.
-  - 인레이 에셋 (Inlay): 채팅 중 생성되는 일시적 에셋. 유저 업로드 사진, AI 생성 이미지 등.
-    - 기본 동기화 OFF: 로컬 DB에만 평문 저장. 가장 프라이버시가 중요한 데이터.
-    - 설정에서 동기화 ON 시: 프라이빗 에셋과 동일 취급 (E2EE → 오브젝트 스토리지). 동기화 용량을 소모함.
+  - 인레이 에셋 (Inlay): 채팅 중 생성되는 에셋. 유저 업로드 사진, AI 생성 이미지 등.
+    - 기본 동기화 OFF: 로컬 스토리지에만 평문 저장.
+    - 설정에서 동기화 ON 시: 프라이빗 에셋과 동일 취급 (E2EE + Blind Hash → 오브젝트 스토리지). 동기화 용량을 소모함.
+    - 삭제하지 않음: 인레이 에셋은 별도의 갤러리 브라우저 UI를 통해 유저가 직접 감상 및 수동 관리.
+  - 퍼블릭 에셋 (Public): Hub(커뮤니티)에 공개된 에셋. CDN(Cloudflare R2)에 평문으로 저장.
+    - 생성 경로: 유저가 Hub에 봇/모듈을 공유할 때 프라이빗 에셋이 퍼블릭으로 전환 (CDN 업로드).
+    - 소비 방식: 다른 유저가 Hub에서 다운로드 시 CDN remoteUrl을 <img src>에 직접 바인딩. 바이너리를 로컬에 복사하지 않음 (Thin Client).
+    - CDN 파일명 = SHA-256(원본 바이너리). 크로스 유저 중복 제거 가능.
+    - 영구 유지: 한번 CDN에 올라간 퍼블릭 에셋은 영구 보존.
+- ID 체계:
+  - 모든 에셋의 로컬 ID = UUID. 셋 다 같은 체계를 쓰므로 엔티티(캐릭터 등)는 종류에 관계없이 assetId: string 하나만 보유.
+  - 서버 파일명(프라이빗/인레이): UUID 그대로 사용. UUID는 내용과 무관한 랜덤 문자열이므로 별도 변환 없이도 프라이버시 완벽 보장.
+  - CDN 파일명(퍼블릭): SHA-256(바이너리). 크로스 유저 중복 제거용.
+- 에셋 테이블 (assets, EncryptedRecord):
+  - 모든 종류(프라이빗/인레이/퍼블릭)를 단일 테이블에 저장. Blind Sync 대상.
+  - id: UUID.
+  - encryptedData 내부: kind ('private' | 'inlay' | 'public'), mimeType, remoteUrl?.
+    - remoteUrl이 없으면 → 아직 로컬 전용 에셋.
+    - private/inlay의 remoteUrl → 암호화 오브젝트 스토리지 경로 (`/{userId}/{uuid}`).
+    - public의 remoteUrl → CDN URL (평문).
+- 에셋 상태 (두 가지):
+  - 로컬 에셋: remoteUrl 없음. 로컬 스토리지에만 존재. 절대 evict 불가.
+  - 리모트 에셋: remoteUrl 있음. 로컬 스토리지는 LRU 캐시. evict 가능.
+- 에셋 스토리지 (IStorageAdapter):
+  - 영속 에셋 + 리모트 에셋 캐시를 구분 없이 같은 위치에 저장.
+  - 파일 조회 키 = UUID.
+- 캐시 레지스트리 (로컬 전용, 동기화 안 함):
+  - {uuid, lastAccessedAt, size} 형태의 경량 테이블 또는 K-V Store.
+  - 캐시 레지스트리에 있는 것만 evict 대상. 없는 것 = 영속 에셋 = 절대 삭제 불가.
+  - LRU Watermark 전략: 총 캐시 > High Watermark(예: 500MB) → lastAccessedAt 오름차순으로 Low Watermark(예: 400MB)까지 삭제.
 - 전환 규칙:
-  - 프라이빗 → 퍼블릭: 가능 (Hub에 봇/모듈 공유 시). 프라이빗 동기화 용량이 회수됨.
+  - 프라이빗 → 퍼블릭: 가능 (Hub 공유 시).
+    - SHA-256(바이너리) 계산 → CDN 업로드 (이미 있으면 스킵).
+    - 에셋 레코드 업데이트: kind → 'public', remoteUrl → CDN URL. UUID는 그대로 유지 (ID 변경 없음!).
+    - 로컬 스토리지 바이너리 삭제 → 캐시 레지스트리에 등록 → evict 가능 → 동기화 용량 회수.
   - 퍼블릭 → 프라이빗: 불가. 한번 공개된 에셋은 CDN에 영구 유지.
-  - 인레이 → 퍼블릭: 불가.
-- ID 체계: 모든 에셋의 ID = SHA-256 콘텐츠 해시 (중복 방지 통일).
-- 단일 테이블: 일반 에셋과 인레이 에셋을 하나의 assets 테이블에 저장. kind 필드로 구분.
-- AssetRecord 스키마 (EncryptedRecord가 아닌 별도 인터페이스):
-  - id (SHA-256 해시), userId, kind ('regular' | 'inlay'), visibility ('private' | 'public').
-  - mimeType.
-  - data (Blob, 평문 바이너리) — 로컬 DB 전용, 프라이빗/인레이만.
-  - cdnUrl (퍼블릭 에셋의 CDN 주소).
-  - syncUrl (프라이빗 동기화 시 오브젝트 스토리지 주소).
+  - 인레이 → 퍼블릭: 불가. 인레이는 보트가 아닌 유저 개인의 채팅 콘테츠에 속한 에셋이다. 옵션은 프라이빗 오브젝트 스토리지에 암호화하여 동기화할 수 있는가 여부이다.
+- 에셋 삭제:
+  - 프라이빗: 소유 엔티티(캐릭터, 페르소나 등) 삭제 시 매니페스트의 UUID 목록으로 cascaed 삭제. 로컬 스토리지에서도 즉시 하드 삭제 (용량 확보).
+  - 인레이: 삭제하지 않는다. 갤러리 브라우저에서 수동 관리.
+  - 퍼블릭: CDN에 영구 보관. 삭제 없음.
 - 에셋 참조 패턴:
-  - 직접 참조 (ID): avatarAssetId 등 시스템이 직접 로드하는 필드.
-  - 이름 기반 참조: AssetEntry[] 매니페스트로 name→assetId 매핑. AI/스크립트가 {{asset::이름}} 형태로 호출.
-  - 인레이 참조: 메시지 텍스트에 {{inlay::hash}} 형태. 채팅 내 이미지.
-  - 이름 충돌 없음: 매니페스트는 엔티티 스코프이므로 글로벌 이름 충돌 불가.
+  - 직접 참조 (ID): avatarAssetId 등 엔티티가 직접 로드하는 필드. 항상 UUID.
+  - 이름 기반 참조: AssetEntry[] 매니페스트로 name → assetId(UUID) 매핑. AI/스크립트가 {{asset::이름}} 형태로 호출.
+  - 인레이 참조: 메시지 텍스트에 {{inlay::uuid}} 형태. 채팅 내 이미지.
 - 런타임 에셋 로딩:
-  - 프라이빗/인레이: 로컬 DB에서 Blob 로드 → createObjectURL로 렌더링. 레이어 전환 시 revokeObjectURL 호출.
-  - 퍼블릭: CDN URL을 <img src>에 직접 바인딩. 브라우저 네트워크 캐시 활용.
+  - 로컬 스토리지에 있으면: IStorageAdapter.getRenderUrl(uuid) → 로컬 URL 렌더링. 캐시 레지스트리 lastAccessedAt 갱신.
+  - 로컬에 없고 remoteUrl 있으면:
+    - private/inlay: remoteUrl에서 암호화 Blob 다운로드 → 복호화 → 스토리지 저장 + 캐시 레지스트리 등록 → 렌더링.
+    - public: CDN remoteUrl을 <img src>에 직접 바인딩. 다운로드 없음. 브라우저 캐시 사용.
 - 동기화 저장소 분리:
   - 퍼블릭 에셋 → Cloudflare R2 + CDN (Egress 무료, 대량 조회에 최적).
-  - 프라이빗 에셋 → PB 서버 디스크 (초기) 또는 Backblaze B2 (스케일 시, GB당 $0.006). CDN 불필요.
-  - 인레이 에셋 → 동기화 OFF 시 저장소 불필요. ON 시 프라이빗과 동일.
+  - 프라이빗/인레이 에셋 → PB 서버 디스크 (초기) 또는 Backblaze B2 (스케일 시). CDN 불필요.
 - BYOD (Bring Your Own Drive):
   - 유저 개인 클라우드 스토리지(구글 드라이브, WebDAV, S3 호환) 연동 옵션.
-  - E2EE 암호화된 Blob을 유저의 개인 드라이브에 직접 동기화.
+  - E2EE 암호화 + Blind Hash된 Blob을 유저의 개인 드라이브에 직접 동기화.
   - 운영자 서버 비용 제로, 유저 무제한 용량. 궁극의 프라이버시 보장.
-  - 구현: 클라이언트 단에서 드라이브 API 토큰 관리. 서버 개입 없음.
-- 게스트 모드: 퍼블릭 에셋은 URL 참조로 사용 가능. 프라이빗/인레이는 로컬 전용. 동기화 불가.
+- 게스트 모드: 퍼블릭 에셋은 CDN URL로 사용 가능. 프라이빗/인레이는 로컬 전용. 동기화 불가.
 - 로그인 모드: 프라이빗 에셋 동기화 활성화 (용량 제한). 프라이빗 → 퍼블릭 전환 가능.
-- 셀프호스팅 모드: 자기 PocketBase 서버에 프라이빗/인레이 에셋 동기화 (개인 서버 용량 무제한).
 
 14. 허브 & 익스포트 전략 (Hub & Export Strategy)
 
@@ -271,6 +289,17 @@
     1. Hub에 봇 공유 (프라이빗→퍼블릭 전환) → 프라이빗 용량 회수 + 커뮤니티 성장.
     2. Pro 구독으로 용량 확대 → 수익 창출.
   - 어느 쪽이든 플랫폼에 이득인 완벽한 선순환 구조.
+- 쿼터 관리 (Quota Enforcement):
+  - 용량 검증은 반드시 서버(PocketBase)에서 수행. 클라이언트는 오픈소스이므로 조작 가능.
+  - 서버 유저 레코드: tier ('free' | 'pro'), quotaLimit (bytes), usedBytes (서버가 직접 카운트).
+  - 업로드 시: usedBytes + newFileSize > quotaLimit이면 거부. 클라이언트가 보내는 값은 일절 신뢰하지 않음.
+  - 삭제/승급 시: usedBytes 감소 (서버가 실제 파일 크기 기준으로 계산).
+- 구독 해지 시 (Pro → Free, 용량 초과 상태):
+  - 핵심 원칙: 유저의 기존 데이터를 절대 삭제하지 않는다.
+  - 기존 에셋 다운로드/접근: 정상 동작.
+  - 새 에셋 업로드(동기화): 차단. 로컬에서는 정상 작동.
+  - 에셋 삭제 및 Hub 공유(용량 회수): 가능.
+  - 클라이언트 안내: "동기화 용량 초과. 새 에셋의 동기화가 일시 중지되었습니다. [Pro 구독으로 용량 확대] [Hub에 공유하여 용량 확보]"
 
 16. 멀티 채팅방 확장 (Multi-User Room — 미래)
 
@@ -296,8 +325,14 @@
   - scripts — 단일 (부모 소유, Deep Copy)
   - settings — 단일 (최상위 엔티티 관리: characterRefs, personaRefs, presetRefs, moduleRefs, pluginRefs + folders)
   - roomKeys — 단일, FK: roomId (미래)
-- 에셋 테이블 (별도 인터페이스, E2EE 동기화 루프 밖):
-  - assets — kind: regular/inlay, visibility: private/public. 프라이빗은 E2EE→오브젝트 스토리지 동기화(용량 제한), 퍼블릭은 CDN(R2) 평문 저장.
+- 에셋 테이블 (단일 테이블, Blind Sync 대상 ✅):
+  - assets — kind: private/inlay/public. ID = UUID. encryptedData 내부에 kind, mimeType, remoteUrl? 저장.
+    - remoteUrl 없음 → 로컬 전용. remoteUrl 있음 → 리모트(캐시 가능).
+    - private/inlay의 remoteUrl: 오브젝트 스토리지 경로 (파일명 = HMAC-SHA256(MasterKey, UUID), Blind Hash).
+    - public의 remoteUrl: CDN URL (평문).
+- 에셋 스토리지 및 캐시 (로컬 전용, 동기화 X):
+  - IStorageAdapter — 영속 에셋 + 리모트 에셋 캐시를 구분 없이 같은 위치에 저장. 키 = UUID.
+  - 캐시 레지스트리 — {uuid, lastAccessedAt, size}. 여기 등록된 것만 LRU evict 대상. 없으면 영속 에셋.
 
 18. 인프라 구성 전략 (Zero-Cost Stack)
 
