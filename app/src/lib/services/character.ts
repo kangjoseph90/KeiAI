@@ -2,10 +2,9 @@ import { getActiveSession, encryptText, decryptText } from '../session.js';
 import {
 	localDB,
 	type CharacterSummaryRecord,
-	type CharacterDataRecord,
-	type OrderedRef,
-	type FolderDef,
+	type CharacterDataRecord
 } from '../adapters/db/index.js';
+import type { OrderedRef, FolderDef, AssetRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
 
@@ -29,6 +28,8 @@ export interface CharacterDataRefs {
 		lorebooks?: FolderDef[];
 		scripts?: FolderDef[];
 	};
+	avatarAssetId?: string;
+	assets?: AssetRef[];
 }
 
 export interface CharacterDataContent {

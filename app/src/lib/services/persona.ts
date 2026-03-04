@@ -2,13 +2,21 @@ import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type PersonaRecord } from '../adapters/db/index.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
+import type { AssetRef } from '../shared/types.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
-export interface PersonaFields {
+export interface PersonaContent {
 	name: string;
 	description: string;
 }
+
+export interface PersonaRefs {
+	avatarAssetId?: string;
+	assets?: AssetRef[];
+}
+
+export interface PersonaFields extends PersonaContent, PersonaRefs {}
 
 export interface Persona extends PersonaFields {
 	id: string;
@@ -88,7 +96,7 @@ export class PersonaService {
 	}
 
 	/** Update a persona */
-	static async update(id: string, changes: Partial<PersonaFields>): Promise<Persona> {
+	static async update(id: string, changes: Partial<PersonaContent>): Promise<Persona> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<PersonaRecord>('personas', id);
 		if (!record || record.isDeleted) {

@@ -1,11 +1,6 @@
 import { encryptText, decryptText, getActiveSession } from '../session.js';
-import {
-	localDB,
-	type SettingsRecord,
-	type OrderedRef,
-	type FolderDef,
-	type ResourceRef
-} from '../adapters/db/index.js';
+import { localDB, type SettingsRecord } from '../adapters/db/index.js';
+import type { OrderedRef, FolderDef, ResourceRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
 

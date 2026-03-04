@@ -9,10 +9,9 @@ import { getActiveSession, encryptText, decryptText } from '../session.js';
 import {
 	localDB,
 	type ChatSummaryRecord,
-	type ChatDataRecord,
-	type FolderDef,
-	type OrderedRef
+	type ChatDataRecord
 } from '../adapters/db/index.js';
+import type { FolderDef, OrderedRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { assertCharacterExists, assertChatOwnedByCharacter } from './guards.js';
 import { AppError } from '../shared/errors.js';
