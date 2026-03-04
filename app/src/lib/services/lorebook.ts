@@ -1,60 +1,61 @@
-import { getActiveSession, encryptText, decryptText } from '../../session.js';
-import { localDB, type ScriptRecord } from '../../adapters/db/index.js';
-import { deepMerge } from '../../shared/defaults.js';
-import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards.js';
-import { AppError } from '../../shared/errors.js';
+import { getActiveSession, encryptText, decryptText } from '../session.js';
+import { localDB, type LorebookRecord } from '../adapters/db/index.js';
+import { deepMerge } from '../shared/defaults.js';
+import { assertLorebookOwnedBy, assertOwnedResourceParentExists } from './guards.js';
+import { AppError } from '../shared/errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
-export interface ScriptFields {
+export interface LorebookFields {
 	name: string;
-	regex: string;
-	replacement: string;
-	placement: 'onInput' | 'onOutput' | 'onRequest' | 'onDisplay';
+	keys: string[];
+	content: string;
+	insertionDepth: number;
 	enabled: boolean;
+	regex?: string;
+	probability?: number;
 }
 
-export interface Script extends ScriptFields {
+export interface Lorebook extends LorebookFields {
 	id: string;
 	ownerId: string;
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────
 
-const defaultScriptFields: ScriptFields = {
+const defaultLorebookFields: LorebookFields = {
 	name: '',
-	regex: '',
-	replacement: '',
-	placement: 'onInput',
+	keys: [],
+	content: '',
+	insertionDepth: 0,
 	enabled: true
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: ScriptRecord): Promise<ScriptFields> {
+function decryptFields(masterKey: CryptoKey, record: LorebookRecord): Promise<LorebookFields> {
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
 	})
-		.then((dec) => deepMerge(defaultScriptFields, JSON.parse(dec)))
+		.then((dec) => deepMerge(defaultLorebookFields, JSON.parse(dec)))
 		.catch((error) => {
-			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt script', error);
+			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt lorebook', error);
 		});
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
 
-export class ScriptService {
-	/** List scripts owned by a specific parent (character, module) */
-	static async listByOwner(ownerId: string): Promise<Script[]> {
+export class LorebookService {
+	/** List lorebooks owned by a specific parent (character, chat, module) */
+	static async listByOwner(ownerId: string): Promise<Lorebook[]> {
 		const { masterKey } = getActiveSession();
-		const records = await localDB.getByIndex<ScriptRecord>(
-			'scripts',
+		const records = await localDB.getByIndex<LorebookRecord>(
+			'lorebooks',
 			'ownerId',
 			ownerId,
 			Number.MAX_SAFE_INTEGER
 		);
-
 		return Promise.all(
 			records.map(async (record) => {
 				const fields = await decryptFields(masterKey, record);
@@ -67,9 +68,9 @@ export class ScriptService {
 		);
 	}
 
-	static async get(id: string): Promise<Script | null> {
+	static async get(id: string): Promise<Lorebook | null> {
 		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<ScriptRecord>('scripts', id);
+		const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
 		if (!record || record.isDeleted) return null;
 
 		const fields = await decryptFields(masterKey, record);
@@ -80,10 +81,10 @@ export class ScriptService {
 		};
 	}
 
-	static async create(ownerId: string, fields: Partial<ScriptFields> = {}): Promise<Script> {
+	static async create(ownerId: string, fields: Partial<LorebookFields> = {}): Promise<Lorebook> {
 		await assertOwnedResourceParentExists(ownerId);
 
-		const resolved: ScriptFields = deepMerge(defaultScriptFields, fields as Record<string, unknown>);
+		const resolved: LorebookFields = deepMerge(defaultLorebookFields, fields as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
@@ -91,13 +92,13 @@ export class ScriptService {
 
 		try {
 			const enc = await encryptText(masterKey, JSON.stringify(resolved));
-			await localDB.putRecord<ScriptRecord>('scripts', {
+			await localDB.putRecord<LorebookRecord>('lorebooks', {
 				id, userId, ownerId, createdAt: now, updatedAt: now, isDeleted: false,
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
 			});
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to create script', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to create lorebook', error);
 		}
 
 		return { id, ownerId, ...resolved };
@@ -105,44 +106,44 @@ export class ScriptService {
 
 	static async update(
 		id: string,
-		changes: Partial<ScriptFields>,
+		changes: Partial<LorebookFields>,
 		expectedOwnerId?: string
-	): Promise<Script> {
+	): Promise<Lorebook> {
 		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<ScriptRecord>('scripts', id);
+		const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
 		if (!record || record.isDeleted) {
-			throw new AppError('NOT_FOUND', `Script not found: ${id}`);
+			throw new AppError('NOT_FOUND', `Lorebook not found: ${id}`);
 		}
 		if (expectedOwnerId) {
-			await assertScriptOwnedBy(expectedOwnerId, id);
+			await assertLorebookOwnedBy(expectedOwnerId, id);
 		}
 
 		try {
 			const current = await decryptFields(masterKey, record);
-			const updated: ScriptFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: LorebookFields = deepMerge(current, changes as Record<string, unknown>);
 			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 			record.encryptedData = enc.ciphertext;
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
-			await localDB.putRecord('scripts', record);
+			await localDB.putRecord('lorebooks', record);
 
 			return { id, ownerId: record.ownerId, ...updated };
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to update script', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update lorebook', error);
 		}
 	}
 
 	static async delete(id: string, expectedOwnerId?: string): Promise<void> {
 		if (expectedOwnerId) {
-			await assertScriptOwnedBy(expectedOwnerId, id);
+			await assertLorebookOwnedBy(expectedOwnerId, id);
 		}
 		try {
-			await localDB.softDeleteRecord('scripts', id);
+			await localDB.softDeleteRecord('lorebooks', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to delete script', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to delete lorebook', error);
 		}
 	}
 }

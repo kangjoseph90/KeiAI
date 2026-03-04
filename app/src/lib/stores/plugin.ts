@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
-import { PluginService, type PluginFields, type Plugin } from '../services/domain/plugin.js';
-import { SettingsService } from '../services/domain/index.js';
+import { PluginService, type PluginFields, type Plugin } from '../services/plugin.js';
+import { SettingsService } from '../services/index.js';
 import { generateSortOrder, sortByRefs } from '../shared/ordering.js';
 import { plugins, appSettings } from './state.js';
 import { AppError } from '../shared/errors.js';

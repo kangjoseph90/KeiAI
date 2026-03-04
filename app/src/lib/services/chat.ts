@@ -5,17 +5,17 @@
  * Chats are fetched by ID from the character's ref list.
  */
 
-import { getActiveSession, encryptText, decryptText } from '../../session.js';
+import { getActiveSession, encryptText, decryptText } from '../session.js';
 import {
 	localDB,
 	type ChatSummaryRecord,
 	type ChatDataRecord,
 	type FolderDef,
 	type OrderedRef
-} from '../../adapters/db/index.js';
-import { deepMerge } from '../../shared/defaults.js';
+} from '../adapters/db/index.js';
+import { deepMerge } from '../shared/defaults.js';
 import { assertCharacterExists, assertChatOwnedByCharacter } from './guards.js';
-import { AppError } from '../../shared/errors.js';
+import { AppError } from '../shared/errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 

@@ -1,46 +1,58 @@
-import { getActiveSession, encryptText, decryptText } from '../../session.js';
-import { localDB, type PersonaRecord } from '../../adapters/db/index.js';
-import { deepMerge } from '../../shared/defaults.js';
-import { AppError } from '../../shared/errors.js';
+import { getActiveSession, encryptText, decryptText } from '../session.js';
+import { localDB, type PluginRecord } from '../adapters/db/index.js';
+import { deepMerge } from '../shared/defaults.js';
+import { AppError } from '../shared/errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
-export interface PersonaFields {
+export interface PluginFields {
 	name: string;
 	description: string;
+	version: string;
+	code: string; // Sandboxed JS source
+	config: Record<string, unknown>;
+	hooks: PluginHook[];
 }
 
-export interface Persona extends PersonaFields {
+export interface PluginHook {
+	event: 'beforePrompt' | 'afterPrompt' | 'beforeSend' | 'afterReceive' | 'onRender';
+	handler: string; // Function name in plugin code
+}
+
+export interface Plugin extends PluginFields {
 	id: string;
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────
 
-const defaultPersonaFields: PersonaFields = {
+const defaultPluginFields: PluginFields = {
 	name: '',
-	description: ''
+	description: '',
+	version: '',
+	code: '',
+	config: {},
+	hooks: []
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: PersonaRecord): Promise<PersonaFields> {
+function decryptFields(masterKey: CryptoKey, record: PluginRecord): Promise<PluginFields> {
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
 	})
-		.then((dec) => deepMerge(defaultPersonaFields, JSON.parse(dec)))
+		.then((dec) => deepMerge(defaultPluginFields, JSON.parse(dec)))
 		.catch((error) => {
-			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt persona', error);
+			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt plugin', error);
 		});
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
 
-export class PersonaService {
-	/** List all personas */
-	static async list(): Promise<Persona[]> {
+export class PluginService {
+	static async list(): Promise<Plugin[]> {
 		const { masterKey, userId } = getActiveSession();
-		const records = await localDB.getAll<PersonaRecord>('personas', userId);
+		const records = await localDB.getAll<PluginRecord>('plugins', userId);
 
 		return Promise.all(
 			records.map(async (record) => {
@@ -53,9 +65,9 @@ export class PersonaService {
 		);
 	}
 
-	static async get(id: string): Promise<Persona | null> {
+	static async get(id: string): Promise<Plugin | null> {
 		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<PersonaRecord>('personas', id);
+		const record = await localDB.getRecord<PluginRecord>('plugins', id);
 		if (!record || record.isDeleted) return null;
 
 		const fields = await decryptFields(masterKey, record);
@@ -65,9 +77,8 @@ export class PersonaService {
 		};
 	}
 
-	/** Create a persona */
-	static async create(fields: Partial<PersonaFields> = {}): Promise<Persona> {
-		const resolved: PersonaFields = deepMerge(defaultPersonaFields, fields as Record<string, unknown>);
+	static async create(fields: Partial<PluginFields> = {}): Promise<Plugin> {
+		const resolved: PluginFields = deepMerge(defaultPluginFields, fields as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
@@ -75,50 +86,48 @@ export class PersonaService {
 
 		try {
 			const enc = await encryptText(masterKey, JSON.stringify(resolved));
-			await localDB.putRecord<PersonaRecord>('personas', {
+			await localDB.putRecord<PluginRecord>('plugins', {
 				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
 			});
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to create persona', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to create plugin', error);
 		}
 
 		return { id, ...resolved };
 	}
 
-	/** Update a persona */
-	static async update(id: string, changes: Partial<PersonaFields>): Promise<Persona> {
+	static async update(id: string, changes: Partial<PluginFields>): Promise<Plugin> {
 		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<PersonaRecord>('personas', id);
+		const record = await localDB.getRecord<PluginRecord>('plugins', id);
 		if (!record || record.isDeleted) {
-			throw new AppError('NOT_FOUND', `Persona not found: ${id}`);
+			throw new AppError('NOT_FOUND', `Plugin not found: ${id}`);
 		}
 
 		try {
 			const current = await decryptFields(masterKey, record);
-			const updated: PersonaFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: PluginFields = deepMerge(current, changes as Record<string, unknown>);
 			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 			record.encryptedData = enc.ciphertext;
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
-			await localDB.putRecord('personas', record);
+			await localDB.putRecord('plugins', record);
 
 			return { id, ...updated };
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to update persona', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update plugin', error);
 		}
 	}
 
-	/** Delete a persona */
 	static async delete(id: string): Promise<void> {
 		try {
-			await localDB.softDeleteRecord('personas', id);
+			await localDB.softDeleteRecord('plugins', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to delete persona', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to delete plugin', error);
 		}
 	}
 }

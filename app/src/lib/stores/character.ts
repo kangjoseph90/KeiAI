@@ -5,18 +5,18 @@ import {
 	type CharacterDataFields,
 	type CharacterDataContent,
 	type CharacterDetail
-} from '../services/domain/character.js';
-import { ChatService } from '../services/domain/chat.js';
+} from '../services/character.js';
+import { ChatService } from '../services/chat.js';
 import {
 	LorebookService,
 	ScriptService,
 	type LorebookFields,
 	type ScriptFields
-} from '../services/domain/index.js';
-import type { Lorebook, Script } from '../services/domain/index.js';
+} from '../services/index.js';
+import type { Lorebook, Script } from '../services/index.js';
 import type { OrderedRef, FolderDef } from '../adapters/db/index.js';
 import { clearActiveChat, sortChatsByRefs, selectChat } from './chat.js';
-import { SettingsService } from '../services/domain/index.js';
+import { SettingsService } from '../services/index.js';
 import { generateSortOrder, sortByRefs } from '../shared/ordering.js';
 import {
 	characters,

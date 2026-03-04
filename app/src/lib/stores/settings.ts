@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import { SettingsService, type AppSettingsContent, type AppSettings } from '../services/domain/index.js';
+import { SettingsService, type AppSettingsContent, type AppSettings } from '../services/index.js';
 import { appSettings } from './state.js';
 import type { OrderedRef, FolderDef } from '../adapters/db/index.js';
 import { generateSortOrder } from '../shared/ordering.js';

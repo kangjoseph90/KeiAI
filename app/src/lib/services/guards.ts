@@ -6,8 +6,8 @@ import {
 	type LorebookRecord,
 	type ScriptRecord,
 	type MessageRecord
-} from '../../adapters/db/index.js';
-import { AppError } from '../../shared/errors.js';
+} from '../adapters/db/index.js';
+import { AppError } from '../shared/errors.js';
 
 export async function assertCharacterExists(characterId: string): Promise<void> {
 	const record = await localDB.getRecord<CharacterSummaryRecord>('characterSummaries', characterId);
