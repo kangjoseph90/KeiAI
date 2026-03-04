@@ -112,14 +112,19 @@ export class CharacterService {
 	static async getDetail(id: string): Promise<CharacterDetail | null> {
 		const { masterKey } = getActiveSession();
 
-		const rec = await localDB.getRecord<CharacterSummaryRecord>('characterSummaries', id);
-		if (!rec || rec.isDeleted) return null;
+		// ⚡ Bolt: Parallelize database reads for summary and data records
+		const [rec, dataRec] = await Promise.all([
+			localDB.getRecord<CharacterSummaryRecord>('characterSummaries', id),
+			localDB.getRecord<CharacterDataRecord>('characterData', id)
+		]);
 
-		const dataRec = await localDB.getRecord<CharacterDataRecord>('characterData', id);
-		if (!dataRec || dataRec.isDeleted) return null;
+		if (!rec || rec.isDeleted || !dataRec || dataRec.isDeleted) return null;
 
-		const fields = await decryptSummaryFields(masterKey, rec);
-		const data = await decryptDataFields(masterKey, dataRec);
+		// ⚡ Bolt: Parallelize crypto decryption operations
+		const [fields, data] = await Promise.all([
+			decryptSummaryFields(masterKey, rec),
+			decryptDataFields(masterKey, dataRec)
+		]);
 
 		return {
 			id: rec.id,
@@ -133,8 +138,14 @@ export class CharacterService {
 		summary: Partial<CharacterSummaryFields> = {},
 		data: Partial<CharacterDataFields> = {}
 	): Promise<CharacterDetail> {
-		const resolvedSummary: CharacterSummaryFields = deepMerge(defaultSummaryFields, summary as Record<string, unknown>);
-		const resolvedData: CharacterDataFields = deepMerge(defaultDataFields, data as Record<string, unknown>);
+		const resolvedSummary: CharacterSummaryFields = deepMerge(
+			defaultSummaryFields,
+			summary as Record<string, unknown>
+		);
+		const resolvedData: CharacterDataFields = deepMerge(
+			defaultDataFields,
+			data as Record<string, unknown>
+		);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
@@ -185,7 +196,10 @@ export class CharacterService {
 
 		try {
 			const current = await decryptSummaryFields(masterKey, record);
-			const updated: CharacterSummaryFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: CharacterSummaryFields = deepMerge(
+				current,
+				changes as Record<string, unknown>
+			);
 			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 			record.encryptedData = enc.ciphertext;
@@ -247,12 +261,7 @@ export class CharacterService {
 					id
 				);
 				const dataRecord = await localDB.getRecord<CharacterDataRecord>('characterData', id);
-				if (
-					!summaryRecord ||
-					summaryRecord.isDeleted ||
-					!dataRecord ||
-					dataRecord.isDeleted
-				) {
+				if (!summaryRecord || summaryRecord.isDeleted || !dataRecord || dataRecord.isDeleted) {
 					throw new AppError('NOT_FOUND', 'Character not found');
 				}
 

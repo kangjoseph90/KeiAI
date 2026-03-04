@@ -111,14 +111,19 @@ export class ChatService {
 	static async getDetail(id: string): Promise<ChatDetail | null> {
 		const { masterKey } = getActiveSession();
 
-		const rec = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
-		if (!rec || rec.isDeleted) return null;
+		// ⚡ Bolt: Parallelize database reads for summary and data records
+		const [rec, dataRec] = await Promise.all([
+			localDB.getRecord<ChatSummaryRecord>('chatSummaries', id),
+			localDB.getRecord<ChatDataRecord>('chatData', id)
+		]);
 
-		const dataRec = await localDB.getRecord<ChatDataRecord>('chatData', id);
-		if (!dataRec || dataRec.isDeleted) return null;
+		if (!rec || rec.isDeleted || !dataRec || dataRec.isDeleted) return null;
 
-		const fields = await decryptSummaryFields(masterKey, rec);
-		const data = await decryptDataFields(masterKey, dataRec);
+		// ⚡ Bolt: Parallelize crypto decryption operations
+		const [fields, data] = await Promise.all([
+			decryptSummaryFields(masterKey, rec),
+			decryptDataFields(masterKey, dataRec)
+		]);
 
 		return {
 			id: rec.id,
@@ -136,8 +141,14 @@ export class ChatService {
 	): Promise<ChatDetail> {
 		await assertCharacterExists(characterId);
 
-		const resolvedSummary: ChatSummaryFields = deepMerge(defaultSummaryFields, summary as Record<string, unknown>);
-		const resolvedData: ChatDataFields = deepMerge(defaultDataFields, data as Record<string, unknown>);
+		const resolvedSummary: ChatSummaryFields = deepMerge(
+			defaultSummaryFields,
+			summary as Record<string, unknown>
+		);
+		const resolvedData: ChatDataFields = deepMerge(
+			defaultDataFields,
+			data as Record<string, unknown>
+		);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
@@ -178,10 +189,7 @@ export class ChatService {
 	}
 
 	/** Update summary only */
-	static async updateSummary(
-		id: string,
-		changes: Partial<ChatSummaryFields>
-	): Promise<Chat> {
+	static async updateSummary(id: string, changes: Partial<ChatSummaryFields>): Promise<Chat> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
 		if (!record || record.isDeleted) {
@@ -206,10 +214,7 @@ export class ChatService {
 	}
 
 	/** Update data only */
-	static async updateData(
-		id: string,
-		changes: Partial<ChatDataFields>
-	): Promise<ChatDataFields> {
+	static async updateData(id: string, changes: Partial<ChatDataFields>): Promise<ChatDataFields> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatDataRecord>('chatData', id);
 		if (!record || record.isDeleted) {

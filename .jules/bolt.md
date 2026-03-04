@@ -1,0 +1,3 @@
+## 2024-03-04 - Parallelize split-table architecture queries
+**Learning:** In the split-table architecture separating Summary and Data records, sequential database reads (`localDB.getRecord`) followed by sequential decryptions (`decryptSummaryFields`/`decryptDataFields`) create a significant performance bottleneck. Native browser DB I/O and Web Crypto operations are asynchronous and can be highly parallelized.
+**Action:** When fetching full detail records that require both Summary and Data tables, use `Promise.all` to fetch both records concurrently from IndexedDB. Then, use `Promise.all` again to decrypt both records concurrently. This eliminates unnecessary sequential waiting and cuts data loading times in half for full records.

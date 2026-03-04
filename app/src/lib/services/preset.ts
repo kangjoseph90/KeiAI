@@ -1,9 +1,5 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
-import {
-	localDB,
-	type PresetSummaryRecord,
-	type PresetDataRecord
-} from '../db/index.js';
+import { localDB, type PresetSummaryRecord, type PresetDataRecord } from '../db/index.js';
 import { deepMerge } from '../utils/defaults.js';
 import { AppError } from '../errors.js';
 
@@ -142,14 +138,19 @@ export class PresetService {
 	static async getDetail(id: string): Promise<PresetDetail | null> {
 		const { masterKey } = getActiveSession();
 
-		const rec = await localDB.getRecord<PresetSummaryRecord>('presetSummaries', id);
-		if (!rec || rec.isDeleted) return null;
+		// ⚡ Bolt: Parallelize database reads for summary and data records
+		const [rec, dataRec] = await Promise.all([
+			localDB.getRecord<PresetSummaryRecord>('presetSummaries', id),
+			localDB.getRecord<PresetDataRecord>('presetData', id)
+		]);
 
-		const dataRec = await localDB.getRecord<PresetDataRecord>('presetData', id);
-		if (!dataRec || dataRec.isDeleted) return null;
+		if (!rec || rec.isDeleted || !dataRec || dataRec.isDeleted) return null;
 
-		const fields = await decryptSummaryFields(masterKey, rec);
-		const data = await decryptDataFields(masterKey, dataRec);
+		// ⚡ Bolt: Parallelize crypto decryption operations
+		const [fields, data] = await Promise.all([
+			decryptSummaryFields(masterKey, rec),
+			decryptDataFields(masterKey, dataRec)
+		]);
 
 		return {
 			id: rec.id,
@@ -163,8 +164,14 @@ export class PresetService {
 		summary: Partial<PresetSummaryFields> = {},
 		data: Partial<PresetDataFields> = {}
 	): Promise<PresetDetail> {
-		const resolvedSummary: PresetSummaryFields = deepMerge(defaultPresetSummary, summary as Record<string, unknown>);
-		const resolvedData: PresetDataFields = deepMerge(defaultPresetData, data as Record<string, unknown>);
+		const resolvedSummary: PresetSummaryFields = deepMerge(
+			defaultPresetSummary,
+			summary as Record<string, unknown>
+		);
+		const resolvedData: PresetDataFields = deepMerge(
+			defaultPresetData,
+			data as Record<string, unknown>
+		);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
@@ -176,12 +183,22 @@ export class PresetService {
 
 			await localDB.transaction(['presetSummaries', 'presetData'], 'rw', async () => {
 				await localDB.putRecord<PresetSummaryRecord>('presetSummaries', {
-					id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-					encryptedData: summaryEnc.ciphertext, encryptedDataIV: summaryEnc.iv
+					id,
+					userId,
+					createdAt: now,
+					updatedAt: now,
+					isDeleted: false,
+					encryptedData: summaryEnc.ciphertext,
+					encryptedDataIV: summaryEnc.iv
 				});
 				await localDB.putRecord<PresetDataRecord>('presetData', {
-					id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-					encryptedData: dataEnc.ciphertext, encryptedDataIV: dataEnc.iv
+					id,
+					userId,
+					createdAt: now,
+					updatedAt: now,
+					isDeleted: false,
+					encryptedData: dataEnc.ciphertext,
+					encryptedDataIV: dataEnc.iv
 				});
 			});
 		} catch (error) {
@@ -193,10 +210,7 @@ export class PresetService {
 	}
 
 	/** Update summary only */
-	static async updateSummary(
-		id: string,
-		changes: Partial<PresetSummaryFields>
-	): Promise<Preset> {
+	static async updateSummary(id: string, changes: Partial<PresetSummaryFields>): Promise<Preset> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<PresetSummaryRecord>('presetSummaries', id);
 		if (!record || record.isDeleted) {
@@ -262,17 +276,9 @@ export class PresetService {
 		try {
 			await localDB.transaction(['presetSummaries', 'presetData'], 'rw', async () => {
 				// Read both records upfront — ensures no partial writes if one is missing
-				const summaryRecord = await localDB.getRecord<PresetSummaryRecord>(
-					'presetSummaries',
-					id
-				);
+				const summaryRecord = await localDB.getRecord<PresetSummaryRecord>('presetSummaries', id);
 				const dataRecord = await localDB.getRecord<PresetDataRecord>('presetData', id);
-				if (
-					!summaryRecord ||
-					summaryRecord.isDeleted ||
-					!dataRecord ||
-					dataRecord.isDeleted
-				) {
+				if (!summaryRecord || summaryRecord.isDeleted || !dataRecord || dataRecord.isDeleted) {
 					throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 				}
 
