@@ -1,21 +1,19 @@
-import { getActiveSession, encryptText, decryptText } from '../session.js';
+import { getActiveSession, encryptText, decryptText } from '../../session.js';
 import {
 	localDB,
 	type CharacterSummaryRecord,
 	type CharacterDataRecord,
 	type OrderedRef,
 	type FolderDef,
-	type AssetEntry
-} from '../db/index.js';
-import { deepMerge } from '../utils/defaults.js';
-import { AppError } from '../errors.js';
+} from '../../adapters/db/index.js';
+import { deepMerge } from '../../shared/defaults.js';
+import { AppError } from '../../shared/errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
 export interface CharacterSummaryFields {
 	name: string;
 	shortDescription: string;
-	avatarAssetId?: string;
 }
 
 export interface CharacterDataRefs {
@@ -31,7 +29,6 @@ export interface CharacterDataRefs {
 		lorebooks?: FolderDef[];
 		scripts?: FolderDef[];
 	};
-	assets?: AssetEntry[];
 }
 
 export interface CharacterDataContent {

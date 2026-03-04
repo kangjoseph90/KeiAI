@@ -4,11 +4,11 @@ import {
 	type PresetSummaryFields,
 	type PresetDataFields,
 	type PresetDetail
-} from '../services/preset.js';
-import { SettingsService } from '../services/index.js';
-import { generateSortOrder, sortByRefs } from '../utils/ordering.js';
+} from '../services/domain/preset.js';
+import { SettingsService } from '../services/domain/index.js';
+import { generateSortOrder, sortByRefs } from '../shared/ordering.js';
 import { presets, activePreset, appSettings } from './state.js';
-import { AppError } from '../errors.js';
+import { AppError } from '../shared/errors.js';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.

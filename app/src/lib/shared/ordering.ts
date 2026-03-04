@@ -1,4 +1,4 @@
-import type { OrderedRef } from '$lib/db';
+import type { OrderedRef } from '$lib/adapters/db';
 import { generateKeyBetween } from 'fractional-indexing';
 
 /** Generate a fractional sort order key for appending to the end of a list */

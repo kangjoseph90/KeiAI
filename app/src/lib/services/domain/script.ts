@@ -1,8 +1,8 @@
-import { getActiveSession, encryptText, decryptText } from '../session.js';
-import { localDB, type ScriptRecord } from '../db/index.js';
-import { deepMerge } from '../utils/defaults.js';
+import { getActiveSession, encryptText, decryptText } from '../../session.js';
+import { localDB, type ScriptRecord } from '../../adapters/db/index.js';
+import { deepMerge } from '../../shared/defaults.js';
 import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards.js';
-import { AppError } from '../errors.js';
+import { AppError } from '../../shared/errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 

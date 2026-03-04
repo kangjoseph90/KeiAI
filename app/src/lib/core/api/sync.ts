@@ -6,9 +6,9 @@
  */
 
 import { pb } from './pb.js';
-import { getActiveSession } from '../session.js';
+import { getActiveSession } from '../../session.js';
 import { toBase64, fromBase64 } from '../crypto/index.js';
-import { localDB, type TableName, type BaseRecord } from '../db/index.js';
+import { localDB, type TableName, type BaseRecord } from '../../adapters/db/index.js';
 
 export class SyncService {
 	private static TABLES: TableName[] = [

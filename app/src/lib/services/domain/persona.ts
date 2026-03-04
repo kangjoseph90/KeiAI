@@ -1,56 +1,46 @@
-import { getActiveSession, encryptText, decryptText } from '../session.js';
-import { localDB, type ModuleRecord, type FolderDef, type OrderedRef } from '../db/index.js';
-import { deepMerge } from '../utils/defaults.js';
-import { AppError } from '../errors.js';
+import { getActiveSession, encryptText, decryptText } from '../../session.js';
+import { localDB, type PersonaRecord } from '../../adapters/db/index.js';
+import { deepMerge } from '../../shared/defaults.js';
+import { AppError } from '../../shared/errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
-export interface ModuleRefs {
-	lorebookRefs?: OrderedRef[];
-	scriptRefs?: OrderedRef[];
-	folders?: {
-		lorebooks?: FolderDef[];
-		scripts?: FolderDef[];
-	};
-}
-
-export interface ModuleContent {
+export interface PersonaFields {
 	name: string;
 	description: string;
 }
 
-export interface ModuleFields extends ModuleContent, ModuleRefs {}
-
-export interface Module extends ModuleFields {
+export interface Persona extends PersonaFields {
 	id: string;
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────
 
-const defaultModuleFields: ModuleFields = {
+const defaultPersonaFields: PersonaFields = {
 	name: '',
 	description: ''
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: ModuleRecord): Promise<ModuleFields> {
+function decryptFields(masterKey: CryptoKey, record: PersonaRecord): Promise<PersonaFields> {
 	return decryptText(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
 	})
-		.then((dec) => deepMerge(defaultModuleFields, JSON.parse(dec)))
+		.then((dec) => deepMerge(defaultPersonaFields, JSON.parse(dec)))
 		.catch((error) => {
-			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt module', error);
+			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt persona', error);
 		});
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
 
-export class ModuleService {
-	static async list(): Promise<Module[]> {
+export class PersonaService {
+	/** List all personas */
+	static async list(): Promise<Persona[]> {
 		const { masterKey, userId } = getActiveSession();
-		const records = await localDB.getAll<ModuleRecord>('modules', userId);
+		const records = await localDB.getAll<PersonaRecord>('personas', userId);
 
 		return Promise.all(
 			records.map(async (record) => {
@@ -63,9 +53,9 @@ export class ModuleService {
 		);
 	}
 
-	static async get(id: string): Promise<Module | null> {
+	static async get(id: string): Promise<Persona | null> {
 		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<ModuleRecord>('modules', id);
+		const record = await localDB.getRecord<PersonaRecord>('personas', id);
 		if (!record || record.isDeleted) return null;
 
 		const fields = await decryptFields(masterKey, record);
@@ -75,8 +65,9 @@ export class ModuleService {
 		};
 	}
 
-	static async create(fields: Partial<ModuleFields> = {}): Promise<Module> {
-		const resolved: ModuleFields = deepMerge(defaultModuleFields, fields as Record<string, unknown>);
+	/** Create a persona */
+	static async create(fields: Partial<PersonaFields> = {}): Promise<Persona> {
+		const resolved: PersonaFields = deepMerge(defaultPersonaFields, fields as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = crypto.randomUUID();
@@ -84,60 +75,50 @@ export class ModuleService {
 
 		try {
 			const enc = await encryptText(masterKey, JSON.stringify(resolved));
-			await localDB.putRecord<ModuleRecord>('modules', {
+			await localDB.putRecord<PersonaRecord>('personas', {
 				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
 			});
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to create module', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to create persona', error);
 		}
 
 		return { id, ...resolved };
 	}
 
-	static async update(id: string, changes: Partial<ModuleFields>): Promise<Module> {
+	/** Update a persona */
+	static async update(id: string, changes: Partial<PersonaFields>): Promise<Persona> {
 		const { masterKey } = getActiveSession();
-		const record = await localDB.getRecord<ModuleRecord>('modules', id);
+		const record = await localDB.getRecord<PersonaRecord>('personas', id);
 		if (!record || record.isDeleted) {
-			throw new AppError('NOT_FOUND', `Module not found: ${id}`);
+			throw new AppError('NOT_FOUND', `Persona not found: ${id}`);
 		}
 
 		try {
 			const current = await decryptFields(masterKey, record);
-			const updated: ModuleFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: PersonaFields = deepMerge(current, changes as Record<string, unknown>);
 			const enc = await encryptText(masterKey, JSON.stringify(updated));
 
 			record.encryptedData = enc.ciphertext;
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
-			await localDB.putRecord('modules', record);
+			await localDB.putRecord('personas', record);
 
 			return { id, ...updated };
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to update module', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to update persona', error);
 		}
 	}
 
-	/** Update content fields only — safe entry point for store layer */
-	static async updateContent(
-		id: string,
-		changes: Partial<ModuleContent>
-	): Promise<Module> {
-		return this.update(id, changes);
-	}
-
+	/** Delete a persona */
 	static async delete(id: string): Promise<void> {
 		try {
-			await localDB.transaction(['lorebooks', 'scripts', 'modules'], 'rw', async () => {
-				await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-				await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-				await localDB.softDeleteRecord('modules', id);
-			});
+			await localDB.softDeleteRecord('personas', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to delete module', error);
+			throw new AppError('DB_WRITE_FAILED', 'Failed to delete persona', error);
 		}
 	}
 }

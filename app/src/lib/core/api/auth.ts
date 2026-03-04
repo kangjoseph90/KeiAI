@@ -27,8 +27,8 @@ import {
 	clearSession,
 	importMasterKey,
 	unlockMasterKey
-} from '../session.js';
-import { localDB, type UserRecord } from '../db/index.js';
+} from '../../session.js';
+import { localDB, type UserRecord } from '../../adapters/db/index.js';
 
 export class AuthService {
 	/**

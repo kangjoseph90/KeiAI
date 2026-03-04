@@ -70,7 +70,7 @@ export * from './plugin.js';
 export * from './lorebook.js';
 export * from './script.js';
 export * from './message.js';
-export * from '../utils/ordering.js';
+export * from '../shared/ordering.js';
 
 export async function loadGlobalState() {
 	await loadSettings();

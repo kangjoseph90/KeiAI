@@ -23,7 +23,6 @@ import type {
 	PluginRecord,
 	PresetSummaryRecord,
 	PresetDataRecord,
-	AssetRecord
 } from './types.js';
 
 class DexieStore extends Dexie {
@@ -41,7 +40,6 @@ class DexieStore extends Dexie {
 	plugins!: Table<PluginRecord, string>;
 	presetSummaries!: Table<PresetSummaryRecord, string>;
 	presetData!: Table<PresetDataRecord, string>;
-	assets!: Table<AssetRecord, string>;
 
 	constructor() {
 		super('KeiLocalDB');
@@ -62,14 +60,11 @@ class DexieStore extends Dexie {
 			plugins: 'id, userId, updatedAt, isDeleted',
 			presetSummaries: 'id, userId, updatedAt, isDeleted',
 			presetData: 'id, userId, updatedAt, isDeleted',
-
-			// Asset table (plaintext, no sync)
-			assets: 'id, userId, kind, visibility, mimeType, createdAt'
 		});
 	}
 }
 
-export class DexieDatabaseAdapter implements IDatabaseAdapter {
+export class WebDatabaseAdapter implements IDatabaseAdapter {
 	private db: DexieStore;
 
 	constructor() {
@@ -96,6 +91,10 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 			}
 		}
 		await this.getTable<T>(tableName).bulkPut(records);
+	}
+
+	async deleteRecord(tableName: TableName, id: string): Promise<void> {
+		await this.getTable<BaseRecord>(tableName).delete(id);
 	}
 
 	async softDeleteRecord(tableName: TableName, id: string): Promise<void> {
@@ -198,29 +197,7 @@ export class DexieDatabaseAdapter implements IDatabaseAdapter {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		return await this.db.transaction(mode as unknown as any, tables, callback);
 	}
-
-	// ─── Asset-specific methods (not part of IDatabaseAdapter) ────────
-
-	async putAsset(record: AssetRecord): Promise<void> {
-		await this.db.assets.put(record);
-	}
-
-	async getAsset(id: string): Promise<AssetRecord | undefined> {
-		return await this.db.assets.get(id);
-	}
-
-	async deleteAsset(id: string): Promise<void> {
-		await this.db.assets.delete(id);
-	}
-
-	async getAssetsByUser(userId: string, kind?: 'regular' | 'inlay'): Promise<AssetRecord[]> {
-		const collection = this.db.assets.where('userId').equals(userId);
-		if (kind) {
-			return await collection.filter((r) => r.kind === kind).toArray();
-		}
-		return await collection.toArray();
-	}
 }
 
 /** Global default adapter */
-export const localDB = new DexieDatabaseAdapter();
+export const localDB = new WebDatabaseAdapter();
