@@ -106,7 +106,7 @@ export class AuthService {
 			masterKey: lockedKey
 		} as UserRecord);
 
-		setSession(serverUserId, lockedKey, false);
+		await setSession(serverUserId, lockedKey, false);
 		rawM.fill(0);
 	}
 
@@ -243,8 +243,8 @@ export class AuthService {
 		rawM.fill(0);
 	}
 
-	static logout(): void {
+	static async logout(): Promise<void> {
 		pb.authStore.clear();
-		clearSession();
+		await clearSession();
 	}
 }
