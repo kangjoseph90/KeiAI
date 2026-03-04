@@ -16,6 +16,7 @@
     "fs:allow-exists",
     "fs:allow-app-read-recursive",
     "fs:allow-app-write-recursive",
-    "sql:default"
+    "sql:default",
+    "stronghold:default"
   ]
 }
