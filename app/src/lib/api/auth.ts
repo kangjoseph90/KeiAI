@@ -8,8 +8,14 @@
  */
 
 import { pb } from './pb.js';
-import { cryptoWorker } from '../workers/index.js';
 import {
+	generateSalt,
+	deriveKeys,
+	wrapMasterKey,
+	unwrapMasterKeyRaw,
+	createRecoveryData,
+	deriveRecoveryKey,
+	hashRecoveryAuthToken,
 	splitRecoveryCode,
 	toBase64,
 	fromBase64,
@@ -34,14 +40,14 @@ export class AuthService {
 		const { masterKey } = getActiveSession();
 
 		// Derive keys
-		const salt = await cryptoWorker.generateSalt();
-		const { loginKey, encryptionKey } = await cryptoWorker.deriveKeys(password, salt);
+		const salt = await generateSalt();
+		const { loginKey, encryptionKey } = await deriveKeys(password, salt);
 
 		// Wrap M with Y — works because guest key is extractable: true
-		const wrapped = await cryptoWorker.wrapMasterKey(masterKey, encryptionKey);
+		const wrapped = await wrapMasterKey(masterKey, encryptionKey);
 
 		// Recovery data
-		const recovery = await cryptoWorker.createRecoveryData(masterKey);
+		const recovery = await createRecoveryData(masterKey);
 		encryptionKey.fill(0);
 
 		// Send to PocketBase
@@ -74,13 +80,13 @@ export class AuthService {
 		const saltBytes = fromBase64(salt);
 
 		// 2. Derive X, Y
-		const { loginKey, encryptionKey } = await cryptoWorker.deriveKeys(password, saltBytes);
+		const { loginKey, encryptionKey } = await deriveKeys(password, saltBytes);
 
 		// 3. Auth with X
 		const authData = await pb.collection('users').authWithPassword(email, toBase64(loginKey));
 
 		// 4. Unwrap M(Y) with Y → get raw bytes
-		const rawM = await cryptoWorker.unwrapMasterKeyRaw(
+		const rawM = await unwrapMasterKeyRaw(
 			fromBase64(authData.record.encryptedMasterKey),
 			fromBase64(authData.record.masterKeyIv),
 			encryptionKey
@@ -124,9 +130,9 @@ export class AuthService {
 
 		// 2. Decrypt M from M(Z) using front half of recovery code
 		const { frontHalf, backHalf } = splitRecoveryCode(recoveryCode);
-		const oldAuthHash = await cryptoWorker.hashRecoveryAuthToken(backHalf);
-		const zKey = await cryptoWorker.deriveRecoveryKey(frontHalf);
-		const rawM = await cryptoWorker.unwrapMasterKeyRaw(
+		const oldAuthHash = await hashRecoveryAuthToken(backHalf);
+		const zKey = await deriveRecoveryKey(frontHalf);
+		const rawM = await unwrapMasterKeyRaw(
 			bundle.encryptedRecoveryMasterKey,
 			bundle.encryptedRecoveryMasterKeyIV,
 			zKey
@@ -134,10 +140,10 @@ export class AuthService {
 
 		// 3. Re-wrap M with new password
 		const masterKeyExt = await importMasterKey(rawM, true);
-		const newSalt = await cryptoWorker.generateSalt();
-		const newKeys = await cryptoWorker.deriveKeys(newPassword, newSalt);
-		const newWrapped = await cryptoWorker.wrapMasterKey(masterKeyExt, newKeys.encryptionKey);
-		const newRecovery = await cryptoWorker.createRecoveryData(masterKeyExt);
+		const newSalt = await generateSalt();
+		const newKeys = await deriveKeys(newPassword, newSalt);
+		const newWrapped = await wrapMasterKey(masterKeyExt, newKeys.encryptionKey);
+		const newRecovery = await createRecoveryData(masterKeyExt);
 		newKeys.encryptionKey.fill(0);
 
 		// 4. Push new credentials to server
@@ -175,12 +181,12 @@ export class AuthService {
 
 		// 1. Fetch salt and derive old keys
 		const oldSaltResp = await pb.send(`/api/salt/${encodeURIComponent(email)}`, { method: 'GET' });
-		const oldKeys = await cryptoWorker.deriveKeys(oldPassword, fromBase64(oldSaltResp.salt));
+		const oldKeys = await deriveKeys(oldPassword, fromBase64(oldSaltResp.salt));
 
 		// 2. Fetch encrypted M from server and unwrap with old Y
 		const record = pb.authStore.record;
 		if (!record) throw new Error('Not authenticated.');
-		const rawM = await cryptoWorker.unwrapMasterKeyRaw(
+		const rawM = await unwrapMasterKeyRaw(
 			fromBase64(record.encryptedMasterKey),
 			fromBase64(record.masterKeyIv),
 			oldKeys.encryptionKey
@@ -188,9 +194,9 @@ export class AuthService {
 
 		// 3. Re-wrap M with new password
 		const masterKeyExt = await importMasterKey(rawM, true);
-		const newSalt = await cryptoWorker.generateSalt();
-		const newKeys = await cryptoWorker.deriveKeys(newPassword, newSalt);
-		const newWrapped = await cryptoWorker.wrapMasterKey(masterKeyExt, newKeys.encryptionKey);
+		const newSalt = await generateSalt();
+		const newKeys = await deriveKeys(newPassword, newSalt);
+		const newWrapped = await wrapMasterKey(masterKeyExt, newKeys.encryptionKey);
 		newKeys.encryptionKey.fill(0);
 		rawM.fill(0);
 
@@ -217,11 +223,11 @@ export class AuthService {
 
 		// 1. Get raw M from server M(Y)
 		const saltResp = await pb.send(`/api/salt/${encodeURIComponent(email)}`, { method: 'GET' });
-		const keys = await cryptoWorker.deriveKeys(password, fromBase64(saltResp.salt));
+		const keys = await deriveKeys(password, fromBase64(saltResp.salt));
 
 		const record = pb.authStore.record;
 		if (!record) throw new Error('Not authenticated.');
-		const rawM = await cryptoWorker.unwrapMasterKeyRaw(
+		const rawM = await unwrapMasterKeyRaw(
 			fromBase64(record.encryptedMasterKey),
 			fromBase64(record.masterKeyIv),
 			keys.encryptionKey
