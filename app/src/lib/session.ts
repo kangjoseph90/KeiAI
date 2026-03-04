@@ -10,8 +10,8 @@
  */
 
 import { generateMasterKey, encrypt, decrypt, type EncryptedData } from './core/crypto/index.js';
-import { localDB, type UserRecord } from './adapters/db/index.js';
 import { appKV } from './adapters/kv/index.js';
+import { appUser, type UserRecord } from './adapters/user/index.js';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
@@ -65,7 +65,7 @@ export async function initSession(): Promise<{
 	const savedUserId = await appKV.get('activeUserId');
 
 	if (savedUserId) {
-		const user = await localDB.getRecord<UserRecord>('users', savedUserId);
+		const user = await appUser.getUser(savedUserId);
 		if (user && !user.isDeleted) {
 			// CryptoKey comes directly from IndexedDB via Structured Clone
 			await setSession(user.id, user.masterKey, user.isGuest);
@@ -88,7 +88,7 @@ export async function createGuestUser(): Promise<{
 	const id = crypto.randomUUID();
 	const guestKey = await generateMasterKey(); // extractable: true
 
-	await localDB.putRecord('users', {
+	await appUser.saveUser({
 		id,
 		userId: id,
 		createdAt: Date.now(),
@@ -96,7 +96,7 @@ export async function createGuestUser(): Promise<{
 		isDeleted: false,
 		isGuest: true,
 		masterKey: guestKey
-	} as UserRecord);
+	});
 
 	await setSession(id, guestKey, true);
 
@@ -117,12 +117,12 @@ export async function lockMasterKey(userId: string, masterKey: CryptoKey): Promi
 	]);
 	rawM.fill(0);
 
-	const user = await localDB.getRecord<UserRecord>('users', userId);
+	const user = await appUser.getUser(userId);
 	if (!user) throw new Error('User not found.');
 
 	user.masterKey = lockedKey;
 	user.updatedAt = Date.now();
-	await localDB.putRecord('users', user);
+	await appUser.saveUser(user);
 
 	// Update in-memory session with the locked key
 	await setSession(userId, lockedKey, false);
@@ -141,13 +141,13 @@ export async function unlockMasterKey(userId: string, rawMasterKey: Bytes): Prom
 		['encrypt', 'decrypt']
 	);
 
-	const user = await localDB.getRecord<UserRecord>('users', userId);
+	const user = await appUser.getUser(userId);
 	if (!user) throw new Error('User not found.');
 
 	user.masterKey = unlockedKey;
 	user.isGuest = true;
 	user.updatedAt = Date.now();
-	await localDB.putRecord('users', user);
+	await appUser.saveUser(user);
 
 	await setSession(userId, unlockedKey, true);
 }
