@@ -10,7 +10,7 @@ import {
 import { MessageService } from '../services/message.js';
 import { LorebookService, type LorebookFields, type Lorebook } from '../services/lorebook.js';
 import { CharacterService } from '../services/character.js';
-import type { OrderedRef, FolderDef } from '../adapters/db/index.js';
+import type { OrderedRef, FolderDef } from '../shared/types.js';
 import { generateSortOrder, sortByRefs } from '../shared/ordering.js';
 import {
 	chats,
