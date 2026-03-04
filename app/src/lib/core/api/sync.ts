@@ -9,6 +9,7 @@ import { pb } from './pb.js';
 import { getActiveSession } from '../../session.js';
 import { toBase64, fromBase64 } from '../crypto/index.js';
 import { localDB, type TableName, type BaseRecord } from '../../adapters/db/index.js';
+import { appKV } from '../../adapters/kv/index.js';
 
 export class SyncService {
 	private static TABLES: TableName[] = [
@@ -32,7 +33,7 @@ export class SyncService {
 
 	private static async syncTable(tableName: TableName, userId: string): Promise<void> {
 		const syncKey = `lastSync_${tableName}_${userId}`;
-		const lastSyncTime = parseInt(localStorage.getItem(syncKey) || '0', 10);
+		const lastSyncTime = parseInt((await appKV.get(syncKey)) || '0', 10);
 		const syncStartTime = Date.now();
 
 		// --- PUSH ---
@@ -70,7 +71,7 @@ export class SyncService {
 				await localDB.putRecords(tableName, records);
 			}
 
-			localStorage.setItem(syncKey, syncStartTime.toString());
+			await appKV.set(syncKey, syncStartTime.toString());
 		} catch (err) {
 			console.error(`Failed to pull for ${tableName}`, err);
 		}

@@ -11,6 +11,7 @@
 
 import { generateMasterKey, encrypt, decrypt, type EncryptedData } from './core/crypto/index.js';
 import { localDB, type UserRecord } from './adapters/db/index.js';
+import { appKV } from './adapters/kv/index.js';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
@@ -36,18 +37,18 @@ export function hasActiveSession(): boolean {
 /**
  * Directly set session state. Used internally by auth flows.
  */
-export function setSession(userId: string, masterKey: CryptoKey, isGuest: boolean): void {
+export async function setSession(userId: string, masterKey: CryptoKey, isGuest: boolean): Promise<void> {
 	activeUserId = userId;
 	activeMasterKey = masterKey;
 	isGuestUser = isGuest;
-	localStorage.setItem('activeUserId', userId);
+	await appKV.set('activeUserId', userId);
 }
 
-export function clearSession(): void {
+export async function clearSession(): Promise<void> {
 	activeMasterKey = null;
 	activeUserId = null;
 	isGuestUser = true;
-	localStorage.removeItem('activeUserId');
+	await appKV.remove('activeUserId');
 }
 
 // ─── Session Initialization ─────────────────────────────────────────
@@ -61,13 +62,13 @@ export async function initSession(): Promise<{
 	masterKey: CryptoKey;
 	isGuest: boolean;
 }> {
-	const savedUserId = localStorage.getItem('activeUserId');
+	const savedUserId = await appKV.get('activeUserId');
 
 	if (savedUserId) {
 		const user = await localDB.getRecord<UserRecord>('users', savedUserId);
 		if (user && !user.isDeleted) {
 			// CryptoKey comes directly from IndexedDB via Structured Clone
-			setSession(user.id, user.masterKey, user.isGuest);
+			await setSession(user.id, user.masterKey, user.isGuest);
 			return getActiveSession();
 		}
 	}
@@ -97,7 +98,7 @@ export async function createGuestUser(): Promise<{
 		masterKey: guestKey
 	} as UserRecord);
 
-	setSession(id, guestKey, true);
+	await setSession(id, guestKey, true);
 
 	return getActiveSession();
 }
@@ -124,7 +125,7 @@ export async function lockMasterKey(userId: string, masterKey: CryptoKey): Promi
 	await localDB.putRecord('users', user);
 
 	// Update in-memory session with the locked key
-	setSession(userId, lockedKey, false);
+	await setSession(userId, lockedKey, false);
 }
 
 /**
@@ -148,7 +149,7 @@ export async function unlockMasterKey(userId: string, rawMasterKey: Bytes): Prom
 	user.updatedAt = Date.now();
 	await localDB.putRecord('users', user);
 
-	setSession(userId, unlockedKey, true);
+	await setSession(userId, unlockedKey, true);
 }
 
 // ─── Convenience Crypto Wrappers ─────────────────────────────────────
