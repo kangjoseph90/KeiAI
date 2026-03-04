@@ -1,6 +1,6 @@
 export * from './types.js';
 import { isTauri } from '@tauri-apps/api/core';
 import { WebDatabaseAdapter } from './web.js';
+import { TauriDatabaseAdapter } from './tauri.js';
 
-// TODO: add tauri adapter
-export const localDB = new WebDatabaseAdapter();
+export const localDB = isTauri() ? new TauriDatabaseAdapter() : new WebDatabaseAdapter();
