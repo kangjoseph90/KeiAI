@@ -13,29 +13,6 @@
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
-// ─── Shared Reference Types ─────────────────────────────────────────
-
-/** Ordered reference for 1:N parent→child lists */
-export interface OrderedRef {
-	id: string;
-	sortOrder: string; // Fractional index for ordering
-	folderId?: string;
-}
-
-/** Reference with per-context state for N:M relationships */
-export interface ResourceRef extends OrderedRef {
-	enabled: boolean;
-}
-
-/** Folder definition (stored in parent's blob) */
-export interface FolderDef {
-	id: string;
-	name: string;
-	sortOrder: string;
-	color?: string;
-	parentId?: string; // Nested folders
-}
-
 // ─── Table Registry ──────────────────────────────────────────────────
 
 export type TableName =

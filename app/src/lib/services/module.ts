@@ -1,5 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
-import { localDB, type ModuleRecord, type FolderDef, type OrderedRef } from '../adapters/db/index.js';
+import { localDB, type ModuleRecord } from '../adapters/db/index.js';
+import type { AssetRef, FolderDef, OrderedRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
 
@@ -12,6 +13,7 @@ export interface ModuleRefs {
 		lorebooks?: FolderDef[];
 		scripts?: FolderDef[];
 	};
+	assets?: AssetRef[];
 }
 
 export interface ModuleContent {
