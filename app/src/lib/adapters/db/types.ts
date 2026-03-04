@@ -151,11 +151,13 @@ export type AssetRecord = EncryptedRecord;
 // logic knows which files are safe to delete.
 // Files present in IStorageAdapter but NOT in cacheRegistry = persistent
 // local-only assets → must never be evicted.
+//
+// Note: extends BaseRecord to satisfy IDatabaseAdapter generics.
+// `userId`, `createdAt`, `updatedAt`, `isDeleted` are unused sentinels.
 
-export interface CacheRegistryRecord {
-	id: string;          // Asset UUID (same key used in IStorageAdapter)
+export interface CacheRegistryRecord extends BaseRecord {
 	lastAccessedAt: number; // Unix ms — updated every time the asset is rendered
-	size: number;        // Bytes on disk — used to calculate total cache size
+	size: number;           // Bytes on disk — used to calculate total cache size
 }
 
 // ─── Adapter Interface ──────────────────────────────────────────────

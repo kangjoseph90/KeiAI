@@ -205,6 +205,3 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		return await this.db.transaction(mode as unknown as any, tables, callback);
 	}
 }
-
-/** Global default adapter */
-export const localDB = new WebDatabaseAdapter();
