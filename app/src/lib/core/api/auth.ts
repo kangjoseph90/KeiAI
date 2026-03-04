@@ -92,9 +92,16 @@ export class AuthService {
 			encryptionKey
 		);
 
-		// 5. Import as non-extractable CryptoKey and store directly
+		// 5. Import as non-extractable CryptoKey and store directly.
+		//    Raw bytes must be backed up to the OS keychain BEFORE scrubbing,
+		//    because the CryptoKey will be non-extractable and can never be
+		//    serialised again (covers both "first login on device" and
+		//    "register on this device then login with server UUID").
 		const serverUserId = authData.record.id;
 		const lockedKey = await importMasterKey(rawM, false);
+
+		await appUser.backupGuestKey(serverUserId, rawM); // no-op on web
+		rawM.fill(0);
 
 		await appUser.saveUser({
 			id: serverUserId,
@@ -107,7 +114,6 @@ export class AuthService {
 		});
 
 		await setSession(serverUserId, lockedKey, false);
-		rawM.fill(0);
 	}
 
 	/**
