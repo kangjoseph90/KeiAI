@@ -1,9 +1,9 @@
 import { get } from 'svelte/store';
-import { SettingsService, type AppSettingsContent, type AppSettings } from '../services';
+import { SettingsService, type AppSettingsContent, type AppSettings } from '../services/domain/index.js';
 import { appSettings } from './state.js';
-import type { OrderedRef, FolderDef } from '../db/index.js';
-import { generateSortOrder } from '../utils/ordering.js';
-import { AppError } from '../errors.js';
+import type { OrderedRef, FolderDef } from '../adapters/db/index.js';
+import { generateSortOrder } from '../shared/ordering.js';
+import { AppError } from '../shared/errors.js';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.

@@ -1,9 +1,9 @@
 import { get } from 'svelte/store';
-import { PersonaService, type PersonaFields, type Persona } from '../services/persona.js';
-import { SettingsService } from '../services';
-import { generateSortOrder, sortByRefs } from '../utils/ordering.js';
+import { PersonaService, type PersonaFields, type Persona } from '../services/domain/persona.js';
+import { SettingsService } from '../services/domain/index.js';
+import { generateSortOrder, sortByRefs } from '../shared/ordering.js';
 import { personas, appSettings } from './state.js';
-import { AppError } from '../errors.js';
+import { AppError } from '../shared/errors.js';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.

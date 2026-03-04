@@ -8,4 +8,3 @@ export * from './script.js';
 export * from './module.js';
 export * from './plugin.js';
 export * from './preset.js';
-export * from './asset.js';

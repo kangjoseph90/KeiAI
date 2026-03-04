@@ -9,8 +9,8 @@
  *   - Registered: CryptoKey with extractable: false (XSS cannot export raw bytes)
  */
 
-import { generateMasterKey, encrypt, decrypt, type EncryptedData } from './crypto/index.js';
-import { localDB, type UserRecord } from './db/index.js';
+import { generateMasterKey, encrypt, decrypt, type EncryptedData } from './core/crypto/index.js';
+import { localDB, type UserRecord } from './adapters/db/index.js';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 

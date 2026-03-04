@@ -5,19 +5,19 @@ import {
 	type CharacterDataFields,
 	type CharacterDataContent,
 	type CharacterDetail
-} from '../services/character.js';
-import { ChatService } from '../services/chat.js';
+} from '../services/domain/character.js';
+import { ChatService } from '../services/domain/chat.js';
 import {
 	LorebookService,
 	ScriptService,
 	type LorebookFields,
 	type ScriptFields
-} from '../services';
-import type { Lorebook, Script } from '../services';
-import type { OrderedRef, FolderDef } from '../db/index.js';
+} from '../services/domain/index.js';
+import type { Lorebook, Script } from '../services/domain/index.js';
+import type { OrderedRef, FolderDef } from '../adapters/db/index.js';
 import { clearActiveChat, sortChatsByRefs, selectChat } from './chat.js';
-import { SettingsService } from '../services';
-import { generateSortOrder, sortByRefs } from '../utils/ordering.js';
+import { SettingsService } from '../services/domain/index.js';
+import { generateSortOrder, sortByRefs } from '../shared/ordering.js';
 import {
 	characters,
 	activeCharacter,
@@ -29,7 +29,7 @@ import {
 	appSettings,
 	activeCharacterId
 } from './state.js';
-import { AppError } from '$lib/errors.js';
+import { AppError } from '$lib/shared/errors.js';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.

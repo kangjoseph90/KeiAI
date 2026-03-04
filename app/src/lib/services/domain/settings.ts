@@ -1,13 +1,13 @@
-import { encryptText, decryptText, getActiveSession } from '../session.js';
+import { encryptText, decryptText, getActiveSession } from '../../session.js';
 import {
 	localDB,
 	type SettingsRecord,
 	type OrderedRef,
 	type FolderDef,
 	type ResourceRef
-} from '../db/index.js';
-import { deepMerge } from '../utils/defaults.js';
-import { AppError } from '../errors.js';
+} from '../../adapters/db/index.js';
+import { deepMerge } from '../../shared/defaults.js';
+import { AppError } from '../../shared/errors.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 

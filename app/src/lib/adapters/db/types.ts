@@ -52,7 +52,7 @@ export type TableName =
 	| 'plugins'
 	| 'presetSummaries'
 	| 'presetData';
-
+	
 // ─── Base Types ──────────────────────────────────────────────────────
 
 export interface BaseRecord {
@@ -132,31 +132,13 @@ export type PluginRecord = EncryptedRecord;
 export type PresetSummaryRecord = EncryptedRecord;
 export type PresetDataRecord = EncryptedRecord;
 
-// ─── Assets (separate system — plaintext, no sync) ───────────────────
-
-export interface AssetRecord {
-	id: string; // SHA-256 content hash
-	userId: string;
-	kind: 'regular' | 'inlay';
-	visibility: 'private' | 'public';
-	mimeType: string;
-	data: Blob;
-	cdnUrl?: string;
-	selfHostedUrl?: string;
-	createdAt: number;
-}
-
-export interface AssetEntry {
-	name: string;
-	assetId: string;
-}
-
 // ─── Adapter Interface ──────────────────────────────────────────────
 
 export interface IDatabaseAdapter {
 	getRecord<T extends BaseRecord>(tableName: TableName, id: string): Promise<T | undefined>;
 	putRecord<T extends BaseRecord>(tableName: TableName, record: T): Promise<void>;
 	putRecords<T extends BaseRecord>(tableName: TableName, records: T[]): Promise<void>;
+	deleteRecord(tableName: TableName, id: string): Promise<void>;
 	softDeleteRecord(tableName: TableName, id: string): Promise<void>;
 	softDeleteByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<void>;
 	getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]>;
