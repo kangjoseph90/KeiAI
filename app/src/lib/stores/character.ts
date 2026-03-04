@@ -14,7 +14,7 @@ import {
 	type ScriptFields
 } from '../services/index.js';
 import type { Lorebook, Script } from '../services/index.js';
-import type { OrderedRef, FolderDef } from '../adapters/db/index.js';
+import type { OrderedRef, FolderDef } from '../shared/types.js';
 import { clearActiveChat, sortChatsByRefs, selectChat } from './chat.js';
 import { SettingsService } from '../services/index.js';
 import { generateSortOrder, sortByRefs } from '../shared/ordering.js';
