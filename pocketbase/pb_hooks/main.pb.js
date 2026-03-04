@@ -21,6 +21,32 @@ function hexToBase64(hex) {
     return $security.base64Encode(String.fromCharCode(...bytes));
 }
 
+/**
+ * Generates a deterministic base64 string of a given length based on a string seed.
+ * Useful for returning dummy data that looks real.
+ * @param {string} str
+ * @param {number} length
+ * @returns {string}
+ */
+function getDummyBase64(str, length) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+
+    // Simple LCG PRNG based on hash
+    let seed = Math.abs(hash) || 1;
+    const bytes = [];
+    for (let i = 0; i < length; i++) {
+        seed = (seed * 9301 + 49297) % 233280;
+        bytes.push(Math.floor((seed / 233280) * 256));
+    }
+
+    return $security.base64Encode(String.fromCharCode(...bytes));
+}
+
 // 1. Get Salt (Blind Fetch before login)
 routerAdd("GET", "/api/salt/:email", (c) => {
     const email = c.pathParam("email");
@@ -52,7 +78,11 @@ routerAdd("GET", "/api/recovery-bundle/:email", (c) => {
             encryptedRecoveryMasterKeyIV: record.getString("recoveryMasterKeyIv")
         });
     } catch (_err) {
-        return c.json(404, { error: "User not found" });
+        // Return dummy data to prevent email enumeration
+        return c.json(200, {
+            encryptedRecoveryMasterKey: getDummyBase64(email, 48),
+            encryptedRecoveryMasterKeyIV: getDummyBase64(email, 12)
+        });
     }
 });
 
