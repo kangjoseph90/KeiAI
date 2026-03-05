@@ -16,6 +16,7 @@ import type { Module } from '../services/module.js';
 import type { Plugin } from '../services/plugin.js';
 import type { Lorebook } from '../services/lorebook.js';
 import type { Script } from '../services/script.js';
+import type { GenerationTask, DisplayMessage } from './types.js';
 
 // ─── Level 0 (Global Settings) ──────────────────────────────────────
 export const appSettings = writable<AppSettings | null>(null);
@@ -48,6 +49,49 @@ export const chats = writable<Chat[]>([]);
 export const activeChat = writable<ChatDetail | null>(null);
 export const chatLorebooks = writable<Lorebook[]>([]);
 export const messages = writable<Message[]>([]);
+
+// ─── Generation State (Ephemeral — not persisted to DB) ─────────────
+
+/** Active LLM generation tasks, keyed by chatId. Ephemeral UI-only state. */
+export const generationTasks = writable<Map<string, GenerationTask>>(new Map());
+
+/** Whether any generation is running in the active chat */
+export const isGenerating = derived(
+	[generationTasks, activeChat],
+	([tasks, chat]) => chat ? tasks.has(chat.id) : false
+);
+
+/**
+ * Single merged array of confirmed DB messages + active generation task.
+ * UI components iterate this one list — no streaming/normal branching needed.
+ */
+export const displayMessages = derived(
+	[messages, generationTasks, activeChat],
+	([msgs, tasks, chat]): DisplayMessage[] => {
+		// Map confirmed messages
+		const base: DisplayMessage[] = msgs.map((msg) => ({
+			...msg,
+			displayStatus: 'completed' as const
+		}));
+
+		// Append active generation task as a virtual message at the end
+		if (chat && tasks.has(chat.id)) {
+			const task = tasks.get(chat.id)!;
+			base.push({
+				id: `__generating_${chat.id}`,
+				chatId: chat.id,
+				sortOrder: '\uffff', // Always sorts last
+				role: 'char',
+				content: task.content,
+				displayStatus: task.status,
+				errorMessage: task.errorMessage
+			});
+		}
+
+		return base;
+	}
+);
+
 
 // ─── Context Resources ─────────────────────────────────────────────────
 export const activePreset = writable<PresetDetail | null>(null);

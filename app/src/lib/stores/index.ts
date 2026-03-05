@@ -44,6 +44,7 @@ export const chats = readonly(StoreState.chats);
 export const activeChat = readonly(StoreState.activeChat);
 export const chatLorebooks = readonly(StoreState.chatLorebooks);
 export const messages = readonly(StoreState.messages);
+export const generationTasks = readonly(StoreState.generationTasks);
 export const activePreset = readonly(StoreState.activePreset);
 export const activeLorebooks = readonly(StoreState.activeLorebooks);
 export const activeScripts = readonly(StoreState.activeScripts);
@@ -57,8 +58,11 @@ export {
 	activeModuleIds,
 	allLorebooks,
 	allScripts,
-	activePersona
+	activePersona,
+	isGenerating	,
+	displayMessages
 } from './state.js';
+export type { DisplayMessage, DisplayMessageStatus, GenerationTask, GenerationStatus } from './types.js';
 
 export * from './settings.js';
 export * from './character.js';
@@ -70,6 +74,7 @@ export * from './plugin.js';
 export * from './lorebook.js';
 export * from './script.js';
 export * from './message.js';
+export * from './generation.js';
 export * from '../shared/ordering.js';
 
 export async function loadGlobalState() {
