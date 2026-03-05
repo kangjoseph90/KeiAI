@@ -135,24 +135,7 @@
   - 참조 자원 삭제 시 참조자의 Blob 일괄 수정 불필요 → Graceful Degradation + Self-Healing.
   - DB에는 진실의 원천(Source of Truth)만 저장. 파생값 저장하지 않음.
 
-10. 공유 자원 메모리 관리 (Reference Counting)
-
-- 적용 대상: 로어북, 스크립트 등 여러 소스(캐릭터, 챗, 페르소나, 모듈)가 동시에 참조할 수 있는 N:M 공유 자원.
-- 메모리 데이터 타입:
-  - `Map<assetId, { data: T, enabled: boolean, refs: Set<sourceEntityId> }>` 형태.
-  - data: 복호화된 실제 JSON 데이터.
-  - enabled: 프롬프트 엔진이 실행할지 여부 (메모리 적재 여부와는 무관).
-  - refs: 이 자원을 물고 있는 엔티티 ID 집합 (참조 카운팅).
-- 라이프사이클:
-  - 로드(Load): 소스 엔티티가 활성화되면, Data Blob 내 참조 ID들을 추출 → Map에 없으면 DB에서 복호화 적재, 있으면 refs.add(sourceId).
-  - 토글(Toggle): entry.enabled = true/false (메모리 내 불리언 플립). DB 저장은 비동기.
-  - 언로드(Unload): refs.delete(sourceId) → refs.size === 0이면 Map에서 완전 삭제.
-- 핵심 원칙: 연결된 공유 자원은 전부 메모리에 올리되, 프롬프트 엔진은 enabled === true인 것만 실행한다.
-  - 로어북/스크립트는 전부 텍스트(JSON)이므로 수천 개의 항목이라 해도 수 MB 수준 → 메모리 부담 무시.
-  - 토글 시 DB 복호화 없이 즉시 반영 → UX 체감 속도 극대화.
-  - 비활성화(enabled=false)된 자원도 메모리에 남아있으므로 UI에서 내용물 열람 가능.
-
-11. 모듈 시스템 (Module System)
+10. 모듈 시스템 (Module System)
 
 - 모듈의 정의: 로어북, 스크립트 등을 하나로 묶은 그룹 컨테이너. 모듈은 로어북/스크립트를 소유(Own)한다 (Deep Copy).
 - DB 스키마: 단일 EncryptedRecord (modules 테이블).
@@ -168,7 +151,7 @@
   - 모듈이 OFF → 안의 자원들 통째로 프롬프트 엔진 스킵.
 - 같은 자원이 직접 소유 + 모듈 소유로 중복되는 경우: 별개의 Deep Copy이므로 각각 독립.
 
-12. 프롬프트 프리셋 (Prompt Presets)
+11. 프롬프트 프리셋 (Prompt Presets)
 
 - 정의: 프롬프트 조립 순서(Template), Jailbreak, Authors Note, 샘플링 파라미터 등을 묶은 설정 프리셋. RisuAI의 botPresets에 대응.
 - DB 스키마: Summary + Data 분리 (promptPresetSummaries / promptPresetData).
@@ -180,7 +163,7 @@
   - temperature, topP, topK, frequencyPenalty, presencePenalty, maxTokens.
   - maxContextTokens, memoryTokensRatio.
 
-13. 에셋 시스템 (Asset System)
+12. 에셋 시스템 (Asset System)
 
 - 핵심 원칙: E2EE 세계(암호화 + blind sync)와 에셋 세계(평문 바이너리 + 스토리지)는 완전히 분리. 둘 사이는 오직 UUID 문자열 참조로만 연결.
 - 에셋 분류 체계:
@@ -248,7 +231,7 @@
 - 게스트 모드: 퍼블릭 에셋은 CDN URL로 사용 가능. 프라이빗/인레이는 로컬 전용. 동기화 불가.
 - 로그인 모드: 프라이빗 에셋 동기화 활성화 (용량 제한). 프라이빗 → 퍼블릭 전환 가능.
 
-14. 허브 & 익스포트 전략 (Hub & Export Strategy)
+13. 허브 & 익스포트 전략 (Hub & Export Strategy)
 
 - Hub 업로드 (공유):
   - 유저가 봇/모듈을 Hub에 공유 시, 관련 프라이빗 에셋이 퍼블릭으로 전환 (CDN 업로드).
@@ -272,7 +255,7 @@
   - URL 참조 에셋은 URL 그대로 유지 (Thin Client).
   - 모든 Import 데이터는 로컬 DB에만 저장 (서버 통신 없음, 오프라인 가능).
 
-15. 수익 모델 (Revenue Model)
+14. 수익 모델 (Revenue Model)
 
 - 핵심 철학: "로컬에서 노는 건 무료. 클라우드 서비스는 유료." 서버 비용이 극소이므로 소수의 결제 유저만으로도 손익분기.
 - Free (무료):
@@ -301,7 +284,7 @@
   - 에셋 삭제 및 Hub 공유(용량 회수): 가능.
   - 클라이언트 안내: "동기화 용량 초과. 새 에셋의 동기화가 일시 중지되었습니다. [Pro 구독으로 용량 확대] [Hub에 공유하여 용량 확보]"
 
-16. 멀티 채팅방 확장 (Multi-User Room — 미래)
+15. 멀티 채팅방 확장 (Multi-User Room — 미래)
 
 - 핵심 원칙: "개인 금고(Personal Vault)"와 "공유 방(Shared Room)"은 완전히 다른 보안 도메인. 유저의 명시적 행위(업로드)를 통해서만 데이터가 경계를 넘어감.
 - 보안 모델: Room Key 방식 (Signal Sender Keys, Matrix Megolm 유사).
@@ -310,7 +293,7 @@
 - Room Key 저장: 기존 E2EE 철학에 따라 EncryptedRecord로 저장 (roomKeys 테이블, FK: roomId). MasterKey로 암호화 → blind sync 대상.
 - 개인 자산 공유 흐름: 유저가 "이 캐릭터를 방에 올릴게" → 로컬 금고에서 복호화 → Room Key로 재암호화 → 서버에 업로드. 원본은 그대로 보존 (사본 격리).
 
-17. 전체 테이블 목록 (Table Registry)
+16. 전체 테이블 목록 (Table Registry)
 
 - 암호화 테이블 (EncryptedRecord 기반, blind sync 대상):
   - users — 특수 (CryptoKey 보관용)
@@ -334,7 +317,7 @@
   - IStorageAdapter — 영속 에셋 + 리모트 에셋 캐시를 구분 없이 같은 위치에 저장. 키 = UUID.
   - 캐시 레지스트리 — {uuid, lastAccessedAt, size}. 여기 등록된 것만 LRU evict 대상. 없으면 영속 에셋.
 
-18. 인프라 구성 전략 (Zero-Cost Stack)
+17. 인프라 구성 전략 (Zero-Cost Stack)
 
 - 핵심 철학: 인프라 비용은 0원에 수렴하게 만들고, 유저의 신뢰는 100%로 끌어올리며, 핵심 수익 모델은 완벽하게 방어한다.
 - 구성 요소 (MVP ~ 소규모 단계까지 비용 없이 운영 가능):
@@ -343,7 +326,7 @@
   - 데이터 백엔드 (비밀 금고): Oracle Cloud A1 VPS + PocketBase. 포켓베이스(단일 Go 바이너리)를 평생 무료 인스턴스에 올려 암호화된 E2EE 데이터와 프라이빗 파일을 로컬 디스크(`pb_data`)에 저장 및 동기화.
   - 퍼블릭 에셋 스토리지 & CDN: Cloudflare R2. Hub에 공유된 평문 에셋(캐릭터 썸네일, 배경 등) 저장. AWS S3와 달리 Egress 비용 100% 무료.
 
-19. 오픈소스 전략 (Open Source vs Closed Source)
+18. 오픈소스 전략 (Open Source vs Closed Source)
 
 - 핵심 원칙: 보안에 대한 신뢰는 코드로 증명하되, 서비스의 핵심 자산과 수익 모델은 철저히 방어한다.
 - 공개 영역 (Open-Source): 유저가 "내 데이터와 API 키가 안전한가?"를 직접 검증할 수 있는 보안 핵심 구역.
@@ -353,3 +336,50 @@
 - 비공개 영역 (Closed-Source): 서비스의 핵심 자산이자 수익 모델과 직결된 구역.
   - 수익 및 구독 관리 로직: 결제사(Stripe/포트원 등) 웹훅 처리, 유저 등급(Free/Pro) 판별, 동기화 쿼터 계산 및 업로드 차단 로직. (우회 해킹 방지)
   - Hub 커뮤니티 백엔드: 유저 공유 콘텐츠 서빙 로직. 공개 시 UI만 바꾼 클론 서비스가 동일한 생태계를 구축 가능하므로 절대 비공개. 플랫폼의 진짜 해자(Moat).
+
+19. 이벤트 시스템 (EventBus — Unified Hook/Trigger/Script)
+
+- RisuAI 문제 분석:
+  - Trigger(노코드 GUI 블록)와 Script(Regex/Lua/Python) 두 시스템이 분리되어 있으나 실행 시점이 겹치고 trigger 안에서 script를 호출하는 등 경계가 모호.
+  - 전체 파이프라인이 `sendChat()` 1973줄 단일 함수에 하드코딩. 트리거 실행 시점이 함수 내부 특정 라인에 고정.
+  - 6가지 트리거 타입과 스크립트 실행 타입이 별개 열거형으로 관리되어 혼란 가중.
+- 통합 설계 원칙: Trigger와 Script를 분리하지 않고 **단일 EventBus**로 통합. 구현 방식(Regex, Lua, 노코드 블록)은 리스너의 내부 관심사일 뿐, 버스는 이벤트 이름과 리스너만 관리.
+- EventBus 호출 모드 (하나의 버스, 두 가지 모드):
+  - **pipe(event, data)**: 변환 체이닝. 각 리스너가 데이터를 받아 변환 후 반환하면 다음 리스너의 입력이 됨. 파이프라인 데이터 변환용.
+  - **emit(event, data)**: 팬아웃 알림. 모든 리스너에 독립 전달, 리턴값 무시. 시스템 이벤트/유저 액션 알림용.
+  - 등록/해제는 둘 다 on/off. 리스너 저장소도 단일 Map. 호출하는 쪽(Publisher)이 pipe로 부르면 체이닝, emit으로 부르면 팬아웃. Subscriber는 모드를 알 필요 없음.
+- 이벤트 네이밍 컨벤션: `{category}:{action}` 통일.
+  - 파이프라인(변환): `pipe:input`, `pipe:output`, `pipe:request`, `pipe:display`.
+  - 생성 라이프사이클(알림): `gen:started`, `gen:chunk`, `gen:completed`, `gen:error`, `gen:aborted`.
+  - 채팅/메시지/앱 상태(알림): `chat:selected`, `msg:created`, `sync:complete`, `char:loaded` 등.
+  - 유저 액션(커스텀): `btn:{name}`, `custom:{name}`.
+  - `pipe:` 접두사가 있으면 리스너가 "리턴값이 의미 있다"는 걸 이름만 보고 인지 가능.
+- 파이프라인 실행 흐름: 유저 입력 → pipe:input(텍스트 변환) → PromptBuilder(프롬프트 조립) → pipe:request(페이로드 변환) → LLM 호출 → pipe:output(응답 변환, DB 저장 전) → pipe:display(화면 표시용 변환, 원본 불변).
+  - pipe:output ≠ pipe:display 분리가 핵심: output은 영구 변환(DB 저장 전), display는 렌더링 전용(원본 유지).
+- 시스템 이벤트 활용:
+  - 앱 내부의 주요 상태 변화도 EventBus로 emit. 캐릭터 스크립트가 시스템 이벤트를 구독하여 커스텀 로직 실행 가능 (예: `chat:selected` → 변수 초기화, `gen:completed` → 턴 카운팅).
+  - 비동기 유저 액션도 이벤트로 통합: UI 버튼에 이벤트 이름 할당 → 리스너가 AI 재호출, 변수 조작 등 자유 실행.
+- 리스너 우선순위: priority 값(낮을수록 먼저 실행)으로 같은 이벤트의 리스너 실행 순서 제어.
+- 소유자 기반 벌크 관리: 리스너 등록 시 ownerId 지정. 캐릭터/모듈 언로드 시 해당 소유자의 모든 리스너 일괄 해제.
+- 기존 Script 서비스와의 연동:
+  - DB 스키마 변경 없음: ScriptFields는 이미 E2E 암호화 Blob이므로 JSON 내부 구조만 확장.
+  - 기존 placement 필드 → events 배열로 일반화 (하위호환: `placement: 'onOutput'` → `events: ['pipe:output']` 자동 변환).
+  - ScriptFields 유니온 확장: RegexScript(기존 regex/replacement) + CodeScript(language, code) + 향후 VisualScript(노코드 블록).
+
+20. 렌더링 파이프라인 (Streaming Chat Display)
+
+- 핵심 문제: 스트리밍 중 청크마다 전체 메시지를 마크다운 파싱 + DOM 교체하면 성능 폭발. 디바운스만으로는 시각적 끊김.
+- Two-Track State (이중 상태 관리):
+  - 확정 메시지 (Confirmed): DB에 저장된 완성 메시지. messages 스토어에 평문 배열로 보유.
+  - 생성 중 메시지 (Ephemeral): LLM 스트리밍 도중의 미완성 텍스트. generationTasks 스토어에 chatId 키 Map으로 보유. DB 미저장.
+  - displayMessages derived 스토어: 확정 + 생성 중을 합쳐 UI에 단일 리스트로 제공. 생성 완료 → createMessage(암호화 + DB 저장) → clearTask. 순서: 생성 먼저, 삭제 나중 (시각적 갭 방지).
+- 스트리밍 렌더링 전략:
+  - 청크 도착 시 generationTasks Map 교체 → displayMessages 재계산.
+  - 마크다운 파싱은 컴포넌트 레벨에서 pipe:display 이벤트를 통해 실행. 디바운스 적용. 스트리밍 도중에는 매 청크가 아닌 디바운스된 간격으로만 파싱.
+  - DOM 업데이트: diffDOM으로 이전 렌더링 결과와 diff → 변경된 노드만 패치. 전체 innerHTML 교체 방지.
+  - 스크롤 관리: 컴포넌트 로컬 상태. 스토어가 아닌 UI 레벨 관심사.
+- GenerationManager 역할:
+  - StreamProvider 인터페이스를 받아 스트리밍 라이프사이클만 관리: startTask → 청크 수집 → createMessage → clearTask.
+  - 에러 처리: AbortError(유저 중단, 부분 저장 옵션), 일반 에러(UI 인라인 표시), 빈 응답(에러 취급).
+  - LLM 종류 무관: StreamProvider 구현체만 교체.
+- 파이프라인 오케스트레이션: UI 진입점 → pipe:input → PromptBuilder → pipe:request → GenerationManager → pipe:output → DB 저장. pipeline/이 generation/를 호출하는 상위 레이어.
