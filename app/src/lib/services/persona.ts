@@ -1,5 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type PersonaRecord } from '../adapters/db/index.js';
+import { SyncService } from '../core/api/sync.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
 import type { AssetRef } from '../shared/types.js';
@@ -84,10 +85,12 @@ export class PersonaService {
 
 		try {
 			const enc = await encryptText(masterKey, JSON.stringify(resolved));
-			await localDB.putRecord<PersonaRecord>('personas', {
+			const newRecord: PersonaRecord = {
 				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
-			});
+			};
+			await localDB.putRecord<PersonaRecord>('personas', newRecord);
+			void SyncService.pushRecord('personas', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create persona', error);
@@ -113,6 +116,7 @@ export class PersonaService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('personas', record);
+			void SyncService.pushRecord('personas', record);
 
 			return { id, ...updated };
 		} catch (error) {
@@ -125,6 +129,7 @@ export class PersonaService {
 	static async delete(id: string): Promise<void> {
 		try {
 			await localDB.softDeleteRecord('personas', id);
+			void SyncService.pushById('personas', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete persona', error);

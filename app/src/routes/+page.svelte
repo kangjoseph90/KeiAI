@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { initSession } from '$lib/session';
 	import { refreshAuthState } from '$lib/stores/auth';
+	import { SyncService } from '$lib/core/api/sync';
 	import { BookText, Layers, Plug, Settings, User, Users } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { loadGlobalState, selectCharacter, selectChat, clearActiveCharacter, clearActiveChat, activeCharacter, activeChat } from '$lib/stores';
@@ -102,6 +103,8 @@
 		try {
 			await initSession();
 			refreshAuthState();
+			SyncService.startAutoSync();
+			await SyncService.syncAll();
 			await loadGlobalState();
 			ready = true;
 
@@ -115,6 +118,7 @@
 	});
 
 	onDestroy(() => {
+		SyncService.stopAutoSync();
 		_cleanupHash?.();
 	});
 

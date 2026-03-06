@@ -30,6 +30,8 @@ import {
 } from '../../session.js';
 import { appUser, type UserRecord } from '../../adapters/user/index.js';
 import { refreshAuthState } from '../../stores/auth.js';
+import { clearActiveCharacter, loadGlobalState } from '../../stores/index.js';
+import { SyncService } from './sync.js';
 
 export class AuthService {
 	/**
@@ -116,6 +118,15 @@ export class AuthService {
 		// Update the existing UserRecord in-place (may already exist as a guest record
 		// with this same id, or be a fresh login on a new device).
 		const existing = await appUser.getUser(serverUserId);
+
+		// If there is no existing local record (IndexedDB wiped, first install on this
+		// device, or first login ever), the sync cursors in localStorage either don't
+		// exist or are stale from a previous install. Reset them so the first
+		// syncAll() below performs a full pull and restores all remote data.
+		if (!existing) {
+			await SyncService.resetCursors(serverUserId);
+		}
+
 		await appUser.saveUser({
 			id: serverUserId,
 			createdAt: existing?.createdAt ?? Date.now(),
@@ -127,6 +138,9 @@ export class AuthService {
 
 		await setSession(serverUserId, lockedKey, false);
 		refreshAuthState();
+		await SyncService.syncAll();
+		clearActiveCharacter();
+		await loadGlobalState();
 	}
 
 	/**

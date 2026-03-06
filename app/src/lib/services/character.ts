@@ -4,6 +4,7 @@ import {
 	type CharacterSummaryRecord,
 	type CharacterDataRecord
 } from '../adapters/db/index.js';
+import { SyncService } from '../core/api/sync.js';
 import type { OrderedRef, FolderDef, AssetRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
@@ -143,26 +144,21 @@ export class CharacterService {
 			const summaryEnc = await encryptText(masterKey, JSON.stringify(resolvedSummary));
 			const dataEnc = await encryptText(masterKey, JSON.stringify(resolvedData));
 
+			const summaryRecord: CharacterSummaryRecord = {
+				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
+				encryptedData: summaryEnc.ciphertext, encryptedDataIV: summaryEnc.iv
+			};
+			const dataRecord: CharacterDataRecord = {
+				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
+				encryptedData: dataEnc.ciphertext, encryptedDataIV: dataEnc.iv
+			};
+
 			await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
-				await localDB.putRecord<CharacterSummaryRecord>('characterSummaries', {
-					id,
-					userId,
-					createdAt: now,
-					updatedAt: now,
-					isDeleted: false,
-					encryptedData: summaryEnc.ciphertext,
-					encryptedDataIV: summaryEnc.iv
-				});
-				await localDB.putRecord<CharacterDataRecord>('characterData', {
-					id,
-					userId,
-					createdAt: now,
-					updatedAt: now,
-					isDeleted: false,
-					encryptedData: dataEnc.ciphertext,
-					encryptedDataIV: dataEnc.iv
-				});
+				await localDB.putRecord<CharacterSummaryRecord>('characterSummaries', summaryRecord);
+				await localDB.putRecord<CharacterDataRecord>('characterData', dataRecord);
 			});
+			void SyncService.pushRecord('characterSummaries', summaryRecord, true);
+			void SyncService.pushRecord('characterData', dataRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create character', error);
@@ -191,6 +187,7 @@ export class CharacterService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('characterSummaries', record);
+			void SyncService.pushRecord('characterSummaries', record);
 
 			return { id, ...updated };
 		} catch (error) {
@@ -219,6 +216,7 @@ export class CharacterService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('characterData', record);
+			void SyncService.pushRecord('characterData', record);
 
 			return updated;
 		} catch (error) {
@@ -237,6 +235,8 @@ export class CharacterService {
 		let updatedSummary: CharacterSummaryFields | undefined;
 		let updatedData: CharacterDataFields | undefined;
 		const finalUpdatedAt = Date.now();
+		let summaryRecordToSync: CharacterSummaryRecord | undefined;
+		let dataRecordToSync: CharacterDataRecord | undefined;
 
 		try {
 			await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
@@ -263,6 +263,7 @@ export class CharacterService {
 					summaryRecord.encryptedDataIV = summaryEnc.iv;
 					summaryRecord.updatedAt = finalUpdatedAt;
 					await localDB.putRecord('characterSummaries', summaryRecord);
+					summaryRecordToSync = summaryRecord;
 				} else {
 					updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
 				}
@@ -275,6 +276,7 @@ export class CharacterService {
 					dataRecord.encryptedDataIV = dataEnc.iv;
 					dataRecord.updatedAt = finalUpdatedAt;
 					await localDB.putRecord('characterData', dataRecord);
+					dataRecordToSync = dataRecord;
 				} else {
 					updatedData = await decryptDataFields(masterKey, dataRecord);
 				}
@@ -288,6 +290,9 @@ export class CharacterService {
 			throw new AppError('NOT_FOUND', 'Character not found');
 		}
 
+		if (summaryRecordToSync) void SyncService.pushRecord('characterSummaries', summaryRecordToSync);
+		if (dataRecordToSync) void SyncService.pushRecord('characterData', dataRecordToSync);
+
 		return {
 			id,
 			...updatedSummary,
@@ -296,6 +301,7 @@ export class CharacterService {
 	}
 
 	static async delete(id: string): Promise<void> {
+		const deleteTs = Date.now();
 		try {
 			await localDB.transaction(
 				[
@@ -325,6 +331,10 @@ export class CharacterService {
 					await localDB.softDeleteRecord('characterData', id);
 				}
 			);
+			try {
+				const { userId } = getActiveSession();
+				void SyncService.pushRecentWrites(userId, deleteTs);
+			} catch { /* not logged in */ }
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete character', error);

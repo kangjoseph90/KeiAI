@@ -1,5 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type ScriptRecord } from '../adapters/db/index.js';
+import { SyncService } from '../core/api/sync.js';
 import { deepMerge } from '../shared/defaults.js';
 import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards.js';
 import { AppError } from '../shared/errors.js';
@@ -92,10 +93,12 @@ export class ScriptService {
 
 		try {
 			const enc = await encryptText(masterKey, JSON.stringify(resolved));
-			await localDB.putRecord<ScriptRecord>('scripts', {
+			const newRecord: ScriptRecord = {
 				id, userId, ownerId, createdAt: now, updatedAt: now, isDeleted: false,
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
-			});
+			};
+			await localDB.putRecord<ScriptRecord>('scripts', newRecord);
+			void SyncService.pushRecord('scripts', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create script', error);
@@ -127,6 +130,7 @@ export class ScriptService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('scripts', record);
+			void SyncService.pushRecord('scripts', record);
 
 			return { id, ownerId: record.ownerId, ...updated };
 		} catch (error) {
@@ -141,6 +145,7 @@ export class ScriptService {
 		}
 		try {
 			await localDB.softDeleteRecord('scripts', id);
+			void SyncService.pushById('scripts', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete script', error);

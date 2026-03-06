@@ -1,5 +1,6 @@
 import { encryptText, decryptText, getActiveSession } from '../session.js';
 import { localDB, type SettingsRecord } from '../adapters/db/index.js';
+import { SyncService } from '../core/api/sync.js';
 import type { OrderedRef, FolderDef, ResourceRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
@@ -66,8 +67,7 @@ export class SettingsService {
 		try {
 			const enc = await encryptText(masterKey, JSON.stringify(settings));
 			const existing = await localDB.getRecord<SettingsRecord>('settings', userId);
-
-			await localDB.putRecord<SettingsRecord>('settings', {
+			const settingsRecord: SettingsRecord = {
 				id: userId,
 				userId,
 				createdAt: existing?.createdAt ?? Date.now(),
@@ -75,7 +75,9 @@ export class SettingsService {
 				isDeleted: false,
 				encryptedData: enc.ciphertext,
 				encryptedDataIV: enc.iv
-			});
+			};
+			await localDB.putRecord<SettingsRecord>('settings', settingsRecord);
+			void SyncService.pushRecord('settings', settingsRecord);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to save settings', error);
@@ -106,8 +108,7 @@ export class SettingsService {
 
 			const updated: AppSettings = deepMerge(current, changes as Record<string, unknown>);
 			const enc = await encryptText(masterKey, JSON.stringify(updated));
-
-			await localDB.putRecord<SettingsRecord>('settings', {
+			const updatedRecord: SettingsRecord = {
 				id: userId,
 				userId,
 				createdAt: record?.createdAt ?? Date.now(),
@@ -115,7 +116,9 @@ export class SettingsService {
 				isDeleted: false,
 				encryptedData: enc.ciphertext,
 				encryptedDataIV: enc.iv
-			});
+			};
+			await localDB.putRecord<SettingsRecord>('settings', updatedRecord);
+			void SyncService.pushRecord('settings', updatedRecord);
 
 			return updated;
 		} catch (error) {

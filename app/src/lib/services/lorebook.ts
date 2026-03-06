@@ -1,5 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type LorebookRecord } from '../adapters/db/index.js';
+import { SyncService } from '../core/api/sync.js';
 import { deepMerge } from '../shared/defaults.js';
 import { assertLorebookOwnedBy, assertOwnedResourceParentExists } from './guards.js';
 import { AppError } from '../shared/errors.js';
@@ -93,10 +94,12 @@ export class LorebookService {
 
 		try {
 			const enc = await encryptText(masterKey, JSON.stringify(resolved));
-			await localDB.putRecord<LorebookRecord>('lorebooks', {
+			const newRecord: LorebookRecord = {
 				id, userId, ownerId, createdAt: now, updatedAt: now, isDeleted: false,
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
-			});
+			};
+			await localDB.putRecord<LorebookRecord>('lorebooks', newRecord);
+			void SyncService.pushRecord('lorebooks', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create lorebook', error);
@@ -128,6 +131,7 @@ export class LorebookService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('lorebooks', record);
+			void SyncService.pushRecord('lorebooks', record);
 
 			return { id, ownerId: record.ownerId, ...updated };
 		} catch (error) {
@@ -142,6 +146,7 @@ export class LorebookService {
 		}
 		try {
 			await localDB.softDeleteRecord('lorebooks', id);
+			void SyncService.pushById('lorebooks', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete lorebook', error);

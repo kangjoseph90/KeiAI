@@ -37,7 +37,7 @@ migrate((app) => {
 
     // 2. Create E2EE Encrypted Tables securely
     const authRule = "userId = @request.auth.id";
-    const createRule = "@request.auth.id != ''";
+    const createRule = "userId = @request.auth.id";
 
     function createEncryptedTable(name, extraFields) {
         let exists = false;
@@ -64,6 +64,8 @@ migrate((app) => {
             maxSelect: 1
         }));
 
+        collection.fields.add(new Field({ name: "createdAt", type: "number", required: true }));
+        collection.fields.add(new Field({ name: "updatedAt", type: "number", required: true }));
         collection.fields.add(new Field({ name: "encryptedData", type: "text", required: true }));
         collection.fields.add(new Field({ name: "encryptedDataIV", type: "text", required: true }));
         collection.fields.add(new Field({ name: "isDeleted", type: "bool" }));
@@ -76,10 +78,10 @@ migrate((app) => {
 
         app.save(collection);
 
-        // Add index for fast sync queries
+        // Add index for fast per-user sync queries using the client-authored LWW timestamp.
         try {
             app.db()
-                .newQuery(`CREATE INDEX IF NOT EXISTS "idx_${name}_sync" ON "${name}" (userId, \`updated\`)`)
+            .newQuery(`CREATE INDEX IF NOT EXISTS "idx_${name}_sync" ON "${name}" (userId, updatedAt)`)
                 .execute();
         } catch (_) {}
     }
