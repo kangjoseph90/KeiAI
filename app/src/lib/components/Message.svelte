@@ -8,8 +8,8 @@
 	 *   - 'error'      (failed generation, dismissable)
 	 *
 	 * Rendering pipeline:
-	 *   message.content (pipe:output applied by pipeline.ts)
-	 *     → TODO: pipe:display (markdown parse, display regex scripts)
+	 *   message.content (output scripts applied by pipeline.ts)
+	 *     → TODO: display scripts (markdown parse, display regex)
 	 *     → TODO: morphdom DOM diffing + enter animation
 	 *     → plain text for now
 	 *
@@ -51,8 +51,8 @@
 
 	$: isUser = message.role === 'user';
 
-	// TODO: pipe:display — run message.content through EventBus pipe:display
-	// to get rendered HTML (markdown, display regex scripts).
+	// TODO: display scripts — run message.content through display regex scripts
+	// to get rendered HTML (markdown, display regex).
 	// Then apply morphdom DOM diffing for smooth streaming updates + animations.
 	// For now: plain text pass-through.
 	$: displayContent = message.content;
@@ -117,7 +117,7 @@
 	{:else if message.displayStatus === 'generating'}
 		<div class="rounded-2xl bg-muted px-4 py-2 text-sm text-foreground">
 			{#if displayContent}
-				<!-- TODO: replace with morphdom-diffed HTML node once pipe:display is wired -->
+				<!-- TODO: replace with morphdom-diffed HTML node once display scripts are wired -->
 				{displayContent}<span
 					class="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-foreground/60 align-middle"
 				></span>
@@ -135,7 +135,7 @@
 				? 'bg-primary text-primary-foreground'
 				: 'bg-muted text-foreground'}"
 		>
-			<!-- TODO: replace with morphdom-diffed HTML once pipe:display is wired -->
+			<!-- TODO: replace with morphdom-diffed HTML once display scripts are wired -->
 			{displayContent}
 		</div>
 	{/if}
