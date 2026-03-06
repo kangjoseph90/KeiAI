@@ -11,20 +11,31 @@
 // so that router callbacks (which run in isolated contexts) can access them.
 
 if (!$app.store().has("checkRate")) {
-    var _rateBuckets = {};
+    var rateBuckets = {};
+    var requestCounter = 0;
     
     $app.store().set("checkRate", function(key, maxRequests, windowMs) {
         var now = Date.now();
-        if (!_rateBuckets[key]) _rateBuckets[key] = [];
-        _rateBuckets[key] = _rateBuckets[key].filter(function (t) { return t > now - windowMs; });
-        if (_rateBuckets[key].length === 0) {
-            delete _rateBuckets[key];
-        } else if (_rateBuckets[key].length >= maxRequests) {
+
+        if (++requestCounter > 100) {
+            requestCounter = 0;
+            var maxWindowMs = 300000; 
+            for (var k in rateBuckets) {
+                rateBuckets[k] = rateBuckets[k].filter(function(t) { return t > now - maxWindowMs; });
+                if (rateBuckets[k].length === 0) {
+                    delete rateBuckets[k];
+                }
+            }
+        }
+
+        if (!rateBuckets[key]) rateBuckets[key] = [];
+        rateBuckets[key] = rateBuckets[key].filter(function (t) { return t > now - windowMs; });
+        
+        if (rateBuckets[key].length >= maxRequests) {
             return false;
         }
         
-        if (!_rateBuckets[key]) _rateBuckets[key] = [];
-        _rateBuckets[key].push(now);
+        rateBuckets[key].push(now);
         return true;
     });
 
