@@ -1,2 +1,3 @@
-export { GenerationManager } from './manager.js';
-export type { StreamProvider, GenerationOptions } from './manager.js';
+export { runChat, stop, dismiss } from './pipeline.js';
+export type { RunChatOptions } from './pipeline.js';
+export type { StreamProvider } from '../llm/types.js';
