@@ -1,5 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type ModuleRecord } from '../adapters/db/index.js';
+import { SyncService } from '../core/api/sync.js';
 import type { AssetRef, FolderDef, OrderedRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
@@ -87,10 +88,12 @@ export class ModuleService {
 
 		try {
 			const enc = await encryptText(masterKey, JSON.stringify(resolved));
-			await localDB.putRecord<ModuleRecord>('modules', {
+			const newRecord: ModuleRecord = {
 				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
-			});
+			};
+			await localDB.putRecord<ModuleRecord>('modules', newRecord);
+			void SyncService.pushRecord('modules', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create module', error);
@@ -115,6 +118,7 @@ export class ModuleService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('modules', record);
+			void SyncService.pushRecord('modules', record);
 
 			return { id, ...updated };
 		} catch (error) {
@@ -132,12 +136,17 @@ export class ModuleService {
 	}
 
 	static async delete(id: string): Promise<void> {
+		const deleteTs = Date.now();
 		try {
 			await localDB.transaction(['lorebooks', 'scripts', 'modules'], 'rw', async () => {
 				await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
 				await localDB.softDeleteByIndex('scripts', 'ownerId', id);
 				await localDB.softDeleteRecord('modules', id);
 			});
+			try {
+				const { userId } = getActiveSession();
+				void SyncService.pushRecentWrites(userId, deleteTs);
+			} catch { /* not logged in */ }
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete module', error);

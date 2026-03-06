@@ -1,5 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type MessageRecord } from '../adapters/db/index.js';
+import { SyncService } from '../core/api/sync.js';
 import { generateKeyBetween } from 'fractional-indexing';
 import { deepMerge } from '../shared/defaults.js';
 import { assertChatExists, assertMessageInChat } from './guards.js';
@@ -151,10 +152,12 @@ export class MessageService {
 
 		try {
 			const enc = await encryptText(masterKey, JSON.stringify(resolved));
-			await localDB.putRecord<MessageRecord>('messages', {
+			const newRecord: MessageRecord = {
 				id, userId, chatId, sortOrder, createdAt: now, updatedAt: now, isDeleted: false,
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
-			});
+			};
+			await localDB.putRecord<MessageRecord>('messages', newRecord);
+			void SyncService.pushRecord('messages', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create message', error);
@@ -187,6 +190,7 @@ export class MessageService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('messages', record);
+			void SyncService.pushRecord('messages', record);
 
 			return { id, chatId: record.chatId, sortOrder: record.sortOrder, ...updated };
 		} catch (error) {
@@ -202,6 +206,7 @@ export class MessageService {
 		}
 		try {
 			await localDB.softDeleteRecord('messages', id);
+			void SyncService.pushById('messages', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete message', error);

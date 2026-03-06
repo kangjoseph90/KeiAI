@@ -13,6 +13,7 @@ import { generateMasterKey, encrypt, decrypt, type EncryptedData } from './core/
 import { appKV } from './adapters/kv/index.js';
 import { appUser, type UserRecord } from './adapters/user/index.js';
 import { generateId } from './shared/id.js';
+import { pb } from './core/api/pb.js';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
@@ -72,6 +73,17 @@ export async function initSession(): Promise<{
 			await setSession(user.id, user.masterKey, user.isGuest);
 			return getActiveSession();
 		}
+	}
+
+	// IndexedDB was cleared (cache eviction, browser storage pressure, etc.).
+	// If PocketBase still holds a valid JWT from a previous session, the auth
+	// state would be inconsistent: the UI would show "logged in" but the in-memory
+	// session would be a new guest with no data and sync would never run
+	// (SyncService bails early when isGuest: true).
+	// Drop the stale token so the user sees a clean guest state and the login
+	// screen prompts them to re-authenticate and restore their master key.
+	if (pb.authStore.isValid) {
+		pb.authStore.clear();
 	}
 
 	return await createGuestUser();
