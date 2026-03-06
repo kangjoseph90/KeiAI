@@ -55,7 +55,7 @@ export function appendChunk(chatId: string, chunk: string): void {
 
 /**
  * Replace the task's content with a fully processed value.
- * Used by the pipeline after applying pipe:output to accumulated raw content.
+ * Used by the pipeline after applying output scripts to accumulated raw content.
  * No-op if the task was already cleared.
  */
 export function setTaskContent(chatId: string, content: string): void {

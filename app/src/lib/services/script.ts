@@ -10,7 +10,7 @@ export interface ScriptFields {
 	name: string;
 	regex: string;
 	replacement: string;
-	event: 'pipe:input' | 'pipe:request' | 'pipe:output' | 'pipe:display';
+	placement: 'input' | 'request' | 'output' | 'display';
 	enabled: boolean;
 }
 
@@ -25,7 +25,7 @@ const defaultScriptFields: ScriptFields = {
 	name: '',
 	regex: '',
 	replacement: '',
-	event: 'pipe:display',
+	placement: 'display',
 	enabled: true
 };
 

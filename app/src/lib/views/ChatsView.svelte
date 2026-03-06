@@ -56,7 +56,7 @@
 			name: newNameInput,
 			regex: '',
 			replacement: '',
-			event: 'pipe:input',
+			placement: 'input',
 			enabled: true
 		});
 		newNameInput = '';

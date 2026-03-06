@@ -2,25 +2,30 @@
  * Chat Pipeline — KeiAI
  *
  * runChat(chatId, provider) is the single entry point for a full AI
- * response cycle. It only knows the chatId — all context loading,
- * prompt building, and EventBus pipes are wired here (or TODO'd here).
+ * response cycle. It only knows the chatId — all context is loaded
+ * directly from the Service Layer (DB) at call time.
+ *
+ * Design: Stateless pipeline.
+ *   - Does NOT read from Svelte stores (stores are UI cache only).
+ *   - Snapshots all needed data (character, lorebooks, scripts, preset)
+ *     from Service Layer at the start of each run. This ensures background
+ *     generations are isolated from UI context switches.
+ *   - Only writes to the generation store (ephemeral, chatId-keyed).
  *
  * Current state:
  *   ✅ Streaming lifecycle (startTask → chunks → finalize)
  *   ✅ Abort handling (user Stop → optional partial save)
  *   ✅ Error surfacing (setTaskError → UI bubble stays for dismiss)
- *   🔲 TODO: buildContext(chatId)
+ *   🔲 TODO: buildContext(chatId) — snapshot from services
  *   🔲 TODO: PromptBuilder
- *   🔲 TODO: pipe:request  (EventBus)
- *   🔲 TODO: pipe:output   (EventBus, applied per-chunk on accumulated raw)
- *   🔲 TODO: gen:* events  (EventBus emit)
+ *   🔲 TODO: runScripts (output transform, applied per-chunk)
  *
  * Rendering note:
- *   pipe:output lives here (content transform before DB save).
- *   pipe:display lives in the Message component (raw content → HTML,
- *   markdown parsing, display regex scripts, then morphdom diff).
- *   The two pipes are intentionally separated — pipe:output is
- *   permanent (stored), pipe:display is ephemeral (render-only).
+ *   Output scripts run here (content transform before DB save).
+ *   Display scripts run in the Message component (raw content → HTML,
+ *   markdown parsing, display regex, then morphdom diff).
+ *   The two are intentionally separated — output is permanent (stored),
+ *   display is ephemeral (render-only).
  */
 
 import {
@@ -59,16 +64,22 @@ export async function runChat(
 ): Promise<void> {
 	const opts = { ...defaultOptions, ...options };
 
-	// ── TODO: buildContext ────────────────────────────────────────────
+	// ── TODO: buildContext(chatId) ────────────────────────────────────
+	// Snapshot all needed data from Service Layer (NOT from stores).
 	// const ctx = await buildContext(chatId);
-	// Collects: character, chat, activePreset, lorebooks, scripts, persona
+	//   → CharacterService.getDetail(charId)
+	//   → LorebookService.listByOwner(charId)
+	//   → ScriptService.listByOwner(charId)
+	//   → PresetService.getDetail(presetId)
+	// This frozen context is used for the entire run, isolated from
+	// UI context switches (user navigating to different characters).
 
 	// ── TODO: PromptBuilder ───────────────────────────────────────────
 	// let prompt = PromptBuilder.build(ctx);
 
-	// ── TODO: pipe:request ───────────────────────────────────────────
-	// Transforms the assembled request payload before LLM call.
-	// prompt = await eventBus.pipe('pipe:request', prompt);
+	// ── TODO: runScripts (request transform) ──────────────────────────
+	// Apply ctx.scripts with placement 'request' to the prompt payload.
+	// prompt = runScripts(ctx.scripts, 'request', prompt);
 
 	// ── 1. Open ephemeral streaming bubble in UI ──────────────────────
 	const controller = startTask(chatId);
@@ -79,16 +90,14 @@ export async function runChat(
 		for await (const chunk of provider.stream(controller.signal)) {
 			rawContent += chunk;
 
-			// ── TODO: pipe:output ─────────────────────────────────────
-			// Applied to the *accumulated* raw content on every chunk so
-			// the user sees transformed content in real-time during streaming.
-			// Variable substitution, persistent regex replacements, etc.
-			// const processedContent = await eventBus.pipe('pipe:output', rawContent);
-			const processedContent = rawContent; // mock: identity pass-through
+			// ── TODO: runScripts (output transform) ───────────────────
+			// Apply ctx.scripts with placement 'output' to accumulated
+			// raw content. Runs on every chunk so the user sees
+			// transformed content in real-time during streaming.
+			// const processedContent = runScripts(ctx.scripts, 'output', rawContent);
+			const processedContent = rawContent; // pass-through until scripts are wired
 
 			setTaskContent(chatId, processedContent);
-
-			// ── TODO: eventBus.emit('gen:chunk', { chatId, chunk }); ──
 		}
 	} catch (error) {
 		if (error instanceof DOMException && error.name === 'AbortError') {
@@ -115,11 +124,8 @@ export async function runChat(
 	}
 
 	// ── 4. Finalize ───────────────────────────────────────────────────
-	// Use the pipe:output-processed content stored in the task (not raw).
 	const finalContent = getTask(chatId)?.content ?? rawContent;
 	await finalize(chatId, finalContent);
-
-	// ── TODO: eventBus.emit('gen:completed', { chatId }); ────────────
 }
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
@@ -150,3 +156,4 @@ async function finalize(chatId: string, content: string): Promise<void> {
 		setTaskError(chatId, msg);
 	}
 }
+
