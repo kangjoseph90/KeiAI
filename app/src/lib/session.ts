@@ -12,6 +12,7 @@
 import { generateMasterKey, encrypt, decrypt, type EncryptedData } from './core/crypto/index.js';
 import { appKV } from './adapters/kv/index.js';
 import { appUser, type UserRecord } from './adapters/user/index.js';
+import { generateId } from './shared/id.js';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
@@ -79,18 +80,19 @@ export async function initSession(): Promise<{
 /**
  * Create a brand new offline guest user with a fresh master key.
  * The key is generated with extractable: true so that when the user
+ * registers, the raw bytes can be exported, wrapped with the
+ * password-derived key Y, and uploaded to the server.
  */
 export async function createGuestUser(): Promise<{
 	userId: string;
 	masterKey: CryptoKey;
 	isGuest: boolean;
 }> {
-	const id = crypto.randomUUID();
+	const id = generateId();
 	const guestKey = await generateMasterKey(); // extractable: true
 
 	await appUser.saveUser({
 		id,
-		userId: id,
 		createdAt: Date.now(),
 		updatedAt: Date.now(),
 		isDeleted: false,
@@ -104,29 +106,6 @@ export async function createGuestUser(): Promise<{
 }
 
 // ─── Master Key Lifecycle Helpers ────────────────────────────────────
-
-/**
- * Downgrade the local master key to non-extractable.
- * Called after successful registration.
- */
-export async function lockMasterKey(userId: string, masterKey: CryptoKey): Promise<void> {
-	const rawM = new Uint8Array((await crypto.subtle.exportKey('raw', masterKey)) as ArrayBuffer);
-	const lockedKey = await crypto.subtle.importKey('raw', rawM, { name: 'AES-GCM' }, false, [
-		'encrypt',
-		'decrypt'
-	]);
-	rawM.fill(0);
-
-	const user = await appUser.getUser(userId);
-	if (!user) throw new Error('User not found.');
-
-	user.masterKey = lockedKey;
-	user.updatedAt = Date.now();
-	await appUser.saveUser(user);
-
-	// Update in-memory session with the locked key
-	await setSession(userId, lockedKey, false);
-}
 
 /**
  * Upgrade the local master key back to extractable.

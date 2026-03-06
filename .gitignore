@@ -1,0 +1,15 @@
+# PocketBase secrets (never commit this)
+pocketbase/pocketbase.config.json
+
+# PocketBase data (local only)
+pocketbase/pb_data/
+
+# PocketBase binary and metadata
+pocketbase/pocketbase.exe
+pocketbase/pocketbase
+pocketbase/CHANGELOG.md
+pocketbase/LICENSE.md
+
+# OS
+.DS_Store
+Thumbs.db

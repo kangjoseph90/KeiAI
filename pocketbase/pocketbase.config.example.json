@@ -1,0 +1,7 @@
+{
+  "adminEmail": "admin@example.com",
+  "adminPassword": "change_me_strong_password",
+  "dummySaltSecret": "change_me_random_32_char_secret!!",
+  "host": "127.0.0.1",
+  "port": 8090
+}

@@ -7,6 +7,7 @@ import { SettingsService } from '../services/index.js';
 import { generateSortOrder, sortByRefs } from '../shared/ordering.js';
 import { modules, appSettings, moduleResources } from './state.js';
 import { AppError } from '../shared/errors.js';
+import { generateId } from '../shared/id.js';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.
@@ -268,7 +269,7 @@ export async function createModuleFolder(
 	const typeFolders = folders[folderType] ?? [];
 
 	const newFolder = {
-		id: crypto.randomUUID(),
+		id: generateId(),
 		name,
 		sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
 		parentId

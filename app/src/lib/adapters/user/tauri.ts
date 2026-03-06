@@ -105,7 +105,7 @@ export class TauriUserAdapter implements IUserAdapter {
 			 VALUES ($1, $2, $3, $4, $5, $6)`,
 			[
 				user.id,
-				user.userId,
+				user.id,
 				user.createdAt,
 				user.updatedAt,
 				user.isDeleted ? 1 : 0,
@@ -299,7 +299,6 @@ export class TauriUserAdapter implements IUserAdapter {
 
 		return {
 			id: row.id,
-			userId: row.userId,
 			createdAt: row.createdAt,
 			updatedAt: row.updatedAt,
 			isDeleted: row.isDeleted === 1,

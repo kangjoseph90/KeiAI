@@ -4,6 +4,7 @@ import { appSettings } from './state.js';
 import type { OrderedRef, FolderDef } from '../shared/types.js';
 import { generateSortOrder } from '../shared/ordering.js';
 import { AppError } from '../shared/errors.js';
+import { generateId } from '../shared/id.js';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.
@@ -37,7 +38,7 @@ export async function createGlobalFolder(
 	const typeFolders = folders[folderType] ?? [];
 
 	const newFolder: FolderDef = {
-		id: crypto.randomUUID(),
+		id: generateId(),
 		name,
 		sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
 		parentId

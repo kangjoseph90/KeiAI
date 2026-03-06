@@ -30,6 +30,7 @@ import {
 	activeCharacterId
 } from './state.js';
 import { AppError } from '$lib/shared/errors.js';
+import { generateId } from '../shared/id.js';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.
@@ -333,7 +334,7 @@ export async function createCharacterFolder(
 	const typeFolders = folders[folderType] ?? [];
 
 	const newFolder = {
-		id: crypto.randomUUID(),
+		id: generateId(),
 		name,
 		sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
 		parentId

@@ -3,6 +3,7 @@ import { localDB, type LorebookRecord } from '../adapters/db/index.js';
 import { deepMerge } from '../shared/defaults.js';
 import { assertLorebookOwnedBy, assertOwnedResourceParentExists } from './guards.js';
 import { AppError } from '../shared/errors.js';
+import { generateId } from '../shared/id.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ export class LorebookService {
 		const resolved: LorebookFields = deepMerge(defaultLorebookFields, fields as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
-		const id = crypto.randomUUID();
+		const id = generateId();
 		const now = Date.now();
 
 		try {
