@@ -4,6 +4,7 @@ import { generateKeyBetween } from 'fractional-indexing';
 import { deepMerge } from '../shared/defaults.js';
 import { assertChatExists, assertMessageInChat } from './guards.js';
 import { AppError } from '../shared/errors.js';
+import { generateId } from '../shared/id.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -129,7 +130,7 @@ export class MessageService {
 		const resolved: MessageFields = deepMerge(defaultMessageFields, fields as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
-		const id = crypto.randomUUID();
+		const id = generateId();
 		const now = Date.now();
 
 		let sortOrder = providedSortOrder;

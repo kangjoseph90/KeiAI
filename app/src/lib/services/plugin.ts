@@ -2,6 +2,7 @@ import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type PluginRecord } from '../adapters/db/index.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
+import { generateId } from '../shared/id.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -81,7 +82,7 @@ export class PluginService {
 		const resolved: PluginFields = deepMerge(defaultPluginFields, fields as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
-		const id = crypto.randomUUID();
+		const id = generateId();
 		const now = Date.now();
 
 		try {

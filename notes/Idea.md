@@ -5,7 +5,7 @@
 - 오프라인 우선 진행: 앱을 켜면 서버 연결 여부와 상관없이 먼저 'Guest ID'와 메모리용 '마스터 키(M)'를 로컬에서 즉시 발급 (IndexedDB 저장). 유저는 로그인 없이 즉각 앱 사용 가능.
 - 서버 연동 (Link Account): 이후 유저가 가입(로그인)을 결심하면, 아래의 인증 흐름을 통해 그동안 게스트로 썼던 폰의 마스터 키 M을 서버용 패키지로 포장하여 서버에 업로드 연동함.
 - 데이터 레이어 분리:
-    1. Local DB (Storage Layer): Dexie(웹), Tauri DB 등 Adapter 패턴 적용. 무조건 AES-GCM으로 암호화된 Byte Array 형태로만 저장 및 조회.
+    1. Local DB (Storage Layer): Dexie(웹) 중심. Tauri 환경에서는 캐시 휘발에 대비해 `Dexie(주) + SQLite(메타데이터 미러) + Stronghold(게스트 로컬 마스터키 백업)`의 강력한 3중 폴백 아키텍처 적용. 일반 데이터는 무조건 AES-GCM으로 암호화된 Byte Array 형태로만 저장 및 조회.
     2. Svelte Store (In-Memory Layer): 평문 변환 및 처리를 담당. 3계층(Global, Active Character, Active Chat)으로 나뉘며 방을 벗어나면 평문은 Garbage Collect 됨.
     3. UI / Prompt Engine: 스토어에 복호화되어 있는 JSON 데이터를 자유롭게 조작(정규식, 삽입 등). 로컬 DB 조작은 의식하지 않음.
 
@@ -24,7 +24,7 @@
 - API 로그인 상태 유지:
     - 매 요청마다 X를 보내지 않음.
     - [1차 통신] 이메일을 보내 salt 획득 -> [로컬 연산] X, Y 조립 -> [2차 통신] X를 보내 인증 토큰(JWT 등) 발급. 이후 통신은 이 토큰으로 처리.
-    - 만약 다른 기기에서 로그인 시, 서버에서 받은 M(Y)를 Y로 풀어 M을 획득 후 로컬 DB의 기존 게스트 데이터들을 새 M으로 몽땅 재암호화(Merge) 진행.
+    - 만약 다른 기기에서 로그인 시, 서버에서 받은 M(Y)를 Y로 풀어 M을 획득 후 로컬 DB에 새 계정용 세션을 세팅함. 기존 기기에서 쓰던 게스트 데이터는 그대로 오프라인(게스트) 상태로 독립 보존되며, 서버 계정과 병합(마이그레이션)되지 않음.
 - 마스터 키(M) 로컬 보관:
     - M을 raw bytes가 아닌 `CryptoKey` 객체 자체를 IndexedDB에 저장 (Structured Clone 활용).
     - XSS 공격자가 IndexedDB를 읽어도 opaque한 CryptoKey 핸들만 얻으며, `extractable: false`이면 `exportKey()`가 에러를 던져 raw bytes 탈취가 불가능.
@@ -53,8 +53,9 @@
     - 단일 Go 바이너리라 Oracle Cloud 평생 무료 VPS(A1 인스턴스)에 올리는 것만으로 서버 비용 제로 달성 가능.
 - 커스텀 로그인 훅 (Authentication Flow):
     - 포켓베이스 내장 `authWithPassword`를 활용하되, 클라이언트에서 미리 "Salt"를 받아 파생키(X, Y)를 계산해야 함.
-    - `GET /api/salt/:email`: 비밀번호 인증 없이 이메일로 Salt만 반환하는 커스텀 JS 훅 구축. (오픈소스로 공개하여 신뢰 확보)
-    - 받아온 Salt로 클라이언트에서 X를 계산 후, 진짜 비밀번호 대신 X를 전송해 포켓베이스를 속임(안전하게 E2EE 구현).
+    - `GET /api/salt/{email}`: 비밀번호 인증 없이 이메일로 Salt만 반환하는 커스텀 JS 훅 (이메일 스위퍼 공격을 막기 위해 미가입자에게도 더미 솔트 반환).
+    - `GET /api/recovery-bundle/{email}`: 계정 복구를 위해 복구 키 묶음(M(Z))을 반환하는 엔드포인트.
+    - `POST /api/recover-account/{email}`: 아날로그 복구 키 인증을 거쳐 서버의 비밀번호와 M(Y)를 리셋하는 엔드포인트 (Constant-Time 해시 비교 및 Rate Limit 적용).
 - 블라인드 동기화 춤 (Blind Sync Dance):
     - 로컬 DB와 포켓베이스 DB의 테이블 스키마는 동일(BaseRecord 형태).
     - [업로드/Push]: 오프라인에 쌓인 `lastSyncTime` 이후의 암호문 바이트 배열들을 서버에 그대로 Upsert.
@@ -82,10 +83,11 @@
     - 앞 8자리 (암호화용 Z): M을 잠가서 **M(Z)**로 서버에 보관.
     - 뒤 8자리 (인증 토큰): 단방향 해시로 서버에 저장.
 - 비밀번호 분실 시 흐름:
-    1. 이메일 인증으로 본인 확인.
-    2. 유저가 복구키 전체 입력 ➡️ 인증 토큰(뒤 8자리)을 서버로 보내 API 업데이트 권한 획득.
+    1. 유저가 복구키 전체(16자리) 입력.
+    2. 뒤 8자리의 SHA-256 해시를 서버로 보내 API 업데이트 권한 획득 (복구키 자체가 인증 수단 — 별도 이메일 인증 불필요. 복구키는 제2의 비밀번호 역할).
     3. 클라이언트에서 앞 8자리로 M(Z)를 풀어 M 획득 (AES-GCM 무결성 검증 통과 시 성공).
     4. 새로운 비밀번호 입력 ➡️ 새로운 KDF(새 솔트, X, Y) 생성 ➡️ 기존 M을 새로운 Y로 묶어 서버 덮어쓰기. (과거 데이터 완벽 보존).
+    - 보안 근거: recovery bundle(M(Z))은 이메일만으로 조회 가능하지만 복구키 앞 8자리(~39 bits, PBKDF2 100k) 없이는 복호화 불가. recover-account 엔드포인트는 rate limit + constant-time 해시 비교로 brute-force 방어.
 
 8. 데이터 스키마 설계 철학 (Schema Design Philosophy)
 
@@ -154,10 +156,10 @@
 11. 프롬프트 프리셋 (Prompt Presets)
 
 - 정의: 프롬프트 조립 순서(Template), Jailbreak, Authors Note, 샘플링 파라미터 등을 묶은 설정 프리셋. RisuAI의 botPresets에 대응.
-- DB 스키마: Summary + Data 분리 (promptPresetSummaries / promptPresetData).
+- DB 스키마: Summary + Data 분리 (presetSummaries / presetData).
     - 유저가 수십 개의 프리셋을 만들어 고를 수 있으므로 목록 네비게이션이 중요.
-- 참조 방식: N:M 공유 자원. 소비자의 Data Blob에 promptPresetId: string으로 참조.
-- PromptPresetDataFields 주요 내용:
+- 참조 방식: N:M 공유 자원. 소비자의 Data Blob에 presetId: string으로 참조.
+- PresetDataFields 주요 내용:
     - templateOrder: 프롬프트 조립 순서 (system, jailbreak, description, lorebook, chat, memory 등).
     - authorsNote, jailbreakPrompt.
     - temperature, topP, topK, frequencyPenalty, presencePenalty, maxTokens.
@@ -296,12 +298,12 @@
 16. 전체 테이블 목록 (Table Registry)
 
 - 암호화 테이블 (EncryptedRecord 기반, blind sync 대상):
-    - users — 특수 (CryptoKey 보관용)
+    - users — 특수 (인증 및 E2EE 전용 필드 보관: salt, encryptedMasterKey, recoveryAuthTokenHash 등). 사용자 계정 폭파 시 하위 테이블들 자동 삭제 되도록 `cascadeDelete` 적용 처리됨.
     - characterSummaries / characterData — Summary + Data 분리 (소유: chatRefs, lorebookRefs, scriptRefs. 참조: moduleRefs. 에셋: assets)
     - chatSummaries / chatData — Summary + Data 분리 (characterId 평문 FK 보유. 소유: lorebookRefs)
     - messages — 단일, 평문 FK: chatId ([chatId+sortOrder] 복합 인덱스, softDeleteByIndex 벌크 삭제)
     - personas — 단일 (독립된 데이터 + 에셋 보유)
-    - promptPresetSummaries / promptPresetData — Summary + Data 분리
+    - presetSummaries / presetData — Summary + Data 분리
     - modules — 단일 (소유: lorebookRefs, scriptRefs. 폴더 지원)
     - plugins — 단일 (내장 hooks 및 샌드박스 설정)
     - lorebooks — 단일 (부모 소유, Deep Copy)

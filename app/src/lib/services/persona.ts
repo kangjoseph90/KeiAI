@@ -3,6 +3,7 @@ import { localDB, type PersonaRecord } from '../adapters/db/index.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
 import type { AssetRef } from '../shared/types.js';
+import { generateId } from '../shared/id.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -78,7 +79,7 @@ export class PersonaService {
 		const resolved: PersonaFields = deepMerge(defaultPersonaFields, fields as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
-		const id = crypto.randomUUID();
+		const id = generateId();
 		const now = Date.now();
 
 		try {

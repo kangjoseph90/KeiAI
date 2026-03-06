@@ -7,6 +7,7 @@ import {
 import type { OrderedRef, FolderDef, AssetRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
+import { generateId } from '../shared/id.js';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -135,7 +136,7 @@ export class CharacterService {
 		const resolvedData: CharacterDataFields = deepMerge(defaultDataFields, data as Record<string, unknown>);
 
 		const { masterKey, userId } = getActiveSession();
-		const id = crypto.randomUUID();
+		const id = generateId();
 		const now = Date.now();
 
 		try {

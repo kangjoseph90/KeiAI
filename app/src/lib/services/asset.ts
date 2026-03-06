@@ -15,6 +15,7 @@ import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type AssetRecord, type CacheRegistryRecord } from '../adapters/db/index.js';
 import { appStorage } from '../adapters/storage/index.js';
 import { AppError } from '../shared/errors.js';
+import { generateId } from '../shared/id.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -133,7 +134,7 @@ export class AssetService {
 		mimeType: string
 	): Promise<string> {
 		const { masterKey, userId } = getActiveSession();
-		const id = crypto.randomUUID();
+		const id = generateId();
 		const now = Date.now();
 
 		const bytes = await toBytes(data);

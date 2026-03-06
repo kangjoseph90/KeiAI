@@ -23,6 +23,7 @@ import {
 } from './state.js';
 import { loadInitialMessages } from './message.js';
 import { AppError } from '../shared/errors.js';
+import { generateId } from '../shared/id.js';
 
 export async function selectChat(chatId: string, characterId: string): Promise<void> {
 	const detail = await ChatService.getDetail(chatId);
@@ -251,7 +252,7 @@ export async function createChatFolder(
 	const lorebookFolders = folders.lorebooks ?? [];
 
 	const newFolder = {
-		id: crypto.randomUUID(),
+		id: generateId(),
 		name,
 		sortOrder: generateSortOrder(lorebookFolders as OrderedRef[]),
 		parentId

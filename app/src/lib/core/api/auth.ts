@@ -29,6 +29,7 @@ import {
 	unlockMasterKey
 } from '../../session.js';
 import { appUser, type UserRecord } from '../../adapters/user/index.js';
+import { refreshAuthState } from '../../stores/auth.js';
 
 export class AuthService {
 	/**
@@ -37,7 +38,10 @@ export class AuthService {
 	 * After successful registration, the local master key is downgraded to extractable: false.
 	 */
 	static async register(email: string, password: string): Promise<string> {
-		const { masterKey } = getActiveSession();
+		const { userId, masterKey, isGuest } = getActiveSession();
+		if (!isGuest) {
+			throw new Error('Already registered. Unlink your account to revert to guest mode.');
+		}
 
 		// Derive keys
 		const salt = await generateSalt();
@@ -50,8 +54,11 @@ export class AuthService {
 		const recovery = await createRecoveryData(masterKey);
 		encryptionKey.fill(0);
 
-		// Send to PocketBase
+		// Send to PocketBase — force the local guest UUID as the server record id.
+		// This ensures local DB records (userId FK) always stay in sync with the
+		// PocketBase record id without any data migration.
 		await pb.collection('users').create({
+			id: userId,
 			email,
 			password: toBase64(loginKey),
 			passwordConfirm: toBase64(loginKey),
@@ -63,7 +70,7 @@ export class AuthService {
 			recoveryAuthTokenHash: toBase64(recovery.recoveryAuthTokenHash)
 		});
 
-		// Login to adopt the PocketBase UUID
+		// Login to initialize the registered session (lock master key etc.)
 		await this.login(email, password);
 
 		return recovery.recoveryCode.fullCode;
@@ -92,21 +99,26 @@ export class AuthService {
 			encryptionKey
 		);
 
-		// 5. Import as non-extractable CryptoKey and store directly.
-		//    Raw bytes must be backed up to the OS keychain BEFORE scrubbing,
-		//    because the CryptoKey will be non-extractable and can never be
-		//    serialised again (covers both "first login on device" and
-		//    "register on this device then login with server UUID").
+		let lockedKey: CryptoKey;
+		try {
+			// 5. Import as non-extractable CryptoKey.
+			//    We use the PocketBase record's id (= the guest UUID we sent at register time)
+			//    as the local userId, so no data migration is ever needed.
+			lockedKey = await importMasterKey(rawM, false);
+
+			await appUser.backupGuestKey(authData.record.id, rawM); // no-op on web
+		} finally {
+			rawM.fill(0);
+		}
+
 		const serverUserId = authData.record.id;
-		const lockedKey = await importMasterKey(rawM, false);
 
-		await appUser.backupGuestKey(serverUserId, rawM); // no-op on web
-		rawM.fill(0);
-
+		// Update the existing UserRecord in-place (may already exist as a guest record
+		// with this same id, or be a fresh login on a new device).
+		const existing = await appUser.getUser(serverUserId);
 		await appUser.saveUser({
 			id: serverUserId,
-			userId: serverUserId,
-			createdAt: Date.now(),
+			createdAt: existing?.createdAt ?? Date.now(),
 			updatedAt: Date.now(),
 			isDeleted: false,
 			isGuest: false,
@@ -114,6 +126,7 @@ export class AuthService {
 		});
 
 		await setSession(serverUserId, lockedKey, false);
+		refreshAuthState();
 	}
 
 	/**
@@ -152,25 +165,28 @@ export class AuthService {
 		const newRecovery = await createRecoveryData(masterKeyExt);
 		newKeys.encryptionKey.fill(0);
 
-		// 4. Push new credentials to server
-		await pb.send(`/api/recover-account/${encodeURIComponent(email)}`, {
-			method: 'POST',
-			body: JSON.stringify({
-				authTokenHash: toBase64(oldAuthHash),
-				password: toBase64(newKeys.loginKey),
-				passwordConfirm: toBase64(newKeys.loginKey),
-				salt: toBase64(newSalt),
-				encryptedMasterKey: toBase64(newWrapped.ciphertext),
-				masterKeyIv: toBase64(newWrapped.iv),
-				encryptedRecoveryMasterKey: toBase64(newRecovery.encryptedRecoveryMasterKey),
-				recoveryMasterKeyIv: toBase64(newRecovery.encryptedRecoveryMasterKeyIV),
-				recoveryAuthTokenHash: toBase64(newRecovery.recoveryAuthTokenHash)
-			})
-		});
-
-		// 5. Login with the new credentials — this creates the local user
-		//    record with the correct PB server userId and sets the session.
-		rawM.fill(0);
+		try {
+			// 4. Push new credentials to server
+			await pb.send(`/api/recover-account/${encodeURIComponent(email)}`, {
+				method: 'POST',
+				body: JSON.stringify({
+					authTokenHash: toBase64(oldAuthHash),
+					password: toBase64(newKeys.loginKey),
+					passwordConfirm: toBase64(newKeys.loginKey),
+					salt: toBase64(newSalt),
+					encryptedMasterKey: toBase64(newWrapped.ciphertext),
+					masterKeyIv: toBase64(newWrapped.iv),
+					encryptedRecoveryMasterKey: toBase64(newRecovery.encryptedRecoveryMasterKey),
+					recoveryMasterKeyIv: toBase64(newRecovery.encryptedRecoveryMasterKeyIV),
+					recoveryAuthTokenHash: toBase64(newRecovery.recoveryAuthTokenHash)
+				})
+			});
+		} finally {
+			// 5. Login with the new credentials — this creates the local user
+			//    record with the correct PB server userId and sets the session.
+			rawM.fill(0);
+		}
+		
 		await this.login(email, newPassword);
 
 		return newRecovery.recoveryCode.fullCode;
@@ -179,8 +195,9 @@ export class AuthService {
 	/**
 	 * Change password while logged in.
 	 * Gets raw M from server's M(Y) using old password.
+	 * Returns the new recovery code that replaces the old one.
 	 */
-	static async changePassword(oldPassword: string, newPassword: string): Promise<void> {
+	static async changePassword(oldPassword: string, newPassword: string): Promise<string> {
 		const { userId } = getActiveSession();
 		const email = pb.authStore.record?.email;
 		if (!email) throw new Error('Not logged in to PocketBase.');
@@ -192,30 +209,45 @@ export class AuthService {
 		// 2. Fetch encrypted M from server and unwrap with old Y
 		const record = pb.authStore.record;
 		if (!record) throw new Error('Not authenticated.');
-		const rawM = await unwrapMasterKeyRaw(
-			fromBase64(record.encryptedMasterKey),
-			fromBase64(record.masterKeyIv),
-			oldKeys.encryptionKey
-		);
+		let rawM: Uint8Array<ArrayBuffer>;
+		try {
+			rawM = await unwrapMasterKeyRaw(
+				fromBase64(record.encryptedMasterKey),
+				fromBase64(record.masterKeyIv),
+				oldKeys.encryptionKey
+			);
+		} catch {
+			oldKeys.encryptionKey.fill(0);
+			throw new Error('Incorrect current password.');
+		}
 
-		// 3. Re-wrap M with new password
+		// 3. Re-wrap M with new password and create fresh recovery data
 		const masterKeyExt = await importMasterKey(rawM, true);
 		const newSalt = await generateSalt();
 		const newKeys = await deriveKeys(newPassword, newSalt);
 		const newWrapped = await wrapMasterKey(masterKeyExt, newKeys.encryptionKey);
+		const newRecovery = await createRecoveryData(masterKeyExt);
 		newKeys.encryptionKey.fill(0);
 		rawM.fill(0);
 
-		// 4. Update server
+		// 4. Update server — include refreshed recovery bundle so old code is invalidated
 		await pb.collection('users').update(userId, {
 			oldPassword: toBase64(oldKeys.loginKey),
 			password: toBase64(newKeys.loginKey),
 			passwordConfirm: toBase64(newKeys.loginKey),
 			salt: toBase64(newSalt),
 			encryptedMasterKey: toBase64(newWrapped.ciphertext),
-			masterKeyIv: toBase64(newWrapped.iv)
+			masterKeyIv: toBase64(newWrapped.iv),
+			encryptedRecoveryMasterKey: toBase64(newRecovery.encryptedRecoveryMasterKey),
+			recoveryMasterKeyIv: toBase64(newRecovery.encryptedRecoveryMasterKeyIV),
+			recoveryAuthTokenHash: toBase64(newRecovery.recoveryAuthTokenHash)
 		});
-		oldKeys.encryptionKey.fill(0);
+
+		// Re-login with the new credentials to refresh the auth token
+		// and ensure authStore.record has the latest encrypted fields.
+		await this.login(email, newPassword);
+
+		return newRecovery.recoveryCode.fullCode;
 	}
 
 	/**
@@ -233,24 +265,42 @@ export class AuthService {
 
 		const record = pb.authStore.record;
 		if (!record) throw new Error('Not authenticated.');
-		const rawM = await unwrapMasterKeyRaw(
-			fromBase64(record.encryptedMasterKey),
-			fromBase64(record.masterKeyIv),
-			keys.encryptionKey
-		);
+		let rawM: Uint8Array<ArrayBuffer>;
+		try {
+			rawM = await unwrapMasterKeyRaw(
+				fromBase64(record.encryptedMasterKey),
+				fromBase64(record.masterKeyIv),
+				keys.encryptionKey
+			);
+		} catch {
+			keys.encryptionKey.fill(0);
+			throw new Error('Incorrect password.');
+		}
 		keys.encryptionKey.fill(0);
 
-		// 2. Delete server account
-		await pb.collection('users').delete(userId);
-		pb.authStore.clear();
+		try {
+			// 2. Delete server account
+			await pb.collection('users').delete(userId);
 
-		// 3. Upgrade local key to extractable: true (guest state)
-		await unlockMasterKey(userId, rawM);
-		rawM.fill(0);
+			// 3. Upgrade local key BEFORE clearing PB auth so that when onChange fires,
+			//    refreshAuthState() already sees isGuest: true in the session.
+			await unlockMasterKey(userId, rawM);
+		} finally {
+			rawM.fill(0);
+		}
+
+		pb.authStore.clear();
 	}
 
+	/**
+	 * Logout: Disconnect from PocketBase cloud sync.
+	 * Local session (userId + masterKey) is preserved so the user retains
+	 * access to their locally-stored encrypted data. On next boot, the same
+	 * user is restored from KV/IndexedDB and presented with the login screen.
+	 */
 	static async logout(): Promise<void> {
 		pb.authStore.clear();
-		await clearSession();
+		// onChange fires → refreshAuthState() → isGuest: true (not connected to PB)
+		// Local session remains intact; no data loss.
 	}
 }

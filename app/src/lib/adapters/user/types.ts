@@ -37,11 +37,9 @@ export interface IUserAdapter {
  */
 export interface UserRecord {
 	id: string;          // UUID matching PocketBase ID (or local UUID for guests)
-	userId: string;      // Same as ID
 	createdAt: number;
 	updatedAt: number;
 	isDeleted: boolean;
-
 	isGuest: boolean;
 	masterKey: CryptoKey; // The live CryptoKey object
 }
