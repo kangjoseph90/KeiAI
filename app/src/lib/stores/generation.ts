@@ -54,6 +54,21 @@ export function appendChunk(chatId: string, chunk: string): void {
 }
 
 /**
+ * Replace the task's content with a fully processed value.
+ * Used by the pipeline after applying pipe:output to accumulated raw content.
+ * No-op if the task was already cleared.
+ */
+export function setTaskContent(chatId: string, content: string): void {
+	generationTasks.update((map) => {
+		const task = map.get(chatId);
+		if (!task) return map;
+		const next = new Map(map);
+		next.set(chatId, { ...task, content });
+		return next;
+	});
+}
+
+/**
  * Mark the task as failed. The virtual bubble stays visible with error UI
  * so the user can retry or dismiss.
  */
