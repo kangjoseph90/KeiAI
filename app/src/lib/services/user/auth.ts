@@ -67,7 +67,7 @@ export class AuthService {
 
 		const existing = await appUser.getUser(userId);
 
-		const createData: Record<string, any> = {
+		const createData: Record<string, string | Blob> = {
 			id: userId,
 			name: existing?.name ?? 'Guest User',
 			email,
