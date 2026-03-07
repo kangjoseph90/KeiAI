@@ -23,6 +23,18 @@ import type { GenerationTask, DisplayMessage } from './types';
 export const appSettings = writable<AppSettings | null>(null);
 export const activeUser = writable<Profile | null>(null);
 
+/** Tracks whether the PocketBase auth token is valid. */
+export const pbConnected = writable<boolean>(false);
+
+// ─── Derived Auth State ──────────────────────────────────────────────
+export const isLoggedIn = derived(
+	[activeUser, pbConnected],
+	([user, connected]) => user !== null && !user.isGuest && connected
+);
+export const userEmail = derived(activeUser, (u) => u?.email ?? null);
+export const userId = derived(activeUser, (u) => u?.id ?? null);
+export const isGuest = derived(activeUser, (u) => u?.isGuest ?? true);
+
 // ─── Level 1 (Global Lists) ─────────────────────────────────────────
 export const characters = writable<Character[]>([]);
 export const personas = writable<Persona[]>([]);

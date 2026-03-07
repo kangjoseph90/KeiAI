@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { appUser, type UserRecord } from '$lib/adapters/user';
-	import { activeUser, performCreateNewGuest } from '$lib/stores/user/auth';
+	import { activeUser } from '$lib/stores';
+	import { performCreateNewGuest } from '$lib/stores/user/auth';
 	import { UserService } from '$lib/services/user/user';
 
 	import * as Dialog from '$lib/components/ui/dialog';

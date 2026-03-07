@@ -25,6 +25,7 @@ import * as StoreState from './state';
 
 export const appSettings = readonly(StoreState.appSettings);
 export const activeUser = readonly(StoreState.activeUser);
+export const pbConnected = readonly(StoreState.pbConnected);
 export const characters = readonly(StoreState.characters);
 export const personas = readonly(StoreState.personas);
 export const presets = readonly(StoreState.presets);
@@ -55,7 +56,11 @@ export {
 	allScripts,
 	activePersona,
 	isGenerating,
-	displayMessages
+	displayMessages,
+	isLoggedIn,
+	userEmail,
+	userId,
+	isGuest
 } from './state';
 export type {
 	DisplayMessage,

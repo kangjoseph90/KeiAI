@@ -13,8 +13,7 @@
  * since stores/index.ts re-exports from this file indirectly via views.
  */
 
-import { derived, writable } from 'svelte/store';
-import { activeUser } from '../state';
+import { pbConnected } from '../state';
 import { AuthService } from '$lib/services/user/auth';
 import { SyncManager } from '$lib/services/sync';
 import { UserService } from '$lib/services/user/user';
@@ -22,37 +21,13 @@ import { loadProfile } from './profile';
 import { clearActiveCharacter } from '../content/character';
 import { loadGlobalState } from '../init';
 
-// Re-export so views can import from a single module
-export { activeUser };
-
 // ─── PB Connection State ─────────────────────────────────────────────
 
-/**
- * Tracks whether the PocketBase auth token is valid.
- * Updated automatically via pb.authStore.onChange().
- */
-export const pbConnected = writable<boolean>(AuthService.isPbConnected());
+pbConnected.set(AuthService.isPbConnected());
 
 AuthService.onPbAuthChange((isValid) => {
 	pbConnected.set(isValid);
 });
-
-// ─── Derived Auth State ──────────────────────────────────────────────
-
-/** True when the user has a valid PB session (registered + token valid). */
-export const isLoggedIn = derived(
-	[activeUser, pbConnected],
-	([user, connected]) => user !== null && !user.isGuest && connected
-);
-
-/** The user's email (from local profile, cached from PB). */
-export const userEmail = derived(activeUser, (u) => u?.email ?? null);
-
-/** The active user's ID. */
-export const userId = derived(activeUser, (u) => u?.id ?? null);
-
-/** Whether the active user is a guest. */
-export const isGuest = derived(activeUser, (u) => u?.isGuest ?? true);
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 

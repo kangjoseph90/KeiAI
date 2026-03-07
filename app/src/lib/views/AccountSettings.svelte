@@ -1,8 +1,6 @@
 <script lang="ts">
+	import { isLoggedIn, isGuest, userEmail } from '$lib/stores';
 	import {
-		isLoggedIn,
-		isGuest,
-		userEmail,
 		performLogin,
 		performRegister,
 		performRecoverPassword,

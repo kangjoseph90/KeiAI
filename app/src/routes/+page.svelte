@@ -3,7 +3,6 @@
 	import { UserService } from '$lib/services/user/user';
 	import { AuthService } from '$lib/services/user/auth';
 	import { loadProfile } from '$lib/stores/user/profile';
-	import { activeUser, userEmail } from '$lib/stores/user/auth';
 	import { SyncManager } from '$lib/services/sync';
 	import { BookText, Layers, Plug, Settings, User, Users } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -14,9 +13,10 @@
 		selectCharacter,
 		selectChat,
 		clearActiveCharacter,
-		clearActiveChat,
 		activeCharacter,
-		activeChat
+		activeChat,
+		activeUser,
+		userEmail
 	} from '$lib/stores';
 	import {
 		route,
@@ -26,6 +26,7 @@
 		type RouteState,
 		type ViewMode
 	} from '$lib/router';
+	import type { ComponentType } from 'svelte';
 
 	import CharactersView from '$lib/views/CharactersView.svelte';
 	import ChatsView from '$lib/views/ChatsView.svelte';
@@ -41,7 +42,7 @@
 	let errorMsg = $state('');
 	let manageAccountsOpen = $state(false);
 
-	const sidebarItems: { view: ViewMode; label: string; icon: any }[] = [
+	const sidebarItems: { view: ViewMode; label: string; icon: ComponentType }[] = [
 		{ view: 'characters', label: 'Characters', icon: Users },
 		{ view: 'personas', label: 'Personas', icon: User },
 		{ view: 'presets', label: 'Presets', icon: BookText },
@@ -198,14 +199,14 @@
 				<p class="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
 					Menu
 				</p>
-				{#each sidebarItems as item}
+				{#each sidebarItems as item (item.view)}
 					{@const isActive =
 						$route.view === item.view ||
 						(item.view === 'characters' && ($route.view === 'chats' || $route.view === 'chat'))}
 					<Button
 						variant={isActive ? 'default' : 'ghost'}
 						class="justify-start gap-2"
-						onclick={() => handleNavigate({ view: item.view })}
+						onclick={() => handleNavigate({ view: item.view as ViewMode })}
 					>
 						<item.icon class="size-4" />
 						{item.label}

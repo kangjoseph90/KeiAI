@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { activeUser } from '$lib/stores/user/auth';
+	import { activeUser } from '$lib/stores';
 	import { updateProfile } from '$lib/stores/user/profile';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
