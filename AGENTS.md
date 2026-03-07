@@ -191,7 +191,7 @@ export async function assertChatOwnedByCharacter(
 
 ### Sync triggering
 
-After every write (create / update / delete), call `DataSyncService.syncRecord(tableName, record)`. This is the only place sync is triggered. Services do not know about the sync internals.
+After every write (create / update / delete), call `DataSyncService.pushRecord(tableName, record)`. This is the only place sync is triggered. Services do not know about the sync internals.
 
 ---
 
