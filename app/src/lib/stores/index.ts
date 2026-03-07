@@ -25,11 +25,13 @@ import { loadPlugins } from './plugin.js';
 import { loadPersonas } from './persona.js';
 import { loadPresets } from './preset.js';
 import { loadCharacters } from './character.js';
+import { loadProfile } from './profile.js';
 
 // ─── Re-export writable stores as readonly ──────────────────────────
 import * as StoreState from './state.js';
 
 export const appSettings = readonly(StoreState.appSettings);
+export const activeUser = readonly(StoreState.activeUser);
 export const characters = readonly(StoreState.characters);
 export const personas = readonly(StoreState.personas);
 export const presets = readonly(StoreState.presets);
@@ -75,6 +77,7 @@ export * from './lorebook.js';
 export * from './script.js';
 export * from './message.js';
 export * from './generation.js';
+export * from './profile.js';
 export * from '../shared/ordering.js';
 
 export async function loadGlobalState() {

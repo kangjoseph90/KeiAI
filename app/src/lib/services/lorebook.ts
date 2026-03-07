@@ -1,12 +1,12 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type LorebookRecord } from '../adapters/db/index.js';
-import { SyncService } from '../core/api/sync.js';
+import { DataSyncService } from '../core/api/sync/index.js';
 import { deepMerge } from '../shared/defaults.js';
 import { assertLorebookOwnedBy, assertOwnedResourceParentExists } from './guards.js';
 import { AppError } from '../shared/errors.js';
 import { generateId } from '../shared/id.js';
 
-// ─── Domain Types ────────────────────────────────────────────────────
+// ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface LorebookFields {
 	name: string;
@@ -23,7 +23,7 @@ export interface Lorebook extends LorebookFields {
 	ownerId: string;
 }
 
-// ─── Defaults ────────────────────────────────────────────────────────
+// ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultLorebookFields: LorebookFields = {
 	name: '',
@@ -33,7 +33,7 @@ const defaultLorebookFields: LorebookFields = {
 	enabled: true
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────
 
 function decryptFields(masterKey: CryptoKey, record: LorebookRecord): Promise<LorebookFields> {
 	return decryptText(masterKey, {
@@ -46,7 +46,7 @@ function decryptFields(masterKey: CryptoKey, record: LorebookRecord): Promise<Lo
 		});
 }
 
-// ─── Service ─────────────────────────────────────────────────────────
+// ─── Service ──────────────────────────────────────────────────────────
 
 export class LorebookService {
 	/** List lorebooks owned by a specific parent (character, chat, module) */
@@ -99,7 +99,7 @@ export class LorebookService {
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<LorebookRecord>('lorebooks', newRecord);
-			void SyncService.pushRecord('lorebooks', newRecord, true);
+			void DataSyncService.pushRecord('lorebooks', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create lorebook', error);
@@ -131,7 +131,7 @@ export class LorebookService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('lorebooks', record);
-			void SyncService.pushRecord('lorebooks', record);
+			void DataSyncService.pushRecord('lorebooks', record);
 
 			return { id, ownerId: record.ownerId, ...updated };
 		} catch (error) {
@@ -146,7 +146,7 @@ export class LorebookService {
 		}
 		try {
 			await localDB.softDeleteRecord('lorebooks', id);
-			void SyncService.pushById('lorebooks', id);
+			void DataSyncService.pushById('lorebooks', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete lorebook', error);

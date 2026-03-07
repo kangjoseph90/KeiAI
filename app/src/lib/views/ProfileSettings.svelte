@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { authState } from '$lib/stores/auth.js';
-	import { AuthService } from '$lib/core/api/auth.js';
+	import { activeUser } from '$lib/stores/auth.js';
+	import { updateProfile } from '$lib/stores/profile.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '$lib/components/ui/card/index.js';
@@ -17,8 +17,8 @@
 	let successMsg = $state('');
 
 	$effect(() => {
-		if ($authState.activeUser && !profileName) {
-			profileName = $authState.activeUser.name;
+		if ($activeUser && !profileName) {
+			profileName = $activeUser.name;
 		}
 	});
 
@@ -49,8 +49,10 @@
 		successMsg = '';
 
 		try {
-			// Profile updating works perfectly safely whether online, offline, or guest
-			await AuthService.updateProfile(profileName, profileAvatar || undefined);
+			await updateProfile({
+				name: profileName,
+				...(profileAvatar ? { avatar: profileAvatar } : {})
+			});
 			successMsg = 'Profile updated successfully.';
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);
@@ -84,7 +86,7 @@
 			<div class="relative group">
 				<Avatar.Root class="size-20 border-2 border-muted hover:border-primary transition-colors cursor-pointer" onclick={() => fileInputRef.click()}>
 					<!-- Show selected data URL if present, otherwise existing avatar -->
-					<Avatar.Image src={profileAvatar || $authState.activeUser?.avatar} alt={profileName} class="object-cover" />
+					<Avatar.Image src={profileAvatar || $activeUser?.avatar} alt={profileName} class="object-cover" />
 					<Avatar.Fallback class="text-xl font-bold">{(profileName || 'U').charAt(0).toUpperCase()}</Avatar.Fallback>
 				</Avatar.Root>
 				<button 

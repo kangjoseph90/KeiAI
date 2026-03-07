@@ -1,7 +1,7 @@
 /**
  * Chat Service
  *
- * No FK — parent character holds chatRefs[] in its encrypted blob.
+ * No FK ??parent character holds chatRefs[] in its encrypted blob.
  * Chats are fetched by ID from the character's ref list.
  */
 
@@ -11,14 +11,14 @@ import {
 	type ChatSummaryRecord,
 	type ChatDataRecord
 } from '../adapters/db/index.js';
-import { SyncService } from '../core/api/sync.js';
+import { DataSyncService } from '../core/api/sync/index.js';
 import type { FolderDef, OrderedRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { assertCharacterExists, assertChatOwnedByCharacter } from './guards.js';
 import { AppError } from '../shared/errors.js';
 import { generateId } from '../shared/id.js';
 
-// ─── Domain Types ────────────────────────────────────────────────────
+// ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ChatSummaryFields {
 	title: string;
@@ -48,7 +48,7 @@ export interface ChatDetail extends Chat {
 	data: ChatDataFields;
 }
 
-// ─── Defaults ────────────────────────────────────────────────────────
+// ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultSummaryFields: ChatSummaryFields = {
 	title: '',
@@ -57,7 +57,7 @@ const defaultSummaryFields: ChatSummaryFields = {
 
 const defaultDataFields: ChatDataFields = {};
 
-// ─── Helpers ─────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────
 
 function decryptSummaryFields(
 	masterKey: CryptoKey,
@@ -84,7 +84,7 @@ function decryptDataFields(masterKey: CryptoKey, record: ChatDataRecord): Promis
 		});
 }
 
-// ─── Service ─────────────────────────────────────────────────────────
+// ─── Service ──────────────────────────────────────────────────────────
 
 export class ChatService {
 	static async listByCharacter(characterId: string): Promise<Chat[]> {
@@ -161,8 +161,8 @@ export class ChatService {
 				await localDB.putRecord<ChatSummaryRecord>('chatSummaries', summaryRecord);
 				await localDB.putRecord<ChatDataRecord>('chatData', dataRecord);
 			});
-			void SyncService.pushRecord('chatSummaries', summaryRecord, true);
-			void SyncService.pushRecord('chatData', dataRecord, true);
+			void DataSyncService.pushRecord('chatSummaries', summaryRecord, true);
+			void DataSyncService.pushRecord('chatData', dataRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create chat', error);
@@ -191,7 +191,7 @@ export class ChatService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('chatSummaries', record);
-			void SyncService.pushRecord('chatSummaries', record);
+			void DataSyncService.pushRecord('chatSummaries', record);
 
 			return { id, characterId: record.characterId, ...updated };
 		} catch (error) {
@@ -220,7 +220,7 @@ export class ChatService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('chatData', record);
-			void SyncService.pushRecord('chatData', record);
+			void DataSyncService.pushRecord('chatData', record);
 
 			return updated;
 		} catch (error) {
@@ -288,8 +288,8 @@ export class ChatService {
 			throw new AppError('NOT_FOUND', 'Chat not found');
 		}
 
-		if (summaryRecordToSync) void SyncService.pushRecord('chatSummaries', summaryRecordToSync);
-		if (dataRecordToSync) void SyncService.pushRecord('chatData', dataRecordToSync);
+		if (summaryRecordToSync) void DataSyncService.pushRecord('chatSummaries', summaryRecordToSync);
+		if (dataRecordToSync) void DataSyncService.pushRecord('chatData', dataRecordToSync);
 
 		return { id, characterId, ...updatedSummary, data: updatedData };
 	}
@@ -315,7 +315,7 @@ export class ChatService {
 			);
 			try {
 				const { userId } = getActiveSession();
-				void SyncService.pushRecentWrites(userId, deleteTs);
+				void DataSyncService.pushRecentWrites(userId, deleteTs);
 			} catch { /* not logged in */ }
 		} catch (error) {
 			if (error instanceof AppError) throw error;

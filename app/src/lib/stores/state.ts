@@ -7,6 +7,7 @@
 
 import { derived, writable } from 'svelte/store';
 import type { AppSettings } from '../services/settings.js';
+import type { Profile } from '../services/profile.js';
 import type { Character, CharacterDetail } from '../services/character.js';
 import type { Chat, ChatDetail } from '../services/chat.js';
 import type { Message } from '../services/message.js';
@@ -18,8 +19,9 @@ import type { Lorebook } from '../services/lorebook.js';
 import type { Script } from '../services/script.js';
 import type { GenerationTask, DisplayMessage } from './types.js';
 
-// ─── Level 0 (Global Settings) ──────────────────────────────────────
+// ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
+export const activeUser = writable<Profile | null>(null);
 
 // ─── Level 1 (Global Lists) ─────────────────────────────────────────
 export const characters = writable<Character[]>([]);

@@ -4,7 +4,7 @@ import {
 	type CharacterSummaryRecord,
 	type CharacterDataRecord
 } from '../adapters/db/index.js';
-import { SyncService } from '../core/api/sync.js';
+import { DataSyncService } from '../core/api/sync/index.js';
 import type { OrderedRef, FolderDef, AssetRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
@@ -49,7 +49,7 @@ export interface CharacterDetail extends Character {
 	data: CharacterDataFields;
 }
 
-// ─── Defaults ────────────────────────────────────────────────────────
+// ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultSummaryFields: CharacterSummaryFields = {
 	name: '',
@@ -157,8 +157,8 @@ export class CharacterService {
 				await localDB.putRecord<CharacterSummaryRecord>('characterSummaries', summaryRecord);
 				await localDB.putRecord<CharacterDataRecord>('characterData', dataRecord);
 			});
-			void SyncService.pushRecord('characterSummaries', summaryRecord, true);
-			void SyncService.pushRecord('characterData', dataRecord, true);
+			void DataSyncService.pushRecord('characterSummaries', summaryRecord, true);
+			void DataSyncService.pushRecord('characterData', dataRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create character', error);
@@ -187,7 +187,7 @@ export class CharacterService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('characterSummaries', record);
-			void SyncService.pushRecord('characterSummaries', record);
+			void DataSyncService.pushRecord('characterSummaries', record);
 
 			return { id, ...updated };
 		} catch (error) {
@@ -216,7 +216,7 @@ export class CharacterService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('characterData', record);
-			void SyncService.pushRecord('characterData', record);
+			void DataSyncService.pushRecord('characterData', record);
 
 			return updated;
 		} catch (error) {
@@ -240,7 +240,7 @@ export class CharacterService {
 
 		try {
 			await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
-				// Read both records upfront — ensures no partial writes if one is missing
+				// Read both records upfront ??ensures no partial writes if one is missing
 				const summaryRecord = await localDB.getRecord<CharacterSummaryRecord>(
 					'characterSummaries',
 					id
@@ -290,8 +290,8 @@ export class CharacterService {
 			throw new AppError('NOT_FOUND', 'Character not found');
 		}
 
-		if (summaryRecordToSync) void SyncService.pushRecord('characterSummaries', summaryRecordToSync);
-		if (dataRecordToSync) void SyncService.pushRecord('characterData', dataRecordToSync);
+		if (summaryRecordToSync) void DataSyncService.pushRecord('characterSummaries', summaryRecordToSync);
+		if (dataRecordToSync) void DataSyncService.pushRecord('characterData', dataRecordToSync);
 
 		return {
 			id,
@@ -333,7 +333,7 @@ export class CharacterService {
 			);
 			try {
 				const { userId } = getActiveSession();
-				void SyncService.pushRecentWrites(userId, deleteTs);
+				void DataSyncService.pushRecentWrites(userId, deleteTs);
 			} catch { /* not logged in */ }
 		} catch (error) {
 			if (error instanceof AppError) throw error;

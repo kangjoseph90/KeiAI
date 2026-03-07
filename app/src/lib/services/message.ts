@@ -1,13 +1,13 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type MessageRecord } from '../adapters/db/index.js';
-import { SyncService } from '../core/api/sync.js';
+import { DataSyncService } from '../core/api/sync/index.js';
 import { generateKeyBetween } from 'fractional-indexing';
 import { deepMerge } from '../shared/defaults.js';
 import { assertChatExists, assertMessageInChat } from './guards.js';
 import { AppError } from '../shared/errors.js';
 import { generateId } from '../shared/id.js';
 
-// ─── Domain Types ────────────────────────────────────────────────────
+// ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface MessageFields {
 	role: 'user' | 'char' | 'system';
@@ -20,14 +20,14 @@ export interface Message extends MessageFields {
 	sortOrder: string;
 }
 
-// ─── Defaults ────────────────────────────────────────────────────────
+// ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultMessageFields: MessageFields = {
 	role: 'user',
 	content: ''
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────
 
 function decryptFields(masterKey: CryptoKey, record: MessageRecord): Promise<MessageFields> {
 	return decryptText(masterKey, {
@@ -40,7 +40,7 @@ function decryptFields(masterKey: CryptoKey, record: MessageRecord): Promise<Mes
 		});
 }
 
-// ─── Service ─────────────────────────────────────────────────────────
+// ─── Service ──────────────────────────────────────────────────────────
 
 export class MessageService {
 	/**
@@ -157,7 +157,7 @@ export class MessageService {
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<MessageRecord>('messages', newRecord);
-			void SyncService.pushRecord('messages', newRecord, true);
+			void DataSyncService.pushRecord('messages', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create message', error);
@@ -190,7 +190,7 @@ export class MessageService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('messages', record);
-			void SyncService.pushRecord('messages', record);
+			void DataSyncService.pushRecord('messages', record);
 
 			return { id, chatId: record.chatId, sortOrder: record.sortOrder, ...updated };
 		} catch (error) {
@@ -206,7 +206,7 @@ export class MessageService {
 		}
 		try {
 			await localDB.softDeleteRecord('messages', id);
-			void SyncService.pushById('messages', id);
+			void DataSyncService.pushById('messages', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete message', error);

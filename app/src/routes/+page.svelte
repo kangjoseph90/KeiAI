@@ -1,8 +1,9 @@
 ﻿<script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { initSession } from '$lib/session';
-	import { authState, refreshAuthState } from '$lib/stores/auth';
-	import { SyncService } from '$lib/core/api/sync';
+	import { loadProfile } from '$lib/stores/profile';
+	import { activeUser, userEmail } from '$lib/stores/auth';
+	import { SyncManager } from '$lib/core/api/sync/index.js';
 	import { BookText, Layers, Plug, Settings, User, Users } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
@@ -127,9 +128,9 @@
 	onMount(async () => {
 		try {
 			await initSession();
-			refreshAuthState();
-			SyncService.startAutoSync();
-			await SyncService.syncAll();
+			await loadProfile();
+			SyncManager.startAutoSync({ onProfileUpdate: loadProfile });
+			await SyncManager.syncAll();
 			await loadGlobalState();
 			ready = true;
 
@@ -143,7 +144,7 @@
 	});
 
 	onDestroy(() => {
-		SyncService.stopAutoSync();
+		SyncManager.stopAutoSync();
 		_cleanupHash?.();
 	});
 
@@ -212,19 +213,19 @@
 						>
 							<Avatar.Root class="size-8">
 								<Avatar.Image
-									src={$authState.activeUser?.avatar}
-									alt={$authState.activeUser?.name ?? 'User'}
+									src={$activeUser?.avatar}
+									alt={$activeUser?.name ?? 'User'}
 								/>
 								<Avatar.Fallback
-									>{($authState.activeUser?.name ?? 'U').charAt(0).toUpperCase()}</Avatar.Fallback
+									>{($activeUser?.name ?? 'U').charAt(0).toUpperCase()}</Avatar.Fallback
 								>
 							</Avatar.Root>
 							<div class="flex flex-col overflow-hidden">
 								<span class="text-sm font-medium truncate"
-									>{$authState.activeUser?.name ?? 'Guest User'}</span
+									>{$activeUser?.name ?? 'Guest User'}</span
 								>
 								<span class="text-xs text-muted-foreground truncate"
-									>{$authState.email ?? 'Offline / Local'}</span
+									>{$userEmail ?? 'Offline / Local'}</span
 								>
 							</div>
 						</div>

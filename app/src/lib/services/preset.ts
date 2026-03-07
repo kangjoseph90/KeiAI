@@ -4,12 +4,12 @@ import {
 	type PresetSummaryRecord,
 	type PresetDataRecord
 } from '../adapters/db/index.js';
-import { SyncService } from '../core/api/sync.js';
+import { DataSyncService } from '../core/api/sync/index.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
 import { generateId } from '../shared/id.js';
 
-// ─── Domain Types ────────────────────────────────────────────────────
+// ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface PresetSummaryFields {
 	name: string;
@@ -57,7 +57,7 @@ export interface PresetDetail extends Preset {
 	data: PresetDataFields;
 }
 
-// ─── Defaults ────────────────────────────────────────────────────────
+// ─── Defaults ──────────────────────────────────────────────────────────
 
 export const defaultPresetSummary: PresetSummaryFields = {
 	name: '',
@@ -91,7 +91,7 @@ export const defaultPresetData: PresetDataFields = {
 	memoryTokensRatio: 0.2
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────
+// ─── Helpers ───────────────────────────────────────────────────────────
 
 function decryptSummaryFields(
 	masterKey: CryptoKey,
@@ -121,7 +121,7 @@ function decryptDataFields(
 		});
 }
 
-// ─── Service ─────────────────────────────────────────────────────────
+// ─── Service ───────────────────────────────────────────────────────────
 
 export class PresetService {
 	/** List all presets (summary only) */
@@ -189,8 +189,8 @@ export class PresetService {
 				await localDB.putRecord<PresetSummaryRecord>('presetSummaries', summaryRecord);
 				await localDB.putRecord<PresetDataRecord>('presetData', dataRecord);
 			});
-			void SyncService.pushRecord('presetSummaries', summaryRecord, true);
-			void SyncService.pushRecord('presetData', dataRecord, true);
+			void DataSyncService.pushRecord('presetSummaries', summaryRecord, true);
+			void DataSyncService.pushRecord('presetData', dataRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create preset', error);
@@ -219,7 +219,7 @@ export class PresetService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('presetSummaries', record);
-			void SyncService.pushRecord('presetSummaries', record);
+			void DataSyncService.pushRecord('presetSummaries', record);
 
 			return { id, ...updated };
 		} catch (error) {
@@ -248,7 +248,7 @@ export class PresetService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('presetData', record);
-			void SyncService.pushRecord('presetData', record);
+			void DataSyncService.pushRecord('presetData', record);
 
 			return updated;
 		} catch (error) {
@@ -272,7 +272,7 @@ export class PresetService {
 
 		try {
 			await localDB.transaction(['presetSummaries', 'presetData'], 'rw', async () => {
-				// Read both records upfront — ensures no partial writes if one is missing
+				// Read both records upfront ??ensures no partial writes if one is missing
 				const summaryRecord = await localDB.getRecord<PresetSummaryRecord>(
 					'presetSummaries',
 					id
@@ -322,8 +322,8 @@ export class PresetService {
 			throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 		}
 
-		if (summaryRecordToSync) void SyncService.pushRecord('presetSummaries', summaryRecordToSync);
-		if (dataRecordToSync) void SyncService.pushRecord('presetData', dataRecordToSync);
+		if (summaryRecordToSync) void DataSyncService.pushRecord('presetSummaries', summaryRecordToSync);
+		if (dataRecordToSync) void DataSyncService.pushRecord('presetData', dataRecordToSync);
 
 		return {
 			id,
@@ -338,8 +338,8 @@ export class PresetService {
 				await localDB.softDeleteRecord('presetSummaries', id);
 				await localDB.softDeleteRecord('presetData', id);
 			});
-			void SyncService.pushById('presetSummaries', id);
-			void SyncService.pushById('presetData', id);
+			void DataSyncService.pushById('presetSummaries', id);
+			void DataSyncService.pushById('presetData', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete preset', error);

@@ -1,12 +1,12 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type ScriptRecord } from '../adapters/db/index.js';
-import { SyncService } from '../core/api/sync.js';
+import { DataSyncService } from '../core/api/sync/index.js';
 import { deepMerge } from '../shared/defaults.js';
 import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards.js';
 import { AppError } from '../shared/errors.js';
 import { generateId } from '../shared/id.js';
 
-// ─── Domain Types ────────────────────────────────────────────────────
+// ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ScriptFields {
 	name: string;
@@ -21,7 +21,7 @@ export interface Script extends ScriptFields {
 	ownerId: string;
 }
 
-// ─── Defaults ────────────────────────────────────────────────────────
+// ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultScriptFields: ScriptFields = {
 	name: '',
@@ -31,7 +31,7 @@ const defaultScriptFields: ScriptFields = {
 	enabled: true
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────
 
 function decryptFields(masterKey: CryptoKey, record: ScriptRecord): Promise<ScriptFields> {
 	return decryptText(masterKey, {
@@ -44,7 +44,7 @@ function decryptFields(masterKey: CryptoKey, record: ScriptRecord): Promise<Scri
 		});
 }
 
-// ─── Service ─────────────────────────────────────────────────────────
+// ─── Service ──────────────────────────────────────────────────────────
 
 export class ScriptService {
 	/** List scripts owned by a specific parent (character, module) */
@@ -98,7 +98,7 @@ export class ScriptService {
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<ScriptRecord>('scripts', newRecord);
-			void SyncService.pushRecord('scripts', newRecord, true);
+			void DataSyncService.pushRecord('scripts', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create script', error);
@@ -130,7 +130,7 @@ export class ScriptService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('scripts', record);
-			void SyncService.pushRecord('scripts', record);
+			void DataSyncService.pushRecord('scripts', record);
 
 			return { id, ownerId: record.ownerId, ...updated };
 		} catch (error) {
@@ -145,7 +145,7 @@ export class ScriptService {
 		}
 		try {
 			await localDB.softDeleteRecord('scripts', id);
-			void SyncService.pushById('scripts', id);
+			void DataSyncService.pushById('scripts', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete script', error);
