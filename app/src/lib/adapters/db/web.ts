@@ -63,7 +63,7 @@ class DexieStore extends Dexie {
 			presetData: 'id, userId, updatedAt, isDeleted',
 			assets: 'id, userId, updatedAt, isDeleted',
 			// Local-only tables (never synced)
-			cacheRegistry: 'id, lastAccessedAt'
+			cacheRegistry: 'id, userId, lastAccessedAt'
 		});
 	}
 }
