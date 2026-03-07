@@ -103,8 +103,14 @@ export async function createGuestUser(): Promise<{
 	const id = generateId();
 	const guestKey = await generateMasterKey(); // extractable: true
 
+	const existingUsers = await appUser.getAllUsers();
+	const name = `Guest ${existingUsers.length + 1}`;
+	const avatar = `https://api.dicebear.com/7.x/identicon/svg?seed=${id}`;
+
 	await appUser.saveUser({
 		id,
+		name,
+		avatar,
 		createdAt: Date.now(),
 		updatedAt: Date.now(),
 		isDeleted: false,

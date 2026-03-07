@@ -45,7 +45,7 @@ class UserDexie extends Dexie {
 	constructor() {
 		super('KeiAIAuth'); // Same dedicated auth IndexedDB as the web adapter
 		this.version(1).stores({
-			users: 'id'
+			users: 'id, isDeleted, isGuest, updatedAt'
 		});
 	}
 }
@@ -55,6 +55,9 @@ class UserDexie extends Dexie {
 interface SQLiteUserRow {
 	id: string;
 	userId: string;
+	name: string;
+	email: string | null;
+	avatar: string;
 	createdAt: number;
 	updatedAt: number;
 	isDeleted: number; // 0 | 1
@@ -83,6 +86,9 @@ export class TauriUserAdapter implements IUserAdapter {
 				CREATE TABLE IF NOT EXISTS users (
 					id        TEXT    PRIMARY KEY,
 					userId    TEXT    NOT NULL,
+					name      TEXT    NOT NULL,
+					email     TEXT,
+					avatar    TEXT    NOT NULL,
 					createdAt INTEGER NOT NULL,
 					updatedAt INTEGER NOT NULL,
 					isDeleted INTEGER NOT NULL DEFAULT 0,
@@ -101,11 +107,14 @@ export class TauriUserAdapter implements IUserAdapter {
 	private async sqliteSave(user: UserRecord): Promise<void> {
 		const db = await this.getSQLite();
 		await db.execute(
-			`INSERT OR REPLACE INTO users (id, userId, createdAt, updatedAt, isDeleted, isGuest)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
+			`INSERT OR REPLACE INTO users (id, userId, name, email, avatar, createdAt, updatedAt, isDeleted, isGuest)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 			[
 				user.id,
 				user.id,
+				user.name,
+				user.email ?? null,
+				user.avatar,
 				user.createdAt,
 				user.updatedAt,
 				user.isDeleted ? 1 : 0,
@@ -299,6 +308,9 @@ export class TauriUserAdapter implements IUserAdapter {
 
 		return {
 			id: row.id,
+			name: row.name,
+			email: row.email ?? undefined,
+			avatar: row.avatar,
 			createdAt: row.createdAt,
 			updatedAt: row.updatedAt,
 			isDeleted: row.isDeleted === 1,

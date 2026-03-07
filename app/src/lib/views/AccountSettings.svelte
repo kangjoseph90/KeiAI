@@ -84,7 +84,11 @@
 		<CardTitle>Account & Synchronization</CardTitle>
 		<CardDescription>
 			{#if !$authState.isLoggedIn}
-				You are currently using an offline guest account.
+				{#if $authState.activeUser?.isGuest}
+					You are currently using an offline guest account.
+				{:else}
+					You are using an offline session. Data is not syncing.
+				{/if}
 			{:else}
 				Logged in as: <strong>{$authState.email}</strong>
 			{/if}
@@ -120,12 +124,19 @@
 			<!-- GUEST STATE -->
 			<div class="flex border-b mb-2">
 				<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'login' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'login'}>Login</button>
-				<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'register' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'register'}>Register / Link</button>
+				{#if $authState.activeUser?.isGuest}
+					<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'register' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'register'}>Register / Link</button>
+				{/if}
 				<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'recover' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'recover'}>Recover</button>
 			</div>
 			
 			{#if mode === 'login' || mode === 'register'}
 				<div class="space-y-3">
+					{#if !$authState.activeUser?.isGuest && mode === 'login'}
+						<div class="mb-2 p-3 text-sm rounded bg-primary/10 text-primary border border-primary/20">
+							You are in Offline Mode. Log in to resume synchronization.
+						</div>
+					{/if}
 					<div class="space-y-1">
 						<Label>Email</Label>
 						<Input bind:value={email} type="email" placeholder="you@example.com" />

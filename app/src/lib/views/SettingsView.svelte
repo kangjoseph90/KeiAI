@@ -4,6 +4,7 @@
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
 	import { appSettings, updateSettings } from '$lib/stores';
 	import AccountSettings from './AccountSettings.svelte';
+	import ProfileSettings from './ProfileSettings.svelte';
 
 	async function handleToggleTheme() {
 		const currentTheme = $appSettings?.theme === 'dark' ? 'light' : 'dark';
@@ -12,6 +13,7 @@
 </script>
 
 <div class="grid gap-6 max-w-2xl">
+	<ProfileSettings />
 	<AccountSettings />
 
 	<Card>

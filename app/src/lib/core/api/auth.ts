@@ -56,11 +56,11 @@ export class AuthService {
 		const recovery = await createRecoveryData(masterKey);
 		encryptionKey.fill(0);
 
-		// Send to PocketBase — force the local guest UUID as the server record id.
-		// This ensures local DB records (userId FK) always stay in sync with the
-		// PocketBase record id without any data migration.
-		await pb.collection('users').create({
+		const existing = await appUser.getUser(userId);
+
+		const createData: Record<string, any> = {
 			id: userId,
+			name: existing?.name ?? 'Guest User',
 			email,
 			password: toBase64(loginKey),
 			passwordConfirm: toBase64(loginKey),
@@ -70,7 +70,23 @@ export class AuthService {
 			encryptedRecoveryMasterKey: toBase64(recovery.encryptedRecoveryMasterKey),
 			recoveryMasterKeyIv: toBase64(recovery.encryptedRecoveryMasterKeyIV),
 			recoveryAuthTokenHash: toBase64(recovery.recoveryAuthTokenHash)
-		});
+		};
+
+		// If the user set a custom avatar while offline (saved as Base64 Data URI),
+		// convert it to a Blob so the PocketBase SDK uploads it as a file.
+		if (existing?.avatar?.startsWith('data:image')) {
+			try {
+				const fetchResponse = await fetch(existing.avatar);
+				createData.avatar = await fetchResponse.blob();
+			} catch (e) {
+				console.warn('Failed to parse local avatar for PB upload', e);
+			}
+		}
+
+		// Send to PocketBase — force the local guest UUID as the server record id.
+		// This ensures local DB records (userId FK) always stay in sync with the
+		// PocketBase record id without any data migration.
+		await pb.collection('users').create(createData);
 
 		// Login to initialize the registered session (lock master key etc.)
 		await this.login(email, password);
@@ -127,8 +143,16 @@ export class AuthService {
 			await SyncService.resetCursors(serverUserId);
 		}
 
+		let pbAvatarUrl = undefined;
+		if (authData.record?.avatar) {
+			pbAvatarUrl = pb.files.getURL(authData.record, authData.record.avatar);
+		}
+
 		await appUser.saveUser({
 			id: serverUserId,
+			name: existing?.name ?? authData.record?.name ?? 'Synced Profile',
+			email: email,
+			avatar: existing?.avatar ?? pbAvatarUrl ?? `https://api.dicebear.com/7.x/identicon/svg?seed=${serverUserId}`,
 			createdAt: existing?.createdAt ?? Date.now(),
 			updatedAt: Date.now(),
 			isDeleted: false,
@@ -204,6 +228,50 @@ export class AuthService {
 		await this.login(email, newPassword);
 
 		return newRecovery.recoveryCode.fullCode;
+	}
+
+	/**
+	 * Update Profile: name and avatar.
+	 * Updates local database and pushes to PocketBase if successfully logged in.
+	 * If avatar is a Base64 data URI, it will be uploaded as a Blob.
+	 */
+	static async updateProfile(name: string, avatarDataUri?: string): Promise<void> {
+		const session = getActiveSession();
+		const user = await appUser.getUser(session.userId);
+		if (!user) throw new Error('User not found.');
+
+		user.name = name;
+		if (avatarDataUri) {
+			user.avatar = avatarDataUri;
+		}
+		user.updatedAt = Date.now();
+        
+		await appUser.saveUser(user);
+
+		// Synchronize with server if registered and currently online
+		if (!session.isGuest && pb.authStore.isValid && pb.authStore.record) {
+			const updateData: Record<string, any> = { name };
+			
+			if (avatarDataUri && avatarDataUri.startsWith('data:image')) {
+				try {
+					const fetchResponse = await fetch(avatarDataUri);
+					updateData.avatar = await fetchResponse.blob();
+				} catch (e) {
+					console.warn('Failed to parse local avatar for PB upload', e);
+				}
+			}
+			
+			const record = await pb.collection('users').update(session.userId, updateData);
+			
+			// If PocketBase successfully assigned an avatar file, fetch its URL so we can
+			// immediately replace the Base64 in our local DB with a lighter URL string.
+			if (record?.avatar) {
+				user.avatar = pb.files.getURL(record, record.avatar);
+				await appUser.saveUser(user);
+			}
+		}
+        
+		refreshAuthState();
 	}
 
 	/**

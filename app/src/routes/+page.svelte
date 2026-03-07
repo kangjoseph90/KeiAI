@@ -1,12 +1,29 @@
 ﻿<script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { initSession } from '$lib/session';
-	import { refreshAuthState } from '$lib/stores/auth';
+	import { authState, refreshAuthState } from '$lib/stores/auth';
 	import { SyncService } from '$lib/core/api/sync';
 	import { BookText, Layers, Plug, Settings, User, Users } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { loadGlobalState, selectCharacter, selectChat, clearActiveCharacter, clearActiveChat, activeCharacter, activeChat } from '$lib/stores';
-	import { route, navigate, initHashListener, getCurrentHashRoute, type RouteState, type ViewMode } from '$lib/router';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import * as Avatar from '$lib/components/ui/avatar/index.js';
+	import {
+		loadGlobalState,
+		selectCharacter,
+		selectChat,
+		clearActiveCharacter,
+		clearActiveChat,
+		activeCharacter,
+		activeChat
+	} from '$lib/stores';
+	import {
+		route,
+		navigate,
+		initHashListener,
+		getCurrentHashRoute,
+		type RouteState,
+		type ViewMode
+	} from '$lib/router';
 
 	import CharactersView from '$lib/views/CharactersView.svelte';
 	import ChatsView from '$lib/views/ChatsView.svelte';
@@ -32,14 +49,22 @@
 	// 현재 route에서 헤더 타이틀 계산
 	function getTitle(r: RouteState): string {
 		switch (r.view) {
-			case 'characters': return 'Characters';
-			case 'chats': return $activeCharacter ? `${$activeCharacter.name}'s Chats` : 'Chats';
-			case 'chat': return $activeChat ? `Chat: ${$activeChat.title}` : 'Chat';
-			case 'personas': return 'Personas';
-			case 'presets': return 'Prompt Presets';
-			case 'modules': return 'Modules';
-			case 'plugins': return 'Plugins';
-			case 'settings': return 'Global App Settings';
+			case 'characters':
+				return 'Characters';
+			case 'chats':
+				return $activeCharacter ? `${$activeCharacter.name}'s Chats` : 'Chats';
+			case 'chat':
+				return $activeChat ? `Chat: ${$activeChat.title}` : 'Chat';
+			case 'personas':
+				return 'Personas';
+			case 'presets':
+				return 'Prompt Presets';
+			case 'modules':
+				return 'Modules';
+			case 'plugins':
+				return 'Plugins';
+			case 'settings':
+				return 'Global App Settings';
 		}
 	}
 
@@ -122,7 +147,6 @@
 		_cleanupHash?.();
 	});
 
-
 	// route store 변화를 감지해 store 동기화 (뒤로가기/앞으로가기 처리)
 	let prevRoute: RouteState | null = null;
 	$effect(() => {
@@ -132,7 +156,11 @@
 			return;
 		}
 		// 같은 route면 무시
-		if (prevRoute.view === r.view && prevRoute.charId === r.charId && prevRoute.chatId === r.chatId) {
+		if (
+			prevRoute.view === r.view &&
+			prevRoute.charId === r.charId &&
+			prevRoute.chatId === r.chatId
+		) {
 			prevRoute = r;
 			return;
 		}
@@ -143,7 +171,9 @@
 
 <main class="flex h-screen bg-background text-foreground overflow-hidden">
 	{#if errorMsg}
-		<div class="absolute inset-x-0 top-0 z-50 bg-destructive px-4 py-2 text-center text-sm font-medium text-white">
+		<div
+			class="absolute inset-x-0 top-0 z-50 bg-destructive px-4 py-2 text-center text-sm font-medium text-white"
+		>
 			{errorMsg}
 		</div>
 	{/if}
@@ -154,23 +184,61 @@
 		</div>
 	{:else}
 		<!-- Sidebar Navigation -->
-		<nav class="flex w-48 shrink-0 flex-col gap-1 border-r p-4">
-			<p class="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-				Menu
-			</p>
-			{#each sidebarItems as item}
-				{@const isActive =
-					$route.view === item.view ||
-					(item.view === 'characters' && ($route.view === 'chats' || $route.view === 'chat'))}
-				<Button
-					variant={isActive ? 'default' : 'ghost'}
-					class="justify-start gap-2"
-					onclick={() => handleNavigate({ view: item.view })}
-				>
-					<item.icon class="size-4" />
-					{item.label}
-				</Button>
-			{/each}
+		<nav class="flex w-48 shrink-0 flex-col gap-1 border-r p-4 justify-between">
+			<div class="flex flex-col gap-1">
+				<p class="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+					Menu
+				</p>
+				{#each sidebarItems as item}
+					{@const isActive =
+						$route.view === item.view ||
+						(item.view === 'characters' && ($route.view === 'chats' || $route.view === 'chat'))}
+					<Button
+						variant={isActive ? 'default' : 'ghost'}
+						class="justify-start gap-2"
+						onclick={() => handleNavigate({ view: item.view })}
+					>
+						<item.icon class="size-4" />
+						{item.label}
+					</Button>
+				{/each}
+			</div>
+
+			<div class="mt-auto">
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger class="w-full">
+						<div
+							class="flex items-center gap-2 p-2 hover:bg-muted/50 rounded-md transition-colors text-left cursor-pointer"
+						>
+							<Avatar.Root class="size-8">
+								<Avatar.Image
+									src={$authState.activeUser?.avatar}
+									alt={$authState.activeUser?.name ?? 'User'}
+								/>
+								<Avatar.Fallback
+									>{($authState.activeUser?.name ?? 'U').charAt(0).toUpperCase()}</Avatar.Fallback
+								>
+							</Avatar.Root>
+							<div class="flex flex-col overflow-hidden">
+								<span class="text-sm font-medium truncate"
+									>{$authState.activeUser?.name ?? 'Guest User'}</span
+								>
+								<span class="text-xs text-muted-foreground truncate"
+									>{$authState.email ?? 'Offline / Local'}</span
+								>
+							</div>
+						</div>
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="start" class="w-48">
+						<DropdownMenu.Label>My Account</DropdownMenu.Label>
+						<DropdownMenu.Separator />
+						<DropdownMenu.Item onclick={() => handleNavigate({ view: 'settings' })}>
+							<Settings class="mr-2 size-4" />
+							<span>App Settings</span>
+						</DropdownMenu.Item>
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+			</div>
 		</nav>
 
 		<!-- Main Content Area -->
@@ -180,12 +248,7 @@
 				<h2 class="text-lg font-semibold">{getTitle($route)}</h2>
 				{#if getBackTarget($route)}
 					{@const back = getBackTarget($route)!}
-					<Button
-						variant="outline"
-						size="sm"
-						class="gap-1.5"
-						onclick={() => handleNavigate(back)}
-					>
+					<Button variant="outline" size="sm" class="gap-1.5" onclick={() => handleNavigate(back)}>
 						← Back
 					</Button>
 				{/if}
