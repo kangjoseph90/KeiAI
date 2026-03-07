@@ -1,18 +1,8 @@
 <script lang="ts">
 	/**
-	 * Message Component
+	 * Message Component — Svelte 5 Runes
 	 *
-	 * Renders a single message in any display state:
-	 *   - 'completed' (confirmed, stored in DB)
-	 *   - 'generating' (ephemeral streaming bubble)
-	 *   - 'error'      (failed generation, dismissable)
-	 *
-	 * Rendering pipeline:
-	 *   message.content (output scripts applied by pipeline.ts)
-	 *     → TODO: display scripts (markdown parse, display regex)
-	 *     → TODO: morphdom DOM diffing + enter animation
-	 *     → plain text for now
-	 *
+	 * Renders a single message in any display state.
 	 * Callbacks handle all side-effects — this component is pure UI.
 	 */
 	import type { DisplayMessage } from '$lib/stores';
@@ -22,40 +12,35 @@
 
 	// ── Props ─────────────────────────────────────────────────────────────────
 
-	export let message: DisplayMessage;
-
-	/** Whether this specific message is currently being edited. */
-	export let isEditing: boolean = false;
-
-	/** Two-way bound edit buffer — parent owns the actual string state. */
-	export let editText: string = '';
-
-	// ── Callbacks ─────────────────────────────────────────────────────────────
-
-	/** Called when the user clicks the edit (pencil) icon. */
-	export let onEdit: () => void = () => {};
-
-	/** Called when the user confirms an edit. Receives the final text. */
-	export let onSave: (text: string) => void = () => {};
-
-	/** Called when the user cancels an edit. */
-	export let onCancelEdit: () => void = () => {};
-
-	/** Called when the user clicks the delete (trash) icon. */
-	export let onDelete: () => void = () => {};
-
-	/** Called when the user dismisses a generation error bubble. */
-	export let onDismissError: () => void = () => {};
+	let {
+		message,
+		isEditing = false,
+		editText = $bindable(''),
+		onEdit = () => {},
+		onSave = () => {},
+		onCancelEdit = () => {},
+		onDelete = () => {},
+		onDismissError = () => {}
+	}: {
+		message: DisplayMessage;
+		isEditing?: boolean;
+		editText?: string;
+		onEdit?: () => void;
+		onSave?: (text: string) => void;
+		onCancelEdit?: () => void;
+		onDelete?: () => void;
+		onDismissError?: () => void;
+	} = $props();
 
 	// ── Derived ───────────────────────────────────────────────────────────────
 
-	$: isUser = message.role === 'user';
+	let isUser = $derived(message.role === 'user');
 
 	// TODO: display scripts — run message.content through display regex scripts
 	// to get rendered HTML (markdown, display regex).
 	// Then apply morphdom DOM diffing for smooth streaming updates + animations.
 	// For now: plain text pass-through.
-	$: displayContent = message.content;
+	let displayContent = $derived(message.content);
 </script>
 
 <!--
