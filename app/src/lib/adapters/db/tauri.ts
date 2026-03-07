@@ -365,9 +365,15 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		_mode: 'r' | 'rw',
 		callback: () => Promise<R>
 	): Promise<R> {
-		// Basic passthrough. 
-		// If explicit transactions are needed, we would need to implement 
-		// `await db.execute('BEGIN TRANSACTION')` but for Tauri a passthrough allows JS logic.
-		return await callback();
+		const db = await this.getDb();
+		await db.execute('BEGIN TRANSACTION');
+		try {
+			const result = await callback();
+			await db.execute('COMMIT');
+			return result;
+		} catch (error) {
+			await db.execute('ROLLBACK');
+			throw error;
+		}
 	}
 }
