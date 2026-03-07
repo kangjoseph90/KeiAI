@@ -26,6 +26,7 @@
 		type ViewMode
 	} from '$lib/router';
 	import type { ComponentType } from 'svelte';
+	import { getErrorMessage } from '$lib/shared/errors';
 
 	import CharactersView from '$lib/views/CharactersView.svelte';
 	import ChatsView from '$lib/views/ChatsView.svelte';
@@ -147,7 +148,7 @@
 
 			_cleanupHash = initHashListener();
 		} catch (err) {
-			errorMsg = err instanceof Error ? err.message : String(err);
+			errorMsg = getErrorMessage(err);
 		}
 	});
 

@@ -1,6 +1,7 @@
 import Database from '@tauri-apps/plugin-sql';
 import type { IDatabaseAdapter, TableName, BaseRecord } from './types';
 import { TABLES } from './types';
+import { AppError } from '$lib/shared/errors';
 
 /**
  * Tauri SQLite Local Database Adapter
@@ -300,7 +301,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 			}
 		}
 
-		throw new Error(`TauriDatabaseAdapter: getRecordsBackward unsupported indexName ${indexName}`);
+		throw new AppError('INVALID_INPUT', `Unsupported indexName for getRecordsBackward: ${indexName}`);
 	}
 
 	async getRecordsForward<T extends BaseRecord>(
@@ -330,7 +331,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 			}
 		}
 
-		throw new Error(`TauriDatabaseAdapter: getRecordsForward unsupported indexName ${indexName}`);
+		throw new AppError('INVALID_INPUT', `Unsupported indexName for getRecordsForward: ${indexName}`);
 	}
 
 	async getUnsyncedChanges<T extends BaseRecord>(

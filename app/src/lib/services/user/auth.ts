@@ -29,6 +29,7 @@ import { getActiveSession } from '../session';
 import { UserService } from './user';
 import { appUser } from '$lib/adapters/user';
 import { DataSyncService, SyncManager } from '../sync';
+import { AppError } from '$lib/shared/errors';
 
 export class AuthService {
 	// ─── PB Connection Helpers ────────────────────────────────────────
@@ -55,7 +56,10 @@ export class AuthService {
 	static async register(email: string, password: string): Promise<string> {
 		const { userId, masterKey, isGuest } = getActiveSession();
 		if (!isGuest) {
-			throw new Error('Already registered. Unlink your account to revert to guest mode.');
+			throw new AppError(
+				'ALREADY_REGISTERED',
+				'Already registered. Unlink your account to revert to guest mode.'
+			);
 		}
 
 		const salt = await generateSalt();
@@ -208,13 +212,13 @@ export class AuthService {
 	static async changePassword(oldPassword: string, newPassword: string): Promise<string> {
 		const { userId } = getActiveSession();
 		const email = pb.authStore.record?.email;
-		if (!email) throw new Error('Not logged in to PocketBase.');
+		if (!email) throw new AppError('NOT_AUTHENTICATED', 'Not logged in to PocketBase.');
 
 		const oldSaltResp = await pb.send(`/api/salt/${encodeURIComponent(email)}`, { method: 'GET' });
 		const oldKeys = await deriveKeys(oldPassword, fromBase64(oldSaltResp.salt));
 
 		const record = pb.authStore.record;
-		if (!record) throw new Error('Not authenticated.');
+		if (!record) throw new AppError('NOT_AUTHENTICATED', 'Not authenticated.');
 		let rawM: Uint8Array<ArrayBuffer>;
 		try {
 			rawM = await unwrapMasterKeyRaw(
@@ -224,7 +228,7 @@ export class AuthService {
 			);
 		} catch {
 			oldKeys.encryptionKey.fill(0);
-			throw new Error('Incorrect current password.');
+			throw new AppError('INVALID_CREDENTIALS', 'Incorrect current password.');
 		}
 
 		const masterKeyExt = await importMasterKey(rawM, true);
@@ -260,13 +264,13 @@ export class AuthService {
 	static async unlinkAccount(password: string): Promise<void> {
 		const { userId } = getActiveSession();
 		const email = pb.authStore.record?.email;
-		if (!email) throw new Error('Not logged in to PocketBase.');
+		if (!email) throw new AppError('NOT_AUTHENTICATED', 'Not logged in to PocketBase.');
 
 		const saltResp = await pb.send(`/api/salt/${encodeURIComponent(email)}`, { method: 'GET' });
 		const keys = await deriveKeys(password, fromBase64(saltResp.salt));
 
 		const record = pb.authStore.record;
-		if (!record) throw new Error('Not authenticated.');
+		if (!record) throw new AppError('NOT_AUTHENTICATED', 'Not authenticated.');
 		let rawM: Uint8Array<ArrayBuffer>;
 		try {
 			rawM = await unwrapMasterKeyRaw(
@@ -276,7 +280,7 @@ export class AuthService {
 			);
 		} catch {
 			keys.encryptionKey.fill(0);
-			throw new Error('Incorrect password.');
+			throw new AppError('INVALID_CREDENTIALS', 'Incorrect password.');
 		}
 		keys.encryptionKey.fill(0);
 

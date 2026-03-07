@@ -16,6 +16,7 @@
 import { RECOVERY_CODE_LENGTH, RECOVERY_FRONT_LENGTH } from './constants';
 import { wrapMasterKey } from './masterKey';
 import type { RecoveryCodeParts } from './types';
+import { AppError } from '$lib/shared/errors';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
@@ -47,7 +48,7 @@ export function generateRecoveryCode(): RecoveryCodeParts {
  */
 export function splitRecoveryCode(code: string): RecoveryCodeParts {
 	if (code.length !== RECOVERY_CODE_LENGTH) {
-		throw new Error(`Recovery code must be exactly ${RECOVERY_CODE_LENGTH} characters`);
+		throw new AppError('INVALID_INPUT', `Recovery code must be exactly ${RECOVERY_CODE_LENGTH} characters`);
 	}
 	return {
 		fullCode: code,

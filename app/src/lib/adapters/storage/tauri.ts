@@ -2,6 +2,7 @@ import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-f
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { appDataDir, join } from '@tauri-apps/api/path';
 import type { IStorageAdapter } from './types';
+import { AppError } from '$lib/shared/errors';
 
 /**
  * TauriStorageAdapter — Native file system-backed asset storage for Tauri Desktop/Mobile
