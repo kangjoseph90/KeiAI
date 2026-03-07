@@ -8,7 +8,6 @@
  * Uses PBKDF2 with SHA-256.
  */
 
-import { LogIn } from 'lucide-svelte';
 import { KDF_ITERATIONS, KDF_OUTPUT_BITS, SALT_BYTES } from './constants.js';
 import type { DerivedKeys } from './types.js';
 
@@ -53,13 +52,10 @@ export async function deriveKeys(password: string, salt: Bytes): Promise<Derived
 
 	const half = derivedBits.length / 2;
 
-	const result = {
+	return {
 		loginKey: derivedBits.slice(0, half), // X — 32 bytes
 		encryptionKey: derivedBits.slice(half) // Y — 32 bytes
 	};
-
-	derivedBits.fill(0); // Clear derived bits from memory
-	return result;
 }
 
 /**

@@ -55,7 +55,6 @@ export class AuthService {
 		// Recovery data
 		const recovery = await createRecoveryData(masterKey);
 		encryptionKey.fill(0);
-		loginKey.fill(0);
 
 		const existing = await appUser.getUser(userId);
 
@@ -311,7 +310,6 @@ export class AuthService {
 		const newWrapped = await wrapMasterKey(masterKeyExt, newKeys.encryptionKey);
 		const newRecovery = await createRecoveryData(masterKeyExt);
 		newKeys.encryptionKey.fill(0);
-		newKeys.loginKey.fill(0);
 		rawM.fill(0);
 
 		// 4. Update server — include refreshed recovery bundle so old code is invalidated
