@@ -1,23 +1,20 @@
 {
-  "$schema": "../gen/schemas/mobile-schema.json",
-  "identifier": "mobile-default",
-  "description": "Permissions for mobile (Android/iOS)",
-  "platforms": [
-    "android",
-    "iOS"
-  ],
-  "permissions": [
-    "core:default",
-    "fs:default",
-    "fs:allow-read-text-file",
-    "fs:allow-write-text-file",
-    "fs:allow-read-dir",
-    "fs:allow-mkdir",
-    "fs:allow-remove",
-    "fs:allow-exists",
-    "fs:allow-app-read-recursive",
-    "fs:allow-app-write-recursive",
-    "sql:default",
-    "stronghold:default"
-  ]
+	"$schema": "../gen/schemas/mobile-schema.json",
+	"identifier": "mobile-default",
+	"description": "Permissions for mobile (Android/iOS)",
+	"platforms": ["android", "iOS"],
+	"permissions": [
+		"core:default",
+		"fs:default",
+		"fs:allow-read-text-file",
+		"fs:allow-write-text-file",
+		"fs:allow-read-dir",
+		"fs:allow-mkdir",
+		"fs:allow-remove",
+		"fs:allow-exists",
+		"fs:allow-app-read-recursive",
+		"fs:allow-app-write-recursive",
+		"sql:default",
+		"stronghold:default"
+	]
 }

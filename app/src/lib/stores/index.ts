@@ -19,16 +19,9 @@
  * Store logic files import writables directly from state.ts.
  */
 import { readonly } from 'svelte/store';
-import { loadSettings } from './content/settings.js';
-import { loadModules } from './content/module.js';
-import { loadPlugins } from './content/plugin.js';
-import { loadPersonas } from './content/persona.js';
-import { loadPresets } from './content/preset.js';
-import { loadCharacters } from './content/character.js';
-import { loadProfile } from './auth/profile.js';
 
 // ─── Re-export writable stores as readonly ──────────────────────────
-import * as StoreState from './state.js';
+import * as StoreState from './state';
 
 export const appSettings = readonly(StoreState.appSettings);
 export const activeUser = readonly(StoreState.activeUser);
@@ -61,32 +54,27 @@ export {
 	allLorebooks,
 	allScripts,
 	activePersona,
-	isGenerating	,
+	isGenerating,
 	displayMessages
-} from './state.js';
-export type { DisplayMessage, DisplayMessageStatus, GenerationTask, GenerationStatus } from './types.js';
+} from './state';
+export type {
+	DisplayMessage,
+	DisplayMessageStatus,
+	GenerationTask,
+	GenerationStatus
+} from './types';
 
-export * from './content/settings.js';
-export * from './content/character.js';
-export * from './content/persona.js';
-export * from './content/preset.js';
-export * from './content/chat.js';
-export * from './content/module.js';
-export * from './content/plugin.js';
-export * from './content/lorebook.js';
-export * from './content/script.js';
-export * from './content/message.js';
-export * from './generation.js';
-export * from './auth/profile.js';
-export * from '../shared/ordering.js';
-
-export async function loadGlobalState() {
-	await loadSettings();
-	await Promise.all([
-		loadModules(),
-		loadPlugins(),
-		loadPersonas(),
-		loadPresets(),
-		loadCharacters()
-	]);
-}
+export * from './content/settings';
+export * from './content/character';
+export * from './content/persona';
+export * from './content/preset';
+export * from './content/chat';
+export * from './content/module';
+export * from './content/plugin';
+export * from './content/lorebook';
+export * from './content/script';
+export * from './content/message';
+export * from './generation';
+export * from './user/profile';
+export * from '../shared/ordering';
+export * from './init';

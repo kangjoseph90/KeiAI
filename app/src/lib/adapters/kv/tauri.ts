@@ -1,5 +1,5 @@
 import { Store } from '@tauri-apps/plugin-store';
-import type { IKeyValueAdapter } from './types.js';
+import type { IKeyValueAdapter } from './types';
 
 /**
  * Tauri Key-Value Adapter

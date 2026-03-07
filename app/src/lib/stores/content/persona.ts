@@ -1,9 +1,13 @@
 import { get } from 'svelte/store';
-import { PersonaService, type PersonaFields, type Persona } from '../../services/content/persona.js';
-import { SettingsService } from '../../services/index.js';
-import { generateSortOrder, sortByRefs } from '../../shared/ordering.js';
-import { personas, appSettings } from '../state.js';
-import { AppError } from '../../shared/errors.js';
+import {
+	PersonaService,
+	type PersonaFields,
+	type Persona
+} from '$lib/services/content/persona';
+import { SettingsService } from '$lib/services';
+import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
+import { personas, appSettings } from '../state';
+import { AppError } from '$lib/shared/errors';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.
@@ -20,7 +24,7 @@ export async function loadPersonas(): Promise<void> {
 }
 
 export async function createPersona(fields: Partial<PersonaFields>): Promise<Persona> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');
@@ -31,7 +35,10 @@ export async function createPersona(fields: Partial<PersonaFields>): Promise<Per
 
 	// Add to parent's refs
 	const existingRefs = settings.personaRefs || [];
-	const personaRefs = [...existingRefs, { id: persona.id, sortOrder: generateSortOrder(existingRefs) }];
+	const personaRefs = [
+		...existingRefs,
+		{ id: persona.id, sortOrder: generateSortOrder(existingRefs) }
+	];
 	try {
 		await SettingsService.update({ personaRefs });
 	} catch (error) {
@@ -53,7 +60,7 @@ export async function updatePersona(id: string, changes: Partial<PersonaFields>)
 }
 
 export async function deletePersona(id: string): Promise<void> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');

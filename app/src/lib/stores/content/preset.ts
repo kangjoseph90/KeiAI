@@ -4,11 +4,11 @@ import {
 	type PresetSummaryFields,
 	type PresetDataFields,
 	type PresetDetail
-} from '../../services/content/preset.js';
-import { SettingsService } from '../../services/index.js';
-import { generateSortOrder, sortByRefs } from '../../shared/ordering.js';
-import { presets, activePreset, appSettings } from '../state.js';
-import { AppError } from '../../shared/errors.js';
+} from '$lib/services/content/preset';
+import { SettingsService } from '$lib/services';
+import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
+import { presets, activePreset, appSettings } from '../state';
+import { AppError } from '$lib/shared/errors';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.
@@ -34,7 +34,7 @@ export async function createPreset(
 	fields: Partial<PresetSummaryFields>,
 	data?: Partial<PresetDataFields>
 ): Promise<PresetDetail> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');
@@ -45,7 +45,10 @@ export async function createPreset(
 
 	// Add to parent's refs
 	const existingRefs = settings.presetRefs || [];
-	const presetRefs = [...existingRefs, { id: detail.id, sortOrder: generateSortOrder(existingRefs) }];
+	const presetRefs = [
+		...existingRefs,
+		{ id: detail.id, sortOrder: generateSortOrder(existingRefs) }
+	];
 	try {
 		await SettingsService.update({ presetRefs });
 	} catch (error) {
@@ -61,17 +64,21 @@ export async function createPreset(
 	return detail;
 }
 
-export async function updatePresetSummary(id: string, changes: Partial<PresetSummaryFields>): Promise<void> {
+export async function updatePresetSummary(
+	id: string,
+	changes: Partial<PresetSummaryFields>
+): Promise<void> {
 	const updated = await PresetService.updateSummary(id, changes);
 	presets.update((list) => list.map((p) => (p.id === id ? updated : p)));
 	activePreset.update((p) => (p && p.id === id ? { ...p, ...updated } : p));
 }
 
-export async function updatePresetData(id: string, changes: Partial<PresetDataFields>): Promise<void> {
+export async function updatePresetData(
+	id: string,
+	changes: Partial<PresetDataFields>
+): Promise<void> {
 	const data = await PresetService.updateData(id, changes);
-	activePreset.update((p) =>
-		p && p.id === id ? { ...p, data } : p
-	);
+	activePreset.update((p) => (p && p.id === id ? { ...p, data } : p));
 }
 
 export async function updatePresetFull(
@@ -85,7 +92,7 @@ export async function updatePresetFull(
 }
 
 export async function deletePreset(id: string): Promise<void> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');

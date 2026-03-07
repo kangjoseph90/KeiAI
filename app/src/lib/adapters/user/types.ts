@@ -36,10 +36,10 @@ export interface IUserAdapter {
  * or at least we export it from here as it now belongs to the auth domain.
  */
 export interface UserRecord {
-	id: string;          // UUID matching PocketBase ID (or local UUID for guests)
-	name: string;        // Editable display name (e.g., "Guest 1", "Main Profile")
-	email?: string;      // Cached email if synced with PocketBase
-	avatar: string;      // Identicon URL based on user ID
+	id: string; // UUID matching PocketBase ID (or local UUID for guests)
+	name: string; // Editable display name (e.g., "Guest 1", "Main Profile")
+	email?: string; // Cached email if synced with PocketBase
+	avatar: string; // Identicon URL based on user ID
 	createdAt: number;
 	updatedAt: number;
 	isDeleted: boolean;

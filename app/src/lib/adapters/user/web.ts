@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import type { IUserAdapter, UserRecord } from './types.js';
+import type { IUserAdapter, UserRecord } from './types';
 
 /**
  * Web User Adapter using Dexie.

@@ -1,14 +1,14 @@
 ﻿<script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { UserService } from '$lib/services/auth/user';
-	import { AuthService } from '$lib/services/auth/auth.js';
-	import { loadProfile } from '$lib/stores/auth/profile';
-	import { activeUser, userEmail } from '$lib/stores/auth/auth';
-	import { SyncManager } from '$lib/services/sync/index.js';
+	import { UserService } from '$lib/services/user/user';
+	import { AuthService } from '$lib/services/user/auth';
+	import { loadProfile } from '$lib/stores/user/profile';
+	import { activeUser, userEmail } from '$lib/stores/user/auth';
+	import { SyncManager } from '$lib/services/sync';
 	import { BookText, Layers, Plug, Settings, User, Users } from 'lucide-svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
-	import * as Avatar from '$lib/components/ui/avatar/index.js';
+	import { Button } from '$lib/components/ui/button';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import * as Avatar from '$lib/components/ui/avatar';
 	import {
 		loadGlobalState,
 		selectCharacter,
@@ -220,17 +220,13 @@
 							class="flex items-center gap-2 p-2 hover:bg-muted/50 rounded-md transition-colors text-left cursor-pointer"
 						>
 							<Avatar.Root class="size-8">
-								<Avatar.Image
-									src={$activeUser?.avatar}
-									alt={$activeUser?.name ?? 'User'}
-								/>
+								<Avatar.Image src={$activeUser?.avatar} alt={$activeUser?.name ?? 'User'} />
 								<Avatar.Fallback
 									>{($activeUser?.name ?? 'U').charAt(0).toUpperCase()}</Avatar.Fallback
 								>
 							</Avatar.Root>
 							<div class="flex flex-col overflow-hidden">
-								<span class="text-sm font-medium truncate"
-									>{$activeUser?.name ?? 'Guest User'}</span
+								<span class="text-sm font-medium truncate">{$activeUser?.name ?? 'Guest User'}</span
 								>
 								<span class="text-xs text-muted-foreground truncate"
 									>{$userEmail ?? 'Offline / Local'}</span
@@ -241,7 +237,7 @@
 					<DropdownMenu.Content align="start" class="w-48">
 						<DropdownMenu.Label>My Account</DropdownMenu.Label>
 						<DropdownMenu.Separator />
-						<DropdownMenu.Item onclick={() => manageAccountsOpen = true}>
+						<DropdownMenu.Item onclick={() => (manageAccountsOpen = true)}>
 							<Users class="mr-2 size-4" />
 							<span>Manage Profiles</span>
 						</DropdownMenu.Item>

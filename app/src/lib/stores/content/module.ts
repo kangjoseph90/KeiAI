@@ -1,13 +1,22 @@
 import { get } from 'svelte/store';
-import { ModuleService, type ModuleFields, type ModuleContent, type Module } from '../../services/content/module.js';
-import { LorebookService, type LorebookFields, type Lorebook } from '../../services/content/lorebook.js';
-import { ScriptService, type ScriptFields, type Script } from '../../services/content/script.js';
-import type { OrderedRef, FolderDef } from '../../shared/types.js';
-import { SettingsService } from '../../services/index.js';
-import { generateSortOrder, sortByRefs } from '../../shared/ordering.js';
-import { modules, appSettings, moduleResources } from '../state.js';
-import { AppError } from '../../shared/errors.js';
-import { generateId } from '../../shared/id.js';
+import {
+	ModuleService,
+	type ModuleFields,
+	type ModuleContent,
+	type Module
+} from '$lib/services/content/module';
+import {
+	LorebookService,
+	type LorebookFields,
+	type Lorebook
+} from '$lib/services/content/lorebook';
+import { ScriptService, type ScriptFields, type Script } from '$lib/services/content/script';
+import type { OrderedRef, FolderDef } from '$lib/shared/types';
+import { SettingsService } from '$lib/services';
+import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
+import { modules, appSettings, moduleResources } from '../state';
+import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/shared/id';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.
@@ -43,7 +52,7 @@ export async function loadModules(): Promise<void> {
 }
 
 export async function createModule(fields: ModuleFields): Promise<Module> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');
@@ -84,7 +93,7 @@ export async function updateModule(id: string, changes: Partial<ModuleContent>):
 }
 
 export async function deleteModule(id: string): Promise<void> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');
@@ -116,8 +125,11 @@ export async function deleteModule(id: string): Promise<void> {
 
 // ─── Module-owned Lorebook CRUD ─────────────────────────────────────
 
-export async function createModuleLorebook(moduleId: string, fields: Partial<LorebookFields>): Promise<Lorebook> {
-	const mod = get(modules).find((m) => m.id === moduleId) || await ModuleService.get(moduleId);
+export async function createModuleLorebook(
+	moduleId: string,
+	fields: Partial<LorebookFields>
+): Promise<Lorebook> {
+	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
 	if (!mod) {
 		throw new AppError(`NOT_FOUND`, `Module not found`);
 	}
@@ -152,8 +164,8 @@ export async function createModuleLorebook(moduleId: string, fields: Partial<Lor
 }
 
 export async function deleteModuleLorebook(moduleId: string, lorebookId: string): Promise<void> {
-	const mod = get(modules).find((m) => m.id === moduleId) || await ModuleService.get(moduleId);
-	
+	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
+
 	if (!mod) {
 		throw new AppError(`NOT_FOUND`, `Module not found`);
 	}
@@ -176,16 +188,23 @@ export async function deleteModuleLorebook(moduleId: string, lorebookId: string)
 	moduleResources.update((map) => {
 		const m = new Map(map);
 		const entry = m.get(moduleId);
-		if (entry) m.set(moduleId, { ...entry, lorebooks: entry.lorebooks.filter((lb) => lb.id !== lorebookId) });
+		if (entry)
+			m.set(moduleId, {
+				...entry,
+				lorebooks: entry.lorebooks.filter((lb) => lb.id !== lorebookId)
+			});
 		return m;
 	});
 }
 
 // ─── Module-owned Script CRUD ───────────────────────────────────────
 
-export async function createModuleScript(moduleId: string, fields: Partial<ScriptFields>): Promise<Script> {
-	const mod = get(modules).find((m) => m.id === moduleId) || await ModuleService.get(moduleId);
-	
+export async function createModuleScript(
+	moduleId: string,
+	fields: Partial<ScriptFields>
+): Promise<Script> {
+	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
+
 	if (!mod) {
 		throw new AppError(`NOT_FOUND`, `Module not found`);
 	}
@@ -220,8 +239,8 @@ export async function createModuleScript(moduleId: string, fields: Partial<Scrip
 }
 
 export async function deleteModuleScript(moduleId: string, scriptId: string): Promise<void> {
-	const mod = get(modules).find((m) => m.id === moduleId) || await ModuleService.get(moduleId);
-	
+	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
+
 	if (!mod) {
 		throw new AppError(`NOT_FOUND`, `Module not found`);
 	}
@@ -244,7 +263,8 @@ export async function deleteModuleScript(moduleId: string, scriptId: string): Pr
 	moduleResources.update((map) => {
 		const m = new Map(map);
 		const entry = m.get(moduleId);
-		if (entry) m.set(moduleId, { ...entry, scripts: entry.scripts.filter((s) => s.id !== scriptId) });
+		if (entry)
+			m.set(moduleId, { ...entry, scripts: entry.scripts.filter((s) => s.id !== scriptId) });
 		return m;
 	});
 }
@@ -259,8 +279,8 @@ export async function createModuleFolder(
 	name: string,
 	parentId?: string
 ): Promise<FolderDef> {
-	const mod = get(modules).find((m) => m.id === moduleId) || await ModuleService.get(moduleId);
-	
+	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
+
 	if (!mod) {
 		throw new AppError(`NOT_FOUND`, `Module not found`);
 	}
@@ -280,11 +300,9 @@ export async function createModuleFolder(
 	await ModuleService.update(moduleId, { folders: updatedFolders });
 
 	modules.update((list) =>
-		list.map((m) =>
-			m.id === moduleId ? { ...m, folders: updatedFolders } : m
-		)
+		list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders } : m))
 	);
-	
+
 	return newFolder;
 }
 
@@ -294,8 +312,8 @@ export async function updateModuleFolder(
 	folderId: string,
 	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
-	const mod = get(modules).find((m) => m.id === moduleId) || await ModuleService.get(moduleId);
-	
+	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
+
 	if (!mod) {
 		throw new AppError(`NOT_FOUND`, `Module not found`);
 	}
@@ -313,11 +331,9 @@ export async function updateModuleFolder(
 	};
 
 	await ModuleService.update(moduleId, { folders: updatedFolders });
-	
+
 	modules.update((list) =>
-		list.map((m) =>
-			m.id === moduleId ? { ...m, folders: updatedFolders } : m
-		)
+		list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders } : m))
 	);
 }
 
@@ -326,8 +342,8 @@ export async function deleteModuleFolder(
 	folderType: ModuleFolderType,
 	folderId: string
 ): Promise<void> {
-	const mod = get(modules).find((m) => m.id === moduleId) || await ModuleService.get(moduleId);
-	
+	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
+
 	if (!mod) {
 		throw new AppError(`NOT_FOUND`, `Module not found`);
 	}
@@ -343,11 +359,9 @@ export async function deleteModuleFolder(
 	};
 
 	await ModuleService.update(moduleId, { folders: updatedFolders });
-	
+
 	modules.update((list) =>
-		list.map((m) =>
-			m.id === moduleId ? { ...m, folders: updatedFolders } : m
-		)
+		list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders } : m))
 	);
 }
 
@@ -358,8 +372,8 @@ export async function moveModuleItem(
 	newFolderId?: string,
 	newSortOrder?: string
 ): Promise<void> {
-	const mod = get(modules).find((m) => m.id === moduleId) || await ModuleService.get(moduleId);
-	
+	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
+
 	if (!mod) {
 		throw new AppError(`NOT_FOUND`, `Module not found`);
 	}
@@ -387,10 +401,8 @@ export async function moveModuleItem(
 	});
 
 	await ModuleService.update(moduleId, { [refKey]: updatedRefs });
-	
+
 	modules.update((list) =>
-		list.map((m) =>
-			m.id === moduleId ? { ...m, [refKey]: updatedRefs } : m
-		)
+		list.map((m) => (m.id === moduleId ? { ...m, [refKey]: updatedRefs } : m))
 	);
 }

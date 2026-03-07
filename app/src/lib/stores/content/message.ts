@@ -7,9 +7,9 @@
  */
 
 import { get } from 'svelte/store';
-import { MessageService, type MessageFields } from '../../services/content/message.js';
-import { ChatService } from '../../services/content/chat.js';
-import { messages, chats, activeChat, activeChatId } from '../state.js';
+import { MessageService, type MessageFields } from '$lib/services/content/message';
+import { ChatService } from '$lib/services/content/chat';
+import { messages, chats, activeChat, activeChatId } from '../state';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.

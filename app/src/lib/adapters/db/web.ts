@@ -23,8 +23,8 @@ import type {
 	PresetSummaryRecord,
 	PresetDataRecord,
 	AssetRecord,
-	CacheRegistryRecord,
-} from './types.js';
+	CacheRegistryRecord
+} from './types';
 
 class DexieStore extends Dexie {
 	characterSummaries!: Table<CharacterSummaryRecord, string>;
@@ -63,7 +63,7 @@ class DexieStore extends Dexie {
 			presetData: 'id, userId, updatedAt, isDeleted',
 			assets: 'id, userId, updatedAt, isDeleted',
 			// Local-only tables (never synced)
-			cacheRegistry: 'id, lastAccessedAt',
+			cacheRegistry: 'id, lastAccessedAt'
 		});
 	}
 }
@@ -101,11 +101,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		await this.getTable<BaseRecord>(tableName).delete(id);
 	}
 
-	async deleteByIndex(
-		tableName: TableName,
-		indexName: string,
-		indexValue: string
-	): Promise<void> {
+	async deleteByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<void> {
 		const table = this.getTable<BaseRecord>(tableName);
 		await table.where(indexName).equals(indexValue).delete();
 	}

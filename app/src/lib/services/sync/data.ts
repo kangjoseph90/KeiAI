@@ -14,11 +14,11 @@
  * NOT E2EE and uses PB file fields, not encrypted blobs.
  */
 
-import { pb } from '../../adapters/pb.js';
-import { getActiveSession } from '../session.js';
-import { toBase64, fromBase64 } from '../../crypto/index.js';
-import { localDB, type TableName, SYNC_TABLES, type BaseRecord } from '../../adapters/db/index.js';
-import { appKV } from '../../adapters/kv/index.js';
+import { pb } from '$lib/adapters/pb';
+import { getActiveSession } from '../session';
+import { toBase64, fromBase64 } from '$lib/crypto';
+import { localDB, type TableName, SYNC_TABLES, type BaseRecord } from '$lib/adapters/db';
+import { appKV } from '$lib/adapters/kv';
 
 type RealtimeEvent = {
 	action: string;
@@ -73,7 +73,11 @@ export class DataSyncService {
 	static async unsubscribeRealtime(): Promise<void> {
 		if (!this.subscribed) return;
 		for (const table of SYNC_TABLES) {
-			try { await pb.collection(table).unsubscribe('*'); } catch { /* ignore */ }
+			try {
+				await pb.collection(table).unsubscribe('*');
+			} catch {
+				/* ignore */
+			}
 		}
 		this.subscribed = false;
 	}
@@ -100,7 +104,9 @@ export class DataSyncService {
 	 */
 	static async syncAll(): Promise<void> {
 		if (this.syncPromise) return this.syncPromise;
-		this.syncPromise = this.pullAll().finally(() => { this.syncPromise = null; });
+		this.syncPromise = this.pullAll().finally(() => {
+			this.syncPromise = null;
+		});
 		return this.syncPromise;
 	}
 
@@ -131,7 +137,10 @@ export class DataSyncService {
 		try {
 			while (true) {
 				const result = await pb.collection(tableName).getList(page, this.PAGE_SIZE, {
-					filter: pb.filter('userId = {:userId} && updatedAt >= {:since}', { userId, since: lastSyncTime }),
+					filter: pb.filter('userId = {:userId} && updatedAt >= {:since}', {
+						userId,
+						since: lastSyncTime
+					}),
 					sort: 'updatedAt'
 				});
 
@@ -276,7 +285,8 @@ export class DataSyncService {
 
 		for (const [key, value] of Object.entries(pbRecord)) {
 			if (!this.ALLOWED_RECORD_FIELDS.has(key)) continue;
-			record[key] = typeof value === 'string' && this.isBase64ByteField(key) ? fromBase64(value) : value;
+			record[key] =
+				typeof value === 'string' && this.isBase64ByteField(key) ? fromBase64(value) : value;
 		}
 
 		record.createdAt = this.normalizeTimestamp(record.createdAt, pbRecord.created);

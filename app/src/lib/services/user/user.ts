@@ -6,16 +6,15 @@
  * AuthService delegates local record management here.
  */
 
-import { appUser } from '$lib/adapters/user/index.js';
-import { localDB, TABLES, SYNC_TABLES, type AssetRecord } from '$lib/adapters/db/index.js';
-import { appStorage } from '$lib/adapters/storage/index.js';
-import { appKV } from '$lib/adapters/kv/index.js';
-import { generateMasterKey } from '$lib/crypto/index.js';
-import { generateId } from '$lib/shared/id.js';
-import { setSession } from '../session.js';
+import { appUser } from '$lib/adapters/user';
+import { localDB, TABLES, SYNC_TABLES, type AssetRecord } from '$lib/adapters/db';
+import { appStorage } from '$lib/adapters/storage';
+import { appKV } from '$lib/adapters/kv';
+import { generateMasterKey } from '$lib/crypto';
+import { generateId } from '$lib/shared/id';
+import { setSession } from '../session';
 
 export class UserService {
-
 	// ─── Boot ────────────────────────────────────────────────────────
 
 	/**
@@ -91,7 +90,10 @@ export class UserService {
 			id: params.id,
 			name: existing?.name ?? params.serverName ?? 'Synced Profile',
 			email: params.email,
-			avatar: existing?.avatar ?? params.avatarUrl ?? `https://api.dicebear.com/7.x/identicon/svg?seed=${params.id}`,
+			avatar:
+				existing?.avatar ??
+				params.avatarUrl ??
+				`https://api.dicebear.com/7.x/identicon/svg?seed=${params.id}`,
 			createdAt: existing?.createdAt ?? Date.now(),
 			updatedAt: Date.now(),
 			isDeleted: false,

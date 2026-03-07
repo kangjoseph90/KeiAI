@@ -13,11 +13,11 @@
  *   stores → sync (never sync → stores)
  */
 
-export { DataSyncService } from './data.js';
-export { ProfileSyncService } from './profile.js';
+export { DataSyncService } from './data';
+export { ProfileSyncService } from './profile';
 
-import { DataSyncService } from './data.js';
-import { ProfileSyncService } from './profile.js';
+import { DataSyncService } from './data';
+import { ProfileSyncService } from './profile';
 
 /**
  * Unified lifecycle controller for all sync services.
@@ -48,11 +48,19 @@ export class SyncManager {
 		// Data sync Realtime subscriptions
 		void DataSyncService.subscribeRealtime();
 
-		// Profile sync Realtime subscription (callback wired here)
+		// Profile sync Realtime subscription
 		void ProfileSyncService.subscribe(this.onProfileUpdate ?? undefined);
 
 		// Fallback poll: catches offline gaps that subscriptions miss
-		this.pollTimer = setInterval(() => void DataSyncService.syncAll(), this.FALLBACK_POLL_INTERVAL_MS);
+		this.pollTimer = setInterval(
+			() => void DataSyncService.syncAll(),
+			this.FALLBACK_POLL_INTERVAL_MS
+		);
+
+		// Clean up previous listeners if they somehow exist to prevent duplicates
+		if (this.onlineListener) window.removeEventListener('online', this.onlineListener);
+		if (this.visibilityListener)
+			document.removeEventListener('visibilitychange', this.visibilityListener);
 
 		this.onlineListener = () => void this.resubscribeAndPull();
 		window.addEventListener('online', this.onlineListener);
@@ -66,10 +74,21 @@ export class SyncManager {
 	static stopAutoSync(): void {
 		void DataSyncService.unsubscribeRealtime();
 		void ProfileSyncService.unsubscribe();
-		if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+
+		if (this.pollTimer) {
+			clearInterval(this.pollTimer);
+			this.pollTimer = null;
+		}
+
 		if (typeof window !== 'undefined') {
-			if (this.onlineListener) { window.removeEventListener('online', this.onlineListener); this.onlineListener = null; }
-			if (this.visibilityListener) { document.removeEventListener('visibilitychange', this.visibilityListener); this.visibilityListener = null; }
+			if (this.onlineListener) {
+				window.removeEventListener('online', this.onlineListener);
+				this.onlineListener = null;
+			}
+			if (this.visibilityListener) {
+				document.removeEventListener('visibilitychange', this.visibilityListener);
+				this.visibilityListener = null;
+			}
 		}
 		this.onProfileUpdate = null;
 	}

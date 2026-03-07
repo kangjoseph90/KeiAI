@@ -3,7 +3,7 @@ import Database from '@tauri-apps/plugin-sql';
 import { Stronghold } from '@tauri-apps/plugin-stronghold';
 import { appLocalDataDir } from '@tauri-apps/api/path';
 import { Store as TauriStore } from '@tauri-apps/plugin-store';
-import type { IUserAdapter, UserRecord } from './types.js';
+import type { IUserAdapter, UserRecord } from './types';
 
 /**
  * Tauri User Adapter
@@ -95,9 +95,7 @@ export class TauriUserAdapter implements IUserAdapter {
 					isGuest   INTEGER NOT NULL DEFAULT 0
 				)
 			`);
-			await db.execute(
-				`CREATE INDEX IF NOT EXISTS idx_users_updatedAt ON users (updatedAt)`
-			);
+			await db.execute(`CREATE INDEX IF NOT EXISTS idx_users_updatedAt ON users (updatedAt)`);
 			return db;
 		})();
 
@@ -125,18 +123,13 @@ export class TauriUserAdapter implements IUserAdapter {
 
 	private async sqliteGetOne(id: string): Promise<SQLiteUserRow | null> {
 		const db = await this.getSQLite();
-		const rows = await db.select<SQLiteUserRow[]>(
-			`SELECT * FROM users WHERE id = $1`,
-			[id]
-		);
+		const rows = await db.select<SQLiteUserRow[]>(`SELECT * FROM users WHERE id = $1`, [id]);
 		return rows[0] ?? null;
 	}
 
 	private async sqliteGetAll(): Promise<SQLiteUserRow[]> {
 		const db = await this.getSQLite();
-		return db.select<SQLiteUserRow[]>(
-			`SELECT * FROM users WHERE isDeleted = 0`
-		);
+		return db.select<SQLiteUserRow[]>(`SELECT * FROM users WHERE isDeleted = 0`);
 	}
 
 	// ── Stronghold (key store) ────────────────────────────────────────────────
@@ -225,9 +218,7 @@ export class TauriUserAdapter implements IUserAdapter {
 		//    for recovery of the registered user as well.
 		if (user.isGuest) {
 			try {
-				const rawKey = new Uint8Array(
-					await crypto.subtle.exportKey('raw', user.masterKey)
-				);
+				const rawKey = new Uint8Array(await crypto.subtle.exportKey('raw', user.masterKey));
 				await this.backupGuestKey(user.id, rawKey);
 				rawKey.fill(0); // scrub from memory after storing
 			} catch {

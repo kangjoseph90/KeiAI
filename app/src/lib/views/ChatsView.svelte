@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { MessageSquare, Pencil, Plus, Trash2, Check, X } from 'lucide-svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import { Card, CardContent } from '$lib/components/ui/card/index.js';
-	import { Separator } from '$lib/components/ui/separator/index.js';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Card, CardContent } from '$lib/components/ui/card';
+	import { Separator } from '$lib/components/ui/separator';
 	import {
 		chats,
 		activeCharacter,
@@ -147,11 +147,9 @@
 			{#each $characterLorebooks as lb (lb.id)}
 				<div class="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
 					<span>{lb.name}</span>
-					<Button
-						size="sm"
-						variant="ghost"
-						onclick={() => deleteCharacterLorebook(charId, lb.id)}
-					><Trash2 class="size-3" /></Button>
+					<Button size="sm" variant="ghost" onclick={() => deleteCharacterLorebook(charId, lb.id)}
+						><Trash2 class="size-3" /></Button
+					>
 				</div>
 			{:else}
 				<p class="text-sm text-muted-foreground">None yet.</p>
@@ -165,11 +163,9 @@
 			{#each $characterScripts as sc (sc.id)}
 				<div class="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
 					<span>{sc.name}</span>
-					<Button
-						size="sm"
-						variant="ghost"
-						onclick={() => deleteCharacterScript(charId, sc.id)}
-					><Trash2 class="size-3" /></Button>
+					<Button size="sm" variant="ghost" onclick={() => deleteCharacterScript(charId, sc.id)}
+						><Trash2 class="size-3" /></Button
+					>
 				</div>
 			{:else}
 				<p class="text-sm text-muted-foreground">None yet.</p>

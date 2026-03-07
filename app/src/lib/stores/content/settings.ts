@@ -1,10 +1,14 @@
 import { get } from 'svelte/store';
-import { SettingsService, type AppSettingsContent, type AppSettings } from '../../services/index.js';
-import { appSettings } from '../state.js';
-import type { OrderedRef, FolderDef } from '../../shared/types.js';
-import { generateSortOrder } from '../../shared/ordering.js';
-import { AppError } from '../../shared/errors.js';
-import { generateId } from '../../shared/id.js';
+import {
+	SettingsService,
+	type AppSettingsContent,
+	type AppSettings
+} from '$lib/services';
+import { appSettings } from '../state';
+import type { OrderedRef, FolderDef } from '$lib/shared/types';
+import { generateSortOrder } from '$lib/shared/ordering';
+import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/shared/id';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.
@@ -28,7 +32,7 @@ export async function createGlobalFolder(
 	name: string,
 	parentId?: string
 ): Promise<FolderDef> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');
@@ -56,7 +60,7 @@ export async function updateGlobalFolder(
 	folderId: string,
 	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');
@@ -73,8 +77,11 @@ export async function updateGlobalFolder(
 	appSettings.set(updated);
 }
 
-export async function deleteGlobalFolder(folderType: GlobalFolderType, folderId: string): Promise<void> {
-	const settings = get(appSettings) || await SettingsService.get();
+export async function deleteGlobalFolder(
+	folderType: GlobalFolderType,
+	folderId: string
+): Promise<void> {
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');
@@ -95,7 +102,7 @@ export async function moveGlobalItem(
 	newFolderId?: string,
 	newSortOrder?: string
 ): Promise<void> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');

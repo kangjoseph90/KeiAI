@@ -6,18 +6,18 @@
  */
 
 import { derived, writable } from 'svelte/store';
-import type { AppSettings } from '../services/content/settings.js';
-import type { Profile } from '../services/auth/profile.js';
-import type { Character, CharacterDetail } from '../services/content/character.js';
-import type { Chat, ChatDetail } from '../services/content/chat.js';
-import type { Message } from '../services/content/message.js';
-import type { Persona } from '../services/content/persona.js';
-import type { Preset, PresetDetail } from '../services/content/preset.js';
-import type { Module } from '../services/content/module.js';
-import type { Plugin } from '../services/content/plugin.js';
-import type { Lorebook } from '../services/content/lorebook.js';
-import type { Script } from '../services/content/script.js';
-import type { GenerationTask, DisplayMessage } from './types.js';
+import type { AppSettings } from '$lib/services/content/settings';
+import type { Profile } from '$lib/services/user/profile';
+import type { Character, CharacterDetail } from '$lib/services/content/character';
+import type { Chat, ChatDetail } from '$lib/services/content/chat';
+import type { Message } from '$lib/services/content/message';
+import type { Persona } from '$lib/services/content/persona';
+import type { Preset, PresetDetail } from '$lib/services/content/preset';
+import type { Module } from '$lib/services/content/module';
+import type { Plugin } from '$lib/services/content/plugin';
+import type { Lorebook } from '$lib/services/content/lorebook';
+import type { Script } from '$lib/services/content/script';
+import type { GenerationTask, DisplayMessage } from './types';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
@@ -58,9 +58,8 @@ export const messages = writable<Message[]>([]);
 export const generationTasks = writable<Map<string, GenerationTask>>(new Map());
 
 /** Whether any generation is running in the active chat */
-export const isGenerating = derived(
-	[generationTasks, activeChat],
-	([tasks, chat]) => chat ? tasks.has(chat.id) : false
+export const isGenerating = derived([generationTasks, activeChat], ([tasks, chat]) =>
+	chat ? tasks.has(chat.id) : false
 );
 
 /**
@@ -93,7 +92,6 @@ export const displayMessages = derived(
 		return base;
 	}
 );
-
 
 // ─── Context Resources ─────────────────────────────────────────────────
 export const activePreset = writable<PresetDetail | null>(null);

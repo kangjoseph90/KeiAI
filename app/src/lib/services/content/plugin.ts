@@ -1,10 +1,10 @@
-import { encrypt, decrypt } from '../../crypto/index.js';
-import { getActiveSession } from '../session.js';
-import { localDB, type PluginRecord } from '../../adapters/db/index.js';
-import { DataSyncService } from '../sync/index.js';
-import { deepMerge } from '../../shared/defaults.js';
-import { AppError } from '../../shared/errors.js';
-import { generateId } from '../../shared/id.js';
+import { encrypt, decrypt } from '$lib/crypto';
+import { getActiveSession } from '../session';
+import { localDB, type PluginRecord } from '$lib/adapters/db';
+import { DataSyncService } from '../sync';
+import { deepMerge } from '$lib/shared/defaults';
+import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/shared/id';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -81,7 +81,10 @@ export class PluginService {
 	}
 
 	static async create(fields: Partial<PluginFields> = {}): Promise<Plugin> {
-		const resolved: PluginFields = deepMerge(defaultPluginFields, fields as Record<string, unknown>);
+		const resolved: PluginFields = deepMerge(
+			defaultPluginFields,
+			fields as Record<string, unknown>
+		);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -90,8 +93,13 @@ export class PluginService {
 		try {
 			const enc = await encrypt(masterKey, JSON.stringify(resolved));
 			const newRecord: PluginRecord = {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: enc.ciphertext,
+				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<PluginRecord>('plugins', newRecord);
 			void DataSyncService.pushRecord('plugins', newRecord, true);

@@ -1,10 +1,10 @@
-import { encrypt, decrypt } from '../../crypto/index.js';
-import { getActiveSession } from '../session.js';
-import { localDB, type SettingsRecord } from '../../adapters/db/index.js';
-import { DataSyncService } from '../sync/index.js';
-import type { OrderedRef, FolderDef, ResourceRef } from '../../shared/types.js';
-import { deepMerge } from '../../shared/defaults.js';
-import { AppError } from '../../shared/errors.js';
+import { encrypt, decrypt } from '$lib/crypto';
+import { getActiveSession } from '../session';
+import { localDB, type SettingsRecord } from '$lib/adapters/db';
+import { DataSyncService } from '../sync';
+import type { OrderedRef, FolderDef, ResourceRef } from '$lib/shared/types';
+import { deepMerge } from '$lib/shared/defaults';
+import { AppError } from '$lib/shared/errors';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -128,4 +128,3 @@ export class SettingsService {
 		}
 	}
 }
-

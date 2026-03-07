@@ -1,11 +1,11 @@
-import { encrypt, decrypt } from '../../crypto/index.js';
-import { getActiveSession } from '../session.js';
-import { localDB, type ScriptRecord } from '../../adapters/db/index.js';
-import { DataSyncService } from '../sync/index.js';
-import { deepMerge } from '../../shared/defaults.js';
-import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards.js';
-import { AppError } from '../../shared/errors.js';
-import { generateId } from '../../shared/id.js';
+import { encrypt, decrypt } from '$lib/crypto';
+import { getActiveSession } from '../session';
+import { localDB, type ScriptRecord } from '$lib/adapters/db';
+import { DataSyncService } from '../sync';
+import { deepMerge } from '$lib/shared/defaults';
+import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards';
+import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/shared/id';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -86,7 +86,10 @@ export class ScriptService {
 	static async create(ownerId: string, fields: Partial<ScriptFields> = {}): Promise<Script> {
 		await assertOwnedResourceParentExists(ownerId);
 
-		const resolved: ScriptFields = deepMerge(defaultScriptFields, fields as Record<string, unknown>);
+		const resolved: ScriptFields = deepMerge(
+			defaultScriptFields,
+			fields as Record<string, unknown>
+		);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -95,8 +98,14 @@ export class ScriptService {
 		try {
 			const enc = await encrypt(masterKey, JSON.stringify(resolved));
 			const newRecord: ScriptRecord = {
-				id, userId, ownerId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+				id,
+				userId,
+				ownerId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: enc.ciphertext,
+				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<ScriptRecord>('scripts', newRecord);
 			void DataSyncService.pushRecord('scripts', newRecord, true);

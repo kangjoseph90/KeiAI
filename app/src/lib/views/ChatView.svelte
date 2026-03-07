@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { Plus, SendHorizontal, Square, Trash2 } from 'lucide-svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import Message from '$lib/components/Message.svelte';
 	import {
 		activeChat,

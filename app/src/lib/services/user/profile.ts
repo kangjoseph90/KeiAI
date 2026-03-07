@@ -8,10 +8,10 @@
  * so this service talks directly to the `appUser` adapter instead of `localDB`.
  */
 
-import { getActiveSession } from '../session.js';
-import { appUser, type UserRecord } from '../../adapters/user/index.js';
-import { ProfileSyncService } from '../sync/profile.js';
-import { AppError } from '../../shared/errors.js';
+import { getActiveSession } from '../session';
+import { appUser, type UserRecord } from '$lib/adapters/user';
+import { ProfileSyncService } from '../sync/profile';
+import { AppError } from '$lib/shared/errors';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -92,7 +92,7 @@ export class ProfileService {
 			name: user.name,
 			avatar: user.avatar,
 			email: user.email,
-			isGuest: user.isGuest,
+			isGuest: user.isGuest
 		};
 	}
 }

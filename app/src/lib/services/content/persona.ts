@@ -1,11 +1,11 @@
-import { encrypt, decrypt } from '../../crypto/index.js';
-import { getActiveSession } from '../session.js';
-import { localDB, type PersonaRecord } from '../../adapters/db/index.js';
-import { DataSyncService } from '../sync/index.js';
-import { deepMerge } from '../../shared/defaults.js';
-import { AppError } from '../../shared/errors.js';
-import type { AssetRef } from '../../shared/types.js';
-import { generateId } from '../../shared/id.js';
+import { encrypt, decrypt } from '$lib/crypto';
+import { getActiveSession } from '../session';
+import { localDB, type PersonaRecord } from '$lib/adapters/db';
+import { DataSyncService } from '../sync';
+import { deepMerge } from '$lib/shared/defaults';
+import { AppError } from '$lib/shared/errors';
+import type { AssetRef } from '$lib/shared/types';
+import { generateId } from '$lib/shared/id';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -78,7 +78,10 @@ export class PersonaService {
 
 	/** Create a persona */
 	static async create(fields: Partial<PersonaFields> = {}): Promise<Persona> {
-		const resolved: PersonaFields = deepMerge(defaultPersonaFields, fields as Record<string, unknown>);
+		const resolved: PersonaFields = deepMerge(
+			defaultPersonaFields,
+			fields as Record<string, unknown>
+		);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -87,8 +90,13 @@ export class PersonaService {
 		try {
 			const enc = await encrypt(masterKey, JSON.stringify(resolved));
 			const newRecord: PersonaRecord = {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: enc.ciphertext,
+				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<PersonaRecord>('personas', newRecord);
 			void DataSyncService.pushRecord('personas', newRecord, true);

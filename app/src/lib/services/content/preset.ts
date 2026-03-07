@@ -1,14 +1,14 @@
-import { encrypt, decrypt } from '../../crypto/index.js';
-import { getActiveSession } from '../session.js';
+import { encrypt, decrypt } from '$lib/crypto';
+import { getActiveSession } from '../session';
 import {
 	localDB,
 	type PresetSummaryRecord,
 	type PresetDataRecord
-} from '../../adapters/db/index.js';
-import { DataSyncService } from '../sync/index.js';
-import { deepMerge } from '../../shared/defaults.js';
-import { AppError } from '../../shared/errors.js';
-import { generateId } from '../../shared/id.js';
+} from '$lib/adapters/db';
+import { DataSyncService } from '../sync';
+import { deepMerge } from '$lib/shared/defaults';
+import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/shared/id';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -166,8 +166,14 @@ export class PresetService {
 		summary: Partial<PresetSummaryFields> = {},
 		data: Partial<PresetDataFields> = {}
 	): Promise<PresetDetail> {
-		const resolvedSummary: PresetSummaryFields = deepMerge(defaultPresetSummary, summary as Record<string, unknown>);
-		const resolvedData: PresetDataFields = deepMerge(defaultPresetData, data as Record<string, unknown>);
+		const resolvedSummary: PresetSummaryFields = deepMerge(
+			defaultPresetSummary,
+			summary as Record<string, unknown>
+		);
+		const resolvedData: PresetDataFields = deepMerge(
+			defaultPresetData,
+			data as Record<string, unknown>
+		);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -178,12 +184,22 @@ export class PresetService {
 			const dataEnc = await encrypt(masterKey, JSON.stringify(resolvedData));
 
 			const summaryRecord: PresetSummaryRecord = {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: summaryEnc.ciphertext, encryptedDataIV: summaryEnc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: summaryEnc.ciphertext,
+				encryptedDataIV: summaryEnc.iv
 			};
 			const dataRecord: PresetDataRecord = {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: dataEnc.ciphertext, encryptedDataIV: dataEnc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: dataEnc.ciphertext,
+				encryptedDataIV: dataEnc.iv
 			};
 
 			await localDB.transaction(['presetSummaries', 'presetData'], 'rw', async () => {
@@ -201,10 +217,7 @@ export class PresetService {
 	}
 
 	/** Update summary only */
-	static async updateSummary(
-		id: string,
-		changes: Partial<PresetSummaryFields>
-	): Promise<Preset> {
+	static async updateSummary(id: string, changes: Partial<PresetSummaryFields>): Promise<Preset> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<PresetSummaryRecord>('presetSummaries', id);
 		if (!record || record.isDeleted) {
@@ -274,17 +287,9 @@ export class PresetService {
 		try {
 			await localDB.transaction(['presetSummaries', 'presetData'], 'rw', async () => {
 				// Read both records upfront ??ensures no partial writes if one is missing
-				const summaryRecord = await localDB.getRecord<PresetSummaryRecord>(
-					'presetSummaries',
-					id
-				);
+				const summaryRecord = await localDB.getRecord<PresetSummaryRecord>('presetSummaries', id);
 				const dataRecord = await localDB.getRecord<PresetDataRecord>('presetData', id);
-				if (
-					!summaryRecord ||
-					summaryRecord.isDeleted ||
-					!dataRecord ||
-					dataRecord.isDeleted
-				) {
+				if (!summaryRecord || summaryRecord.isDeleted || !dataRecord || dataRecord.isDeleted) {
 					throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 				}
 
@@ -323,7 +328,8 @@ export class PresetService {
 			throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 		}
 
-		if (summaryRecordToSync) void DataSyncService.pushRecord('presetSummaries', summaryRecordToSync);
+		if (summaryRecordToSync)
+			void DataSyncService.pushRecord('presetSummaries', summaryRecordToSync);
 		if (dataRecordToSync) void DataSyncService.pushRecord('presetData', dataRecordToSync);
 
 		return {

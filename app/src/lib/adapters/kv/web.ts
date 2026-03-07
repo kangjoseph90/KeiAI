@@ -1,4 +1,4 @@
-import type { IKeyValueAdapter } from './types.js';
+import type { IKeyValueAdapter } from './types';
 
 /**
  * Web Key-Value Adapter
