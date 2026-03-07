@@ -3,21 +3,21 @@
  * No session state, no DB access, no localStorage.
  */
 
-export { generateSalt, deriveKeys } from './kdf.js';
+export { generateSalt, deriveKeys } from './kdf';
 export {
 	generateMasterKey,
 	importMasterKey,
 	wrapMasterKey,
 	unwrapMasterKey,
 	unwrapMasterKeyRaw
-} from './masterKey.js';
-export { encrypt, decrypt, encryptBytes, decryptBytes } from './encryption.js';
+} from './masterKey';
+export { encrypt, decrypt, encryptBytes, decryptBytes } from './encryption';
 export {
 	createRecoveryData,
 	splitRecoveryCode,
 	hashRecoveryAuthToken,
 	deriveRecoveryKey
-} from './recovery.js';
+} from './recovery';
 export type {
 	RegistrationPayload,
 	LinkAccountResult,
@@ -26,7 +26,7 @@ export type {
 	EncryptedData,
 	DerivedKeys,
 	RecoveryCodeParts
-} from './types.js';
+} from './types';
 
 // ─── Encoding Utilities ─────────────────────────────────────────────
 

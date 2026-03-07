@@ -13,9 +13,9 @@
  *   5. New password → new KDF(salt, X, Y) → re-wrap M with new Y
  */
 
-import { RECOVERY_CODE_LENGTH, RECOVERY_FRONT_LENGTH } from './constants.js';
-import { wrapMasterKey } from './masterKey.js';
-import type { RecoveryCodeParts } from './types.js';
+import { RECOVERY_CODE_LENGTH, RECOVERY_FRONT_LENGTH } from './constants';
+import { wrapMasterKey } from './masterKey';
+import type { RecoveryCodeParts } from './types';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 

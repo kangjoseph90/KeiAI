@@ -7,4 +7,4 @@
  * CRUD is handled by parent stores (character.ts, module.ts).
  * This file only re-exports the editing context store.
  */
-export { activeScripts } from '../state.js';
+export { activeScripts } from '../state';

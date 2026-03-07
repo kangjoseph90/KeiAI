@@ -49,10 +49,7 @@ export const SYNC_TABLES: TableName[] = [
 	'assets'
 ];
 
-export const TABLES: TableName[] = [
-	...SYNC_TABLES,
-	'cacheRegistry'
-];
+export const TABLES: TableName[] = [...SYNC_TABLES, 'cacheRegistry'];
 
 // ─── Base Types ──────────────────────────────────────────────────────
 
@@ -141,7 +138,7 @@ export type AssetRecord = EncryptedRecord;
 
 export interface CacheRegistryRecord extends BaseRecord {
 	lastAccessedAt: number; // Unix ms — updated every time the asset is rendered
-	size: number;           // Bytes on disk — used to calculate total cache size
+	size: number; // Bytes on disk — used to calculate total cache size
 }
 
 // ─── Adapter Interface ──────────────────────────────────────────────

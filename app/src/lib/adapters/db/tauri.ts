@@ -1,6 +1,6 @@
 import Database from '@tauri-apps/plugin-sql';
-import type { IDatabaseAdapter, TableName, BaseRecord } from './types.js';
-import { TABLES } from './types.js';
+import type { IDatabaseAdapter, TableName, BaseRecord } from './types';
+import { TABLES } from './types';
 
 /**
  * Tauri SQLite Local Database Adapter
@@ -15,7 +15,6 @@ import { TABLES } from './types.js';
  * during JSON.stringify to survive SQLite TEXT column storage, and converted
  * back upon reading.
  */
-
 
 function arrayBufferToBase64(buffer: ArrayBufferLike): string {
 	let binary = '';
@@ -205,11 +204,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		await db.execute(`DELETE FROM ${tableName} WHERE id = $1`, [id]);
 	}
 
-	async deleteByIndex(
-		tableName: TableName,
-		indexName: string,
-		indexValue: string
-	): Promise<void> {
+	async deleteByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<void> {
 		const db = await this.getDb();
 		await db.execute(`DELETE FROM ${tableName} WHERE ${indexName} = $1`, [indexValue]);
 	}
@@ -234,10 +229,9 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 	): Promise<void> {
 		const db = await this.getDb();
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const rows = await db.select<any[]>(
-			`SELECT data FROM ${tableName} WHERE ${indexName} = $1`,
-			[indexValue]
-		);
+		const rows = await db.select<any[]>(`SELECT data FROM ${tableName} WHERE ${indexName} = $1`, [
+			indexValue
+		]);
 		const now = Date.now();
 		const recordsToUpdate: BaseRecord[] = [];
 

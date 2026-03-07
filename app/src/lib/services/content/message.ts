@@ -1,12 +1,12 @@
-import { encrypt, decrypt } from '../../crypto/index.js';
-import { getActiveSession } from '../session.js';
-import { localDB, type MessageRecord } from '../../adapters/db/index.js';
-import { DataSyncService } from '../sync/index.js';
+import { encrypt, decrypt } from '$lib/crypto';
+import { getActiveSession } from '../session';
+import { localDB, type MessageRecord } from '$lib/adapters/db';
+import { DataSyncService } from '../sync';
 import { generateKeyBetween } from 'fractional-indexing';
-import { deepMerge } from '../../shared/defaults.js';
-import { assertChatExists, assertMessageInChat } from './guards.js';
-import { AppError } from '../../shared/errors.js';
-import { generateId } from '../../shared/id.js';
+import { deepMerge } from '$lib/shared/defaults';
+import { assertChatExists, assertMessageInChat } from './guards';
+import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/shared/id';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -129,7 +129,10 @@ export class MessageService {
 	): Promise<Message> {
 		await assertChatExists(chatId);
 
-		const resolved: MessageFields = deepMerge(defaultMessageFields, fields as Record<string, unknown>);
+		const resolved: MessageFields = deepMerge(
+			defaultMessageFields,
+			fields as Record<string, unknown>
+		);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -154,8 +157,15 @@ export class MessageService {
 		try {
 			const enc = await encrypt(masterKey, JSON.stringify(resolved));
 			const newRecord: MessageRecord = {
-				id, userId, chatId, sortOrder, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+				id,
+				userId,
+				chatId,
+				sortOrder,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: enc.ciphertext,
+				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<MessageRecord>('messages', newRecord);
 			void DataSyncService.pushRecord('messages', newRecord, true);

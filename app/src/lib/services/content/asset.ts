@@ -11,18 +11,18 @@
  *   evict        → LRU cache cleanup when total cache exceeds high watermark
  */
 
-import { encrypt, decrypt } from '../../crypto/index.js';
-import { getActiveSession } from '../session.js';
-import { localDB, type AssetRecord, type CacheRegistryRecord } from '../../adapters/db/index.js';
-import { appStorage } from '../../adapters/storage/index.js';
-import { AppError } from '../../shared/errors.js';
-import { generateId } from '../../shared/id.js';
+import { encrypt, decrypt } from '$lib/crypto';
+import { getActiveSession } from '../session';
+import { localDB, type AssetRecord, type CacheRegistryRecord } from '$lib/adapters/db';
+import { appStorage } from '$lib/adapters/storage';
+import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/shared/id';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /** Evict cache down to LOWWATERMARK when total exceeds HIGHWATERMARK */
 const CACHEHIGHWATERMARK = 500 * 1024 * 1024; // 500 MB
-const CACHELOWWATERMARK  = 400 * 1024 * 1024; // 400 MB
+const CACHELOWWATERMARK = 400 * 1024 * 1024; // 400 MB
 
 // ─── Asset field types (stored inside encryptedData) ─────────────────────────
 
@@ -37,10 +37,7 @@ export interface AssetFields {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-async function decryptAssetFields(
-	masterKey: CryptoKey,
-	record: AssetRecord
-): Promise<AssetFields> {
+async function decryptAssetFields(masterKey: CryptoKey, record: AssetRecord): Promise<AssetFields> {
 	return decrypt(masterKey, {
 		ciphertext: record.encryptedData,
 		iv: record.encryptedDataIV
@@ -59,7 +56,6 @@ function toBytes(data: Uint8Array | Blob): Promise<Uint8Array> {
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 export class AssetService {
-
 	// ── Read ──────────────────────────────────────────────────────────────
 
 	/**

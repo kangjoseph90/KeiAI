@@ -1,15 +1,15 @@
-import { encrypt, decrypt } from '../../crypto/index.js';
-import { getActiveSession } from '../session.js';
+import { encrypt, decrypt } from '$lib/crypto';
+import { getActiveSession } from '../session';
 import {
 	localDB,
 	type CharacterSummaryRecord,
 	type CharacterDataRecord
-} from '../../adapters/db/index.js';
-import { DataSyncService } from '../sync/index.js';
-import type { OrderedRef, FolderDef, AssetRef } from '../../shared/types.js';
-import { deepMerge } from '../../shared/defaults.js';
-import { AppError } from '../../shared/errors.js';
-import { generateId } from '../../shared/id.js';
+} from '$lib/adapters/db';
+import { DataSyncService } from '../sync';
+import type { OrderedRef, FolderDef, AssetRef } from '$lib/shared/types';
+import { deepMerge } from '$lib/shared/defaults';
+import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/shared/id';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -134,8 +134,14 @@ export class CharacterService {
 		summary: Partial<CharacterSummaryFields> = {},
 		data: Partial<CharacterDataFields> = {}
 	): Promise<CharacterDetail> {
-		const resolvedSummary: CharacterSummaryFields = deepMerge(defaultSummaryFields, summary as Record<string, unknown>);
-		const resolvedData: CharacterDataFields = deepMerge(defaultDataFields, data as Record<string, unknown>);
+		const resolvedSummary: CharacterSummaryFields = deepMerge(
+			defaultSummaryFields,
+			summary as Record<string, unknown>
+		);
+		const resolvedData: CharacterDataFields = deepMerge(
+			defaultDataFields,
+			data as Record<string, unknown>
+		);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -146,12 +152,22 @@ export class CharacterService {
 			const dataEnc = await encrypt(masterKey, JSON.stringify(resolvedData));
 
 			const summaryRecord: CharacterSummaryRecord = {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: summaryEnc.ciphertext, encryptedDataIV: summaryEnc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: summaryEnc.ciphertext,
+				encryptedDataIV: summaryEnc.iv
 			};
 			const dataRecord: CharacterDataRecord = {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: dataEnc.ciphertext, encryptedDataIV: dataEnc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: dataEnc.ciphertext,
+				encryptedDataIV: dataEnc.iv
 			};
 
 			await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
@@ -181,7 +197,10 @@ export class CharacterService {
 
 		try {
 			const current = await decryptSummaryFields(masterKey, record);
-			const updated: CharacterSummaryFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: CharacterSummaryFields = deepMerge(
+				current,
+				changes as Record<string, unknown>
+			);
 			const enc = await encrypt(masterKey, JSON.stringify(updated));
 
 			record.encryptedData = enc.ciphertext;
@@ -247,12 +266,7 @@ export class CharacterService {
 					id
 				);
 				const dataRecord = await localDB.getRecord<CharacterDataRecord>('characterData', id);
-				if (
-					!summaryRecord ||
-					summaryRecord.isDeleted ||
-					!dataRecord ||
-					dataRecord.isDeleted
-				) {
+				if (!summaryRecord || summaryRecord.isDeleted || !dataRecord || dataRecord.isDeleted) {
 					throw new AppError('NOT_FOUND', 'Character not found');
 				}
 
@@ -291,7 +305,8 @@ export class CharacterService {
 			throw new AppError('NOT_FOUND', 'Character not found');
 		}
 
-		if (summaryRecordToSync) void DataSyncService.pushRecord('characterSummaries', summaryRecordToSync);
+		if (summaryRecordToSync)
+			void DataSyncService.pushRecord('characterSummaries', summaryRecordToSync);
 		if (dataRecordToSync) void DataSyncService.pushRecord('characterData', dataRecordToSync);
 
 		return {
@@ -335,7 +350,9 @@ export class CharacterService {
 			try {
 				const { userId } = getActiveSession();
 				void DataSyncService.pushRecentWrites(userId, deleteTs);
-			} catch { /* not logged in */ }
+			} catch {
+				/* not logged in */
+			}
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete character', error);

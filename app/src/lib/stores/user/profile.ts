@@ -8,8 +8,8 @@
  * to avoid circular references: stores → sync, never sync → stores.
  */
 
-import { ProfileService, type ProfileFields, type Profile } from '../../services/auth/profile.js';
-import { activeUser } from '../state.js';
+import { ProfileService, type ProfileFields } from '$lib/services/user/profile';
+import { activeUser } from '../state';
 
 /**
  * Load (or refresh) the current user's profile into the activeUser store.

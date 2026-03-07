@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { ChevronRight, Pencil, Plus, Trash2, Check, X } from 'lucide-svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import { Card, CardContent } from '$lib/components/ui/card/index.js';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Card, CardContent } from '$lib/components/ui/card';
 	import {
 		characters,
 		createCharacter,

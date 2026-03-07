@@ -1,11 +1,11 @@
-import { encrypt, decrypt } from '../../crypto/index.js';
-import { getActiveSession } from '../session.js';
-import { localDB, type ModuleRecord } from '../../adapters/db/index.js';
-import { DataSyncService } from '../sync/index.js';
-import type { AssetRef, FolderDef, OrderedRef } from '../../shared/types.js';
-import { deepMerge } from '../../shared/defaults.js';
-import { AppError } from '../../shared/errors.js';
-import { generateId } from '../../shared/id.js';
+import { encrypt, decrypt } from '$lib/crypto';
+import { getActiveSession } from '../session';
+import { localDB, type ModuleRecord } from '$lib/adapters/db';
+import { DataSyncService } from '../sync';
+import type { AssetRef, FolderDef, OrderedRef } from '$lib/shared/types';
+import { deepMerge } from '$lib/shared/defaults';
+import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/shared/id';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -81,7 +81,10 @@ export class ModuleService {
 	}
 
 	static async create(fields: Partial<ModuleFields> = {}): Promise<Module> {
-		const resolved: ModuleFields = deepMerge(defaultModuleFields, fields as Record<string, unknown>);
+		const resolved: ModuleFields = deepMerge(
+			defaultModuleFields,
+			fields as Record<string, unknown>
+		);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -90,8 +93,13 @@ export class ModuleService {
 		try {
 			const enc = await encrypt(masterKey, JSON.stringify(resolved));
 			const newRecord: ModuleRecord = {
-				id, userId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
+				id,
+				userId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: enc.ciphertext,
+				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<ModuleRecord>('modules', newRecord);
 			void DataSyncService.pushRecord('modules', newRecord, true);
@@ -129,10 +137,7 @@ export class ModuleService {
 	}
 
 	/** Update content fields only ??safe entry point for store layer */
-	static async updateContent(
-		id: string,
-		changes: Partial<ModuleContent>
-	): Promise<Module> {
+	static async updateContent(id: string, changes: Partial<ModuleContent>): Promise<Module> {
 		return this.update(id, changes);
 	}
 
@@ -147,7 +152,9 @@ export class ModuleService {
 			try {
 				const { userId } = getActiveSession();
 				void DataSyncService.pushRecentWrites(userId, deleteTs);
-			} catch { /* not logged in */ }
+			} catch {
+				/* not logged in */
+			}
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete module', error);

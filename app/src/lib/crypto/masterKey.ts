@@ -8,8 +8,8 @@
  *   - Never exposed in extractable form outside IndexedDB
  */
 
-import { AES_IV_BYTES, AES_KEY_BITS } from './constants.js';
-import { importWrappingKey } from './kdf.js';
+import { AES_IV_BYTES, AES_KEY_BITS } from './constants';
+import { importWrappingKey } from './kdf';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 

@@ -5,19 +5,15 @@
  * Chats are fetched by ID from the character's ref list.
  */
 
-import { encrypt, decrypt } from '../../crypto/index.js';
-import { getActiveSession } from '../session.js';
-import {
-	localDB,
-	type ChatSummaryRecord,
-	type ChatDataRecord
-} from '../../adapters/db/index.js';
-import { DataSyncService } from '../sync/index.js';
-import type { FolderDef, OrderedRef } from '../../shared/types.js';
-import { deepMerge } from '../../shared/defaults.js';
-import { assertCharacterExists, assertChatOwnedByCharacter } from './guards.js';
-import { AppError } from '../../shared/errors.js';
-import { generateId } from '../../shared/id.js';
+import { encrypt, decrypt } from '$lib/crypto';
+import { getActiveSession } from '../session';
+import { localDB, type ChatSummaryRecord, type ChatDataRecord } from '$lib/adapters/db';
+import { DataSyncService } from '../sync';
+import type { FolderDef, OrderedRef } from '$lib/shared/types';
+import { deepMerge } from '$lib/shared/defaults';
+import { assertCharacterExists, assertChatOwnedByCharacter } from './guards';
+import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/shared/id';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -138,8 +134,14 @@ export class ChatService {
 	): Promise<ChatDetail> {
 		await assertCharacterExists(characterId);
 
-		const resolvedSummary: ChatSummaryFields = deepMerge(defaultSummaryFields, summary as Record<string, unknown>);
-		const resolvedData: ChatDataFields = deepMerge(defaultDataFields, data as Record<string, unknown>);
+		const resolvedSummary: ChatSummaryFields = deepMerge(
+			defaultSummaryFields,
+			summary as Record<string, unknown>
+		);
+		const resolvedData: ChatDataFields = deepMerge(
+			defaultDataFields,
+			data as Record<string, unknown>
+		);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -150,12 +152,24 @@ export class ChatService {
 			const dataEnc = await encrypt(masterKey, JSON.stringify(resolvedData));
 
 			const summaryRecord: ChatSummaryRecord = {
-				id, userId, characterId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: summaryEnc.ciphertext, encryptedDataIV: summaryEnc.iv
+				id,
+				userId,
+				characterId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: summaryEnc.ciphertext,
+				encryptedDataIV: summaryEnc.iv
 			};
 			const dataRecord: ChatDataRecord = {
-				id, userId, characterId, createdAt: now, updatedAt: now, isDeleted: false,
-				encryptedData: dataEnc.ciphertext, encryptedDataIV: dataEnc.iv
+				id,
+				userId,
+				characterId,
+				createdAt: now,
+				updatedAt: now,
+				isDeleted: false,
+				encryptedData: dataEnc.ciphertext,
+				encryptedDataIV: dataEnc.iv
 			};
 
 			await localDB.transaction(['chatSummaries', 'chatData'], 'rw', async () => {
@@ -173,10 +187,7 @@ export class ChatService {
 	}
 
 	/** Update summary only */
-	static async updateSummary(
-		id: string,
-		changes: Partial<ChatSummaryFields>
-	): Promise<Chat> {
+	static async updateSummary(id: string, changes: Partial<ChatSummaryFields>): Promise<Chat> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
 		if (!record || record.isDeleted) {
@@ -202,10 +213,7 @@ export class ChatService {
 	}
 
 	/** Update data only */
-	static async updateData(
-		id: string,
-		changes: Partial<ChatDataFields>
-	): Promise<ChatDataFields> {
+	static async updateData(id: string, changes: Partial<ChatDataFields>): Promise<ChatDataFields> {
 		const { masterKey } = getActiveSession();
 		const record = await localDB.getRecord<ChatDataRecord>('chatData', id);
 		if (!record || record.isDeleted) {
@@ -317,7 +325,9 @@ export class ChatService {
 			try {
 				const { userId } = getActiveSession();
 				void DataSyncService.pushRecentWrites(userId, deleteTs);
-			} catch { /* not logged in */ }
+			} catch {
+				/* not logged in */
+			}
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete chat', error);

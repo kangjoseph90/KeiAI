@@ -8,8 +8,8 @@
  * Uses PBKDF2 with SHA-256.
  */
 
-import { KDF_ITERATIONS, KDF_OUTPUT_BITS, SALT_BYTES } from './constants.js';
-import type { DerivedKeys } from './types.js';
+import { KDF_ITERATIONS, KDF_OUTPUT_BITS, SALT_BYTES } from './constants';
+import type { DerivedKeys } from './types';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 

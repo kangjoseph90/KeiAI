@@ -6,8 +6,8 @@ import {
 	type LorebookRecord,
 	type ScriptRecord,
 	type MessageRecord
-} from '../../adapters/db/index.js';
-import { AppError } from '../../shared/errors.js';
+} from '$lib/adapters/db';
+import { AppError } from '$lib/shared/errors';
 
 export async function assertCharacterExists(characterId: string): Promise<void> {
 	const record = await localDB.getRecord<CharacterSummaryRecord>('characterSummaries', characterId);
@@ -57,7 +57,10 @@ export async function assertChatOwnedByCharacter(
 		throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 	}
 	if (record.characterId !== characterId) {
-		throw new AppError('OWNERSHIP_VIOLATION', `Chat ${chatId} does not belong to character ${characterId}`);
+		throw new AppError(
+			'OWNERSHIP_VIOLATION',
+			`Chat ${chatId} does not belong to character ${characterId}`
+		);
 	}
 }
 
@@ -67,7 +70,10 @@ export async function assertLorebookOwnedBy(ownerId: string, lorebookId: string)
 		throw new AppError('NOT_FOUND', `Lorebook not found: ${lorebookId}`);
 	}
 	if (record.ownerId !== ownerId) {
-		throw new AppError('OWNERSHIP_VIOLATION', `Lorebook ${lorebookId} does not belong to owner ${ownerId}`);
+		throw new AppError(
+			'OWNERSHIP_VIOLATION',
+			`Lorebook ${lorebookId} does not belong to owner ${ownerId}`
+		);
 	}
 }
 
@@ -77,7 +83,10 @@ export async function assertScriptOwnedBy(ownerId: string, scriptId: string): Pr
 		throw new AppError('NOT_FOUND', `Script not found: ${scriptId}`);
 	}
 	if (record.ownerId !== ownerId) {
-		throw new AppError('OWNERSHIP_VIOLATION', `Script ${scriptId} does not belong to owner ${ownerId}`);
+		throw new AppError(
+			'OWNERSHIP_VIOLATION',
+			`Script ${scriptId} does not belong to owner ${ownerId}`
+		);
 	}
 }
 
@@ -87,6 +96,9 @@ export async function assertMessageInChat(chatId: string, messageId: string): Pr
 		throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
 	}
 	if (record.chatId !== chatId) {
-		throw new AppError('OWNERSHIP_VIOLATION', `Message ${messageId} does not belong to chat ${chatId}`);
+		throw new AppError(
+			'OWNERSHIP_VIOLATION',
+			`Message ${messageId} does not belong to chat ${chatId}`
+		);
 	}
 }

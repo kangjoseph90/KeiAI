@@ -7,4 +7,4 @@
  * CRUD is handled by parent stores (character.ts, chat.ts, module.ts).
  * This file only re-exports the editing context store.
  */
-export { activeLorebooks } from '../state.js';
+export { activeLorebooks } from '../state';

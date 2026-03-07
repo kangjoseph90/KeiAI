@@ -1,9 +1,9 @@
 import { get } from 'svelte/store';
-import { PluginService, type PluginFields, type Plugin } from '../../services/content/plugin.js';
-import { SettingsService } from '../../services/index.js';
-import { generateSortOrder, sortByRefs } from '../../shared/ordering.js';
-import { plugins, appSettings } from '../state.js';
-import { AppError } from '../../shared/errors.js';
+import { PluginService, type PluginFields, type Plugin } from '$lib/services/content/plugin';
+import { SettingsService } from '$lib/services';
+import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
+import { plugins, appSettings } from '../state';
+import { AppError } from '$lib/shared/errors';
 
 export async function loadPlugins(): Promise<void> {
 	const settings = get(appSettings);
@@ -16,7 +16,7 @@ export async function loadPlugins(): Promise<void> {
 }
 
 export async function createPlugin(fields: Partial<PluginFields>): Promise<Plugin> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');
@@ -52,7 +52,7 @@ export async function updatePlugin(id: string, changes: Partial<PluginFields>): 
 }
 
 export async function deletePlugin(id: string): Promise<void> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');

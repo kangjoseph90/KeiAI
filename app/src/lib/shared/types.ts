@@ -28,6 +28,6 @@ export interface FolderDef {
 
 /** Name-based asset reference for dynamic resolution (e.g., manifest system, AI scripts) */
 export interface AssetRef {
-	name: string;      // Logical name (e.g., 'avatar', 'happy', 'background_night')
-	assetId: string;   // The UUID of the asset
+	name: string; // Logical name (e.g., 'avatar', 'happy', 'background_night')
+	assetId: string; // The UUID of the asset
 }

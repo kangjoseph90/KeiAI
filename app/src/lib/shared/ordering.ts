@@ -1,4 +1,4 @@
-import type { OrderedRef } from './types.js';
+import type { OrderedRef } from './types';
 import { generateKeyBetween } from 'fractional-indexing';
 
 /** Generate a fractional sort order key for appending to the end of a list */

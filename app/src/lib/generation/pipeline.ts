@@ -35,11 +35,10 @@ import {
 	clearTask,
 	getTask,
 	stopGeneration
-} from '../stores/generation.js';
-import { createMessage } from '../stores/content/message.js';
+} from '$lib/stores/generation';
+import { createMessage } from '$lib/stores/content/message';
 
-import type { StreamProvider } from '../llm/types.js';
-
+import type { StreamProvider } from '$lib/llm/types';
 
 export interface RunChatOptions {
 	/** Save partial content to DB when the user aborts. Default: true */
@@ -156,4 +155,3 @@ async function finalize(chatId: string, content: string): Promise<void> {
 		setTaskError(chatId, msg);
 	}
 }
-

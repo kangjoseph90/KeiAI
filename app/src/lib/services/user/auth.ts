@@ -10,7 +10,7 @@
  *   Registered (extractable: false) → unlinkAccount() → Guest (extractable: true)
  */
 
-import { pb } from '../../adapters/pb.js';
+import { pb } from '$lib/adapters/pb';
 import {
 	generateSalt,
 	deriveKeys,
@@ -24,11 +24,11 @@ import {
 	toBase64,
 	fromBase64,
 	type RecoveryBundle
-} from '../../crypto/index.js';
-import { getActiveSession } from '../session.js';
-import { UserService } from './user.js';
-import { appUser } from '../../adapters/user/index.js';
-import { DataSyncService, SyncManager } from '../sync/index.js';
+} from '$lib/crypto';
+import { getActiveSession } from '../session';
+import { UserService } from './user';
+import { appUser } from '$lib/adapters/user';
+import { DataSyncService, SyncManager } from '../sync';
 
 export class AuthService {
 	// ─── PB Connection Helpers ────────────────────────────────────────

@@ -14,10 +14,10 @@
  * via a callback injected by SyncManager at subscribe() time.
  */
 
-import { pb } from '../../adapters/pb.js';
-import { getActiveSession } from '../session.js';
-import { ProfileService, type Profile } from '../auth/profile.js';
-import { appUser } from '../../adapters/user/index.js';
+import { pb } from '$lib/adapters/pb';
+import { getActiveSession } from '../session';
+import { ProfileService, type Profile } from '../user/profile';
+import { appUser } from '$lib/adapters/user';
 
 export class ProfileSyncService {
 	private static subscribed = false;

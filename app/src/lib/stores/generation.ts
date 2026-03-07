@@ -16,8 +16,8 @@
  */
 
 import { get } from 'svelte/store';
-import { generationTasks } from './state.js';
-import type { GenerationTask } from './types.js';
+import { generationTasks } from './state';
+import type { GenerationTask } from './types';
 
 // ─── Task Lifecycle ─────────────────────────────────────────────────
 

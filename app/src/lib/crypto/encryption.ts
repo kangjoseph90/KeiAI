@@ -9,8 +9,8 @@
  * Every encryption uses a fresh random IV to ensure semantic security.
  */
 
-import { AES_IV_BYTES } from './constants.js';
-import type { EncryptedData } from './types.js';
+import { AES_IV_BYTES } from './constants';
+import type { EncryptedData } from './types';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 

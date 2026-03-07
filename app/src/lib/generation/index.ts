@@ -1,3 +1,3 @@
-export { runChat, stop, dismiss } from './pipeline.js';
-export type { RunChatOptions } from './pipeline.js';
-export type { StreamProvider } from '../llm/types.js';
+export { runChat, stop, dismiss } from './pipeline';
+export type { RunChatOptions } from './pipeline';
+export type { StreamProvider } from '$lib/llm/types';

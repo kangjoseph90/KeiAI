@@ -4,9 +4,7 @@ import PocketBase from 'pocketbase';
 const isBrowser = typeof window !== 'undefined';
 
 // Connect to the local or remote PocketBase instance
-export const pb = new PocketBase(
-	import.meta.env.VITE_PB_URL || 'http://127.0.0.1:8090'
-);
+export const pb = new PocketBase(import.meta.env.VITE_PB_URL || 'http://127.0.0.1:8090');
 
 // Optional: Global hook to handle auth state changes
 if (isBrowser) {

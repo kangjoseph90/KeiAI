@@ -16,8 +16,8 @@
 	 * Callbacks handle all side-effects — this component is pure UI.
 	 */
 	import type { DisplayMessage } from '$lib/stores';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Button } from '$lib/components/ui/button';
+	import { Textarea } from '$lib/components/ui/textarea';
 	import { AlertCircle, Check, Loader2, Pencil, Trash2, X } from 'lucide-svelte';
 
 	// ── Props ─────────────────────────────────────────────────────────────────
@@ -63,9 +63,7 @@
   max-w-[80%] keeps long messages from spanning the full width.
 -->
 <div
-	class="flex max-w-[80%] flex-col gap-1 {isUser
-		? 'items-end self-end'
-		: 'items-start self-start'}"
+	class="flex max-w-[80%] flex-col gap-1 {isUser ? 'items-end self-end' : 'items-start self-start'}"
 >
 	<!-- ── Edit / Delete controls (user's confirmed messages only) ── -->
 	{#if isUser && message.displayStatus === 'completed' && !isEditing}
@@ -93,7 +91,7 @@
 			</div>
 		</div>
 
-	<!-- ── Error bubble ── -->
+		<!-- ── Error bubble ── -->
 	{:else if message.displayStatus === 'error'}
 		<div
 			class="flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"
@@ -113,7 +111,7 @@
 			</div>
 		</div>
 
-	<!-- ── Streaming bubble ── -->
+		<!-- ── Streaming bubble ── -->
 	{:else if message.displayStatus === 'generating'}
 		<div class="rounded-2xl bg-muted px-4 py-2 text-sm text-foreground">
 			{#if displayContent}
@@ -128,7 +126,7 @@
 			{/if}
 		</div>
 
-	<!-- ── Confirmed bubble ── -->
+		<!-- ── Confirmed bubble ── -->
 	{:else}
 		<div
 			class="rounded-2xl px-4 py-2 text-sm {isUser

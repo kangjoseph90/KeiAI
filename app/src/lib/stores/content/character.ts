@@ -5,19 +5,19 @@ import {
 	type CharacterDataFields,
 	type CharacterDataContent,
 	type CharacterDetail
-} from '../../services/content/character.js';
-import { ChatService } from '../../services/content/chat.js';
+} from '$lib/services/content/character';
+import { ChatService } from '$lib/services/content/chat';
 import {
 	LorebookService,
 	ScriptService,
 	type LorebookFields,
 	type ScriptFields
-} from '../../services/index.js';
-import type { Lorebook, Script } from '../../services/index.js';
-import type { OrderedRef, FolderDef } from '../../shared/types.js';
-import { clearActiveChat, sortChatsByRefs, selectChat } from './chat.js';
-import { SettingsService } from '../../services/index.js';
-import { generateSortOrder, sortByRefs } from '../../shared/ordering.js';
+} from '$lib/services';
+import type { Lorebook, Script } from '$lib/services';
+import type { OrderedRef, FolderDef } from '$lib/shared/types';
+import { clearActiveChat } from './chat';
+import { SettingsService } from '$lib/services';
+import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
 import {
 	characters,
 	activeCharacter,
@@ -28,9 +28,9 @@ import {
 	modules,
 	appSettings,
 	activeCharacterId
-} from '../state.js';
-import { AppError } from '$lib/shared/errors.js';
-import { generateId } from '../../shared/id.js';
+} from '../state';
+import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/shared/id';
 
 /**
  * Service errors propagate to the caller — this function does not catch them.
@@ -48,7 +48,7 @@ export async function loadCharacters(): Promise<void> {
 
 export async function selectCharacter(characterId: string): Promise<void> {
 	const detail = await CharacterService.getDetail(characterId);
-	
+
 	if (!detail) {
 		throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 	}
@@ -57,7 +57,7 @@ export async function selectCharacter(characterId: string): Promise<void> {
 
 	clearActiveChat();
 	const chatList = await ChatService.listByCharacter(characterId);
-	chats.set(sortChatsByRefs(chatList, detail.data.chatRefs ?? []));
+	chats.set(sortByRefs(chatList, detail.data.chatRefs ?? []));
 
 	const moduleIds = detail.data.moduleRefs?.map((r) => r.id) ?? [];
 	characterModules.set(get(modules).filter((m) => moduleIds.includes(m.id)));
@@ -117,7 +117,7 @@ export async function createCharacter(
 	summary: Partial<CharacterSummaryFields> = {},
 	data: Partial<CharacterDataFields> = {}
 ): Promise<CharacterDetail> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');
@@ -139,7 +139,7 @@ export async function createCharacter(
 		await CharacterService.delete(detail.id);
 		throw error;
 	}
-	
+
 	// Update store
 	appSettings.update((s) => (s ? { ...s, characterRefs } : s));
 	characters.update((list) => [...list, detail]);
@@ -147,7 +147,7 @@ export async function createCharacter(
 }
 
 export async function deleteCharacter(characterId: string): Promise<void> {
-	const settings = get(appSettings) || await SettingsService.get();
+	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
 		throw new AppError('NOT_FOUND', 'Settings not found');
@@ -177,16 +177,20 @@ export async function deleteCharacter(characterId: string): Promise<void> {
 
 // ─── Character-owned Lorebook CRUD ─────────────────────────────────
 
-export async function createCharacterLorebook(characterId: string, fields: Partial<LorebookFields>): Promise<Lorebook> {
+export async function createCharacterLorebook(
+	characterId: string,
+	fields: Partial<LorebookFields>
+): Promise<Lorebook> {
 	// Use cached active character if possible
-	const char = characterId === get(activeCharacterId)
-		? get(activeCharacter)
-		: await CharacterService.getDetail(characterId);
+	const char =
+		characterId === get(activeCharacterId)
+			? get(activeCharacter)
+			: await CharacterService.getDetail(characterId);
 
 	if (!char) {
 		throw new AppError(`NOT_FOUND`, `Character not found`);
 	}
-	
+
 	// Create Record in DB
 	const lb = await LorebookService.create(characterId, fields);
 
@@ -209,25 +213,29 @@ export async function createCharacterLorebook(characterId: string, fields: Parti
 		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs } } : c));
 		characterLorebooks.update((list) => [...list, lb]);
 	}
-	
+
 	return lb;
 }
 
-export async function deleteCharacterLorebook(characterId: string, lorebookId: string): Promise<void> {
+export async function deleteCharacterLorebook(
+	characterId: string,
+	lorebookId: string
+): Promise<void> {
 	// Use cached active character if possible
-	const char = characterId === get(activeCharacterId)
-		? get(activeCharacter)
-		: await CharacterService.getDetail(characterId);
+	const char =
+		characterId === get(activeCharacterId)
+			? get(activeCharacter)
+			: await CharacterService.getDetail(characterId);
 
 	if (!char) {
 		throw new AppError(`NOT_FOUND`, `Character not found`);
 	}
-	
+
 	// Remove from parent's refs
 	const existingRefs = char.data.lorebookRefs || [];
 	const lorebookRefs = existingRefs.filter((r) => r.id !== lorebookId);
 	await CharacterService.updateData(characterId, { lorebookRefs });
-	
+
 	try {
 		await LorebookService.delete(lorebookId, characterId);
 	} catch (error) {
@@ -245,16 +253,20 @@ export async function deleteCharacterLorebook(characterId: string, lorebookId: s
 
 // ─── Character-owned Script CRUD ───────────────────────────────────
 
-export async function createCharacterScript(characterId: string, fields: Partial<ScriptFields>): Promise<Script> {
+export async function createCharacterScript(
+	characterId: string,
+	fields: Partial<ScriptFields>
+): Promise<Script> {
 	// Use cached active character if possible
-	const char = characterId === get(activeCharacterId)
-		? get(activeCharacter)
-		: await CharacterService.getDetail(characterId);
+	const char =
+		characterId === get(activeCharacterId)
+			? get(activeCharacter)
+			: await CharacterService.getDetail(characterId);
 
 	if (!char) {
 		throw new AppError(`NOT_FOUND`, `Character not found`);
 	}
-	
+
 	// Create Record in DB
 	const sc = await ScriptService.create(characterId, fields);
 
@@ -277,25 +289,26 @@ export async function createCharacterScript(characterId: string, fields: Partial
 		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, scriptRefs } } : c));
 		characterScripts.update((list) => [...list, sc]);
 	}
-	
+
 	return sc;
 }
 
 export async function deleteCharacterScript(characterId: string, scriptId: string): Promise<void> {
 	// Use cached active character if possible
-	const char = characterId === get(activeCharacterId)
-		? get(activeCharacter)
-		: await CharacterService.getDetail(characterId);
+	const char =
+		characterId === get(activeCharacterId)
+			? get(activeCharacter)
+			: await CharacterService.getDetail(characterId);
 
 	if (!char) {
 		throw new AppError(`NOT_FOUND`, `Character not found`);
 	}
-	
+
 	// Remove from parent's refs
 	const existingRefs = char.data.scriptRefs || [];
 	const scriptRefs = existingRefs.filter((r) => r.id !== scriptId);
 	await CharacterService.updateData(characterId, { scriptRefs });
-	
+
 	try {
 		await ScriptService.delete(scriptId, characterId);
 	} catch (error) {
@@ -322,9 +335,10 @@ export async function createCharacterFolder(
 	parentId?: string
 ): Promise<FolderDef> {
 	// Use cached active character if possible
-	const char = characterId === get(activeCharacterId)
-		? get(activeCharacter)
-		: await CharacterService.getDetail(characterId);
+	const char =
+		characterId === get(activeCharacterId)
+			? get(activeCharacter)
+			: await CharacterService.getDetail(characterId);
 
 	if (!char) {
 		throw new AppError(`NOT_FOUND`, `Character not found`);
@@ -348,11 +362,9 @@ export async function createCharacterFolder(
 	await CharacterService.updateData(characterId, { folders: updatedFolders });
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) =>
-			c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c
-		);
+		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c));
 	}
-	
+
 	return newFolder;
 }
 
@@ -363,9 +375,10 @@ export async function updateCharacterFolder(
 	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
 	// Use cached active character if possible
-	const char = characterId === get(activeCharacterId)
-		? get(activeCharacter)
-		: await CharacterService.getDetail(characterId);
+	const char =
+		characterId === get(activeCharacterId)
+			? get(activeCharacter)
+			: await CharacterService.getDetail(characterId);
 
 	if (!char) {
 		throw new AppError(`NOT_FOUND`, `Character not found`);
@@ -374,18 +387,14 @@ export async function updateCharacterFolder(
 	const folders = char.data.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
 
-	const updatedTypeFolders = typeFolders.map((f) =>
-		f.id === folderId ? { ...f, ...changes } : f
-	);
+	const updatedTypeFolders = typeFolders.map((f) => (f.id === folderId ? { ...f, ...changes } : f));
 
 	const updatedFolders = { ...folders, [folderType]: updatedTypeFolders };
 
 	await CharacterService.updateData(characterId, { folders: updatedFolders });
-	
+
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) =>
-			c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c
-		);
+		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c));
 	}
 }
 
@@ -395,9 +404,10 @@ export async function deleteCharacterFolder(
 	folderId: string
 ): Promise<void> {
 	// Use cached active character if possible
-	const char = characterId === get(activeCharacterId)
-		? get(activeCharacter)
-		: await CharacterService.getDetail(characterId);
+	const char =
+		characterId === get(activeCharacterId)
+			? get(activeCharacter)
+			: await CharacterService.getDetail(characterId);
 
 	if (!char) {
 		throw new AppError(`NOT_FOUND`, `Character not found`);
@@ -409,11 +419,9 @@ export async function deleteCharacterFolder(
 	const updatedFolders = { ...folders, [folderType]: typeFolders.filter((f) => f.id !== folderId) };
 
 	await CharacterService.updateData(characterId, { folders: updatedFolders });
-	
+
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) =>
-			c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c
-		);
+		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c));
 	}
 }
 
@@ -425,9 +433,10 @@ export async function moveCharacterItem(
 	newSortOrder?: string
 ): Promise<void> {
 	// Use cached active character if possible
-	const char = characterId === get(activeCharacterId)
-		? get(activeCharacter)
-		: await CharacterService.getDetail(characterId);
+	const char =
+		characterId === get(activeCharacterId)
+			? get(activeCharacter)
+			: await CharacterService.getDetail(characterId);
 
 	if (!char) {
 		throw new AppError(`NOT_FOUND`, `Character not found`);
@@ -462,10 +471,8 @@ export async function moveCharacterItem(
 	});
 
 	await CharacterService.updateData(characterId, { [refKey]: updatedRefs });
-	
+
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) =>
-			c ? { ...c, data: { ...c.data, [refKey]: updatedRefs } } : c
-		);
+		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, [refKey]: updatedRefs } } : c));
 	}
 }

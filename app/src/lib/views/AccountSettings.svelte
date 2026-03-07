@@ -9,11 +9,17 @@
 		performChangePassword,
 		performUnlink,
 		performLogout
-	} from '$lib/stores/auth/auth.js';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '$lib/components/ui/card/index.js';
-	import { Label } from '$lib/components/ui/label/index.js';
+	} from '$lib/stores/user/auth';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import {
+		Card,
+		CardContent,
+		CardHeader,
+		CardTitle,
+		CardDescription
+	} from '$lib/components/ui/card';
+	import { Label } from '$lib/components/ui/label';
 	import { Key, LogIn, LogOut, UserPlus, ShieldAlert, AlertTriangle } from 'lucide-svelte';
 
 	let email = $state('');
@@ -21,7 +27,7 @@
 	let confirmPassword = $state('');
 	let newPassword = $state('');
 	let recoveryCode = $state('');
-	
+
 	let loading = $state(false);
 	let errorMsg = $state('');
 	let successMsg = $state('');
@@ -72,11 +78,17 @@
 	}
 
 	function handleRecover() {
-		runAction(() => performRecoverPassword(email, recoveryCode, newPassword), 'Password recovered.');
+		runAction(
+			() => performRecoverPassword(email, recoveryCode, newPassword),
+			'Password recovered.'
+		);
 	}
 
 	function handleChangePassword() {
-		runAction(() => performChangePassword(password, newPassword), 'Password changed. Save your new recovery code.');
+		runAction(
+			() => performChangePassword(password, newPassword),
+			'Password changed. Save your new recovery code.'
+		);
 	}
 
 	function handleUnlink() {
@@ -105,25 +117,36 @@
 	</CardHeader>
 	<CardContent class="flex flex-col gap-4">
 		{#if errorMsg}
-			<div class="rounded-md bg-destructive/15 p-3 text-sm text-destructive border border-destructive/20 font-medium">
+			<div
+				class="rounded-md bg-destructive/15 p-3 text-sm text-destructive border border-destructive/20 font-medium"
+			>
 				{errorMsg}
 			</div>
 		{/if}
-		
+
 		{#if successMsg}
-			<div class="rounded-md bg-green-500/15 p-3 text-sm text-green-600 dark:text-green-400 border border-green-500/20 font-medium">
+			<div
+				class="rounded-md bg-green-500/15 p-3 text-sm text-green-600 dark:text-green-400 border border-green-500/20 font-medium"
+			>
 				{successMsg}
 			</div>
 		{/if}
 
 		{#if displayRecovery}
-			<div class="rounded-md bg-amber-500/15 p-4 text-sm text-amber-700 dark:text-amber-400 border border-amber-500/20">
+			<div
+				class="rounded-md bg-amber-500/15 p-4 text-sm text-amber-700 dark:text-amber-400 border border-amber-500/20"
+			>
 				<div class="flex items-center gap-2 font-bold mb-2">
 					<ShieldAlert class="size-5" />
 					SAVE YOUR RECOVERY CODE NOW
 				</div>
-				<p class="mb-2">If you forget your password, this is the ONLY way to recover your account data. Write it down and keep it safe.</p>
-				<div class="bg-amber-100 dark:bg-amber-950/50 p-3 rounded font-mono text-center tracking-widest text-xl font-bold border border-amber-200 dark:border-amber-900 select-all">
+				<p class="mb-2">
+					If you forget your password, this is the ONLY way to recover your account data. Write it
+					down and keep it safe.
+				</p>
+				<div
+					class="bg-amber-100 dark:bg-amber-950/50 p-3 rounded font-mono text-center tracking-widest text-xl font-bold border border-amber-200 dark:border-amber-900 select-all"
+				>
 					{displayRecovery}
 				</div>
 			</div>
@@ -132,17 +155,34 @@
 		{#if !$isLoggedIn}
 			<!-- GUEST STATE -->
 			<div class="flex border-b mb-2">
-				<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'login' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'login'}>Login</button>
+				<button
+					class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'login'
+						? 'border-primary text-primary'
+						: 'border-transparent text-muted-foreground'}"
+					onclick={() => (mode = 'login')}>Login</button
+				>
 				{#if $isGuest}
-					<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'register' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'register'}>Register / Link</button>
+					<button
+						class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'register'
+							? 'border-primary text-primary'
+							: 'border-transparent text-muted-foreground'}"
+						onclick={() => (mode = 'register')}>Register / Link</button
+					>
 				{/if}
-				<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'recover' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'recover'}>Recover</button>
+				<button
+					class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'recover'
+						? 'border-primary text-primary'
+						: 'border-transparent text-muted-foreground'}"
+					onclick={() => (mode = 'recover')}>Recover</button
+				>
 			</div>
-			
+
 			{#if mode === 'login' || mode === 'register'}
 				<div class="space-y-3">
 					{#if !$isGuest && mode === 'login'}
-						<div class="mb-2 p-3 text-sm rounded bg-primary/10 text-primary border border-primary/20">
+						<div
+							class="mb-2 p-3 text-sm rounded bg-primary/10 text-primary border border-primary/20"
+						>
 							You are in Offline Mode. Log in to resume synchronization.
 						</div>
 					{/if}
@@ -169,7 +209,8 @@
 							<UserPlus class="mr-2 size-4" /> Link Account & Setup Sync
 						</Button>
 						<p class="text-xs text-muted-foreground mt-2">
-							This will securely back up your single-device guest data and encrypt it with your new password.
+							This will securely back up your single-device guest data and encrypt it with your new
+							password.
 						</p>
 					{/if}
 				</div>
@@ -181,7 +222,11 @@
 					</div>
 					<div class="space-y-1">
 						<Label>16-char Recovery Code</Label>
-						<Input bind:value={recoveryCode} type="text" placeholder="16 characters recovery code" />
+						<Input
+							bind:value={recoveryCode}
+							type="text"
+							placeholder="16 characters recovery code"
+						/>
 					</div>
 					<div class="space-y-1">
 						<Label>New Password</Label>
@@ -192,18 +237,32 @@
 					</Button>
 				</div>
 			{/if}
-
 		{:else}
 			<!-- LOGGED IN STATE -->
 			<div class="flex border-b mb-2">
-				<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'change_password' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'change_password'}>Settings</button>
-				<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'unlink' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'unlink'}>Unlink</button>
+				<button
+					class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'change_password'
+						? 'border-primary text-primary'
+						: 'border-transparent text-muted-foreground'}"
+					onclick={() => (mode = 'change_password')}>Settings</button
+				>
+				<button
+					class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'unlink'
+						? 'border-primary text-primary'
+						: 'border-transparent text-muted-foreground'}"
+					onclick={() => (mode = 'unlink')}>Unlink</button
+				>
 			</div>
 
 			{#if mode === 'unlink'}
 				<div class="space-y-3 p-4 border border-destructive/30 bg-destructive/5 rounded-lg">
-					<h3 class="font-bold flex items-center gap-2 text-destructive"><AlertTriangle class="size-4" /> Danger Zone</h3>
-					<p class="text-sm">Unlinking will permanently delete your account from the server. Your data will remain locally on this device as a Guest account.</p>
+					<h3 class="font-bold flex items-center gap-2 text-destructive">
+						<AlertTriangle class="size-4" /> Danger Zone
+					</h3>
+					<p class="text-sm">
+						Unlinking will permanently delete your account from the server. Your data will remain
+						locally on this device as a Guest account.
+					</p>
 					<div class="space-y-1">
 						<Label>Confirm Password</Label>
 						<Input bind:value={password} type="password" />
@@ -222,7 +281,12 @@
 						<Label>New Password</Label>
 						<Input bind:value={newPassword} type="password" />
 					</div>
-					<Button variant="outline" class="w-full" disabled={loading} onclick={handleChangePassword}>
+					<Button
+						variant="outline"
+						class="w-full"
+						disabled={loading}
+						onclick={handleChangePassword}
+					>
 						Change Password
 					</Button>
 				</div>

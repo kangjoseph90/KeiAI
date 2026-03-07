@@ -1,10 +1,16 @@
 <script lang="ts">
 	import { Check, Pencil, Plus, Trash2, X } from 'lucide-svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import { Card, CardContent } from '$lib/components/ui/card/index.js';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Card, CardContent } from '$lib/components/ui/card';
 
-	type Item = { id: string; name?: string; title?: string; shortDescription?: string; description?: string };
+	type Item = {
+		id: string;
+		name?: string;
+		title?: string;
+		shortDescription?: string;
+		description?: string;
+	};
 
 	let {
 		items,
@@ -79,10 +85,8 @@
 										editNameInput = item.name || item.title || '';
 									}}><Pencil class="size-4" /></Button
 								>
-								<Button
-									size="sm"
-									variant="destructive"
-									onclick={() => onDelete(item.id)}><Trash2 class="size-4" /></Button
+								<Button size="sm" variant="destructive" onclick={() => onDelete(item.id)}
+									><Trash2 class="size-4" /></Button
 								>
 							</div>
 						</div>

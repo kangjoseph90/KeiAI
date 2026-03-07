@@ -24,8 +24,7 @@ export default defineConfig({
 		target:
 			process.env.TAURI_ENV_PLATFORM === 'windows'
 				? 'chrome105'
-				: process.env.TAURI_ENV_PLATFORM === 'android' ||
-					  process.env.TAURI_ENV_PLATFORM === 'ios'
+				: process.env.TAURI_ENV_PLATFORM === 'android' || process.env.TAURI_ENV_PLATFORM === 'ios'
 					? ['es2021', 'chrome100', 'safari13']
 					: ['es2021', 'chrome100', 'safari13'],
 		// don't minify for debug builds

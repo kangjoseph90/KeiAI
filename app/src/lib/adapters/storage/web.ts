@@ -1,4 +1,4 @@
-import type { IStorageAdapter } from './types.js';
+import type { IStorageAdapter } from './types';
 
 /**
  * WebStorageAdapter — OPFS-backed asset file system for Web/PWA

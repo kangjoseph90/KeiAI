@@ -14,17 +14,13 @@
  */
 
 import { derived, writable } from 'svelte/store';
-import { activeUser } from '../state.js';
-import { AuthService } from '../../services/auth/auth.js';
-import { SyncManager } from '../../services/sync/index.js';
-import { UserService } from '../../services/auth/user.js';
-import { loadProfile } from './profile.js';
-import { loadSettings } from '../content/settings.js';
-import { loadCharacters, clearActiveCharacter } from '../content/character.js';
-import { loadModules } from '../content/module.js';
-import { loadPlugins } from '../content/plugin.js';
-import { loadPersonas } from '../content/persona.js';
-import { loadPresets } from '../content/preset.js';
+import { activeUser } from '../state';
+import { AuthService } from '$lib/services/user/auth';
+import { SyncManager } from '$lib/services/sync';
+import { UserService } from '$lib/services/user/user';
+import { loadProfile } from './profile';
+import { clearActiveCharacter } from '../content/character';
+import { loadGlobalState } from '../init';
 
 // Re-export so views can import from a single module
 export { activeUser };
@@ -69,14 +65,7 @@ async function refreshAfterLogin(): Promise<void> {
 	void loadProfile();
 	await SyncManager.syncAll();
 	clearActiveCharacter();
-	await loadSettings();
-	await Promise.all([
-		loadModules(),
-		loadPlugins(),
-		loadPersonas(),
-		loadPresets(),
-		loadCharacters()
-	]);
+	await loadGlobalState();
 }
 
 // ─── Auth Actions ────────────────────────────────────────────────────

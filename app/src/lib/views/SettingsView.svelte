@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { RefreshCw } from 'lucide-svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
+	import { Button } from '$lib/components/ui/button';
+	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { appSettings, updateSettings } from '$lib/stores';
 	import AccountSettings from './AccountSettings.svelte';
 	import ProfileSettings from './ProfileSettings.svelte';

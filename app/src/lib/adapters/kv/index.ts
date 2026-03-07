@@ -1,7 +1,7 @@
-export * from './types.js';
+export * from './types';
 
 import { isTauri } from '@tauri-apps/api/core';
-import { WebKeyValueAdapter } from './web.js';
-import { TauriKeyValueAdapter } from './tauri.js';
+import { WebKeyValueAdapter } from './web';
+import { TauriKeyValueAdapter } from './tauri';
 
 export const appKV = isTauri() ? new TauriKeyValueAdapter() : new WebKeyValueAdapter();

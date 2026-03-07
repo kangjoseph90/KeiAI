@@ -56,13 +56,13 @@ Read it before writing any code. Every section reflects decisions that are alrea
 
 **Supporting layers** (no layer restriction on who can call them):
 
-| Layer | Path | Purpose |
-|---|---|---|
-| `core/crypto/` | Pure crypto toolkit | Stateless. No DB, no session, no stores. Also exports `importMasterKey` |
-| `core/api/` | PocketBase client + Sync | Services call sync; stores never call sync directly |
-| `services/session.ts` | In-memory session state | Services call `getActiveSession()`; UI does not touch it directly |
-| `shared/` | Domain types, errors, utils | Used by all layers |
-| `generation/` | LLM pipeline | Stateless pipeline. Reads from Services; writes only to generation store |
+| Layer                 | Path                        | Purpose                                                                  |
+| --------------------- | --------------------------- | ------------------------------------------------------------------------ |
+| `core/crypto/`        | Pure crypto toolkit         | Stateless. No DB, no session, no stores. Also exports `importMasterKey`  |
+| `core/api/`           | PocketBase client + Sync    | Services call sync; stores never call sync directly                      |
+| `services/session.ts` | In-memory session state     | Services call `getActiveSession()`; UI does not touch it directly        |
+| `shared/`             | Domain types, errors, utils | Used by all layers                                                       |
+| `generation/`         | LLM pipeline                | Stateless pipeline. Reads from Services; writes only to generation store |
 
 ---
 
@@ -83,14 +83,14 @@ UI → Stores → Services → core/api/sync
 
 ### Forbidden cross-layer calls
 
-| ❌ Never do this | Why |
-|---|---|
-| Store imports from another store file (except `state.ts`) | Causes circular imports |
-| Service imports from a Store | Services must be UI-agnostic |
-| Adapter imports from Service or Store | Adapters know nothing about domain |
-| Sync layer imports from Stores | Keeps sync decoupled; callbacks are injected instead |
-| `generation/pipeline.ts` reads from Svelte stores | Pipeline must be isolated from UI context switches |
-| UI calls `localDB` or adapter directly | All DB access goes through the Service layer |
+| ❌ Never do this                                          | Why                                                  |
+| --------------------------------------------------------- | ---------------------------------------------------- |
+| Store imports from another store file (except `state.ts`) | Causes circular imports                              |
+| Service imports from a Store                              | Services must be UI-agnostic                         |
+| Adapter imports from Service or Store                     | Adapters know nothing about domain                   |
+| Sync layer imports from Stores                            | Keeps sync decoupled; callbacks are injected instead |
+| `generation/pipeline.ts` reads from Svelte stores         | Pipeline must be isolated from UI context switches   |
+| UI calls `localDB` or adapter directly                    | All DB access goes through the Service layer         |
 
 All store instances are declared in `stores/state.ts`. Logic (action functions) is in the per-domain store files. This separation prevents circular imports across stores.
 
@@ -161,11 +161,16 @@ Both are `EncryptedRecord` with AES-GCM encrypted JSON blobs. The split is purel
 
 ```typescript
 // Write: encrypt then store
-const { ciphertext: encryptedData, iv: encryptedDataIV } =
-  await encrypt(masterKey, JSON.stringify(fields));
+const { ciphertext: encryptedData, iv: encryptedDataIV } = await encrypt(
+  masterKey,
+  JSON.stringify(fields),
+);
 
 // Read: decrypt then deepMerge with defaults
-const dec = await decrypt(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV });
+const dec = await decrypt(masterKey, {
+  ciphertext: record.encryptedData,
+  iv: record.encryptedDataIV,
+});
 const fields = deepMerge(defaultFields, JSON.parse(dec));
 ```
 
@@ -177,8 +182,11 @@ Use `guards.ts` for pre-condition assertions. Guards throw `AppError` with a typ
 
 ```typescript
 // In guards.ts — always assert, never return boolean
-export async function assertChatExists(chatId: string): Promise<void>
-export async function assertChatOwnedByCharacter(chatId: string, characterId: string): Promise<void>
+export async function assertChatExists(chatId: string): Promise<void>;
+export async function assertChatOwnedByCharacter(
+  chatId: string,
+  characterId: string,
+): Promise<void>;
 ```
 
 ### Sync triggering
@@ -225,20 +233,20 @@ All `writable()` and `derived()` calls live here, organized by context level:
 
 Core structural types reused across domains. Do not add domain-specific types here.
 
-| Type | Purpose |
-|---|---|
-| `OrderedRef` | `{ id, sortOrder, folderId? }` — 1:N parent→child ordered list |
+| Type          | Purpose                                                                   |
+| ------------- | ------------------------------------------------------------------------- |
+| `OrderedRef`  | `{ id, sortOrder, folderId? }` — 1:N parent→child ordered list            |
 | `ResourceRef` | Extends `OrderedRef` with `enabled: boolean` — N:M with per-context state |
-| `FolderDef` | Folder definition stored inside parent's encrypted blob |
-| `AssetRef` | `{ name, assetId }` — name-based asset resolution |
+| `FolderDef`   | Folder definition stored inside parent's encrypted blob                   |
+| `AssetRef`    | `{ name, assetId }` — name-based asset resolution                         |
 
 ### `shared/ordering.ts`
 
 Uses fractional indexing (the `fractional-indexing` package) for stable list ordering without renumbering. Never use integer positions.
 
 ```typescript
-generateSortOrder(existingRefs)  // append to end
-sortByRefs(entities, refs)       // sort entity array by their ref's sortOrder
+generateSortOrder(existingRefs); // append to end
+sortByRefs(entities, refs); // sort entity array by their ref's sortOrder
 ```
 
 ### `shared/defaults.ts` — `deepMerge`
@@ -253,9 +261,14 @@ Arrays are **replaced, not merged**. Plain objects recurse. Everything else over
 ### `shared/errors.ts`
 
 ```typescript
-type ErrorCode = 'NOT_FOUND' | 'OWNERSHIP_VIOLATION' | 'ENCRYPTION_FAILED' | 'DB_WRITE_FAILED' | 'SESSION_EXPIRED';
+type ErrorCode =
+  | "NOT_FOUND"
+  | "OWNERSHIP_VIOLATION"
+  | "ENCRYPTION_FAILED"
+  | "DB_WRITE_FAILED"
+  | "SESSION_EXPIRED";
 
-throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
+throw new AppError("NOT_FOUND", `Character not found: ${characterId}`);
 ```
 
 Always use `AppError` with a typed `ErrorCode`. Never throw raw strings or generic `Error` for domain failures. The code is machine-readable for UI error boundaries.
@@ -270,37 +283,37 @@ Always use `AppError` with a typed `ErrorCode`. Never throw raw strings or gener
 
 ### Files
 
-| Pattern | Convention | Example |
-|---|---|---|
-| Svelte components | `PascalCase.svelte` | `CharactersView.svelte` |
-| TypeScript modules | `camelCase.ts` | `character.ts`, `ordering.ts` |
-| Adapter index | `index.ts` (always) | `adapters/db/index.ts` |
-| Barrel exports | `index.ts` | `services/index.ts`, `stores/index.ts` |
+| Pattern            | Convention          | Example                                |
+| ------------------ | ------------------- | -------------------------------------- |
+| Svelte components  | `PascalCase.svelte` | `CharactersView.svelte`                |
+| TypeScript modules | `camelCase.ts`      | `character.ts`, `ordering.ts`          |
+| Adapter index      | `index.ts` (always) | `adapters/db/index.ts`                 |
+| Barrel exports     | `index.ts`          | `services/index.ts`, `stores/index.ts` |
 
 ### Types & Interfaces
 
-| Kind | Convention | Example |
-|---|---|---|
-| Domain interface | `PascalCase` | `Character`, `ChatDetail`, `MessageFields` |
-| DB record type | `*Record` suffix | `CharacterSummaryRecord`, `MessageRecord` |
-| Summary fields | `*SummaryFields` | `CharacterSummaryFields` |
-| Data fields | `*DataFields` | `CharacterDataFields` |
-| Data refs | `*DataRefs` | `CharacterDataRefs` |
-| Data content | `*DataContent` | `CharacterDataContent` |
-| Error codes | `SCREAMING_SNAKE_CASE` | `'NOT_FOUND'`, `'ENCRYPTION_FAILED'` |
-| Table names | `camelCase` (pluralized) | `'characterSummaries'`, `'chatData'` |
+| Kind             | Convention               | Example                                    |
+| ---------------- | ------------------------ | ------------------------------------------ |
+| Domain interface | `PascalCase`             | `Character`, `ChatDetail`, `MessageFields` |
+| DB record type   | `*Record` suffix         | `CharacterSummaryRecord`, `MessageRecord`  |
+| Summary fields   | `*SummaryFields`         | `CharacterSummaryFields`                   |
+| Data fields      | `*DataFields`            | `CharacterDataFields`                      |
+| Data refs        | `*DataRefs`              | `CharacterDataRefs`                        |
+| Data content     | `*DataContent`           | `CharacterDataContent`                     |
+| Error codes      | `SCREAMING_SNAKE_CASE`   | `'NOT_FOUND'`, `'ENCRYPTION_FAILED'`       |
+| Table names      | `camelCase` (pluralized) | `'characterSummaries'`, `'chatData'`       |
 
 ### Variables & Functions
 
-| Kind | Convention | Example |
-|---|---|---|
-| Store instances | `camelCase` noun | `activeCharacter`, `generationTasks` |
-| Store action functions | `verb + noun` | `loadCharacters()`, `selectCharacter()`, `clearActiveChat()` |
-| Service methods | `verb + noun` static | `CharacterService.list()`, `MessageService.getMessagesBefore()` |
-| Guard functions | `assert + *` | `assertCharacterExists()`, `assertChatOwnedByCharacter()` |
-| Const defaults | `default + *Fields/Data` | `defaultSummaryFields`, `defaultDataFields` |
-| Private helpers | `camelCase` (not exported) | `decryptSummaryFields()`, `decryptDataFields()` |
-| Adapter instances | `app + *` | `appKV`, `appStorage`, `appUser`, `localDB` |
+| Kind                   | Convention                 | Example                                                         |
+| ---------------------- | -------------------------- | --------------------------------------------------------------- |
+| Store instances        | `camelCase` noun           | `activeCharacter`, `generationTasks`                            |
+| Store action functions | `verb + noun`              | `loadCharacters()`, `selectCharacter()`, `clearActiveChat()`    |
+| Service methods        | `verb + noun` static       | `CharacterService.list()`, `MessageService.getMessagesBefore()` |
+| Guard functions        | `assert + *`               | `assertCharacterExists()`, `assertChatOwnedByCharacter()`       |
+| Const defaults         | `default + *Fields/Data`   | `defaultSummaryFields`, `defaultDataFields`                     |
+| Private helpers        | `camelCase` (not exported) | `decryptSummaryFields()`, `decryptDataFields()`                 |
+| Adapter instances      | `app + *`                  | `appKV`, `appStorage`, `appUser`, `localDB`                     |
 
 ### Svelte components
 
@@ -318,21 +331,32 @@ Every layer has an `index.ts` that re-exports its public API. Outside code impor
 
 ```typescript
 // ✅ Correct
-import { CharacterService, type CharacterDetail } from '$lib/services';
-import { activeCharacter, loadCharacters } from '$lib/stores';
+import { CharacterService, type CharacterDetail } from "$lib/services";
+import { activeCharacter, loadCharacters } from "$lib/stores";
 
 // ❌ Wrong
-import { CharacterService } from '$lib/services/character';
-import { activeCharacter } from '$lib/stores/state';
+import { CharacterService } from "$lib/services/character";
+import { activeCharacter } from "$lib/stores/state";
 ```
 
-### Import aliases
+### Import paths and conventions
 
-The app uses SvelteKit's `$lib` alias. Always use `$lib/...` for cross-module imports within `src/lib/`.
+- **Hybrid approach (`$lib` vs relative paths):**
+  - Use relative paths (`./`, `../`) for imports within the same module/domain to indicate cohesion.
+  - Use `$lib/...` aliases for imports across different domains or architectural layers (e.g., from `services` to `adapters`).
+- **Barrel file imports:** When importing a directory's `index.ts` barrel file, import the directory name directly (e.g., `import { SyncManager } from './sync'`). Do not append `/index`.
+- **File extensions:** Do NOT include `.js` or `.ts` extensions in import paths. Rely on the bundler's module resolution.
 
-Use `.js` extensions in relative imports (SvelteKit ESM requirement):
 ```typescript
-import { deepMerge } from '../shared/defaults.js';
+// ✅ Correct
+import { UserService } from "$lib/services/user/user"; // Cross-module
+import { deepMerge } from "../shared/defaults"; // Relative, no extension
+import { SyncManager } from "./sync"; // Directory import for index.ts
+
+// ❌ Wrong
+import { UserService } from "../../services/user/user"; // Relative cross-module
+import { deepMerge } from "../shared/defaults.js"; // Has .js extension
+import { SyncManager } from "./sync/index"; // Explicit index
 ```
 
 ### Section separators
@@ -392,7 +416,7 @@ const x = something as SomeType;
 ### Component library
 
 - **shadcn-svelte** for all structural UI components (Button, Card, Input, ScrollArea, DropdownMenu, Avatar, …).
-- Import from the component's barrel: `import { Button } from '$lib/components/ui/button/index.js'`.
+- Import from the component's barrel: `import { Button } from '$lib/components/ui/button'`.
 - Never write raw `<button>` or `<input>` elements when a shadcn equivalent exists.
 
 ### Icons
@@ -412,12 +436,14 @@ const x = something as SomeType;
 ### Svelte 5 runes
 
 This project uses Svelte 5 runes syntax throughout:
+
 ```typescript
 let value = $state('');              // mutable local state
 let derived = $derived(computation); // computed from other state
 let { prop } = $props();             // component props
 $effect(() => { ... });              // side effects
 ```
+
 Do not use Svelte 4's `let` + `$: reactive` syntax anywhere.
 
 ### View components
@@ -430,7 +456,7 @@ Views live in `lib/views/`. Each maps to a top-level navigation destination. Vie
 
 ### When to write a file-level docblock
 
-Every non-trivial module gets a file-level comment that answers: *what does this module do, and what design decisions are baked in?* Keep it concise — 3–10 lines.
+Every non-trivial module gets a file-level comment that answers: _what does this module do, and what design decisions are baked in?_ Keep it concise — 3–10 lines.
 
 ```typescript
 /**
@@ -467,6 +493,7 @@ Mark incomplete work with structured TODOs:
 ```
 
 For checklist-style progress in file headers use `✅` / `🔲`:
+
 ```
 // ✅ Streaming lifecycle
 // 🔲 TODO: PromptBuilder
@@ -475,6 +502,7 @@ For checklist-style progress in file headers use `✅` / `🔲`:
 ### Section banners
 
 Use the separator style consistently:
+
 ```typescript
 // ─── Domain Types ────────────────────────────────────────────────────
 // ─── Defaults ─────────────────────────────────────────────────────────
@@ -489,9 +517,16 @@ Use the separator style consistently:
 ### Service layer — always throw `AppError`
 
 ```typescript
-throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-throw new AppError('OWNERSHIP_VIOLATION', `Chat ${chatId} does not belong to character ${characterId}`);
-throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt character summary', cause);
+throw new AppError("NOT_FOUND", `Character not found: ${characterId}`);
+throw new AppError(
+  "OWNERSHIP_VIOLATION",
+  `Chat ${chatId} does not belong to character ${characterId}`,
+);
+throw new AppError(
+  "ENCRYPTION_FAILED",
+  "Failed to decrypt character summary",
+  cause,
+);
 ```
 
 Pass the original `cause` when wrapping a lower-level error (enables cause chain inspection in dev tools).
