@@ -36,7 +36,7 @@ import {
 	getTask,
 	stopGeneration
 } from '../stores/generation.js';
-import { createMessage } from '../stores/message.js';
+import { createMessage } from '../stores/content/message.js';
 
 import type { StreamProvider } from '../llm/types.js';
 

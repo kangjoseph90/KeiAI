@@ -1,6 +1,15 @@
 <script lang="ts">
-	import { isLoggedIn, isGuest, userEmail } from '$lib/stores/auth.js';
-	import { AuthService } from '$lib/core/api/auth.js';
+	import {
+		isLoggedIn,
+		isGuest,
+		userEmail,
+		performLogin,
+		performRegister,
+		performRecoverPassword,
+		performChangePassword,
+		performUnlink,
+		performLogout
+	} from '$lib/stores/auth/auth.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '$lib/components/ui/card/index.js';
@@ -51,7 +60,7 @@
 	}
 
 	function handleLogin() {
-		runAction(() => AuthService.login(email, password), 'Logged in successfully.');
+		runAction(() => performLogin(email, password), 'Logged in successfully.');
 	}
 
 	function handleRegister() {
@@ -59,23 +68,23 @@
 			errorMsg = 'Passwords do not match.';
 			return;
 		}
-		runAction(() => AuthService.register(email, password), 'Account registered.');
+		runAction(() => performRegister(email, password), 'Account registered.');
 	}
 
 	function handleRecover() {
-		runAction(() => AuthService.recoverPassword(email, recoveryCode, newPassword), 'Password recovered.');
+		runAction(() => performRecoverPassword(email, recoveryCode, newPassword), 'Password recovered.');
 	}
 
 	function handleChangePassword() {
-		runAction(() => AuthService.changePassword(password, newPassword), 'Password changed. Save your new recovery code.');
+		runAction(() => performChangePassword(password, newPassword), 'Password changed. Save your new recovery code.');
 	}
 
 	function handleUnlink() {
-		runAction(() => AuthService.unlinkAccount(password), 'Account unlinked. Reverted to guest mode.');
+		runAction(() => performUnlink(password), 'Account unlinked. Reverted to guest mode.');
 	}
 
 	function handleLogout() {
-		runAction(() => AuthService.logout(), 'Logged out successfully.');
+		runAction(() => performLogout(), 'Logged out successfully.');
 	}
 </script>
 

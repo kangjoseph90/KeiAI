@@ -9,11 +9,11 @@
  *   - Registered: CryptoKey with extractable: false (XSS cannot export raw bytes)
  */
 
-import { generateMasterKey, encrypt, decrypt, type EncryptedData } from './core/crypto/index.js';
+import { generateMasterKey, encrypt, decrypt, type EncryptedData } from './crypto/index.js';
 import { appKV } from './adapters/kv/index.js';
 import { appUser, type UserRecord } from './adapters/user/index.js';
 import { generateId } from './shared/id.js';
-import { pb } from './core/api/pb.js';
+import { pb } from './adapters/pb.js';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 

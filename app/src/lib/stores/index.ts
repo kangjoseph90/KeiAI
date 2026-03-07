@@ -19,13 +19,13 @@
  * Store logic files import writables directly from state.ts.
  */
 import { readonly } from 'svelte/store';
-import { loadSettings } from './settings.js';
-import { loadModules } from './module.js';
-import { loadPlugins } from './plugin.js';
-import { loadPersonas } from './persona.js';
-import { loadPresets } from './preset.js';
-import { loadCharacters } from './character.js';
-import { loadProfile } from './profile.js';
+import { loadSettings } from './content/settings.js';
+import { loadModules } from './content/module.js';
+import { loadPlugins } from './content/plugin.js';
+import { loadPersonas } from './content/persona.js';
+import { loadPresets } from './content/preset.js';
+import { loadCharacters } from './content/character.js';
+import { loadProfile } from './auth/profile.js';
 
 // ─── Re-export writable stores as readonly ──────────────────────────
 import * as StoreState from './state.js';
@@ -66,18 +66,18 @@ export {
 } from './state.js';
 export type { DisplayMessage, DisplayMessageStatus, GenerationTask, GenerationStatus } from './types.js';
 
-export * from './settings.js';
-export * from './character.js';
-export * from './persona.js';
-export * from './preset.js';
-export * from './chat.js';
-export * from './module.js';
-export * from './plugin.js';
-export * from './lorebook.js';
-export * from './script.js';
-export * from './message.js';
+export * from './content/settings.js';
+export * from './content/character.js';
+export * from './content/persona.js';
+export * from './content/preset.js';
+export * from './content/chat.js';
+export * from './content/module.js';
+export * from './content/plugin.js';
+export * from './content/lorebook.js';
+export * from './content/script.js';
+export * from './content/message.js';
 export * from './generation.js';
-export * from './profile.js';
+export * from './auth/profile.js';
 export * from '../shared/ordering.js';
 
 export async function loadGlobalState() {

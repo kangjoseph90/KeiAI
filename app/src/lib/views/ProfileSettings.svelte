@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { activeUser } from '$lib/stores/auth.js';
-	import { updateProfile } from '$lib/stores/profile.js';
+	import { activeUser } from '$lib/stores/auth/auth.js';
+	import { updateProfile } from '$lib/stores/auth/profile.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '$lib/components/ui/card/index.js';

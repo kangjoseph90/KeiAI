@@ -1,9 +1,10 @@
 ﻿<script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { initSession } from '$lib/session';
-	import { loadProfile } from '$lib/stores/profile';
-	import { activeUser, userEmail } from '$lib/stores/auth';
-	import { SyncManager } from '$lib/core/api/sync/index.js';
+	import { UserService } from '$lib/services/auth/user';
+	import { AuthService } from '$lib/services/auth/auth.js';
+	import { loadProfile } from '$lib/stores/auth/profile';
+	import { activeUser, userEmail } from '$lib/stores/auth/auth';
+	import { SyncManager } from '$lib/services/sync/index.js';
 	import { BookText, Layers, Plug, Settings, User, Users } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
@@ -34,9 +35,11 @@
 	import ModulesView from '$lib/views/ModulesView.svelte';
 	import PluginsView from '$lib/views/PluginsView.svelte';
 	import SettingsView from '$lib/views/SettingsView.svelte';
+	import ManageAccountsDialog from '$lib/views/ManageAccountsDialog.svelte';
 
 	let ready = $state(false);
 	let errorMsg = $state('');
+	let manageAccountsOpen = $state(false);
 
 	const sidebarItems: { view: ViewMode; label: string; icon: any }[] = [
 		{ view: 'characters', label: 'Characters', icon: Users },
@@ -127,7 +130,12 @@
 
 	onMount(async () => {
 		try {
-			await initSession();
+			const wasRestored = await UserService.restoreOrCreateGuest();
+			// If the local DB was cleared (storage eviction, first install), PB may
+			// still hold a stale JWT. Clear it so sync starts from a clean state.
+			if (!wasRestored) {
+				AuthService.clearAuth();
+			}
 			await loadProfile();
 			SyncManager.startAutoSync({ onProfileUpdate: loadProfile });
 			await SyncManager.syncAll();
@@ -233,6 +241,10 @@
 					<DropdownMenu.Content align="start" class="w-48">
 						<DropdownMenu.Label>My Account</DropdownMenu.Label>
 						<DropdownMenu.Separator />
+						<DropdownMenu.Item onclick={() => manageAccountsOpen = true}>
+							<Users class="mr-2 size-4" />
+							<span>Manage Profiles</span>
+						</DropdownMenu.Item>
 						<DropdownMenu.Item onclick={() => handleNavigate({ view: 'settings' })}>
 							<Settings class="mr-2 size-4" />
 							<span>App Settings</span>
@@ -276,5 +288,7 @@
 				{/if}
 			</div>
 		</div>
+
+		<ManageAccountsDialog bind:open={manageAccountsOpen} />
 	{/if}
 </main>

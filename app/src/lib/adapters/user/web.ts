@@ -11,7 +11,7 @@ class UserDexie extends Dexie {
 	users!: Dexie.Table<UserRecord, string>;
 
 	constructor() {
-		super('KeiAIAuth'); // Separate IndexedDB database just for auth
+		super('KeiUsers'); // Separate IndexedDB database just for auth
 		this.version(1).stores({
 			users: 'id, isDeleted, isGuest, updatedAt' // 'id' is Primary Key, others for indexing
 		});
@@ -26,7 +26,7 @@ export class WebUserAdapter implements IUserAdapter {
 	}
 
 	async getAllUsers(): Promise<UserRecord[]> {
-		return await authDB.users.where('isDeleted').notEqual(1).toArray();
+		return await authDB.users.filter((u) => !u.isDeleted).toArray();
 	}
 
 	async saveUser(user: UserRecord): Promise<void> {

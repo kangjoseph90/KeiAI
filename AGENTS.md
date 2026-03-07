@@ -58,9 +58,9 @@ Read it before writing any code. Every section reflects decisions that are alrea
 
 | Layer | Path | Purpose |
 |---|---|---|
-| `core/crypto/` | Pure crypto toolkit | Stateless. No DB, no session, no stores |
+| `core/crypto/` | Pure crypto toolkit | Stateless. No DB, no session, no stores. Also exports `importMasterKey` |
 | `core/api/` | PocketBase client + Sync | Services call sync; stores never call sync directly |
-| `session.ts` | In-memory session state | Services call `getActiveSession()`; UI does not touch it directly |
+| `services/session.ts` | In-memory session state | Services call `getActiveSession()`; UI does not touch it directly |
 | `shared/` | Domain types, errors, utils | Used by all layers |
 | `generation/` | LLM pipeline | Stateless pipeline. Reads from Services; writes only to generation store |
 
@@ -76,7 +76,7 @@ These rules are hard constraints. Violating them creates circular imports and ar
 UI → Stores → Services → Adapters
 UI → Stores → Services → core/api/sync
                         ↑
-                    session.ts (any layer may call getActiveSession)
+                    services/session.ts (any layer may call getActiveSession)
                     shared/    (any layer may use)
                     core/crypto (any layer may call)
 ```
@@ -162,10 +162,10 @@ Both are `EncryptedRecord` with AES-GCM encrypted JSON blobs. The split is purel
 ```typescript
 // Write: encrypt then store
 const { ciphertext: encryptedData, iv: encryptedDataIV } =
-  await encryptText(masterKey, JSON.stringify(fields));
+  await encrypt(masterKey, JSON.stringify(fields));
 
 // Read: decrypt then deepMerge with defaults
-const dec = await decryptText(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV });
+const dec = await decrypt(masterKey, { ciphertext: record.encryptedData, iv: record.encryptedDataIV });
 const fields = deepMerge(defaultFields, JSON.parse(dec));
 ```
 

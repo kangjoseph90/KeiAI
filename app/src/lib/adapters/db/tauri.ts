@@ -1,5 +1,6 @@
 import Database from '@tauri-apps/plugin-sql';
 import type { IDatabaseAdapter, TableName, BaseRecord } from './types.js';
+import { TABLES } from './types.js';
 
 /**
  * Tauri SQLite Local Database Adapter
@@ -15,23 +16,6 @@ import type { IDatabaseAdapter, TableName, BaseRecord } from './types.js';
  * back upon reading.
  */
 
-const TABLES: TableName[] = [
-	'characterSummaries',
-	'characterData',
-	'chatSummaries',
-	'chatData',
-	'messages',
-	'settings',
-	'personas',
-	'lorebooks',
-	'scripts',
-	'modules',
-	'plugins',
-	'presetSummaries',
-	'presetData',
-	'assets',
-	'cacheRegistry'
-];
 
 function arrayBufferToBase64(buffer: ArrayBufferLike): string {
 	let binary = '';
@@ -219,6 +203,15 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 	async deleteRecord(tableName: TableName, id: string): Promise<void> {
 		const db = await this.getDb();
 		await db.execute(`DELETE FROM ${tableName} WHERE id = $1`, [id]);
+	}
+
+	async deleteByIndex(
+		tableName: TableName,
+		indexName: string,
+		indexValue: string
+	): Promise<void> {
+		const db = await this.getDb();
+		await db.execute(`DELETE FROM ${tableName} WHERE ${indexName} = $1`, [indexValue]);
 	}
 
 	async softDeleteRecord(tableName: TableName, id: string): Promise<void> {
