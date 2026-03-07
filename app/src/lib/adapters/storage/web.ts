@@ -1,4 +1,5 @@
 import type { IStorageAdapter } from './types';
+import { AppError } from '$lib/shared/errors';
 
 /**
  * WebStorageAdapter — OPFS-backed asset file system for Web/PWA
@@ -46,7 +47,7 @@ export class WebStorageAdapter implements IStorageAdapter {
 
 	async write(id: string, data: Uint8Array | Blob): Promise<void> {
 		const handle = await this.getFileHandle(id, true);
-		if (!handle) throw new Error(`Failed to create file handle for ${id}`);
+		if (!handle) throw new AppError('STORAGE_ERROR', `Failed to create file handle for ${id}`);
 		const writable = await handle.createWritable();
 		await writable.write(data as FileSystemWriteChunkType);
 		await writable.close();

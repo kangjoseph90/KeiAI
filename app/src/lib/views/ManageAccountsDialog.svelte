@@ -7,12 +7,14 @@
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { Button } from '$lib/components/ui/button';
 	import { UserPlus, Check, Trash2 } from 'lucide-svelte';
+	import { getErrorMessage } from '$lib/shared/errors';
 
 	let { open = $bindable(false) } = $props();
 
 	let users = $state<UserRecord[]>([]);
 	let userToDelete = $state<UserRecord | null>(null);
 	let loading = $state(false);
+	let errorMsg = $state('');
 
 	async function loadUsers() {
 		const allUsers = await UserService.getAllUsers();
@@ -44,10 +46,11 @@
 
 	async function handleCreateNewGuest() {
 		loading = true;
+		errorMsg = '';
 		try {
 			await performCreateNewGuest();
 		} catch (e) {
-			console.error(e);
+			errorMsg = getErrorMessage(e);
 			loading = false;
 		}
 	}
@@ -73,6 +76,14 @@
 				Switch between or delete offline profiles on this device.
 			</Dialog.Description>
 		</Dialog.Header>
+
+		{#if errorMsg}
+			<div
+				class="rounded-md bg-destructive/15 p-3 text-sm text-destructive border border-destructive/20 font-medium"
+			>
+				{errorMsg}
+			</div>
+		{/if}
 
 		<div class="flex-1 overflow-y-auto flex flex-col gap-3 py-4 pr-1">
 			{#each users as u (u.id)}

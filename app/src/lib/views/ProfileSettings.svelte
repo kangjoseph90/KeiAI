@@ -12,6 +12,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { Upload, UserRoundPen } from 'lucide-svelte';
+	import { getErrorMessage } from '$lib/shared/errors';
 
 	let profileName = $state('');
 	let profileAvatar = $state('');
@@ -60,7 +61,7 @@
 			});
 			successMsg = 'Profile updated successfully.';
 		} catch (e) {
-			errorMsg = e instanceof Error ? e.message : String(e);
+			errorMsg = getErrorMessage(e);
 		} finally {
 			loading = false;
 		}

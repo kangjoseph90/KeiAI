@@ -21,6 +21,7 @@
 	} from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
 	import { Key, LogIn, LogOut, UserPlus, ShieldAlert, AlertTriangle } from 'lucide-svelte';
+	import { getErrorMessage } from '$lib/shared/errors';
 
 	let email = $state('');
 	let password = $state('');
@@ -59,7 +60,7 @@
 			newPassword = '';
 			recoveryCode = '';
 		} catch (e) {
-			errorMsg = e instanceof Error ? e.message : String(e);
+			errorMsg = getErrorMessage(e);
 		} finally {
 			loading = false;
 		}

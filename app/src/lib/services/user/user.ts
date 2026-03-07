@@ -15,6 +15,7 @@ import { generateMasterKey } from '$lib/crypto';
 import { generateId } from '$lib/shared/id';
 import { setSession } from '../session';
 import { minidenticon } from 'minidenticons';
+import { AppError } from '$lib/shared/errors';
 
 export class UserService {
 	/**
@@ -121,7 +122,7 @@ export class UserService {
 	 */
 	static async revertToGuest(userId: string, unlockedKey: CryptoKey): Promise<void> {
 		const user = await appUser.getUser(userId);
-		if (!user) throw new Error('User not found.');
+		if (!user) throw new AppError('NOT_FOUND', `User not found: ${userId}`);
 
 		user.masterKey = unlockedKey;
 		user.isGuest = true;
