@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { activeUser } from '$lib/stores';
-	import { updateProfile } from '$lib/stores/user/profile';
+	import { activeUser, updateProfile } from '$lib/stores';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import {

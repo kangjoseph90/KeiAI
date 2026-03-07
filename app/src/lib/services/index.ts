@@ -10,3 +10,5 @@ export * from './content/script';
 export * from './content/module';
 export * from './content/plugin';
 export * from './content/preset';
+export * from './user/user';
+export * from './user/auth';

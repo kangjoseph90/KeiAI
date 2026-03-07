@@ -1,18 +1,15 @@
 import { get } from 'svelte/store';
 import {
 	ChatService,
-	type Chat,
+	LorebookService,
+	CharacterService,
 	type ChatDetail,
 	type ChatSummaryFields,
 	type ChatDataFields,
-	type ChatDataContent
-} from '$lib/services/content/chat';
-import {
-	LorebookService,
+	type ChatDataContent,
 	type LorebookFields,
 	type Lorebook
-} from '$lib/services/content/lorebook';
-import { CharacterService } from '$lib/services/content/character';
+} from '$lib/services';
 import type { OrderedRef, FolderDef } from '$lib/shared/types';
 import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
 import {

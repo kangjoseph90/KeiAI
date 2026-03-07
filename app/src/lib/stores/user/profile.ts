@@ -8,7 +8,7 @@
  * to avoid circular references: stores → sync, never sync → stores.
  */
 
-import { ProfileService, type ProfileFields } from '$lib/services/user/profile';
+import { ProfileService, type ProfileFields } from '$lib/services';
 import { activeUser } from '../state';
 
 /**
