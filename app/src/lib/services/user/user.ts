@@ -14,8 +14,17 @@ import { appKV } from '$lib/adapters/kv';
 import { generateMasterKey } from '$lib/crypto';
 import { generateId } from '$lib/shared/id';
 import { setSession } from '../session';
+import { minidenticon } from 'minidenticons';
 
 export class UserService {
+	/**
+	 * Returns a default avatar URL for a given seed (usually user ID).
+	 */
+	static getDefaultAvatarUrl(seed: string): string {
+		const svg = minidenticon(seed);
+		return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+	}
+
 	// ─── Boot ────────────────────────────────────────────────────────
 
 	/**
@@ -55,7 +64,7 @@ export class UserService {
 
 		const existingUsers = await appUser.getAllUsers();
 		const name = `Guest ${existingUsers.length + 1}`;
-		const avatar = `https://api.dicebear.com/7.x/identicon/svg?seed=${id}`;
+		const avatar = this.getDefaultAvatarUrl(id);
 
 		await appUser.saveUser({
 			id,
@@ -91,10 +100,7 @@ export class UserService {
 			id: params.id,
 			name: existing?.name ?? params.serverName ?? 'Synced Profile',
 			email: params.email,
-			avatar:
-				existing?.avatar ??
-				params.avatarUrl ??
-				`https://api.dicebear.com/7.x/identicon/svg?seed=${params.id}`,
+			avatar: existing?.avatar ?? params.avatarUrl ?? this.getDefaultAvatarUrl(params.id),
 			createdAt: existing?.createdAt ?? Date.now(),
 			updatedAt: Date.now(),
 			isDeleted: false,
