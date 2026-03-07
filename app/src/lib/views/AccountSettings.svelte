@@ -1,13 +1,15 @@
 <script lang="ts">
-	import { isLoggedIn, isGuest, userEmail } from '$lib/stores';
 	import {
+		isLoggedIn,
+		isGuest,
+		userEmail,
 		performLogin,
 		performRegister,
 		performRecoverPassword,
 		performChangePassword,
 		performUnlink,
 		performLogout
-	} from '$lib/stores/user/auth';
+	} from '$lib/stores';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import {

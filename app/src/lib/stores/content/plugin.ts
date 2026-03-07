@@ -1,6 +1,5 @@
 import { get } from 'svelte/store';
-import { PluginService, type PluginFields, type Plugin } from '$lib/services/content/plugin';
-import { SettingsService } from '$lib/services';
+import { PluginService, SettingsService, type PluginFields, type Plugin } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
 import { plugins, appSettings } from '../state';
 import { AppError } from '$lib/shared/errors';

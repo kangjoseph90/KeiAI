@@ -1,8 +1,6 @@
 ﻿<script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { UserService } from '$lib/services/user/user';
-	import { AuthService } from '$lib/services/user/auth';
-	import { loadProfile } from '$lib/stores/user/profile';
+	import { UserService, AuthService } from '$lib/services';
 	import { SyncManager } from '$lib/services/sync';
 	import { BookText, Layers, Plug, Settings, User, Users } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -10,6 +8,7 @@
 	import * as Avatar from '$lib/components/ui/avatar';
 	import {
 		loadGlobalState,
+		loadProfile,
 		selectCharacter,
 		selectChat,
 		clearActiveCharacter,

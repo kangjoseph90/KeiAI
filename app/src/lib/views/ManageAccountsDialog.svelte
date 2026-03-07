@@ -1,8 +1,6 @@
 <script lang="ts">
-	import { appUser, type UserRecord } from '$lib/adapters/user';
-	import { activeUser } from '$lib/stores';
-	import { performCreateNewGuest } from '$lib/stores/user/auth';
-	import { UserService } from '$lib/services/user/user';
+	import { activeUser, performCreateNewGuest } from '$lib/stores';
+	import { UserService, type UserRecord } from '$lib/services';
 
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
@@ -17,7 +15,7 @@
 	let loading = $state(false);
 
 	async function loadUsers() {
-		const allUsers = await appUser.getAllUsers();
+		const allUsers = await UserService.getAllUsers();
 
 		users = allUsers.sort((a, b) => {
 			// Always put the active user at the absolute top

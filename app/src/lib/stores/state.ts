@@ -6,17 +6,22 @@
  */
 
 import { derived, writable } from 'svelte/store';
-import type { AppSettings } from '$lib/services/content/settings';
-import type { Profile } from '$lib/services/user/profile';
-import type { Character, CharacterDetail } from '$lib/services/content/character';
-import type { Chat, ChatDetail } from '$lib/services/content/chat';
-import type { Message } from '$lib/services/content/message';
-import type { Persona } from '$lib/services/content/persona';
-import type { Preset, PresetDetail } from '$lib/services/content/preset';
-import type { Module } from '$lib/services/content/module';
-import type { Plugin } from '$lib/services/content/plugin';
-import type { Lorebook } from '$lib/services/content/lorebook';
-import type { Script } from '$lib/services/content/script';
+import type {
+	AppSettings,
+	Profile,
+	Character,
+	CharacterDetail,
+	Chat,
+	ChatDetail,
+	Message,
+	Persona,
+	Preset,
+	PresetDetail,
+	Module,
+	Plugin,
+	Lorebook,
+	Script
+} from '$lib/services';
 import type { GenerationTask, DisplayMessage } from './types';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────

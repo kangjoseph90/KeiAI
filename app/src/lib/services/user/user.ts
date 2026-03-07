@@ -6,7 +6,8 @@
  * AuthService delegates local record management here.
  */
 
-import { appUser } from '$lib/adapters/user';
+import { appUser, type UserRecord } from '$lib/adapters/user';
+export type { UserRecord };
 import { localDB, TABLES, SYNC_TABLES, type AssetRecord } from '$lib/adapters/db';
 import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
@@ -154,6 +155,13 @@ export class UserService {
 		for (const table of SYNC_TABLES) {
 			await appKV.remove(`lastSync_${table}_${userId}`);
 		}
+	}
+
+	/**
+	 * Returns all local user records.
+	 */
+	static async getAllUsers() {
+		return appUser.getAllUsers();
 	}
 }
 

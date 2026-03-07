@@ -80,6 +80,7 @@ export * from './content/lorebook';
 export * from './content/script';
 export * from './content/message';
 export * from './generation';
+export * from './user/auth';
 export * from './user/profile';
 export * from '../shared/ordering';
 export * from './init';

@@ -7,8 +7,7 @@
  */
 
 import { get } from 'svelte/store';
-import { MessageService, type MessageFields } from '$lib/services/content/message';
-import { ChatService } from '$lib/services/content/chat';
+import { MessageService, ChatService, type MessageFields } from '$lib/services';
 import { messages, chats, activeChat, activeChatId } from '../state';
 
 /**

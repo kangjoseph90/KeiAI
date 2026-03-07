@@ -34,9 +34,9 @@ import {
 	setTaskError,
 	clearTask,
 	getTask,
-	stopGeneration
-} from '$lib/stores/generation';
-import { createMessage } from '$lib/stores/content/message';
+	stopGeneration,
+	createMessage
+} from '$lib/stores';
 
 import type { StreamProvider } from '$lib/llm/types';
 

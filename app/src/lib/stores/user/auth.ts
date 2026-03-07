@@ -14,9 +14,8 @@
  */
 
 import { pbConnected } from '../state';
-import { AuthService } from '$lib/services/user/auth';
+import { AuthService, UserService } from '$lib/services';
 import { SyncManager } from '$lib/services/sync';
-import { UserService } from '$lib/services/user/user';
 import { loadProfile } from './profile';
 import { clearActiveCharacter } from '../content/character';
 import { loadGlobalState } from '../init';
