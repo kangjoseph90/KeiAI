@@ -101,6 +101,15 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		await this.getTable<BaseRecord>(tableName).delete(id);
 	}
 
+	async deleteByIndex(
+		tableName: TableName,
+		indexName: string,
+		indexValue: string
+	): Promise<void> {
+		const table = this.getTable<BaseRecord>(tableName);
+		await table.where(indexName).equals(indexValue).delete();
+	}
+
 	async softDeleteRecord(tableName: TableName, id: string): Promise<void> {
 		const table = this.getTable<BaseRecord>(tableName);
 		const record = await table.get(id);

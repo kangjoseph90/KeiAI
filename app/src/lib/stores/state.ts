@@ -6,17 +6,17 @@
  */
 
 import { derived, writable } from 'svelte/store';
-import type { AppSettings } from '../services/settings.js';
-import type { Profile } from '../services/profile.js';
-import type { Character, CharacterDetail } from '../services/character.js';
-import type { Chat, ChatDetail } from '../services/chat.js';
-import type { Message } from '../services/message.js';
-import type { Persona } from '../services/persona.js';
-import type { Preset, PresetDetail } from '../services/preset.js';
-import type { Module } from '../services/module.js';
-import type { Plugin } from '../services/plugin.js';
-import type { Lorebook } from '../services/lorebook.js';
-import type { Script } from '../services/script.js';
+import type { AppSettings } from '../services/content/settings.js';
+import type { Profile } from '../services/auth/profile.js';
+import type { Character, CharacterDetail } from '../services/content/character.js';
+import type { Chat, ChatDetail } from '../services/content/chat.js';
+import type { Message } from '../services/content/message.js';
+import type { Persona } from '../services/content/persona.js';
+import type { Preset, PresetDetail } from '../services/content/preset.js';
+import type { Module } from '../services/content/module.js';
+import type { Plugin } from '../services/content/plugin.js';
+import type { Lorebook } from '../services/content/lorebook.js';
+import type { Script } from '../services/content/script.js';
 import type { GenerationTask, DisplayMessage } from './types.js';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────

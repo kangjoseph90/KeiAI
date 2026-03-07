@@ -31,7 +31,29 @@ export type TableName =
 	| 'presetData'
 	| 'assets'
 	| 'cacheRegistry';
-	
+
+export const SYNC_TABLES: TableName[] = [
+	'characterSummaries',
+	'characterData',
+	'chatSummaries',
+	'chatData',
+	'messages',
+	'settings',
+	'personas',
+	'lorebooks',
+	'scripts',
+	'modules',
+	'plugins',
+	'presetSummaries',
+	'presetData',
+	'assets'
+];
+
+export const TABLES: TableName[] = [
+	...SYNC_TABLES,
+	'cacheRegistry'
+];
+
 // ─── Base Types ──────────────────────────────────────────────────────
 
 export interface BaseRecord {
@@ -129,6 +151,7 @@ export interface IDatabaseAdapter {
 	putRecord<T extends BaseRecord>(tableName: TableName, record: T): Promise<void>;
 	putRecords<T extends BaseRecord>(tableName: TableName, records: T[]): Promise<void>;
 	deleteRecord(tableName: TableName, id: string): Promise<void>;
+	deleteByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<void>;
 	softDeleteRecord(tableName: TableName, id: string): Promise<void>;
 	softDeleteByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<void>;
 	getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]>;

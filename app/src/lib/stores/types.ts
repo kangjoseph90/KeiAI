@@ -6,7 +6,7 @@
  * These types extend domain types with UI-specific concerns.
  */
 
-import type { Message } from '../services/message.js';
+import type { Message } from '../services/content/message.js';
 
 // ─── Generation Types ───────────────────────────────────────────────
 

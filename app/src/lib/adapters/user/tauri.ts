@@ -43,7 +43,7 @@ class UserDexie extends Dexie {
 	users!: Dexie.Table<UserRecord, string>;
 
 	constructor() {
-		super('KeiAIAuth'); // Same dedicated auth IndexedDB as the web adapter
+		super('KeiUsers'); // Same dedicated auth IndexedDB as the web adapter
 		this.version(1).stores({
 			users: 'id, isDeleted, isGuest, updatedAt'
 		});
@@ -192,7 +192,7 @@ export class TauriUserAdapter implements IUserAdapter {
 
 	async getAllUsers(): Promise<UserRecord[]> {
 		// Primary: Dexie
-		const users = await this.authDB.users.where('isDeleted').notEqual(1).toArray();
+		const users = await this.authDB.users.filter((u) => !u.isDeleted).toArray();
 		if (users.length > 0) return users;
 
 		// Recovery: SQLite + Stronghold
