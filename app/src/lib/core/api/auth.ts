@@ -383,6 +383,7 @@ export class AuthService {
 	 * user is restored from KV/IndexedDB and presented with the login screen.
 	 */
 	static async logout(): Promise<void> {
+		SyncService.stopAutoSync();
 		pb.authStore.clear();
 		// onChange fires → refreshAuthState() → isGuest: true (not connected to PB)
 		// Local session remains intact; no data loss.
