@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { authState } from '$lib/stores/auth.js';
+	import { isLoggedIn, isGuest, userEmail } from '$lib/stores/auth.js';
 	import { AuthService } from '$lib/core/api/auth.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -22,7 +22,7 @@
 
 	// Auto-reset mode when auth state changes (e.g. after login, logout, unlink)
 	$effect(() => {
-		if (!$authState.isLoggedIn) {
+		if (!$isLoggedIn) {
 			if (!['login', 'register', 'recover'].includes(mode)) mode = 'login';
 		} else {
 			if (!['change_password', 'unlink'].includes(mode)) mode = 'change_password';
@@ -83,14 +83,14 @@
 	<CardHeader>
 		<CardTitle>Account & Synchronization</CardTitle>
 		<CardDescription>
-			{#if !$authState.isLoggedIn}
-				{#if $authState.activeUser?.isGuest}
+			{#if !$isLoggedIn}
+				{#if $isGuest}
 					You are currently using an offline guest account.
 				{:else}
 					You are using an offline session. Data is not syncing.
 				{/if}
 			{:else}
-				Logged in as: <strong>{$authState.email}</strong>
+				Logged in as: <strong>{$userEmail}</strong>
 			{/if}
 		</CardDescription>
 	</CardHeader>
@@ -120,11 +120,11 @@
 			</div>
 		{/if}
 
-		{#if !$authState.isLoggedIn}
+		{#if !$isLoggedIn}
 			<!-- GUEST STATE -->
 			<div class="flex border-b mb-2">
 				<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'login' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'login'}>Login</button>
-				{#if $authState.activeUser?.isGuest}
+				{#if $isGuest}
 					<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'register' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'register'}>Register / Link</button>
 				{/if}
 				<button class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'recover' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}" onclick={() => mode = 'recover'}>Recover</button>
@@ -132,7 +132,7 @@
 			
 			{#if mode === 'login' || mode === 'register'}
 				<div class="space-y-3">
-					{#if !$authState.activeUser?.isGuest && mode === 'login'}
+					{#if !$isGuest && mode === 'login'}
 						<div class="mb-2 p-3 text-sm rounded bg-primary/10 text-primary border border-primary/20">
 							You are in Offline Mode. Log in to resume synchronization.
 						</div>

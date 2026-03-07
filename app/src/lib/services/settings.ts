@@ -1,11 +1,11 @@
 import { encryptText, decryptText, getActiveSession } from '../session.js';
 import { localDB, type SettingsRecord } from '../adapters/db/index.js';
-import { SyncService } from '../core/api/sync.js';
+import { DataSyncService } from '../core/api/sync/index.js';
 import type { OrderedRef, FolderDef, ResourceRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
 
-// ─── Domain Types ────────────────────────────────────────────────────
+// ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface AppSettingsContent {
 	theme: 'light' | 'dark' | 'system';
@@ -16,7 +16,7 @@ export interface AppSettingsContent {
 }
 
 export interface AppSettingsRefs {
-	// 1:N — workspace holds ordered refs for top-level entities
+	// 1:N - workspace holds ordered refs for top-level entities
 	characterRefs?: OrderedRef[];
 	personaRefs?: OrderedRef[];
 	presetRefs?: OrderedRef[];
@@ -39,7 +39,7 @@ const defaultSettings: AppSettingsContent = {
 	apiKeys: {}
 };
 
-// ─── Service ─────────────────────────────────────────────────────────
+// ─── Service ──────────────────────────────────────────────────────────
 
 export class SettingsService {
 	static async get(): Promise<AppSettings> {
@@ -77,14 +77,14 @@ export class SettingsService {
 				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<SettingsRecord>('settings', settingsRecord);
-			void SyncService.pushRecord('settings', settingsRecord);
+			void DataSyncService.pushRecord('settings', settingsRecord);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to save settings', error);
 		}
 	}
 
-	/** Partial update — read-modify-write with merge */
+	/** Partial update ??read-modify-write with merge */
 	static async update(changes: Partial<AppSettings>): Promise<AppSettings> {
 		const { masterKey, userId } = getActiveSession();
 
@@ -118,7 +118,7 @@ export class SettingsService {
 				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<SettingsRecord>('settings', updatedRecord);
-			void SyncService.pushRecord('settings', updatedRecord);
+			void DataSyncService.pushRecord('settings', updatedRecord);
 
 			return updated;
 		} catch (error) {

@@ -5,6 +5,8 @@
  * Master key extractability lifecycle:
  *   Guest  (extractable: true)  → register() → Registered (extractable: false)
  *   Registered (extractable: false) → unlinkAccount() → Guest (extractable: true)
+ *
+ * Profile management has been moved to ProfileService + ProfileSyncService.
  */
 
 import { pb } from './pb.js';
@@ -29,9 +31,9 @@ import {
 	unlockMasterKey
 } from '../../session.js';
 import { appUser, type UserRecord } from '../../adapters/user/index.js';
-import { refreshAuthState } from '../../stores/auth.js';
+import { loadProfile } from '../../stores/profile.js';
 import { clearActiveCharacter, loadGlobalState } from '../../stores/index.js';
-import { SyncService } from './sync.js';
+import { DataSyncService, SyncManager } from './sync/index.js';
 
 export class AuthService {
 	/**
@@ -140,7 +142,7 @@ export class AuthService {
 		// exist or are stale from a previous install. Reset them so the first
 		// syncAll() below performs a full pull and restores all remote data.
 		if (!existing) {
-			await SyncService.resetCursors(serverUserId);
+			await DataSyncService.resetCursors(serverUserId);
 		}
 
 		let pbAvatarUrl = undefined;
@@ -161,8 +163,8 @@ export class AuthService {
 		});
 
 		await setSession(serverUserId, lockedKey, false);
-		refreshAuthState();
-		await SyncService.syncAll();
+		void loadProfile();
+		await SyncManager.syncAll();
 		clearActiveCharacter();
 		await loadGlobalState();
 	}
@@ -228,50 +230,6 @@ export class AuthService {
 		await this.login(email, newPassword);
 
 		return newRecovery.recoveryCode.fullCode;
-	}
-
-	/**
-	 * Update Profile: name and avatar.
-	 * Updates local database and pushes to PocketBase if successfully logged in.
-	 * If avatar is a Base64 data URI, it will be uploaded as a Blob.
-	 */
-	static async updateProfile(name: string, avatarDataUri?: string): Promise<void> {
-		const session = getActiveSession();
-		const user = await appUser.getUser(session.userId);
-		if (!user) throw new Error('User not found.');
-
-		user.name = name;
-		if (avatarDataUri) {
-			user.avatar = avatarDataUri;
-		}
-		user.updatedAt = Date.now();
-        
-		await appUser.saveUser(user);
-
-		// Synchronize with server if registered and currently online
-		if (!session.isGuest && pb.authStore.isValid && pb.authStore.record) {
-			const updateData: Record<string, any> = { name };
-			
-			if (avatarDataUri && avatarDataUri.startsWith('data:image')) {
-				try {
-					const fetchResponse = await fetch(avatarDataUri);
-					updateData.avatar = await fetchResponse.blob();
-				} catch (e) {
-					console.warn('Failed to parse local avatar for PB upload', e);
-				}
-			}
-			
-			const record = await pb.collection('users').update(session.userId, updateData);
-			
-			// If PocketBase successfully assigned an avatar file, fetch its URL so we can
-			// immediately replace the Base64 in our local DB with a lighter URL string.
-			if (record?.avatar) {
-				user.avatar = pb.files.getURL(record, record.avatar);
-				await appUser.saveUser(user);
-			}
-		}
-        
-		refreshAuthState();
 	}
 
 	/**
@@ -365,13 +323,14 @@ export class AuthService {
 			await pb.collection('users').delete(userId);
 
 			// 3. Upgrade local key BEFORE clearing PB auth so that when onChange fires,
-			//    refreshAuthState() already sees isGuest: true in the session.
+			//    the session already sees isGuest: true.
 			await unlockMasterKey(userId, rawM);
 		} finally {
 			rawM.fill(0);
 		}
 
 		pb.authStore.clear();
+		void loadProfile();
 	}
 
 	/**
@@ -381,9 +340,8 @@ export class AuthService {
 	 * user is restored from KV/IndexedDB and presented with the login screen.
 	 */
 	static async logout(): Promise<void> {
-		SyncService.stopAutoSync();
+		SyncManager.stopAutoSync();
 		pb.authStore.clear();
-		// onChange fires → refreshAuthState() → isGuest: true (not connected to PB)
-		// Local session remains intact; no data loss.
+		void loadProfile();
 	}
 }

@@ -1,12 +1,12 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type ModuleRecord } from '../adapters/db/index.js';
-import { SyncService } from '../core/api/sync.js';
+import { DataSyncService } from '../core/api/sync/index.js';
 import type { AssetRef, FolderDef, OrderedRef } from '../shared/types.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
 import { generateId } from '../shared/id.js';
 
-// ─── Domain Types ────────────────────────────────────────────────────
+// ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ModuleRefs {
 	lorebookRefs?: OrderedRef[];
@@ -29,14 +29,14 @@ export interface Module extends ModuleFields {
 	id: string;
 }
 
-// ─── Defaults ────────────────────────────────────────────────────────
+// ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultModuleFields: ModuleFields = {
 	name: '',
 	description: ''
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────
 
 function decryptFields(masterKey: CryptoKey, record: ModuleRecord): Promise<ModuleFields> {
 	return decryptText(masterKey, {
@@ -49,7 +49,7 @@ function decryptFields(masterKey: CryptoKey, record: ModuleRecord): Promise<Modu
 		});
 }
 
-// ─── Service ─────────────────────────────────────────────────────────
+// ─── Service ──────────────────────────────────────────────────────────
 
 export class ModuleService {
 	static async list(): Promise<Module[]> {
@@ -93,7 +93,7 @@ export class ModuleService {
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<ModuleRecord>('modules', newRecord);
-			void SyncService.pushRecord('modules', newRecord, true);
+			void DataSyncService.pushRecord('modules', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create module', error);
@@ -118,7 +118,7 @@ export class ModuleService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('modules', record);
-			void SyncService.pushRecord('modules', record);
+			void DataSyncService.pushRecord('modules', record);
 
 			return { id, ...updated };
 		} catch (error) {
@@ -127,7 +127,7 @@ export class ModuleService {
 		}
 	}
 
-	/** Update content fields only — safe entry point for store layer */
+	/** Update content fields only ??safe entry point for store layer */
 	static async updateContent(
 		id: string,
 		changes: Partial<ModuleContent>
@@ -145,7 +145,7 @@ export class ModuleService {
 			});
 			try {
 				const { userId } = getActiveSession();
-				void SyncService.pushRecentWrites(userId, deleteTs);
+				void DataSyncService.pushRecentWrites(userId, deleteTs);
 			} catch { /* not logged in */ }
 		} catch (error) {
 			if (error instanceof AppError) throw error;

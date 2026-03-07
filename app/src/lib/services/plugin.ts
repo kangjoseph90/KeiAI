@@ -1,6 +1,6 @@
 import { getActiveSession, encryptText, decryptText } from '../session.js';
 import { localDB, type PluginRecord } from '../adapters/db/index.js';
-import { SyncService } from '../core/api/sync.js';
+import { DataSyncService } from '../core/api/sync/index.js';
 import { deepMerge } from '../shared/defaults.js';
 import { AppError } from '../shared/errors.js';
 import { generateId } from '../shared/id.js';
@@ -25,7 +25,7 @@ export interface Plugin extends PluginFields {
 	id: string;
 }
 
-// ─── Defaults ────────────────────────────────────────────────────────
+// ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultPluginFields: PluginFields = {
 	name: '',
@@ -36,7 +36,7 @@ const defaultPluginFields: PluginFields = {
 	hooks: []
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────
 
 function decryptFields(masterKey: CryptoKey, record: PluginRecord): Promise<PluginFields> {
 	return decryptText(masterKey, {
@@ -49,7 +49,7 @@ function decryptFields(masterKey: CryptoKey, record: PluginRecord): Promise<Plug
 		});
 }
 
-// ─── Service ─────────────────────────────────────────────────────────
+// ─── Service ──────────────────────────────────────────────────────────
 
 export class PluginService {
 	static async list(): Promise<Plugin[]> {
@@ -93,7 +93,7 @@ export class PluginService {
 				encryptedData: enc.ciphertext, encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<PluginRecord>('plugins', newRecord);
-			void SyncService.pushRecord('plugins', newRecord, true);
+			void DataSyncService.pushRecord('plugins', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create plugin', error);
@@ -118,7 +118,7 @@ export class PluginService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('plugins', record);
-			void SyncService.pushRecord('plugins', record);
+			void DataSyncService.pushRecord('plugins', record);
 
 			return { id, ...updated };
 		} catch (error) {
@@ -130,7 +130,7 @@ export class PluginService {
 	static async delete(id: string): Promise<void> {
 		try {
 			await localDB.softDeleteRecord('plugins', id);
-			void SyncService.pushById('plugins', id);
+			void DataSyncService.pushById('plugins', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete plugin', error);

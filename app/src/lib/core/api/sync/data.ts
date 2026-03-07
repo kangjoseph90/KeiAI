@@ -1,33 +1,35 @@
 /**
- * Blind Synchronization Engine
+ * Data Sync Service
+ *
+ * Handles blind synchronization of encrypted application data (characters,
+ * chats, messages, settings, etc.) with PocketBase.
  *
  * - Pull: PocketBase Realtime subscription (SSE, push-based) for live updates
  *         + paged catch-up pull on boot / reconnect (offline gap recovery)
  * - Push: event-driven, called by the service layer after every local write
  *
  * The server never decrypts or inspects any data.
+ *
+ * Profile data has its own sync service (ProfileSyncService) because it is
+ * NOT E2EE and uses PB file fields, not encrypted blobs.
  */
 
-import { pb } from './pb.js';
-import { getActiveSession } from '../../session.js';
-import { toBase64, fromBase64 } from '../crypto/index.js';
-import { localDB, type TableName, type BaseRecord } from '../../adapters/db/index.js';
-import { appKV } from '../../adapters/kv/index.js';
+import { pb } from '../pb.js';
+import { getActiveSession } from '../../../session.js';
+import { toBase64, fromBase64 } from '../../crypto/index.js';
+import { localDB, type TableName, type BaseRecord } from '../../../adapters/db/index.js';
+import { appKV } from '../../../adapters/kv/index.js';
 
 type RealtimeEvent = {
 	action: string;
 	record: Record<string, unknown>;
 };
 
-export class SyncService {
-	// ─── Lifecycle State ──────────────────────────────────────────────
+export class DataSyncService {
+	// ─── State ────────────────────────────────────────────────────────
 	private static syncPromise: Promise<void> | null = null;
 	private static subscribed = false;
-	private static pollTimer: ReturnType<typeof setInterval> | null = null;
-	private static onlineListener: (() => void) | null = null;
-	private static visibilityListener: (() => void) | null = null;
 
-	private static readonly FALLBACK_POLL_INTERVAL_MS = 300_000;
 	private static readonly PAGE_SIZE = 200;
 
 	private static readonly ALLOWED_RECORD_FIELDS = new Set([
@@ -61,34 +63,39 @@ export class SyncService {
 		'assets',
 	];
 
-	// ─── Lifecycle ────────────────────────────────────────────────────
+	// ─── Realtime Subscriptions ───────────────────────────────────────
 
-	static startAutoSync(): void {
-		if (typeof window === 'undefined' || this.pollTimer) return;
-
-		// Realtime subscription: primary pull mechanism
-		void this.subscribeRealtime();
-
-		// Fallback poll: catches offline gaps that subscriptions miss
-		this.pollTimer = setInterval(() => void this.syncAll(), this.FALLBACK_POLL_INTERVAL_MS);
-
-		this.onlineListener = () => void this.resubscribeAndPull();
-		window.addEventListener('online', this.onlineListener);
-
-		this.visibilityListener = () => {
-			if (document.visibilityState === 'visible') void this.resubscribeAndPull();
-		};
-		document.addEventListener('visibilitychange', this.visibilityListener);
+	static get isSubscribed(): boolean {
+		return this.subscribed;
 	}
 
-	static stopAutoSync(): void {
-		void this.unsubscribeRealtime();
-		if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
-		if (typeof window !== 'undefined') {
-			if (this.onlineListener) { window.removeEventListener('online', this.onlineListener); this.onlineListener = null; }
-			if (this.visibilityListener) { document.removeEventListener('visibilitychange', this.visibilityListener); this.visibilityListener = null; }
+	static async subscribeRealtime(): Promise<void> {
+		if (!pb.authStore.isValid) return;
+		let isGuest: boolean;
+		try {
+			({ isGuest } = getActiveSession());
+		} catch {
+			return; // session not initialized yet
 		}
+		if (isGuest || this.subscribed) return;
+
+		for (const table of this.TABLES) {
+			await pb.collection(table).subscribe('*', (e) => {
+				void this.handleRealtimeEvent(table, e as unknown as RealtimeEvent);
+			});
+		}
+		this.subscribed = true;
 	}
+
+	static async unsubscribeRealtime(): Promise<void> {
+		if (!this.subscribed) return;
+		for (const table of this.TABLES) {
+			try { await pb.collection(table).unsubscribe('*'); } catch { /* ignore */ }
+		}
+		this.subscribed = false;
+	}
+
+	// ─── Cursor Management ───────────────────────────────────────────
 
 	/**
 	 * Wipe all per-table sync cursors for a user.
@@ -141,7 +148,7 @@ export class SyncService {
 		try {
 			while (true) {
 				const result = await pb.collection(tableName).getList(page, this.PAGE_SIZE, {
-					filter: pb.filter('userId = {:userId} && updatedAt > {:since}', { userId, since: lastSyncTime }),
+					filter: pb.filter('userId = {:userId} && updatedAt >= {:since}', { userId, since: lastSyncTime }),
 					sort: 'updatedAt'
 				});
 
@@ -152,15 +159,12 @@ export class SyncService {
 					const localAt = local?.updatedAt ?? 0;
 
 					if (!local || remoteAt > localAt) {
-						// Remote is newer — accept it
 						await localDB.putRecord(tableName, remote);
 						nextCursor = Math.max(nextCursor, remoteAt);
 					} else if (remoteAt < localAt) {
-						// Local is newer (written offline) — push correction to server
 						void this.pushRecord(tableName, local);
 						nextCursor = Math.max(nextCursor, localAt);
 					} else {
-						// Equal timestamps — already in sync
 						nextCursor = Math.max(nextCursor, remoteAt);
 					}
 				}
@@ -178,41 +182,7 @@ export class SyncService {
 		}
 	}
 
-	// ─── Realtime Subscriptions ───────────────────────────────────────
-
-	private static async subscribeRealtime(): Promise<void> {
-		if (!pb.authStore.isValid) return;
-		let isGuest: boolean;
-		try {
-			({ isGuest } = getActiveSession());
-		} catch {
-			return; // session not initialized yet
-		}
-		if (isGuest || this.subscribed) return;
-
-		for (const table of this.TABLES) {
-			await pb.collection(table).subscribe('*', (e) => {
-				void this.handleRealtimeEvent(table, e as unknown as RealtimeEvent);
-			});
-		}
-		this.subscribed = true;
-	}
-
-	private static async unsubscribeRealtime(): Promise<void> {
-		if (!this.subscribed) return;
-		for (const table of this.TABLES) {
-			try { await pb.collection(table).unsubscribe('*'); } catch { /* ignore */ }
-		}
-		this.subscribed = false;
-	}
-
-	/** On come-back-online / tab-focus: re-subscribe if needed, then catch-up pull. */
-	private static async resubscribeAndPull(): Promise<void> {
-		if (!this.subscribed) {
-			await this.subscribeRealtime();
-		}
-		await this.syncAll();
-	}
+	// ─── Realtime Event Handler ───────────────────────────────────────
 
 	/** Apply a single realtime event pushed by PocketBase. */
 	private static async handleRealtimeEvent(tableName: TableName, e: RealtimeEvent): Promise<void> {
@@ -223,13 +193,10 @@ export class SyncService {
 			const localAt = local?.updatedAt ?? 0;
 
 			if (!local || remoteAt > localAt) {
-				// Remote is strictly newer — accept it
 				await localDB.putRecord(tableName, remote);
 			} else if (remoteAt < localAt) {
-				// Local is newer — push our version back to correct the server
 				void this.pushRecord(tableName, local);
 			}
-			// remoteAt === localAt: already in sync, no action needed
 		} catch (err) {
 			console.error(`Realtime event error for ${tableName}`, err);
 		}
@@ -239,9 +206,9 @@ export class SyncService {
 
 	/**
 	 * Push a single record to PocketBase.
-	 * - isNew = true  → POST directly (new record, skip the wasted PATCH round-trip)
-	 * - isNew = false → PATCH first, create on 404 (existing record or uncertain)
-	 * Fire-and-forget: errors are logged but never thrown so local writes always succeed.
+	 * - isNew = true  → POST directly (skip PATCH round-trip)
+	 * - isNew = false → PATCH first, create on 404
+	 * Fire-and-forget: errors are logged but never thrown.
 	 */
 	static async pushRecord(tableName: TableName, record: BaseRecord, isNew = false): Promise<void> {
 		if (!pb.authStore.isValid) return;
@@ -249,7 +216,7 @@ export class SyncService {
 			const { isGuest } = getActiveSession();
 			if (isGuest) return;
 		} catch {
-			return; // session not initialized yet
+			return;
 		}
 
 		const payload = this.localToPbRecord(record);
@@ -268,7 +235,6 @@ export class SyncService {
 		} catch (err) {
 			const e = err as { status?: number };
 			if (e.status === 404) {
-				// Record not on server yet — create it
 				try {
 					await pb.collection(tableName).create(payload);
 				} catch (createErr) {
@@ -282,8 +248,7 @@ export class SyncService {
 
 	/**
 	 * Read a record from local DB and push it to the server.
-	 * Convenience wrapper for after `softDeleteRecord()` calls where the caller
-	 * doesn't hold a reference to the updated record object.
+	 * Convenience wrapper for after softDeleteRecord() calls.
 	 */
 	static async pushById(tableName: TableName, id: string): Promise<void> {
 		const record = await localDB.getRecord<BaseRecord>(tableName, id);
@@ -292,8 +257,7 @@ export class SyncService {
 
 	/**
 	 * Push all records modified at or after `sinceInclusive` across all sync tables.
-	 * Called by the service layer after cascade-delete transactions where multiple
-	 * tables are modified atomically and individual record references aren't available.
+	 * Called by the service layer after cascade-delete transactions.
 	 */
 	static async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
 		if (!pb.authStore.isValid) return;
@@ -305,7 +269,6 @@ export class SyncService {
 		}
 
 		for (const table of this.TABLES) {
-			// getUnsyncedChanges filters updatedAt > (sinceInclusive - 1) = updatedAt >= sinceInclusive
 			const changed = await localDB.getUnsyncedChanges(table, userId, sinceInclusive - 1);
 			for (const record of changed) {
 				void this.pushRecord(table, record);
@@ -315,7 +278,6 @@ export class SyncService {
 
 	// ─── Serialization ────────────────────────────────────────────────
 
-	/** Uint8Array → Base64 for JSON transport */
 	private static localToPbRecord(record: BaseRecord): Record<string, unknown> {
 		const payload = { ...record } as Record<string, unknown>;
 		for (const key of Object.keys(payload)) {
@@ -326,15 +288,11 @@ export class SyncService {
 		return payload;
 	}
 
-	/** Base64 → Uint8Array for local storage */
 	private static pbToLocalRecord(pbRecord: Record<string, unknown>): BaseRecord {
 		const record: Record<string, unknown> = {};
 
 		for (const [key, value] of Object.entries(pbRecord)) {
-			if (!this.ALLOWED_RECORD_FIELDS.has(key)) {
-				continue;
-			}
-
+			if (!this.ALLOWED_RECORD_FIELDS.has(key)) continue;
 			record[key] = typeof value === 'string' && this.isBase64ByteField(key) ? fromBase64(value) : value;
 		}
 
@@ -345,7 +303,6 @@ export class SyncService {
 		return record as unknown as BaseRecord;
 	}
 
-	/** Fields that are byte arrays when stored locally */
 	private static readonly BYTE_FIELD_NAMES = new Set([
 		'encryptedData',
 		'encryptedDataIV',
@@ -357,27 +314,18 @@ export class SyncService {
 	}
 
 	private static normalizeTimestamp(primary: unknown, fallback: unknown): number {
-		if (typeof primary === 'number') {
-			return primary;
-		}
+		if (typeof primary === 'number') return primary;
 
 		if (typeof primary === 'string') {
 			const parsed = Number(primary);
-			if (!Number.isNaN(parsed)) {
-				return parsed;
-			}
-
+			if (!Number.isNaN(parsed)) return parsed;
 			const asDate = new Date(primary).getTime();
-			if (!Number.isNaN(asDate)) {
-				return asDate;
-			}
+			if (!Number.isNaN(asDate)) return asDate;
 		}
 
 		if (typeof fallback === 'string') {
 			const asDate = new Date(fallback).getTime();
-			if (!Number.isNaN(asDate)) {
-				return asDate;
-			}
+			if (!Number.isNaN(asDate)) return asDate;
 		}
 
 		return 0;

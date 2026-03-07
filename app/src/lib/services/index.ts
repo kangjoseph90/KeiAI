@@ -3,6 +3,7 @@ export * from './chat.js';
 export * from './message.js';
 export * from './settings.js';
 export * from './persona.js';
+export * from './profile.js';
 export * from './lorebook.js';
 export * from './script.js';
 export * from './module.js';
