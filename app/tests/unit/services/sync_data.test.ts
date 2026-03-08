@@ -16,12 +16,24 @@ const mockCollection = {
 	update: vi.fn()
 };
 
+const mockBatchCollection = {
+	upsert: vi.fn(),
+	create: vi.fn(),
+	delete: vi.fn()
+};
+
+const mockBatch = {
+	collection: vi.fn(() => mockBatchCollection),
+	send: vi.fn()
+};
+
 // Mock Dependencies
 vi.mock('$lib/adapters/pb', () => ({
 	pb: {
 		authStore: { isValid: true },
 		collection: vi.fn(() => mockCollection),
-		filter: vi.fn((s) => s)
+		filter: vi.fn((s) => s),
+		createBatch: vi.fn(() => mockBatch)
 	}
 }));
 
@@ -129,7 +141,10 @@ describe('DataSyncService', () => {
 
 			await DataSyncService.syncAll();
 
-			expect(mockCollection.update).toHaveBeenCalledWith('rec-1', expect.anything());
+			expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
+				expect.objectContaining({ id: 'rec-1' })
+			);
+			expect(mockBatch.send).toHaveBeenCalled();
 		});
 	});
 
@@ -137,31 +152,30 @@ describe('DataSyncService', () => {
 		it('pushRecord should use create if isNew is true', async () => {
 			const record = { id: 'new-1', userId: mockUserId } as BaseRecord;
 			await DataSyncService.pushRecord('characterSummaries', record, true);
-			expect(mockCollection.create).toHaveBeenCalled();
+			expect(mockBatchCollection.create).toHaveBeenCalled();
+			expect(mockBatch.send).toHaveBeenCalled();
 		});
 
-		it('pushRecord should try update and fallback to create on 404', async () => {
+		it('pushRecord should use upsert if isNew is false', async () => {
 			const record = { id: 'existing-1', userId: mockUserId } as BaseRecord;
-			vi.mocked(mockCollection.update).mockRejectedValue({
-				status: 404
-			} as unknown as { status: number });
 
 			await DataSyncService.pushRecord('characterSummaries', record);
 
-			expect(mockCollection.update).toHaveBeenCalled();
-			expect(mockCollection.create).toHaveBeenCalled();
+			expect(mockBatchCollection.upsert).toHaveBeenCalled();
+			expect(mockBatch.send).toHaveBeenCalled();
 		});
 	});
 
 	describe('pushRecentWrites', () => {
-		it('should fetch unsynced changes and push them', async () => {
+		it('should fetch unsynced changes and push them using upsert batch', async () => {
 			const record = { id: 'offline-1' } as BaseRecord;
 			vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([record]);
 
 			await DataSyncService.pushRecentWrites(mockUserId, 5000);
 
 			expect(localDB.getUnsyncedChanges).toHaveBeenCalled();
-			expect(mockCollection.update).toHaveBeenCalled();
+			expect(mockBatchCollection.upsert).toHaveBeenCalled();
+			expect(mockBatch.send).toHaveBeenCalled();
 		});
 	});
 });
