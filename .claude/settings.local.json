@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm add -D vitest @vitest/ui @vitest/coverage-v8 happy-dom @testing-library/svelte @testing-library/jest-dom fake-indexeddb msw @testing-library/user-event)",
+      "Bash(pnpm test:run)",
+      "Bash(pnpm test:run tests/unit/crypto/)",
+      "Bash(npm test -- db.test.ts)",
+      "Bash(npm test -- db.test.ts --run)",
+      "Bash(npm test -- --run)",
+      "Bash(npx tsc --noEmit)"
+    ]
+  }
+}
