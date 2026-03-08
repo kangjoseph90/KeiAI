@@ -98,7 +98,7 @@ describe('ChatService', () => {
 
 		// Default decrypt mock
 		vi.mocked(decrypt).mockResolvedValue(
-			JSON.stringify({ title: 'Test Chat', lastMessagePreview: 'Hello' })
+			JSON.stringify({ title: 'Test Chat', lastMessagePreview: 'Hello', messageCount: 0 })
 		);
 
 		// Default deepMerge mock
@@ -146,8 +146,12 @@ describe('ChatService', () => {
 
 			vi.mocked(localDB.getByIndex).mockResolvedValue(mockRecords);
 			vi.mocked(decrypt)
-				.mockResolvedValueOnce(JSON.stringify({ title: 'Chat 1', lastMessagePreview: 'Msg 1' }))
-				.mockResolvedValueOnce(JSON.stringify({ title: 'Chat 2', lastMessagePreview: 'Msg 2' }));
+				.mockResolvedValueOnce(
+					JSON.stringify({ title: 'Chat 1', lastMessagePreview: 'Msg 1', messageCount: 0 })
+				)
+				.mockResolvedValueOnce(
+					JSON.stringify({ title: 'Chat 2', lastMessagePreview: 'Msg 2', messageCount: 0 })
+				);
 
 			const result = await ChatService.listByCharacter('char-1');
 
@@ -209,7 +213,9 @@ describe('ChatService', () => {
 				.mockResolvedValueOnce(mockData);
 
 			vi.mocked(decrypt)
-				.mockResolvedValueOnce(JSON.stringify({ title: 'Test Chat', lastMessagePreview: 'Hi' }))
+				.mockResolvedValueOnce(
+					JSON.stringify({ title: 'Test Chat', lastMessagePreview: 'Hi', messageCount: 0 })
+				)
 				.mockResolvedValueOnce(JSON.stringify({ systemPromptOverride: 'Override' }));
 
 			const result = await ChatService.getDetail('chat-1');
@@ -305,7 +311,7 @@ describe('ChatService', () => {
 
 			vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
 			vi.mocked(decrypt).mockResolvedValue(
-				JSON.stringify({ title: 'Old Title', lastMessagePreview: 'Old' })
+				JSON.stringify({ title: 'Old Title', lastMessagePreview: 'Old', messageCount: 5 })
 			);
 			vi.mocked(encrypt).mockResolvedValue({
 				ciphertext: new Uint8Array([99]),

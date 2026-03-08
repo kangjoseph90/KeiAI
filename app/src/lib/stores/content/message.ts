@@ -7,7 +7,12 @@
  */
 
 import { get } from 'svelte/store';
-import { MessageService, ChatService, type MessageFields } from '$lib/services';
+import {
+	MessageService,
+	ChatService,
+	type MessageFields,
+	type ChatSummaryFields
+} from '$lib/services';
 import { messages, chats, activeChat, activeChatId } from '../state';
 
 /**
@@ -51,9 +56,15 @@ export async function createMessage(chatId: string, fields: Partial<MessageField
 	const preview = fields.content?.substring(0, 50) ?? '';
 
 	// DB writes — always happen with explicit chatId
+	const currentChat = get(activeChat);
+	const newCount = (currentChat?.messageCount ?? 0) + 1;
+
 	const [newMessage, updatedChat] = await Promise.all([
 		MessageService.create(chatId, fields),
-		ChatService.updateSummary(chatId, { lastMessagePreview: preview })
+		ChatService.updateSummary(chatId, {
+			lastMessagePreview: preview,
+			messageCount: newCount
+		})
 	]);
 
 	// Store update — only if still viewing this chat
@@ -100,14 +111,19 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
 
 	messages.update((list) => list.filter((m) => m.id !== msgId));
 
+	const currentChat = get(activeChat);
+	const newCount = Math.max(0, (currentChat?.messageCount ?? 1) - 1);
+	const summaryChanges: Partial<ChatSummaryFields> = { messageCount: newCount };
+
 	if (isLastMessage) {
 		const remainingMessages = get(messages);
-		const preview =
+		summaryChanges.lastMessagePreview =
 			remainingMessages.length > 0
 				? remainingMessages[remainingMessages.length - 1].content.substring(0, 50)
 				: '';
-		const updatedChat = await ChatService.updateSummary(chatId, { lastMessagePreview: preview });
-		chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
-		activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
 	}
+
+	const updatedChat = await ChatService.updateSummary(chatId, summaryChanges);
+	chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
+	activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
 }
