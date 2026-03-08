@@ -16,6 +16,7 @@ export type ErrorCode =
 	| 'DIALOG_ERROR'
 	| 'NOTIFICATION_ERROR'
 	| 'WINDOW_ERROR'
+	| 'TOKENIZER_ERROR'
 	| 'NOT_IMPLEMENTED';
 
 export class AppError extends Error {
