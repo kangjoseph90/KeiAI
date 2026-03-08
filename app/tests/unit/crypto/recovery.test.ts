@@ -14,7 +14,11 @@ import {
 	recoverMasterKey
 } from '$lib/crypto/recovery';
 import { generateMasterKey } from '$lib/crypto/masterKey';
-import { RECOVERY_CODE_LENGTH, RECOVERY_FRONT_LENGTH, RECOVERY_BACK_LENGTH } from '$lib/crypto/constants';
+import {
+	RECOVERY_CODE_LENGTH,
+	RECOVERY_FRONT_LENGTH,
+	RECOVERY_BACK_LENGTH
+} from '$lib/crypto/constants';
 
 describe('recovery', () => {
 	describe('generateRecoveryCode', () => {
@@ -258,10 +262,18 @@ describe('recovery', () => {
 			const plaintext = new TextEncoder().encode('test message');
 
 			const cipher1 = new Uint8Array(
-				(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, originalKey, plaintext)) as ArrayBuffer
+				(await crypto.subtle.encrypt(
+					{ name: 'AES-GCM', iv },
+					originalKey,
+					plaintext
+				)) as ArrayBuffer
 			);
 			const cipher2 = new Uint8Array(
-				(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, recoveredKey, plaintext)) as ArrayBuffer
+				(await crypto.subtle.encrypt(
+					{ name: 'AES-GCM', iv },
+					recoveredKey,
+					plaintext
+				)) as ArrayBuffer
 			);
 
 			expect(cipher1).toEqual(cipher2);
@@ -288,9 +300,7 @@ describe('recovery', () => {
 			const recoveryData = await createRecoveryData(originalKey);
 
 			// Tamper with encrypted data
-			const tampered = new Uint8Array(
-				recoveryData.encryptedRecoveryMasterKey.map((b) => b ^ 0xff)
-			);
+			const tampered = new Uint8Array(recoveryData.encryptedRecoveryMasterKey.map((b) => b ^ 0xff));
 
 			await expect(
 				recoverMasterKey(
@@ -335,11 +345,19 @@ describe('recovery', () => {
 			const originalPlaintext = 'My secret data';
 
 			const encrypted = new Uint8Array(
-				(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, recoveredKey, new TextEncoder().encode(originalPlaintext))) as ArrayBuffer
+				(await crypto.subtle.encrypt(
+					{ name: 'AES-GCM', iv },
+					recoveredKey,
+					new TextEncoder().encode(originalPlaintext)
+				)) as ArrayBuffer
 			);
 
 			const decrypted = new Uint8Array(
-				(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, recoveredKey, encrypted)) as ArrayBuffer
+				(await crypto.subtle.decrypt(
+					{ name: 'AES-GCM', iv },
+					recoveredKey,
+					encrypted
+				)) as ArrayBuffer
 			);
 
 			expect(new TextDecoder().decode(decrypted)).toBe(originalPlaintext);

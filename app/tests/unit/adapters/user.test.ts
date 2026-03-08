@@ -84,11 +84,10 @@ describe('WebUserAdapter (Dexie)', () => {
 
 	// Helper to create a test user
 	async function createTestUser(overrides: Partial<UserRecord> = {}): Promise<UserRecord> {
-		const cryptoKey = await crypto.subtle.generateKey(
-			{ name: 'AES-GCM', length: 256 },
-			true,
-			['encrypt', 'decrypt']
-		);
+		const cryptoKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, [
+			'encrypt',
+			'decrypt'
+		]);
 
 		return {
 			id: `user-${Date.now()}`,
@@ -144,7 +143,11 @@ describe('WebUserAdapter (Dexie)', () => {
 			// Verify the key works
 			const iv = crypto.getRandomValues(new Uint8Array(12));
 			const plaintext = new TextEncoder().encode('test');
-			const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, retrieved!.masterKey, plaintext);
+			const ciphertext = await crypto.subtle.encrypt(
+				{ name: 'AES-GCM', iv },
+				retrieved!.masterKey,
+				plaintext
+			);
 			expect(ciphertext).toBeInstanceOf(ArrayBuffer);
 		});
 	});
@@ -153,7 +156,11 @@ describe('WebUserAdapter (Dexie)', () => {
 		it('should return all non-deleted users', async () => {
 			const user1 = await createTestUser({ id: 'user-1', name: 'User 1' });
 			const user2 = await createTestUser({ id: 'user-2', name: 'User 2' });
-			const deletedUser = await createTestUser({ id: 'user-3', name: 'Deleted User', isDeleted: true });
+			const deletedUser = await createTestUser({
+				id: 'user-3',
+				name: 'Deleted User',
+				isDeleted: true
+			});
 
 			await adapter.saveUser(user1);
 			await adapter.saveUser(user2);
@@ -307,7 +314,12 @@ describe('WebUserAdapter (Dexie)', () => {
 			expect((await adapter.getAllUsers()).length).toBe(1);
 
 			// Register (convert to non-guest)
-			const registered = { ...guest, isGuest: false, name: 'Registered User', email: 'user@example.com' };
+			const registered = {
+				...guest,
+				isGuest: false,
+				name: 'Registered User',
+				email: 'user@example.com'
+			};
 			await adapter.saveUser(registered);
 
 			const retrieved = await adapter.getUser('guest-1');
@@ -359,11 +371,10 @@ describe('IUserAdapter interface contract', () => {
 		authDB = new UserDexie();
 		const adapter = new TestWebUserAdapter();
 
-		const getKey = await crypto.subtle.generateKey(
-			{ name: 'AES-GCM', length: 256 },
-			true,
-			['encrypt', 'decrypt']
-		);
+		const getKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, [
+			'encrypt',
+			'decrypt'
+		]);
 
 		const testUser: UserRecord = {
 			id: 'test',
