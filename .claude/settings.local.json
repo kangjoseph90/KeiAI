@@ -7,7 +7,10 @@
       "Bash(npm test -- db.test.ts)",
       "Bash(npm test -- db.test.ts --run)",
       "Bash(npm test -- --run)",
-      "Bash(npx tsc --noEmit)"
+      "Bash(npx tsc --noEmit)",
+      "Bash(npm test -- kv.test.ts --run)",
+      "Bash(npm test -- storage.test.ts --run)",
+      "Bash(npx eslint tests/unit/adapters/storage.test.ts)"
     ]
   }
 }
