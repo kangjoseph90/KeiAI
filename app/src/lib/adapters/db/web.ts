@@ -136,7 +136,8 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 			.where('userId')
 			.equals(userId)
 			.filter((record: T) => !record.isDeleted)
-			.sortBy('updatedAt')) as T[];
+			.sortBy('updatedAt')
+			.then((results) => results.reverse())) as T[];
 	}
 
 	async getByIndex<T extends BaseRecord>(
@@ -194,7 +195,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		return (await this.getTable<T>(tableName)
 			.where('userId')
 			.equals(userId)
-			.filter((record: T) => (record.updatedAt ?? 0) > sinceUpdatedAt)
+			.filter((record: T) => (record.updatedAt ?? 0) >= sinceUpdatedAt)
 			.toArray()) as T[];
 	}
 
