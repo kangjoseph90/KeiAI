@@ -5,16 +5,20 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getActiveSession, hasActiveSession, setSession, clearSession } from '$lib/services/session';
+import {
+	getActiveSession,
+	hasActiveSession,
+	setSession,
+	clearSession
+} from '$lib/services/session';
 
 describe('session', () => {
 	// Helper to create a test master key
 	async function createTestMasterKey(extractable = true): Promise<CryptoKey> {
-		return crypto.subtle.generateKey(
-			{ name: 'AES-GCM', length: 256 },
-			extractable,
-			['encrypt', 'decrypt']
-		);
+		return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, extractable, [
+			'encrypt',
+			'decrypt'
+		]);
 	}
 
 	afterEach(() => {
