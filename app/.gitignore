@@ -25,3 +25,6 @@ vite.config.ts.timestamp-*
 # Tauri
 /src-tauri/target
 
+# Vitest Coverage
+coverage/
+
