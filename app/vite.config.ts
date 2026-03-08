@@ -9,6 +9,7 @@ export default defineConfig({
 
 	// Vitest configuration
 	test: {
+		open: false,
 		include: ['src/**/*.{test,spec}.{js,ts}', 'tests/**/*.{test,spec}.{js,ts}'],
 		exclude: ['node_modules', '.svelte-kit', 'dist'],
 		environment: 'happy-dom',
