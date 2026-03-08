@@ -20,6 +20,7 @@ Read it before writing any code. Every section reflects decisions that are alrea
 11. [Comments & Documentation](#11-comments--documentation)
 12. [Error Handling](#12-error-handling)
 13. [Security Rules](#13-security-rules)
+14. [Development & Validation](#14-development--validation)
 
 ---
 
@@ -571,3 +572,11 @@ Validate and sanitize at system entry points: user form input, external API resp
 ### Sync is blind
 
 The sync layer (`core/api/sync/`) uploads and downloads encrypted records. It never decrypts them. Keep it that way — the sync layer must remain unable to read user data.
+
+---
+
+## 14. Development & Validation
+
+- Periodically run `pnpm lint` and `pnpm check` to validate the codebase.
+- After completing a module, write the corresponding test code and ensure all tests pass.
+- **NEVER run `pnpm format`**. This command is strictly prohibited because it scrambles the git history and breaks diffs.
