@@ -5,8 +5,17 @@
       "Bash(pnpm test*)",
       "Bash(pnpm lint)",
       "Bash(pnpm install*)",
-      "Bash(pnpm add*)"
+      "Bash(pnpm add*)",
+      "Bash(pnpm run build*)",
+      "Bash(pnpm run dev*)",
+      "Bash(npm check)",
+      "Bash(npm test*)",
+      "Bash(npm lint)",
+      "Bash(npm install*)",
+      "Bash(npm add*)",
+      "Bash(npm run build*)",
+      "Bash(npm run dev*)"
     ],
-    "deny": ["Bash(pnpm format)"]
+    "deny": ["Bash(pnpm format)", "Bash(npm format)"]
   }
 }
