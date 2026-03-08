@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Codebase Instructions
 
 Before working on any task, READ the appropriate AGENTS.md (+ TESTING.md) for your scope:
