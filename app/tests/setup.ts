@@ -59,16 +59,14 @@ beforeAll(() => {
 
 // ─── Mock IndexedDB for Dexie ────────────────────────────────────────
 
-beforeAll(() => {
-	// Replace global IndexedDB with fake implementation
-	if (typeof indexedDB === 'undefined') {
-		global.indexedDB = fakeIndexedDB as unknown as IDBFactory;
-		global.IDBKeyRange = FDBKeyRange as unknown as typeof IDBKeyRange;
-	} else {
-		vi.stubGlobal('indexedDB', fakeIndexedDB);
-		vi.stubGlobal('IDBKeyRange', FDBKeyRange);
-	}
-});
+// Replace global IndexedDB with fake implementation immediately
+if (typeof indexedDB === 'undefined') {
+	global.indexedDB = fakeIndexedDB as unknown as IDBFactory;
+	global.IDBKeyRange = FDBKeyRange as unknown as typeof IDBKeyRange;
+} else {
+	vi.stubGlobal('indexedDB', fakeIndexedDB);
+	vi.stubGlobal('IDBKeyRange', FDBKeyRange);
+}
 
 // ─── Mock Web Crypto API (happy-dom partial support) ───────────────────
 
