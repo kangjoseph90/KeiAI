@@ -133,6 +133,9 @@ export class DataSyncService {
 		let nextCursor = lastSyncTime;
 		let cursorSafeToAdvance = true;
 		let page = 1;
+		// Records where the local version is newer than what the server returned.
+		// Accumulated across all pages and pushed as a single batch after the pull.
+		const offlineWrites: BaseRecord[] = [];
 
 		try {
 			while (true) {
@@ -154,7 +157,7 @@ export class DataSyncService {
 						await localDB.putRecord(tableName, remote);
 						nextCursor = Math.max(nextCursor, remoteAt);
 					} else if (remoteAt < localAt) {
-						void this.pushRecord(tableName, local);
+						offlineWrites.push(local);
 						nextCursor = Math.max(nextCursor, localAt);
 					} else {
 						nextCursor = Math.max(nextCursor, remoteAt);
@@ -171,6 +174,31 @@ export class DataSyncService {
 
 		if (cursorSafeToAdvance && nextCursor > lastSyncTime) {
 			await appKV.set(syncKey, nextCursor.toString());
+		}
+
+		// Push locally-newer records as a single atomic batch transaction.
+		// Fire-and-forget: consistent with other push paths; errors are logged.
+		if (offlineWrites.length > 0) {
+			void this.pushBatch(tableName, offlineWrites);
+		}
+	}
+
+	/**
+	 * Push multiple records of the same table to PocketBase as a single atomic batch
+	 * transaction. Uses upsert so each record is created or updated as needed.
+	 * If any record in the batch fails (e.g. validation), the entire batch is rolled
+	 * back by PocketBase, preserving data consistency.
+	 * Fire-and-forget: errors are logged but never thrown.
+	 */
+	private static async pushBatch(tableName: TableName, records: BaseRecord[]): Promise<void> {
+		const batch = pb.createBatch();
+		for (const record of records) {
+			batch.collection(tableName).upsert(this.localToPbRecord(record));
+		}
+		try {
+			await batch.send();
+		} catch (err) {
+			console.error(`Failed to push corrections batch to ${tableName}`, err);
 		}
 	}
 
@@ -197,9 +225,9 @@ export class DataSyncService {
 	// ─── Push API (called by service layer) ───────────────────────────
 
 	/**
-	 * Push a single record to PocketBase.
-	 * - isNew = true  → POST directly (skip PATCH round-trip)
-	 * - isNew = false → PATCH first, create on 404
+	 * Push a single record to PocketBase via the batch API.
+	 * - isNew = true  → create (record is guaranteed not to exist yet)
+	 * - isNew = false → upsert (server creates or updates as needed)
 	 * Fire-and-forget: errors are logged but never thrown.
 	 */
 	static async pushRecord(tableName: TableName, record: BaseRecord, isNew = false): Promise<void> {
@@ -212,29 +240,18 @@ export class DataSyncService {
 		}
 
 		const payload = this.localToPbRecord(record);
+		const batch = pb.createBatch();
 
 		if (isNew) {
-			try {
-				await pb.collection(tableName).create(payload);
-			} catch (err) {
-				console.error(`Failed to create ${record.id} in ${tableName}`, err);
-			}
-			return;
+			batch.collection(tableName).create(payload);
+		} else {
+			batch.collection(tableName).upsert(payload);
 		}
 
 		try {
-			await pb.collection(tableName).update(record.id, payload);
+			await batch.send();
 		} catch (err) {
-			const e = err as { status?: number };
-			if (e.status === 404) {
-				try {
-					await pb.collection(tableName).create(payload);
-				} catch (createErr) {
-					console.error(`Failed to create ${record.id} in ${tableName}`, createErr);
-				}
-			} else {
-				console.error(`Failed to push ${record.id} to ${tableName}`, err);
-			}
+			console.error(`Failed to push ${record.id} to ${tableName}`, err);
 		}
 	}
 
@@ -248,7 +265,8 @@ export class DataSyncService {
 	}
 
 	/**
-	 * Push all records modified at or after `sinceInclusive` across all sync tables.
+	 * Push all records modified at or after `sinceInclusive` across all sync tables
+	 * as a single batch transaction.
 	 * Called by the service layer after cascade-delete transactions.
 	 */
 	static async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
@@ -260,11 +278,25 @@ export class DataSyncService {
 			return;
 		}
 
+		const batch = pb.createBatch();
+		let hasItems = false;
+
 		for (const table of SYNC_TABLES) {
 			const changed = await localDB.getUnsyncedChanges(table, userId, sinceInclusive - 1);
-			for (const record of changed) {
-				void this.pushRecord(table, record);
+			if (changed.length > 0) {
+				hasItems = true;
+				for (const record of changed) {
+					batch.collection(table).upsert(this.localToPbRecord(record));
+				}
 			}
+		}
+
+		if (!hasItems) return;
+
+		try {
+			await batch.send();
+		} catch (err) {
+			console.error('Failed to push recent writes batch', err);
 		}
 	}
 
