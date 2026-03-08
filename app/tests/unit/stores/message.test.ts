@@ -46,7 +46,7 @@ describe('Message Store', () => {
 		vi.clearAllMocks();
 		messages.set([]);
 		chats.set([]);
-		activeChat.set({ id: mockChatId } as ChatDetail);
+		activeChat.set({ id: mockChatId, messageCount: 0 } as ChatDetail);
 	});
 
 	describe('loadInitialMessages', () => {
@@ -107,7 +107,8 @@ describe('Message Store', () => {
 
 			expect(get(messages)).toContainEqual(newMessage);
 			expect(ChatService.updateSummary).toHaveBeenCalledWith(mockChatId, {
-				lastMessagePreview: 'New message content'
+				lastMessagePreview: 'New message content',
+				messageCount: 1
 			});
 			expect(get(activeChat)).toMatchObject({ lastMessagePreview: 'New...' });
 		});
@@ -144,6 +145,10 @@ describe('Message Store', () => {
 			await deleteMessage(mockChatId, 'msg-1');
 
 			expect(get(messages)).toHaveLength(0);
+			expect(ChatService.updateSummary).toHaveBeenCalledWith(mockChatId, {
+				lastMessagePreview: '',
+				messageCount: 0
+			});
 		});
 	});
 });

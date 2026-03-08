@@ -20,6 +20,7 @@ import { generateId } from '$lib/shared/id';
 export interface ChatSummaryFields {
 	title: string;
 	lastMessagePreview: string;
+	messageCount: number;
 }
 
 export interface ChatDataRefs {
@@ -49,7 +50,8 @@ export interface ChatDetail extends Chat {
 
 const defaultSummaryFields: ChatSummaryFields = {
 	title: '',
-	lastMessagePreview: ''
+	lastMessagePreview: '',
+	messageCount: 0
 };
 
 const defaultDataFields: ChatDataFields = {};
