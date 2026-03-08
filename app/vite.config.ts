@@ -1,11 +1,31 @@
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
+
+	// Vitest configuration
+	test: {
+		include: ['src/**/*.{test,spec}.{js,ts}', 'tests/**/*.{test,spec}.{js,ts}'],
+		exclude: ['node_modules', '.svelte-kit', 'dist'],
+		environment: 'happy-dom',
+		environmentOptions: {
+			happyDom: {
+				url: 'http://localhost:5173'
+			}
+		},
+		coverage: {
+			provider: 'v8',
+			reporter: ['text', 'json', 'html'],
+			include: ['src/**/*.{js,ts,svelte}'],
+			exclude: ['src/**/*.test.{js,ts}', 'src/**/*.spec.{js,ts}', 'src/**/*.d.ts']
+		},
+		setupFiles: ['./tests/setup.ts'],
+		ui: true
+	},
 
 	// Tauri: don't open a browser window automatically
 	clearScreen: false,
