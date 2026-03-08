@@ -72,7 +72,8 @@ describe('Chat Store', () => {
 		id: 'chat-1',
 		characterId: 'char-1',
 		title: 'Test Chat',
-		lastMessagePreview: ''
+		lastMessagePreview: '',
+		messageCount: 0
 	};
 
 	const mockChatDetail: ChatDetail = {
