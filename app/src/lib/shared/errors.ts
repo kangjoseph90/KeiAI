@@ -9,7 +9,14 @@ export type ErrorCode =
 	| 'ALREADY_REGISTERED'
 	| 'INVALID_INPUT'
 	| 'NETWORK_ERROR'
-	| 'STORAGE_ERROR';
+	| 'STORAGE_ERROR'
+	| 'KV_ERROR'
+	| 'USER_ADAPTER_ERROR'
+	| 'CLIPBOARD_ERROR'
+	| 'DIALOG_ERROR'
+	| 'NOTIFICATION_ERROR'
+	| 'WINDOW_ERROR'
+	| 'NOT_IMPLEMENTED';
 
 export class AppError extends Error {
 	constructor(

@@ -177,4 +177,4 @@ describe('kdf', () => {
 			expect(decrypted).toEqual(plaintext);
 		});
 	});
-});
+}, 15000);

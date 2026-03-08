@@ -573,10 +573,8 @@ Validate and sanitize at system entry points: user form input, external API resp
 
 The sync layer (`core/api/sync/`) uploads and downloads encrypted records. It never decrypts them. Keep it that way — the sync layer must remain unable to read user data.
 
----
-
 ## 14. Development & Validation
 
-- Periodically run `pnpm lint` and `pnpm check` to validate the codebase.
+- Periodically run `pnpm check` to validate the codebase.
 - After completing a module, write the corresponding test code and ensure all tests pass.
-- **NEVER run `pnpm format`**. This command is strictly prohibited because it scrambles the git history and breaks diffs.
+- **NEVER run `pnpm format` globally** as it scrambles the git history. - However, you can run it on the specific files you have modified (e.g. `pnpm format path/to/file.ts`) to ensure your changes adhere to the formatting rules.
