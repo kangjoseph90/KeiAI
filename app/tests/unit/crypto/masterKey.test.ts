@@ -127,7 +127,11 @@ describe('masterKey', () => {
 			const plaintext = new TextEncoder().encode('test message');
 
 			const cipher1 = new Uint8Array(
-				(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, originalKey, plaintext)) as ArrayBuffer
+				(await crypto.subtle.encrypt(
+					{ name: 'AES-GCM', iv },
+					originalKey,
+					plaintext
+				)) as ArrayBuffer
 			);
 			const cipher2 = new Uint8Array(
 				(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, unwrapped, plaintext)) as ArrayBuffer
@@ -143,9 +147,7 @@ describe('masterKey', () => {
 
 			const wrapped = await wrapMasterKey(masterKey, wrappingKey1);
 
-			await expect(
-				unwrapMasterKey(wrapped.ciphertext, wrapped.iv, wrappingKey2)
-			).rejects.toThrow();
+			await expect(unwrapMasterKey(wrapped.ciphertext, wrapped.iv, wrappingKey2)).rejects.toThrow();
 		});
 
 		it('should fail to unwrap with wrong IV', async () => {
@@ -250,11 +252,7 @@ describe('masterKey', () => {
 
 			// Simulate login flow - derive keys again and unwrap
 			const { encryptionKey: loginDerivedKey } = await deriveKeys(password, salt);
-			const unwrapped = await unwrapMasterKey(
-				wrapped.ciphertext,
-				wrapped.iv,
-				loginDerivedKey
-			);
+			const unwrapped = await unwrapMasterKey(wrapped.ciphertext, wrapped.iv, loginDerivedKey);
 
 			// Verify unwrapped key works
 			const iv = crypto.getRandomValues(new Uint8Array(AES_IV_BYTES));
@@ -282,9 +280,7 @@ describe('masterKey', () => {
 			// Try to unwrap with wrong password
 			const { encryptionKey: wrongKey } = await deriveKeys(wrongPassword, salt);
 
-			await expect(
-				unwrapMasterKey(wrapped.ciphertext, wrapped.iv, wrongKey)
-			).rejects.toThrow();
+			await expect(unwrapMasterKey(wrapped.ciphertext, wrapped.iv, wrongKey)).rejects.toThrow();
 		});
 	});
 });

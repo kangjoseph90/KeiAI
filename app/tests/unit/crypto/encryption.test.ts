@@ -10,11 +10,10 @@ import type { EncryptedData } from '$lib/crypto/types';
 
 // Helper to create a test master key
 async function createTestMasterKey(extractable = true): Promise<CryptoKey> {
-	return crypto.subtle.generateKey(
-		{ name: 'AES-GCM', length: 256 },
-		extractable,
-		['encrypt', 'decrypt']
-	);
+	return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, extractable, [
+		'encrypt',
+		'decrypt'
+	]);
 }
 
 describe('encryption', () => {
