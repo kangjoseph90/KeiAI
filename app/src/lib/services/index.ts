@@ -1,4 +1,5 @@
 export * from './session';
+export * from './tokenizer';
 export * from './content/character';
 export * from './content/chat';
 export * from './content/message';

@@ -3,13 +3,12 @@
  *
  * Web implementation using Comlink to communicate with a Worker.
  * Tokenization runs in a separate thread to avoid blocking the UI.
- * Caching is handled at this layer to share cache implementation with Tauri.
+ * Pure computation - no caching (handled by Service layer).
  */
 
 import type { ITokenizerAdapter, ModelType } from './types';
 import { wrap, type Remote } from 'comlink';
 import { AppError } from '$lib/shared/errors';
-import { LRUCache } from '$lib/shared/cache';
 
 // ─── Worker Type ────────────────────────────────────────────────────────────
 
@@ -17,11 +16,6 @@ import { LRUCache } from '$lib/shared/cache';
 interface TokenizerWorker {
 	count(text: string, model: ModelType): number;
 }
-
-// ─── Cache ───────────────────────────────────────────────────────────────────
-
-/** LRU cache for token counts. Key: `${model}:${text}`, Value: token count */
-const cache = new LRUCache<string, number>(500);
 
 // ─── Worker Singleton ───────────────────────────────────────────────────────
 
@@ -52,23 +46,9 @@ function getWorker(): Remote<TokenizerWorker> {
 
 export class WebTokenizerAdapter implements ITokenizerAdapter {
 	async count(text: string, model: ModelType): Promise<number> {
-		// Generate cache key
-		const cacheKey = `${model}:${text}`;
-
-		// Check cache first
-		const cached = cache.get(cacheKey);
-		if (cached !== undefined) {
-			return cached;
-		}
-
-		// Delegate to worker for computation
 		try {
 			const worker = getWorker();
-			const result = await worker.count(text, model);
-
-			// Cache the result
-			cache.set(cacheKey, result);
-			return result;
+			return await worker.count(text, model);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 
@@ -78,20 +58,6 @@ export class WebTokenizerAdapter implements ITokenizerAdapter {
 				error
 			);
 		}
-	}
-
-	/**
-	 * Clear the token cache.
-	 */
-	clearCache(): void {
-		cache.clear();
-	}
-
-	/**
-	 * Get current cache size (number of entries).
-	 */
-	getCacheSize(): number {
-		return cache.size;
 	}
 }
 

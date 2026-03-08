@@ -27,31 +27,20 @@ export type ModelType =
 /**
  * Tokenizer Adapter Interface
  *
- * Provides async token counting for text.
+ * Provides pure token counting computation for text.
+ * No caching - caching is handled by the Service layer.
+ *
  * Web implementation uses a Worker with js-tiktoken.
  * Tauri implementation (future) will use native Rust tokenizer.
- *
- * Caching is handled by the adapter implementations to share
- * the cache logic across platforms.
  */
 export interface ITokenizerAdapter {
 	/**
 	 * Count the number of tokens in the given text for the specified model.
+	 * Pure computation - no caching.
+	 *
 	 * @param text - The text to tokenize
 	 * @param model - The model type or encoding name
 	 * @returns Promise<number> - The token count
 	 */
 	count(text: string, model: ModelType): Promise<number>;
-
-	/**
-	 * Clear the token cache.
-	 * Optional method - implementations may provide cache management.
-	 */
-	clearCache?(): void | Promise<void>;
-
-	/**
-	 * Get current cache size (number of entries).
-	 * Optional method - implementations may provide cache introspection.
-	 */
-	getCacheSize?(): number;
 }
