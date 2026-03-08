@@ -48,7 +48,10 @@ export function generateRecoveryCode(): RecoveryCodeParts {
  */
 export function splitRecoveryCode(code: string): RecoveryCodeParts {
 	if (code.length !== RECOVERY_CODE_LENGTH) {
-		throw new AppError('INVALID_INPUT', `Recovery code must be exactly ${RECOVERY_CODE_LENGTH} characters`);
+		throw new AppError(
+			'INVALID_INPUT',
+			`Recovery code must be exactly ${RECOVERY_CODE_LENGTH} characters`
+		);
 	}
 	return {
 		fullCode: code,

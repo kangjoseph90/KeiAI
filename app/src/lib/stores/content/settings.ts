@@ -1,9 +1,5 @@
 import { get } from 'svelte/store';
-import {
-	SettingsService,
-	type AppSettingsContent,
-	type AppSettings
-} from '$lib/services';
+import { SettingsService, type AppSettingsContent, type AppSettings } from '$lib/services';
 import { appSettings } from '../state';
 import type { OrderedRef, FolderDef } from '$lib/shared/types';
 import { generateSortOrder } from '$lib/shared/ordering';

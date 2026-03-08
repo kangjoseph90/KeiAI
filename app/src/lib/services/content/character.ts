@@ -1,10 +1,6 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
-import {
-	localDB,
-	type CharacterSummaryRecord,
-	type CharacterDataRecord
-} from '$lib/adapters/db';
+import { localDB, type CharacterSummaryRecord, type CharacterDataRecord } from '$lib/adapters/db';
 import { DataSyncService } from '../sync';
 import type { OrderedRef, FolderDef, AssetRef } from '$lib/shared/types';
 import { deepMerge } from '$lib/shared/defaults';

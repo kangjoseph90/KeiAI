@@ -301,7 +301,10 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 			}
 		}
 
-		throw new AppError('INVALID_INPUT', `Unsupported indexName for getRecordsBackward: ${indexName}`);
+		throw new AppError(
+			'INVALID_INPUT',
+			`Unsupported indexName for getRecordsBackward: ${indexName}`
+		);
 	}
 
 	async getRecordsForward<T extends BaseRecord>(
@@ -331,7 +334,10 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 			}
 		}
 
-		throw new AppError('INVALID_INPUT', `Unsupported indexName for getRecordsForward: ${indexName}`);
+		throw new AppError(
+			'INVALID_INPUT',
+			`Unsupported indexName for getRecordsForward: ${indexName}`
+		);
 	}
 
 	async getUnsyncedChanges<T extends BaseRecord>(
