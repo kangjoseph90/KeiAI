@@ -1,10 +1,6 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
-import {
-	localDB,
-	type PresetSummaryRecord,
-	type PresetDataRecord
-} from '$lib/adapters/db';
+import { localDB, type PresetSummaryRecord, type PresetDataRecord } from '$lib/adapters/db';
 import { DataSyncService } from '../sync';
 import { deepMerge } from '$lib/shared/defaults';
 import { AppError } from '$lib/shared/errors';
