@@ -260,10 +260,23 @@ export class DataSyncService {
 			return;
 		}
 
+		const batch = pb.createBatch();
+		let hasWrites = false;
+
 		for (const table of SYNC_TABLES) {
 			const changed = await localDB.getUnsyncedChanges(table, userId, sinceInclusive - 1);
 			for (const record of changed) {
-				void this.pushRecord(table, record);
+				const payload = this.localToPbRecord(record);
+				batch.collection(table).upsert(payload);
+				hasWrites = true;
+			}
+		}
+
+		if (hasWrites) {
+			try {
+				await batch.send();
+			} catch (err) {
+				console.error('Failed to push recent writes in batch', err);
 			}
 		}
 	}
