@@ -114,6 +114,7 @@ export class ProfileSyncService {
 		}
 		this.subscribed = false;
 		this.onRemoteUpdate = null;
+		this.setStatus({ phase: 'idle' });
 	}
 
 	/**

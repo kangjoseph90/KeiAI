@@ -131,10 +131,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
 	async putRecord<T extends BaseRecord>(tableName: TableName, record: T): Promise<void> {
 		const db = await this.getDb();
-		const now = Date.now();
-		if (!record.updatedAt && tableName !== 'cacheRegistry') {
-			record.updatedAt = now;
-		}
 
 		const b = recordToBindings(record);
 		await db.execute(
@@ -158,7 +154,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
 	async putRecords<T extends BaseRecord>(tableName: TableName, records: T[]): Promise<void> {
 		const db = await this.getDb();
-		const now = Date.now();
 
 		const chunkSize = 50;
 
@@ -173,9 +168,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
 			const values: unknown[] = [];
 			for (const record of chunk) {
-				if (!record.updatedAt && tableName !== 'cacheRegistry') {
-					record.updatedAt = now;
-				}
 				const b = recordToBindings(record);
 				values.push(
 					b.id,

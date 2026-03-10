@@ -23,7 +23,7 @@ import type {
 	PresetSummaryRecord,
 	PresetDataRecord,
 	AssetRecord,
-	CacheRegistryRecord
+	AssetRegistryRecord
 } from './types';
 
 class DexieStore extends Dexie {
@@ -41,7 +41,7 @@ class DexieStore extends Dexie {
 	presetSummaries!: Table<PresetSummaryRecord, string>;
 	presetData!: Table<PresetDataRecord, string>;
 	assets!: Table<AssetRecord, string>;
-	cacheRegistry!: Table<CacheRegistryRecord, string>;
+	assetRegistry!: Table<AssetRegistryRecord, string>;
 
 	constructor() {
 		super('KeiLocalDB');
@@ -63,7 +63,7 @@ class DexieStore extends Dexie {
 			presetData: 'id, userId, updatedAt, isDeleted',
 			assets: 'id, userId, updatedAt, isDeleted',
 			// Local-only tables (never synced)
-			cacheRegistry: 'id, userId, lastAccessedAt'
+			assetRegistry: 'id, userId, status, kind, lastAccessedAt'
 		});
 	}
 }
@@ -88,12 +88,6 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 	}
 
 	async putRecords<T extends BaseRecord>(tableName: TableName, records: T[]): Promise<void> {
-		const now = Date.now();
-		for (const record of records) {
-			if (!record.updatedAt) {
-				record.updatedAt = now;
-			}
-		}
 		await this.getTable<T>(tableName).bulkPut(records);
 	}
 
