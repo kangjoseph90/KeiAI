@@ -12,7 +12,6 @@ export interface SyncStatus {
 }
 
 type SyncStatusListener<TStatus extends SyncStatus> = (status: TStatus) => void;
-type TriggerSourceCleanup = () => void;
 
 /**
  * Shared state machine for sync engines.
@@ -25,7 +24,6 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
 	private runPromise: Promise<void> | null = null;
 	private rerunRequested = false;
 	private readonly listeners = new Set<SyncStatusListener<TStatus>>();
-	private readonly triggerSourceCleanups = new Set<TriggerSourceCleanup>();
 	private status: TStatus;
 
 	protected constructor(initialStatus?: Partial<TStatus>) {
@@ -70,26 +68,6 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
 		} as Partial<TStatus>);
 	}
 
-	registerTriggerSource(register: (trigger: () => void) => void | TriggerSourceCleanup): () => void {
-		const cleanup = register(() => {
-			void this.trigger();
-		});
-		const normalizedCleanup = cleanup ?? (() => {});
-		this.triggerSourceCleanups.add(normalizedCleanup);
-
-		return () => {
-			this.triggerSourceCleanups.delete(normalizedCleanup);
-			normalizedCleanup();
-		};
-	}
-
-	clearTriggerSources(): void {
-		for (const cleanup of this.triggerSourceCleanups) {
-			cleanup();
-		}
-		this.triggerSourceCleanups.clear();
-	}
-
 	protected updateStatus(patch: Partial<TStatus>): void {
 		this.status = {
 			...this.status,
@@ -112,6 +90,24 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
 		return error instanceof DOMException
 			? error.name === 'AbortError'
 			: error instanceof Error && error.name === 'AbortError';
+	}
+
+	protected normalizeTimestamp(primary: unknown, fallback: unknown): number {
+		if (typeof primary === 'number') return primary;
+
+		if (typeof primary === 'string') {
+			const parsed = Number(primary);
+			if (!Number.isNaN(parsed)) return parsed;
+			const asDate = new Date(primary).getTime();
+			if (!Number.isNaN(asDate)) return asDate;
+		}
+
+		if (typeof fallback === 'string') {
+			const asDate = new Date(fallback).getTime();
+			if (!Number.isNaN(asDate)) return asDate;
+		}
+
+		return 0;
 	}
 
 	private async drainQueue(): Promise<void> {

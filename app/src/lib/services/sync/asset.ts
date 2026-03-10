@@ -483,24 +483,6 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 		return record as unknown as AssetRecord;
 	}
 
-	private normalizeTimestamp(primary: unknown, fallback: unknown): number {
-		if (typeof primary === 'number') return primary;
-
-		if (typeof primary === 'string') {
-			const parsed = Number(primary);
-			if (!Number.isNaN(parsed)) return parsed;
-			const asDate = new Date(primary).getTime();
-			if (!Number.isNaN(asDate)) return asDate;
-		}
-
-		if (typeof fallback === 'string') {
-			const asDate = new Date(fallback).getTime();
-			if (!Number.isNaN(asDate)) return asDate;
-		}
-
-		return 0;
-	}
-
 	protected override isQuotaError(error: unknown): boolean {
 		if (error instanceof AppError) {
 			return error.code === 'QUOTA_EXCEEDED';

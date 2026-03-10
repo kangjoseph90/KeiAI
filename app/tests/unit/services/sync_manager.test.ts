@@ -13,7 +13,6 @@ import { AssetSyncService } from '$lib/services/sync/asset';
 import { appAsset } from '$lib/adapters/asset';
 import { appUser } from '$lib/adapters/user';
 import { localDB } from '$lib/adapters/db';
-import type { Profile } from '$lib/services/user/profile';
 import type { DatabaseWriteEventListener } from '$lib/adapters/db';
 import type { AssetWriteEventListener } from '$lib/adapters/asset';
 import type { UserWriteEventListener } from '$lib/adapters/user';
@@ -21,6 +20,7 @@ import type { UserWriteEventListener } from '$lib/adapters/user';
 let dbWriteListener: DatabaseWriteEventListener | null = null;
 let assetWriteListener: AssetWriteEventListener | null = null;
 let userWriteListener: UserWriteEventListener | null = null;
+let storedOnRemoteUpdate: (() => void) | null = null;
 
 // Mock dependencies with stateful spies
 vi.mock('$lib/services/sync/data', () => {
@@ -90,10 +90,17 @@ vi.mock('$lib/adapters/user', () => ({
 
 vi.mock('$lib/services/sync/profile', () => ({
 	ProfileSyncService: {
-		subscribe: vi.fn(async () => {}),
-		unsubscribe: vi.fn(async () => {}),
-		pullProfile: vi.fn(async () => null),
-		pushProfile: vi.fn(async () => {})
+		setOnRemoteUpdate: vi.fn((cb: (() => void) | null) => {
+			storedOnRemoteUpdate = cb;
+		}),
+		subscribeRealtime: vi.fn(async () => {}),
+		unsubscribeRealtime: vi.fn(async () => {}),
+		pullProfile: vi.fn(async () => {
+			storedOnRemoteUpdate?.();
+			return null;
+		}),
+		pushProfile: vi.fn(async () => {}),
+		isSubscribed: false
 	}
 }));
 
@@ -137,8 +144,12 @@ describe('SyncManager', () => {
 
 		// Reset internal static state
 		SyncManager.stopAutoSync();
+		storedOnRemoteUpdate = null;
 		vi.mocked(DataSyncService.subscribeRealtime).mockClear();
-		vi.mocked(ProfileSyncService.subscribe).mockClear();
+		vi.mocked(ProfileSyncService.setOnRemoteUpdate).mockClear();
+		vi.mocked(ProfileSyncService.subscribeRealtime).mockClear();
+		vi.mocked(ProfileSyncService.unsubscribeRealtime).mockClear();
+		vi.mocked(ProfileSyncService.pullProfile).mockClear();
 		vi.mocked(AssetSyncService.start).mockClear();
 		vi.mocked(AssetSyncService.stop).mockClear();
 		vi.mocked(AssetSyncService.subscribeRealtime).mockClear();
@@ -165,7 +176,8 @@ describe('SyncManager', () => {
 
 			expect(DataSyncService.subscribeRealtime).toHaveBeenCalled();
 			expect(AssetSyncService.subscribeRealtime).toHaveBeenCalled();
-			expect(ProfileSyncService.subscribe).toHaveBeenCalledWith(onProfileUpdate);
+			expect(ProfileSyncService.setOnRemoteUpdate).toHaveBeenCalledWith(onProfileUpdate);
+			expect(ProfileSyncService.subscribeRealtime).toHaveBeenCalled();
 			expect(AssetSyncService.start).toHaveBeenCalledTimes(1);
 
 			expect(DataSyncService.syncAll).not.toHaveBeenCalled();
@@ -197,7 +209,7 @@ describe('SyncManager', () => {
 
 			expect(DataSyncService.unsubscribeRealtime).toHaveBeenCalled();
 			expect(AssetSyncService.unsubscribeRealtime).toHaveBeenCalled();
-			expect(ProfileSyncService.unsubscribe).toHaveBeenCalled();
+			expect(ProfileSyncService.unsubscribeRealtime).toHaveBeenCalled();
 			expect(AssetSyncService.stop).toHaveBeenCalled();
 
 			vi.advanceTimersByTime(300_000);
@@ -220,9 +232,6 @@ describe('SyncManager', () => {
 			// Force it to look disconnected
 			(DataSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
 			(AssetSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
-			vi.mocked(ProfileSyncService.pullProfile).mockResolvedValue({
-				id: 'p1'
-			} as Profile);
 
 			await onlineHandler();
 			// We need to wait for the internal async chain

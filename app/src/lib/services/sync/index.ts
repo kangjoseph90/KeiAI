@@ -25,6 +25,8 @@ import { appAsset } from '$lib/adapters/asset';
 import { appUser } from '$lib/adapters/user';
 import { localDB, TABLES } from '$lib/adapters/db';
 
+// TODO: ㅈ돼버린 가독성 좀 어떻게 하기
+
 type SyncTriggerCleanup = () => void;
 export type SyncTriggerContext = {
 	data: typeof DataSyncService;
@@ -41,7 +43,6 @@ type SyncTriggerRegistration = (context: SyncTriggerContext) => void | SyncTrigg
  */
 export class SyncManager {
 	private static started = false;
-	private static onProfileUpdate: (() => void) | null = null;
 	private static readonly triggerRegistrations = new Set<SyncTriggerRegistration>();
 	private static readonly activeTriggerCleanups = new Map<
 		SyncTriggerRegistration,
@@ -139,7 +140,7 @@ export class SyncManager {
 		this.ensureBuiltInTriggersRegistered();
 		this.started = true;
 
-		this.onProfileUpdate = options?.onProfileUpdate ?? null;
+		ProfileSyncService.setOnRemoteUpdate(options?.onProfileUpdate ?? null);
 
 		// Data sync Realtime subscriptions
 		void DataSyncService.subscribeRealtime();
@@ -149,18 +150,18 @@ export class SyncManager {
 		void AssetSyncService.start();
 
 		// Profile sync Realtime subscription
-		void ProfileSyncService.subscribe(this.onProfileUpdate ?? undefined);
+		void ProfileSyncService.subscribeRealtime();
 		this.installTriggerSources();
 	}
 
 	static stopAutoSync(): void {
 		void DataSyncService.unsubscribeRealtime();
 		void AssetSyncService.unsubscribeRealtime();
-		void ProfileSyncService.unsubscribe();
+		void ProfileSyncService.unsubscribeRealtime();
+		ProfileSyncService.setOnRemoteUpdate(null);
 		AssetSyncService.stop();
 		this.clearTriggerSources();
 		this.started = false;
-		this.onProfileUpdate = null;
 	}
 
 	/**
@@ -169,10 +170,7 @@ export class SyncManager {
 	static async syncAll(): Promise<void> {
 		await DataSyncService.syncAll();
 		await AssetSyncService.start();
-		const updatedProfile = await ProfileSyncService.pullProfile();
-		if (updatedProfile && this.onProfileUpdate) {
-			this.onProfileUpdate();
-		}
+		await ProfileSyncService.pullProfile();
 	}
 
 	static registerTriggerSource(register: SyncTriggerRegistration): () => void {
@@ -202,15 +200,13 @@ export class SyncManager {
 		if (!AssetSyncService.isSubscribed) {
 			await AssetSyncService.subscribeRealtime();
 		}
-		await ProfileSyncService.subscribe(this.onProfileUpdate ?? undefined);
+		if (!ProfileSyncService.isSubscribed) {
+			await ProfileSyncService.subscribeRealtime();
+		}
 
 		await DataSyncService.syncAll();
 		await AssetSyncService.start();
-
-		const updatedProfile = await ProfileSyncService.pullProfile();
-		if (updatedProfile && this.onProfileUpdate) {
-			this.onProfileUpdate();
-		}
+		await ProfileSyncService.pullProfile();
 	}
 
 	private static ensureBuiltInTriggersRegistered(): void {
