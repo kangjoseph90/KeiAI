@@ -30,7 +30,7 @@ export type TableName =
 	| 'presetSummaries'
 	| 'presetData'
 	| 'assets'
-	| 'cacheRegistry';
+	| 'assetRegistry';
 
 export const SYNC_TABLES: TableName[] = [
 	'characterSummaries',
@@ -49,7 +49,7 @@ export const SYNC_TABLES: TableName[] = [
 	'assets'
 ];
 
-export const TABLES: TableName[] = [...SYNC_TABLES, 'cacheRegistry'];
+export const TABLES: TableName[] = [...SYNC_TABLES, 'assetRegistry'];
 
 // ─── Base Types ──────────────────────────────────────────────────────
 
@@ -119,24 +119,29 @@ export type PresetDataRecord = EncryptedRecord;
 // ─── Assets ────────────────────────────────────────────────────────
 //
 // All asset kinds (private, inlay, public) live in the same EncryptedRecord table.
-// encryptedData contains: { kind, mimeType, remoteUrl? }
-//   - remoteUrl absent  → local-only asset (never evictable)
-//   - remoteUrl present → remote asset (local storage = LRU cache)
+// encryptedData contains: { kind, hash, encKey, mimeType }
+//   - hash: SHA256(plaintext) — used as CDN URL path and upload deduplication
+//   - encKey: SHA256(plaintext + FIXED_SALT) — file encryption key for private assets
 
 export type AssetRecord = EncryptedRecord;
 
-// ─── Cache Registry ─────────────────────────────────────────────────
+// ─── Asset Registry ─────────────────────────────────────────────────
 //
-// LOCAL-ONLY table — never synced to the server.
-// Tracks remote asset caches stored in IStorageAdapter so the LRU eviction
-// logic knows which files are safe to delete.
-// Files present in IStorageAdapter but NOT in cacheRegistry = persistent
-// local-only assets → must never be evicted.
+// LOCAL-ONLY plaintext table — never synced to the server.
+// Tracks local asset state for LRU cache eviction and sync queue filtering.
+// Per-user cache space: each user has separate asset storage and cache quota.
 //
-// Note: extends BaseRecord to satisfy IDatabaseAdapter generics.
-// `userId`, `createdAt`, `updatedAt`, `isDeleted` are unused sentinels.
+// status = 'local'  → original copy, never evictable
+// status = 'remote' → cached from server, evictable
+// status = 'deleting' → pending deletion
+//
+// kind is duplicated here (plaintext) so workers can filter without decryption.
 
-export interface CacheRegistryRecord extends BaseRecord {
+export type AssetStatus = 'local' | 'remote' | 'deleting';
+
+export interface AssetRegistryRecord extends BaseRecord {
+	kind: 'private' | 'inlay' | 'public'; // Plaintext proxy for sync queue filtering
+	status: AssetStatus;
 	lastAccessedAt: number; // Unix ms — updated every time the asset is rendered
 	size: number; // Bytes on disk — used to calculate total cache size
 }

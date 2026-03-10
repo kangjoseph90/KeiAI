@@ -17,7 +17,9 @@ export type ErrorCode =
 	| 'NOTIFICATION_ERROR'
 	| 'WINDOW_ERROR'
 	| 'TOKENIZER_ERROR'
-	| 'NOT_IMPLEMENTED';
+	| 'NOT_IMPLEMENTED'
+	| 'ASSET_ERROR'
+	| 'QUOTA_EXCEEDED';
 
 export class AppError extends Error {
 	constructor(

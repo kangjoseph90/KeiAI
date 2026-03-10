@@ -4,9 +4,8 @@
  * Directory layout:
  *   sync/data.ts     - DataSyncService:    encrypted app data (characters, chats, etc.)
  *   sync/profile.ts  - ProfileSyncService: plaintext user profile (name, avatar)
+ *   sync/asset.ts    - AssetSyncService:   background asset upload engine
  *   sync/index.ts    - SyncManager:        unified lifecycle (start/stop/reconnect)
- *
- * Future additions (e.g. AssetSyncService) plug in here.
  *
  * This module has NO dependency on Svelte stores. Store refresh callbacks are
  * injected via startAutoSync() options, keeping the dependency direction as:
@@ -15,9 +14,11 @@
 
 export { DataSyncService } from './data';
 export { ProfileSyncService } from './profile';
+export { AssetSyncService } from './asset';
 
 import { DataSyncService } from './data';
 import { ProfileSyncService } from './profile';
+import { AssetSyncService } from './asset';
 
 /**
  * Unified lifecycle controller for all sync services.
@@ -51,9 +52,15 @@ export class SyncManager {
 		// Profile sync Realtime subscription
 		void ProfileSyncService.subscribe(this.onProfileUpdate ?? undefined);
 
+		// Asset sync - background queue processing
+		void AssetSyncService.start();
+
 		// Fallback poll: catches offline gaps that subscriptions miss
 		this.pollTimer = setInterval(
-			() => void DataSyncService.syncAll(),
+			() => {
+				void DataSyncService.syncAll();
+				void AssetSyncService.retry(); // Retry asset sync on quota/network errors
+			},
 			this.FALLBACK_POLL_INTERVAL_MS
 		);
 
@@ -74,6 +81,7 @@ export class SyncManager {
 	static stopAutoSync(): void {
 		void DataSyncService.unsubscribeRealtime();
 		void ProfileSyncService.unsubscribe();
+		AssetSyncService.stop();
 
 		if (this.pollTimer) {
 			clearInterval(this.pollTimer);
@@ -98,6 +106,7 @@ export class SyncManager {
 	 */
 	static async syncAll(): Promise<void> {
 		await DataSyncService.syncAll();
+		await AssetSyncService.start();
 	}
 
 	// ─── Internal ────────────────────────────────────────────────────
@@ -109,6 +118,9 @@ export class SyncManager {
 			await ProfileSyncService.subscribe(this.onProfileUpdate ?? undefined);
 		}
 		await DataSyncService.syncAll();
+
+		// Retry asset sync on reconnect
+		void AssetSyncService.retry();
 
 		// Pull latest profile changes that may have been missed while offline
 		const updatedProfile = await ProfileSyncService.pullProfile();

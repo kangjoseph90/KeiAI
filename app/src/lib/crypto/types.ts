@@ -6,7 +6,7 @@
  */
 
 /** Convenience alias */
-type Bytes = Uint8Array<ArrayBuffer>;
+export type Bytes = Uint8Array<ArrayBuffer>;
 
 /** Data sent to server during registration */
 export interface RegistrationPayload {

@@ -25,26 +25,9 @@ export type {
 	RecoveryBundle,
 	EncryptedData,
 	DerivedKeys,
-	RecoveryCodeParts
+	RecoveryCodeParts,
+	Bytes
 } from './types';
 
-// ─── Encoding Utilities ─────────────────────────────────────────────
-
-type Bytes = Uint8Array<ArrayBuffer>;
-
-export function toBase64(bytes: Bytes): string {
-	let binary = '';
-	for (const byte of bytes) {
-		binary += String.fromCharCode(byte);
-	}
-	return btoa(binary);
-}
-
-export function fromBase64(base64: string): Bytes {
-	const binary = atob(base64);
-	const bytes = new Uint8Array(binary.length);
-	for (let i = 0; i < binary.length; i++) {
-		bytes[i] = binary.charCodeAt(i);
-	}
-	return bytes;
-}
+export { sha256, sha256Bytes } from './hash';
+export { toBase64, fromBase64, toHex, fromHex } from './encoding';

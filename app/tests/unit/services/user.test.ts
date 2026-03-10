@@ -35,6 +35,12 @@ vi.mock('$lib/adapters/storage', () => ({
 	}
 }));
 
+vi.mock('$lib/adapters/asset/index', () => ({
+	appAsset: {
+		delete: vi.fn()
+	}
+}));
+
 vi.mock('$lib/adapters/kv', () => ({
 	appKV: {
 		get: vi.fn(),
@@ -98,6 +104,7 @@ describe('UserService', () => {
 		vi.mocked(appUser.getAllUsers).mockResolvedValue([]);
 		vi.mocked(appUser.saveUser).mockResolvedValue(undefined);
 		vi.mocked(appUser.deleteUser).mockResolvedValue(undefined);
+		vi.mocked(appStorage.delete).mockResolvedValue(undefined);
 		vi.mocked(appKV.set).mockResolvedValue(undefined);
 		vi.mocked(appKV.remove).mockResolvedValue(undefined);
 		vi.mocked(appStorage.delete).mockResolvedValue(undefined);
