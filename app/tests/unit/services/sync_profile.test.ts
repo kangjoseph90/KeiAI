@@ -78,7 +78,7 @@ describe('ProfileSyncService', () => {
 			expect(mockCollection.update).toHaveBeenCalledWith(mockUserId, { name: 'New Name' });
 		});
 
-		it('should handle avatar data URI upload', async () => {
+		it('should handle avatar data URI upload and keep it locally', async () => {
 			const mockBlob = new Blob(['test'], { type: 'image/png' });
 			mockFetch.mockResolvedValue({
 				blob: vi.fn().mockResolvedValue(mockBlob)
@@ -103,10 +103,8 @@ describe('ProfileSyncService', () => {
 					avatar: mockBlob
 				})
 			);
-			expect(appUser.saveUser).toHaveBeenCalledWith(
-				expect.objectContaining({ id: mockUserId }),
-				{ origin: 'sync' }
-			);
+			// Local avatar should NOT be updated with server URL anymore
+			expect(appUser.saveUser).not.toHaveBeenCalled();
 		});
 
 		it('should skip if guest or invalid auth', async () => {
@@ -126,7 +124,7 @@ describe('ProfileSyncService', () => {
 	});
 
 	describe('pullProfile', () => {
-		it('should fetch from PocketBase and apply update', async () => {
+		it('should fetch from PocketBase and convert avatar to Data URI', async () => {
 			const mockServerRecord = {
 				name: 'Remote Name',
 				avatar: 'remote.png',
@@ -136,12 +134,26 @@ describe('ProfileSyncService', () => {
 				mockServerRecord as unknown as RecordModel
 			);
 
+			// Mock conversion process
+			const mockDataUri = 'data:image/png;base64,cmVtb3Rl'; // 'remote' in base64
+			mockFetch.mockResolvedValue({
+				ok: true,
+				blob: vi.fn().mockResolvedValue({
+					type: 'image/png',
+					arrayBuffer: vi.fn().mockResolvedValue(new TextEncoder().encode('remote').buffer)
+				})
+			});
+
 			await ProfileSyncService.pullProfile();
 
 			expect(mockCollection.getOne).toHaveBeenCalledWith(mockUserId);
-			expect(ProfileService.applyRemoteUpdate).toHaveBeenCalled();
+			expect(ProfileService.applyRemoteUpdate).toHaveBeenCalledWith(
+				mockUserId,
+				'Remote Name',
+				mockDataUri,
+				expect.any(Number)
+			);
 		});
-
 	});
 
 	describe('Realtime Subscription', () => {

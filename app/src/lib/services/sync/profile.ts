@@ -47,30 +47,19 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 
 			const updateData: Record<string, unknown> = { name: user.name };
 
-			let uploadedNewBlob = false;
 			if (user.avatar?.startsWith('data:image')) {
 				try {
 					const fetchResponse = await fetch(user.avatar);
 					updateData.avatar = await fetchResponse.blob();
-					uploadedNewBlob = true;
 				} catch (e) {
 					console.warn('[ProfileSync] Failed to parse avatar data URI for upload', e);
 				}
 			}
 
-			const record = await pb.collection('users').update(userId, updateData);
-
-			// Swap the local data URI for the PB file URL after a successful blob upload.
-			// Use origin: 'sync' to prevent the write-back from re-triggering pushProfile.
-			if (uploadedNewBlob && record?.avatar) {
-				const serverAvatarUrl = pb.files.getURL(record, record.avatar);
-				const latestUser = await appUser.getUser(userId);
-				if (latestUser) {
-					latestUser.avatar = serverAvatarUrl;
-					latestUser.updatedAt = Date.now();
-					await appUser.saveUser(latestUser, { origin: 'sync' });
-				}
-			}
+			// Push to server.
+			// Note: We no longer swap the local Data URI for the server URL after upload.
+			// Keeping the Data URI locally ensures instant loading and works around Tauri caching issues.
+			await pb.collection('users').update(userId, updateData);
 		} catch (err) {
 			console.error('[ProfileSync] Push failed', err);
 		}
@@ -134,10 +123,12 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 			const remoteName = (serverRecord.name as string) ?? '';
 			let remoteAvatar = '';
 			if (serverRecord.avatar) {
-				remoteAvatar = pb.files.getURL(
+				const serverUrl = pb.files.getURL(
 					serverRecord as { id: string; collectionId: string; collectionName: string },
 					serverRecord.avatar as string
 				);
+				// Convert server URL to Data URI for local-first persistence
+				remoteAvatar = await this.imageUrlToDataUri(serverUrl);
 			}
 
 			const remoteUpdatedAt = serverRecord.updated
@@ -184,7 +175,8 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 			const remoteName = (serverRecord.name as string) ?? '';
 			let remoteAvatar = '';
 			if (serverRecord.avatar) {
-				remoteAvatar = pb.files.getURL(serverRecord, serverRecord.avatar as string);
+				const serverUrl = pb.files.getURL(serverRecord, serverRecord.avatar as string);
+				remoteAvatar = await this.imageUrlToDataUri(serverUrl);
 			}
 
 			const remoteUpdatedAt = serverRecord.updated
@@ -200,6 +192,34 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 		} catch (err) {
 			console.error('[ProfileSync] Pull failed', err);
 			throw err;
+		}
+	}
+
+	/**
+	 * Fetches an image from a URL and converts it to a Data URI.
+	 * Used to persist remote avatars as local-first Base64 strings.
+	 */
+	private async imageUrlToDataUri(url: string): Promise<string> {
+		try {
+			const response = await fetch(url);
+			if (!response.ok) return url;
+
+			const blob = await response.blob();
+			const buffer = await blob.arrayBuffer();
+			const contentType = blob.type || 'image/png';
+
+			// Convert buffer to Base64
+			let binary = '';
+			const bytes = new Uint8Array(buffer);
+			for (let i = 0; i < bytes.byteLength; i++) {
+				binary += String.fromCharCode(bytes[i]);
+			}
+			const base64 = btoa(binary);
+
+			return `data:${contentType};base64,${base64}`;
+		} catch (err) {
+			console.warn('[ProfileSync] Failed to convert image to data URI', err);
+			return url; // Fallback to original URL
 		}
 	}
 }
