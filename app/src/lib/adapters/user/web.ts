@@ -19,7 +19,7 @@ class UserDexie extends Dexie {
 	}
 }
 
-const authDB = new UserDexie();
+export const authDB = new UserDexie();
 
 export class WebUserAdapter implements IUserAdapter {
 	private readonly writeEvents = new UserWriteEventEmitter();

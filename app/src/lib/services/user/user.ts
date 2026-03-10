@@ -8,7 +8,8 @@
 
 import { appUser, type UserRecord } from '$lib/adapters/user';
 export type { UserRecord };
-import { localDB, TABLES, SYNC_TABLES, type AssetRecord } from '$lib/adapters/db';
+import { appAsset, type AssetRecord } from '$lib/adapters/asset';
+import { localDB, TABLES } from '$lib/adapters/db';
 import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
 import { generateMasterKey } from '$lib/crypto';
@@ -97,17 +98,20 @@ export class UserService {
 	}): Promise<void> {
 		const existing = await appUser.getUser(params.id);
 
-		await appUser.saveUser({
-			id: params.id,
-			name: existing?.name ?? params.serverName ?? 'Synced Profile',
-			email: params.email,
-			avatar: existing?.avatar ?? params.avatarUrl ?? this.getDefaultAvatarUrl(params.id),
-			createdAt: existing?.createdAt ?? Date.now(),
-			updatedAt: Date.now(),
-			isDeleted: false,
-			isGuest: false,
-			masterKey: params.masterKey
-		});
+		await appUser.saveUser(
+			{
+				id: params.id,
+				name: existing?.name ?? params.serverName ?? 'Synced Profile',
+				email: params.email,
+				avatar: existing?.avatar ?? params.avatarUrl ?? this.getDefaultAvatarUrl(params.id),
+				createdAt: existing?.createdAt ?? Date.now(),
+				updatedAt: Date.now(),
+				isDeleted: false,
+				isGuest: false,
+				masterKey: params.masterKey
+			},
+			{ origin: 'sync' }
+		);
 
 		await appKV.set('activeUserId', params.id);
 		setSession(params.id, params.masterKey, false);
@@ -148,20 +152,36 @@ export class UserService {
 	 * This prevents orphaned encrypted data from consuming disk space.
 	 */
 	static async deleteUser(userId: string): Promise<void> {
-		await appUser.deleteUser(userId);
+		await appUser.deleteUser(userId, { origin: 'sync' });
 
-		const userAssets = await localDB.getAll<AssetRecord>('assets', userId);
-		for (const asset of userAssets) {
-			await appStorage.delete(asset.id);
+		// Purge all asset artifacts for this user
+		const [assets, registry] = await Promise.all([
+			appAsset.getAllAssets(userId),
+			appAsset.getAllRegistry(userId)
+		]);
+		const ids = new Set<string>([...assets.map((r) => r.id), ...registry.map((r) => r.id)]);
+		for (const id of ids) {
+			await appStorage.delete(`assets/${id}`).catch(() => undefined);
+			await appAsset.deleteRegistry(id, { origin: 'sync' }).catch(() => undefined);
+		}
+		// Hard-delete all asset metadata records
+		for (const asset of assets) {
+			await appAsset.putAsset(
+				{ ...asset, isDeleted: true, updatedAt: Date.now() },
+				{ origin: 'sync' }
+			);
 		}
 
 		for (const table of TABLES) {
 			await localDB.deleteByIndex(table, 'userId', userId);
 		}
 
-		for (const table of SYNC_TABLES) {
+		for (const table of TABLES) {
 			await appKV.remove(`lastSync_${table}_${userId}`);
 		}
+
+		// Asset sync has its own cursor (separate from DataSyncEngine)
+		await appKV.remove(`lastSync_assets_${userId}`);
 	}
 
 	/**
@@ -171,5 +191,3 @@ export class UserService {
 		return appUser.getAllUsers();
 	}
 }
-
-export const userService = new UserService();

@@ -12,15 +12,15 @@ pnpm test tests/unit/services/character.test.ts  # Run specific file
 
 ## Stack
 
-| Tool                       | Role                                    |
-| -------------------------- | --------------------------------------- |
-| Vitest                     | Test runner, assertions, mocking        |
-| happy-dom                  | DOM simulation (test environment)       |
-| fake-indexeddb             | In-memory IndexedDB for Dexie tests     |
-| @testing-library/svelte    | Component rendering + queries           |
-| @testing-library/user-event| User interaction simulation             |
-| @testing-library/jest-dom  | Extended DOM matchers                   |
-| MSW                        | PocketBase API mocking (handlers.ts)    |
+| Tool                        | Role                                 |
+| --------------------------- | ------------------------------------ |
+| Vitest                      | Test runner, assertions, mocking     |
+| happy-dom                   | DOM simulation (test environment)    |
+| fake-indexeddb              | In-memory IndexedDB for Dexie tests  |
+| @testing-library/svelte     | Component rendering + queries        |
+| @testing-library/user-event | User interaction simulation          |
+| @testing-library/jest-dom   | Extended DOM matchers                |
+| MSW                         | PocketBase API mocking (handlers.ts) |
 
 ---
 
@@ -49,18 +49,18 @@ tests/
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 describe('ModuleName', () => {
-    describe('methodName', () => {
-        it('should describe expected behavior', async () => {
-            // Arrange
-            const input = setupTestData();
+	describe('methodName', () => {
+		it('should describe expected behavior', async () => {
+			// Arrange
+			const input = setupTestData();
 
-            // Act
-            const result = await methodName(input);
+			// Act
+			const result = await methodName(input);
 
-            // Assert
-            expect(result).toBe(expected);
-        });
-    });
+			// Assert
+			expect(result).toBe(expected);
+		});
+	});
 });
 ```
 
@@ -68,14 +68,14 @@ describe('ModuleName', () => {
 
 ## Coverage Goals
 
-| Module       | Target  | Rationale                                       |
-| ------------ | ------- | ----------------------------------------------- |
-| `crypto/`    | **100%** | Security-critical — no margin for error         |
-| `adapters/`  | 90%+    | Platform abstraction must be airtight           |
-| `services/`  | 85%+    | Core business logic, encrypt/decrypt paths      |
-| `stores/`    | 80%+    | State management, guard patterns                |
-| `shared/`    | 90%+    | Reused across entire codebase                   |
-| Components   | 70%+    | Focus on critical user flows                    |
+| Module      | Target   | Rationale                                  |
+| ----------- | -------- | ------------------------------------------ |
+| `crypto/`   | **100%** | Security-critical — no margin for error    |
+| `adapters/` | 90%+     | Platform abstraction must be airtight      |
+| `services/` | 85%+     | Core business logic, encrypt/decrypt paths |
+| `stores/`   | 80%+     | State management, guard patterns           |
+| `shared/`   | 90%+     | Reused across entire codebase              |
+| Components  | 70%+     | Focus on critical user flows               |
 
 ---
 
@@ -87,15 +87,15 @@ Crypto tests use real Web Crypto API (provided by happy-dom). They test actual e
 
 ```typescript
 async function createTestMasterKey(extractable = true): Promise<CryptoKey> {
-    return crypto.subtle.generateKey(
-        { name: 'AES-GCM', length: 256 },
-        extractable,
-        ['encrypt', 'decrypt']
-    );
+	return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, extractable, [
+		'encrypt',
+		'decrypt'
+	]);
 }
 ```
 
 **Required test cases for every crypto function:**
+
 - Encrypt/decrypt roundtrip (correct key → original plaintext)
 - Random IV uniqueness (same input → different ciphertext each time)
 - Wrong key rejection
@@ -119,28 +119,28 @@ Services are the primary unit-under-test. Mock everything below them:
 
 ```typescript
 vi.mock('$lib/adapters/db', () => ({
-    localDB: {
-        getRecord: vi.fn(),
-        putRecord: vi.fn(),
-        transaction: vi.fn(),
-        // ... method stubs as needed
-    }
+	localDB: {
+		getRecord: vi.fn(),
+		putRecord: vi.fn(),
+		transaction: vi.fn()
+		// ... method stubs as needed
+	}
 }));
 
 vi.mock('$lib/crypto', () => ({
-    encrypt: vi.fn(),
-    decrypt: vi.fn()
+	encrypt: vi.fn(),
+	decrypt: vi.fn()
 }));
 
 vi.mock('$lib/services/session', () => ({
-    getActiveSession: vi.fn()
+	getActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/services/sync', () => ({
-    DataSyncService: {
-        pushRecord: vi.fn(),
-        pushRecentWrites: vi.fn()
-    }
+	DataSyncService: {
+		pushRecord: vi.fn(),
+		pushRecentWrites: vi.fn()
+	}
 }));
 ```
 
@@ -151,16 +151,17 @@ const mockMasterKey = {} as CryptoKey;
 const mockUserId = 'user-123';
 
 beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(getActiveSession).mockReturnValue({
-        userId: mockUserId,
-        masterKey: mockMasterKey,
-        isGuest: false
-    });
+	vi.clearAllMocks();
+	vi.mocked(getActiveSession).mockReturnValue({
+		userId: mockUserId,
+		masterKey: mockMasterKey,
+		isGuest: false
+	});
 });
 ```
 
 **Test these paths for every CRUD service:**
+
 - List (empty + populated)
 - Get detail (exists + not found → `AppError`)
 - Create (generates ID, encrypts, writes, pushes sync)
@@ -174,11 +175,11 @@ Store action functions are tested by mocking the service layer:
 
 ```typescript
 vi.mock('$lib/services', () => ({
-    CharacterService: {
-        list: vi.fn(),
-        getDetail: vi.fn(),
-        create: vi.fn(),
-    }
+	CharacterService: {
+		list: vi.fn(),
+		getDetail: vi.fn(),
+		create: vi.fn()
+	}
 }));
 ```
 
@@ -190,12 +191,12 @@ Integration tests use real adapter operations against fake-indexeddb, but mock c
 
 ```typescript
 vi.mocked(encrypt).mockImplementation(async (_key, data) => ({
-    ciphertext: new TextEncoder().encode(data),
-    iv: new Uint8Array([1, 2, 3])
+	ciphertext: new TextEncoder().encode(data),
+	iv: new Uint8Array([1, 2, 3])
 }));
 
 vi.mocked(decrypt).mockImplementation(async (_key, enc) => {
-    return new TextDecoder().decode(enc.ciphertext);
+	return new TextDecoder().decode(enc.ciphertext);
 });
 ```
 
@@ -210,12 +211,12 @@ import { render, screen } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 
 it('should handle user click', async () => {
-    const handler = vi.fn();
-    render(Button, { onClick: handler, children: 'Save' });
+	const handler = vi.fn();
+	render(Button, { onClick: handler, children: 'Save' });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+	await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(handler).toHaveBeenCalledOnce();
+	expect(handler).toHaveBeenCalledOnce();
 });
 ```
 
@@ -251,11 +252,11 @@ The setup file configures the test environment before any tests run:
 
 ## Anti-Patterns
 
-| Don't                                        | Do Instead                                     |
-| -------------------------------------------- | ---------------------------------------------- |
-| Mock the module you're testing               | Mock its dependencies                          |
-| Test internal helper functions directly       | Test through the public API                    |
-| Use `setTimeout` for async waits             | Use `vi.useFakeTimers()` or `await`/`expect`   |
-| Share mutable state between tests            | Reset in `beforeEach` with `vi.clearAllMocks()` |
-| Write one massive test                       | Split into focused tests per behavior          |
-| Skip crypto edge cases                       | Always test tamper detection + wrong key       |
+| Don't                                              | Do Instead                                                                                         |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Mock the module you're testing                     | Mock its dependencies                                                                              |
+| Test internal helper functions directly            | Test through the public API                                                                        |
+| Use `vi.useFakeTimers()` with Dexie/fake-indexeddb | Use real `setTimeout` or `await/expect` polling instead (Fake timers break IndexedDB transactions) |
+| Share mutable state between tests                  | Reset in `beforeEach` with `vi.clearAllMocks()`                                                    |
+| Write one massive test                             | Split into focused tests per behavior                                                              |
+| Skip crypto edge cases                             | Always test tamper detection + wrong key                                                           |

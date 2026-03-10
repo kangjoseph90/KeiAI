@@ -2,31 +2,18 @@
  * Asset Types — KeiAI v2
  *
  * Asset system with E2EE, local-first, and deduplication.
+ * AssetFields is defined in adapters/asset/types.ts (shared with registry).
  */
 
-// ─── Asset Kind ─────────────────────────────────────────────────────────────
-
-export type AssetKind = 'private' | 'inlay' | 'public';
-
-// ─── Asset Fields (stored in EncryptedRecord) ───────────────────────────────
-
-/**
- * Encrypted fields stored in the assets table.
- * Decrypted with master key to access actual asset metadata.
- */
-export interface AssetFields {
-	kind: AssetKind;
-	hash: string; // SHA256(plaintext) — CDN URL path
-	encKey: string; // SHA256(plaintext + FIXED_SALT) — file encryption key
-	mimeType: string;
-}
+// Re-export for service-layer convenience
+export type { AssetFields, AssetKindPlain as AssetKind } from '$lib/adapters/asset';
 
 // ─── Compression Result ─────────────────────────────────────────────────────
 
 export interface CompressAndHashResult {
 	blob: Blob; // Compressed WebP blob
-	hash: string; // SHA256 of original plaintext
-	encKey: string; // SHA256(plaintext + FIXED_SALT)
+	hash: string; // SHA256 of compressed bytes
+	encKey: string; // SHA256(compressed + FIXED_SALT)
 	width: number;
 	height: number;
 }

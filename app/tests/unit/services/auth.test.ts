@@ -134,6 +134,9 @@ vi.mock('$lib/services/sync', () => ({
 	DataSyncService: {
 		resetCursors: vi.fn().mockResolvedValue(undefined)
 	},
+	AssetSyncService: {
+		resetCursors: vi.fn().mockResolvedValue(undefined)
+	},
 	SyncManager: {
 		stopAutoSync: vi.fn().mockResolvedValue(undefined)
 	}
@@ -153,7 +156,7 @@ import {
 import { getActiveSession } from '$lib/services/session';
 import { UserService } from '$lib/services/user/user';
 import { appUser } from '$lib/adapters/user';
-import { DataSyncService, SyncManager } from '$lib/services/sync';
+import { DataSyncService, AssetSyncService, SyncManager } from '$lib/services/sync';
 
 describe('AuthService', () => {
 	const mockMasterKey = {} as CryptoKey;
@@ -233,6 +236,7 @@ describe('AuthService', () => {
 		vi.mocked(UserService.saveLoginUser).mockReset().mockResolvedValue(undefined);
 		vi.mocked(UserService.revertToGuest).mockReset().mockResolvedValue(undefined);
 		vi.mocked(DataSyncService.resetCursors).mockReset().mockResolvedValue(undefined);
+		vi.mocked(AssetSyncService.resetCursors).mockReset().mockResolvedValue(undefined);
 		vi.mocked(SyncManager.stopAutoSync).mockReset().mockResolvedValue(undefined);
 		vi.mocked(appUser.backupGuestKey).mockReset().mockResolvedValue(undefined);
 	});
@@ -332,6 +336,7 @@ describe('AuthService', () => {
 		it('should reset sync cursors on login', async () => {
 			await AuthService.login(mockEmail, mockPassword);
 			expect(DataSyncService.resetCursors).toHaveBeenCalledWith('mock-id');
+			expect(AssetSyncService.resetCursors).toHaveBeenCalledWith('mock-id');
 		});
 	});
 

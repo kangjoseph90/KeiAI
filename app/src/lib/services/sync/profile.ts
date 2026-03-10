@@ -35,22 +35,22 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 	 * Push the current profile to PocketBase.
 	 * Fire-and-forget: errors are logged but never thrown.
 	 */
-	async pushProfile(name: string, avatarDataUri?: string): Promise<void> {
+	async pushProfile(): Promise<void> {
 		if (!pb.authStore.isValid) return;
 
 		try {
 			const { isGuest, userId } = getActiveSession();
 			if (isGuest) return;
 
-			const updateData: Record<string, unknown> = { name };
+			const user = await appUser.getUser(userId);
+			if (!user) return;
 
-			// Track whether we're actually uploading a new blob this call.
-			// This flag breaks the otherwise-infinite loop:
-			//   ProfileService.update() → pushProfile() → ProfileService.update() → …
+			const updateData: Record<string, unknown> = { name: user.name };
+
 			let uploadedNewBlob = false;
-			if (avatarDataUri?.startsWith('data:image')) {
+			if (user.avatar?.startsWith('data:image')) {
 				try {
-					const fetchResponse = await fetch(avatarDataUri);
+					const fetchResponse = await fetch(user.avatar);
 					updateData.avatar = await fetchResponse.blob();
 					uploadedNewBlob = true;
 				} catch (e) {
@@ -60,16 +60,15 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 
 			const record = await pb.collection('users').update(userId, updateData);
 
-			// Only swap the local data URI for the lighter PB file URL when we
-			// actually uploaded a new file this call. Write directly to appUser
-			// (not via ProfileService.update) to avoid re-triggering pushProfile.
+			// Swap the local data URI for the PB file URL after a successful blob upload.
+			// Use origin: 'sync' to prevent the write-back from re-triggering pushProfile.
 			if (uploadedNewBlob && record?.avatar) {
 				const serverAvatarUrl = pb.files.getURL(record, record.avatar);
-				const user = await appUser.getUser(userId);
-				if (user) {
-					user.avatar = serverAvatarUrl;
-					user.updatedAt = Date.now();
-					await appUser.saveUser(user);
+				const latestUser = await appUser.getUser(userId);
+				if (latestUser) {
+					latestUser.avatar = serverAvatarUrl;
+					latestUser.updatedAt = Date.now();
+					await appUser.saveUser(latestUser, { origin: 'sync' });
 				}
 			}
 		} catch (err) {

@@ -20,7 +20,7 @@ import { toBase64, fromBase64 } from '$lib/crypto';
 import {
 	localDB,
 	type TableName,
-	SYNC_TABLES,
+	TABLES,
 	type BaseRecord,
 	type DatabaseWriteEvent
 } from '$lib/adapters/db';
@@ -72,7 +72,7 @@ export class DataSyncEngine extends BaseSyncEngine {
 		}
 		if (isGuest || this.subscribed) return;
 
-		for (const table of SYNC_TABLES) {
+		for (const table of TABLES) {
 			await pb.collection(table).subscribe('*', (e) => {
 				void this.handleRealtimeEvent(table, e as unknown as RealtimeEvent);
 			});
@@ -82,7 +82,7 @@ export class DataSyncEngine extends BaseSyncEngine {
 
 	async unsubscribeRealtime(): Promise<void> {
 		if (!this.subscribed) return;
-		for (const table of SYNC_TABLES) {
+		for (const table of TABLES) {
 			try {
 				await pb.collection(table).unsubscribe('*');
 			} catch {
@@ -100,7 +100,7 @@ export class DataSyncEngine extends BaseSyncEngine {
 	 * post-IDB-wipe login) so the next syncAll() fetches everything from scratch.
 	 */
 	async resetCursors(userId: string): Promise<void> {
-		for (const table of SYNC_TABLES) {
+		for (const table of TABLES) {
 			await appKV.remove(`lastSync_${table}_${userId}`);
 		}
 	}
@@ -129,11 +129,11 @@ export class DataSyncEngine extends BaseSyncEngine {
 
 		let firstError: unknown = null;
 
-		for (const [index, table] of SYNC_TABLES.entries()) {
+		for (const [index, table] of TABLES.entries()) {
 			this.updateStatus({
 				progress: {
 					completed: index,
-					total: SYNC_TABLES.length,
+					total: TABLES.length,
 					currentItemId: table
 				}
 			});
@@ -143,7 +143,7 @@ export class DataSyncEngine extends BaseSyncEngine {
 				this.updateStatus({
 					progress: {
 						completed: index + 1,
-						total: SYNC_TABLES.length,
+						total: TABLES.length,
 						currentItemId: table
 					}
 				});
@@ -302,7 +302,7 @@ export class DataSyncEngine extends BaseSyncEngine {
 	}
 
 	async handleLocalWrite(event: DatabaseWriteEvent): Promise<void> {
-		if (event.origin !== 'local' || !SYNC_TABLES.includes(event.tableName)) return;
+		if (event.origin !== 'local' || !TABLES.includes(event.tableName)) return;
 		if (event.operation === 'delete' || event.operation === 'deleteByIndex') return;
 
 		for (const id of event.ids) {
@@ -327,7 +327,7 @@ export class DataSyncEngine extends BaseSyncEngine {
 		const batch = pb.createBatch();
 		let hasItems = false;
 
-		for (const table of SYNC_TABLES) {
+		for (const table of TABLES) {
 			const changed = await localDB.getUnsyncedChanges(table, userId, sinceInclusive - 1);
 			if (changed.length > 0) {
 				hasItems = true;

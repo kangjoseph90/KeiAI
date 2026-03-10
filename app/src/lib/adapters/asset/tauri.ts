@@ -1,13 +1,10 @@
 import Database from '@tauri-apps/plugin-sql';
 import { fromBase64, toBase64 } from '$lib/crypto/encoding';
-import { appStorage } from '$lib/adapters/storage';
 import { AssetWriteEventEmitter } from './events';
 import type {
 	IAssetAdapter,
 	AssetRecord,
 	AssetRegistryRecord,
-	AssetRegistryParams,
-	AssetStatus,
 	AssetWriteEventListener,
 	AssetWriteOptions,
 	AssetTableName,
@@ -17,12 +14,12 @@ import type {
 /**
  * Tauri Asset Adapter
  *
- * SQLite-only storage for asset metadata (assets, assetRegistry tables).
- * Binary blobs are stored in appStorage (native FS via TauriStorageAdapter).
+ * SQLite storage for asset metadata (assets, assetRegistry tables).
+ * Binary blobs are stored via appStorage (native FS) directly by the service layer.
  *
- * Row structure mirrors the Dexie schema:
+ * Row structure:
  *   - assets: encrypted metadata record (EncryptedRecord)
- *   - assetRegistry: plaintext cache status tracking
+ *   - assetRegistry: plaintext cache of asset fields per device
  *
  * Uint8Array properties are base64-encoded for SQLite TEXT storage.
  */
@@ -36,6 +33,21 @@ interface AssetSqlRow {
 	isDeleted: number; // SQLite uses 0/1 for boolean
 	encryptedData: string; // Base64
 	encryptedDataIV: string; // Base64
+}
+
+/** Raw shape of a registry record as stored in SQLite */
+interface RegistrySqlRow {
+	id: string;
+	userId: string;
+	createdAt: number;
+	updatedAt: number;
+	isDeleted: number;
+	kind: string;
+	status: string;
+	hash: string;
+	encKey: string;
+	size: number;
+	accessedAt: number;
 }
 
 /** Convert AssetRecord to bindings for SQLite */
@@ -61,6 +73,23 @@ function parseAssetRecord(row: AssetSqlRow): AssetRecord {
 		isDeleted: row.isDeleted === 1,
 		encryptedData: fromBase64(row.encryptedData),
 		encryptedDataIV: fromBase64(row.encryptedDataIV)
+	};
+}
+
+/** Parse raw SQLite row into AssetRegistryRecord */
+function parseRegistryRecord(row: RegistrySqlRow): AssetRegistryRecord {
+	return {
+		id: row.id,
+		userId: row.userId,
+		createdAt: row.createdAt,
+		updatedAt: row.updatedAt,
+		isDeleted: row.isDeleted === 1,
+		kind: row.kind as AssetRegistryRecord['kind'],
+		status: row.status as AssetRegistryRecord['status'],
+		hash: row.hash,
+		encKey: row.encKey,
+		size: row.size,
+		accessedAt: row.accessedAt
 	};
 }
 
@@ -118,7 +147,7 @@ export class TauriAssetAdapter implements IAssetAdapter {
 		await db.execute(`CREATE INDEX IF NOT EXISTS idx_assets_userId ON assets (userId)`);
 		await db.execute(`CREATE INDEX IF NOT EXISTS idx_assets_updatedAt ON assets (updatedAt)`);
 
-		// Asset registry table - cache status tracking
+		// Asset registry table - plaintext cache + delete queue
 		await db.execute(`
 			CREATE TABLE IF NOT EXISTS assetRegistry (
 				id TEXT PRIMARY KEY,
@@ -128,8 +157,10 @@ export class TauriAssetAdapter implements IAssetAdapter {
 				isDeleted INTEGER NOT NULL DEFAULT 0,
 				kind TEXT NOT NULL,
 				status TEXT NOT NULL,
-				lastAccessedAt INTEGER NOT NULL,
-				size INTEGER NOT NULL
+				hash TEXT NOT NULL DEFAULT '',
+				encKey TEXT NOT NULL DEFAULT '',
+				size INTEGER NOT NULL DEFAULT 0,
+				accessedAt INTEGER NOT NULL
 			)
 		`);
 		await db.execute(
@@ -138,9 +169,11 @@ export class TauriAssetAdapter implements IAssetAdapter {
 		await db.execute(
 			`CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_status ON assetRegistry (userId, status)`
 		);
-		await db.execute(`CREATE INDEX IF NOT EXISTS idx_assetRegistry_kind ON assetRegistry (kind)`);
 		await db.execute(
-			`CREATE INDEX IF NOT EXISTS idx_assetRegistry_lastAccessedAt ON assetRegistry (lastAccessedAt)`
+			`CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_isDeleted ON assetRegistry (userId, isDeleted)`
+		);
+		await db.execute(
+			`CREATE INDEX IF NOT EXISTS idx_assetRegistry_accessedAt ON assetRegistry (accessedAt)`
 		);
 	}
 
@@ -202,76 +235,37 @@ export class TauriAssetAdapter implements IAssetAdapter {
 
 	async getRegistry(id: string): Promise<AssetRegistryRecord | undefined> {
 		const db = await this.getDb();
-		const rows = await db.select<AssetRegistryRecord[]>(
-			`SELECT * FROM assetRegistry WHERE id = $1`,
-			[id]
-		);
-		if (rows.length > 0) {
-			const row = rows[0] as unknown as { isDeleted: number };
-			return {
-				...rows[0],
-				isDeleted: row.isDeleted === 1
-			};
-		}
+		const rows = await db.select<RegistrySqlRow[]>(`SELECT * FROM assetRegistry WHERE id = $1`, [
+			id
+		]);
+		if (rows.length > 0) return parseRegistryRecord(rows[0]);
 		return undefined;
 	}
 
-	async getAllRegistry(userId: string, status?: AssetStatus): Promise<AssetRegistryRecord[]> {
+	async getAllRegistry(userId: string): Promise<AssetRegistryRecord[]> {
 		const db = await this.getDb();
-		let rows: AssetRegistryRecord[];
-
-		if (status) {
-			rows = await db.select<AssetRegistryRecord[]>(
-				`SELECT * FROM assetRegistry WHERE userId = $1 AND status = $2`,
-				[userId, status]
-			);
-		} else {
-			rows = await db.select<AssetRegistryRecord[]>(
-				`SELECT * FROM assetRegistry WHERE userId = $1`,
-				[userId]
-			);
-		}
-		return rows.map((row) => {
-			const r = row as unknown as { isDeleted: number };
-			return {
-				...row,
-				isDeleted: r.isDeleted === 1
-			};
-		});
+		const rows = await db.select<RegistrySqlRow[]>(
+			`SELECT * FROM assetRegistry WHERE userId = $1 AND isDeleted = 0`,
+			[userId]
+		);
+		return rows.map((row) => parseRegistryRecord(row));
 	}
 
-	async putRegistry(
-		id: string,
-		userId: string,
-		params: Partial<AssetRegistryParams>,
-		options?: AssetWriteOptions
-	): Promise<void> {
+	async getDeletedRegistry(userId: string): Promise<AssetRegistryRecord[]> {
 		const db = await this.getDb();
-		const existing = await this.getRegistry(id);
-		const now = Date.now();
+		const rows = await db.select<RegistrySqlRow[]>(
+			`SELECT * FROM assetRegistry WHERE userId = $1 AND isDeleted = 1`,
+			[userId]
+		);
+		return rows.map((row) => parseRegistryRecord(row));
+	}
 
-		const record: AssetRegistryRecord = existing ?? {
-			id,
-			userId,
-			createdAt: now,
-			updatedAt: now,
-			isDeleted: false,
-			status: params.status ?? 'local',
-			kind: params.kind ?? 'private',
-			lastAccessedAt: params.lastAccessedAt ?? now,
-			size: params.size ?? 0
-		};
-
-		// Merge updates
-		if (params.kind !== undefined) record.kind = params.kind;
-		if (params.status !== undefined) record.status = params.status;
-		if (params.lastAccessedAt !== undefined) record.lastAccessedAt = params.lastAccessedAt;
-		if (params.size !== undefined) record.size = params.size;
-		record.updatedAt = now;
+	async putRegistry(record: AssetRegistryRecord, options?: AssetWriteOptions): Promise<void> {
+		const db = await this.getDb();
 
 		await db.execute(
-			`INSERT OR REPLACE INTO assetRegistry (id, userId, createdAt, updatedAt, isDeleted, kind, status, lastAccessedAt, size)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			`INSERT OR REPLACE INTO assetRegistry (id, userId, createdAt, updatedAt, isDeleted, kind, status, hash, encKey, size, accessedAt)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 			[
 				record.id,
 				record.userId,
@@ -280,118 +274,29 @@ export class TauriAssetAdapter implements IAssetAdapter {
 				record.isDeleted ? 1 : 0,
 				record.kind,
 				record.status,
-				record.lastAccessedAt,
-				record.size
+				record.hash,
+				record.encKey,
+				record.size,
+				record.accessedAt
 			]
 		);
-		this.emitWriteEvent('assetRegistry', 'put', [id], options);
+		this.emitWriteEvent('assetRegistry', 'put', [record.id], options);
+	}
+
+	async softDeleteRegistry(id: string, options?: AssetWriteOptions): Promise<void> {
+		const db = await this.getDb();
+		const now = Date.now();
+		await db.execute(`UPDATE assetRegistry SET isDeleted = 1, updatedAt = $1 WHERE id = $2`, [
+			now,
+			id
+		]);
+		this.emitWriteEvent('assetRegistry', 'softDelete', [id], options);
 	}
 
 	async deleteRegistry(id: string, options?: AssetWriteOptions): Promise<void> {
 		const db = await this.getDb();
 		await db.execute(`DELETE FROM assetRegistry WHERE id = $1`, [id]);
 		this.emitWriteEvent('assetRegistry', 'delete', [id], options);
-	}
-
-	// ── Blobs (appStorage) ───────────────────────────────────────────
-
-	async writeBlob(id: string, data: Uint8Array): Promise<void> {
-		await appStorage.write(`assets/${id}`, data);
-	}
-
-	async readBlob(id: string): Promise<Uint8Array | null> {
-		return appStorage.read(`assets/${id}`);
-	}
-
-	async deleteBlob(id: string): Promise<void> {
-		await appStorage.delete(`assets/${id}`);
-	}
-
-	async blobExists(id: string): Promise<boolean> {
-		return appStorage.exists(`assets/${id}`);
-	}
-
-	async getBlobUrl(id: string): Promise<string | null> {
-		return appStorage.getRenderUrl(`assets/${id}`);
-	}
-
-	async revokeBlobUrl(url: string): Promise<void> {
-		await appStorage.revokeRenderUrl(url);
-	}
-
-	async purgeUserAssets(userId: string): Promise<void> {
-		const db = await this.getDb();
-		const [assetRows, registryRows] = await Promise.all([
-			db.select<{ id: string }[]>(`SELECT id FROM assets WHERE userId = $1`, [userId]),
-			db.select<{ id: string }[]>(`SELECT id FROM assetRegistry WHERE userId = $1`, [userId])
-		]);
-
-		const ids = new Set<string>([
-			...assetRows.map((row) => row.id),
-			...registryRows.map((row) => row.id)
-		]);
-
-		// Delete all blobs
-		for (const id of ids) {
-			await this.deleteBlob(id).catch(() => undefined);
-		}
-
-		// Delete DB records in transaction
-		await db.execute('BEGIN TRANSACTION');
-		try {
-			await db.execute(`DELETE FROM assets WHERE userId = $1`, [userId]);
-			await db.execute(`DELETE FROM assetRegistry WHERE userId = $1`, [userId]);
-			await db.execute('COMMIT');
-		} catch (error) {
-			await db.execute('ROLLBACK');
-			throw error;
-		}
-	}
-
-	// ── Compound Operations ──────────────────────────────────────────
-
-	async purgeAssetLocally(id: string): Promise<void> {
-		await this.deleteRegistry(id);
-		await this.deleteBlob(id);
-		await this.softDeleteAsset(id);
-	}
-
-	async applySyncedRecord(record: AssetRecord, userId: string): Promise<AssetRecord | null> {
-		const local = await this.getAsset(record.id);
-		const remoteAt = record.updatedAt ?? 0;
-		const localAt = local?.updatedAt ?? 0;
-
-		// LWW: skip if local is same or newer
-		if (local && remoteAt <= localAt) return null;
-
-		if (record.isDeleted) {
-			// Server says deleted → purge local blob and registry
-			await this.deleteRegistry(record.id, { origin: 'sync' });
-			await this.deleteBlob(record.id);
-			// Upsert the deleted metadata record so we remember the tombstone
-			await this.putAsset(record, { origin: 'sync' });
-			return record;
-		}
-
-		// Upsert metadata
-		await this.putAsset(record, { origin: 'sync' });
-
-		// Seed registry if not already tracked (lazy download on first access)
-		const existing = await this.getRegistry(record.id);
-		if (!existing) {
-			await this.putRegistry(
-				record.id,
-				userId,
-				{
-					status: 'remote',
-					kind: 'private', // Unknown here; will be corrected on first access
-					size: 0
-				},
-				{ origin: 'sync' }
-			);
-		}
-
-		return record;
 	}
 }
 

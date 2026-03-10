@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UserService } from '$lib/services/user/user';
 import type { UserRecord } from '$lib/adapters/user';
-import type { AssetRecord } from '$lib/adapters/db/types';
+import type { AssetRecord, AssetRegistryRecord } from '$lib/adapters/asset';
 
 // Mock all dependencies
 vi.mock('$lib/adapters/user', () => ({
@@ -22,21 +22,23 @@ vi.mock('$lib/adapters/user', () => ({
 
 vi.mock('$lib/adapters/db', () => ({
 	localDB: {
-		getAll: vi.fn(),
 		deleteByIndex: vi.fn()
 	},
 	TABLES: ['messages', 'chatSummaries'],
 	SYNC_TABLES: ['messages']
 }));
 
-vi.mock('$lib/adapters/storage', () => ({
-	appStorage: {
-		delete: vi.fn()
+vi.mock('$lib/adapters/asset', () => ({
+	appAsset: {
+		getAllAssets: vi.fn(),
+		getAllRegistry: vi.fn(),
+		deleteRegistry: vi.fn(),
+		putAsset: vi.fn()
 	}
 }));
 
-vi.mock('$lib/adapters/asset/index', () => ({
-	appAsset: {
+vi.mock('$lib/adapters/storage', () => ({
+	appStorage: {
 		delete: vi.fn()
 	}
 }));
@@ -67,6 +69,7 @@ vi.mock('minidenticons', () => ({
 
 import { appUser } from '$lib/adapters/user';
 import { localDB } from '$lib/adapters/db';
+import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
 import { generateMasterKey } from '$lib/crypto';
@@ -104,10 +107,13 @@ describe('UserService', () => {
 		vi.mocked(appUser.getAllUsers).mockResolvedValue([]);
 		vi.mocked(appUser.saveUser).mockResolvedValue(undefined);
 		vi.mocked(appUser.deleteUser).mockResolvedValue(undefined);
+		vi.mocked(appAsset.getAllAssets).mockResolvedValue([]);
+		vi.mocked(appAsset.getAllRegistry).mockResolvedValue([]);
+		vi.mocked(appAsset.deleteRegistry).mockResolvedValue(undefined);
+		vi.mocked(appAsset.putAsset).mockResolvedValue(undefined);
 		vi.mocked(appStorage.delete).mockResolvedValue(undefined);
 		vi.mocked(appKV.set).mockResolvedValue(undefined);
 		vi.mocked(appKV.remove).mockResolvedValue(undefined);
-		vi.mocked(appStorage.delete).mockResolvedValue(undefined);
 		vi.mocked(localDB.deleteByIndex).mockResolvedValue(undefined);
 	});
 
@@ -201,17 +207,20 @@ describe('UserService', () => {
 				avatarUrl: 'server.png'
 			});
 
-			expect(appUser.saveUser).toHaveBeenCalledWith({
-				id: 'new-id',
-				name: 'Server Name',
-				email: 'test@ms.com',
-				avatar: 'server.png',
-				createdAt: expect.any(Number),
-				updatedAt: expect.any(Number),
-				isDeleted: false,
-				isGuest: false,
-				masterKey: mockMasterKey
-			});
+			expect(appUser.saveUser).toHaveBeenCalledWith(
+				{
+					id: 'new-id',
+					name: 'Server Name',
+					email: 'test@ms.com',
+					avatar: 'server.png',
+					createdAt: expect.any(Number),
+					updatedAt: expect.any(Number),
+					isDeleted: false,
+					isGuest: false,
+					masterKey: mockMasterKey
+				},
+				{ origin: 'sync' }
+			);
 			expect(appKV.set).toHaveBeenCalledWith('activeUserId', 'new-id');
 			expect(setSession).toHaveBeenCalledWith('new-id', mockMasterKey, false);
 		});
@@ -233,17 +242,20 @@ describe('UserService', () => {
 				avatarUrl: 'server.png' // Should be ignored in favor of local
 			});
 
-			expect(appUser.saveUser).toHaveBeenCalledWith({
-				id: 'existing-id',
-				name: 'Local Name',
-				email: 'test@ms.com',
-				avatar: 'local.png',
-				createdAt: 1000,
-				updatedAt: expect.any(Number),
-				isDeleted: false,
-				isGuest: false, // Upgraded from guest
-				masterKey: mockMasterKey
-			});
+			expect(appUser.saveUser).toHaveBeenCalledWith(
+				{
+					id: 'existing-id',
+					name: 'Local Name',
+					email: 'test@ms.com',
+					avatar: 'local.png',
+					createdAt: 1000,
+					updatedAt: expect.any(Number),
+					isDeleted: false,
+					isGuest: false, // Upgraded from guest
+					masterKey: mockMasterKey
+				},
+				{ origin: 'sync' }
+			);
 		});
 	});
 
@@ -291,18 +303,37 @@ describe('UserService', () => {
 
 	describe('deleteUser', () => {
 		it('should completely wipe user data, assets, and sync states', async () => {
-			const asset1 = { id: 'asset-1' } as AssetRecord;
-			const asset2 = { id: 'asset-2' } as AssetRecord;
-			vi.mocked(localDB.getAll).mockResolvedValue([asset1, asset2]);
+			const mockAssets = [{ id: 'a1' }, { id: 'a2' }] as AssetRecord[];
+			const mockRegistry = [{ id: 'a2' }, { id: 'a3' }] as AssetRegistryRecord[];
+			vi.mocked(appAsset.getAllAssets).mockResolvedValue(mockAssets);
+			vi.mocked(appAsset.getAllRegistry).mockResolvedValue(mockRegistry);
 
 			await UserService.deleteUser('delete-me');
 
-			expect(appUser.deleteUser).toHaveBeenCalledWith('delete-me');
+			expect(appUser.deleteUser).toHaveBeenCalledWith('delete-me', { origin: 'sync' });
 
 			// Assets cleanup
-			expect(localDB.getAll).toHaveBeenCalledWith('assets', 'delete-me');
-			expect(appStorage.delete).toHaveBeenCalledWith('asset-1');
-			expect(appStorage.delete).toHaveBeenCalledWith('asset-2');
+			expect(appAsset.getAllAssets).toHaveBeenCalledWith('delete-me');
+			expect(appAsset.getAllRegistry).toHaveBeenCalledWith('delete-me');
+
+			// Union of IDs: a1, a2, a3
+			expect(appStorage.delete).toHaveBeenCalledWith('assets/a1');
+			expect(appStorage.delete).toHaveBeenCalledWith('assets/a2');
+			expect(appStorage.delete).toHaveBeenCalledWith('assets/a3');
+
+			expect(appAsset.deleteRegistry).toHaveBeenCalledWith('a1', { origin: 'sync' });
+			expect(appAsset.deleteRegistry).toHaveBeenCalledWith('a2', { origin: 'sync' });
+			expect(appAsset.deleteRegistry).toHaveBeenCalledWith('a3', { origin: 'sync' });
+
+			// Hard metadata delete
+			expect(appAsset.putAsset).toHaveBeenCalledWith(
+				expect.objectContaining({ id: 'a1', isDeleted: true }),
+				{ origin: 'sync' }
+			);
+			expect(appAsset.putAsset).toHaveBeenCalledWith(
+				expect.objectContaining({ id: 'a2', isDeleted: true }),
+				{ origin: 'sync' }
+			);
 
 			// Tables cleanup (from mocked TABLES: ['messages', 'chatSummaries'])
 			expect(localDB.deleteByIndex).toHaveBeenCalledWith('messages', 'userId', 'delete-me');

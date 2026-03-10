@@ -2,14 +2,11 @@
  * Asset Adapter Interface — KeiAI
  *
  * Unified local storage adapter for asset management.
- * Combines three storage layers behind a single interface:
+ * Manages two storage layers behind a single interface:
  *   - assets table (encrypted metadata, EncryptedRecord)
- *   - assetRegistry table (plaintext local-only status/cache tracking)
- *   - appStorage (binary blobs in OPFS or Tauri filesystem)
+ *   - assetRegistry table (plaintext cache of asset fields per device)
  *
- * This adapter owns all three layers. Neither DataSyncEngine nor AssetService
- * should access these tables directly — they go through this adapter.
- *
+ * Binary blobs are stored via appStorage (OPFS or Tauri filesystem) directly.
  * The adapter is storage-only: no PB communication, no encryption logic.
  * Encryption is handled by the caller (AssetService / AssetSyncEngine).
  */
@@ -20,15 +17,31 @@ import type { BaseRecord, EncryptedRecord, DatabaseMutationOrigin } from '$lib/a
 
 export type AssetKindPlain = 'private' | 'inlay' | 'public';
 
-export type AssetStatus = 'local' | 'remote' | 'deleting';
+export type AssetStatus = 'local' | 'remote';
 
 export type AssetRecord = EncryptedRecord;
 
-export interface AssetRegistryRecord extends BaseRecord {
+/**
+ * Decrypted fields stored inside the assets table's encryptedData blob.
+ * Defined at the adapter layer because AssetRegistryRecord extends it.
+ */
+export interface AssetFields {
 	kind: AssetKindPlain;
 	status: AssetStatus;
-	lastAccessedAt: number;
-	size: number;
+	hash: string;
+	encKey: string;
+}
+
+/**
+ * Registry record — a plaintext, device-local cache of AssetFields.
+ *
+ * Invariants:
+ * - Active registry (isDeleted=false) ⊆ storage (every entry has a blob)
+ * - isDeleted=true entries serve as a persistent delete queue for the sync engine
+ */
+export interface AssetRegistryRecord extends BaseRecord, AssetFields {
+	size: number; // blob size in bytes (0 for delete queue entries)
+	accessedAt: number; // LRU eviction timestamp
 }
 
 export type AssetTableName = 'assets' | 'assetRegistry';
@@ -47,13 +60,6 @@ export interface AssetWriteEvent {
 }
 
 export type AssetWriteEventListener = (events: AssetWriteEvent[]) => void;
-
-export interface AssetRegistryParams {
-	kind: AssetKindPlain;
-	status: AssetStatus;
-	size: number;
-	lastAccessedAt?: number;
-}
 
 // ─── Interface ───────────────────────────────────────────────────────
 
@@ -75,10 +81,7 @@ export interface IAssetAdapter {
 	/** Soft-delete an asset record (isDeleted = true). */
 	softDeleteAsset(id: string, options?: AssetWriteOptions): Promise<void>;
 
-	/**
-	 * Get asset records updated since a given timestamp for a user.
-	 * Used by sync engine for push (finding local changes to send to server).
-	 */
+	/** Get asset records updated since a given timestamp (includes deleted). */
 	getAssetsSince(userId: string, sinceUpdatedAt: number): Promise<AssetRecord[]>;
 
 	// ── Registry (assetRegistry table) ───────────────────────────────
@@ -86,57 +89,18 @@ export interface IAssetAdapter {
 	/** Get a registry entry by asset ID. */
 	getRegistry(id: string): Promise<AssetRegistryRecord | undefined>;
 
-	/** Get all registry entries for a user (optionally filtered by status). */
-	getAllRegistry(userId: string, status?: AssetStatus): Promise<AssetRegistryRecord[]>;
+	/** Get all active (non-deleted) registry entries for a user. */
+	getAllRegistry(userId: string): Promise<AssetRegistryRecord[]>;
 
-	/** Create or update a registry entry. */
-	putRegistry(
-		id: string,
-		userId: string,
-		params: Partial<AssetRegistryParams>,
-		options?: AssetWriteOptions
-	): Promise<void>;
+	/** Get all deleted registry entries for a user (the delete queue). */
+	getDeletedRegistry(userId: string): Promise<AssetRegistryRecord[]>;
 
-	/** Hard-delete a registry entry. */
+	/** Insert or update a registry record (full record). */
+	putRegistry(record: AssetRegistryRecord, options?: AssetWriteOptions): Promise<void>;
+
+	/** Soft-delete a registry entry (isDeleted = true, preserves status/hash for delete queue). */
+	softDeleteRegistry(id: string, options?: AssetWriteOptions): Promise<void>;
+
+	/** Hard-delete a registry entry (called after delete queue processing). */
 	deleteRegistry(id: string, options?: AssetWriteOptions): Promise<void>;
-
-	// ── Blobs (appStorage) ───────────────────────────────────────────
-
-	/** Write binary data for an asset. */
-	writeBlob(id: string, data: Uint8Array): Promise<void>;
-
-	/** Read binary data for an asset. */
-	readBlob(id: string): Promise<Uint8Array | null>;
-
-	/** Delete binary data for an asset. */
-	deleteBlob(id: string): Promise<void>;
-
-	/** Check if binary data exists for an asset. */
-	blobExists(id: string): Promise<boolean>;
-
-	/** Get a renderable URL for the blob (blob:// or asset://). */
-	getBlobUrl(id: string): Promise<string | null>;
-
-	/** Revoke a previously created render URL. */
-	revokeBlobUrl(url: string): Promise<void>;
-
-	/** Hard-delete every local asset artifact for a user. */
-	purgeUserAssets(userId: string): Promise<void>;
-
-	// ── Compound Operations ──────────────────────────────────────────
-
-	/**
-	 * Full local cleanup for an asset: remove blob, registry, and soft-delete metadata.
-	 * Called when a synced deletion arrives or when explicitly deleting.
-	 */
-	purgeAssetLocally(id: string): Promise<void>;
-
-	/**
-	 * Handle a synced asset record from the server.
-	 * - If deleted on server → purge locally (blob + registry)
-	 * - If new/updated → upsert metadata, seed registry if missing
-	 *
-	 * Returns the record if it was applied (newer than local), null if skipped.
-	 */
-	applySyncedRecord(record: AssetRecord, userId: string): Promise<AssetRecord | null>;
 }

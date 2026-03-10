@@ -1,31 +1,74 @@
 /**
- * Asset Sync Service — KeiAI v2
+ * Asset Sync Engine — KeiAI v2
  *
- * Background sync engine for uploading local assets to CDN.
- * Follows the same pattern as DataSyncService and ProfileSyncService.
+ * Full bidirectional sync for the `assets` table + CDN upload/delete queues.
  *
- * Processes assets with status='local' in assetRegistry, uploads to server,
- * and updates status to 'remote' on success.
+ * performSync order:
+ *   1. Pull: Paged catch-up + PB Realtime subscription (table sync)
+ *   2. Delete queue: Process registry entries with isDeleted=true
+ *   3. Upload queue: Process registry entries with status='local'
+ *
+ * This module has NO dependency on Svelte stores.
  */
 
+import { pb } from '$lib/adapters/pb';
+import { decrypt, toBase64, fromBase64, type Bytes } from '$lib/crypto';
 import { getActiveSession } from '../session';
-import { localDB, type AssetRegistryRecord, type AssetRecord } from '$lib/adapters/db';
+import { appAsset, type AssetRecord, type AssetFields } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
-import type { AssetFields } from '../content/asset/types';
+import { appKV } from '$lib/adapters/kv';
 import { AppError } from '$lib/shared/errors';
-import { encryptAsset } from '../content/asset/util';
+import { encryptAsset } from '../asset/util';
 import { BaseSyncEngine, type SyncStatus } from './base';
+import { uploadAsset, deleteRemoteAsset, promoteAsset } from '../asset/remote';
 
-// ─── Sync State ───────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────
+
+type RealtimeEvent = {
+	action: string;
+	record: Record<string, unknown>;
+};
 
 export interface AssetSyncStatus extends SyncStatus {
 	pendingCount: number;
 	currentAssetId?: string;
 }
 
-// ─── Asset Sync Service ────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 200;
+const SYNC_KEY_PREFIX = 'lastSync_assets_';
+
+const ALLOWED_RECORD_FIELDS = new Set([
+	'id',
+	'userId',
+	'createdAt',
+	'updatedAt',
+	'isDeleted',
+	'encryptedData',
+	'encryptedDataIV'
+]);
+
+const BYTE_FIELD_NAMES = new Set(['encryptedData', 'encryptedDataIV']);
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+async function decryptAssetFields(masterKey: CryptoKey, record: AssetRecord): Promise<AssetFields> {
+	try {
+		const raw = await decrypt(masterKey, {
+			ciphertext: record.encryptedData as unknown as Bytes,
+			iv: record.encryptedDataIV as unknown as Bytes
+		});
+		return JSON.parse(raw) as AssetFields;
+	} catch (error) {
+		throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt asset record', error);
+	}
+}
+
+// ─── Asset Sync Engine ────────────────────────────────────────────────
 
 export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
+	private subscribed = false;
 	private currentAssetId: string | null = null;
 	private abortController: AbortController | null = null;
 
@@ -33,7 +76,11 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 		super({ pendingCount: 0 });
 	}
 
-	// ── State Management ─────────────────────────────────────────────────
+	// ── State ─────────────────────────────────────────────────────────
+
+	get isSubscribed(): boolean {
+		return this.subscribed;
+	}
 
 	override getState(): AssetSyncStatus {
 		return {
@@ -43,58 +90,305 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 		};
 	}
 
-	// ── Lifecycle ─────────────────────────────────────────────────────────
+	// ── Lifecycle ─────────────────────────────────────────────────────
 
-	/**
-	 * Start the sync engine.
-	 * Processes local assets in the background.
-	 */
 	async start(): Promise<void> {
 		await this.trigger();
 	}
 
-	/**
-	 * Stop the sync engine.
-	 */
 	override stop(): void {
 		this.abortController?.abort();
 		this.abortController = null;
 		this.currentAssetId = null;
-		this.updateStatus({
-			pendingCount: 0,
-			currentAssetId: undefined
-		});
+		this.updateStatus({ pendingCount: 0, currentAssetId: undefined });
 		super.stop();
 	}
 
-	/**
-	 * Retry sync after an error.
-	 */
 	async retry(): Promise<void> {
 		await this.trigger();
 	}
 
-	// ── Queue Processing ─────────────────────────────────────────────────
+	// ── Realtime Subscriptions ────────────────────────────────────────
+
+	async subscribeRealtime(): Promise<void> {
+		if (!pb.authStore.isValid || this.subscribed) return;
+
+		let isGuest: boolean;
+		try {
+			({ isGuest } = getActiveSession());
+		} catch {
+			return;
+		}
+		if (isGuest) return;
+
+		await pb.collection('assets').subscribe('*', (e) => {
+			void this.handleRealtimeEvent(e as unknown as RealtimeEvent);
+		});
+		this.subscribed = true;
+	}
+
+	async unsubscribeRealtime(): Promise<void> {
+		if (!this.subscribed) return;
+		try {
+			await pb.collection('assets').unsubscribe('*');
+		} catch {
+			/* ignore */
+		}
+		this.subscribed = false;
+	}
+
+	// ── Cursor Management ─────────────────────────────────────────────
+
+	async resetCursors(userId: string): Promise<void> {
+		await appKV.remove(`${SYNC_KEY_PREFIX}${userId}`);
+	}
+
+	// ── Core Sync Cycle ───────────────────────────────────────────────
 
 	/**
-	 * Process all local assets that need to be synced.
-	 * Private assets are always synced. Inlay assets are synced only if user enabled sync.
+	 * Full sync cycle:
+	 *   1. Pull catch-up from PocketBase (paged table sync)
+	 *   2. Process delete queue (registry isDeleted=true → CDN delete → hard delete)
+	 *   3. Process upload queue (registry status=local → upload/promote)
 	 */
 	protected override async performSync(): Promise<void> {
+		if (!pb.authStore.isValid) return;
+
 		this.abortController = new AbortController();
 
-		const { userId, masterKey } = getActiveSession();
+		let userId: string;
+		let masterKey: CryptoKey;
+		let isGuest: boolean;
+		try {
+			({ userId, masterKey, isGuest } = getActiveSession());
+		} catch {
+			return;
+		}
+		if (isGuest) return;
 
-		// Get all assets with status='local'
-		const allAssets = await localDB.getAll<AssetRegistryRecord>('assetRegistry', userId);
+		// Phase 1: Pull catch-up from PocketBase
+		await this.pullAssets(userId);
 
-		// Filter: sync private assets, and inlay assets (if user enabled - TODO)
-		const toSync = allAssets.filter(
-			(a) => a.status === 'local' && (a.kind === 'private' || a.kind === 'inlay')
-		);
-		this.updateStatus({ pendingCount: toSync.length, progress: undefined });
+		if (this.abortController.signal.aborted) return;
 
-		for (const [index, entry] of toSync.entries()) {
+		// Phase 2: Process delete queue (before uploads — hash reuse safety)
+		await this.processDeleteQueue(userId);
+
+		if (this.abortController.signal.aborted) return;
+
+		// Phase 3: Process upload queue
+		await this.processUploadQueue(userId, masterKey);
+
+		this.currentAssetId = null;
+		this.updateStatus({ currentAssetId: undefined, pendingCount: 0, progress: undefined });
+	}
+
+	// ── Pull (Server → Local) ─────────────────────────────────────────
+
+	private async pullAssets(userId: string): Promise<void> {
+		const syncKey = `${SYNC_KEY_PREFIX}${userId}`;
+		const lastSyncTime = Number.parseInt((await appKV.get(syncKey)) || '0', 10) || 0;
+		let nextCursor = lastSyncTime;
+		let cursorSafeToAdvance = true;
+		let page = 1;
+		let syncError: unknown = null;
+		const offlineWrites: AssetRecord[] = [];
+
+		try {
+			while (true) {
+				if (this.abortController?.signal.aborted) break;
+
+				const result = await pb.collection('assets').getList(page, PAGE_SIZE, {
+					filter: pb.filter('userId = {:userId} && updatedAt >= {:since}', {
+						userId,
+						since: lastSyncTime
+					}),
+					sort: 'updatedAt'
+				});
+
+				for (const serverRecord of result.items) {
+					const remote = this.pbToLocalRecord(serverRecord as unknown as Record<string, unknown>);
+					const local = await appAsset.getAsset(remote.id);
+					const remoteAt = remote.updatedAt ?? 0;
+					const localAt = local?.updatedAt ?? 0;
+
+					if (!local || remoteAt > localAt) {
+						// Server is newer → apply
+						if (remote.isDeleted) {
+							// Deleted on another device → local cleanup
+							await appAsset.putAsset(remote, { origin: 'sync' });
+							await appStorage.delete(`assets/${remote.id}`).catch(() => undefined);
+							await appAsset.deleteRegistry(remote.id, { origin: 'sync' });
+						} else {
+							await appAsset.putAsset(remote, { origin: 'sync' });
+						}
+						nextCursor = Math.max(nextCursor, remoteAt);
+					} else if (localAt > remoteAt) {
+						// Local is newer → push correction
+						offlineWrites.push(local);
+						nextCursor = Math.max(nextCursor, localAt);
+					} else {
+						nextCursor = Math.max(nextCursor, remoteAt);
+					}
+				}
+
+				if (result.page >= result.totalPages) break;
+				page++;
+			}
+		} catch (err) {
+			cursorSafeToAdvance = false;
+			syncError = err;
+			console.error('[AssetSync] Failed to pull assets', err);
+		}
+
+		if (cursorSafeToAdvance && nextCursor > lastSyncTime) {
+			await appKV.set(syncKey, nextCursor.toString());
+		}
+
+		// Push locally-newer records
+		if (offlineWrites.length > 0) {
+			void this.pushBatch(offlineWrites);
+		}
+
+		if (syncError) throw syncError;
+	}
+
+	// ── Realtime Event Handler ────────────────────────────────────────
+
+	private async handleRealtimeEvent(e: RealtimeEvent): Promise<void> {
+		try {
+			let userId: string;
+			try {
+				({ userId } = getActiveSession());
+			} catch {
+				return;
+			}
+
+			const remote = this.pbToLocalRecord(e.record);
+			const local = await appAsset.getAsset(remote.id);
+			const remoteAt = remote.updatedAt ?? 0;
+			const localAt = local?.updatedAt ?? 0;
+
+			if (!local || remoteAt > localAt) {
+				if (remote.isDeleted) {
+					await appAsset.putAsset(remote, { origin: 'sync' });
+					await appStorage.delete(`assets/${remote.id}`).catch(() => undefined);
+					await appAsset.deleteRegistry(remote.id, { origin: 'sync' });
+				} else {
+					await appAsset.putAsset(remote, { origin: 'sync' });
+				}
+			} else if (localAt > remoteAt) {
+				void this.pushRecord(local);
+			}
+		} catch (err) {
+			console.error('[AssetSync] Realtime event error', err);
+		}
+	}
+
+	// ── Push (Local → Server) ─────────────────────────────────────────
+
+	async pushRecord(record: AssetRecord, isNew = false): Promise<void> {
+		if (!pb.authStore.isValid) return;
+		try {
+			const { isGuest } = getActiveSession();
+			if (isGuest) return;
+		} catch {
+			return;
+		}
+
+		const payload = this.localToPbRecord(record);
+		const batch = pb.createBatch();
+
+		if (isNew) {
+			batch.collection('assets').create(payload);
+		} else {
+			batch.collection('assets').upsert(payload);
+		}
+
+		try {
+			await batch.send();
+		} catch (err) {
+			console.error(`[AssetSync] Failed to push ${record.id}`, err);
+		}
+	}
+
+	private async pushBatch(records: AssetRecord[]): Promise<void> {
+		const batch = pb.createBatch();
+		for (const record of records) {
+			batch.collection('assets').upsert(this.localToPbRecord(record));
+		}
+		try {
+			await batch.send();
+		} catch (err) {
+			console.error('[AssetSync] Failed to push batch', err);
+		}
+	}
+
+	async pushById(id: string): Promise<void> {
+		const record = await appAsset.getAsset(id);
+		if (record) void this.pushRecord(record);
+	}
+
+	async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
+		if (!pb.authStore.isValid) return;
+		try {
+			const { isGuest } = getActiveSession();
+			if (isGuest) return;
+		} catch {
+			return;
+		}
+
+		const changed = await appAsset.getAssetsSince(userId, sinceInclusive - 1);
+		if (changed.length === 0) return;
+
+		void this.pushBatch(changed);
+	}
+
+	// ── Delete Queue Processing ───────────────────────────────────────
+
+	/**
+	 * Process registry entries with isDeleted=true.
+	 * For remote entries → call server delete (refCount decrement).
+	 * For local entries → skip server call (never uploaded).
+	 * Always hard-delete the registry entry after processing.
+	 */
+	private async processDeleteQueue(userId: string): Promise<void> {
+		const pending = await appAsset.getDeletedRegistry(userId);
+
+		for (const entry of pending) {
+			if (this.abortController?.signal.aborted) break;
+
+			try {
+				if (entry.status === 'remote') {
+					// Server has this asset → delete (refCount decrement)
+					// noOp if not owner or missing — not an error
+					await deleteRemoteAsset(entry.hash);
+				}
+				// Local-only assets never reached the server → skip
+
+				// Hard-delete from registry (consume queue entry)
+				await appAsset.deleteRegistry(entry.id);
+			} catch (error) {
+				if (this.isAuthError(error)) throw error;
+				console.error(`[AssetSync] Failed to process delete for ${entry.id}:`, error);
+			}
+		}
+	}
+
+	// ── Upload Queue Processing ───────────────────────────────────────
+
+	/**
+	 * Process all registry entries with status='local' and isDeleted=false.
+	 * Uploads/promotes based on kind:
+	 *   - public → promote (plaintext file replaces encrypted)
+	 *   - private/inlay → encrypt then upload
+	 */
+	private async processUploadQueue(userId: string, masterKey: CryptoKey): Promise<void> {
+		const allRegistry = await appAsset.getAllRegistry(userId);
+		const pending = allRegistry.filter((r) => r.status === 'local');
+		this.updateStatus({ pendingCount: pending.length, progress: undefined });
+
+		for (const [index, entry] of pending.entries()) {
 			if (this.abortController?.signal.aborted) break;
 
 			this.currentAssetId = entry.id;
@@ -102,128 +396,109 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 				currentAssetId: entry.id,
 				progress: {
 					completed: index,
-					total: toSync.length,
+					total: pending.length,
 					currentItemId: entry.id
 				}
 			});
 
 			try {
-				await this.syncAsset(entry.id, masterKey, userId);
+				const blob = await appStorage.read(`assets/${entry.id}`);
+				if (!blob) continue; // Invariant violation, skip
+
+				if (entry.kind === 'public') {
+					// Promote: plaintext file replaces encrypted version
+					await promoteAsset(entry.hash, blob);
+				} else {
+					// private/inlay: encrypt then upload
+					const encrypted = await encryptAsset(blob, entry.encKey);
+					await uploadAsset(entry.hash, entry.kind, encrypted.length, encrypted);
+				}
+
+				// Any non-error response → mark as remote
+				await appAsset.putRegistry({ ...entry, status: 'remote', updatedAt: Date.now() });
+
+				// Also update asset table status
+				const assetRecord = await appAsset.getAsset(entry.id);
+				if (assetRecord) {
+					try {
+						const fields = await decryptAssetFields(masterKey, assetRecord);
+						if (fields.status !== 'remote') {
+							// Re-encrypt with updated status
+							const { encrypt } = await import('$lib/crypto');
+							const updatedFields: AssetFields = { ...fields, status: 'remote' };
+							const { ciphertext, iv } = await encrypt(masterKey, JSON.stringify(updatedFields));
+							await appAsset.putAsset({
+								...assetRecord,
+								encryptedData: ciphertext,
+								encryptedDataIV: iv,
+								updatedAt: Date.now()
+							});
+						}
+					} catch {
+						// Non-critical: registry is already updated
+					}
+				}
+
 				this.updateStatus({
-					pendingCount: Math.max(toSync.length - (index + 1), 0),
+					pendingCount: Math.max(pending.length - (index + 1), 0),
 					progress: {
 						completed: index + 1,
-						total: toSync.length,
+						total: pending.length,
 						currentItemId: entry.id
 					}
 				});
 			} catch (error) {
-				if (this.isQuotaError(error)) {
-					throw error; // Stop processing on quota error
-				} else if (this.isAuthError(error)) {
-					throw error; // Stop processing on auth error
-				}
-				// Network errors: log and continue
-				console.error(`Failed to sync asset ${entry.id}:`, error);
+				if (this.isQuotaError(error)) throw error;
+				if (this.isAuthError(error)) throw error;
+				console.error(`[AssetSync] Failed to sync asset ${entry.id}:`, error);
 			}
 		}
-
-		this.currentAssetId = null;
-		this.updateStatus({
-			currentAssetId: undefined,
-			pendingCount: 0,
-			progress: undefined
-		});
 	}
 
-	/**
-	 * Sync a single asset to the server.
-	 */
-	private async syncAsset(id: string, masterKey: CryptoKey, userId: string): Promise<void> {
-		// Get the asset record
-		const record = await localDB.getRecord<AssetRecord>('assets', id);
-		if (!record || record.isDeleted) {
-			// Asset was deleted, skip
-			await localDB.deleteRecord('assetRegistry', id, { origin: 'sync' });
-			return;
+	// ── Serialization Helpers ─────────────────────────────────────────
+
+	private localToPbRecord(record: AssetRecord): Record<string, unknown> {
+		const payload = { ...record } as Record<string, unknown>;
+		for (const key of Object.keys(payload)) {
+			if (payload[key] instanceof Uint8Array) {
+				payload[key] = toBase64(payload[key] as Bytes);
+			}
 		}
-
-		// Decrypt fields to get hash
-		const fields = await this.decryptAssetFields(masterKey, record);
-
-		// Read local binary
-		const bytes = await appStorage.read(id);
-		if (!bytes) {
-			throw new AppError('ASSET_ERROR', 'Asset file not found locally', undefined);
-		}
-
-		// Encrypt for private assets (public assets uploaded as plaintext)
-		let uploadBytes: Uint8Array;
-		if (fields.kind === 'private') {
-			uploadBytes = await encryptAsset(bytes, fields.encKey);
-		} else {
-			uploadBytes = bytes;
-		}
-
-		// TODO: Upload to server
-		// const response = await fetch('/api/assets/upload', {
-		//   method: 'POST',
-		//   body: formData,
-		//   signal: this.abortController?.signal
-		// });
-
-		// For now, simulate successful upload
-		await this.markAsRemote(id, userId);
+		return payload;
 	}
 
-	/**
-	 * Mark an asset as remote after successful upload.
-	 */
-	private async markAsRemote(id: string, userId: string): Promise<void> {
-		const entry = await localDB.getRecord<AssetRegistryRecord>('assetRegistry', id);
-		if (!entry) return;
+	private pbToLocalRecord(pbRecord: Record<string, unknown>): AssetRecord {
+		const record: Record<string, unknown> = {};
 
-		entry.status = 'remote';
-		entry.updatedAt = Date.now();
-		await localDB.putRecord('assetRegistry', entry, { origin: 'sync' });
-	}
-
-	// ── Promotion ─────────────────────────────────────────────────────────
-
-	/**
-	 * Promote a private asset to public.
-	 * Waits for current sync to complete, then uploads decrypted version.
-	 */
-	async promoteToPublic(id: string): Promise<string> {
-		// Wait for current sync to finish
-		if (this.getState().state === 'syncing') {
-			this.stop();
+		for (const [key, value] of Object.entries(pbRecord)) {
+			if (!ALLOWED_RECORD_FIELDS.has(key)) continue;
+			record[key] =
+				typeof value === 'string' && BYTE_FIELD_NAMES.has(key) ? fromBase64(value) : value;
 		}
 
-		// TODO: Implement promotion flow
-		// 1. Decrypt asset
-		// 2. Upload to CDN as plaintext
-		// 3. Update asset kind to 'public'
-		// 4. Release quota
+		record.createdAt = this.normalizeTimestamp(record.createdAt, pbRecord.created);
+		record.updatedAt = this.normalizeTimestamp(record.updatedAt, pbRecord.updated);
+		record.isDeleted = Boolean(record.isDeleted);
 
-		return ''; // Return CDN URL
+		return record as unknown as AssetRecord;
 	}
 
-	// ── Helpers ───────────────────────────────────────────────────────────
+	private normalizeTimestamp(primary: unknown, fallback: unknown): number {
+		if (typeof primary === 'number') return primary;
 
-	private async decryptAssetFields(
-		masterKey: CryptoKey,
-		record: AssetRecord
-	): Promise<AssetFields> {
-		const { decrypt } = await import('$lib/crypto');
-		return decrypt(masterKey, {
-			ciphertext: record.encryptedData,
-			iv: record.encryptedDataIV
-		})
-			.then((raw: string) => JSON.parse(raw) as AssetFields)
-			.catch((error: unknown) => {
-				throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt asset record', error);
-			});
+		if (typeof primary === 'string') {
+			const parsed = Number(primary);
+			if (!Number.isNaN(parsed)) return parsed;
+			const asDate = new Date(primary).getTime();
+			if (!Number.isNaN(asDate)) return asDate;
+		}
+
+		if (typeof fallback === 'string') {
+			const asDate = new Date(fallback).getTime();
+			if (!Number.isNaN(asDate)) return asDate;
+		}
+
+		return 0;
 	}
 
 	protected override isQuotaError(error: unknown): boolean {
@@ -247,6 +522,6 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 	}
 }
 
-// ─── Export Singleton ─────────────────────────────────────────────────────
+// ─── Export Singleton ─────────────────────────────────────────────────
 
 export const AssetSyncService = new AssetSyncEngine();
