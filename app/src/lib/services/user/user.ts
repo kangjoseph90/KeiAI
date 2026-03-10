@@ -160,25 +160,24 @@ export class UserService {
 			appAsset.getAllRegistry(userId)
 		]);
 		const ids = new Set<string>([...assets.map((r) => r.id), ...registry.map((r) => r.id)]);
-		for (const id of ids) {
-			await appStorage.delete(`assets/${id}`).catch(() => undefined);
-			await appAsset.deleteRegistry(id, { origin: 'sync' }).catch(() => undefined);
-		}
+
+		await Promise.all(
+			Array.from(ids).map(async (id) => {
+				await appStorage.delete(`assets/${id}`).catch(() => undefined);
+				await appAsset.deleteRegistry(id, { origin: 'sync' }).catch(() => undefined);
+			})
+		);
+
 		// Hard-delete all asset metadata records
-		for (const asset of assets) {
-			await appAsset.putAsset(
-				{ ...asset, isDeleted: true, updatedAt: Date.now() },
-				{ origin: 'sync' }
-			);
-		}
+		await Promise.all(
+			assets.map((asset) =>
+				appAsset.putAsset({ ...asset, isDeleted: true, updatedAt: Date.now() }, { origin: 'sync' })
+			)
+		);
 
-		for (const table of TABLES) {
-			await localDB.deleteByIndex(table, 'userId', userId);
-		}
+		await Promise.all(TABLES.map((table) => localDB.deleteByIndex(table, 'userId', userId)));
 
-		for (const table of TABLES) {
-			await appKV.remove(`lastSync_${table}_${userId}`);
-		}
+		await Promise.all(TABLES.map((table) => appKV.remove(`lastSync_${table}_${userId}`)));
 
 		// Asset sync has its own cursor (separate from DataSyncEngine)
 		await appKV.remove(`lastSync_assets_${userId}`);
