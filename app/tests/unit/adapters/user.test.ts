@@ -206,8 +206,14 @@ describe('WebUserAdapter (Dexie)', () => {
 			const user1 = await createTestUser({ id: 'evt-1' });
 			const user2 = await createTestUser({ id: 'evt-2' });
 
-			await adapter.saveUser(user1);
-			await adapter.saveUser(user2);
+			// Wait a bit before starting the batch to avoid capturing events from createTestUser if it triggers any
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			listener.mockClear();
+
+			const p1 = adapter.saveUser(user1);
+			const p2 = adapter.saveUser(user2);
+
+			await Promise.all([p1, p2]);
 
 			// Wait for batch (real timeout instead of fake timers to avoid breaking fake-indexeddb)
 			await new Promise((resolve) => setTimeout(resolve, 50));

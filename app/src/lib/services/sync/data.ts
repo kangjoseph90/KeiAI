@@ -179,14 +179,24 @@ export class DataSyncEngine extends BaseSyncEngine {
 					sort: 'updatedAt'
 				});
 
-				for (const serverRecord of result.items) {
-					const remote = this.pbToLocalRecord(serverRecord as unknown as Record<string, unknown>);
-					const local = await localDB.getRecord<BaseRecord>(tableName, remote.id);
+				const remotes = result.items.map((serverRecord) =>
+					this.pbToLocalRecord(serverRecord as unknown as Record<string, unknown>)
+				);
+
+				const locals = await Promise.all(
+					remotes.map((remote) => localDB.getRecord<BaseRecord>(tableName, remote.id))
+				);
+
+				const putPromises: Promise<void>[] = [];
+
+				for (let i = 0; i < remotes.length; i++) {
+					const remote = remotes[i];
+					const local = locals[i];
 					const remoteAt = remote.updatedAt ?? 0;
 					const localAt = local?.updatedAt ?? 0;
 
 					if (!local || remoteAt > localAt) {
-						await localDB.putRecord(tableName, remote, { origin: 'sync' });
+						putPromises.push(localDB.putRecord(tableName, remote, { origin: 'sync' }));
 						nextCursor = Math.max(nextCursor, remoteAt);
 					} else if (remoteAt < localAt) {
 						offlineWrites.push(local);
@@ -194,6 +204,10 @@ export class DataSyncEngine extends BaseSyncEngine {
 					} else {
 						nextCursor = Math.max(nextCursor, remoteAt);
 					}
+				}
+
+				if (putPromises.length > 0) {
+					await Promise.all(putPromises);
 				}
 
 				if (result.page >= result.totalPages) break;
@@ -379,8 +393,6 @@ export class DataSyncEngine extends BaseSyncEngine {
 	private isBase64ByteField(fieldName: string): boolean {
 		return this.BYTE_FIELD_NAMES.has(fieldName);
 	}
-
 }
-
 
 export const DataSyncService = new DataSyncEngine();

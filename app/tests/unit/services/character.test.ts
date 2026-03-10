@@ -99,7 +99,6 @@ describe('CharacterService', () => {
 
 		// Default generateId mock
 		vi.mocked(generateId).mockReturnValue('test-id-123');
-
 	});
 
 	describe('list', () => {

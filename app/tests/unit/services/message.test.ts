@@ -105,7 +105,6 @@ describe('MessageService', () => {
 		// Guards pass by default
 		vi.mocked(assertChatExists).mockResolvedValue(undefined);
 		vi.mocked(assertMessageInChat).mockResolvedValue(undefined);
-
 	});
 
 	describe('getMessagesBefore (pagination)', () => {

@@ -34,11 +34,7 @@ function getWorker(): Remote<TokenizerWorker> {
 		workerInstance = wrap<TokenizerWorker>(worker);
 		return workerInstance;
 	} catch (error) {
-		throw new AppError(
-			'TOKENIZER_ERROR',
-			'Failed to initialize tokenizer worker',
-			error
-		);
+		throw new AppError('TOKENIZER_ERROR', 'Failed to initialize tokenizer worker', error);
 	}
 }
 
