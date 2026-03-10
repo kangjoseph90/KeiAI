@@ -316,17 +316,23 @@ export class CharacterService {
 					const chatIds = (
 						await localDB.getByIndex('chatSummaries', 'characterId', id, Number.MAX_SAFE_INTEGER)
 					).map((c) => c.id);
-					for (const chatId of chatIds) {
-						await localDB.softDeleteByIndex('messages', 'chatId', chatId);
-						await localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId);
-						await localDB.softDeleteByIndex('scripts', 'ownerId', chatId);
-					}
-					await localDB.softDeleteByIndex('chatSummaries', 'characterId', id);
-					await localDB.softDeleteByIndex('chatData', 'characterId', id);
-					await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-					await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-					await localDB.softDeleteRecord('characterSummaries', id);
-					await localDB.softDeleteRecord('characterData', id);
+
+					await Promise.all(
+						chatIds.flatMap((chatId) => [
+							localDB.softDeleteByIndex('messages', 'chatId', chatId),
+							localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId),
+							localDB.softDeleteByIndex('scripts', 'ownerId', chatId)
+						])
+					);
+
+					await Promise.all([
+						localDB.softDeleteByIndex('chatSummaries', 'characterId', id),
+						localDB.softDeleteByIndex('chatData', 'characterId', id),
+						localDB.softDeleteByIndex('lorebooks', 'ownerId', id),
+						localDB.softDeleteByIndex('scripts', 'ownerId', id),
+						localDB.softDeleteRecord('characterSummaries', id),
+						localDB.softDeleteRecord('characterData', id)
+					]);
 				}
 			);
 		} catch (error) {

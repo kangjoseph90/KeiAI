@@ -51,7 +51,6 @@ describe('ProfileService', () => {
 		// Default user adapter mock
 		vi.mocked(appUser.getUser).mockResolvedValue({ ...baseMockUser });
 		vi.mocked(appUser.saveUser).mockResolvedValue(undefined);
-
 	});
 
 	describe('get', () => {
