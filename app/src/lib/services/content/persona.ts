@@ -1,7 +1,6 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type PersonaRecord } from '$lib/adapters/db';
-import { DataSyncService } from '../sync';
 import { deepMerge } from '$lib/shared/defaults';
 import { AppError } from '$lib/shared/errors';
 import type { AssetRef } from '$lib/shared/types';
@@ -99,7 +98,6 @@ export class PersonaService {
 				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<PersonaRecord>('personas', newRecord);
-			void DataSyncService.pushRecord('personas', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create persona', error);
@@ -125,7 +123,6 @@ export class PersonaService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('personas', record);
-			void DataSyncService.pushRecord('personas', record);
 
 			return { id, ...updated };
 		} catch (error) {
@@ -138,7 +135,6 @@ export class PersonaService {
 	static async delete(id: string): Promise<void> {
 		try {
 			await localDB.softDeleteRecord('personas', id);
-			void DataSyncService.pushById('personas', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete persona', error);

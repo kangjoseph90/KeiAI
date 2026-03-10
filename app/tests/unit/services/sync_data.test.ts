@@ -122,7 +122,8 @@ describe('DataSyncService', () => {
 				expect.objectContaining({
 					id: 'rec-1',
 					updatedAt: 2000
-				})
+				}),
+				expect.objectContaining({ origin: 'sync' })
 			);
 		});
 

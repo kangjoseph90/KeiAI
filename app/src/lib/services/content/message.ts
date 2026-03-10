@@ -1,7 +1,6 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type MessageRecord } from '$lib/adapters/db';
-import { DataSyncService } from '../sync';
 import { generateKeyBetween } from 'fractional-indexing';
 import { deepMerge } from '$lib/shared/defaults';
 import { assertChatExists, assertMessageInChat } from './guards';
@@ -168,7 +167,6 @@ export class MessageService {
 				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<MessageRecord>('messages', newRecord);
-			void DataSyncService.pushRecord('messages', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create message', error);
@@ -201,7 +199,6 @@ export class MessageService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('messages', record);
-			void DataSyncService.pushRecord('messages', record);
 
 			return { id, chatId: record.chatId, sortOrder: record.sortOrder, ...updated };
 		} catch (error) {
@@ -217,7 +214,6 @@ export class MessageService {
 		}
 		try {
 			await localDB.softDeleteRecord('messages', id);
-			void DataSyncService.pushById('messages', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete message', error);

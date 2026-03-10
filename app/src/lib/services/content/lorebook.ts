@@ -1,7 +1,6 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type LorebookRecord } from '$lib/adapters/db';
-import { DataSyncService } from '../sync';
 import { deepMerge } from '$lib/shared/defaults';
 import { assertLorebookOwnedBy, assertOwnedResourceParentExists } from './guards';
 import { AppError } from '$lib/shared/errors';
@@ -109,7 +108,6 @@ export class LorebookService {
 				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<LorebookRecord>('lorebooks', newRecord);
-			void DataSyncService.pushRecord('lorebooks', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create lorebook', error);
@@ -141,7 +139,6 @@ export class LorebookService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('lorebooks', record);
-			void DataSyncService.pushRecord('lorebooks', record);
 
 			return { id, ownerId: record.ownerId, ...updated };
 		} catch (error) {
@@ -156,7 +153,6 @@ export class LorebookService {
 		}
 		try {
 			await localDB.softDeleteRecord('lorebooks', id);
-			void DataSyncService.pushById('lorebooks', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete lorebook', error);

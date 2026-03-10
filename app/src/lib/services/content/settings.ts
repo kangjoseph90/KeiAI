@@ -1,7 +1,6 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type SettingsRecord } from '$lib/adapters/db';
-import { DataSyncService } from '../sync';
 import type { OrderedRef, FolderDef, ResourceRef } from '$lib/shared/types';
 import { deepMerge } from '$lib/shared/defaults';
 import { AppError } from '$lib/shared/errors';
@@ -78,7 +77,6 @@ export class SettingsService {
 				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<SettingsRecord>('settings', settingsRecord);
-			void DataSyncService.pushRecord('settings', settingsRecord);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to save settings', error);
@@ -119,7 +117,6 @@ export class SettingsService {
 				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<SettingsRecord>('settings', updatedRecord);
-			void DataSyncService.pushRecord('settings', updatedRecord);
 
 			return updated;
 		} catch (error) {

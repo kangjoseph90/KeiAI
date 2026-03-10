@@ -2,7 +2,7 @@
  * Lorebook Service Tests
  *
  * Tests the LorebookService handling lorebook CRUD operations
- * with encryption and sync integration.
+ * with encryption and local DB writes.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -29,13 +29,6 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/sync', () => ({
-	DataSyncService: {
-		pushRecord: vi.fn(),
-		pushById: vi.fn()
-	}
-}));
-
 vi.mock('$lib/services/content/guards', () => ({
 	assertOwnedResourceParentExists: vi.fn(),
 	assertLorebookOwnedBy: vi.fn()
@@ -48,7 +41,6 @@ vi.mock('$lib/shared/id', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { DataSyncService } from '$lib/services/sync';
 import {
 	assertOwnedResourceParentExists,
 	assertLorebookOwnedBy
@@ -175,11 +167,6 @@ describe('LorebookService', () => {
 					encryptedData: mockEncryptedData
 				})
 			);
-			expect(DataSyncService.pushRecord).toHaveBeenCalledWith(
-				'lorebooks',
-				expect.any(Object),
-				true
-			);
 		});
 	});
 
@@ -201,7 +188,6 @@ describe('LorebookService', () => {
 			expect(result.content).toBe('Content'); // Preserved from existing
 
 			expect(localDB.putRecord).toHaveBeenCalledWith('lorebooks', expect.any(Object));
-			expect(DataSyncService.pushRecord).toHaveBeenCalledWith('lorebooks', expect.any(Object));
 		});
 
 		it('should throw if not found', async () => {
@@ -229,11 +215,10 @@ describe('LorebookService', () => {
 	});
 
 	describe('delete', () => {
-		it('should soft delete and trigger sync', async () => {
+		it('should soft delete the lorebook', async () => {
 			await LorebookService.delete('lb-1');
 
 			expect(localDB.softDeleteRecord).toHaveBeenCalledWith('lorebooks', 'lb-1');
-			expect(DataSyncService.pushById).toHaveBeenCalledWith('lorebooks', 'lb-1');
 		});
 
 		it('should assert ownership if provided', async () => {

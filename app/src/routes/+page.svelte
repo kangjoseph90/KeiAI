@@ -9,6 +9,8 @@
 	import {
 		loadGlobalState,
 		loadProfile,
+		startSyncStatusTracking,
+		stopSyncStatusTracking,
 		selectCharacter,
 		selectChat,
 		clearActiveCharacter,
@@ -131,6 +133,7 @@
 
 	onMount(async () => {
 		try {
+			startSyncStatusTracking();
 			const wasRestored = await UserService.restoreOrCreateGuest();
 			// If the local DB was cleared (storage eviction, first install), PB may
 			// still hold a stale JWT. Clear it so sync starts from a clean state.
@@ -154,6 +157,7 @@
 
 	onDestroy(() => {
 		SyncManager.stopAutoSync();
+		stopSyncStatusTracking();
 		_cleanupHash?.();
 	});
 

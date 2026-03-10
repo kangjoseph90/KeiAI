@@ -12,7 +12,6 @@ import {
 } from '$lib/services/content/preset';
 import { getActiveSession } from '$lib/services/session';
 import { localDB, type PresetSummaryRecord, type PresetDataRecord } from '$lib/adapters/db';
-import { DataSyncService } from '$lib/services/sync';
 import { encrypt, decrypt } from '$lib/crypto';
 import { AppError } from '$lib/shared/errors';
 
@@ -33,13 +32,6 @@ vi.mock('$lib/adapters/db', () => ({
 		putRecord: vi.fn(),
 		softDeleteRecord: vi.fn(),
 		transaction: vi.fn((_tables: string[], _mode: string, cb: () => Promise<void>) => cb())
-	}
-}));
-
-vi.mock('$lib/services/sync', () => ({
-	DataSyncService: {
-		pushRecord: vi.fn(),
-		pushById: vi.fn()
 	}
 }));
 
@@ -159,7 +151,6 @@ describe('PresetService', () => {
 			expect(result.id).toBe('preset-123');
 			expect(localDB.transaction).toHaveBeenCalled();
 			expect(localDB.putRecord).toHaveBeenCalledTimes(2);
-			expect(DataSyncService.pushRecord).toHaveBeenCalledTimes(2);
 		});
 	});
 
@@ -192,7 +183,6 @@ describe('PresetService', () => {
 		it('should soft delete both records', async () => {
 			await PresetService.delete('preset-123');
 			expect(localDB.softDeleteRecord).toHaveBeenCalledTimes(2);
-			expect(DataSyncService.pushById).toHaveBeenCalledTimes(2);
 		});
 	});
 });

@@ -1,7 +1,6 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ScriptRecord } from '$lib/adapters/db';
-import { DataSyncService } from '../sync';
 import { deepMerge } from '$lib/shared/defaults';
 import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards';
 import { AppError } from '$lib/shared/errors';
@@ -108,7 +107,6 @@ export class ScriptService {
 				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<ScriptRecord>('scripts', newRecord);
-			void DataSyncService.pushRecord('scripts', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create script', error);
@@ -140,7 +138,6 @@ export class ScriptService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('scripts', record);
-			void DataSyncService.pushRecord('scripts', record);
 
 			return { id, ownerId: record.ownerId, ...updated };
 		} catch (error) {
@@ -155,7 +152,6 @@ export class ScriptService {
 		}
 		try {
 			await localDB.softDeleteRecord('scripts', id);
-			void DataSyncService.pushById('scripts', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete script', error);

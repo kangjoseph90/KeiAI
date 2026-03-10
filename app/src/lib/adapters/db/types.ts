@@ -51,6 +51,29 @@ export const SYNC_TABLES: TableName[] = [
 
 export const TABLES: TableName[] = [...SYNC_TABLES, 'assetRegistry'];
 
+export type DatabaseWriteOperation =
+	| 'put'
+	| 'putMany'
+	| 'delete'
+	| 'deleteByIndex'
+	| 'softDelete'
+	| 'softDeleteByIndex';
+
+export type DatabaseMutationOrigin = 'local' | 'sync';
+
+export interface DatabaseWriteOptions {
+	origin?: DatabaseMutationOrigin;
+}
+
+export interface DatabaseWriteEvent {
+	tableName: TableName;
+	operation: DatabaseWriteOperation;
+	ids: string[];
+	origin: DatabaseMutationOrigin;
+}
+
+export type DatabaseWriteEventListener = (event: DatabaseWriteEvent) => void;
+
 // ─── Base Types ──────────────────────────────────────────────────────
 
 export interface BaseRecord {
@@ -149,13 +172,36 @@ export interface AssetRegistryRecord extends BaseRecord {
 // ─── Adapter Interface ──────────────────────────────────────────────
 
 export interface IDatabaseAdapter {
+	subscribeWriteEvents(listener: DatabaseWriteEventListener): () => void;
 	getRecord<T extends BaseRecord>(tableName: TableName, id: string): Promise<T | undefined>;
-	putRecord<T extends BaseRecord>(tableName: TableName, record: T): Promise<void>;
-	putRecords<T extends BaseRecord>(tableName: TableName, records: T[]): Promise<void>;
-	deleteRecord(tableName: TableName, id: string): Promise<void>;
-	deleteByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<void>;
-	softDeleteRecord(tableName: TableName, id: string): Promise<void>;
-	softDeleteByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<void>;
+	putRecord<T extends BaseRecord>(
+		tableName: TableName,
+		record: T,
+		options?: DatabaseWriteOptions
+	): Promise<void>;
+	putRecords<T extends BaseRecord>(
+		tableName: TableName,
+		records: T[],
+		options?: DatabaseWriteOptions
+	): Promise<void>;
+	deleteRecord(tableName: TableName, id: string, options?: DatabaseWriteOptions): Promise<void>;
+	deleteByIndex(
+		tableName: TableName,
+		indexName: string,
+		indexValue: string,
+		options?: DatabaseWriteOptions
+	): Promise<void>;
+	softDeleteRecord(
+		tableName: TableName,
+		id: string,
+		options?: DatabaseWriteOptions
+	): Promise<void>;
+	softDeleteByIndex(
+		tableName: TableName,
+		indexName: string,
+		indexValue: string,
+		options?: DatabaseWriteOptions
+	): Promise<void>;
 	getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]>;
 	getByIndex<T extends BaseRecord>(
 		tableName: TableName,

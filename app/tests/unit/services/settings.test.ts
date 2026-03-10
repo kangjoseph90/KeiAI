@@ -24,16 +24,9 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/sync', () => ({
-	DataSyncService: {
-		pushRecord: vi.fn()
-	}
-}));
-
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { DataSyncService } from '$lib/services/sync';
 
 describe('SettingsService', () => {
 	const mockUserId = 'user-123';
@@ -114,7 +107,6 @@ describe('SettingsService', () => {
 					encryptedData: mockEncryptedData
 				})
 			);
-			expect(DataSyncService.pushRecord).toHaveBeenCalled();
 		});
 	});
 

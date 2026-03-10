@@ -9,6 +9,8 @@ import type {
 	IDatabaseAdapter,
 	TableName,
 	BaseRecord,
+	DatabaseWriteEventListener,
+	DatabaseWriteOptions,
 	CharacterSummaryRecord,
 	CharacterDataRecord,
 	ChatSummaryRecord,
@@ -25,6 +27,7 @@ import type {
 	AssetRecord,
 	AssetRegistryRecord
 } from './types';
+import { DatabaseWriteEventEmitter } from './events';
 
 class DexieStore extends Dexie {
 	characterSummaries!: Table<CharacterSummaryRecord, string>;
@@ -70,9 +73,14 @@ class DexieStore extends Dexie {
 
 export class WebDatabaseAdapter implements IDatabaseAdapter {
 	private db: DexieStore;
+	private readonly writeEvents = new DatabaseWriteEventEmitter();
 
 	constructor() {
 		this.db = new DexieStore();
+	}
+
+	subscribeWriteEvents(listener: DatabaseWriteEventListener): () => void {
+		return this.writeEvents.subscribe(listener);
 	}
 
 	private getTable<T extends BaseRecord>(tableName: TableName): Table<T, string> {
@@ -83,37 +91,72 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		return await this.getTable<T>(tableName).get(id);
 	}
 
-	async putRecord<T extends BaseRecord>(tableName: TableName, record: T): Promise<void> {
+	async putRecord<T extends BaseRecord>(
+		tableName: TableName,
+		record: T,
+		options?: DatabaseWriteOptions
+	): Promise<void> {
 		await this.getTable<T>(tableName).put(record);
+		this.emitWriteEvent(tableName, 'put', [record.id], options);
 	}
 
-	async putRecords<T extends BaseRecord>(tableName: TableName, records: T[]): Promise<void> {
+	async putRecords<T extends BaseRecord>(
+		tableName: TableName,
+		records: T[],
+		options?: DatabaseWriteOptions
+	): Promise<void> {
 		await this.getTable<T>(tableName).bulkPut(records);
+		this.emitWriteEvent(
+			tableName,
+			'putMany',
+			records.map((record) => record.id),
+			options
+		);
 	}
 
-	async deleteRecord(tableName: TableName, id: string): Promise<void> {
+	async deleteRecord(
+		tableName: TableName,
+		id: string,
+		options?: DatabaseWriteOptions
+	): Promise<void> {
 		await this.getTable<BaseRecord>(tableName).delete(id);
+		this.emitWriteEvent(tableName, 'delete', [id], options);
 	}
 
-	async deleteByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<void> {
+	async deleteByIndex(
+		tableName: TableName,
+		indexName: string,
+		indexValue: string,
+		options?: DatabaseWriteOptions
+	): Promise<void> {
 		const table = this.getTable<BaseRecord>(tableName);
+		const ids = ((await table.where(indexName).equals(indexValue).primaryKeys()) as string[]).filter(
+			(id): id is string => typeof id === 'string'
+		);
 		await table.where(indexName).equals(indexValue).delete();
+		this.emitWriteEvent(tableName, 'deleteByIndex', ids, options);
 	}
 
-	async softDeleteRecord(tableName: TableName, id: string): Promise<void> {
+	async softDeleteRecord(
+		tableName: TableName,
+		id: string,
+		options?: DatabaseWriteOptions
+	): Promise<void> {
 		const table = this.getTable<BaseRecord>(tableName);
 		const record = await table.get(id);
 		if (record) {
 			record.isDeleted = true;
 			record.updatedAt = Date.now();
 			await table.put(record);
+			this.emitWriteEvent(tableName, 'softDelete', [id], options);
 		}
 	}
 
 	async softDeleteByIndex(
 		tableName: TableName,
 		indexName: string,
-		indexValue: string
+		indexValue: string,
+		options?: DatabaseWriteOptions
 	): Promise<void> {
 		const table = this.getTable<BaseRecord>(tableName);
 		const now = Date.now();
@@ -123,6 +166,12 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 			record.updatedAt = now;
 		}
 		await table.bulkPut(records);
+		this.emitWriteEvent(
+			tableName,
+			'softDeleteByIndex',
+			records.map((record) => record.id),
+			options
+		);
 	}
 
 	async getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]> {
@@ -200,5 +249,27 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 	): Promise<R> {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		return await this.db.transaction(mode as unknown as any, tables, callback);
+	}
+
+	private emitWriteEvent(
+		tableName: TableName,
+		operation:
+			| 'put'
+			| 'putMany'
+			| 'delete'
+			| 'deleteByIndex'
+			| 'softDelete'
+			| 'softDeleteByIndex',
+		ids: string[],
+		options?: DatabaseWriteOptions
+	): void {
+		if (ids.length === 0) return;
+
+		this.writeEvents.emit({
+			tableName,
+			operation,
+			ids,
+			origin: options?.origin ?? 'local'
+		});
 	}
 }

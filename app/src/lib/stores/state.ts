@@ -22,6 +22,7 @@ import type {
 	Lorebook,
 	Script
 } from '$lib/services';
+import type { AssetSyncStatus, SyncStatus } from '$lib/services';
 import type { GenerationTask, DisplayMessage } from './types';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
@@ -30,6 +31,9 @@ export const activeUser = writable<Profile | null>(null);
 
 /** Tracks whether the PocketBase auth token is valid. */
 export const pbConnected = writable<boolean>(false);
+export const dataSyncStatus = writable<SyncStatus>({ state: 'idle' });
+export const profileSyncStatus = writable<SyncStatus>({ state: 'idle' });
+export const assetSyncStatus = writable<AssetSyncStatus>({ state: 'idle', pendingCount: 0 });
 
 // ─── Derived Auth State ──────────────────────────────────────────────
 export const isLoggedIn = derived(

@@ -18,10 +18,16 @@ import { pb } from '$lib/adapters/pb';
 import { getActiveSession } from '../session';
 import { ProfileService, type Profile } from '../user/profile';
 import { appUser } from '$lib/adapters/user';
+import { BaseSyncEngine } from './base';
 
-export class ProfileSyncService {
-	private static subscribed = false;
-	private static onRemoteUpdate: (() => void) | null = null;
+export class ProfileSyncEngine extends BaseSyncEngine {
+	private subscribed = false;
+	private onRemoteUpdate: (() => void) | null = null;
+	private lastPulledProfile: Profile | null = null;
+
+	constructor() {
+		super();
+	}
 
 	// ─── Push (local → server) ──────────────────────────────────────
 
@@ -29,7 +35,7 @@ export class ProfileSyncService {
 	 * Push the current profile to PocketBase.
 	 * Fire-and-forget: errors are logged but never thrown.
 	 */
-	static async pushProfile(name: string, avatarDataUri?: string): Promise<void> {
+	async pushProfile(name: string, avatarDataUri?: string): Promise<void> {
 		if (!pb.authStore.isValid) return;
 
 		try {
@@ -80,7 +86,7 @@ export class ProfileSyncService {
 	 *                         locally. Typically `loadProfile` from the store layer.
 	 *                         Injected here so the sync layer stays store-agnostic.
 	 */
-	static async subscribe(onRemoteUpdate?: () => void): Promise<void> {
+	async subscribe(onRemoteUpdate?: () => void): Promise<void> {
 		if (!pb.authStore.isValid || this.subscribed) return;
 
 		this.onRemoteUpdate = onRemoteUpdate ?? null;
@@ -103,7 +109,7 @@ export class ProfileSyncService {
 	/**
 	 * Unsubscribe from Realtime profile updates.
 	 */
-	static async unsubscribe(): Promise<void> {
+	async unsubscribe(): Promise<void> {
 		if (!this.subscribed) return;
 
 		try {
@@ -114,13 +120,13 @@ export class ProfileSyncService {
 		}
 		this.subscribed = false;
 		this.onRemoteUpdate = null;
-		this.setStatus({ phase: 'idle' });
+		this.updateStatus({ state: 'idle', progress: undefined });
 	}
 
 	/**
 	 * Handle a Realtime event for the user's own PB record.
 	 */
-	private static async handleRealtimeEvent(
+	private async handleRealtimeEvent(
 		serverRecord: Record<string, unknown>
 	): Promise<Profile | null> {
 		try {
@@ -162,12 +168,18 @@ export class ProfileSyncService {
 	 * One-shot pull: fetch the latest profile from PB and apply if newer.
 	 * Called on reconnect / tab focus.
 	 */
-	static async pullProfile(): Promise<Profile | null> {
-		if (!pb.authStore.isValid) return null;
+	async pullProfile(): Promise<Profile | null> {
+		this.lastPulledProfile = null;
+		await this.trigger();
+		return this.lastPulledProfile;
+	}
+
+	protected override async performSync(): Promise<void> {
+		if (!pb.authStore.isValid) return;
 
 		try {
 			const { userId, isGuest } = getActiveSession();
-			if (isGuest) return null;
+			if (isGuest) return;
 
 			const serverRecord = await pb.collection('users').getOne(userId);
 			const remoteName = (serverRecord.name as string) ?? '';
@@ -180,7 +192,7 @@ export class ProfileSyncService {
 				? new Date(serverRecord.updated as string).getTime()
 				: 0;
 
-			return await ProfileService.applyRemoteUpdate(
+			this.lastPulledProfile = await ProfileService.applyRemoteUpdate(
 				userId,
 				remoteName,
 				remoteAvatar,
@@ -188,7 +200,9 @@ export class ProfileSyncService {
 			);
 		} catch (err) {
 			console.error('[ProfileSync] Pull failed', err);
-			return null;
+			throw err;
 		}
 	}
 }
+
+export const ProfileSyncService = new ProfileSyncEngine();

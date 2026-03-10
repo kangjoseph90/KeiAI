@@ -2,7 +2,7 @@
  * Character Service Tests
  *
  * Tests the CharacterService which handles character CRUD operations
- * with encryption, database transactions, and sync integration.
+ * with encryption and database transactions.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -40,13 +40,6 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/sync', () => ({
-	DataSyncService: {
-		pushRecord: vi.fn(),
-		pushRecentWrites: vi.fn()
-	}
-}));
-
 vi.mock('$lib/shared/id', () => ({
 	generateId: vi.fn(() => 'test-id-123')
 }));
@@ -68,7 +61,6 @@ vi.mock('$lib/shared/defaults', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { DataSyncService } from '$lib/services/sync';
 import { generateId } from '$lib/shared/id';
 import { deepMerge } from '$lib/shared/defaults';
 
@@ -108,9 +100,6 @@ describe('CharacterService', () => {
 		// Default generateId mock
 		vi.mocked(generateId).mockReturnValue('test-id-123');
 
-		// DataSyncService void calls
-		vi.mocked(DataSyncService.pushRecord).mockResolvedValue(undefined);
-		vi.mocked(DataSyncService.pushRecentWrites).mockResolvedValue(undefined);
 	});
 
 	describe('list', () => {
@@ -269,7 +258,6 @@ describe('CharacterService', () => {
 				'rw',
 				expect.any(Function)
 			);
-			expect(DataSyncService.pushRecord).toHaveBeenCalledTimes(2);
 		});
 
 		it('should use default values when not provided', async () => {
