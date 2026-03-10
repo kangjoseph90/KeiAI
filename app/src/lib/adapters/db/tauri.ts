@@ -1,7 +1,14 @@
 import Database from '@tauri-apps/plugin-sql';
-import type { IDatabaseAdapter, TableName, BaseRecord } from './types';
+import type {
+	IDatabaseAdapter,
+	TableName,
+	BaseRecord,
+	DatabaseWriteEventListener,
+	DatabaseWriteOptions
+} from './types';
 import { TABLES } from './types';
 import { AppError } from '$lib/shared/errors';
+import { DatabaseWriteEventEmitter } from './events';
 
 /**
  * Tauri SQLite Local Database Adapter
@@ -80,6 +87,11 @@ function parseRecord<T>(row: any): T {
 
 export class TauriDatabaseAdapter implements IDatabaseAdapter {
 	private dbPromise: Promise<Database> | null = null;
+	private readonly writeEvents = new DatabaseWriteEventEmitter();
+
+	subscribeWriteEvents(listener: DatabaseWriteEventListener): () => void {
+		return this.writeEvents.subscribe(listener);
+	}
 
 	private async getDb(): Promise<Database> {
 		if (this.dbPromise) return this.dbPromise;
@@ -129,7 +141,11 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		return undefined;
 	}
 
-	async putRecord<T extends BaseRecord>(tableName: TableName, record: T): Promise<void> {
+	async putRecord<T extends BaseRecord>(
+		tableName: TableName,
+		record: T,
+		options?: DatabaseWriteOptions
+	): Promise<void> {
 		const db = await this.getDb();
 
 		const b = recordToBindings(record);
@@ -150,9 +166,14 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 				b.data
 			]
 		);
+		this.emitWriteEvent(tableName, 'put', [record.id], options);
 	}
 
-	async putRecords<T extends BaseRecord>(tableName: TableName, records: T[]): Promise<void> {
+	async putRecords<T extends BaseRecord>(
+		tableName: TableName,
+		records: T[],
+		options?: DatabaseWriteOptions
+	): Promise<void> {
 		const db = await this.getDb();
 
 		const chunkSize = 50;
@@ -190,19 +211,52 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 				values
 			);
 		}
+
+		this.emitWriteEvent(
+			tableName,
+			'putMany',
+			records.map((record) => record.id),
+			options
+		);
 	}
 
-	async deleteRecord(tableName: TableName, id: string): Promise<void> {
+	async deleteRecord(
+		tableName: TableName,
+		id: string,
+		options?: DatabaseWriteOptions
+	): Promise<void> {
 		const db = await this.getDb();
 		await db.execute(`DELETE FROM ${tableName} WHERE id = $1`, [id]);
+		this.emitWriteEvent(tableName, 'delete', [id], options);
 	}
 
-	async deleteByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<void> {
+	async deleteByIndex(
+		tableName: TableName,
+		indexName: string,
+		indexValue: string,
+		options?: DatabaseWriteOptions
+	): Promise<void> {
 		const db = await this.getDb();
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const rows = await db.select<any[]>(`SELECT id FROM ${tableName} WHERE ${indexName} = $1`, [
+			indexValue
+		]);
 		await db.execute(`DELETE FROM ${tableName} WHERE ${indexName} = $1`, [indexValue]);
+		this.emitWriteEvent(
+			tableName,
+			'deleteByIndex',
+			rows
+				.map((row) => row.id)
+				.filter((id): id is string => typeof id === 'string'),
+			options
+		);
 	}
 
-	async softDeleteRecord(tableName: TableName, id: string): Promise<void> {
+	async softDeleteRecord(
+		tableName: TableName,
+		id: string,
+		options?: DatabaseWriteOptions
+	): Promise<void> {
 		const db = await this.getDb();
 		const now = Date.now();
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -211,14 +265,15 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 			const record = parseRecord<BaseRecord>(rows[0]);
 			record.isDeleted = true;
 			record.updatedAt = now;
-			await this.putRecord(tableName, record);
+			await this.putRecord(tableName, record, { origin: options?.origin });
 		}
 	}
 
 	async softDeleteByIndex(
 		tableName: TableName,
 		indexName: string,
-		indexValue: string
+		indexValue: string,
+		options?: DatabaseWriteOptions
 	): Promise<void> {
 		const db = await this.getDb();
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -236,7 +291,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		}
 
 		if (recordsToUpdate.length > 0) {
-			await this.putRecords(tableName, recordsToUpdate);
+			await this.putRecords(tableName, recordsToUpdate, { origin: options?.origin });
 		}
 	}
 
@@ -361,5 +416,27 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 			await db.execute('ROLLBACK');
 			throw error;
 		}
+	}
+
+	private emitWriteEvent(
+		tableName: TableName,
+		operation:
+			| 'put'
+			| 'putMany'
+			| 'delete'
+			| 'deleteByIndex'
+			| 'softDelete'
+			| 'softDeleteByIndex',
+		ids: string[],
+		options?: DatabaseWriteOptions
+	): void {
+		if (ids.length === 0) return;
+
+		this.writeEvents.emit({
+			tableName,
+			operation,
+			ids,
+			origin: options?.origin ?? 'local'
+		});
 	}
 }

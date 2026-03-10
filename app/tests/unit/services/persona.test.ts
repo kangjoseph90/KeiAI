@@ -8,7 +8,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PersonaService, type PersonaFields } from '$lib/services/content/persona';
 import { getActiveSession } from '$lib/services/session';
 import { localDB, type PersonaRecord } from '$lib/adapters/db';
-import { DataSyncService } from '$lib/services/sync';
 import { encrypt, decrypt } from '$lib/crypto';
 import { AppError } from '$lib/shared/errors';
 
@@ -28,13 +27,6 @@ vi.mock('$lib/adapters/db', () => ({
 		getRecord: vi.fn(),
 		putRecord: vi.fn(),
 		softDeleteRecord: vi.fn()
-	}
-}));
-
-vi.mock('$lib/services/sync', () => ({
-	DataSyncService: {
-		pushRecord: vi.fn(),
-		pushById: vi.fn()
 	}
 }));
 
@@ -110,11 +102,10 @@ describe('PersonaService', () => {
 	});
 
 	describe('create', () => {
-		it('should create and sync', async () => {
+		it('should create a persona', async () => {
 			const result = await PersonaService.create({ name: 'New' });
 			expect(result.name).toBe('New');
 			expect(localDB.putRecord).toHaveBeenCalled();
-			expect(DataSyncService.pushRecord).toHaveBeenCalled();
 		});
 	});
 

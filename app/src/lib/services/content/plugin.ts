@@ -1,7 +1,6 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type PluginRecord } from '$lib/adapters/db';
-import { DataSyncService } from '../sync';
 import { deepMerge } from '$lib/shared/defaults';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
@@ -102,7 +101,6 @@ export class PluginService {
 				encryptedDataIV: enc.iv
 			};
 			await localDB.putRecord<PluginRecord>('plugins', newRecord);
-			void DataSyncService.pushRecord('plugins', newRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create plugin', error);
@@ -127,7 +125,6 @@ export class PluginService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('plugins', record);
-			void DataSyncService.pushRecord('plugins', record);
 
 			return { id, ...updated };
 		} catch (error) {
@@ -139,7 +136,6 @@ export class PluginService {
 	static async delete(id: string): Promise<void> {
 		try {
 			await localDB.softDeleteRecord('plugins', id);
-			void DataSyncService.pushById('plugins', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete plugin', error);

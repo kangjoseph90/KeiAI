@@ -1,7 +1,6 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type CharacterSummaryRecord, type CharacterDataRecord } from '$lib/adapters/db';
-import { DataSyncService } from '../sync';
 import type { OrderedRef, FolderDef, AssetRef } from '$lib/shared/types';
 import { deepMerge } from '$lib/shared/defaults';
 import { AppError } from '$lib/shared/errors';
@@ -170,8 +169,6 @@ export class CharacterService {
 				await localDB.putRecord<CharacterSummaryRecord>('characterSummaries', summaryRecord);
 				await localDB.putRecord<CharacterDataRecord>('characterData', dataRecord);
 			});
-			void DataSyncService.pushRecord('characterSummaries', summaryRecord, true);
-			void DataSyncService.pushRecord('characterData', dataRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create character', error);
@@ -203,7 +200,6 @@ export class CharacterService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('characterSummaries', record);
-			void DataSyncService.pushRecord('characterSummaries', record);
 
 			return { id, ...updated };
 		} catch (error) {
@@ -232,7 +228,6 @@ export class CharacterService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('characterData', record);
-			void DataSyncService.pushRecord('characterData', record);
 
 			return updated;
 		} catch (error) {
@@ -251,8 +246,6 @@ export class CharacterService {
 		let updatedSummary: CharacterSummaryFields | undefined;
 		let updatedData: CharacterDataFields | undefined;
 		const finalUpdatedAt = Date.now();
-		let summaryRecordToSync: CharacterSummaryRecord | undefined;
-		let dataRecordToSync: CharacterDataRecord | undefined;
 
 		try {
 			await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
@@ -274,7 +267,6 @@ export class CharacterService {
 					summaryRecord.encryptedDataIV = summaryEnc.iv;
 					summaryRecord.updatedAt = finalUpdatedAt;
 					await localDB.putRecord('characterSummaries', summaryRecord);
-					summaryRecordToSync = summaryRecord;
 				} else {
 					updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
 				}
@@ -287,7 +279,6 @@ export class CharacterService {
 					dataRecord.encryptedDataIV = dataEnc.iv;
 					dataRecord.updatedAt = finalUpdatedAt;
 					await localDB.putRecord('characterData', dataRecord);
-					dataRecordToSync = dataRecord;
 				} else {
 					updatedData = await decryptDataFields(masterKey, dataRecord);
 				}
@@ -301,10 +292,6 @@ export class CharacterService {
 			throw new AppError('NOT_FOUND', 'Character not found');
 		}
 
-		if (summaryRecordToSync)
-			void DataSyncService.pushRecord('characterSummaries', summaryRecordToSync);
-		if (dataRecordToSync) void DataSyncService.pushRecord('characterData', dataRecordToSync);
-
 		return {
 			id,
 			...updatedSummary,
@@ -313,7 +300,6 @@ export class CharacterService {
 	}
 
 	static async delete(id: string): Promise<void> {
-		const deleteTs = Date.now();
 		try {
 			await localDB.transaction(
 				[
@@ -343,12 +329,6 @@ export class CharacterService {
 					await localDB.softDeleteRecord('characterData', id);
 				}
 			);
-			try {
-				const { userId } = getActiveSession();
-				void DataSyncService.pushRecentWrites(userId, deleteTs);
-			} catch {
-				/* not logged in */
-			}
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete character', error);

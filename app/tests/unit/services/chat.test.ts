@@ -2,7 +2,7 @@
  * Chat Service Tests
  *
  * Tests the ChatService which handles chat CRUD operations
- * with encryption, database transactions, and sync integration.
+ * with encryption and database transactions.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -36,13 +36,6 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/sync', () => ({
-	DataSyncService: {
-		pushRecord: vi.fn(),
-		pushRecentWrites: vi.fn()
-	}
-}));
-
 vi.mock('$lib/services/content/guards', () => ({
 	assertCharacterExists: vi.fn(),
 	assertChatOwnedByCharacter: vi.fn()
@@ -69,7 +62,6 @@ vi.mock('$lib/shared/defaults', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { DataSyncService } from '$lib/services/sync';
 import { assertCharacterExists, assertChatOwnedByCharacter } from '$lib/services/content/guards';
 import { generateId } from '$lib/shared/id';
 import { deepMerge } from '$lib/shared/defaults';
@@ -114,9 +106,6 @@ describe('ChatService', () => {
 		vi.mocked(assertCharacterExists).mockResolvedValue(undefined);
 		vi.mocked(assertChatOwnedByCharacter).mockResolvedValue(undefined);
 
-		// DataSyncService void calls
-		vi.mocked(DataSyncService.pushRecord).mockResolvedValue(undefined);
-		vi.mocked(DataSyncService.pushRecentWrites).mockResolvedValue(undefined);
 	});
 
 	describe('listByCharacter', () => {
@@ -270,7 +259,6 @@ describe('ChatService', () => {
 				'rw',
 				expect.any(Function)
 			);
-			expect(DataSyncService.pushRecord).toHaveBeenCalledTimes(2);
 		});
 
 		it('should verify character exists before creating chat', async () => {

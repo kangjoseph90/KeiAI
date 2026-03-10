@@ -28,13 +28,6 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/sync', () => ({
-	DataSyncService: {
-		pushRecord: vi.fn(),
-		pushRecentWrites: vi.fn()
-	}
-}));
-
 vi.mock('$lib/shared/id', () => ({
 	generateId: vi.fn(() => 'test-module-id')
 }));
@@ -42,7 +35,6 @@ vi.mock('$lib/shared/id', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { DataSyncService } from '$lib/services/sync';
 
 describe('ModuleService', () => {
 	const mockUserId = 'user-123';
@@ -127,13 +119,12 @@ describe('ModuleService', () => {
 	});
 
 	describe('create', () => {
-		it('should create and sync new module', async () => {
+		it('should create a new module', async () => {
 			const result = await ModuleService.create({ name: 'New Module' });
 
 			expect(result.id).toBe('test-module-id');
 			expect(result.name).toBe('New Module');
 			expect(localDB.putRecord).toHaveBeenCalled();
-			expect(DataSyncService.pushRecord).toHaveBeenCalledWith('modules', expect.any(Object), true);
 		});
 
 		it('should throw AppError on failure', async () => {
@@ -180,7 +171,6 @@ describe('ModuleService', () => {
 			expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('lorebooks', 'ownerId', 'mod-1');
 			expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('scripts', 'ownerId', 'mod-1');
 			expect(localDB.softDeleteRecord).toHaveBeenCalledWith('modules', 'mod-1');
-			expect(DataSyncService.pushRecentWrites).toHaveBeenCalled();
 		});
 	});
 });

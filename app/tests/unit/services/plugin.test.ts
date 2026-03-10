@@ -26,13 +26,6 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/sync', () => ({
-	DataSyncService: {
-		pushRecord: vi.fn(),
-		pushById: vi.fn()
-	}
-}));
-
 vi.mock('$lib/shared/id', () => ({
 	generateId: vi.fn(() => 'test-plugin-id')
 }));
@@ -40,7 +33,6 @@ vi.mock('$lib/shared/id', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { DataSyncService } from '$lib/services/sync';
 
 describe('PluginService', () => {
 	const mockUserId = 'user-123';
@@ -120,12 +112,11 @@ describe('PluginService', () => {
 	});
 
 	describe('create', () => {
-		it('should create and sync new plugin', async () => {
+		it('should create a new plugin', async () => {
 			const result = await PluginService.create({ name: 'New Plugin' });
 
 			expect(result.id).toBe('test-plugin-id');
 			expect(localDB.putRecord).toHaveBeenCalled();
-			expect(DataSyncService.pushRecord).toHaveBeenCalledWith('plugins', expect.any(Object), true);
 		});
 	});
 
@@ -152,11 +143,10 @@ describe('PluginService', () => {
 	});
 
 	describe('delete', () => {
-		it('should soft delete and sync', async () => {
+		it('should soft delete a plugin', async () => {
 			await PluginService.delete('p-1');
 
 			expect(localDB.softDeleteRecord).toHaveBeenCalledWith('plugins', 'p-1');
-			expect(DataSyncService.pushById).toHaveBeenCalledWith('plugins', 'p-1');
 		});
 	});
 });

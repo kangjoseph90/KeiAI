@@ -8,7 +8,6 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ChatSummaryRecord, type ChatDataRecord } from '$lib/adapters/db';
-import { DataSyncService } from '../sync';
 import type { FolderDef, OrderedRef } from '$lib/shared/types';
 import { deepMerge } from '$lib/shared/defaults';
 import { assertCharacterExists, assertChatOwnedByCharacter } from './guards';
@@ -178,8 +177,6 @@ export class ChatService {
 				await localDB.putRecord<ChatSummaryRecord>('chatSummaries', summaryRecord);
 				await localDB.putRecord<ChatDataRecord>('chatData', dataRecord);
 			});
-			void DataSyncService.pushRecord('chatSummaries', summaryRecord, true);
-			void DataSyncService.pushRecord('chatData', dataRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create chat', error);
@@ -205,7 +202,6 @@ export class ChatService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('chatSummaries', record);
-			void DataSyncService.pushRecord('chatSummaries', record);
 
 			return { id, characterId: record.characterId, ...updated };
 		} catch (error) {
@@ -231,7 +227,6 @@ export class ChatService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('chatData', record);
-			void DataSyncService.pushRecord('chatData', record);
 
 			return updated;
 		} catch (error) {
@@ -251,8 +246,6 @@ export class ChatService {
 		let updatedData: ChatDataFields | undefined;
 		let characterId: string | undefined;
 		const finalUpdatedAt = Date.now();
-		let summaryRecordToSync: ChatSummaryRecord | undefined;
-		let dataRecordToSync: ChatDataRecord | undefined;
 
 		try {
 			await localDB.transaction(['chatSummaries', 'chatData'], 'rw', async () => {
@@ -272,7 +265,6 @@ export class ChatService {
 					summaryRecord.encryptedDataIV = summaryEnc.iv;
 					summaryRecord.updatedAt = finalUpdatedAt;
 					await localDB.putRecord('chatSummaries', summaryRecord);
-					summaryRecordToSync = summaryRecord;
 				} else {
 					updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
 				}
@@ -285,7 +277,6 @@ export class ChatService {
 					dataRecord.encryptedDataIV = dataEnc.iv;
 					dataRecord.updatedAt = finalUpdatedAt;
 					await localDB.putRecord('chatData', dataRecord);
-					dataRecordToSync = dataRecord;
 				} else {
 					updatedData = await decryptDataFields(masterKey, dataRecord);
 				}
@@ -299,9 +290,6 @@ export class ChatService {
 			throw new AppError('NOT_FOUND', 'Chat not found');
 		}
 
-		if (summaryRecordToSync) void DataSyncService.pushRecord('chatSummaries', summaryRecordToSync);
-		if (dataRecordToSync) void DataSyncService.pushRecord('chatData', dataRecordToSync);
-
 		return { id, characterId, ...updatedSummary, data: updatedData };
 	}
 
@@ -310,7 +298,6 @@ export class ChatService {
 		if (expectedCharacterId) {
 			await assertChatOwnedByCharacter(id, expectedCharacterId);
 		}
-		const deleteTs = Date.now();
 
 		try {
 			await localDB.transaction(
@@ -324,12 +311,6 @@ export class ChatService {
 					await localDB.softDeleteRecord('chatData', id);
 				}
 			);
-			try {
-				const { userId } = getActiveSession();
-				void DataSyncService.pushRecentWrites(userId, deleteTs);
-			} catch {
-				/* not logged in */
-			}
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete chat', error);

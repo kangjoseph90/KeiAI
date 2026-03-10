@@ -14,42 +14,33 @@ import { appStorage } from '$lib/adapters/storage';
 import type { AssetFields } from '../content/asset/types';
 import { AppError } from '$lib/shared/errors';
 import { encryptAsset } from '../content/asset/util';
+import { BaseSyncEngine, type SyncStatus } from './base';
 
 // ─── Sync State ───────────────────────────────────────────────────────────
 
-export type AssetSyncState = 'idle' | 'syncing' | 'network_error' | 'quota_error' | 'auth_error';
-
-export interface AssetSyncStatus {
-	state: AssetSyncState;
+export interface AssetSyncStatus extends SyncStatus {
 	pendingCount: number;
 	currentAssetId?: string;
 }
 
 // ─── Asset Sync Service ────────────────────────────────────────────────────
 
-class AssetSyncServiceClass {
-	private state: AssetSyncState = 'idle';
+export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 	private currentAssetId: string | null = null;
 	private abortController: AbortController | null = null;
 
+	constructor() {
+		super({ pendingCount: 0 });
+	}
+
 	// ── State Management ─────────────────────────────────────────────────
 
-	getState(): AssetSyncStatus {
+	override getState(): AssetSyncStatus {
 		return {
-			state: this.state,
-			pendingCount: this.getPendingCount(),
+			...super.getState(),
+			pendingCount: super.getState().pendingCount,
 			currentAssetId: this.currentAssetId ?? undefined
 		};
-	}
-
-	private getPendingCount(): number {
-		// This is cached/estimated - actual count requires DB query
-		return 0; // TODO: Implement proper counting
-	}
-
-	private setState(newState: AssetSyncState): void {
-		this.state = newState;
-		// TODO: Notify store/UI subscribers
 	}
 
 	// ── Lifecycle ─────────────────────────────────────────────────────────
@@ -59,42 +50,28 @@ class AssetSyncServiceClass {
 	 * Processes local assets in the background.
 	 */
 	async start(): Promise<void> {
-		if (this.state === 'syncing') return;
-
-		this.setState('syncing');
-		this.abortController = new AbortController();
-
-		try {
-			await this.processQueue();
-			this.setState('idle');
-		} catch (error) {
-			if ((error as Error).name === 'AbortError') {
-				this.setState('idle');
-			} else {
-				console.error('Asset sync error:', error);
-				this.setState('network_error');
-			}
-		}
+		await this.trigger();
 	}
 
 	/**
 	 * Stop the sync engine.
 	 */
-	stop(): void {
+	override stop(): void {
 		this.abortController?.abort();
 		this.abortController = null;
 		this.currentAssetId = null;
-		this.setState('idle');
+		this.updateStatus({
+			pendingCount: 0,
+			currentAssetId: undefined
+		});
+		super.stop();
 	}
 
 	/**
 	 * Retry sync after an error.
 	 */
 	async retry(): Promise<void> {
-		if (this.state === 'syncing') return;
-
-		this.abortController = new AbortController();
-		await this.start();
+		await this.trigger();
 	}
 
 	// ── Queue Processing ─────────────────────────────────────────────────
@@ -103,7 +80,9 @@ class AssetSyncServiceClass {
 	 * Process all local assets that need to be synced.
 	 * Private assets are always synced. Inlay assets are synced only if user enabled sync.
 	 */
-	private async processQueue(): Promise<void> {
+	protected override async performSync(): Promise<void> {
+		this.abortController = new AbortController();
+
 		const { userId, masterKey } = getActiveSession();
 
 		// Get all assets with status='local'
@@ -113,20 +92,35 @@ class AssetSyncServiceClass {
 		const toSync = allAssets.filter(
 			(a) => a.status === 'local' && (a.kind === 'private' || a.kind === 'inlay')
 		);
+		this.updateStatus({ pendingCount: toSync.length, progress: undefined });
 
-		for (const entry of toSync) {
+		for (const [index, entry] of toSync.entries()) {
 			if (this.abortController?.signal.aborted) break;
 
 			this.currentAssetId = entry.id;
+			this.updateStatus({
+				currentAssetId: entry.id,
+				progress: {
+					completed: index,
+					total: toSync.length,
+					currentItemId: entry.id
+				}
+			});
 
 			try {
 				await this.syncAsset(entry.id, masterKey, userId);
+				this.updateStatus({
+					pendingCount: Math.max(toSync.length - (index + 1), 0),
+					progress: {
+						completed: index + 1,
+						total: toSync.length,
+						currentItemId: entry.id
+					}
+				});
 			} catch (error) {
 				if (this.isQuotaError(error)) {
-					this.setState('quota_error');
 					throw error; // Stop processing on quota error
 				} else if (this.isAuthError(error)) {
-					this.setState('auth_error');
 					throw error; // Stop processing on auth error
 				}
 				// Network errors: log and continue
@@ -135,6 +129,11 @@ class AssetSyncServiceClass {
 		}
 
 		this.currentAssetId = null;
+		this.updateStatus({
+			currentAssetId: undefined,
+			pendingCount: 0,
+			progress: undefined
+		});
 	}
 
 	/**
@@ -145,7 +144,7 @@ class AssetSyncServiceClass {
 		const record = await localDB.getRecord<AssetRecord>('assets', id);
 		if (!record || record.isDeleted) {
 			// Asset was deleted, skip
-			await localDB.deleteRecord('assetRegistry', id);
+			await localDB.deleteRecord('assetRegistry', id, { origin: 'sync' });
 			return;
 		}
 
@@ -186,7 +185,7 @@ class AssetSyncServiceClass {
 
 		entry.status = 'remote';
 		entry.updatedAt = Date.now();
-		await localDB.putRecord('assetRegistry', entry);
+		await localDB.putRecord('assetRegistry', entry, { origin: 'sync' });
 	}
 
 	// ── Promotion ─────────────────────────────────────────────────────────
@@ -197,7 +196,7 @@ class AssetSyncServiceClass {
 	 */
 	async promoteToPublic(id: string): Promise<string> {
 		// Wait for current sync to finish
-		if (this.state === 'syncing') {
+		if (this.getState().state === 'syncing') {
 			this.stop();
 		}
 
@@ -227,7 +226,7 @@ class AssetSyncServiceClass {
 			});
 	}
 
-	private isQuotaError(error: unknown): boolean {
+	protected override isQuotaError(error: unknown): boolean {
 		if (error instanceof AppError) {
 			return error.code === 'QUOTA_EXCEEDED';
 		}
@@ -237,7 +236,7 @@ class AssetSyncServiceClass {
 		return false;
 	}
 
-	private isAuthError(error: unknown): boolean {
+	protected override isAuthError(error: unknown): boolean {
 		if (error instanceof AppError) {
 			return error.code === 'NOT_AUTHENTICATED' || error.code === 'SESSION_EXPIRED';
 		}
@@ -250,4 +249,4 @@ class AssetSyncServiceClass {
 
 // ─── Export Singleton ─────────────────────────────────────────────────────
 
-export const AssetSyncService = new AssetSyncServiceClass();
+export const AssetSyncService = new AssetSyncEngine();

@@ -30,13 +30,6 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/sync', () => ({
-	DataSyncService: {
-		pushRecord: vi.fn(),
-		pushById: vi.fn()
-	}
-}));
-
 vi.mock('$lib/services/content/guards', () => ({
 	assertChatExists: vi.fn(),
 	assertMessageInChat: vi.fn()
@@ -67,7 +60,6 @@ vi.mock('fractional-indexing', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { DataSyncService } from '$lib/services/sync';
 import { assertChatExists, assertMessageInChat } from '$lib/services/content/guards';
 import { generateId } from '$lib/shared/id';
 import { deepMerge } from '$lib/shared/defaults';
@@ -114,9 +106,6 @@ describe('MessageService', () => {
 		vi.mocked(assertChatExists).mockResolvedValue(undefined);
 		vi.mocked(assertMessageInChat).mockResolvedValue(undefined);
 
-		// DataSyncService void calls
-		vi.mocked(DataSyncService.pushRecord).mockResolvedValue(undefined);
-		vi.mocked(DataSyncService.pushById).mockResolvedValue(undefined);
 	});
 
 	describe('getMessagesBefore (pagination)', () => {
@@ -400,7 +389,6 @@ describe('MessageService', () => {
 			await MessageService.delete('msg-1');
 
 			expect(localDB.softDeleteRecord).toHaveBeenCalledWith('messages', 'msg-1');
-			expect(DataSyncService.pushById).toHaveBeenCalledWith('messages', 'msg-1');
 		});
 
 		it('should verify chat ownership when expectedChatId is provided', async () => {

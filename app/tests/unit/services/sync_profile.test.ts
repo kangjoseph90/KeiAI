@@ -59,6 +59,7 @@ describe('ProfileSyncService', () => {
 			masterKey: {} as CryptoKey
 		});
 		(pb.authStore as unknown as { isValid: boolean }).isValid = true;
+		(ProfileSyncService as unknown as { subscribed: boolean }).subscribed = false;
 	});
 
 	describe('pushProfile', () => {
@@ -128,6 +129,7 @@ describe('ProfileSyncService', () => {
 			expect(mockCollection.getOne).toHaveBeenCalledWith(mockUserId);
 			expect(ProfileService.applyRemoteUpdate).toHaveBeenCalled();
 		});
+
 	});
 
 	describe('Realtime Subscription', () => {

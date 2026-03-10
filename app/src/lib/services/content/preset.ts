@@ -1,7 +1,6 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type PresetSummaryRecord, type PresetDataRecord } from '$lib/adapters/db';
-import { DataSyncService } from '../sync';
 import { deepMerge } from '$lib/shared/defaults';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
@@ -202,8 +201,6 @@ export class PresetService {
 				await localDB.putRecord<PresetSummaryRecord>('presetSummaries', summaryRecord);
 				await localDB.putRecord<PresetDataRecord>('presetData', dataRecord);
 			});
-			void DataSyncService.pushRecord('presetSummaries', summaryRecord, true);
-			void DataSyncService.pushRecord('presetData', dataRecord, true);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to create preset', error);
@@ -229,7 +226,6 @@ export class PresetService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('presetSummaries', record);
-			void DataSyncService.pushRecord('presetSummaries', record);
 
 			return { id, ...updated };
 		} catch (error) {
@@ -258,7 +254,6 @@ export class PresetService {
 			record.encryptedDataIV = enc.iv;
 			record.updatedAt = Date.now();
 			await localDB.putRecord('presetData', record);
-			void DataSyncService.pushRecord('presetData', record);
 
 			return updated;
 		} catch (error) {
@@ -277,8 +272,6 @@ export class PresetService {
 		let updatedSummary: PresetSummaryFields | undefined;
 		let updatedData: PresetDataFields | undefined;
 		const finalUpdatedAt = Date.now();
-		let summaryRecordToSync: PresetSummaryRecord | undefined;
-		let dataRecordToSync: PresetDataRecord | undefined;
 
 		try {
 			await localDB.transaction(['presetSummaries', 'presetData'], 'rw', async () => {
@@ -297,7 +290,6 @@ export class PresetService {
 					summaryRecord.encryptedDataIV = summaryEnc.iv;
 					summaryRecord.updatedAt = finalUpdatedAt;
 					await localDB.putRecord('presetSummaries', summaryRecord);
-					summaryRecordToSync = summaryRecord;
 				} else {
 					updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
 				}
@@ -310,7 +302,6 @@ export class PresetService {
 					dataRecord.encryptedDataIV = dataEnc.iv;
 					dataRecord.updatedAt = finalUpdatedAt;
 					await localDB.putRecord('presetData', dataRecord);
-					dataRecordToSync = dataRecord;
 				} else {
 					updatedData = await decryptDataFields(masterKey, dataRecord);
 				}
@@ -323,10 +314,6 @@ export class PresetService {
 		if (!updatedSummary || !updatedData) {
 			throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 		}
-
-		if (summaryRecordToSync)
-			void DataSyncService.pushRecord('presetSummaries', summaryRecordToSync);
-		if (dataRecordToSync) void DataSyncService.pushRecord('presetData', dataRecordToSync);
 
 		return {
 			id,
@@ -341,8 +328,6 @@ export class PresetService {
 				await localDB.softDeleteRecord('presetSummaries', id);
 				await localDB.softDeleteRecord('presetData', id);
 			});
-			void DataSyncService.pushById('presetSummaries', id);
-			void DataSyncService.pushById('presetData', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 			throw new AppError('DB_WRITE_FAILED', 'Failed to delete preset', error);

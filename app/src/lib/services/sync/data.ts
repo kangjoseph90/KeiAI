@@ -6,7 +6,7 @@
  *
  * - Pull: PocketBase Realtime subscription (SSE, push-based) for live updates
  *         + paged catch-up pull on boot / reconnect (offline gap recovery)
- * - Push: event-driven, called by the service layer after every local write
+ * - Push: event-driven, triggered from local DB write events after local mutations
  *
  * The server never decrypts or inspects any data.
  *
@@ -17,22 +17,32 @@
 import { pb } from '$lib/adapters/pb';
 import { getActiveSession } from '../session';
 import { toBase64, fromBase64 } from '$lib/crypto';
-import { localDB, type TableName, SYNC_TABLES, type BaseRecord } from '$lib/adapters/db';
+import {
+	localDB,
+	type TableName,
+	SYNC_TABLES,
+	type BaseRecord,
+	type DatabaseWriteEvent
+} from '$lib/adapters/db';
 import { appKV } from '$lib/adapters/kv';
+import { BaseSyncEngine } from './base';
 
 type RealtimeEvent = {
 	action: string;
 	record: Record<string, unknown>;
 };
 
-export class DataSyncService {
+export class DataSyncEngine extends BaseSyncEngine {
 	// ─── State ────────────────────────────────────────────────────────
-	private static syncPromise: Promise<void> | null = null;
-	private static subscribed = false;
+	private subscribed = false;
 
-	private static readonly PAGE_SIZE = 200;
+	constructor() {
+		super();
+	}
 
-	private static readonly ALLOWED_RECORD_FIELDS = new Set([
+	private readonly PAGE_SIZE = 200;
+
+	private readonly ALLOWED_RECORD_FIELDS = new Set([
 		'id',
 		'userId',
 		'createdAt',
@@ -48,11 +58,11 @@ export class DataSyncService {
 
 	// ─── Realtime Subscriptions ───────────────────────────────────────
 
-	static get isSubscribed(): boolean {
+	get isSubscribed(): boolean {
 		return this.subscribed;
 	}
 
-	static async subscribeRealtime(): Promise<void> {
+	async subscribeRealtime(): Promise<void> {
 		if (!pb.authStore.isValid) return;
 		let isGuest: boolean;
 		try {
@@ -70,7 +80,7 @@ export class DataSyncService {
 		this.subscribed = true;
 	}
 
-	static async unsubscribeRealtime(): Promise<void> {
+	async unsubscribeRealtime(): Promise<void> {
 		if (!this.subscribed) return;
 		for (const table of SYNC_TABLES) {
 			try {
@@ -89,7 +99,7 @@ export class DataSyncService {
 	 * Call this when there is no existing local user record (fresh install or
 	 * post-IDB-wipe login) so the next syncAll() fetches everything from scratch.
 	 */
-	static async resetCursors(userId: string): Promise<void> {
+	async resetCursors(userId: string): Promise<void> {
 		for (const table of SYNC_TABLES) {
 			await appKV.remove(`lastSync_${table}_${userId}`);
 		}
@@ -102,15 +112,11 @@ export class DataSyncService {
 	 * Downloads all server-side changes since the last cursor, applies LWW, and
 	 * pushes corrections for records where local is newer (written offline).
 	 */
-	static async syncAll(): Promise<void> {
-		if (this.syncPromise) return this.syncPromise;
-		this.syncPromise = this.pullAll().finally(() => {
-			this.syncPromise = null;
-		});
-		return this.syncPromise;
+	async syncAll(): Promise<void> {
+		await this.trigger();
 	}
 
-	private static async pullAll(): Promise<void> {
+	protected override async performSync(): Promise<void> {
 		if (!pb.authStore.isValid) return;
 		let userId: string;
 		let isGuest: boolean;
@@ -121,18 +127,44 @@ export class DataSyncService {
 		}
 		if (isGuest) return;
 
-		for (const table of SYNC_TABLES) {
-			await this.pullTable(table, userId);
+		let firstError: unknown = null;
+
+		for (const [index, table] of SYNC_TABLES.entries()) {
+			this.updateStatus({
+				progress: {
+					completed: index,
+					total: SYNC_TABLES.length,
+					currentItemId: table
+				}
+			});
+
+			try {
+				await this.pullTable(table, userId);
+				this.updateStatus({
+					progress: {
+						completed: index + 1,
+						total: SYNC_TABLES.length,
+						currentItemId: table
+					}
+				});
+			} catch (error) {
+				firstError ??= error;
+			}
+		}
+
+		if (firstError) {
+			throw firstError;
 		}
 	}
 
 	/** Paged pull: fetches server changes since cursor in PAGE_SIZE batches. */
-	private static async pullTable(tableName: TableName, userId: string): Promise<void> {
+	private async pullTable(tableName: TableName, userId: string): Promise<void> {
 		const syncKey = `lastSync_${tableName}_${userId}`;
 		const lastSyncTime = Number.parseInt((await appKV.get(syncKey)) || '0', 10) || 0;
 		let nextCursor = lastSyncTime;
 		let cursorSafeToAdvance = true;
 		let page = 1;
+		let syncError: unknown = null;
 		// Records where the local version is newer than what the server returned.
 		// Accumulated across all pages and pushed as a single batch after the pull.
 		const offlineWrites: BaseRecord[] = [];
@@ -154,7 +186,7 @@ export class DataSyncService {
 					const localAt = local?.updatedAt ?? 0;
 
 					if (!local || remoteAt > localAt) {
-						await localDB.putRecord(tableName, remote);
+						await localDB.putRecord(tableName, remote, { origin: 'sync' });
 						nextCursor = Math.max(nextCursor, remoteAt);
 					} else if (remoteAt < localAt) {
 						offlineWrites.push(local);
@@ -169,6 +201,7 @@ export class DataSyncService {
 			}
 		} catch (err) {
 			cursorSafeToAdvance = false;
+			syncError = err;
 			console.error(`Failed to pull ${tableName}`, err);
 		}
 
@@ -181,6 +214,10 @@ export class DataSyncService {
 		if (offlineWrites.length > 0) {
 			void this.pushBatch(tableName, offlineWrites);
 		}
+
+		if (syncError) {
+			throw syncError;
+		}
 	}
 
 	/**
@@ -190,7 +227,7 @@ export class DataSyncService {
 	 * back by PocketBase, preserving data consistency.
 	 * Fire-and-forget: errors are logged but never thrown.
 	 */
-	private static async pushBatch(tableName: TableName, records: BaseRecord[]): Promise<void> {
+	private async pushBatch(tableName: TableName, records: BaseRecord[]): Promise<void> {
 		const batch = pb.createBatch();
 		for (const record of records) {
 			batch.collection(tableName).upsert(this.localToPbRecord(record));
@@ -205,7 +242,7 @@ export class DataSyncService {
 	// ─── Realtime Event Handler ───────────────────────────────────────
 
 	/** Apply a single realtime event pushed by PocketBase. */
-	private static async handleRealtimeEvent(tableName: TableName, e: RealtimeEvent): Promise<void> {
+	private async handleRealtimeEvent(tableName: TableName, e: RealtimeEvent): Promise<void> {
 		try {
 			const remote = this.pbToLocalRecord(e.record);
 			const local = await localDB.getRecord<BaseRecord>(tableName, remote.id);
@@ -213,7 +250,7 @@ export class DataSyncService {
 			const localAt = local?.updatedAt ?? 0;
 
 			if (!local || remoteAt > localAt) {
-				await localDB.putRecord(tableName, remote);
+				await localDB.putRecord(tableName, remote, { origin: 'sync' });
 			} else if (remoteAt < localAt) {
 				void this.pushRecord(tableName, local);
 			}
@@ -230,7 +267,7 @@ export class DataSyncService {
 	 * - isNew = false → upsert (server creates or updates as needed)
 	 * Fire-and-forget: errors are logged but never thrown.
 	 */
-	static async pushRecord(tableName: TableName, record: BaseRecord, isNew = false): Promise<void> {
+	async pushRecord(tableName: TableName, record: BaseRecord, isNew = false): Promise<void> {
 		if (!pb.authStore.isValid) return;
 		try {
 			const { isGuest } = getActiveSession();
@@ -259,9 +296,18 @@ export class DataSyncService {
 	 * Read a record from local DB and push it to the server.
 	 * Convenience wrapper for after softDeleteRecord() calls.
 	 */
-	static async pushById(tableName: TableName, id: string): Promise<void> {
+	async pushById(tableName: TableName, id: string): Promise<void> {
 		const record = await localDB.getRecord<BaseRecord>(tableName, id);
 		if (record) void this.pushRecord(tableName, record);
+	}
+
+	async handleLocalWrite(event: DatabaseWriteEvent): Promise<void> {
+		if (event.origin !== 'local' || !SYNC_TABLES.includes(event.tableName)) return;
+		if (event.operation === 'delete' || event.operation === 'deleteByIndex') return;
+
+		for (const id of event.ids) {
+			void this.pushById(event.tableName, id);
+		}
 	}
 
 	/**
@@ -269,7 +315,7 @@ export class DataSyncService {
 	 * as a single batch transaction.
 	 * Called by the service layer after cascade-delete transactions.
 	 */
-	static async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
+	async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
 		if (!pb.authStore.isValid) return;
 		try {
 			const { isGuest } = getActiveSession();
@@ -302,7 +348,7 @@ export class DataSyncService {
 
 	// ─── Serialization ────────────────────────────────────────────────
 
-	private static localToPbRecord(record: BaseRecord): Record<string, unknown> {
+	private localToPbRecord(record: BaseRecord): Record<string, unknown> {
 		const payload = { ...record } as Record<string, unknown>;
 		for (const key of Object.keys(payload)) {
 			if (payload[key] instanceof Uint8Array) {
@@ -312,7 +358,7 @@ export class DataSyncService {
 		return payload;
 	}
 
-	private static pbToLocalRecord(pbRecord: Record<string, unknown>): BaseRecord {
+	private pbToLocalRecord(pbRecord: Record<string, unknown>): BaseRecord {
 		const record: Record<string, unknown> = {};
 
 		for (const [key, value] of Object.entries(pbRecord)) {
@@ -328,17 +374,17 @@ export class DataSyncService {
 		return record as unknown as BaseRecord;
 	}
 
-	private static readonly BYTE_FIELD_NAMES = new Set([
+	private readonly BYTE_FIELD_NAMES = new Set([
 		'encryptedData',
 		'encryptedDataIV',
 		'masterKey'
 	]);
 
-	private static isBase64ByteField(fieldName: string): boolean {
+	private isBase64ByteField(fieldName: string): boolean {
 		return this.BYTE_FIELD_NAMES.has(fieldName);
 	}
 
-	private static normalizeTimestamp(primary: unknown, fallback: unknown): number {
+	private normalizeTimestamp(primary: unknown, fallback: unknown): number {
 		if (typeof primary === 'number') return primary;
 
 		if (typeof primary === 'string') {
@@ -356,3 +402,5 @@ export class DataSyncService {
 		return 0;
 	}
 }
+
+export const DataSyncService = new DataSyncEngine();

@@ -2,7 +2,7 @@
  * Script Service Tests
  *
  * Tests the ScriptService handling script CRUD operations
- * with encryption and sync integration.
+ * with encryption and local DB writes.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -29,13 +29,6 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/sync', () => ({
-	DataSyncService: {
-		pushRecord: vi.fn(),
-		pushById: vi.fn()
-	}
-}));
-
 vi.mock('$lib/services/content/guards', () => ({
 	assertOwnedResourceParentExists: vi.fn(),
 	assertScriptOwnedBy: vi.fn()
@@ -48,7 +41,6 @@ vi.mock('$lib/shared/id', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { DataSyncService } from '$lib/services/sync';
 import { assertOwnedResourceParentExists, assertScriptOwnedBy } from '$lib/services/content/guards';
 
 describe('ScriptService', () => {
@@ -172,7 +164,6 @@ describe('ScriptService', () => {
 					encryptedData: mockEncryptedData
 				})
 			);
-			expect(DataSyncService.pushRecord).toHaveBeenCalledWith('scripts', expect.any(Object), true);
 		});
 	});
 
@@ -194,7 +185,6 @@ describe('ScriptService', () => {
 			expect(result.name).toBe('Test Script'); // Preserved from existing
 
 			expect(localDB.putRecord).toHaveBeenCalledWith('scripts', expect.any(Object));
-			expect(DataSyncService.pushRecord).toHaveBeenCalledWith('scripts', expect.any(Object));
 		});
 
 		it('should throw if not found', async () => {
@@ -222,11 +212,10 @@ describe('ScriptService', () => {
 	});
 
 	describe('delete', () => {
-		it('should soft delete and trigger sync', async () => {
+		it('should soft delete the script', async () => {
 			await ScriptService.delete('s-1');
 
 			expect(localDB.softDeleteRecord).toHaveBeenCalledWith('scripts', 's-1');
-			expect(DataSyncService.pushById).toHaveBeenCalledWith('scripts', 's-1');
 		});
 
 		it('should assert ownership if provided', async () => {

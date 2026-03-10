@@ -13,3 +13,4 @@ export * from './content/plugin';
 export * from './content/preset';
 export * from './user/user';
 export * from './user/auth';
+export * from './sync';
