@@ -374,33 +374,13 @@ export class DataSyncEngine extends BaseSyncEngine {
 		return record as unknown as BaseRecord;
 	}
 
-	private readonly BYTE_FIELD_NAMES = new Set([
-		'encryptedData',
-		'encryptedDataIV',
-		'masterKey'
-	]);
+	private readonly BYTE_FIELD_NAMES = new Set(['encryptedData', 'encryptedDataIV', 'masterKey']);
 
 	private isBase64ByteField(fieldName: string): boolean {
 		return this.BYTE_FIELD_NAMES.has(fieldName);
 	}
 
-	private normalizeTimestamp(primary: unknown, fallback: unknown): number {
-		if (typeof primary === 'number') return primary;
-
-		if (typeof primary === 'string') {
-			const parsed = Number(primary);
-			if (!Number.isNaN(parsed)) return parsed;
-			const asDate = new Date(primary).getTime();
-			if (!Number.isNaN(asDate)) return asDate;
-		}
-
-		if (typeof fallback === 'string') {
-			const asDate = new Date(fallback).getTime();
-			if (!Number.isNaN(asDate)) return asDate;
-		}
-
-		return 0;
-	}
 }
+
 
 export const DataSyncService = new DataSyncEngine();

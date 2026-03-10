@@ -158,7 +158,7 @@ describe('ProfileSyncService', () => {
 
 	describe('Realtime Subscription', () => {
 		it('should subscribe to user record', async () => {
-			await ProfileSyncService.subscribe();
+			await ProfileSyncService.subscribeRealtime();
 
 			expect(mockCollection.subscribe).toHaveBeenCalledWith(mockUserId, expect.any(Function));
 		});
@@ -167,7 +167,7 @@ describe('ProfileSyncService', () => {
 			// Use type casting to access private static member for testing
 			(ProfileSyncService as unknown as { subscribed: boolean }).subscribed = true;
 
-			await ProfileSyncService.unsubscribe();
+			await ProfileSyncService.unsubscribeRealtime();
 
 			expect(mockCollection.unsubscribe).toHaveBeenCalledWith(mockUserId);
 		});

@@ -11,7 +11,7 @@
  * Pull: PB Realtime subscription on the user's own record.
  *
  * This module has NO dependency on Svelte stores - store refresh is handled
- * via a callback injected by SyncManager at subscribe() time.
+ * via a callback registered once via setOnRemoteUpdate().
  */
 
 import { pb } from '$lib/adapters/pb';
@@ -29,7 +29,15 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 		super();
 	}
 
-	// ─── Push (local → server) ──────────────────────────────────────
+	get isSubscribed(): boolean {
+		return this.subscribed;
+	}
+
+	setOnRemoteUpdate(callback: (() => void) | null): void {
+		this.onRemoteUpdate = callback;
+	}
+
+	// ─── Push (local → server) ──────────────────────────
 
 	/**
 	 * Push the current profile to PocketBase.
@@ -69,15 +77,9 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 
 	/**
 	 * Subscribe to Realtime updates on the current user's PB record.
-	 *
-	 * @param onRemoteUpdate - Callback invoked when a remote update is applied
-	 *                         locally. Typically `loadProfile` from the store layer.
-	 *                         Injected here so the sync layer stays store-agnostic.
 	 */
-	async subscribe(onRemoteUpdate?: () => void): Promise<void> {
+	async subscribeRealtime(): Promise<void> {
 		if (!pb.authStore.isValid || this.subscribed) return;
-
-		this.onRemoteUpdate = onRemoteUpdate ?? null;
 
 		let userId: string;
 		let isGuest: boolean;
@@ -97,7 +99,7 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 	/**
 	 * Unsubscribe from Realtime profile updates.
 	 */
-	async unsubscribe(): Promise<void> {
+	async unsubscribeRealtime(): Promise<void> {
 		if (!this.subscribed) return;
 
 		try {
@@ -107,7 +109,6 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 			// session may not exist anymore; that's fine
 		}
 		this.subscribed = false;
-		this.onRemoteUpdate = null;
 		this.updateStatus({ state: 'idle', progress: undefined });
 	}
 
@@ -189,6 +190,9 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 				remoteAvatar,
 				remoteUpdatedAt
 			);
+			if (this.lastPulledProfile) {
+				this.onRemoteUpdate?.();
+			}
 		} catch (err) {
 			console.error('[ProfileSync] Pull failed', err);
 			throw err;
