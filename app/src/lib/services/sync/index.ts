@@ -4,7 +4,7 @@
  * Directory layout:
  *   sync/data.ts     - DataSyncService:    encrypted app data (characters, chats, etc.)
  *   sync/profile.ts  - ProfileSyncService: plaintext user profile (name, avatar)
- *   sync/asset.ts    - AssetSyncService:   background asset upload engine
+ *   sync/asset.ts    - AssetSyncService:   asset sync (pull/push/realtime) + upload queue
  *   sync/index.ts    - SyncManager:        unified lifecycle (start/stop/reconnect)
  *
  * This module has NO dependency on Svelte stores. Store refresh callbacks are
@@ -21,7 +21,9 @@ export type { AssetSyncStatus } from './asset';
 import { DataSyncService } from './data';
 import { ProfileSyncService } from './profile';
 import { AssetSyncService } from './asset';
-import { localDB, SYNC_TABLES } from '$lib/adapters/db';
+import { appAsset } from '$lib/adapters/asset';
+import { appUser } from '$lib/adapters/user';
+import { localDB, TABLES } from '$lib/adapters/db';
 
 type SyncTriggerCleanup = () => void;
 export type SyncTriggerContext = {
@@ -66,9 +68,7 @@ export class SyncManager {
 		return () => window.removeEventListener('online', listener);
 	};
 
-	private static readonly visibilityTrigger: SyncTriggerRegistration = ({
-		resubscribeAndPull
-	}) => {
+	private static readonly visibilityTrigger: SyncTriggerRegistration = ({ resubscribeAndPull }) => {
 		const listener = () => {
 			if (document.visibilityState === 'visible') {
 				void resubscribeAndPull();
@@ -79,18 +79,47 @@ export class SyncManager {
 		return () => document.removeEventListener('visibilitychange', listener);
 	};
 
-	private static readonly localDbTrigger: SyncTriggerRegistration = ({ data, asset }) => {
-		return localDB.subscribeWriteEvents((event) => {
-			if (event.origin !== 'local') return;
-
-			if (SYNC_TABLES.includes(event.tableName)) {
-				void data.handleLocalWrite(event);
-			}
-
-			if (event.tableName === 'assets' || event.tableName === 'assetRegistry') {
-				void asset.start();
+	private static readonly localUserTrigger: SyncTriggerRegistration = ({ profile }) => {
+		return appUser.subscribeWriteEvents((events) => {
+			for (const event of events) {
+				if (event.origin !== 'local') continue;
+				void profile.pushProfile();
 			}
 		});
+	};
+
+	private static readonly localDbTrigger: SyncTriggerRegistration = ({ data, asset }) => {
+		const unsubscribeDb = localDB.subscribeWriteEvents((events) => {
+			for (const event of events) {
+				if (event.origin !== 'local') continue;
+
+				if (TABLES.includes(event.tableName)) {
+					void data.handleLocalWrite(event);
+				}
+			}
+		});
+
+		const unsubscribeAsset = appAsset.subscribeWriteEvents((events) => {
+			for (const event of events) {
+				if (event.origin !== 'local') continue;
+
+				if (event.tableName === 'assets') {
+					for (const id of event.ids) {
+						void asset.pushById(id);
+					}
+					continue;
+				}
+
+				if (event.tableName === 'assetRegistry') {
+					void asset.start();
+				}
+			}
+		});
+
+		return () => {
+			unsubscribeDb();
+			unsubscribeAsset();
+		};
 	};
 
 	private static initializedBuiltInTriggers = false;
@@ -115,16 +144,18 @@ export class SyncManager {
 		// Data sync Realtime subscriptions
 		void DataSyncService.subscribeRealtime();
 
+		// Asset sync Realtime subscription + catch-up pull + upload queue
+		void AssetSyncService.subscribeRealtime();
+		void AssetSyncService.start();
+
 		// Profile sync Realtime subscription
 		void ProfileSyncService.subscribe(this.onProfileUpdate ?? undefined);
-
-		// Asset sync - background queue processing
-		void AssetSyncService.start();
 		this.installTriggerSources();
 	}
 
 	static stopAutoSync(): void {
 		void DataSyncService.unsubscribeRealtime();
+		void AssetSyncService.unsubscribeRealtime();
 		void ProfileSyncService.unsubscribe();
 		AssetSyncService.stop();
 		this.clearTriggerSources();
@@ -167,14 +198,15 @@ export class SyncManager {
 	private static async resubscribeAndPull(): Promise<void> {
 		if (!DataSyncService.isSubscribed) {
 			await DataSyncService.subscribeRealtime();
-			await ProfileSyncService.subscribe(this.onProfileUpdate ?? undefined);
 		}
-		await DataSyncService.syncAll();
+		if (!AssetSyncService.isSubscribed) {
+			await AssetSyncService.subscribeRealtime();
+		}
+		await ProfileSyncService.subscribe(this.onProfileUpdate ?? undefined);
 
-		// Retry asset sync on reconnect
+		await DataSyncService.syncAll();
 		await AssetSyncService.start();
 
-		// Pull latest profile changes that may have been missed while offline
 		const updatedProfile = await ProfileSyncService.pullProfile();
 		if (updatedProfile && this.onProfileUpdate) {
 			this.onProfileUpdate();
@@ -187,6 +219,7 @@ export class SyncManager {
 		this.triggerRegistrations.add(this.fallbackPollTrigger);
 		this.triggerRegistrations.add(this.onlineTrigger);
 		this.triggerRegistrations.add(this.visibilityTrigger);
+		this.triggerRegistrations.add(this.localUserTrigger);
 		this.triggerRegistrations.add(this.localDbTrigger);
 		this.initializedBuiltInTriggers = true;
 	}

@@ -3,7 +3,8 @@ import Database from '@tauri-apps/plugin-sql';
 import { Stronghold } from '@tauri-apps/plugin-stronghold';
 import { appLocalDataDir } from '@tauri-apps/api/path';
 import { Store as TauriStore } from '@tauri-apps/plugin-store';
-import type { IUserAdapter, UserRecord } from './types';
+import { UserWriteEventEmitter } from './events';
+import type { IUserAdapter, UserRecord, UserWriteOptions, UserWriteEventListener } from './types';
 
 /**
  * Tauri User Adapter
@@ -68,10 +69,28 @@ interface SQLiteUserRow {
 
 export class TauriUserAdapter implements IUserAdapter {
 	private readonly authDB = new UserDexie();
+	private readonly writeEvents = new UserWriteEventEmitter();
 
 	// Lazy singletons — initialised on first use
 	private sqlitePromise: Promise<Database> | null = null;
 	private strongholdPromise: Promise<Stronghold> | null = null;
+
+	subscribeWriteEvents(listener: UserWriteEventListener): () => void {
+		return this.writeEvents.subscribe(listener);
+	}
+
+	private emitWriteEvent(
+		operation: 'put' | 'softDelete',
+		ids: string[],
+		options?: UserWriteOptions
+	): void {
+		this.writeEvents.emit({
+			tableName: 'users',
+			operation,
+			ids,
+			origin: options?.origin ?? 'local'
+		});
+	}
 
 	// ── SQLite ────────────────────────────────────────────────────────────────
 
@@ -203,7 +222,7 @@ export class TauriUserAdapter implements IUserAdapter {
 		return recovered;
 	}
 
-	async saveUser(user: UserRecord): Promise<void> {
+	async saveUser(user: UserRecord, options?: UserWriteOptions): Promise<void> {
 		// 1. Dexie — stores the live CryptoKey via Structured Clone
 		await this.authDB.users.put(user);
 
@@ -225,9 +244,11 @@ export class TauriUserAdapter implements IUserAdapter {
 				// Key is non-extractable (should not happen for guests, but be safe)
 			}
 		}
+
+		this.emitWriteEvent('put', [user.id], options);
 	}
 
-	async deleteUser(id: string): Promise<void> {
+	async deleteUser(id: string, options?: UserWriteOptions): Promise<void> {
 		// Soft-delete in both stores
 		const user = await this.getUser(id);
 		if (!user) return;
@@ -241,6 +262,7 @@ export class TauriUserAdapter implements IUserAdapter {
 		// Note: we intentionally leave the Stronghold entry intact.
 		// The raw key is harmless without the user record and removal is
 		// not required for correctness.
+		this.emitWriteEvent('softDelete', [id], options);
 	}
 
 	async backupGuestKey(id: string, rawKey: Uint8Array): Promise<void> {
