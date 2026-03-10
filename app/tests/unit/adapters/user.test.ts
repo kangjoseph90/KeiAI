@@ -19,65 +19,22 @@ vi.mock('@tauri-apps/api/core', () => ({
 Dexie.dependencies.indexedDB = fakeIndexedDB as unknown as IDBFactory;
 Dexie.dependencies.IDBKeyRange = FDBKeyRange as unknown as typeof IDBKeyRange;
 
-// Define the UserDexie class locally (same as in web.ts)
-class UserDexie extends Dexie {
-	users!: Table<UserRecord, string>;
-
-	constructor() {
-		super('KeiUsers');
-		this.version(1).stores({
-			users: 'id, isDeleted, isGuest, updatedAt'
-		});
-	}
-}
-
-// Create a fresh authDB for each test
-let authDB: UserDexie;
-
-// Create a local WebUserAdapter implementation that uses our test authDB
-class TestWebUserAdapter implements IUserAdapter {
-	async getUser(id: string): Promise<UserRecord | null> {
-		return (await authDB.users.get(id)) ?? null;
-	}
-
-	async getAllUsers(): Promise<UserRecord[]> {
-		return await authDB.users.filter((u) => !u.isDeleted).toArray();
-	}
-
-	async saveUser(user: UserRecord): Promise<void> {
-		await authDB.users.put(user);
-	}
-
-	async deleteUser(id: string): Promise<void> {
-		const user = await this.getUser(id);
-		if (user) {
-			user.isDeleted = true;
-			user.updatedAt = Date.now();
-			await authDB.users.put(user);
-		}
-	}
-
-	async backupGuestKey(_id: string, _rawKey: Uint8Array): Promise<void> {
-		return Promise.resolve();
-	}
-
-	async restoreGuestKey(_id: string): Promise<Uint8Array | null> {
-		return Promise.resolve(null);
-	}
-}
+import { WebUserAdapter } from '$lib/adapters/user/web';
 
 describe('WebUserAdapter (Dexie)', () => {
 	let adapter: IUserAdapter;
 
 	beforeEach(async () => {
+		// Use fake timers to test batching
+		vi.useFakeTimers();
 		// Delete any existing database
 		await Dexie.delete('KeiUsers').catch(() => {});
-		// Create a fresh authDB and adapter for each test
-		authDB = new UserDexie();
-		adapter = new TestWebUserAdapter();
+		// Create a fresh adapter instance for each test
+		adapter = new WebUserAdapter();
 	});
 
 	afterEach(async () => {
+		vi.useRealTimers();
 		// Delete the database after each test
 		await Dexie.delete('KeiUsers').catch(() => {});
 	});
@@ -244,6 +201,31 @@ describe('WebUserAdapter (Dexie)', () => {
 		});
 	});
 
+	describe('Write Events', () => {
+		it('should emit batch of events after next tick', async () => {
+			const listener = vi.fn();
+			adapter.subscribeWriteEvents(listener);
+
+			const user1 = await createTestUser({ id: 'evt-1' });
+			const user2 = await createTestUser({ id: 'evt-2' });
+
+			await adapter.saveUser(user1);
+			await adapter.saveUser(user2);
+
+			// Should not have been called yet
+			expect(listener).not.toHaveBeenCalled();
+
+			// Wait for batch
+			vi.runAllTimers();
+
+			expect(listener).toHaveBeenCalledOnce();
+			const events = listener.mock.calls[0][0];
+			expect(events).toHaveLength(2);
+			expect(events[0].ids).toEqual(['evt-1']);
+			expect(events[1].ids).toEqual(['evt-2']);
+		});
+	});
+
 	describe('backupGuestKey and restoreGuestKey', () => {
 		it('should be a no-op on web platform', async () => {
 			const keyData = new Uint8Array([1, 2, 3, 4, 5]);
@@ -349,10 +331,7 @@ describe('WebUserAdapter (Dexie)', () => {
 
 describe('IUserAdapter interface contract', () => {
 	it('should have all required methods', async () => {
-		// Set up a fresh DB for this test
-		await Dexie.delete('KeiUsers').catch(() => {});
-		authDB = new UserDexie();
-		const adapter = new TestWebUserAdapter();
+		const adapter = new WebUserAdapter();
 
 		expect(typeof adapter.getUser).toBe('function');
 		expect(typeof adapter.getAllUsers).toBe('function');
@@ -360,16 +339,10 @@ describe('IUserAdapter interface contract', () => {
 		expect(typeof adapter.deleteUser).toBe('function');
 		expect(typeof adapter.backupGuestKey).toBe('function');
 		expect(typeof adapter.restoreGuestKey).toBe('function');
-
-		// Clean up
-		await Dexie.delete('KeiUsers').catch(() => {});
 	});
 
 	it('should have async methods that return promises', async () => {
-		// Set up a fresh DB for this test
-		await Dexie.delete('KeiUsers').catch(() => {});
-		authDB = new UserDexie();
-		const adapter = new TestWebUserAdapter();
+		const adapter = new WebUserAdapter();
 
 		const getKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, [
 			'encrypt',
@@ -402,7 +375,6 @@ describe('IUserAdapter interface contract', () => {
 
 		// Clean up
 		await Promise.allSettled(promises);
-		await adapter.deleteUser('test');
 		await Dexie.delete('KeiUsers').catch(() => {});
 	});
 });

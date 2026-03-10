@@ -6,7 +6,32 @@
  * in IndexedDB even on Tauri, while the rest of the application data goes to SQLite.
  */
 
+import type { DatabaseMutationOrigin } from '$lib/adapters/db';
+
+// ─── Write Event Types ────────────────────────────────────────────────
+
+export type UserTableName = 'users';
+export type UserWriteOperation = 'put' | 'softDelete';
+
+export interface UserWriteOptions {
+	origin?: DatabaseMutationOrigin;
+}
+
+export interface UserWriteEvent {
+	tableName: UserTableName;
+	operation: UserWriteOperation;
+	ids: string[];
+	origin: DatabaseMutationOrigin;
+}
+
+export type UserWriteEventListener = (events: UserWriteEvent[]) => void;
+
+// ─── Adapter Interface ────────────────────────────────────────────────
+
 export interface IUserAdapter {
+	/** Subscribe to user-local write events. */
+	subscribeWriteEvents(listener: UserWriteEventListener): () => void;
+
 	/** Retrieve a specific user's record. */
 	getUser(id: string): Promise<UserRecord | null>;
 
@@ -14,10 +39,10 @@ export interface IUserAdapter {
 	getAllUsers(): Promise<UserRecord[]>;
 
 	/** Create or update a user record. */
-	saveUser(user: UserRecord): Promise<void>;
+	saveUser(user: UserRecord, options?: UserWriteOptions): Promise<void>;
 
 	/** Soft or hard delete a user from local storage. */
-	deleteUser(id: string): Promise<void>;
+	deleteUser(id: string, options?: UserWriteOptions): Promise<void>;
 
 	/**
 	 * Backup the guest's extractable CryptoKey to the OS Keychain.

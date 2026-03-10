@@ -6,8 +6,7 @@
  *         (order + folder managed by parent). Exception: messages use chatId FK.
  *   N:M — Consumer's encrypted blob holds ResourceRef[] with per-context state.
  *
- * Every table (except `users`) stores AES-GCM encrypted JSON blobs.
- * The `cacheRegistry` table is a local-only LRU eviction ledger and is never synced.
+ * Every table stores AES-GCM encrypted JSON blobs.
  * Entities needing list previews are split into Summary + Data tables.
  */
 
@@ -28,11 +27,9 @@ export type TableName =
 	| 'modules'
 	| 'plugins'
 	| 'presetSummaries'
-	| 'presetData'
-	| 'assets'
-	| 'assetRegistry';
+	| 'presetData';
 
-export const SYNC_TABLES: TableName[] = [
+export const TABLES: TableName[] = [
 	'characterSummaries',
 	'characterData',
 	'chatSummaries',
@@ -45,11 +42,8 @@ export const SYNC_TABLES: TableName[] = [
 	'modules',
 	'plugins',
 	'presetSummaries',
-	'presetData',
-	'assets'
+	'presetData'
 ];
-
-export const TABLES: TableName[] = [...SYNC_TABLES, 'assetRegistry'];
 
 export type DatabaseWriteOperation =
 	| 'put'
@@ -72,7 +66,7 @@ export interface DatabaseWriteEvent {
 	origin: DatabaseMutationOrigin;
 }
 
-export type DatabaseWriteEventListener = (event: DatabaseWriteEvent) => void;
+export type DatabaseWriteEventListener = (events: DatabaseWriteEvent[]) => void;
 
 // ─── Base Types ──────────────────────────────────────────────────────
 
@@ -139,36 +133,6 @@ export type PluginRecord = EncryptedRecord;
 export type PresetSummaryRecord = EncryptedRecord;
 export type PresetDataRecord = EncryptedRecord;
 
-// ─── Assets ────────────────────────────────────────────────────────
-//
-// All asset kinds (private, inlay, public) live in the same EncryptedRecord table.
-// encryptedData contains: { kind, hash, encKey, mimeType }
-//   - hash: SHA256(plaintext) — used as CDN URL path and upload deduplication
-//   - encKey: SHA256(plaintext + FIXED_SALT) — file encryption key for private assets
-
-export type AssetRecord = EncryptedRecord;
-
-// ─── Asset Registry ─────────────────────────────────────────────────
-//
-// LOCAL-ONLY plaintext table — never synced to the server.
-// Tracks local asset state for LRU cache eviction and sync queue filtering.
-// Per-user cache space: each user has separate asset storage and cache quota.
-//
-// status = 'local'  → original copy, never evictable
-// status = 'remote' → cached from server, evictable
-// status = 'deleting' → pending deletion
-//
-// kind is duplicated here (plaintext) so workers can filter without decryption.
-
-export type AssetStatus = 'local' | 'remote' | 'deleting';
-
-export interface AssetRegistryRecord extends BaseRecord {
-	kind: 'private' | 'inlay' | 'public'; // Plaintext proxy for sync queue filtering
-	status: AssetStatus;
-	lastAccessedAt: number; // Unix ms — updated every time the asset is rendered
-	size: number; // Bytes on disk — used to calculate total cache size
-}
-
 // ─── Adapter Interface ──────────────────────────────────────────────
 
 export interface IDatabaseAdapter {
@@ -191,11 +155,7 @@ export interface IDatabaseAdapter {
 		indexValue: string,
 		options?: DatabaseWriteOptions
 	): Promise<void>;
-	softDeleteRecord(
-		tableName: TableName,
-		id: string,
-		options?: DatabaseWriteOptions
-	): Promise<void>;
+	softDeleteRecord(tableName: TableName, id: string, options?: DatabaseWriteOptions): Promise<void>;
 	softDeleteByIndex(
 		tableName: TableName,
 		indexName: string,

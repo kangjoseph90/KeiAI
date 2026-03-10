@@ -1,4 +1,5 @@
 import Database from '@tauri-apps/plugin-sql';
+import { fromBase64, toBase64 } from '$lib/crypto/encoding';
 import type {
 	IDatabaseAdapter,
 	TableName,
@@ -24,63 +25,54 @@ import { DatabaseWriteEventEmitter } from './events';
  * back upon reading.
  */
 
-function arrayBufferToBase64(buffer: ArrayBufferLike): string {
-	let binary = '';
-	const bytes = new Uint8Array(buffer);
-	for (let i = 0; i < bytes.byteLength; i++) {
-		binary += String.fromCharCode(bytes[i]);
-	}
-	return btoa(binary);
-}
-
-function base64ToArrayBuffer(base64: string): Uint8Array {
-	const binaryString = atob(base64);
-	const len = binaryString.length;
-	const bytes = new Uint8Array(len);
-	for (let i = 0; i < len; i++) {
-		bytes[i] = binaryString.charCodeAt(i);
-	}
-	return bytes;
+/** Raw shape of a database record as stored in SQLite */
+interface DatabaseSqlRow {
+	id: string;
+	userId: string | null;
+	characterId: string | null;
+	chatId: string | null;
+	sortOrder: string | null;
+	ownerId: string | null;
+	updatedAt: number | null;
+	isDeleted: number; // 0 | 1
+	data: string; // JSON.stringify(...)
 }
 
 // Convert record to DB row bindings safely
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function recordToBindings(record: any) {
-	const clone = { ...record };
+function recordToBindings<T extends BaseRecord>(record: T): DatabaseSqlRow {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const clone = { ...record } as any;
 
-	const bindings = {
-		id: clone.id ?? null,
+	const bindings: DatabaseSqlRow = {
+		id: clone.id,
 		userId: clone.userId ?? null,
-		characterId: clone.characterId ?? null,
-		chatId: clone.chatId ?? null,
-		sortOrder: clone.sortOrder ?? null,
-		ownerId: clone.ownerId ?? null,
-		lastAccessedAt: clone.lastAccessedAt ?? null,
+		characterId: (clone as { characterId?: string }).characterId ?? null,
+		chatId: (clone as { chatId?: string }).chatId ?? null,
+		sortOrder: (clone as { sortOrder?: string }).sortOrder ?? null,
+		ownerId: (clone as { ownerId?: string }).ownerId ?? null,
 		updatedAt: clone.updatedAt ?? null,
-		isDeleted: clone.isDeleted ? 1 : 0
+		isDeleted: clone.isDeleted ? 1 : 0,
+		data: '' // placeholder
 	};
 
 	if (clone.encryptedData instanceof Uint8Array) {
-		clone.encryptedData = arrayBufferToBase64(clone.encryptedData);
+		clone.encryptedData = toBase64(clone.encryptedData);
 	}
 	if (clone.encryptedDataIV instanceof Uint8Array) {
-		clone.encryptedDataIV = arrayBufferToBase64(clone.encryptedDataIV);
+		clone.encryptedDataIV = toBase64(clone.encryptedDataIV);
 	}
 
-	return {
-		...bindings,
-		data: JSON.stringify(clone)
-	};
+	bindings.data = JSON.stringify(clone);
+	return bindings;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseRecord<T>(row: any): T {
+function parseRecord<T>(row: DatabaseSqlRow): T {
 	const obj = JSON.parse(row.data);
 	if (typeof obj.encryptedData === 'string') {
-		obj.encryptedData = base64ToArrayBuffer(obj.encryptedData);
+		obj.encryptedData = fromBase64(obj.encryptedData);
 	}
 	if (typeof obj.encryptedDataIV === 'string') {
-		obj.encryptedDataIV = base64ToArrayBuffer(obj.encryptedDataIV);
+		obj.encryptedDataIV = fromBase64(obj.encryptedDataIV);
 	}
 	return obj as T;
 }
@@ -115,7 +107,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 					chatId TEXT,
 					sortOrder TEXT,
 					ownerId TEXT,
-					lastAccessedAt INTEGER,
 					updatedAt INTEGER,
 					isDeleted INTEGER,
 					data TEXT
@@ -135,8 +126,9 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
 	async getRecord<T extends BaseRecord>(tableName: TableName, id: string): Promise<T | undefined> {
 		const db = await this.getDb();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const rows = await db.select<any[]>(`SELECT data FROM ${tableName} WHERE id = $1`, [id]);
+		const rows = await db.select<DatabaseSqlRow[]>(`SELECT data FROM ${tableName} WHERE id = $1`, [
+			id
+		]);
 		if (rows.length > 0) return parseRecord<T>(rows[0]);
 		return undefined;
 	}
@@ -151,8 +143,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		const b = recordToBindings(record);
 		await db.execute(
 			`INSERT OR REPLACE INTO ${tableName} 
-            (id, userId, characterId, chatId, sortOrder, ownerId, lastAccessedAt, updatedAt, isDeleted, data) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            (id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 			[
 				b.id,
 				b.userId,
@@ -160,7 +152,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 				b.chatId,
 				b.sortOrder,
 				b.ownerId,
-				b.lastAccessedAt,
 				b.updatedAt,
 				b.isDeleted,
 				b.data
@@ -182,8 +173,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 			const chunk = records.slice(i, i + chunkSize);
 			const placeholders = chunk
 				.map((_, idx) => {
-					const start = idx * 10 + 1;
-					return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9})`;
+					const start = idx * 9 + 1;
+					return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8})`;
 				})
 				.join(', ');
 
@@ -197,7 +188,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 					b.chatId,
 					b.sortOrder,
 					b.ownerId,
-					b.lastAccessedAt,
 					b.updatedAt,
 					b.isDeleted,
 					b.data
@@ -206,7 +196,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
 			await db.execute(
 				`INSERT OR REPLACE INTO ${tableName} 
-                (id, userId, characterId, chatId, sortOrder, ownerId, lastAccessedAt, updatedAt, isDeleted, data) 
+                (id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data) 
                 VALUES ${placeholders}`,
 				values
 			);
@@ -237,17 +227,15 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		options?: DatabaseWriteOptions
 	): Promise<void> {
 		const db = await this.getDb();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const rows = await db.select<any[]>(`SELECT id FROM ${tableName} WHERE ${indexName} = $1`, [
-			indexValue
-		]);
+		const rows = await db.select<{ id: string }[]>(
+			`SELECT id FROM ${tableName} WHERE ${indexName} = $1`,
+			[indexValue]
+		);
 		await db.execute(`DELETE FROM ${tableName} WHERE ${indexName} = $1`, [indexValue]);
 		this.emitWriteEvent(
 			tableName,
 			'deleteByIndex',
-			rows
-				.map((row) => row.id)
-				.filter((id): id is string => typeof id === 'string'),
+			rows.map((row) => row.id),
 			options
 		);
 	}
@@ -259,8 +247,9 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 	): Promise<void> {
 		const db = await this.getDb();
 		const now = Date.now();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const rows = await db.select<any[]>(`SELECT data FROM ${tableName} WHERE id = $1`, [id]);
+		const rows = await db.select<DatabaseSqlRow[]>(`SELECT data FROM ${tableName} WHERE id = $1`, [
+			id
+		]);
 		if (rows.length > 0) {
 			const record = parseRecord<BaseRecord>(rows[0]);
 			record.isDeleted = true;
@@ -276,10 +265,10 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		options?: DatabaseWriteOptions
 	): Promise<void> {
 		const db = await this.getDb();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const rows = await db.select<any[]>(`SELECT data FROM ${tableName} WHERE ${indexName} = $1`, [
-			indexValue
-		]);
+		const rows = await db.select<DatabaseSqlRow[]>(
+			`SELECT data FROM ${tableName} WHERE ${indexName} = $1`,
+			[indexValue]
+		);
 		const now = Date.now();
 		const recordsToUpdate: BaseRecord[] = [];
 
@@ -297,8 +286,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
 	async getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]> {
 		const db = await this.getDb();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const rows = await db.select<any[]>(
+		const rows = await db.select<DatabaseSqlRow[]>(
 			`SELECT data FROM ${tableName} WHERE userId = $1 AND isDeleted = 0 ORDER BY updatedAt ASC`,
 			[userId]
 		);
@@ -313,8 +301,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		offset: number = 0
 	): Promise<T[]> {
 		const db = await this.getDb();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const rows = await db.select<any[]>(
+		const rows = await db.select<DatabaseSqlRow[]>(
 			`SELECT data FROM ${tableName} WHERE ${indexName} = $1 AND isDeleted = 0 LIMIT $2 OFFSET $3`,
 			[indexValue, limit, offset]
 		);
@@ -342,8 +329,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 				const upper2 = upperBound[1];
 
 				const query = `SELECT data FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} DESC LIMIT $4`;
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				const rows = await db.select<any[]>(query, [val1, lower2, upper2, limit]);
+				const rows = await db.select<DatabaseSqlRow[]>(query, [val1, lower2, upper2, limit]);
 				return rows.map((row) => parseRecord<T>(row));
 			}
 		}
@@ -375,8 +361,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 				const upper2 = upperBound[1];
 
 				const query = `SELECT data FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} ASC LIMIT $4`;
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				const rows = await db.select<any[]>(query, [val1, lower2, upper2, limit]);
+				const rows = await db.select<DatabaseSqlRow[]>(query, [val1, lower2, upper2, limit]);
 				return rows.map((row) => parseRecord<T>(row));
 			}
 		}
@@ -393,8 +378,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		sinceUpdatedAt: number
 	): Promise<T[]> {
 		const db = await this.getDb();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const rows = await db.select<any[]>(
+		const rows = await db.select<DatabaseSqlRow[]>(
 			`SELECT data FROM ${tableName} WHERE userId = $1 AND updatedAt > $2`,
 			[userId, sinceUpdatedAt]
 		);
@@ -420,13 +404,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
 	private emitWriteEvent(
 		tableName: TableName,
-		operation:
-			| 'put'
-			| 'putMany'
-			| 'delete'
-			| 'deleteByIndex'
-			| 'softDelete'
-			| 'softDeleteByIndex',
+		operation: 'put' | 'putMany' | 'delete' | 'deleteByIndex' | 'softDelete' | 'softDeleteByIndex',
 		ids: string[],
 		options?: DatabaseWriteOptions
 	): void {

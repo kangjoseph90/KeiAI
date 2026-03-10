@@ -2,79 +2,101 @@ import type { IStorageAdapter } from './types';
 import { AppError } from '$lib/shared/errors';
 
 /**
- * WebStorageAdapter — OPFS-backed asset file system for Web/PWA
+ * WebStorageAdapter — OPFS-backed virtual file system for Web/PWA
  *
- * All files keyed by UUID (asset ID).
- * Persistent local assets and remote cache blobs live in the same directory.
- * The cache registry (separate DB table) decides what is evictable.
+ * All files accessed by relative path (e.g., "assets/abc123", "cache/temp.bin").
+ * Nested directories are created automatically.
+ * Uses Object URLs for rendering which must be revoked when no longer needed.
  */
 export class WebStorageAdapter implements IStorageAdapter {
 	private urlCache = new Map<string, string>();
 
-	private async getFileHandle(id: string, create = false): Promise<FileSystemFileHandle | null> {
+	/**
+	 * Resolve a path to a file handle, creating parent directories as needed.
+	 * Path format: "dir/subdir/filename" (no leading slash)
+	 */
+	private async getFileHandle(path: string, create = false): Promise<FileSystemFileHandle | null> {
 		try {
 			const root = await navigator.storage.getDirectory();
-			const dir = await root.getDirectoryHandle('assets', { create });
-			return await dir.getFileHandle(id, { create });
+			const parts = path.split('/');
+
+			// Navigate/create all directories except the last part (filename)
+			let current = root;
+			for (let i = 0; i < parts.length - 1; i++) {
+				current = await current.getDirectoryHandle(parts[i], { create });
+			}
+
+			// Last part is the filename
+			const filename = parts[parts.length - 1];
+			return await current.getFileHandle(filename, { create });
 		} catch (e) {
 			if (e instanceof Error && e.name === 'NotFoundError') return null;
 			throw e;
 		}
 	}
 
-	async getRenderUrl(id: string): Promise<string | null> {
-		const cached = this.urlCache.get(id);
+	async getRenderUrl(path: string): Promise<string | null> {
+		const cached = this.urlCache.get(path);
 		if (cached) return cached;
 
-		const handle = await this.getFileHandle(id);
+		const handle = await this.getFileHandle(path);
 		if (!handle) return null;
 
 		const file = await handle.getFile();
 		const url = URL.createObjectURL(file);
-		this.urlCache.set(id, url);
+		this.urlCache.set(path, url);
 		return url;
 	}
 
 	async revokeRenderUrl(url: string): Promise<void> {
 		URL.revokeObjectURL(url);
-		for (const [id, cached] of this.urlCache) {
+		for (const [path, cached] of this.urlCache) {
 			if (cached === url) {
-				this.urlCache.delete(id);
+				this.urlCache.delete(path);
 				break;
 			}
 		}
 	}
 
-	async write(id: string, data: Uint8Array | Blob): Promise<void> {
-		const handle = await this.getFileHandle(id, true);
-		if (!handle) throw new AppError('STORAGE_ERROR', `Failed to create file handle for ${id}`);
+	async write(path: string, data: Uint8Array | Blob): Promise<void> {
+		const handle = await this.getFileHandle(path, true);
+		if (!handle) throw new AppError('STORAGE_ERROR', `Failed to create file handle for ${path}`);
 		const writable = await handle.createWritable();
 		await writable.write(data as FileSystemWriteChunkType);
 		await writable.close();
 		// Invalidate cached URL if present
-		this.urlCache.delete(id);
+		this.urlCache.delete(path);
 	}
 
-	async read(id: string): Promise<Uint8Array | null> {
-		const handle = await this.getFileHandle(id);
+	async read(path: string): Promise<Uint8Array | null> {
+		const handle = await this.getFileHandle(path);
 		if (!handle) return null;
 		const file = await handle.getFile();
 		return new Uint8Array(await file.arrayBuffer());
 	}
 
-	async delete(id: string): Promise<void> {
+	async delete(path: string): Promise<void> {
 		try {
 			const root = await navigator.storage.getDirectory();
-			const dir = await root.getDirectoryHandle('assets');
-			await dir.removeEntry(id);
-			this.urlCache.delete(id);
+			const parts = path.split('/');
+
+			// Navigate to parent directory
+			let current = root;
+			for (let i = 0; i < parts.length - 1; i++) {
+				current = await current.getDirectoryHandle(parts[i]);
+			}
+
+			// Remove the file
+			const filename = parts[parts.length - 1];
+			await current.removeEntry(filename);
+			this.urlCache.delete(path);
 		} catch (e) {
 			if (e instanceof Error && e.name !== 'NotFoundError') throw e;
 		}
 	}
 
-	async exists(id: string): Promise<boolean> {
-		const handle = await this.getFileHandle(id);
+	async exists(path: string): Promise<boolean> {
+		const handle = await this.getFileHandle(path);
 		return handle !== null;
 	}
 }

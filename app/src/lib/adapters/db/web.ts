@@ -23,9 +23,7 @@ import type {
 	ModuleRecord,
 	PluginRecord,
 	PresetSummaryRecord,
-	PresetDataRecord,
-	AssetRecord,
-	AssetRegistryRecord
+	PresetDataRecord
 } from './types';
 import { DatabaseWriteEventEmitter } from './events';
 
@@ -43,8 +41,6 @@ class DexieStore extends Dexie {
 	plugins!: Table<PluginRecord, string>;
 	presetSummaries!: Table<PresetSummaryRecord, string>;
 	presetData!: Table<PresetDataRecord, string>;
-	assets!: Table<AssetRecord, string>;
-	assetRegistry!: Table<AssetRegistryRecord, string>;
 
 	constructor() {
 		super('KeiLocalDB');
@@ -63,10 +59,7 @@ class DexieStore extends Dexie {
 			modules: 'id, userId, updatedAt, isDeleted',
 			plugins: 'id, userId, updatedAt, isDeleted',
 			presetSummaries: 'id, userId, updatedAt, isDeleted',
-			presetData: 'id, userId, updatedAt, isDeleted',
-			assets: 'id, userId, updatedAt, isDeleted',
-			// Local-only tables (never synced)
-			assetRegistry: 'id, userId, status, kind, lastAccessedAt'
+			presetData: 'id, userId, updatedAt, isDeleted'
 		});
 	}
 }
@@ -96,6 +89,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		record: T,
 		options?: DatabaseWriteOptions
 	): Promise<void> {
+		if (!record.updatedAt) record.updatedAt = Date.now();
 		await this.getTable<T>(tableName).put(record);
 		this.emitWriteEvent(tableName, 'put', [record.id], options);
 	}
@@ -105,6 +99,10 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		records: T[],
 		options?: DatabaseWriteOptions
 	): Promise<void> {
+		const now = Date.now();
+		for (const record of records) {
+			if (!record.updatedAt) record.updatedAt = now;
+		}
 		await this.getTable<T>(tableName).bulkPut(records);
 		this.emitWriteEvent(
 			tableName,
@@ -130,9 +128,9 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		options?: DatabaseWriteOptions
 	): Promise<void> {
 		const table = this.getTable<BaseRecord>(tableName);
-		const ids = ((await table.where(indexName).equals(indexValue).primaryKeys()) as string[]).filter(
-			(id): id is string => typeof id === 'string'
-		);
+		const ids = (
+			(await table.where(indexName).equals(indexValue).primaryKeys()) as string[]
+		).filter((id): id is string => typeof id === 'string');
 		await table.where(indexName).equals(indexValue).delete();
 		this.emitWriteEvent(tableName, 'deleteByIndex', ids, options);
 	}
@@ -253,13 +251,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 
 	private emitWriteEvent(
 		tableName: TableName,
-		operation:
-			| 'put'
-			| 'putMany'
-			| 'delete'
-			| 'deleteByIndex'
-			| 'softDelete'
-			| 'softDeleteByIndex',
+		operation: 'put' | 'putMany' | 'delete' | 'deleteByIndex' | 'softDelete' | 'softDeleteByIndex',
 		ids: string[],
 		options?: DatabaseWriteOptions
 	): void {
