@@ -10,12 +10,17 @@ import { SyncManager } from '$lib/services/sync';
 import { DataSyncService } from '$lib/services/sync/data';
 import { ProfileSyncService } from '$lib/services/sync/profile';
 import { AssetSyncService } from '$lib/services/sync/asset';
+import { appAsset } from '$lib/adapters/asset';
+import { appUser } from '$lib/adapters/user';
 import { localDB } from '$lib/adapters/db';
 import type { Profile } from '$lib/services/user/profile';
+import type { DatabaseWriteEventListener } from '$lib/adapters/db';
+import type { AssetWriteEventListener } from '$lib/adapters/asset';
+import type { UserWriteEventListener } from '$lib/adapters/user';
 
-let dbWriteListener:
-	| ((event: { tableName: string; ids: string[]; origin: string; operation?: string }) => void)
-	| null = null;
+let dbWriteListener: DatabaseWriteEventListener | null = null;
+let assetWriteListener: AssetWriteEventListener | null = null;
+let userWriteListener: UserWriteEventListener | null = null;
 
 // Mock dependencies with stateful spies
 vi.mock('$lib/services/sync/data', () => {
@@ -49,23 +54,37 @@ vi.mock('$lib/services/sync/data', () => {
 });
 
 vi.mock('$lib/adapters/db', () => ({
-	SYNC_TABLES: ['characterSummaries', 'chatSummaries', 'assets'],
+	SYNC_TABLES: ['characterSummaries', 'chatSummaries'],
+	TABLES: ['characterSummaries', 'chatSummaries'],
 	localDB: {
-		subscribeWriteEvents: vi.fn(
-			(
-				listener: (event: {
-					tableName: string;
-					ids: string[];
-					origin: string;
-					operation?: string;
-				}) => void
-			) => {
-				dbWriteListener = listener;
-				return () => {
-					dbWriteListener = null;
-				};
-			}
-		)
+		subscribeWriteEvents: vi.fn((listener: DatabaseWriteEventListener) => {
+			dbWriteListener = listener;
+			return () => {
+				dbWriteListener = null;
+			};
+		})
+	}
+}));
+
+vi.mock('$lib/adapters/asset', () => ({
+	appAsset: {
+		subscribeWriteEvents: vi.fn((listener: AssetWriteEventListener) => {
+			assetWriteListener = listener;
+			return () => {
+				assetWriteListener = null;
+			};
+		})
+	}
+}));
+
+vi.mock('$lib/adapters/user', () => ({
+	appUser: {
+		subscribeWriteEvents: vi.fn((listener: UserWriteEventListener) => {
+			userWriteListener = listener;
+			return () => {
+				userWriteListener = null;
+			};
+		})
 	}
 }));
 
@@ -73,16 +92,33 @@ vi.mock('$lib/services/sync/profile', () => ({
 	ProfileSyncService: {
 		subscribe: vi.fn(async () => {}),
 		unsubscribe: vi.fn(async () => {}),
-		pullProfile: vi.fn(async () => null)
+		pullProfile: vi.fn(async () => null),
+		pushProfile: vi.fn(async () => {})
 	}
 }));
 
-vi.mock('$lib/services/sync/asset', () => ({
-	AssetSyncService: {
-		start: vi.fn(async () => {}),
-		stop: vi.fn()
-	}
-}));
+vi.mock('$lib/services/sync/asset', () => {
+	let subscribed = false;
+	return {
+		AssetSyncService: {
+			start: vi.fn(async () => {}),
+			stop: vi.fn(),
+			subscribeRealtime: vi.fn(async () => {
+				subscribed = true;
+			}),
+			unsubscribeRealtime: vi.fn(async () => {
+				subscribed = false;
+			}),
+			pushById: vi.fn(async () => {}),
+			get isSubscribed() {
+				return subscribed;
+			},
+			set isSubscribed(v: boolean) {
+				subscribed = v;
+			}
+		}
+	};
+});
 
 describe('SyncManager', () => {
 	beforeEach(() => {
@@ -105,9 +141,15 @@ describe('SyncManager', () => {
 		vi.mocked(ProfileSyncService.subscribe).mockClear();
 		vi.mocked(AssetSyncService.start).mockClear();
 		vi.mocked(AssetSyncService.stop).mockClear();
+		vi.mocked(AssetSyncService.subscribeRealtime).mockClear();
+		vi.mocked(AssetSyncService.unsubscribeRealtime).mockClear();
+		vi.mocked(AssetSyncService.pushById).mockClear();
+		(AssetSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
 		vi.mocked(DataSyncService.handleLocalWrite).mockClear();
 		(DataSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
 		dbWriteListener = null;
+		assetWriteListener = null;
+		userWriteListener = null;
 	});
 
 	afterEach(() => {
@@ -122,6 +164,7 @@ describe('SyncManager', () => {
 			SyncManager.startAutoSync({ onProfileUpdate });
 
 			expect(DataSyncService.subscribeRealtime).toHaveBeenCalled();
+			expect(AssetSyncService.subscribeRealtime).toHaveBeenCalled();
 			expect(ProfileSyncService.subscribe).toHaveBeenCalledWith(onProfileUpdate);
 			expect(AssetSyncService.start).toHaveBeenCalledTimes(1);
 
@@ -142,6 +185,8 @@ describe('SyncManager', () => {
 			SyncManager.startAutoSync();
 			expect(DataSyncService.subscribeRealtime).toHaveBeenCalledTimes(1);
 			expect(localDB.subscribeWriteEvents).toHaveBeenCalledTimes(1);
+			expect(appAsset.subscribeWriteEvents).toHaveBeenCalledTimes(1);
+			expect(appUser.subscribeWriteEvents).toHaveBeenCalledTimes(1);
 		});
 	});
 
@@ -151,6 +196,7 @@ describe('SyncManager', () => {
 			SyncManager.stopAutoSync();
 
 			expect(DataSyncService.unsubscribeRealtime).toHaveBeenCalled();
+			expect(AssetSyncService.unsubscribeRealtime).toHaveBeenCalled();
 			expect(ProfileSyncService.unsubscribe).toHaveBeenCalled();
 			expect(AssetSyncService.stop).toHaveBeenCalled();
 
@@ -173,20 +219,23 @@ describe('SyncManager', () => {
 
 			// Force it to look disconnected
 			(DataSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
+			(AssetSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
 			vi.mocked(ProfileSyncService.pullProfile).mockResolvedValue({
 				id: 'p1'
-			} as unknown as Profile);
+			} as Profile);
 
 			await onlineHandler();
 			// We need to wait for the internal async chain
 			await Promise.resolve(); // resubscribeAndPull
 			await Promise.resolve(); // sub 1
 			await Promise.resolve(); // sub 2
+			await Promise.resolve(); // sub 3
 			await Promise.resolve(); // syncAll
 			await Promise.resolve(); // pullProfile
 			await Promise.resolve(); // final callback
 
 			expect(DataSyncService.subscribeRealtime).toHaveBeenCalledTimes(2); // once at start, once at online
+			expect(AssetSyncService.subscribeRealtime).toHaveBeenCalledTimes(2); // once at start, once at online
 			expect(DataSyncService.syncAll).toHaveBeenCalled();
 			expect(AssetSyncService.start).toHaveBeenCalledTimes(2);
 			expect(onProfileUpdate).toHaveBeenCalled();
@@ -213,28 +262,64 @@ describe('SyncManager', () => {
 			expect(AssetSyncService.start).toHaveBeenCalledTimes(2);
 		});
 
+		it('should route user write events to ProfileSyncService', async () => {
+			SyncManager.startAutoSync();
+			expect(userWriteListener).not.toBeNull();
+
+			userWriteListener?.([{ tableName: 'users', ids: ['u1'], origin: 'local', operation: 'put' }]);
+			await Promise.resolve();
+			expect(ProfileSyncService.pushProfile).toHaveBeenCalled();
+		});
+
+		it('should not push profile for sync-origin user writes', async () => {
+			SyncManager.startAutoSync();
+
+			userWriteListener?.([{ tableName: 'users', ids: ['u1'], origin: 'sync', operation: 'put' }]);
+			await Promise.resolve();
+			expect(ProfileSyncService.pushProfile).not.toHaveBeenCalled();
+		});
+
 		it('should route local DB writes to the appropriate sync engines', async () => {
 			SyncManager.startAutoSync();
 			expect(dbWriteListener).not.toBeNull();
+			expect(assetWriteListener).not.toBeNull();
 
-			dbWriteListener?.({
-				tableName: 'characterSummaries',
-				ids: ['c1'],
-				origin: 'local',
-				operation: 'put'
-			});
-			dbWriteListener?.({
-				tableName: 'assetRegistry',
-				ids: ['a1'],
-				origin: 'local',
-				operation: 'put'
-			});
+			dbWriteListener?.([
+				{
+					tableName: 'characterSummaries',
+					ids: ['c1'],
+					origin: 'local',
+					operation: 'put'
+				}
+			]);
+			assetWriteListener?.([
+				{
+					tableName: 'assets',
+					ids: ['a1'],
+					origin: 'local',
+					operation: 'put'
+				}
+			]);
+			assetWriteListener?.([
+				{
+					tableName: 'assetRegistry',
+					ids: ['ar1'],
+					origin: 'local',
+					operation: 'put'
+				}
+			]);
 
 			await Promise.resolve();
 
 			expect(DataSyncService.handleLocalWrite).toHaveBeenCalledWith(
 				expect.objectContaining({ tableName: 'characterSummaries', ids: ['c1'] })
 			);
+			// assets writes go to AssetSyncEngine.pushById, not DataSyncService
+			expect(AssetSyncService.pushById).toHaveBeenCalledWith('a1');
+			expect(DataSyncService.handleLocalWrite).not.toHaveBeenCalledWith(
+				expect.objectContaining({ tableName: 'assets' })
+			);
+			// assetRegistry writes trigger asset upload queue
 			expect(AssetSyncService.start).toHaveBeenCalledTimes(2);
 		});
 	});

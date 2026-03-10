@@ -28,7 +28,7 @@ import {
 import { getActiveSession } from '../session';
 import { UserService } from './user';
 import { appUser } from '$lib/adapters/user';
-import { DataSyncService, SyncManager } from '../sync';
+import { DataSyncService, AssetSyncService, SyncManager } from '../sync';
 import { AppError } from '$lib/shared/errors';
 
 export class AuthService {
@@ -145,6 +145,7 @@ export class AuthService {
 		// performs a full pull. Login is rare (once per device session) and
 		// this guarantees a clean slate — "re-login to fix sync issues" works.
 		await DataSyncService.resetCursors(authData.record.id);
+		await AssetSyncService.resetCursors(authData.record.id);
 	}
 
 	/**

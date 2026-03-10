@@ -21,15 +21,8 @@ vi.mock('$lib/adapters/user', () => ({
 	}
 }));
 
-vi.mock('$lib/services/sync/profile', () => ({
-	ProfileSyncService: {
-		pushProfile: vi.fn()
-	}
-}));
-
 import { getActiveSession } from '$lib/services/session';
 import { appUser } from '$lib/adapters/user';
-import { ProfileSyncService } from '$lib/services/sync/profile';
 
 describe('ProfileService', () => {
 	const mockUserId = 'user-123';
@@ -59,8 +52,6 @@ describe('ProfileService', () => {
 		vi.mocked(appUser.getUser).mockResolvedValue({ ...baseMockUser });
 		vi.mocked(appUser.saveUser).mockResolvedValue(undefined);
 
-		// Default sync service mock
-		vi.mocked(ProfileSyncService.pushProfile).mockResolvedValue(undefined);
 	});
 
 	describe('get', () => {
@@ -101,9 +92,6 @@ describe('ProfileService', () => {
 					updatedAt: expect.any(Number)
 				})
 			);
-
-			// Should trigger sync fire-and-forget
-			expect(ProfileSyncService.pushProfile).toHaveBeenCalledWith('Jane Doe', 'new_avatar.png');
 		});
 
 		it('should update only the provided fields', async () => {
@@ -119,8 +107,6 @@ describe('ProfileService', () => {
 					updatedAt: expect.any(Number)
 				})
 			);
-
-			expect(ProfileSyncService.pushProfile).toHaveBeenCalledWith('Jane Doe', undefined);
 		});
 
 		it('should throw an error if the user is not found', async () => {
@@ -130,7 +116,6 @@ describe('ProfileService', () => {
 				`User not found: ${mockUserId}`
 			);
 			expect(appUser.saveUser).not.toHaveBeenCalled();
-			expect(ProfileSyncService.pushProfile).not.toHaveBeenCalled();
 		});
 	});
 
@@ -154,7 +139,8 @@ describe('ProfileService', () => {
 					name: 'Remote Name',
 					avatar: 'remote_avatar.png',
 					updatedAt: newServerTime
-				})
+				}),
+				{ origin: 'sync' }
 			);
 		});
 

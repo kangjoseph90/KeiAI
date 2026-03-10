@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DataSyncService } from '$lib/services/sync/data';
 import { pb } from '$lib/adapters/pb';
-import { localDB, SYNC_TABLES } from '$lib/adapters/db';
+import { localDB, TABLES } from '$lib/adapters/db';
 import { appKV } from '$lib/adapters/kv';
 import { getActiveSession } from '$lib/services/session';
 import { toBase64, fromBase64 } from '$lib/crypto';
@@ -39,10 +39,12 @@ vi.mock('$lib/adapters/pb', () => ({
 
 vi.mock('$lib/adapters/db', () => ({
 	SYNC_TABLES: ['characterSummaries', 'chatSummaries'],
+	TABLES: ['characterSummaries', 'chatSummaries'],
 	localDB: {
 		getRecord: vi.fn(),
 		putRecord: vi.fn(),
-		getUnsyncedChanges: vi.fn()
+		getUnsyncedChanges: vi.fn(),
+		subscribeWriteEvents: vi.fn(() => () => {})
 	}
 }));
 
@@ -79,7 +81,7 @@ describe('DataSyncService', () => {
 	describe('Realtime Subscription', () => {
 		it('should subscribe to all sync tables', async () => {
 			await DataSyncService.subscribeRealtime();
-			expect(mockCollection.subscribe).toHaveBeenCalledTimes(SYNC_TABLES.length);
+			expect(mockCollection.subscribe).toHaveBeenCalledTimes(TABLES.length);
 		});
 
 		it('should handle unsubscribe', async () => {

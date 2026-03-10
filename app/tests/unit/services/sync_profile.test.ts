@@ -64,11 +64,16 @@ describe('ProfileSyncService', () => {
 
 	describe('pushProfile', () => {
 		it('should update PocketBase record', async () => {
+			vi.mocked(appUser.getUser).mockResolvedValue({
+				id: mockUserId,
+				name: 'New Name',
+				avatar: 'avatar.png'
+			} as UserRecord);
 			vi.mocked(mockCollection.update).mockResolvedValue({
 				id: mockUserId
 			} as unknown as RecordModel);
 
-			await ProfileSyncService.pushProfile('New Name');
+			await ProfileSyncService.pushProfile();
 
 			expect(mockCollection.update).toHaveBeenCalledWith(mockUserId, { name: 'New Name' });
 		});
@@ -82,9 +87,13 @@ describe('ProfileSyncService', () => {
 				id: mockUserId,
 				avatar: 'abc.png'
 			} as unknown as RecordModel);
-			vi.mocked(appUser.getUser).mockResolvedValue({ id: mockUserId } as UserRecord);
+			vi.mocked(appUser.getUser).mockResolvedValue({
+				id: mockUserId,
+				name: 'Name',
+				avatar: 'data:image/png;base64,abc'
+			} as UserRecord);
 
-			await ProfileSyncService.pushProfile('Name', 'data:image/png;base64,abc');
+			await ProfileSyncService.pushProfile();
 
 			expect(mockFetch).toHaveBeenCalledWith('data:image/png;base64,abc');
 			expect(mockCollection.update).toHaveBeenCalledWith(
@@ -94,12 +103,15 @@ describe('ProfileSyncService', () => {
 					avatar: mockBlob
 				})
 			);
-			expect(appUser.saveUser).toHaveBeenCalled();
+			expect(appUser.saveUser).toHaveBeenCalledWith(
+				expect.objectContaining({ id: mockUserId }),
+				{ origin: 'sync' }
+			);
 		});
 
 		it('should skip if guest or invalid auth', async () => {
 			(pb.authStore as unknown as { isValid: boolean }).isValid = false;
-			await ProfileSyncService.pushProfile('Name');
+			await ProfileSyncService.pushProfile();
 			expect(pb.collection).not.toHaveBeenCalled();
 
 			(pb.authStore as unknown as { isValid: boolean }).isValid = true;
@@ -108,7 +120,7 @@ describe('ProfileSyncService', () => {
 				userId: mockUserId,
 				masterKey: {} as CryptoKey
 			});
-			await ProfileSyncService.pushProfile('Name');
+			await ProfileSyncService.pushProfile();
 			expect(pb.collection).not.toHaveBeenCalled();
 		});
 	});

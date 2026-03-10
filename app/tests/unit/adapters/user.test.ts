@@ -19,24 +19,21 @@ vi.mock('@tauri-apps/api/core', () => ({
 Dexie.dependencies.indexedDB = fakeIndexedDB as unknown as IDBFactory;
 Dexie.dependencies.IDBKeyRange = FDBKeyRange as unknown as typeof IDBKeyRange;
 
-import { WebUserAdapter } from '$lib/adapters/user/web';
+import { WebUserAdapter, authDB } from '$lib/adapters/user/web';
 
 describe('WebUserAdapter (Dexie)', () => {
 	let adapter: IUserAdapter;
 
 	beforeEach(async () => {
-		// Use fake timers to test batching
-		vi.useFakeTimers();
 		// Delete any existing database
-		await Dexie.delete('KeiUsers').catch(() => {});
+		await authDB.users.clear();
 		// Create a fresh adapter instance for each test
 		adapter = new WebUserAdapter();
 	});
 
 	afterEach(async () => {
-		vi.useRealTimers();
 		// Delete the database after each test
-		await Dexie.delete('KeiUsers').catch(() => {});
+		await authDB.users.clear();
 	});
 
 	// Helper to create a test user
@@ -212,11 +209,8 @@ describe('WebUserAdapter (Dexie)', () => {
 			await adapter.saveUser(user1);
 			await adapter.saveUser(user2);
 
-			// Should not have been called yet
-			expect(listener).not.toHaveBeenCalled();
-
-			// Wait for batch
-			vi.runAllTimers();
+			// Wait for batch (real timeout instead of fake timers to avoid breaking fake-indexeddb)
+			await new Promise((resolve) => setTimeout(resolve, 50));
 
 			expect(listener).toHaveBeenCalledOnce();
 			const events = listener.mock.calls[0][0];
@@ -375,6 +369,6 @@ describe('IUserAdapter interface contract', () => {
 
 		// Clean up
 		await Promise.allSettled(promises);
-		await Dexie.delete('KeiUsers').catch(() => {});
+		await authDB.users.clear();
 	});
 });

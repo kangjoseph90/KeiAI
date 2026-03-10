@@ -10,7 +10,6 @@
 
 import { getActiveSession } from '../session';
 import { appUser, type UserRecord } from '$lib/adapters/user';
-import { ProfileSyncService } from '../sync/profile';
 import { AppError } from '$lib/shared/errors';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
@@ -53,9 +52,6 @@ export class ProfileService {
 
 		await appUser.saveUser(user);
 
-		// Fire-and-forget sync push (no-ops for guests / offline)
-		void ProfileSyncService.pushProfile(user.name, changes.avatar);
-
 		return this.toProfile(user);
 	}
 
@@ -79,7 +75,8 @@ export class ProfileService {
 		user.name = remoteName;
 		user.avatar = remoteAvatar;
 		user.updatedAt = remoteUpdatedAt;
-		await appUser.saveUser(user);
+		user.updatedAt = remoteUpdatedAt;
+		await appUser.saveUser(user, { origin: 'sync' });
 
 		return this.toProfile(user);
 	}
