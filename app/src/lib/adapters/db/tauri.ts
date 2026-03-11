@@ -264,7 +264,14 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 			const record = parseRecord<BaseRecord>(rows[0]);
 			record.isDeleted = true;
 			record.updatedAt = now;
-			await this.putRecord(tableName, record, { origin: options?.origin });
+			const b = recordToBindings(record);
+			await db.execute(
+				`INSERT OR REPLACE INTO ${tableName}
+            (id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+				[b.id, b.userId, b.characterId, b.chatId, b.sortOrder, b.ownerId, b.updatedAt, b.isDeleted, b.data]
+			);
+			this.emitWriteEvent(tableName, 'softDelete', [id], options);
 		}
 	}
 
@@ -290,7 +297,33 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		}
 
 		if (recordsToUpdate.length > 0) {
-			await this.putRecords(tableName, recordsToUpdate, { origin: options?.origin });
+			const chunkSize = 50;
+			for (let i = 0; i < recordsToUpdate.length; i += chunkSize) {
+				const chunk = recordsToUpdate.slice(i, i + chunkSize);
+				const placeholders = chunk
+					.map((_, idx) => {
+						const start = idx * 9 + 1;
+						return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8})`;
+					})
+					.join(', ');
+				const values: unknown[] = [];
+				for (const record of chunk) {
+					const b = recordToBindings(record);
+					values.push(b.id, b.userId, b.characterId, b.chatId, b.sortOrder, b.ownerId, b.updatedAt, b.isDeleted, b.data);
+				}
+				await db.execute(
+					`INSERT OR REPLACE INTO ${tableName}
+                (id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data)
+                VALUES ${placeholders}`,
+					values
+				);
+			}
+			this.emitWriteEvent(
+				tableName,
+				'softDeleteByIndex',
+				recordsToUpdate.map((r) => r.id),
+				options
+			);
 		}
 	}
 
