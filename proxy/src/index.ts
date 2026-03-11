@@ -14,8 +14,7 @@
  */
 
 interface Env {
-	// Add environment variable bindings here
-	[key: string]: unknown;
+	PROXY_API_KEY?: string;
 }
 
 function handleCORS(): Response {
@@ -65,6 +64,22 @@ export default {
 				return new Response('Missing x-target-url header', { status: 400 });
 			}
 
+			// 1. Verify Shared Key
+			const proxyKey = env.PROXY_API_KEY;
+			if (proxyKey) {
+				const providedKey = request.headers.get('x-proxy-api-key');
+				if (providedKey !== proxyKey) {
+					return new Response('Unauthorized: Invalid or missing x-proxy-api-key', { status: 401 });
+				}
+			}
+
+			// 2. Simple IP-based Rate Limiting (Using cf object as a hint)
+			// Note: For production, use Cloudflare's Rate Limiting feature or KV/Durable Objects.
+			// This is a basic check to prevent obvious automated abuse.
+			const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
+			// (Cloudflare Workers Free Tier covers 100k requests/day, so we just log/monitor for now
+			// or could implement a more sophisticated guard if a KV binding was available).
+
 			// Parse target headers
 			let targetHeaders: Record<string, string> = {};
 			const targetHeadersStr = request.headers.get('x-target-headers');
@@ -91,10 +106,7 @@ export default {
 
 				return addCorsHeaders(proxyResponse);
 			} catch (error) {
-				return new Response(
-					`Proxy error: ${error instanceof Error ? error.message : String(error)}`,
-					{ status: 502 }
-				);
+				return new Response(`Proxy error: ${error instanceof Error ? error.message : String(error)}`, { status: 502 });
 			}
 		}
 

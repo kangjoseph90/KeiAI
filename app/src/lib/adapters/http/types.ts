@@ -6,8 +6,17 @@
  * On Tauri, it uses the `@tauri-apps/plugin-http` to bypass CORS restrictions.
  */
 
+export interface HttpOptions {
+	proxy?: boolean;
+}
+
 export interface IHttpAdapter {
-	fetch(url: string, init?: RequestInit): Promise<Response>;
-	get<T>(url: string, headers?: Record<string, string>): Promise<T>;
-	post<T>(url: string, body: unknown, headers?: Record<string, string>): Promise<T>;
+	fetch(url: string, init?: RequestInit, options?: HttpOptions): Promise<Response>;
+	get<T>(url: string, headers?: Record<string, string>, options?: HttpOptions): Promise<T>;
+	post<T>(
+		url: string,
+		body: unknown,
+		headers?: Record<string, string>,
+		options?: HttpOptions
+	): Promise<T>;
 }

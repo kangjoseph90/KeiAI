@@ -42,6 +42,52 @@ describe('Proxy worker', () => {
 			expect(response.status).toBe(405);
 		});
 
+		it('returns 401 when x-proxy-api-key is missing but required', async () => {
+			const testEnv = { PROXY_API_KEY: 'secret-key' };
+			const request = new IncomingRequest('http://example.com/proxy', {
+				method: 'POST',
+				headers: { 'x-target-url': 'https://example.com' },
+			});
+			const response = await worker.fetch(request, testEnv as any, createExecutionContext());
+
+			expect(response.status).toBe(401);
+			expect(await response.text()).toContain('Unauthorized');
+		});
+
+		it('returns 401 when x-proxy-api-key is incorrect', async () => {
+			const testEnv = { PROXY_API_KEY: 'secret-key' };
+			const request = new IncomingRequest('http://example.com/proxy', {
+				method: 'POST',
+				headers: {
+					'x-target-url': 'https://example.com',
+					'x-proxy-api-key': 'wrong-key',
+				},
+			});
+			const response = await worker.fetch(request, testEnv as any, createExecutionContext());
+
+			expect(response.status).toBe(401);
+		});
+
+		it('proxies request to target URL with valid key', async () => {
+			const testEnv = { PROXY_API_KEY: 'secret-key' };
+			const targetUrl = 'https://httpbin.org/post';
+			const body = { message: 'hello' };
+
+			const request = new IncomingRequest('http://example.com/proxy', {
+				method: 'POST',
+				headers: {
+					'x-target-url': targetUrl,
+					'x-proxy-api-key': 'secret-key',
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(body),
+			});
+
+			const response = await worker.fetch(request, testEnv as any, createExecutionContext());
+
+			expect(response.status).toBe(200);
+		});
+
 		it('proxies request to target URL (integration)', async () => {
 			const targetUrl = 'https://httpbin.org/post';
 			const targetHeaders = { 'X-Custom-Header': 'test-value' };
@@ -62,7 +108,7 @@ describe('Proxy worker', () => {
 			expect(response.ok).toBe(true);
 			expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
 
-			const data = await response.json() as { headers: Record<string, string>; data: string };
+			const data = (await response.json()) as { headers: Record<string, string>; data: string };
 			expect(data.headers['X-Custom-Header']).toBe('test-value');
 			expect(JSON.parse(data.data)).toEqual(body);
 		});
@@ -82,7 +128,7 @@ describe('Proxy worker', () => {
 			const response = await SELF.fetch(request);
 
 			expect(response.ok).toBe(true);
-			const data = await response.json() as { url: string };
+			const data = (await response.json()) as { url: string };
 			expect(data.url).toBe(targetUrl);
 		});
 	});

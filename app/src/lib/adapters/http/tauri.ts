@@ -1,5 +1,5 @@
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
-import type { IHttpAdapter } from './types';
+import type { IHttpAdapter, HttpOptions } from './types';
 import { AppError } from '$lib/shared/errors';
 
 /**
@@ -9,7 +9,7 @@ import { AppError } from '$lib/shared/errors';
  * This bypasses WebView CORS restrictions entirely, as requests are made by the Rust backend.
  */
 export class TauriHttpAdapter implements IHttpAdapter {
-	async fetch(url: string, init?: RequestInit): Promise<Response> {
+	async fetch(url: string, init?: RequestInit, options?: HttpOptions): Promise<Response> {
 		try {
 			// tauriFetch is highly compatible with the standard fetch API
 			return await tauriFetch(url, init);
@@ -22,23 +22,32 @@ export class TauriHttpAdapter implements IHttpAdapter {
 		}
 	}
 
-	async get<T>(url: string, headers?: Record<string, string>): Promise<T> {
-		const response = await this.fetch(url, { headers });
+	async get<T>(url: string, headers?: Record<string, string>, options?: HttpOptions): Promise<T> {
+		const response = await this.fetch(url, { headers }, options);
 		if (!response.ok) {
 			throw new AppError('NETWORK_ERROR', `HTTP error! status: ${response.status}`);
 		}
 		return response.json();
 	}
 
-	async post<T>(url: string, body: unknown, headers?: Record<string, string>): Promise<T> {
-		const response = await this.fetch(url, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				...headers
+	async post<T>(
+		url: string,
+		body: unknown,
+		headers?: Record<string, string>,
+		options?: HttpOptions
+	): Promise<T> {
+		const response = await this.fetch(
+			url,
+			{
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					...headers
+				},
+				body: JSON.stringify(body)
 			},
-			body: JSON.stringify(body)
-		});
+			options
+		);
 		if (!response.ok) {
 			throw new AppError('NETWORK_ERROR', `HTTP error! status: ${response.status}`);
 		}
