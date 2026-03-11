@@ -3,14 +3,13 @@
  * KeiAI PocketBase — One-Click Setup & Start
  *
  * Usage:
- *   1. Copy pocketbase.config.example.json → pocketbase.config.json
- *   2. Fill in your settings (admin credentials, salt secret)
- *   3. node start.js
+ *   1. Configure your settings in project root .env
+ *   2. node start.js
  *
  * What this does:
- *   • Reads pocketbase.config.json (never committed to git)
+ *   • Reads project root .env
  *   • Creates / updates the admin superuser via PocketBase CLI
- *   • Starts PocketBase with DUMMY_SALT_SECRET injected as env var
+ *   • Starts PocketBase with constants injected via env vars
  *   • All pb_migrations run automatically on startup
  */
 
@@ -36,48 +35,26 @@ if (existsSync(ENV_PATH)) {
   });
 }
 
-// ─── Config ──────────────────────────────────────────────────────────
+// ─── Environment Configuration ──────────────────────────────────────────
 
-const CONFIG_PATH = resolve(__dirname, "pocketbase.config.json");
-const EXAMPLE_PATH = resolve(__dirname, "pocketbase.config.example.json");
-
-if (!existsSync(CONFIG_PATH)) {
-  console.error("❌  pocketbase.config.json not found.");
-  console.error(`    Copy the example and fill in your settings:`);
-  console.error(`      cp "${EXAMPLE_PATH}" "${CONFIG_PATH}"`);
-  process.exit(1);
-}
-
-let config;
-try {
-  config = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
-} catch (e) {
-  console.error("❌  Failed to parse pocketbase.config.json:", e.message);
-  process.exit(1);
-}
-
-const {
-  adminEmail = process.env.PB_ADMIN_EMAIL,
-  adminPassword = process.env.PB_ADMIN_PASSWORD,
-  dummySaltSecret = process.env.DUMMY_SALT_SECRET,
-  host = process.env.PB_HOST,
-  port = process.env.PB_PORT,
-} = config;
+const adminEmail = process.env.PB_ADMIN_EMAIL;
+const adminPassword = process.env.PB_ADMIN_PASSWORD;
+const dummySaltSecret = process.env.DUMMY_SALT_SECRET;
+const host = process.env.PB_HOST;
+const port = process.env.PB_PORT;
 
 if (!adminEmail || !adminPassword || !dummySaltSecret || !host || !port) {
   console.error(
-    "❌  pocketbase.config.json or environment variables are missing required fields.",
+    "❌  Missing required environment variables in project root .env",
   );
   console.error(
-    "    Required: adminEmail, adminPassword, dummySaltSecret, host, port",
+    "    Required: PB_ADMIN_EMAIL, PB_ADMIN_PASSWORD, DUMMY_SALT_SECRET, PB_HOST, PB_PORT",
   );
   process.exit(1);
 }
 
 if (dummySaltSecret.startsWith("change_me")) {
-  console.error(
-    "❌  Please set a real dummySaltSecret in pocketbase.config.json.",
-  );
+  console.error("❌  Please set a real DUMMY_SALT_SECRET in project root .env");
   process.exit(1);
 }
 
