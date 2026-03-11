@@ -35,13 +35,13 @@ UI → Stores → Services → Adapters → platform APIs
 
 ### Forbidden Imports
 
-| From           | Cannot Import               | Reason                               |
-| -------------- | --------------------------- | ------------------------------------ |
-| Service        | Store                       | Services are UI-agnostic             |
-| Store          | another Store (except state.ts) | Circular imports                 |
-| Adapter        | Service or Store            | Adapters know nothing about domain   |
-| generation/    | Svelte stores               | Pipeline must be stateless           |
-| UI component   | localDB or adapter directly | All data goes through Services       |
+| From         | Cannot Import                   | Reason                             |
+| ------------ | ------------------------------- | ---------------------------------- |
+| Service      | Store                           | Services are UI-agnostic           |
+| Store        | another Store (except state.ts) | Circular imports                   |
+| Adapter      | Service or Store                | Adapters know nothing about domain |
+| generation/  | Svelte stores                   | Pipeline must be stateless         |
+| UI component | localDB or adapter directly     | All data goes through Services     |
 
 ---
 
@@ -164,13 +164,13 @@ All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
 
 ## Error Handling Philosophy
 
-| Layer    | Responsibility                                                             |
-| -------- | -------------------------------------------------------------------------- |
-| Adapter  | Throw platform errors (DexieError, StorageError) or wrap in `AppError`    |
-| Service  | Throw `AppError` with domain-specific codes — always                      |
-| Store    | **Propagate** service errors to caller — no internal try/catch            |
-| UI       | Catch and display user-facing messages via `getErrorMessage(error)`       |
-| Sync     | Fire-and-forget — errors logged, never surfaced to UI                     |
+| Layer   | Responsibility                                                         |
+| ------- | ---------------------------------------------------------------------- |
+| Adapter | Throw platform errors (DexieError, StorageError) or wrap in `AppError` |
+| Service | Throw `AppError` with domain-specific codes — always                   |
+| Store   | **Propagate** service errors to caller — no internal try/catch         |
+| UI      | Catch and display user-facing messages via `getErrorMessage(error)`    |
+| Sync    | Fire-and-forget — errors logged, never surfaced to UI                  |
 
 ```typescript
 // Error codes (shared/errors.ts):
@@ -183,17 +183,17 @@ All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
 
 ## Naming Conventions
 
-| Kind                   | Pattern                | Example                                   |
-| ---------------------- | ---------------------- | ----------------------------------------- |
-| DB record type         | `*Record`              | `CharacterSummaryRecord`, `MessageRecord` |
-| Domain fields type     | `*SummaryFields` / `*DataFields` | `ChatSummaryFields`             |
-| Combined detail type   | `*Detail`              | `CharacterDetail`, `PresetDetail`         |
-| Service class          | `*Service` (static)    | `CharacterService.list()`                 |
-| Store action function  | `verbNoun()`           | `loadCharacters()`, `selectChat()`        |
-| Guard function         | `assert*()`            | `assertChatOwnedByCharacter()`            |
-| Error code             | `SCREAMING_SNAKE`      | `'ENCRYPTION_FAILED'`                     |
-| Shared ref types       | `OrderedRef`, `ResourceRef`, `FolderDef`, `AssetRef` | in `shared/types.ts` |
-| ID generation          | `generateId()`         | 15-char lowercase+digits, PocketBase-compatible |
+| Kind                  | Pattern                                              | Example                                         |
+| --------------------- | ---------------------------------------------------- | ----------------------------------------------- |
+| DB record type        | `*Record`                                            | `CharacterSummaryRecord`, `MessageRecord`       |
+| Domain fields type    | `*SummaryFields` / `*DataFields`                     | `ChatSummaryFields`                             |
+| Combined detail type  | `*Detail`                                            | `CharacterDetail`, `PresetDetail`               |
+| Service class         | `*Service` (static)                                  | `CharacterService.list()`                       |
+| Store action function | `verbNoun()`                                         | `loadCharacters()`, `selectChat()`              |
+| Guard function        | `assert*()`                                          | `assertChatOwnedByCharacter()`                  |
+| Error code            | `SCREAMING_SNAKE`                                    | `'ENCRYPTION_FAILED'`                           |
+| Shared ref types      | `OrderedRef`, `ResourceRef`, `FolderDef`, `AssetRef` | in `shared/types.ts`                            |
+| ID generation         | `generateId()`                                       | 15-char lowercase+digits, PocketBase-compatible |
 
 ---
 
@@ -266,17 +266,17 @@ $effect(() => { ... });
 
 Nine adapter interfaces, each with Web + Tauri implementations dispatched via `isTauri()`:
 
-| Adapter      | Web                      | Tauri                     | Purpose                         |
-| ------------ | -------------------------| ------------------------- | ------------------------------- |
-| `db`         | Dexie (IndexedDB)        | SQLite                    | Encrypted record storage        |
-| `kv`         | localStorage             | @tauri-apps/plugin-store  | Site preferences, sync timestamps|
-| `storage`    | OPFS                     | Native FS                 | Binary asset files              |
-| `user`       | IndexedDB (separate)     | Keychain + IndexedDB      | User records + CryptoKey        |
-| `http`       | fetch                    | @tauri-apps/plugin-http   | Cross-platform HTTP (CORS bypass)|
-| `clipboard`  | Clipboard API            | Plugin                    | Text/image clipboard            |
-| `dialog`     | Browser prompt           | Native dialog             | File open/save, confirmations   |
-| `notification`| Notification API        | Plugin                    | OS notifications                |
-| `window`     | N/A                      | Plugin                    | Window management (Tauri-only)  |
+| Adapter        | Web                  | Tauri                    | Purpose                           |
+| -------------- | -------------------- | ------------------------ | --------------------------------- |
+| `db`           | Dexie (IndexedDB)    | SQLite                   | Encrypted record storage          |
+| `kv`           | localStorage         | @tauri-apps/plugin-store | Site preferences, sync timestamps |
+| `storage`      | OPFS                 | Native FS                | Binary asset files                |
+| `user`         | IndexedDB (separate) | Keychain + IndexedDB     | User records + CryptoKey          |
+| `http`         | fetch                | @tauri-apps/plugin-http  | Cross-platform HTTP (CORS bypass) |
+| `clipboard`    | Clipboard API        | Plugin                   | Text/image clipboard              |
+| `dialog`       | Browser prompt       | Native dialog            | File open/save, confirmations     |
+| `notification` | Notification API     | Plugin                   | OS notifications                  |
+| `window`       | N/A                  | Plugin                   | Window management (Tauri-only)    |
 
 ### Adding a New Adapter
 

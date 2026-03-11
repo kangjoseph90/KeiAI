@@ -269,7 +269,17 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 				`INSERT OR REPLACE INTO ${tableName}
             (id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-				[b.id, b.userId, b.characterId, b.chatId, b.sortOrder, b.ownerId, b.updatedAt, b.isDeleted, b.data]
+				[
+					b.id,
+					b.userId,
+					b.characterId,
+					b.chatId,
+					b.sortOrder,
+					b.ownerId,
+					b.updatedAt,
+					b.isDeleted,
+					b.data
+				]
 			);
 			this.emitWriteEvent(tableName, 'softDelete', [id], options);
 		}
@@ -309,7 +319,17 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 				const values: unknown[] = [];
 				for (const record of chunk) {
 					const b = recordToBindings(record);
-					values.push(b.id, b.userId, b.characterId, b.chatId, b.sortOrder, b.ownerId, b.updatedAt, b.isDeleted, b.data);
+					values.push(
+						b.id,
+						b.userId,
+						b.characterId,
+						b.chatId,
+						b.sortOrder,
+						b.ownerId,
+						b.updatedAt,
+						b.isDeleted,
+						b.data
+					);
 				}
 				await db.execute(
 					`INSERT OR REPLACE INTO ${tableName}
