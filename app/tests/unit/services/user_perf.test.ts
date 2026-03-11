@@ -88,6 +88,7 @@ describe('UserService Delete Performance', () => {
 		await UserService.deleteUser('test-user');
 		const end = performance.now();
 
-		console.log(`Deletion took ${end - start} ms`);
+		const duration = end - start;
+		expect(duration).toBeLessThan(10000);
 	}, 10000);
 });
