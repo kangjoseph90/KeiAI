@@ -89,7 +89,6 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		record: T,
 		options?: DatabaseWriteOptions
 	): Promise<void> {
-		if (!record.updatedAt) record.updatedAt = Date.now();
 		await this.getTable<T>(tableName).put(record);
 		this.emitWriteEvent(tableName, 'put', [record.id], options);
 	}
@@ -99,10 +98,6 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		records: T[],
 		options?: DatabaseWriteOptions
 	): Promise<void> {
-		const now = Date.now();
-		for (const record of records) {
-			if (!record.updatedAt) record.updatedAt = now;
-		}
 		await this.getTable<T>(tableName).bulkPut(records);
 		this.emitWriteEvent(
 			tableName,
