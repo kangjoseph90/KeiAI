@@ -1,6 +1,3 @@
-# PocketBase secrets (never commit this)
-pocketbase/pocketbase.config.json
-
 # PocketBase data (local only)
 pocketbase/pb_data/
 
