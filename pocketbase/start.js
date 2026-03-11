@@ -14,62 +14,86 @@
  *   • All pb_migrations run automatically on startup
  */
 
-'use strict';
+"use strict";
 
-const { existsSync, readFileSync } = require('fs');
-const { spawnSync, spawn }         = require('child_process');
-const { resolve }                  = require('path');
+const { existsSync, readFileSync } = require("fs");
+const { spawnSync, spawn } = require("child_process");
+const { resolve } = require("path");
+
+// ─── Environment ──────────────────────────────────────────────────────
+
+const ENV_PATH = resolve(__dirname, "../.env");
+if (existsSync(ENV_PATH)) {
+  const envContent = readFileSync(ENV_PATH, "utf8");
+  envContent.split("\n").forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    const [key, ...valueParts] = trimmed.split("=");
+    const value = valueParts.join("=").trim();
+    if (key && value) {
+      process.env[key.trim()] = value;
+    }
+  });
+}
 
 // ─── Config ──────────────────────────────────────────────────────────
 
-const CONFIG_PATH  = resolve(__dirname, 'pocketbase.config.json');
-const EXAMPLE_PATH = resolve(__dirname, 'pocketbase.config.example.json');
+const CONFIG_PATH = resolve(__dirname, "pocketbase.config.json");
+const EXAMPLE_PATH = resolve(__dirname, "pocketbase.config.example.json");
 
 if (!existsSync(CONFIG_PATH)) {
-    console.error('❌  pocketbase.config.json not found.');
-    console.error(`    Copy the example and fill in your settings:`);
-    console.error(`      cp "${EXAMPLE_PATH}" "${CONFIG_PATH}"`);
-    process.exit(1);
+  console.error("❌  pocketbase.config.json not found.");
+  console.error(`    Copy the example and fill in your settings:`);
+  console.error(`      cp "${EXAMPLE_PATH}" "${CONFIG_PATH}"`);
+  process.exit(1);
 }
 
 let config;
 try {
-    config = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
+  config = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
 } catch (e) {
-    console.error('❌  Failed to parse pocketbase.config.json:', e.message);
-    process.exit(1);
+  console.error("❌  Failed to parse pocketbase.config.json:", e.message);
+  process.exit(1);
 }
 
 const {
-    adminEmail,
-    adminPassword,
-    dummySaltSecret,
-    host = '127.0.0.1',
-    port = 8090,
+  adminEmail = process.env.PB_ADMIN_EMAIL,
+  adminPassword = process.env.PB_ADMIN_PASSWORD,
+  dummySaltSecret = process.env.DUMMY_SALT_SECRET,
+  host = process.env.PB_HOST,
+  port = process.env.PB_PORT,
 } = config;
 
-if (!adminEmail || !adminPassword || !dummySaltSecret) {
-    console.error('❌  pocketbase.config.json is missing required fields.');
-    console.error('    Required: adminEmail, adminPassword, dummySaltSecret');
-    process.exit(1);
+if (!adminEmail || !adminPassword || !dummySaltSecret || !host || !port) {
+  console.error(
+    "❌  pocketbase.config.json or environment variables are missing required fields.",
+  );
+  console.error(
+    "    Required: adminEmail, adminPassword, dummySaltSecret, host, port",
+  );
+  process.exit(1);
 }
 
-if (dummySaltSecret.startsWith('change_me')) {
-    console.error('❌  Please set a real dummySaltSecret in pocketbase.config.json.');
-    process.exit(1);
+if (dummySaltSecret.startsWith("change_me")) {
+  console.error(
+    "❌  Please set a real dummySaltSecret in pocketbase.config.json.",
+  );
+  process.exit(1);
 }
 
 // ─── Binary ──────────────────────────────────────────────────────────
 
 const bin = resolve(
-    __dirname,
-    process.platform === 'win32' ? 'pocketbase.exe' : 'pocketbase'
+  __dirname,
+  process.platform === "win32" ? "pocketbase.exe" : "pocketbase",
 );
 
 if (!existsSync(bin)) {
-    console.error(`❌  PocketBase binary not found at: ${bin}`);
-    console.error('    Download from https://pocketbase.io/docs/ and place it here.');
-    process.exit(1);
+  console.error(`❌  PocketBase binary not found at: ${bin}`);
+  console.error(
+    "    Download from https://pocketbase.io/docs/ and place it here.",
+  );
+  process.exit(1);
 }
 
 const env = { ...process.env, DUMMY_SALT_SECRET: dummySaltSecret };
@@ -78,39 +102,43 @@ const env = { ...process.env, DUMMY_SALT_SECRET: dummySaltSecret };
 
 console.log(`🔧  Setting up admin superuser (${adminEmail})...`);
 
-const setupResult = spawnSync(bin, ['superuser', 'upsert', adminEmail, adminPassword], {
+const setupResult = spawnSync(
+  bin,
+  ["superuser", "upsert", adminEmail, adminPassword],
+  {
     cwd: __dirname,
-    stdio: 'inherit',
+    stdio: "inherit",
     env,
-});
+  },
+);
 
 if (setupResult.status !== 0) {
-    console.error('❌  Failed to create/update admin superuser.');
-    process.exit(1);
+  console.error("❌  Failed to create/update admin superuser.");
+  process.exit(1);
 }
 
 // ─── Start PocketBase ─────────────────────────────────────────────────
 
 const addr = `${host}:${port}`;
 
-console.log('');
+console.log("");
 console.log(`🚀  Starting PocketBase on http://${addr}`);
 console.log(`    Admin UI : http://${addr}/_/`);
 console.log(`    API      : http://${addr}/api/`);
-console.log('    Press Ctrl+C to stop.');
-console.log('');
+console.log("    Press Ctrl+C to stop.");
+console.log("");
 
-const pb = spawn(bin, ['serve', `--http=${addr}`], {
-    cwd: __dirname,
-    stdio: 'inherit',
-    env,
+const pb = spawn(bin, ["serve", `--http=${addr}`], {
+  cwd: __dirname,
+  stdio: "inherit",
+  env,
 });
 
-pb.on('close', (code) => {
-    process.exit(code ?? 0);
+pb.on("close", (code) => {
+  process.exit(code ?? 0);
 });
 
 // Forward signals so Ctrl+C cleanly stops PocketBase
-for (const sig of ['SIGINT', 'SIGTERM']) {
-    process.on(sig, () => pb.kill(sig));
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.on(sig, () => pb.kill(sig));
 }

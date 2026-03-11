@@ -17,12 +17,36 @@ describe('Proxy worker', () => {
 	});
 
 	describe('CORS preflight', () => {
-		it('handles OPTIONS request', async () => {
+		it('handles OPTIONS request with default wildcard', async () => {
 			const request = new IncomingRequest('http://example.com/proxy', { method: 'OPTIONS' });
-			const response = await worker.fetch(request, env as any, createExecutionContext());
+			const response = await worker.fetch(request, {} as any, createExecutionContext());
 
 			expect(response.status).toBe(204);
 			expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		});
+
+		it('matches specific origin from ALLOWED_ORIGINS', async () => {
+			const testEnv = { ALLOWED_ORIGINS: 'https://app.keiai.ai, http://localhost:5173' };
+			const request = new IncomingRequest('http://example.com/proxy', {
+				method: 'OPTIONS',
+				headers: { Origin: 'https://app.keiai.ai' },
+			});
+			const response = await worker.fetch(request, testEnv as any, createExecutionContext());
+
+			expect(response.status).toBe(204);
+			expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.keiai.ai');
+		});
+
+		it('rejects unknown origin and falls back to first allowed or wildcard', async () => {
+			const testEnv = { ALLOWED_ORIGINS: 'https://app.keiai.ai' };
+			const request = new IncomingRequest('http://example.com/proxy', {
+				method: 'OPTIONS',
+				headers: { Origin: 'https://evil.com' },
+			});
+			const response = await worker.fetch(request, testEnv as any, createExecutionContext());
+
+			expect(response.status).toBe(204);
+			expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.keiai.ai');
 		});
 	});
 

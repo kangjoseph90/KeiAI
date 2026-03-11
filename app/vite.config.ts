@@ -6,6 +6,7 @@ const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
+	envDir: '../',
 
 	// Vitest configuration
 	test: {

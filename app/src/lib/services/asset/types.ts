@@ -21,10 +21,14 @@ export interface CompressAndHashResult {
 // ─── Constants ─────────────────────────────────────────────────────────────
 
 /** CDN base URL for asset delivery */
-export const CDN_BASE_URL = 'https://cdn.keiai.ai/assets';
+export const CDN_BASE_URL = import.meta.env.VITE_CDN_BASE_URL;
 
 /** Fixed salt for encKey generation - enables deterministic key derivation */
-export const FIXED_SALT = 'keiai-private-asset-salt-v1';
+export const FIXED_SALT = import.meta.env.VITE_FIXED_SALT;
+
+if (!CDN_BASE_URL || !FIXED_SALT) {
+	throw new Error('VITE_CDN_BASE_URL and VITE_FIXED_SALT environment variables are required');
+}
 
 /** Max file size for upload (5MB) */
 export const MAX_ASSET_SIZE = 5 * 1024 * 1024;

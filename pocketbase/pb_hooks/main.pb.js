@@ -86,7 +86,13 @@ if (!DUMMY_SALT_SECRET) {
   );
 }
 
-var DEFAULT_ASSET_QUOTA_BYTES = 50 * 1024 * 1024;
+var DEFAULT_ASSET_QUOTA_BYTES = Number($os.getenv("DEFAULT_ASSET_QUOTA_BYTES"));
+
+if (!DEFAULT_ASSET_QUOTA_BYTES || isNaN(DEFAULT_ASSET_QUOTA_BYTES)) {
+  throw new Error(
+    "DEFAULT_ASSET_QUOTA_BYTES environment variable is required and must be a number",
+  );
+}
 
 function getAuthRecord(e) {
   try {
