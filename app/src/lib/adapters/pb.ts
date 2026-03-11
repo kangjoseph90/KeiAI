@@ -8,7 +8,7 @@ export const pb = new PocketBase(import.meta.env.VITE_PB_URL || 'http://127.0.0.
 
 // Optional: Global hook to handle auth state changes
 if (isBrowser) {
-	pb.authStore.onChange((token, model) => {
-		console.log('PocketBase Auth state changed', model ? `User: ${model.id}` : 'Logged Out');
+	pb.authStore.onChange(() => {
+		// Auth state changed — consumed by AuthService.onPbAuthChange
 	});
 }
