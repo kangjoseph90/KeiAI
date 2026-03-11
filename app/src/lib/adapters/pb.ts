@@ -3,8 +3,13 @@ import PocketBase from 'pocketbase';
 // Determine if we are in a browser or Node environment (SvelteKit SSR safe)
 const isBrowser = typeof window !== 'undefined';
 
+const pbUrl = import.meta.env.VITE_PB_URL;
+if (!pbUrl) {
+	throw new Error('VITE_PB_URL environment variable is required');
+}
+
 // Connect to the local or remote PocketBase instance
-export const pb = new PocketBase(import.meta.env.VITE_PB_URL || 'http://127.0.0.1:8090');
+export const pb = new PocketBase(pbUrl);
 
 // Optional: Global hook to handle auth state changes
 if (isBrowser) {

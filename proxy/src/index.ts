@@ -15,23 +15,35 @@
 
 interface Env {
 	PROXY_API_KEY?: string;
+	ALLOWED_ORIGINS?: string;
 }
 
-function handleCORS(): Response {
+function handleCORS(request: Request, env: Env): Response {
+	const origin = request.headers.get('Origin');
+	const allowedOrigins = env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : [];
+	const responseOrigin = origin && (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) ? origin : allowedOrigins[0] || '*';
+
 	return new Response(null, {
 		status: 204,
 		headers: {
-			'Access-Control-Allow-Origin': '*',
+			'Access-Control-Allow-Origin': responseOrigin,
 			'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
 			'Access-Control-Allow-Headers': '*',
 			'Access-Control-Max-Age': '86400',
+			Vary: 'Origin',
 		},
 	});
 }
 
-function addCorsHeaders(response: Response): Response {
+function addCorsHeaders(response: Response, request: Request, env: Env): Response {
 	const newHeaders = new Headers(response.headers);
-	newHeaders.set('Access-Control-Allow-Origin', '*');
+	const origin = request.headers.get('Origin');
+	const allowedOrigins = env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : [];
+	const responseOrigin = origin && (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) ? origin : allowedOrigins[0] || '*';
+
+	newHeaders.set('Access-Control-Allow-Origin', responseOrigin);
+	newHeaders.set('Vary', 'Origin');
+
 	return new Response(response.body, {
 		status: response.status,
 		statusText: response.statusText,
@@ -50,7 +62,7 @@ export default {
 
 		// Handle CORS preflight
 		if (request.method === 'OPTIONS') {
-			return handleCORS();
+			return handleCORS(request, env);
 		}
 
 		// Proxy endpoint
@@ -104,7 +116,7 @@ export default {
 					duplex: 'half',
 				});
 
-				return addCorsHeaders(proxyResponse);
+				return addCorsHeaders(proxyResponse, request, env);
 			} catch (error) {
 				return new Response(`Proxy error: ${error instanceof Error ? error.message : String(error)}`, { status: 502 });
 			}
