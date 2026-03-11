@@ -379,8 +379,6 @@ export class DataSyncEngine extends BaseSyncEngine {
 	private isBase64ByteField(fieldName: string): boolean {
 		return this.BYTE_FIELD_NAMES.has(fieldName);
 	}
-
 }
-
 
 export const DataSyncService = new DataSyncEngine();

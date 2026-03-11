@@ -11,7 +11,12 @@
  */
 
 import { expose } from 'comlink';
-import { encodingForModel, getEncoding, type TiktokenModel, type TiktokenEncoding } from 'js-tiktoken';
+import {
+	encodingForModel,
+	getEncoding,
+	type TiktokenModel,
+	type TiktokenEncoding
+} from 'js-tiktoken';
 import type { ModelType } from './types';
 
 // ─── Encoder Cache ───────────────────────────────────────────────────────────
