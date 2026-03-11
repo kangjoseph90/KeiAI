@@ -9,9 +9,10 @@ import { AppError } from '$lib/shared/errors';
  * This bypasses WebView CORS restrictions entirely, as requests are made by the Rust backend.
  */
 export class TauriHttpAdapter implements IHttpAdapter {
-	async fetch(url: string, init?: RequestInit, options?: HttpOptions): Promise<Response> {
+	async fetch(url: string, init?: RequestInit, _options?: HttpOptions): Promise<Response> {
 		try {
-			// tauriFetch is highly compatible with the standard fetch API
+			// `_options.proxy` is intentionally ignored: Tauri's Rust HTTP backend makes
+			// requests outside the WebView, bypassing CORS entirely, so proxying is unnecessary.
 			return await tauriFetch(url, init);
 		} catch (error) {
 			throw new AppError(
