@@ -79,7 +79,8 @@ describe('ChatService', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			masterKey: mockMasterKey,
 			userId: mockUserId,
-			isGuest: false
+			isGuest: false,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 
 		// Default encrypt mock
@@ -105,7 +106,6 @@ describe('ChatService', () => {
 		// Guards pass by default
 		vi.mocked(assertCharacterExists).mockResolvedValue(undefined);
 		vi.mocked(assertChatOwnedByCharacter).mockResolvedValue(undefined);
-
 	});
 
 	describe('listByCharacter', () => {

@@ -56,7 +56,8 @@ describe('ProfileSyncService', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			userId: mockUserId,
 			isGuest: false,
-			masterKey: {} as CryptoKey
+			masterKey: {} as CryptoKey,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 		(pb.authStore as unknown as { isValid: boolean }).isValid = true;
 		(ProfileSyncService as unknown as { subscribed: boolean }).subscribed = false;
@@ -116,7 +117,8 @@ describe('ProfileSyncService', () => {
 			vi.mocked(getActiveSession).mockReturnValue({
 				isGuest: true,
 				userId: mockUserId,
-				masterKey: {} as CryptoKey
+				masterKey: {} as CryptoKey,
+				identityKeyPair: {} as CryptoKeyPair
 			});
 			await ProfileSyncService.pushProfile();
 			expect(pb.collection).not.toHaveBeenCalled();

@@ -34,7 +34,10 @@ vi.mock('$lib/adapters/pb', () => ({
 					name: 'Test User',
 					avatar: 'avatar.png',
 					encryptedMasterKey: 'wrappedKey',
-					masterKeyIv: 'iv'
+					masterKeyIv: 'iv',
+					identityPublicKey: JSON.stringify({ kty: 'EC' }),
+					encryptedIdentityPrivateKey: 'base64',
+					identityPrivateKeyIv: 'base64'
 				},
 				token: 'auth-token'
 			})
@@ -58,6 +61,14 @@ vi.mock('$lib/crypto', () => ({
 	}),
 	unwrapMasterKeyRaw: vi.fn().mockResolvedValue(new Uint8Array([21, 22, 23, 24])),
 	importMasterKey: vi.fn().mockResolvedValue({} as CryptoKey),
+	importPublicKey: vi.fn().mockResolvedValue({} as CryptoKey),
+	importPrivateKey: vi.fn().mockResolvedValue({} as CryptoKey),
+	exportPublicKey: vi.fn().mockResolvedValue({} as JsonWebKey),
+	exportPrivateKey: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+	encryptBytes: vi
+		.fn()
+		.mockResolvedValue({ ciphertext: new Uint8Array([1, 2, 3]), iv: new Uint8Array([1, 2, 3]) }),
+	decryptBytes: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
 	createRecoveryData: vi.fn().mockResolvedValue({
 		encryptedRecoveryMasterKey: new Uint8Array([45, 46, 47, 48]),
 		encryptedRecoveryMasterKeyIV: new Uint8Array([49, 50, 51, 52]),
@@ -103,7 +114,8 @@ vi.mock('$lib/services/session', () => ({
 	getActiveSession: vi.fn().mockReturnValue({
 		userId: 'user-123',
 		masterKey: {} as CryptoKey,
-		isGuest: true
+		isGuest: true,
+		identityKeyPair: {} as CryptoKeyPair
 	})
 }));
 
@@ -124,7 +136,8 @@ vi.mock('$lib/adapters/user', () => ({
 			updatedAt: Date.now(),
 			isDeleted: false,
 			isGuest: true,
-			masterKey: {} as CryptoKey
+			masterKey: {} as CryptoKey,
+			identityKeyPair: {} as CryptoKeyPair
 		}),
 		backupGuestKey: vi.fn().mockResolvedValue(undefined)
 	}
@@ -151,7 +164,13 @@ import {
 	importMasterKey,
 	createRecoveryData,
 	deriveRecoveryKey,
-	splitRecoveryCode
+	splitRecoveryCode,
+	importPublicKey,
+	importPrivateKey,
+	exportPublicKey,
+	exportPrivateKey,
+	encryptBytes,
+	decryptBytes
 } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { UserService } from '$lib/services/user/user';
@@ -181,7 +200,8 @@ describe('AuthService', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			userId: mockUserId,
 			masterKey: mockMasterKey,
-			isGuest: true
+			isGuest: true,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 
 		// Default crypto mocks - these need to be reset each test
@@ -210,6 +230,24 @@ describe('AuthService', () => {
 			});
 		vi.mocked(unwrapMasterKeyRaw).mockReset().mockResolvedValue(mockRawMasterKey);
 		vi.mocked(importMasterKey).mockReset().mockResolvedValue(mockLockedKey);
+		vi.mocked(importPublicKey)
+			.mockReset()
+			.mockResolvedValue({} as CryptoKey);
+		vi.mocked(importPrivateKey)
+			.mockReset()
+			.mockResolvedValue({} as CryptoKey);
+		vi.mocked(exportPublicKey)
+			.mockReset()
+			.mockResolvedValue({} as JsonWebKey);
+		vi.mocked(exportPrivateKey)
+			.mockReset()
+			.mockResolvedValue(new Uint8Array([1, 2, 3]));
+		vi.mocked(encryptBytes)
+			.mockReset()
+			.mockResolvedValue({ ciphertext: new Uint8Array([1, 2, 3]), iv: new Uint8Array([1, 2, 3]) });
+		vi.mocked(decryptBytes)
+			.mockReset()
+			.mockResolvedValue(new Uint8Array([1, 2, 3]));
 		vi.mocked(deriveRecoveryKey).mockReset().mockResolvedValue(mockEncryptionKey);
 		vi.mocked(splitRecoveryCode).mockReset().mockReturnValue({
 			frontHalf: 'ABCD1234',
@@ -218,16 +256,19 @@ describe('AuthService', () => {
 		});
 
 		// Default appUser mock
-		vi.mocked(appUser.getUser).mockReset().mockResolvedValue({
-			id: mockUserId,
-			name: 'Guest User',
-			avatar: 'data:image/svg+xml;base,test',
-			createdAt: Date.now(),
-			updatedAt: Date.now(),
-			isDeleted: false,
-			isGuest: true,
-			masterKey: mockMasterKey
-		});
+		vi.mocked(appUser.getUser)
+			.mockReset()
+			.mockResolvedValue({
+				id: mockUserId,
+				name: 'Guest User',
+				avatar: 'data:image/svg+xml;base,test',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				isDeleted: false,
+				isGuest: true,
+				masterKey: mockMasterKey,
+				identityKeyPair: {} as CryptoKeyPair
+			});
 
 		// Default PB send mock
 		vi.mocked(pb.send).mockReset().mockResolvedValue({ salt: 'base64salt' });
@@ -278,7 +319,8 @@ describe('AuthService', () => {
 			vi.mocked(getActiveSession).mockReturnValue({
 				userId: mockUserId,
 				masterKey: mockMasterKey,
-				isGuest: false
+				isGuest: false,
+				identityKeyPair: {} as CryptoKeyPair
 			});
 
 			await expect(AuthService.register(mockEmail, mockPassword)).rejects.toThrow(
@@ -324,13 +366,16 @@ describe('AuthService', () => {
 
 		it('should call UserService.saveLoginUser with correct params', async () => {
 			await AuthService.login(mockEmail, mockPassword);
-			expect(UserService.saveLoginUser).toHaveBeenCalledWith({
-				id: 'mock-id',
-				email: mockEmail,
-				masterKey: mockLockedKey,
-				serverName: 'Test User',
-				avatarUrl: 'https://example.com/avatar.png'
-			});
+			expect(UserService.saveLoginUser).toHaveBeenCalledWith(
+				expect.objectContaining({
+					id: 'mock-id',
+					email: mockEmail,
+					masterKey: mockLockedKey,
+					identityKeyPair: expect.anything(),
+					serverName: 'Test User',
+					avatarUrl: 'https://example.com/avatar.png'
+				})
+			);
 		});
 
 		it('should reset sync cursors on login', async () => {
@@ -374,7 +419,8 @@ describe('AuthService', () => {
 			vi.mocked(getActiveSession).mockReturnValue({
 				userId: mockUserId,
 				masterKey: mockLockedKey,
-				isGuest: false
+				isGuest: false,
+				identityKeyPair: {} as CryptoKeyPair
 			});
 			(
 				pb.authStore as unknown as {
@@ -417,7 +463,8 @@ describe('AuthService', () => {
 			vi.mocked(getActiveSession).mockReturnValue({
 				userId: mockUserId,
 				masterKey: mockLockedKey,
-				isGuest: false
+				isGuest: false,
+				identityKeyPair: {} as CryptoKeyPair
 			});
 			(
 				pb.authStore as unknown as {

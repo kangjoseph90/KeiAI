@@ -117,7 +117,8 @@ describe('AssetSyncService', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			userId: mockUserId,
 			masterKey: mockMasterKey,
-			isGuest: false
+			isGuest: false,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 
 		(pb.authStore as { isValid: boolean }).isValid = true;
@@ -183,7 +184,8 @@ describe('AssetSyncService', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			userId: mockUserId,
 			masterKey: mockMasterKey,
-			isGuest: true
+			isGuest: true,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 
 		await AssetSyncService.start();

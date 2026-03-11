@@ -52,7 +52,8 @@ vi.mock('$lib/adapters/kv', () => ({
 }));
 
 vi.mock('$lib/crypto', () => ({
-	generateMasterKey: vi.fn()
+	generateMasterKey: vi.fn(),
+	generateIdentityKeyPair: vi.fn()
 }));
 
 vi.mock('$lib/shared/id', () => ({
@@ -72,7 +73,7 @@ import { localDB } from '$lib/adapters/db';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
-import { generateMasterKey } from '$lib/crypto';
+import { generateMasterKey, generateIdentityKeyPair } from '$lib/crypto';
 import { setSession } from '$lib/services/session';
 import { minidenticon } from 'minidenticons';
 
@@ -88,6 +89,7 @@ describe('UserService', () => {
 		isDeleted: false,
 		isGuest: false,
 		masterKey: mockMasterKey,
+		identityKeyPair: {} as CryptoKeyPair,
 		...overrides
 	});
 
@@ -102,6 +104,7 @@ describe('UserService', () => {
 
 		// Crypto default mocks
 		vi.mocked(generateMasterKey).mockResolvedValue(mockMasterKey);
+		vi.mocked(generateIdentityKeyPair).mockResolvedValue({} as CryptoKeyPair);
 
 		// Adapter default mocks
 		vi.mocked(appUser.getAllUsers).mockResolvedValue([]);
@@ -136,7 +139,12 @@ describe('UserService', () => {
 			const result = await UserService.restoreOrCreateGuest();
 
 			expect(result).toBe(true);
-			expect(setSession).toHaveBeenCalledWith(mockUserId, mockMasterKey, false);
+			expect(setSession).toHaveBeenCalledWith(
+				mockUserId,
+				mockMasterKey,
+				false,
+				{} as CryptoKeyPair
+			);
 			// Should not create new guest
 			expect(appUser.saveUser).not.toHaveBeenCalled();
 		});
@@ -188,10 +196,16 @@ describe('UserService', () => {
 				updatedAt: expect.any(Number),
 				isDeleted: false,
 				isGuest: true,
-				masterKey: mockMasterKey
+				masterKey: mockMasterKey,
+				identityKeyPair: {} as CryptoKeyPair
 			});
 			expect(appKV.set).toHaveBeenCalledWith('activeUserId', 'test-guest-id');
-			expect(setSession).toHaveBeenCalledWith('test-guest-id', mockMasterKey, true);
+			expect(setSession).toHaveBeenCalledWith(
+				'test-guest-id',
+				mockMasterKey,
+				true,
+				{} as CryptoKeyPair
+			);
 		});
 	});
 
@@ -203,6 +217,7 @@ describe('UserService', () => {
 				id: 'new-id',
 				email: 'test@ms.com',
 				masterKey: mockMasterKey,
+				identityKeyPair: {} as CryptoKeyPair,
 				serverName: 'Server Name',
 				avatarUrl: 'server.png'
 			});
@@ -217,12 +232,13 @@ describe('UserService', () => {
 					updatedAt: expect.any(Number),
 					isDeleted: false,
 					isGuest: false,
-					masterKey: mockMasterKey
+					masterKey: mockMasterKey,
+					identityKeyPair: {} as CryptoKeyPair
 				},
 				{ origin: 'sync' }
 			);
 			expect(appKV.set).toHaveBeenCalledWith('activeUserId', 'new-id');
-			expect(setSession).toHaveBeenCalledWith('new-id', mockMasterKey, false);
+			expect(setSession).toHaveBeenCalledWith('new-id', mockMasterKey, false, expect.anything());
 		});
 
 		it('should update and preserve name/avatar from existing local record', async () => {
@@ -230,7 +246,8 @@ describe('UserService', () => {
 				id: 'existing-id',
 				name: 'Local Name',
 				avatar: 'local.png',
-				isGuest: true
+				isGuest: true,
+				identityKeyPair: {} as CryptoKeyPair
 			});
 			vi.mocked(appUser.getUser).mockResolvedValue(existingUser);
 
@@ -238,6 +255,7 @@ describe('UserService', () => {
 				id: 'existing-id',
 				email: 'test@ms.com',
 				masterKey: mockMasterKey,
+				identityKeyPair: {} as CryptoKeyPair,
 				serverName: 'Server Name', // Should be ignored in favor of local
 				avatarUrl: 'server.png' // Should be ignored in favor of local
 			});
@@ -252,7 +270,8 @@ describe('UserService', () => {
 					updatedAt: expect.any(Number),
 					isDeleted: false,
 					isGuest: false, // Upgraded from guest
-					masterKey: mockMasterKey
+					masterKey: mockMasterKey,
+					identityKeyPair: {} as CryptoKeyPair
 				},
 				{ origin: 'sync' }
 			);
@@ -265,7 +284,8 @@ describe('UserService', () => {
 				id: 'user-id',
 				name: 'Name',
 				avatar: 'avatar',
-				isGuest: false
+				isGuest: false,
+				identityKeyPair: {} as CryptoKeyPair
 			});
 			vi.mocked(appUser.getUser).mockResolvedValue(existingUser);
 			const newKey = {} as CryptoKey;
@@ -280,7 +300,7 @@ describe('UserService', () => {
 					updatedAt: expect.any(Number)
 				})
 			);
-			expect(setSession).toHaveBeenCalledWith('user-id', newKey, true);
+			expect(setSession).toHaveBeenCalledWith('user-id', newKey, true, expect.anything());
 		});
 
 		it('should throw if user not found', async () => {

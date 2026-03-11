@@ -77,7 +77,8 @@ describe('CharacterService', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			masterKey: mockMasterKey,
 			userId: mockUserId,
-			isGuest: false
+			isGuest: false,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 
 		// Default encrypt mock
@@ -99,7 +100,6 @@ describe('CharacterService', () => {
 
 		// Default generateId mock
 		vi.mocked(generateId).mockReturnValue('test-id-123');
-
 	});
 
 	describe('list', () => {

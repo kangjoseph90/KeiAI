@@ -5,6 +5,14 @@
 
 export { generateSalt, deriveKeys } from './kdf';
 export {
+	generateIdentityKeyPair,
+	exportPublicKey,
+	importPublicKey,
+	exportPrivateKey,
+	importPrivateKey,
+	deriveSharedSecret
+} from './identityKey';
+export {
 	generateMasterKey,
 	importMasterKey,
 	wrapMasterKey,
@@ -26,7 +34,8 @@ export type {
 	EncryptedData,
 	DerivedKeys,
 	RecoveryCodeParts,
-	Bytes
+	Bytes,
+	IdentityKeyPair
 } from './types';
 
 export { sha256, sha256Bytes } from './hash';

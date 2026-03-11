@@ -78,7 +78,8 @@ describe('MessageService', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			masterKey: mockMasterKey,
 			userId: mockUserId,
-			isGuest: false
+			isGuest: false,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 
 		// Default encrypt mock
@@ -105,7 +106,6 @@ describe('MessageService', () => {
 		// Guards pass by default
 		vi.mocked(assertChatExists).mockResolvedValue(undefined);
 		vi.mocked(assertMessageInChat).mockResolvedValue(undefined);
-
 	});
 
 	describe('getMessagesBefore (pagination)', () => {
