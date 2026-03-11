@@ -70,4 +70,5 @@ export interface UserRecord {
 	isDeleted: boolean;
 	isGuest: boolean;
 	masterKey: CryptoKey; // The live CryptoKey object
+	identityKeyPair: CryptoKeyPair; // ECDH P-256 key pair for asymmetric operations (multi-room)
 }

@@ -73,7 +73,8 @@ describe('DataSyncService', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			userId: mockUserId,
 			isGuest: false,
-			masterKey: {} as CryptoKey
+			masterKey: {} as CryptoKey,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 		(pb.authStore as unknown as { isValid: boolean }).isValid = true;
 	});

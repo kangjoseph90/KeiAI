@@ -240,6 +240,13 @@ export class TauriUserAdapter implements IUserAdapter {
 				const rawKey = new Uint8Array(await crypto.subtle.exportKey('raw', user.masterKey));
 				await this.backupGuestKey(user.id, rawKey);
 				rawKey.fill(0); // scrub from memory after storing
+
+				const pubJwk = await crypto.subtle.exportKey('jwk', user.identityKeyPair.publicKey);
+				const privRaw = new Uint8Array(
+					(await crypto.subtle.exportKey('pkcs8', user.identityKeyPair.privateKey)) as ArrayBuffer
+				);
+				await this.backupIdentityKeys(user.id, pubJwk, privRaw);
+				privRaw.fill(0);
 			} catch {
 				// Key is non-extractable (should not happen for guests, but be safe)
 			}
@@ -275,8 +282,41 @@ export class TauriUserAdapter implements IUserAdapter {
 	async restoreGuestKey(id: string): Promise<Uint8Array | null> {
 		try {
 			const store = await this.getStore();
-			const data = await store.get(`guestKey:${id}`);
-			return data ?? null;
+			const data = (await store.get(`guestKey:${id}`)) as number[] | null;
+			return data ? new Uint8Array(data) : null;
+		} catch {
+			return null;
+		}
+	}
+
+	async backupIdentityKeys(
+		id: string,
+		publicKeyJwk: JsonWebKey,
+		rawPrivateKey: Uint8Array
+	): Promise<void> {
+		const store = await this.getStore();
+		const stronghold = await this.getStronghold();
+		const pubBytes = Array.from(new TextEncoder().encode(JSON.stringify(publicKeyJwk)));
+		await store.insert(`guestIdPub:${id}`, pubBytes);
+		await store.insert(`guestIdPriv:${id}`, Array.from(rawPrivateKey));
+		await stronghold.save();
+	}
+
+	async restoreIdentityKeys(
+		id: string
+	): Promise<{ publicKeyJwk: JsonWebKey; rawPrivateKey: Uint8Array } | null> {
+		try {
+			const store = await this.getStore();
+			const pubData = (await store.get(`guestIdPub:${id}`)) as number[] | null;
+			const privData = (await store.get(`guestIdPriv:${id}`)) as number[] | null;
+			if (!pubData || !privData) return null;
+
+			const pubJson = new TextDecoder().decode(new Uint8Array(pubData));
+
+			return {
+				publicKeyJwk: JSON.parse(pubJson) as JsonWebKey,
+				rawPrivateKey: new Uint8Array(privData)
+			};
 		} catch {
 			return null;
 		}
@@ -305,8 +345,10 @@ export class TauriUserAdapter implements IUserAdapter {
 	 */
 	private async rebuildFromRow(row: SQLiteUserRow): Promise<UserRecord | null> {
 		const rawKey = await this.restoreGuestKey(row.id);
-		if (!rawKey) {
-			// Stronghold entry missing — no way to reconstruct the CryptoKey
+		const idKeys = await this.restoreIdentityKeys(row.id);
+
+		if (!rawKey || !idKeys) {
+			// Stronghold entry missing — no way to reconstruct CryptoKeys
 			return null;
 		}
 
@@ -319,6 +361,22 @@ export class TauriUserAdapter implements IUserAdapter {
 			['encrypt', 'decrypt']
 		);
 
+		const publicKey = await crypto.subtle.importKey(
+			'jwk',
+			idKeys.publicKeyJwk,
+			{ name: 'ECDH', namedCurve: 'P-256' },
+			true,
+			[]
+		);
+
+		const privateKey = await crypto.subtle.importKey(
+			'pkcs8',
+			idKeys.rawPrivateKey.buffer as ArrayBuffer,
+			{ name: 'ECDH', namedCurve: 'P-256' },
+			extractable,
+			['deriveKey']
+		);
+
 		return {
 			id: row.id,
 			name: row.name,
@@ -328,7 +386,8 @@ export class TauriUserAdapter implements IUserAdapter {
 			updatedAt: row.updatedAt,
 			isDeleted: row.isDeleted === 1,
 			isGuest: row.isGuest === 1,
-			masterKey
+			masterKey,
+			identityKeyPair: { publicKey, privateKey }
 		};
 	}
 }

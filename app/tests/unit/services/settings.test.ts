@@ -46,7 +46,8 @@ describe('SettingsService', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			userId: mockUserId,
 			masterKey: mockMasterKey,
-			isGuest: false
+			isGuest: false,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 
 		vi.mocked(encrypt).mockResolvedValue({

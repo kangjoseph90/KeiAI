@@ -56,3 +56,9 @@ export interface DerivedKeys {
 	loginKey: Bytes; // X (first 256 bits)
 	encryptionKey: Bytes; // Y (last 256 bits)
 }
+
+/** User identity key pair for asymmetric encryption (Room Key exchange in multi-room) */
+export interface IdentityKeyPair {
+	publicKey: CryptoKey; // ECDH P-256 public key (extractable, stored as JWK on server)
+	privateKey: CryptoKey; // ECDH P-256 private key (non-extractable after registration)
+}

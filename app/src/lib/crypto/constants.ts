@@ -37,3 +37,6 @@ export const IDB_STORE_NAME = 'keys';
 
 /** Key identifier for the master key in IndexedDB */
 export const IDB_MASTER_KEY_ID = 'master-key';
+
+/** ECDH named curve for identity key pairs */
+export const ECDH_CURVE = 'P-256';

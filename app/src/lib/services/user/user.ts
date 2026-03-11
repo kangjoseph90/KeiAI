@@ -12,7 +12,7 @@ import { appAsset, type AssetRecord } from '$lib/adapters/asset';
 import { localDB, TABLES } from '$lib/adapters/db';
 import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
-import { generateMasterKey } from '$lib/crypto';
+import { generateMasterKey, generateIdentityKeyPair } from '$lib/crypto';
 import { generateId } from '$lib/shared/id';
 import { setSession } from '../session';
 import { minidenticon } from 'minidenticons';
@@ -43,7 +43,14 @@ export class UserService {
 		if (savedUserId) {
 			const user = await appUser.getUser(savedUserId);
 			if (user && !user.isDeleted) {
-				setSession(user.id, user.masterKey, user.isGuest);
+				// Backfill identity key pair if the record predates this feature
+				if (!user.identityKeyPair) {
+					const identityKeyPair = await generateIdentityKeyPair();
+					user.identityKeyPair = identityKeyPair;
+					user.updatedAt = Date.now();
+					await appUser.saveUser(user);
+				}
+				setSession(user.id, user.masterKey, user.isGuest, user.identityKeyPair);
 				return true;
 			}
 		}
@@ -63,6 +70,7 @@ export class UserService {
 	static async createGuest(): Promise<void> {
 		const id = generateId();
 		const guestKey = await generateMasterKey(); // extractable: true
+		const identityKeyPair = await generateIdentityKeyPair(); // private: extractable: true
 
 		const existingUsers = await appUser.getAllUsers();
 		const name = `Guest ${existingUsers.length + 1}`;
@@ -76,11 +84,12 @@ export class UserService {
 			updatedAt: Date.now(),
 			isDeleted: false,
 			isGuest: true,
-			masterKey: guestKey
+			masterKey: guestKey,
+			identityKeyPair
 		});
 
 		await appKV.set('activeUserId', id);
-		setSession(id, guestKey, true);
+		setSession(id, guestKey, true, identityKeyPair);
 	}
 
 	// ─── Login User Save ─────────────────────────────────────────────
@@ -93,6 +102,7 @@ export class UserService {
 		id: string;
 		email: string;
 		masterKey: CryptoKey;
+		identityKeyPair: CryptoKeyPair;
 		serverName?: string;
 		avatarUrl?: string;
 	}): Promise<void> {
@@ -108,13 +118,14 @@ export class UserService {
 				updatedAt: Date.now(),
 				isDeleted: false,
 				isGuest: false,
-				masterKey: params.masterKey
+				masterKey: params.masterKey,
+				identityKeyPair: params.identityKeyPair
 			},
 			{ origin: 'sync' }
 		);
 
 		await appKV.set('activeUserId', params.id);
-		setSession(params.id, params.masterKey, false);
+		setSession(params.id, params.masterKey, false, params.identityKeyPair);
 	}
 
 	// ─── Account Unlinking ───────────────────────────────────────────
@@ -133,7 +144,7 @@ export class UserService {
 		user.updatedAt = Date.now();
 		await appUser.saveUser(user);
 
-		setSession(userId, unlockedKey, true);
+		setSession(userId, unlockedKey, true, user.identityKeyPair);
 	}
 
 	// ─── Account Management ──────────────────────────────────────────

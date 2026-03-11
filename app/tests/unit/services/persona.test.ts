@@ -63,7 +63,8 @@ describe('PersonaService', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			userId: mockUserId,
 			masterKey: mockMasterKey,
-			isGuest: false
+			isGuest: false,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 
 		// Default crypto mocks

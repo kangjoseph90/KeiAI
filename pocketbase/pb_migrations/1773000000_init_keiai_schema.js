@@ -14,6 +14,10 @@ migrate(
       { name: "recoveryAuthTokenHash", type: "text" },
       { name: "assetQuota", type: "number" },
       { name: "assetUsage", type: "number" },
+      // Identity key pair for asymmetric encryption (multi-room Room Key exchange)
+      { name: "identityPublicKey", type: "text" },           // ECDH P-256 public key as JWK JSON (plaintext)
+      { name: "encryptedIdentityPrivateKey", type: "text" }, // Private key encrypted with M (AES-GCM, Base64)
+      { name: "identityPrivateKeyIv", type: "text" },        // IV for private key encryption (Base64)
     ];
 
     let userChanged = false;

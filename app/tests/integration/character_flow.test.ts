@@ -43,7 +43,8 @@ describe('Character Flow Integration', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			userId: uniqueUserId,
 			masterKey: mockMasterKey,
-			isGuest: false
+			isGuest: false,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 
 		// Mock crypto to just return the data as-is (simulated encryption)

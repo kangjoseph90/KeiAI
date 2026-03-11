@@ -1,7 +1,7 @@
 /**
  * Session — In-Memory Auth Context
  *
- * Pure runtime state: masterKey + userId + isGuest.
+ * Pure runtime state: masterKey + userId + isGuest + identityKeyPair.
  * No adapter imports, no side effects. Just module-scoped variables.
  *
  * Services call getActiveSession() to obtain credentials for DB operations.
@@ -10,6 +10,10 @@
  * Master key storage strategy:
  *   - Guest:      CryptoKey with extractable: true  (can create M(Y) later)
  *   - Registered: CryptoKey with extractable: false (XSS cannot export raw bytes)
+ *
+ * Identity key pair storage strategy:
+ *   - Guest:      private key extractable: true  (can wrap with M later)
+ *   - Registered: private key extractable: false (XSS protection)
  */
 
 // ─── In-Memory Session State ─────────────────────────────────────────
@@ -17,18 +21,29 @@
 let activeMasterKey: CryptoKey | null = null;
 let activeUserId: string | null = null;
 let isGuestUser: boolean = true;
+let activeIdentityKeyPair: CryptoKeyPair | null = null;
 
 // ─── Accessors ───────────────────────────────────────────────────────
 
-export function getActiveSession(): { userId: string; masterKey: CryptoKey; isGuest: boolean } {
-	if (!activeUserId || !activeMasterKey) {
+export function getActiveSession(): {
+	userId: string;
+	masterKey: CryptoKey;
+	isGuest: boolean;
+	identityKeyPair: CryptoKeyPair;
+} {
+	if (!activeUserId || !activeMasterKey || !activeIdentityKeyPair) {
 		throw new Error('Session not initialized.');
 	}
-	return { userId: activeUserId, masterKey: activeMasterKey, isGuest: isGuestUser };
+	return {
+		userId: activeUserId,
+		masterKey: activeMasterKey,
+		isGuest: isGuestUser,
+		identityKeyPair: activeIdentityKeyPair
+	};
 }
 
 export function hasActiveSession(): boolean {
-	return activeMasterKey !== null && activeUserId !== null;
+	return activeMasterKey !== null && activeUserId !== null && activeIdentityKeyPair !== null;
 }
 
 // ─── Mutation ────────────────────────────────────────────────────────
@@ -37,14 +52,21 @@ export function hasActiveSession(): boolean {
  * Set the in-memory session state.
  * KV persistence (activeUserId) is managed by UserService, not here.
  */
-export function setSession(userId: string, masterKey: CryptoKey, isGuest: boolean): void {
+export function setSession(
+	userId: string,
+	masterKey: CryptoKey,
+	isGuest: boolean,
+	identityKeyPair: CryptoKeyPair
+): void {
 	activeUserId = userId;
 	activeMasterKey = masterKey;
 	isGuestUser = isGuest;
+	activeIdentityKeyPair = identityKeyPair;
 }
 
 export function clearSession(): void {
 	activeMasterKey = null;
 	activeUserId = null;
 	isGuestUser = true;
+	activeIdentityKeyPair = null;
 }

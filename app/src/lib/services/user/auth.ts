@@ -23,6 +23,12 @@ import {
 	splitRecoveryCode,
 	toBase64,
 	fromBase64,
+	encryptBytes,
+	decryptBytes,
+	exportPublicKey,
+	importPublicKey,
+	exportPrivateKey,
+	importPrivateKey,
 	type RecoveryBundle
 } from '$lib/crypto';
 import { getActiveSession } from '../session';
@@ -54,7 +60,7 @@ export class AuthService {
 	 * Returns the 16-char recovery code that UI must force user to save.
 	 */
 	static async register(email: string, password: string): Promise<string> {
-		const { userId, masterKey, isGuest } = getActiveSession();
+		const { userId, masterKey, isGuest, identityKeyPair } = getActiveSession();
 		if (!isGuest) {
 			throw new AppError(
 				'ALREADY_REGISTERED',
@@ -69,6 +75,14 @@ export class AuthService {
 		const recovery = await createRecoveryData(masterKey);
 		encryptionKey.fill(0);
 
+		// Export identity key pair for server storage
+		// Public key: plaintext JWK (others need to read it for Room Key exchange)
+		// Private key: AES-GCM encrypted with M (server cannot read it)
+		const publicKeyJwk = await exportPublicKey(identityKeyPair.publicKey);
+		const rawPrivateKey = await exportPrivateKey(identityKeyPair.privateKey);
+		const encryptedPrivateKey = await encryptBytes(masterKey, rawPrivateKey);
+		rawPrivateKey.fill(0);
+
 		const existing = await appUser.getUser(userId);
 
 		const createData: Record<string, string | Blob> = {
@@ -82,7 +96,10 @@ export class AuthService {
 			masterKeyIv: toBase64(wrapped.iv),
 			encryptedRecoveryMasterKey: toBase64(recovery.encryptedRecoveryMasterKey),
 			recoveryMasterKeyIv: toBase64(recovery.encryptedRecoveryMasterKeyIV),
-			recoveryAuthTokenHash: toBase64(recovery.recoveryAuthTokenHash)
+			recoveryAuthTokenHash: toBase64(recovery.recoveryAuthTokenHash),
+			identityPublicKey: JSON.stringify(publicKeyJwk),
+			encryptedIdentityPrivateKey: toBase64(encryptedPrivateKey.ciphertext),
+			identityPrivateKeyIv: toBase64(encryptedPrivateKey.iv)
 		};
 
 		if (existing?.avatar?.startsWith('data:image')) {
@@ -128,6 +145,22 @@ export class AuthService {
 			rawM.fill(0);
 		}
 
+		// Restore identity key pair from server
+		const publicKey = await importPublicKey(
+			JSON.parse(authData.record.identityPublicKey) as JsonWebKey
+		);
+		const rawPrivateKey = await decryptBytes(lockedKey, {
+			ciphertext: fromBase64(authData.record.encryptedIdentityPrivateKey),
+			iv: fromBase64(authData.record.identityPrivateKeyIv)
+		});
+		let privateKey: CryptoKey;
+		try {
+			privateKey = await importPrivateKey(rawPrivateKey, false);
+		} finally {
+			rawPrivateKey.fill(0);
+		}
+		const identityKeyPair: CryptoKeyPair = { publicKey, privateKey };
+
 		let pbAvatarUrl: string | undefined;
 		if (authData.record?.avatar) {
 			pbAvatarUrl = pb.files.getURL(authData.record, authData.record.avatar);
@@ -137,6 +170,7 @@ export class AuthService {
 			id: authData.record.id,
 			email,
 			masterKey: lockedKey,
+			identityKeyPair,
 			serverName: authData.record?.name,
 			avatarUrl: pbAvatarUrl
 		});

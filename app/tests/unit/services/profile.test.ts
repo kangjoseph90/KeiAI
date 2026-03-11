@@ -35,7 +35,8 @@ describe('ProfileService', () => {
 		createdAt: 1000,
 		updatedAt: 2000,
 		isDeleted: false,
-		masterKey: {} as CryptoKey
+		masterKey: {} as CryptoKey,
+		identityKeyPair: {} as CryptoKeyPair
 	};
 
 	beforeEach(() => {
@@ -51,7 +52,6 @@ describe('ProfileService', () => {
 		// Default user adapter mock
 		vi.mocked(appUser.getUser).mockResolvedValue({ ...baseMockUser });
 		vi.mocked(appUser.saveUser).mockResolvedValue(undefined);
-
 	});
 
 	describe('get', () => {

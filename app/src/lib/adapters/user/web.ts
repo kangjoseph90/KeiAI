@@ -65,9 +65,15 @@ export class WebUserAdapter implements IUserAdapter {
 	}
 
 	async backupGuestKey(_id: string, _rawKey: Uint8Array): Promise<void> {
-		// No-op on the web platform.
-		// Web browsers do not have a uniform OS keychain API we can use synchronously.
-		return Promise.resolve();
+		// No-op for web. Key recovery relies on the server and password.
+	}
+
+	async backupIdentityKeys(
+		_id: string,
+		_publicKeyJwk: JsonWebKey,
+		_rawPrivateKey: Uint8Array
+	): Promise<void> {
+		// No-op for web.
 	}
 
 	async restoreGuestKey(_id: string): Promise<Uint8Array | null> {

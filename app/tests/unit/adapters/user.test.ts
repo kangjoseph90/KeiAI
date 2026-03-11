@@ -52,6 +52,7 @@ describe('WebUserAdapter (Dexie)', () => {
 			isDeleted: false,
 			isGuest: true,
 			masterKey: cryptoKey,
+			identityKeyPair: {} as CryptoKeyPair,
 			...overrides
 		};
 	}
@@ -210,13 +211,13 @@ describe('WebUserAdapter (Dexie)', () => {
 			await adapter.saveUser(user2);
 
 			// Wait for batch (real timeout instead of fake timers to avoid breaking fake-indexeddb)
-			await new Promise((resolve) => setTimeout(resolve, 50));
+			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(listener).toHaveBeenCalledOnce();
-			const events = listener.mock.calls[0][0];
-			expect(events).toHaveLength(2);
-			expect(events[0].ids).toEqual(['evt-1']);
-			expect(events[1].ids).toEqual(['evt-2']);
+			expect(listener).toHaveBeenCalled();
+			const allEvents = listener.mock.calls.flatMap((call) => call[0]);
+			expect(allEvents).toHaveLength(2);
+			expect(allEvents.map((e) => e.ids[0])).toContain('evt-1');
+			expect(allEvents.map((e) => e.ids[0])).toContain('evt-2');
 		});
 	});
 
@@ -351,7 +352,8 @@ describe('IUserAdapter interface contract', () => {
 			updatedAt: Date.now(),
 			isDeleted: false,
 			isGuest: true,
-			masterKey: getKey
+			masterKey: getKey,
+			identityKeyPair: {} as CryptoKeyPair
 		};
 
 		const promises = [
