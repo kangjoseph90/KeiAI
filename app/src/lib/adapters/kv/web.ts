@@ -24,5 +24,3 @@ export class WebKeyValueAdapter implements IKeyValueAdapter {
 		return Promise.resolve();
 	}
 }
-
-export const webKV = new WebKeyValueAdapter();
