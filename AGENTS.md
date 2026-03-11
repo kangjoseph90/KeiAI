@@ -21,12 +21,12 @@ cd proxy && pnpm install && pnpm dev   # Local wrangler
 
 ## What Goes Where
 
-| Directory     | Purpose                                         | Docs                                         |
-| ------------- | ----------------------------------------------- | -------------------------------------------- |
+| Directory     | Purpose                                           | Docs                                                             |
+| ------------- | ------------------------------------------------- | ---------------------------------------------------------------- |
 | `app/`        | SvelteKit frontend, E2EE engine, all client logic | [app/AGENTS.md](app/AGENTS.md), [app/TESTING.md](app/TESTING.md) |
-| `pocketbase/` | Blind data store, auth hooks, encrypted sync    | [pocketbase/AGENTS.md](pocketbase/AGENTS.md) |
-| `proxy/`      | Stateless AI API forwarding (Cloudflare Workers) | [proxy/AGENTS.md](proxy/AGENTS.md)           |
-| `notes/`      | Architecture philosophy, design docs            | Reference only                               |
+| `pocketbase/` | Blind data store, auth hooks, encrypted sync      | [pocketbase/AGENTS.md](pocketbase/AGENTS.md)                     |
+| `proxy/`      | Stateless AI API forwarding (Cloudflare Workers)  | [proxy/AGENTS.md](proxy/AGENTS.md)                               |
+| `notes/`      | Architecture philosophy, design docs              | Reference only                                                   |
 
 ---
 
@@ -67,11 +67,26 @@ PocketBase → Sync (pull encrypted blob) → Service (decrypt + deepMerge defau
 
 ---
 
+## Documentation
+
+| Document                      | Path                                               | When to Update                                       |
+| ----------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
+| Architecture design           | [docs/IDEA.md](docs/IDEA.md)                       | When a major system concept changes                  |
+| Architecture Decision Records | [docs/ADR.md](docs/ADR.md)                         | When a structural design decision is made or changed |
+| Data schema philosophy        | [docs/schema.md](docs/schema.md)                   | When relationship or storage patterns change         |
+| Asset system spec             | [docs/asset-system-v2.md](docs/asset-system-v2.md) | When asset pipeline changes                          |
+| Roadmap                       | [docs/TODO.md](docs/TODO.md)                       | When milestones shift                                |
+
+---
+
 ## See Also
 
 - [app/AGENTS.md](app/AGENTS.md) — Frontend architecture, layering, conventions
 - [app/TESTING.md](app/TESTING.md) — Testing guidelines (Vitest, mocking patterns)
 - [pocketbase/AGENTS.md](pocketbase/AGENTS.md) — Backend schema, hooks, auth dance
 - [proxy/AGENTS.md](proxy/AGENTS.md) — Stateless proxy rules
-- [notes/Idea.md](notes/Idea.md) — Comprehensive architecture design document
-- [notes/keiai_data_schema_philosophy.md](notes/keiai_data_schema_philosophy.md) — Data schema philosophy
+- [docs/IDEA.md](docs/IDEA.md) — Comprehensive architecture design document
+- [docs/ADR.md](docs/ADR.md) — Architecture decision records
+- [docs/schema.md](docs/schema.md) — Data schema philosophy
+- [docs/asset-system-v2.md](docs/asset-system-v2.md) — Asset system specification
+- [docs/TODO.md](docs/TODO.md) — Development roadmap
