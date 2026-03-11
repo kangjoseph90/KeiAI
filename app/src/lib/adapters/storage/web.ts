@@ -64,7 +64,9 @@ export class WebStorageAdapter implements IStorageAdapter {
 		const writable = await handle.createWritable();
 		await writable.write(data as FileSystemWriteChunkType);
 		await writable.close();
-		// Invalidate cached URL if present
+		// Revoke and invalidate cached Object URL (prevents memory leak)
+		const oldUrl = this.urlCache.get(path);
+		if (oldUrl) URL.revokeObjectURL(oldUrl);
 		this.urlCache.delete(path);
 	}
 
@@ -89,6 +91,8 @@ export class WebStorageAdapter implements IStorageAdapter {
 			// Remove the file
 			const filename = parts[parts.length - 1];
 			await current.removeEntry(filename);
+			const oldUrl = this.urlCache.get(path);
+			if (oldUrl) URL.revokeObjectURL(oldUrl);
 			this.urlCache.delete(path);
 		} catch (e) {
 			if (e instanceof Error && e.name !== 'NotFoundError') throw e;
