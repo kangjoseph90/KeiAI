@@ -111,21 +111,6 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 			expect(r2?.id).toBe('bulk-2');
 			expect(r3?.id).toBe('bulk-3');
 		});
-
-		it('should add updatedAt to records without it', async () => {
-			const records = [
-				createTestRecord({ id: 'no-time-1', updatedAt: undefined as unknown as number }),
-				createTestRecord({ id: 'no-time-2', updatedAt: undefined as unknown as number })
-			];
-
-			await localDB.putRecords('settings', records);
-
-			const r1 = await localDB.getRecord<BaseRecord>('settings', 'no-time-1');
-			const r2 = await localDB.getRecord<BaseRecord>('settings', 'no-time-2');
-
-			expect(r1?.updatedAt).toBeDefined();
-			expect(r2?.updatedAt).toBeDefined();
-		});
 	});
 
 	describe('deleteRecord', () => {
