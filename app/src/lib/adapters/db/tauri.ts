@@ -118,7 +118,17 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 			await db.execute(`CREATE INDEX IF NOT EXISTS idx_${table}_updatedAt ON ${table} (updatedAt)`);
 		}
 
-		// Additional compound index strictly required for pagination performance in messages
+		// FK indices for 1:N parent→child queries
+		await db.execute(
+			`CREATE INDEX IF NOT EXISTS idx_chatSummaries_characterId ON chatSummaries (characterId)`
+		);
+		await db.execute(
+			`CREATE INDEX IF NOT EXISTS idx_chatData_characterId ON chatData (characterId)`
+		);
+		await db.execute(`CREATE INDEX IF NOT EXISTS idx_lorebooks_ownerId ON lorebooks (ownerId)`);
+		await db.execute(`CREATE INDEX IF NOT EXISTS idx_scripts_ownerId ON scripts (ownerId)`);
+
+		// Compound index strictly required for pagination performance in messages
 		await db.execute(
 			`CREATE INDEX IF NOT EXISTS idx_messages_chatId_sortOrder ON messages (chatId, sortOrder)`
 		);
