@@ -10,13 +10,14 @@ import {
 	pbConnected,
 	isLoggedIn,
 	messages,
-	generationTasks,
+	runtimeTasks,
+	chatTaskIds,
 	activeChat,
 	displayMessages,
 	isGenerating
 } from '$lib/stores/state';
 import type { AppSettings, Profile, ChatDetail, Message } from '$lib/services';
-import type { GenerationTask } from '$lib/stores/types';
+import type { RuntimeTask } from '$lib/stores/types';
 
 describe('Global Stores', () => {
 	beforeEach(() => {
@@ -25,7 +26,8 @@ describe('Global Stores', () => {
 		activeUser.set(null);
 		pbConnected.set(false);
 		messages.set([]);
-		generationTasks.set(new Map());
+		runtimeTasks.set(new Map());
+		chatTaskIds.set(new Map());
 		activeChat.set(null);
 	});
 
@@ -52,27 +54,29 @@ describe('Global Stores', () => {
 	describe('Generation State (Derived)', () => {
 		it('should indicate generation is running for active chat', () => {
 			const chatId = 'chat-1';
+			const taskId = 'task-1';
 			activeChat.set({ id: chatId } as ChatDetail);
-			const tasks = new Map<string, GenerationTask>();
-			tasks.set(chatId, {
-				content: '...',
-				status: 'generating',
-				abortController: new AbortController()
-			});
-			generationTasks.set(tasks);
+
+			chatTaskIds.set(new Map([[chatId, taskId]]));
+			runtimeTasks.set(
+				new Map<string, RuntimeTask>([
+					[taskId, { id: taskId, status: 'generating', content: '...', meta: { kind: 'chat', chatId } }]
+				])
+			);
 
 			expect(get(isGenerating)).toBe(true);
 		});
 
 		it('should not indicate generation for different chat', () => {
+			const taskId = 'task-2';
 			activeChat.set({ id: 'chat-1' } as ChatDetail);
-			const tasks = new Map<string, GenerationTask>();
-			tasks.set('chat-2', {
-				content: '...',
-				status: 'generating',
-				abortController: new AbortController()
-			});
-			generationTasks.set(tasks);
+
+			chatTaskIds.set(new Map([['chat-2', taskId]]));
+			runtimeTasks.set(
+				new Map<string, RuntimeTask>([
+					[taskId, { id: taskId, status: 'generating', content: '...', meta: { kind: 'chat', chatId: 'chat-2' } }]
+				])
+			);
 
 			expect(get(isGenerating)).toBe(false);
 		});
@@ -81,6 +85,7 @@ describe('Global Stores', () => {
 	describe('Display Messages (Derived)', () => {
 		it('should merge messages and active generation task', () => {
 			const chatId = 'chat-1';
+			const taskId = 'task-1';
 			activeChat.set({ id: chatId } as ChatDetail);
 
 			const dbMessages: Message[] = [
@@ -88,13 +93,12 @@ describe('Global Stores', () => {
 			];
 			messages.set(dbMessages);
 
-			const tasks = new Map<string, GenerationTask>();
-			tasks.set(chatId, {
-				content: 'world',
-				status: 'generating',
-				abortController: new AbortController()
-			});
-			generationTasks.set(tasks);
+			chatTaskIds.set(new Map([[chatId, taskId]]));
+			runtimeTasks.set(
+				new Map<string, RuntimeTask>([
+					[taskId, { id: taskId, status: 'generating', content: 'world', meta: { kind: 'chat', chatId } }]
+				])
+			);
 
 			const display = get(displayMessages);
 
@@ -110,7 +114,7 @@ describe('Global Stores', () => {
 			const chatId = 'chat-1';
 			activeChat.set({ id: chatId } as ChatDetail);
 			messages.set([{ id: 'm1' } as Message]);
-			generationTasks.set(new Map());
+			chatTaskIds.set(new Map());
 
 			const display = get(displayMessages);
 			expect(display).toHaveLength(1);

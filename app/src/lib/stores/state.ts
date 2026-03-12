@@ -23,7 +23,7 @@ import type {
 	Script
 } from '$lib/services';
 import type { AssetSyncStatus, SyncStatus } from '$lib/services';
-import type { GenerationTask, DisplayMessage } from './types';
+import type { DisplayMessage, RuntimeTask } from './types';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
@@ -73,14 +73,20 @@ export const activeChat = writable<ChatDetail | null>(null);
 export const chatLorebooks = writable<Lorebook[]>([]);
 export const messages = writable<Message[]>([]);
 
-// ─── Generation State (Ephemeral — not persisted to DB) ─────────────
+// ─── Runtime States (Ephemeral — not persisted to DB) ─────────────────
+//
+// runtimeTasks: keyed by taskId (not chatId) — one entry per in-flight task.
+// chatTaskIds:  chatId → taskId lookup — lets UI find the task for a given chat.
+//
+// AbortControllers live in the pipeline layer (runtime/task/*), not here.
+// This store only tracks display state: what's generating, its content, any error.
 
-/** Active LLM generation tasks, keyed by chatId. Ephemeral UI-only state. */
-export const generationTasks = writable<Map<string, GenerationTask>>(new Map());
+export const runtimeTasks = writable<Map<string, RuntimeTask>>(new Map());
+export const chatTaskIds = writable<Map<string, string>>(new Map());
 
-/** Whether any generation is running in the active chat */
-export const isGenerating = derived([generationTasks, activeChat], ([tasks, chat]) =>
-	chat ? tasks.has(chat.id) : false
+/** True when the currently active chat has an in-flight task. */
+export const isGenerating = derived([chatTaskIds, activeChat], ([taskIds, chat]) =>
+	chat ? taskIds.has(chat.id) : false
 );
 
 /**
@@ -88,8 +94,8 @@ export const isGenerating = derived([generationTasks, activeChat], ([tasks, chat
  * UI components iterate this one list — no streaming/normal branching needed.
  */
 export const displayMessages = derived(
-	[messages, generationTasks, activeChat],
-	([msgs, tasks, chat]): DisplayMessage[] => {
+	[messages, runtimeTasks, chatTaskIds, activeChat],
+	([msgs, tasks, taskIds, chat]): DisplayMessage[] => {
 		// Map confirmed messages
 		const base: DisplayMessage[] = msgs.map((msg) => ({
 			...msg,
@@ -97,17 +103,20 @@ export const displayMessages = derived(
 		}));
 
 		// Append active generation task as a virtual message at the end
-		if (chat && tasks.has(chat.id)) {
-			const task = tasks.get(chat.id)!;
-			base.push({
-				id: `__generating_${chat.id}`,
-				chatId: chat.id,
-				sortOrder: '\uffff', // Always sorts last
-				role: 'char',
-				content: task.content,
-				displayStatus: task.status,
-				errorMessage: task.errorMessage
-			});
+		if (chat) {
+			const taskId = taskIds.get(chat.id);
+			const task = taskId ? tasks.get(taskId) : undefined;
+			if (task) {
+				base.push({
+					id: `__generating_${chat.id}`,
+					chatId: chat.id,
+					sortOrder: '\uffff', // Always sorts last
+					role: 'char',
+					content: task.content,
+					displayStatus: task.status,
+					errorMessage: task.errorMessage
+				});
+			}
 		}
 
 		return base;
