@@ -20,6 +20,10 @@ export interface RetryOptions {
 export interface HttpOptions {
 	proxy?: boolean;
 	retry?: RetryOptions;
+	/** Request timeout in milliseconds. If not set, no timeout is applied. */
+	timeout?: number;
+	/** AbortSignal to cancel the request manually. */
+	signal?: AbortSignal;
 }
 
 export interface IHttpAdapter {
@@ -31,4 +35,15 @@ export interface IHttpAdapter {
 		headers?: Record<string, string>,
 		options?: HttpOptions
 	): Promise<T>;
+}
+
+export class HttpError extends Error {
+	constructor(
+		public status: number,
+		public statusText: string,
+		public body?: string
+	) {
+		super(`HTTP Error: ${status} ${statusText}`);
+		this.name = 'HttpError';
+	}
 }

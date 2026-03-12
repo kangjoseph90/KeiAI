@@ -128,8 +128,14 @@ export async function promoteAsset(hash: string, file: Uint8Array): Promise<Prom
  */
 export async function fetchAssetFromCDN(url: string): Promise<Uint8Array | null> {
 	try {
-		const response = await appHttp.fetch(url);
-		if (!response.ok) return null;
+		const response = await appHttp.fetch(url, undefined, { 
+			timeout: 15_000, 
+			retry: { maxRetries: 2 } 
+		});
+		if (!response.ok) {
+			await response.text().catch(() => {});
+			return null;
+		}
 		const buffer = await response.arrayBuffer();
 		return new Uint8Array(buffer);
 	} catch {
