@@ -128,9 +128,9 @@ export async function promoteAsset(hash: string, file: Uint8Array): Promise<Prom
  */
 export async function fetchAssetFromCDN(url: string): Promise<Uint8Array | null> {
 	try {
-		const response = await appHttp.fetch(url, undefined, { 
-			timeout: 15_000, 
-			retry: { maxRetries: 2 } 
+		const response = await appHttp.fetch(url, undefined, {
+			timeout: 15_000,
+			retry: { maxRetries: 2 }
 		});
 		if (!response.ok) {
 			await response.text().catch(() => {});

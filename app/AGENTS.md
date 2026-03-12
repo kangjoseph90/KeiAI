@@ -164,13 +164,13 @@ All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
 
 ## Error Handling Philosophy
 
-| Layer   | Responsibility                                                                 |
-| ------- | ------------------------------------------------------------------------------ |
-| Adapter | Throw raw/platform errors (DexieError, HttpError) — **pass-through** original  |
-| Service | **Catch** & **Translate** platform errors into `AppError` with domain codes     |
-| Store   | **Propagate** service errors to caller — no internal try/catch                 |
-| UI      | Catch and display user-facing messages via `getErrorMessage(error)`            |
-| Sync    | Fire-and-forget — errors logged, never surfaced to UI                          |
+| Layer   | Responsibility                                                                |
+| ------- | ----------------------------------------------------------------------------- |
+| Adapter | Throw raw/platform errors (DexieError, HttpError) — **pass-through** original |
+| Service | **Catch** & **Translate** platform errors into `AppError` with domain codes   |
+| Store   | **Propagate** service errors to caller — no internal try/catch                |
+| UI      | Catch and display user-facing messages via `getErrorMessage(error)`           |
+| Sync    | Fire-and-forget — errors logged, never surfaced to UI                         |
 
 ```typescript
 // Error codes (shared/errors.ts):

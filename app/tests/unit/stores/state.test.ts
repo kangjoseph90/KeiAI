@@ -60,7 +60,10 @@ describe('Global Stores', () => {
 			chatTaskIds.set(new Map([[chatId, taskId]]));
 			runtimeTasks.set(
 				new Map<string, RuntimeTask>([
-					[taskId, { id: taskId, status: 'generating', content: '...', meta: { kind: 'chat', chatId } }]
+					[
+						taskId,
+						{ id: taskId, status: 'generating', content: '...', meta: { kind: 'chat', chatId } }
+					]
 				])
 			);
 
@@ -74,7 +77,15 @@ describe('Global Stores', () => {
 			chatTaskIds.set(new Map([['chat-2', taskId]]));
 			runtimeTasks.set(
 				new Map<string, RuntimeTask>([
-					[taskId, { id: taskId, status: 'generating', content: '...', meta: { kind: 'chat', chatId: 'chat-2' } }]
+					[
+						taskId,
+						{
+							id: taskId,
+							status: 'generating',
+							content: '...',
+							meta: { kind: 'chat', chatId: 'chat-2' }
+						}
+					]
 				])
 			);
 
@@ -96,7 +107,10 @@ describe('Global Stores', () => {
 			chatTaskIds.set(new Map([[chatId, taskId]]));
 			runtimeTasks.set(
 				new Map<string, RuntimeTask>([
-					[taskId, { id: taskId, status: 'generating', content: 'world', meta: { kind: 'chat', chatId } }]
+					[
+						taskId,
+						{ id: taskId, status: 'generating', content: 'world', meta: { kind: 'chat', chatId } }
+					]
 				])
 			);
 

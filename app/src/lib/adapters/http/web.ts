@@ -50,7 +50,7 @@ export class WebHttpAdapter extends BaseHttpAdapter {
 				const timeoutSignal = AbortSignal.timeout(options.timeout);
 				signal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 			}
-			
+
 			return fetch(finalUrl, { ...baseInit, signal });
 		}, options?.retry);
 	}

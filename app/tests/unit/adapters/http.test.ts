@@ -54,9 +54,7 @@ describe('HTTP Adapters', () => {
 
 		it('should throw HttpError on non-ok status', async () => {
 			vi.mocked(global.fetch).mockResolvedValue(mockResponse(null, false, 404));
-			await expect(adapter.get('https://api.example.com/data')).rejects.toThrow(
-				'HTTP Error: 404'
-			);
+			await expect(adapter.get('https://api.example.com/data')).rejects.toThrow('HTTP Error: 404');
 		});
 	});
 
