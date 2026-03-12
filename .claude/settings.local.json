@@ -14,8 +14,12 @@
       "Bash(npm install*)",
       "Bash(npm add*)",
       "Bash(npm run build*)",
-      "Bash(npm run dev*)"
+      "Bash(npm run dev*)",
+      "Bash(find \"c:/Projects/KeiAI/app/src\" -type f \\\\\\( -name \"*.ts\" -o -name \"*.svelte\" \\\\\\) -exec wc -l {} +)"
     ],
-    "deny": ["Bash(pnpm format)", "Bash(npm format)"]
+    "deny": [
+      "Bash(pnpm format)",
+      "Bash(npm format)"
+    ]
   }
 }
