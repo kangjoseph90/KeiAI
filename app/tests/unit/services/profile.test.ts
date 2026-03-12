@@ -46,7 +46,8 @@ describe('ProfileService', () => {
 		vi.mocked(getActiveSession).mockReturnValue({
 			userId: mockUserId,
 			masterKey: {} as CryptoKey,
-			isGuest: false
+			isGuest: false,
+			identityKeyPair: {} as CryptoKeyPair
 		});
 
 		// Default user adapter mock
