@@ -22,7 +22,7 @@ export class TauriHttpAdapter extends BaseHttpAdapter {
 				const timeoutSignal = AbortSignal.timeout(options.timeout);
 				signal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 			}
-			
+
 			return tauriFetch(url, { ...baseInit, signal });
 		}, options?.retry);
 	}

@@ -68,7 +68,10 @@ describe('Chat Pipeline', () => {
 		expect(createTask).toHaveBeenCalledWith({ kind: 'chat', chatId: mockChatId });
 		expect(setTaskContent).toHaveBeenCalledWith(mockTaskId, 'Hello');
 		expect(setTaskContent).toHaveBeenCalledWith(mockTaskId, 'Hello world');
-		expect(createMessage).toHaveBeenCalledWith(mockChatId, { role: 'char', content: 'Hello world' });
+		expect(createMessage).toHaveBeenCalledWith(mockChatId, {
+			role: 'char',
+			content: 'Hello world'
+		});
 		expect(clearTask).toHaveBeenCalledWith(mockTaskId);
 	});
 
