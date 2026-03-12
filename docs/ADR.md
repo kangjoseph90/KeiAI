@@ -174,3 +174,20 @@
   - `Identity Public Key`: 평문으로 서버에 저장 (누구나 조회하여 이 유저를 초대할 수 있게 함).
   - `Identity Private Key`: 사용자의 Master Key(`M`)로 암호화하여 서버에 저장 (사용자가 다른 기기에서 복구할 수 있게 함).
 - 결과: 지금 당장 멀티 유저 기능을 구현하지 않더라도, 모든 유저가 '초대 가능한 상태'가 되어 향후 기능 확장 시 데이터 마이그레이션이나 유저의 추가 액션 없이 즉시 다중 접속 기능을 활성화할 수 있다.
+
+---
+
+## 014: 범용적인 런타임 태스크 아키텍처 (Runtime Task Architecture)
+
+- 상태: 채택
+- 맥락: 초기에는 채팅 생성 루틴(`GenerationTask`)만 처리했다. 하지만 향후 그룹 챗, 번역, 요약, Tool Calling 등 다양한 비동기 작업을 범용적으로 처리할 수 있는 구조가 필요했다.
+- 문제:
+  - 기존 `generationTasks`는 채팅에 강결합되어 있어 다른 종류의 작업을 추가하기 어려웠다.
+  - 실행 제어(`AbortController`)와 최종 결과 저장(`createMessage`) 로직이 스토어 레이어에 섞여 있어 책임 분리가 불분명했다.
+- 결정:
+  - **Self-Describing Task**: `RuntimeTask` 타입을 도메인 중립적으로 설계하고, `meta` 필드(Discriminated Union)를 통해 태스크가 직접 자신의 종류(chat, translation 등)를 설명하게 함.
+  - **Mapping-Aware Generic Store**: `runtimeTasks` 스토어는 `taskId`를 키로 사용하는 순수 상태 저장소로 통일. `chatTaskIds` 같은 도메인 매핑은 스토어 내부에서 자동으로 관리하여 UI 조회 편의성 제공.
+  - **Pipeline Layer Responsibility**: 실행 제어(`AbortController`)와 도메인별 최종화 로직(DB 저장 등)을 스토어에서 분리하여 파이프라인 레이어(`runtime/task/*`)로 이동.
+- 결과:
+  - 채팅 외의 새로운 작업(번역, 요약 등) 추가 시 `meta` 타입 확장과 전용 파이프라인 구현만으로 간단히 확장 가능.
+  - 스토어는 순수하게 "현재 화면에 보여줄 상태"만 관리하고, 파이프라인은 "작업의 실행과 결과"를 담당하여 관심사가 명확히 분리됨.

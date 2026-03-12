@@ -15,7 +15,7 @@
 		createChatLorebook,
 		deleteChatLorebook
 	} from '$lib/stores';
-	import { runChat, stop, dismiss } from '$lib/generation';
+	import { runChat, stopChat, dismissChat } from '$lib/runtime/task';
 	import { MockStreamProvider } from '$lib/llm/mock';
 
 	let { chatId }: { chatId: string } = $props();
@@ -70,7 +70,7 @@
 						onSave={() => handleUpdateMessage(msg.id)}
 						onDelete={() => deleteMessage(chatId, msg.id)}
 						onCancelEdit={() => (editModeId = null)}
-						onDismissError={() => dismiss(chatId)}
+						onDismissError={() => dismissChat(chatId)}
 					/>
 				{/each}
 			</div>
@@ -86,7 +86,7 @@
 				disabled={$isGenerating}
 			/>
 			{#if $isGenerating}
-				<Button variant="destructive" class="gap-1.5" onclick={() => stop(chatId)}>
+				<Button variant="destructive" class="gap-1.5" onclick={() => stopChat(chatId)}>
 					<Square class="size-4" /> Stop
 				</Button>
 			{:else}
