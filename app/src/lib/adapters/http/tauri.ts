@@ -1,5 +1,6 @@
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import type { IHttpAdapter, HttpOptions } from './types';
+import { fetchWithRetry } from './retry';
 import { AppError } from '$lib/shared/errors';
 
 /**
@@ -9,12 +10,13 @@ import { AppError } from '$lib/shared/errors';
  * This bypasses WebView CORS restrictions entirely, as requests are made by the Rust backend.
  */
 export class TauriHttpAdapter implements IHttpAdapter {
-	async fetch(url: string, init?: RequestInit, _options?: HttpOptions): Promise<Response> {
+	async fetch(url: string, init?: RequestInit, options?: HttpOptions): Promise<Response> {
 		try {
-			// `_options.proxy` is intentionally ignored: Tauri's Rust HTTP backend makes
+			// `options.proxy` is intentionally ignored: Tauri's Rust HTTP backend makes
 			// requests outside the WebView, bypassing CORS entirely, so proxying is unnecessary.
-			return await tauriFetch(url, init);
+			return await fetchWithRetry(() => tauriFetch(url, init), options?.retry);
 		} catch (error) {
+			if (error instanceof AppError) throw error;
 			throw new AppError(
 				'NETWORK_ERROR',
 				`Tauri fetch failed: ${error instanceof Error ? error.message : String(error)}`,

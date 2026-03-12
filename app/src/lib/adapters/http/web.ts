@@ -1,4 +1,5 @@
 import type { IHttpAdapter, HttpOptions } from './types';
+import { fetchWithRetry } from './retry';
 import { AppError } from '$lib/shared/errors';
 
 /**
@@ -43,8 +44,9 @@ export class WebHttpAdapter implements IHttpAdapter {
 		}
 
 		try {
-			return await fetch(finalUrl, finalInit);
+			return await fetchWithRetry(() => fetch(finalUrl, finalInit), options?.retry);
 		} catch (error) {
+			if (error instanceof AppError) throw error;
 			throw new AppError(
 				'NETWORK_ERROR',
 				`Failed to fetch: ${error instanceof Error ? error.message : String(error)}`,
