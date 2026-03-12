@@ -4,7 +4,8 @@ import { fetchWithRetry } from '$lib/adapters/http/retry';
 const mockResponse = (ok: boolean, status: number) =>
 	({
 		ok,
-		status
+		status,
+		text: async () => ''
 	}) as Response;
 
 describe('fetchWithRetry', () => {
@@ -42,17 +43,16 @@ describe('fetchWithRetry', () => {
 		expect(mockFetch).toHaveBeenCalledTimes(3);
 	});
 
-	it('should throw last error when all retries are exhausted', async () => {
+	it('should return last response even if status is retryable when all retries are exhausted', async () => {
 		const mockFetch = vi.fn().mockResolvedValue(mockResponse(false, 500));
 
 		const promise = fetchWithRetry(mockFetch, { maxRetries: 2, baseDelayMs: 100 });
-		// Prevent unhandled rejection while we advance timers
-		promise.catch(() => {});
 
 		await vi.runAllTimersAsync(); // wait after 1st try
 		await vi.runAllTimersAsync(); // wait after 2nd try
 
-		await expect(promise).rejects.toMatchObject({ status: 500 });
+		const response = await promise;
+		expect(response.status).toBe(500);
 		expect(mockFetch).toHaveBeenCalledTimes(3);
 	});
 
@@ -98,15 +98,14 @@ describe('fetchWithRetry', () => {
 		const baseDelayMs = 1000;
 
 		const promise = fetchWithRetry(mockFetch, { maxRetries, baseDelayMs });
-		// Prevent unhandled rejection while advancing timers
-		promise.catch(() => {});
 
 		// Wait through all retries
 		for (let i = 0; i < maxRetries; i++) {
 			await vi.runAllTimersAsync();
 		}
 
-		await expect(promise).rejects.toMatchObject({ status: 500 });
+		const response = await promise;
+		expect(response.status).toBe(500);
 
 		// check delay times (approximately, due to jitter)
 		const calls = setTimeoutSpy.mock.calls;

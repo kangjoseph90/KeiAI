@@ -52,10 +52,10 @@ describe('HTTP Adapters', () => {
 			expect(result.created).toBe(true);
 		});
 
-		it('get() should throw AppError on non-ok status', async () => {
+		it('should throw HttpError on non-ok status', async () => {
 			vi.mocked(global.fetch).mockResolvedValue(mockResponse(null, false, 404));
 			await expect(adapter.get('https://api.example.com/data')).rejects.toThrow(
-				'HTTP error! status: 404'
+				'HTTP Error: 404'
 			);
 		});
 	});
@@ -91,10 +91,10 @@ describe('HTTP Adapters', () => {
 			expect(result.tauriReady).toBe(true);
 		});
 
-		it('get() should throw AppError if tauriFetch throws', async () => {
+		it('should propagate raw error if tauriFetch throws', async () => {
 			vi.mocked(tauriFetch).mockRejectedValue(new Error('Connection failed'));
 			await expect(adapter.get('https://api.example.com/data')).rejects.toThrow(
-				'Tauri fetch failed: Connection failed'
+				'Connection failed'
 			);
 		});
 	});

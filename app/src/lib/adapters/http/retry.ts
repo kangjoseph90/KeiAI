@@ -36,10 +36,22 @@ export async function fetchWithRetry(
 			}
 
 			// Retryable HTTP status — treat as error for retry loop
-			lastError = response;
+			// Match native fetch behavior: if we're out of retries, just return the Response.
+			if (attempt === maxRetries) {
+				return response;
+			}
+
+			// Consume body to free up resources before retrying
+			try {
+				await response.text();
+			} catch {
+				// Ignore
+			}
 		} catch (error) {
-			// Never retry user-initiated aborts
-			if (error instanceof DOMException && error.name === 'AbortError') {
+			// Never retry user-initiated aborts.
+			// We DO want to retry 'TimeoutError' as network delays are transient.
+			// Use loose Error check for cross-platform (Tauri/Web) compatibility
+			if (error instanceof Error && error.name === 'AbortError') {
 				throw error;
 			}
 			lastError = error;
