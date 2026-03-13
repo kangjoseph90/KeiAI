@@ -71,12 +71,10 @@ describe('Chat Pipeline', () => {
 		};
 
 		vi.mocked(getChatTask).mockReturnValue({
-			chatId: mockChatId,
 			status: 'generating',
 			content: 'Hello world'
 		});
 		vi.mocked(consumeChatTask).mockReturnValue({
-			chatId: mockChatId,
 			status: 'generating',
 			content: 'Hello world'
 		});
@@ -114,12 +112,10 @@ describe('Chat Pipeline', () => {
 		};
 
 		vi.mocked(getChatTask).mockReturnValue({
-			chatId: mockChatId,
 			status: 'generating',
 			content: 'Partial'
 		});
 		vi.mocked(consumeChatTask).mockReturnValue({
-			chatId: mockChatId,
 			status: 'generating',
 			content: 'Partial'
 		});
@@ -138,7 +134,6 @@ describe('Chat Pipeline', () => {
 		};
 
 		vi.mocked(getChatTask).mockReturnValue({
-			chatId: mockChatId,
 			status: 'generating',
 			content: 'Partial'
 		});
