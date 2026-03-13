@@ -180,14 +180,16 @@ export interface IDatabaseAdapter {
 		indexName: string,
 		lowerBound: unknown[],
 		upperBound: unknown[],
-		limit?: number
+		limit?: number,
+		offset?: number
 	): Promise<T[]>;
 	getRecordsForward<T extends BaseRecord>(
 		tableName: TableName,
 		indexName: string,
 		lowerBound: unknown[],
 		upperBound: unknown[],
-		limit?: number
+		limit?: number,
+		offset?: number
 	): Promise<T[]>;
 	getUnsyncedChanges<T extends BaseRecord>(
 		tableName: TableName,

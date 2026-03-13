@@ -16,6 +16,7 @@ import type {
 	Script,
 	PresetDetail
 } from '$lib/services';
+import { MessageService, type Message } from '$lib/services';
 
 export class ChatContext {
 	public readonly chatId: string;
@@ -86,5 +87,23 @@ export class ChatContext {
 			this._preset = null;
 		}
 		return this._preset;
+	}
+
+	public async getMessages(start: number, end?: number): Promise<Message[]> {
+		const chat = await this.getChat();
+		const count = chat.messageCount;
+
+		let realStart = start >= 0 ? start : count + start;
+		let realEnd = end === undefined ? count : end >= 0 ? end : count + end;
+
+		// Bounds check
+		if (realStart < 0) realStart = 0;
+		if (realEnd > count) realEnd = count;
+		if (realStart >= realEnd) return [];
+
+		const limit = realEnd - realStart;
+		const offset = realStart;
+
+		return MessageService.getMessagesAfter(this.chatId, '', limit, offset);
 	}
 }
