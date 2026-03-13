@@ -8,7 +8,20 @@
 	import type { DisplayMessage } from '$lib/stores';
 	import { Button } from '$lib/components/ui/button';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { AlertCircle, Check, Loader2, Pencil, Trash2, X } from 'lucide-svelte';
+	import {
+		AlertCircle,
+		Check,
+		Loader2,
+		Pencil,
+		Trash2,
+		X,
+		Brain,
+		ChevronDown,
+		ChevronUp
+	} from 'lucide-svelte';
+	import { slide } from 'svelte/transition';
+	import ToolCallGroup from './ToolCallGroup.svelte';
+	import type { ToolCall } from '$lib/services/content/tool';
 
 	// ── Props ─────────────────────────────────────────────────────────────────
 
@@ -20,7 +33,9 @@
 		onSave = () => {},
 		onCancelEdit = () => {},
 		onDelete = () => {},
-		onDismissError = () => {}
+		onDismissError = () => {},
+		onResolveTool = () => {},
+		onLoadDetail = async (_id: string) => null
 	}: {
 		message: DisplayMessage;
 		isEditing?: boolean;
@@ -30,7 +45,14 @@
 		onCancelEdit?: () => void;
 		onDelete?: () => void;
 		onDismissError?: () => void;
+		/** called with (toolCallId, 'approve' | 'reject') */
+		onResolveTool?: (id: string, decision: 'approve' | 'reject') => void;
+		onLoadDetail?: (id: string) => Promise<ToolCall | null>;
 	} = $props();
+
+	// ── State ─────────────────────────────────────────────────────────────────
+
+	let thoughtExpanded = $state(false);
 
 	// ── Derived ───────────────────────────────────────────────────────────────
 
@@ -113,6 +135,34 @@
 
 		<!-- ── Confirmed bubble ── -->
 	{:else}
+		<!-- ── Thought process (Char only) ── -->
+		{#if !isUser && message.thought}
+			<div class="mb-1 w-full overflow-hidden rounded-xl border bg-muted/20">
+				<button
+					class="flex w-full items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-muted/40"
+					onclick={() => (thoughtExpanded = !thoughtExpanded)}
+				>
+					<div class="flex items-center gap-1.5">
+						<Brain class="size-3 text-primary/70" />
+						Thinking Process
+					</div>
+					{#if thoughtExpanded}
+						<ChevronUp class="size-3" />
+					{:else}
+						<ChevronDown class="size-3" />
+					{/if}
+				</button>
+				{#if thoughtExpanded}
+					<div
+						transition:slide={{ duration: 200 }}
+						class="px-3 pb-3 pt-1 text-xs italic leading-relaxed text-muted-foreground/80"
+					>
+						{message.thought}
+					</div>
+				{/if}
+			</div>
+		{/if}
+
 		<div
 			class="rounded-2xl px-4 py-2 text-sm {isUser
 				? 'bg-primary text-primary-foreground'
@@ -121,5 +171,15 @@
 			<!-- TODO: replace with morphdom-diffed HTML once display scripts are wired -->
 			{displayContent}
 		</div>
+
+		<!-- ── Tool Calls (Char only) ── -->
+		{#if !isUser && message.toolCalls && message.toolCalls.length > 0}
+			<ToolCallGroup
+				toolCalls={message.toolCalls}
+				{onLoadDetail}
+				onApprove={(id) => onResolveTool(id, 'approve')}
+				onReject={(id) => onResolveTool(id, 'reject')}
+			/>
+		{/if}
 	{/if}
 </div>

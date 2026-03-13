@@ -9,7 +9,7 @@
  *   GenerationManager.generate(chatId, provider);
  */
 
-import type { StreamProvider } from './types';
+import type { StreamContent, StreamProvider } from './types';
 
 const MOCK_RESPONSES = [
 	'안녕하세요! 저는 KeiAI의 테스트 봇입니다. 이 메시지는 스트리밍으로 전달되고 있으며, 모든 데이터는 E2EE로 암호화되어 로컬 DB에 저장됩니다.',
@@ -22,26 +22,47 @@ const MOCK_RESPONSES = [
 export class MockStreamProvider implements StreamProvider {
 	private readonly response: string;
 	private readonly chunkDelayMs: number;
+	private readonly prompt: string;
 
 	constructor(prompt: string, options: { chunkDelayMs?: number } = {}) {
+		this.prompt = prompt;
 		// Pick a response based on prompt length (deterministic but varied)
 		this.response = MOCK_RESPONSES[prompt.length % MOCK_RESPONSES.length];
 		this.chunkDelayMs = options.chunkDelayMs ?? 60;
 	}
 
-	async *stream(signal: AbortSignal): AsyncIterable<string> {
+	async *stream(signal: AbortSignal): AsyncIterable<StreamContent> {
+		const state: StreamContent = {
+			content: '',
+			thought: ''
+		};
+
+		// 1. Simulate "Thought" phase (first 30%)
+		state.thought = '질문을 분석하고 적절한 답변을 생성하는 중입니다...';
+		yield { ...state };
+		await delay(this.chunkDelayMs * 10, signal);
+
+		// 2. Simulate "Content" phase
 		const words = this.response.split(' ');
-
 		for (let i = 0; i < words.length; i++) {
-			if (signal.aborted) {
-				throw new DOMException('AbortError', 'AbortError');
-			}
+			if (signal.aborted) throw new DOMException('AbortError', 'AbortError');
 
-			// Yield word + space (except last word)
-			const chunk = i < words.length - 1 ? words[i] + ' ' : words[i];
-			yield chunk;
+			state.content += (i === 0 ? '' : ' ') + words[i];
+			yield { ...state };
 
 			await delay(this.chunkDelayMs, signal);
+		}
+
+		// 3. Simulate "Tool Call" phase if prompt mentions 'tool' or '날씨'
+		if (this.prompt.includes('tool') || this.prompt.includes('날씨')) {
+			state.toolCalls = [
+				{
+					callId: 'mock_call_' + Math.random().toString(36).slice(2, 9),
+					name: 'get_weather',
+					args: { location: 'Seoul', unit: 'celsius' }
+				}
+			];
+			yield { ...state };
 		}
 	}
 }

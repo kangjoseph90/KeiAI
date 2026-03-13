@@ -8,38 +8,23 @@
 
 import type { Message } from '$lib/services';
 
-// ─── Task Meta (per-kind payload) ─────────────────────────────────────────────
-
-/** Metadata for a chat response generation task. */
-export interface ChatTaskMeta {
-	kind: 'chat';
-	chatId: string;
-}
-
-// Future: TranslationTaskMeta, TitleTaskMeta, ...
-
-/** Discriminated union of all task kinds. */
-export type TaskMeta = ChatTaskMeta;
-
-export type TaskKind = TaskMeta['kind'];
-
-// ─── Runtime Task ─────────────────────────────────────────────────────────────
-
+// ─── Chat Task ────────────────────────────────────────────────────────────────
 export type TaskStatus = 'generating' | 'error';
 
+import { type ToolCallAbstract, type ToolCallRequest } from '$lib/services/content/tool';
+
 /**
- * Ephemeral in-flight task. Never persisted to DB.
- *
- * `meta` tells the task store what kind of work is happening and where
- * to write the result when finalized. AbortController lives in the
- * pipeline layer (runtime/task/*) — it controls execution, not display state.
+ * Ephemeral in-flight chat task. Keyed by chatId.
+ * Never persisted to DB as a "Task", but finalized into a "Message".
+ * id is generated after the task is completed.
  */
-export interface RuntimeTask {
-	id: string;
+export interface ChatTask {
+	chatId: string;
 	status: TaskStatus;
-	content: string;
 	errorMessage?: string;
-	meta: TaskMeta;
+	content: string;
+	thought?: string;
+	toolCalls?: ToolCallRequest[];
 }
 
 // ─── Display Message Types ────────────────────────────────────────────────────

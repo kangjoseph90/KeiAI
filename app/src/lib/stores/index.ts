@@ -43,8 +43,7 @@ export const chats = readonly(StoreState.chats);
 export const activeChat = readonly(StoreState.activeChat);
 export const chatLorebooks = readonly(StoreState.chatLorebooks);
 export const messages = readonly(StoreState.messages);
-export const runtimeTasks = readonly(StoreState.runtimeTasks);
-export const chatTaskIds = readonly(StoreState.chatTaskIds);
+export const chatTasks = readonly(StoreState.chatTasks);
 export const activePreset = readonly(StoreState.activePreset);
 export const activeLorebooks = readonly(StoreState.activeLorebooks);
 export const activeScripts = readonly(StoreState.activeScripts);
@@ -64,15 +63,7 @@ export {
 	isGuest
 } from './state';
 
-export type {
-	DisplayMessage,
-	DisplayMessageStatus,
-	RuntimeTask,
-	TaskKind,
-	TaskStatus,
-	TaskMeta,
-	ChatTaskMeta
-} from './types';
+export type { DisplayMessage, DisplayMessageStatus, TaskStatus } from './types';
 
 export * from './content/settings';
 export * from './content/character';
@@ -85,7 +76,7 @@ export * from './content/lorebook';
 export * from './content/script';
 export * from './content/message';
 export * from './content/merged';
-export * from './runtime/task';
+export * from './task/chat';
 export * from './user/auth';
 export * from './user/profile';
 export * from './sync';
