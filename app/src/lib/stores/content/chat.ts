@@ -25,6 +25,14 @@ import { loadInitialMessages } from './message';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
 
+export async function getChatDetail(chatId: string): Promise<ChatDetail> {
+	const active = get(activeChat);
+	if (active?.id === chatId) return active;
+	const db = await ChatService.getDetail(chatId);
+	if (!db) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+	return db;
+}
+
 export async function selectChat(chatId: string, characterId: string): Promise<void> {
 	const detail = await ChatService.getDetail(chatId);
 

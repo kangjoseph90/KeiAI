@@ -15,18 +15,19 @@ export interface CharacterSummaryFields {
 
 export interface CharacterDataRefs {
 	lastActiveChatId?: string;
+	personaId?: string;
+	avatarAssetId?: string;
+
 	chatRefs?: OrderedRef[];
 	moduleRefs?: OrderedRef[];
 	lorebookRefs?: OrderedRef[];
 	scriptRefs?: OrderedRef[];
-	personaId?: string;
 	folders?: {
 		chats?: FolderDef[];
 		modules?: FolderDef[];
 		lorebooks?: FolderDef[];
 		scripts?: FolderDef[];
 	};
-	avatarAssetId?: string;
 	assets?: AssetRef[];
 }
 

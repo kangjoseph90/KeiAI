@@ -6,6 +6,14 @@ import { generateSortOrder } from '$lib/shared/ordering';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
 
+export async function getAppSettings(): Promise<AppSettings> {
+	const active = get(appSettings);
+	if (active) return active;
+	const db = await SettingsService.get();
+	if (!db) throw new AppError('NOT_FOUND', 'Settings not found');
+	return db;
+}
+
 /**
  * Service errors propagate to the caller — this function does not catch them.
  * Callers (e.g. route load functions) are responsible for error boundaries.

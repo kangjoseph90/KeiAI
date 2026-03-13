@@ -14,7 +14,7 @@ import {
 	chatTaskIds,
 	activeChat,
 	displayMessages,
-	isGenerating
+	isChatRunning
 } from '$lib/stores/state';
 import type { AppSettings, Profile, ChatDetail, Message } from '$lib/services';
 import type { RuntimeTask } from '$lib/stores/types';
@@ -67,7 +67,7 @@ describe('Global Stores', () => {
 				])
 			);
 
-			expect(get(isGenerating)).toBe(true);
+			expect(get(isChatRunning)).toBe(true);
 		});
 
 		it('should not indicate generation for different chat', () => {
@@ -89,7 +89,7 @@ describe('Global Stores', () => {
 				])
 			);
 
-			expect(get(isGenerating)).toBe(false);
+			expect(get(isChatRunning)).toBe(false);
 		});
 	});
 
