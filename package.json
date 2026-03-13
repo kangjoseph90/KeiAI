@@ -1,0 +1,21 @@
+{
+  "name": "keiai-root",
+  "private": true,
+  "description": "Local-first AI character chat application with client-side E2EE",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently -n \"app,proxy,pb\" -c \"blue,green,magenta\" \"pnpm -C app dev\" \"pnpm -C proxy dev\" \"node pocketbase/start.js\"",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "check": "pnpm -C app check",
+    "format": "pnpm -r format",
+    "postinstall": "pnpm -C app prepare"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

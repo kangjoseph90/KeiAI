@@ -1,3 +1,5 @@
+node_modules/
+
 # PocketBase data (local only)
 pocketbase/pb_data/
 

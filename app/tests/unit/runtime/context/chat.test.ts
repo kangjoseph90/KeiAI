@@ -82,7 +82,10 @@ describe('ChatContext', () => {
 	});
 
 	it('should fall back to global persona if character has no personaId', async () => {
-		const charNoPersona = { ...mockCharacter, data: { ...mockCharacter.data, personaId: undefined } };
+		const charNoPersona = {
+			...mockCharacter,
+			data: { ...mockCharacter.data, personaId: undefined }
+		};
 		vi.mocked(getAppSettings).mockResolvedValue(mockSettings);
 		vi.mocked(getChatDetail).mockResolvedValue(mockChat);
 		vi.mocked(getCharacterDetail).mockResolvedValue(charNoPersona as CharacterDetail);
@@ -95,7 +98,10 @@ describe('ChatContext', () => {
 	});
 
 	it('should return null if neither character nor settings have personaId', async () => {
-		const charNoPersona = { ...mockCharacter, data: { ...mockCharacter.data, personaId: undefined } };
+		const charNoPersona = {
+			...mockCharacter,
+			data: { ...mockCharacter.data, personaId: undefined }
+		};
 		const settingsNoPersona = { ...mockSettings, personaId: undefined };
 		vi.mocked(getAppSettings).mockResolvedValue(settingsNoPersona as AppSettings);
 		vi.mocked(getChatDetail).mockResolvedValue(mockChat);

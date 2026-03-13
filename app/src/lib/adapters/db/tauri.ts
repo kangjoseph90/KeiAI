@@ -286,7 +286,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 	): Promise<void> {
 		const cacheKey = this.getCacheKey(tableName, record.id);
 
-
 		// During a transaction or for immediate writes, bypass the buffer to ensure
 		// atomicity and let SQLite handle the native commit/rollback lifecycle.
 		if (options?.immediate || this.inTransaction) {
