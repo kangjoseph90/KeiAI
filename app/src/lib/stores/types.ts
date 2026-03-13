@@ -19,7 +19,6 @@ import { type ToolCallAbstract, type ToolCallRequest } from '$lib/services/conte
  * id is generated after the task is completed.
  */
 export interface ChatTask {
-	chatId: string;
 	status: TaskStatus;
 	errorMessage?: string;
 	content: string;

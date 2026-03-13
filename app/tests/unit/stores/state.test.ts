@@ -55,7 +55,7 @@ describe('Global Stores', () => {
 			activeChat.set({ id: chatId } as ChatDetail);
 
 			chatTasks.set(
-				new Map<string, ChatTask>([[chatId, { chatId, status: 'generating', content: '...' }]])
+				new Map<string, ChatTask>([[chatId, { status: 'generating', content: '...' }]])
 			);
 
 			expect(get(isChatRunning)).toBe(true);
@@ -66,7 +66,7 @@ describe('Global Stores', () => {
 
 			chatTasks.set(
 				new Map<string, ChatTask>([
-					['chat-2', { chatId: 'chat-2', status: 'generating', content: '...' }]
+					['chat-2', { status: 'generating', content: '...' }]
 				])
 			);
 
@@ -85,7 +85,7 @@ describe('Global Stores', () => {
 			messages.set(dbMessages);
 
 			chatTasks.set(
-				new Map<string, ChatTask>([[chatId, { chatId, status: 'generating', content: 'world' }]])
+				new Map<string, ChatTask>([[chatId, { status: 'generating', content: 'world' }]])
 			);
 
 			const display = get(displayMessages);

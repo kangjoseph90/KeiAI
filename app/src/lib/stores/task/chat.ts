@@ -19,7 +19,6 @@ export function createChatTask(chatId: string): void {
 	chatTasks.update((map) => {
 		const next = new Map(map);
 		next.set(chatId, {
-			chatId,
 			status: 'generating',
 			content: '',
 			thought: '',
