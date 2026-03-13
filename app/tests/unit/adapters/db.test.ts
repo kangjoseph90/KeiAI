@@ -328,6 +328,31 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
 			expect(results.length).toBeLessThanOrEqual(3);
 		});
+
+		it('should respect offset parameter', async () => {
+			const records = Array.from({ length: 5 }, (_, i) =>
+				createTestRecord({
+					id: `msg-${i}`,
+					chatId: 'chat-offset-back',
+					sortOrder: String.fromCharCode(97 + i) // a, b, c, d, e
+				})
+			);
+
+			await localDB.putRecords('messages', records as MessageRecord[]);
+
+			const results = await localDB.getRecordsBackward<MessageRecord>(
+				'messages',
+				'[chatId+sortOrder]',
+				['chat-offset-back', ''],
+				['chat-offset-back', '\uffff'],
+				2,
+				1 // Skip 'e', get 'd', 'c'
+			);
+
+			expect(results).toHaveLength(2);
+			expect(results[0].sortOrder).toBe('d');
+			expect(results[1].sortOrder).toBe('c');
+		});
 	});
 
 	describe('getRecordsForward (pagination)', () => {
@@ -355,6 +380,31 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 			expect(results).toHaveLength(2);
 			expect(results[0].sortOrder).toBe('a1');
 			expect(results[1].sortOrder).toBe('a2');
+		});
+
+		it('should respect offset parameter', async () => {
+			const records = Array.from({ length: 5 }, (_, i) =>
+				createTestRecord({
+					id: `msg-${i}`,
+					chatId: 'chat-offset-forward',
+					sortOrder: String.fromCharCode(97 + i) // a, b, c, d, e
+				})
+			);
+
+			await localDB.putRecords('messages', records as MessageRecord[]);
+
+			const results = await localDB.getRecordsForward<MessageRecord>(
+				'messages',
+				'[chatId+sortOrder]',
+				['chat-offset-forward', ''],
+				['chat-offset-forward', '\uffff'],
+				2,
+				1 // Skip 'a', get 'b', 'c'
+			);
+
+			expect(results).toHaveLength(2);
+			expect(results[0].sortOrder).toBe('b');
+			expect(results[1].sortOrder).toBe('c');
 		});
 	});
 

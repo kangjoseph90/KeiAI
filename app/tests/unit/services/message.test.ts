@@ -159,7 +159,8 @@ describe('MessageService', () => {
 				'[chatId+sortOrder]',
 				['chat-1', ''],
 				['chat-1', '\uffff'],
-				50
+				50,
+				0
 			);
 		});
 
@@ -174,7 +175,8 @@ describe('MessageService', () => {
 				'[chatId+sortOrder]',
 				['chat-1', ''],
 				['chat-1', 'a0'],
-				100
+				100,
+				0
 			);
 		});
 	});
