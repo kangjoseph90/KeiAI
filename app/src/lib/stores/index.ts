@@ -55,11 +55,8 @@ export {
 	hasActiveCharacter,
 	activeChatId,
 	hasActiveChat,
-	activeModuleIds,
-	allLorebooks,
-	allScripts,
 	activePersona,
-	isGenerating,
+	isChatRunning,
 	displayMessages,
 	isLoggedIn,
 	userEmail,
@@ -87,6 +84,7 @@ export * from './content/plugin';
 export * from './content/lorebook';
 export * from './content/script';
 export * from './content/message';
+export * from './content/merged';
 export * from './runtime/task';
 export * from './user/auth';
 export * from './user/profile';

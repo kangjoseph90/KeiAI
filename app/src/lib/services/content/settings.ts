@@ -16,6 +16,8 @@ export interface AppSettingsContent {
 }
 
 export interface AppSettingsRefs {
+	personaId?: string;
+	presetId?: string;
 	// 1:N - workspace holds ordered refs for top-level entities
 	characterRefs?: OrderedRef[];
 	personaRefs?: OrderedRef[];

@@ -8,7 +8,7 @@
 		activeChat,
 		chatLorebooks,
 		displayMessages,
-		isGenerating,
+		isChatRunning,
 		createMessage,
 		updateMessage,
 		deleteMessage,
@@ -26,7 +26,7 @@
 	let newLorebookName = $state('');
 
 	async function handleSendMessage() {
-		if (!newMessageText.trim() || !$activeChat || $isGenerating) return;
+		if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
 		const userText = newMessageText;
 		newMessageText = '';
 		await createMessage(chatId, { role: 'user', content: userText });
@@ -83,9 +83,9 @@
 				onkeydown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
 				placeholder="Type an encrypted message..."
 				class="flex-1"
-				disabled={$isGenerating}
+				disabled={$isChatRunning}
 			/>
-			{#if $isGenerating}
+			{#if $isChatRunning}
 				<Button variant="destructive" class="gap-1.5" onclick={() => stopChat(chatId)}>
 					<Square class="size-4" /> Stop
 				</Button>

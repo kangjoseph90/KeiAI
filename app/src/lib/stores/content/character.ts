@@ -31,6 +31,14 @@ import {
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
 
+export async function getCharacterDetail(characterId: string): Promise<CharacterDetail> {
+	const active = get(activeCharacter);
+	if (active?.id === characterId) return active;
+	const db = await CharacterService.getDetail(characterId);
+	if (!db) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
+	return db;
+}
+
 /**
  * Service errors propagate to the caller — this function does not catch them.
  * Callers (e.g. route load functions) are responsible for error boundaries.

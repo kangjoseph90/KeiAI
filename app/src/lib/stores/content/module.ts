@@ -18,6 +18,14 @@ import { modules, appSettings, moduleResources } from '../state';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
 
+export async function getModule(moduleId: string): Promise<Module> {
+	const active = get(modules).find((m) => m.id === moduleId);
+	if (active) return active;
+	const db = await ModuleService.get(moduleId);
+	if (!db) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
+	return db;
+}
+
 /**
  * Service errors propagate to the caller — this function does not catch them.
  * Callers (e.g. route load functions) are responsible for error boundaries.

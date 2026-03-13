@@ -85,7 +85,7 @@ export const runtimeTasks = writable<Map<string, RuntimeTask>>(new Map());
 export const chatTaskIds = writable<Map<string, string>>(new Map());
 
 /** True when the currently active chat has an in-flight task. */
-export const isGenerating = derived([chatTaskIds, activeChat], ([taskIds, chat]) =>
+export const isChatRunning = derived([chatTaskIds, activeChat], ([taskIds, chat]) =>
 	chat ? taskIds.has(chat.id) : false
 );
 
@@ -135,34 +135,8 @@ export const hasActiveCharacter = derived(activeCharacter, (c) => !!c);
 export const activeChatId = derived(activeChat, (c) => c?.id);
 export const hasActiveChat = derived(activeChat, (c) => !!c);
 
-export const activeModuleIds = derived([appSettings, activeCharacter], ([settings, char]) => {
-	const ids = new Set<string>();
-	for (const r of settings?.moduleRefs ?? []) {
-		if (r.enabled) ids.add(r.id);
-	}
-	for (const r of char?.data.moduleRefs ?? []) {
-		ids.add(r.id);
-	}
-	return ids;
-});
-
-export const allLorebooks = derived(
-	[characterLorebooks, chatLorebooks, moduleResources, activeModuleIds],
-	([charLB, chatLB, resMap, activeIds]) => {
-		const modLB = [...activeIds].flatMap((id) => resMap.get(id)?.lorebooks ?? []);
-		return [...modLB, ...charLB, ...chatLB];
-	}
-);
-
-export const allScripts = derived(
-	[characterScripts, moduleResources, activeModuleIds],
-	([charSC, resMap, activeIds]) => {
-		const modSC = [...activeIds].flatMap((id) => resMap.get(id)?.scripts ?? []);
-		return [...modSC, ...charSC];
-	}
-);
-
 export const activePersona = derived(
 	[activeCharacter, personas],
 	([char, list]) => list.find((p) => p.id === char?.data.personaId) ?? null
 );
+

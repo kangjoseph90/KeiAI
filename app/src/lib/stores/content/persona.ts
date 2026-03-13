@@ -5,6 +5,14 @@ import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
 import { personas, appSettings } from '../state';
 import { AppError } from '$lib/shared/errors';
 
+export async function getPersona(personaId: string): Promise<Persona> {
+	const active = get(personas).find((p) => p.id === personaId);
+	if (active) return active;
+	const db = await PersonaService.get(personaId);
+	if (!db) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
+	return db;
+}
+
 /**
  * Service errors propagate to the caller — this function does not catch them.
  * Callers (e.g. route load functions) are responsible for error boundaries.

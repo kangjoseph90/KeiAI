@@ -10,6 +10,14 @@ import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
 import { presets, activePreset, appSettings } from '../state';
 import { AppError } from '$lib/shared/errors';
 
+export async function getPresetDetail(id: string): Promise<PresetDetail> {
+	const active = get(activePreset);
+	if (active?.id === id) return active;
+	const db = await PresetService.getDetail(id);
+	if (!db) throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
+	return db;
+}
+
 /**
  * Service errors propagate to the caller — this function does not catch them.
  * Callers (e.g. route load functions) are responsible for error boundaries.
