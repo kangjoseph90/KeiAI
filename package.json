@@ -10,12 +10,16 @@
     "dev": "concurrently -n \"app,proxy,pb\" -c \"blue,green,magenta\" \"pnpm -C app dev\" \"pnpm -C proxy dev\" \"node pocketbase/start.js\"",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
+    "lint:check": "pnpm -r lint",
     "test": "pnpm -r test",
+    "test:run": "pnpm -r test run",
     "check": "pnpm -C app check",
     "format": "pnpm -r format",
+    "prepare": "husky",
     "postinstall": "pnpm -C app prepare"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "husky": "^9.1.7"
   }
 }
