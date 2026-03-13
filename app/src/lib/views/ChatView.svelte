@@ -15,8 +15,9 @@
 		createChatLorebook,
 		deleteChatLorebook
 	} from '$lib/stores';
-	import { runChat, stopChat, dismissChat } from '$lib/runtime/task';
+	import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/runtime/task';
 	import { MockStreamProvider } from '$lib/llm/mock';
+	import { ToolCallService } from '$lib/services/content/tool';
 
 	let { chatId }: { chatId: string } = $props();
 
@@ -71,6 +72,9 @@
 						onDelete={() => deleteMessage(chatId, msg.id)}
 						onCancelEdit={() => (editModeId = null)}
 						onDismissError={() => dismissChat(chatId)}
+						onResolveTool={(toolCallId, decision) =>
+							resolveToolCall(chatId, msg.id, toolCallId, decision)}
+						onLoadDetail={(toolCallId) => ToolCallService.get(toolCallId)}
 					/>
 				{/each}
 			</div>

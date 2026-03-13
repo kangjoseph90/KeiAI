@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TokenizerService } from '$lib/services/tokenizer';
-import type { ModelType } from '$lib/adapters/tokenizer';
+import { appTokenizer, type ModelType } from '$lib/adapters/tokenizer';
 
 // Mock the adapter
 vi.mock('$lib/adapters/tokenizer', () => ({
@@ -24,7 +24,6 @@ describe('TokenizerService', () => {
 
 	describe('count', () => {
 		it('should call adapter on cache miss and cache the result', async () => {
-			const { appTokenizer } = await import('$lib/adapters/tokenizer');
 			const text = 'Hello, world!';
 			const model: ModelType = 'gpt-4';
 			const expectedCount = 3;
@@ -39,7 +38,6 @@ describe('TokenizerService', () => {
 		});
 
 		it('should return cached value on subsequent calls with same input', async () => {
-			const { appTokenizer } = await import('$lib/adapters/tokenizer');
 			const text = 'Hello, world!';
 			const model: ModelType = 'gpt-4';
 			const expectedCount = 3;
@@ -58,7 +56,6 @@ describe('TokenizerService', () => {
 		});
 
 		it('should treat same text with different models as different cache entries', async () => {
-			const { appTokenizer } = await import('$lib/adapters/tokenizer');
 			const text = 'Hello, world!';
 			const model1: ModelType = 'gpt-4';
 			const model2: ModelType = 'gpt-3.5-turbo';
@@ -75,7 +72,6 @@ describe('TokenizerService', () => {
 		});
 
 		it('should clear cache when clearCache is called', async () => {
-			const { appTokenizer } = await import('$lib/adapters/tokenizer');
 			const text = 'Hello, world!';
 			const model: ModelType = 'gpt-4';
 
@@ -94,8 +90,6 @@ describe('TokenizerService', () => {
 		});
 
 		it('should return cache size', async () => {
-			const { appTokenizer } = await import('$lib/adapters/tokenizer');
-
 			vi.mocked(appTokenizer.count).mockResolvedValue(3);
 
 			expect(TokenizerService.getCacheSize()).toBe(0);
@@ -112,7 +106,6 @@ describe('TokenizerService', () => {
 		});
 
 		it('should support multiple model types', async () => {
-			const { appTokenizer } = await import('$lib/adapters/tokenizer');
 			const models: ModelType[] = [
 				'gpt-4',
 				'gpt-4o',
@@ -137,8 +130,6 @@ describe('TokenizerService', () => {
 		});
 
 		it('should handle empty string', async () => {
-			const { appTokenizer } = await import('$lib/adapters/tokenizer');
-
 			vi.mocked(appTokenizer.count).mockResolvedValue(0);
 
 			const result = await TokenizerService.count('', 'gpt-4' as ModelType);
@@ -146,7 +137,6 @@ describe('TokenizerService', () => {
 		});
 
 		it('should handle very long text', async () => {
-			const { appTokenizer } = await import('$lib/adapters/tokenizer');
 			const longText = 'a'.repeat(10000);
 
 			vi.mocked(appTokenizer.count).mockResolvedValue(10000);

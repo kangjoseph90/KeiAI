@@ -12,7 +12,7 @@
  */
 
 import { pb } from '$lib/adapters/pb';
-import { decrypt, toBase64, fromBase64, type Bytes } from '$lib/crypto';
+import { decrypt, toBase64, fromBase64, type Bytes, encrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { appAsset, type AssetRecord, type AssetFields } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
@@ -424,7 +424,6 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 						const fields = await decryptAssetFields(masterKey, assetRecord);
 						if (fields.status !== 'remote') {
 							// Re-encrypt with updated status
-							const { encrypt } = await import('$lib/crypto');
 							const updatedFields: AssetFields = { ...fields, status: 'remote' };
 							const { ciphertext, iv } = await encrypt(masterKey, JSON.stringify(updatedFields));
 							await appAsset.putAsset({

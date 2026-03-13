@@ -30,9 +30,10 @@ export type TableName =
 	| 'modules'
 	| 'plugins'
 	| 'presetSummaries'
-	| 'presetData';
+	| 'presetData'
+	| 'toolCalls';
 
-export const TABLES: TableName[] = [
+export const SYNC_TABLES: TableName[] = [
 	'characterSummaries',
 	'characterData',
 	'chatSummaries',
@@ -47,6 +48,10 @@ export const TABLES: TableName[] = [
 	'presetSummaries',
 	'presetData'
 ];
+
+export const LOCAL_TABLES: TableName[] = ['toolCalls'];
+
+export const TABLES: TableName[] = [...SYNC_TABLES, ...LOCAL_TABLES];
 
 export type DatabaseWriteOperation =
 	| 'put'
@@ -136,6 +141,12 @@ export type PluginRecord = EncryptedRecord;
 
 export type PresetSummaryRecord = EncryptedRecord;
 export type PresetDataRecord = EncryptedRecord;
+
+// ─── Tool Calls ────────────────────────────────────────────────────────
+
+export interface ToolCallRecord extends EncryptedRecord {
+	chatId: string;
+}
 
 // ─── Adapter Interface ──────────────────────────────────────────────
 

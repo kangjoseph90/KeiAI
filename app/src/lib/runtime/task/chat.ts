@@ -25,16 +25,20 @@
  */
 
 import {
-	createTask,
-	appendChunk,
-	setTaskContent,
-	setTaskError,
-	getTask,
+	createChatTask,
+	updateChatTask,
+	setChatTaskError,
+	getChatTask,
 	clearChatTask,
-	clearTask
-} from '$lib/stores/runtime/task';
-import { createMessage } from '$lib/stores/content/message';
+	consumeChatTask
+} from '$lib/stores/task/chat';
+import type { ChatTask } from '$lib/stores/types';
 import type { StreamProvider } from '$lib/llm/types';
+import { ToolCallService } from '$lib/services/content/tool';
+import { updateMessage } from '$lib/stores/content/message';
+import { createMessage } from '$lib/stores/content/message';
+import { MessageService } from '$lib/services/content/message';
+import { MockStreamProvider } from '$lib/llm/mock';
 
 export interface RunChatOptions {
 	/** Save partial content to DB when the user aborts. Default: true */
@@ -88,52 +92,135 @@ export async function runChat(
 	// ── 1. Register task + open streaming bubble ───────────────────────
 	const controller = new AbortController();
 	activeControllers.set(chatId, controller);
-	const taskId = createTask({ kind: 'chat', chatId });
-	let rawContent = '';
+	createChatTask(chatId);
 
 	// ── 2. Stream chunks ───────────────────────────────────────────────
 	try {
-		for await (const chunk of provider.stream(controller.signal)) {
-			rawContent += chunk;
-
+		for await (const state of provider.stream(controller.signal)) {
 			// ── TODO: runScripts (output transform) ───────────────────
 			// Apply ctx.scripts with placement 'output' to accumulated
 			// raw content. Runs on every chunk so the user sees
 			// transformed content in real-time during streaming.
-			// const processedContent = runScripts(ctx.scripts, 'output', rawContent);
-			const processedContent = rawContent; // pass-through until scripts are wired
+			// const processedContent = runScripts(ctx.scripts, 'output', state.content);
 
-			setTaskContent(taskId, processedContent);
+			// For now, we update the task state directly with structured data
+			updateChatTask(chatId, state);
 		}
 	} catch (error) {
 		if (error instanceof DOMException && error.name === 'AbortError') {
 			// User clicked Stop — save partial content if opted in
-			const partial = getTask(taskId)?.content ?? '';
-			if (opts.saveOnAbort && partial.length > 0) {
-				await _finalize(chatId, taskId, partial);
+			const task = getChatTask(chatId);
+			if (opts.saveOnAbort && task && task.content.length > 0) {
+				await _persistTask(chatId);
 			} else {
-				clearTask(taskId);
+				clearChatTask(chatId);
 			}
 			return;
 		}
 
 		// Network / API error — surface to UI, don't persist
 		const msg = error instanceof Error ? error.message : 'Unknown generation error';
-		setTaskError(taskId, msg);
+		setChatTaskError(chatId, msg);
 		return;
 	} finally {
 		activeControllers.delete(chatId);
 	}
 
-	// ── 3. Empty response ──────────────────────────────────────────────
-	if (rawContent.length === 0) {
-		setTaskError(taskId, 'Empty response from model');
+	// ── 3. Finalize ────────────────────────────────────────────────────
+	const finalTask = getChatTask(chatId);
+	if (!finalTask || (finalTask.content.length === 0 && !finalTask.toolCalls?.length)) {
+		setChatTaskError(chatId, 'Empty response from model');
 		return;
 	}
 
-	// ── 4. Finalize ────────────────────────────────────────────────────
-	const finalContent = getTask(taskId)?.content ?? rawContent;
-	await _finalize(chatId, taskId, finalContent);
+	await _persistTask(chatId);
+}
+
+// ─── Persist ──────────────────────────────────────────────────────────────────
+
+/**
+ * Consume the ephemeral task from the store and write it to the DB.
+ * Called exclusively from the runtime layer — never from stores or UI.
+ */
+async function _persistTask(chatId: string): Promise<void> {
+	const task = consumeChatTask(chatId);
+	if (!task) return;
+
+	try {
+		// 1. Create Tool Calls in DB, collect abstract references
+		const toolCallAbstracts = await Promise.all(
+			(task.toolCalls ?? []).map(async (tc) => {
+				const created = await ToolCallService.create(chatId, {
+					call: { callId: tc.callId ?? '', name: tc.name, args: tc.args ?? {} }
+				});
+				return { id: created.id, name: created.call.name, status: 'pending' as const };
+			})
+		);
+
+		// 2. Create Message in DB (store update handled inside createMessage)
+		await createMessage(chatId, {
+			role: 'char',
+			content: task.content,
+			thought: task.thought,
+			toolCalls: toolCallAbstracts.length > 0 ? toolCallAbstracts : undefined
+		});
+	} catch (error) {
+		const msg = error instanceof Error ? error.message : 'Failed to save message';
+		setChatTaskError(chatId, msg);
+	}
+}
+
+// ─── Tool Call Resolution ─────────────────────────────────────────────────────
+
+/**
+ * Resolve a tool call (approve or reject) and resume the chat if all
+ * tool calls in the message are settled.
+ *
+ * This is the single entry point for tool interaction — UI calls this,
+ * no store or service calls from UI directly.
+ */
+export async function resolveToolCall(
+	chatId: string,
+	messageId: string,
+	toolCallId: string,
+	decision: 'approve' | 'reject'
+): Promise<void> {
+	const isApprove = decision === 'approve';
+
+	// 1. Update ToolCall record in DB (status + mock response)
+	await ToolCallService.update(toolCallId, {
+		status: isApprove ? 'success' : 'rejected',
+		response: {
+			content: [
+				{
+					type: 'text',
+					text: isApprove ? 'Execution result (Mock)' : 'Execution rejected by user'
+				}
+			],
+			isError: !isApprove
+		}
+	});
+
+	// 2. Reflect the status change in the message (DB + Store sync via updateMessage)
+	const message = await MessageService.get(messageId);
+	if (!message?.toolCalls) return;
+
+	const updatedToolCalls = message.toolCalls.map((tc) =>
+		tc.id === toolCallId
+			? { ...tc, status: isApprove ? ('success' as const) : ('rejected' as const) }
+			: tc
+	);
+	await updateMessage(messageId, { toolCalls: updatedToolCalls });
+
+	// 3. If all tool calls are settled, resume the pipeline
+	const hasPending = updatedToolCalls.some((tc) => tc.status === 'pending');
+	if (hasPending) return;
+
+	// TODO: Get provider from active preset settings instead of Mock
+	const provider = new MockStreamProvider(
+		isApprove ? 'Resuming...' : 'Resuming after rejection...'
+	);
+	await runChat(chatId, provider);
 }
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
@@ -146,21 +233,4 @@ export function stopChat(chatId: string): void {
 /** Dismiss an error state — removes the virtual bubble. */
 export function dismissChat(chatId: string): void {
 	clearChatTask(chatId);
-}
-
-// ─── Internal ─────────────────────────────────────────────────────────────────
-
-/**
- * Persist content to DB, then clear the task state.
- */
-async function _finalize(chatId: string, taskId: string, content: string): Promise<void> {
-	try {
-		await createMessage(chatId, { role: 'char', content });
-		clearTask(taskId);
-	} catch (error) {
-		const msg = error instanceof Error ? error.message : 'Failed to save message';
-		setTaskError(taskId, msg);
-		// Ensure controller is cleaned up even on finalize failure
-		activeControllers.delete(chatId);
-	}
 }

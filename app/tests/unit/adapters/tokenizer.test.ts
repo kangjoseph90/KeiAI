@@ -9,6 +9,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AppError } from '$lib/shared/errors';
 import { type Remote } from 'comlink';
 import type { ModelType, ITokenizerAdapter } from '$lib/adapters/tokenizer';
+import { WebTokenizerAdapter } from '$lib/adapters/tokenizer/web';
+import { TauriTokenizerAdapter } from '$lib/adapters/tokenizer/tauri';
+import * as comlink from 'comlink';
 
 /** Interface matching the TokenizerWorker class for testing purposes */
 interface TokenizerWorker {
@@ -54,14 +57,11 @@ describe('Tokenizer Adapters', () => {
 			}) as unknown as typeof Worker;
 
 			// Setup comlink mock to return our mock worker
-			const comlinkModule = await import('comlink');
-			vi.mocked(comlinkModule.wrap).mockReturnValue(
+			vi.mocked(comlink.wrap).mockReturnValue(
 				mockWorker as unknown as Remote<TokenizerWorker>
 			);
 
-			// Import adapter after mocks are set up
-			const adapterModule = await import('$lib/adapters/tokenizer/web');
-			adapter = new adapterModule.WebTokenizerAdapter();
+			adapter = new WebTokenizerAdapter();
 		});
 
 		it('should call worker and return result', async () => {
@@ -150,8 +150,7 @@ describe('Tokenizer Adapters', () => {
 		let adapter: ITokenizerAdapter;
 
 		beforeEach(async () => {
-			const adapterModule = await import('$lib/adapters/tokenizer/tauri');
-			adapter = new adapterModule.TauriTokenizerAdapter();
+			adapter = new TauriTokenizerAdapter();
 		});
 
 		it('should throw NOT_IMPLEMENTED when count is called', async () => {

@@ -6,12 +6,15 @@ import { deepMerge } from '$lib/shared/defaults';
 import { assertChatExists, assertMessageInChat } from './guards';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
+import type { ToolCallAbstract } from './tool';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface MessageFields {
 	role: 'user' | 'char' | 'system';
 	content: string;
+	thought?: string;
+	toolCalls?: ToolCallAbstract[];
 }
 
 export interface Message extends MessageFields {

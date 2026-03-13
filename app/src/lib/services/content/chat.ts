@@ -301,12 +301,13 @@ export class ChatService {
 
 		try {
 			await localDB.transaction(
-				['lorebooks', 'scripts', 'messages', 'chatSummaries', 'chatData'],
+				['lorebooks', 'scripts', 'messages', 'chatSummaries', 'chatData', 'toolCalls'],
 				'rw',
 				async () => {
 					await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
 					await localDB.softDeleteByIndex('scripts', 'ownerId', id);
 					await localDB.softDeleteByIndex('messages', 'chatId', id);
+					await localDB.softDeleteByIndex('toolCalls', 'chatId', id);
 					await localDB.softDeleteRecord('chatSummaries', id);
 					await localDB.softDeleteRecord('chatData', id);
 				}
