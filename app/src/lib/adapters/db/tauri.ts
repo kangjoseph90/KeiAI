@@ -7,7 +7,7 @@ import type {
 	DatabaseWriteEventListener,
 	DatabaseWriteOptions
 } from './types';
-import { TABLES } from './types';
+import { TABLES, DB_DEBOUNCE_MS } from './types';
 import { AppError } from '$lib/shared/errors';
 import { DatabaseWriteEventEmitter } from './events';
 
@@ -81,8 +81,138 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 	private dbPromise: Promise<Database> | null = null;
 	private readonly writeEvents = new DatabaseWriteEventEmitter();
 
+	private pendingWrites = new Map<
+		string,
+		{
+			tableName: TableName;
+			record: BaseRecord;
+			options?: DatabaseWriteOptions;
+		}
+	>();
+	private inTransaction = false;
+	private flushPromise: Promise<void> | null = null;
+	private flushTimeout: ReturnType<typeof setTimeout> | null = null;
+
 	subscribeWriteEvents(listener: DatabaseWriteEventListener): () => void {
 		return this.writeEvents.subscribe(listener);
+	}
+
+	private getCacheKey(tableName: TableName, id: string): string {
+		return `${tableName}:${id}`;
+	}
+
+	private scheduleFlush() {
+		if (this.flushTimeout) {
+			clearTimeout(this.flushTimeout);
+		}
+		this.flushTimeout = setTimeout(() => {
+			this.flush().catch((err) => {
+				console.error('[TauriDatabaseAdapter] Delayed flush failed', err);
+			});
+		}, DB_DEBOUNCE_MS);
+	}
+
+	async flush(): Promise<void> {
+		if (this.flushPromise) return this.flushPromise;
+
+		this.flushPromise = (async () => {
+			if (this.flushTimeout) {
+				clearTimeout(this.flushTimeout);
+				this.flushTimeout = null;
+			}
+
+			if (this.pendingWrites.size === 0) return;
+
+			const snapshot = new Map(this.pendingWrites);
+			this.pendingWrites.clear();
+
+			const recordsByTable = new Map<
+				TableName,
+				{ records: BaseRecord[]; options?: DatabaseWriteOptions }
+			>();
+
+			for (const pending of snapshot.values()) {
+				if (!recordsByTable.has(pending.tableName)) {
+					recordsByTable.set(pending.tableName, { records: [] });
+				}
+				const group = recordsByTable.get(pending.tableName)!;
+				group.records.push(pending.record);
+				if (pending.options) group.options = pending.options;
+			}
+
+			// Actual DB batch commit
+			try {
+				const db = await this.getDb();
+				await db.execute('BEGIN TRANSACTION');
+
+				for (const [tableName, group] of recordsByTable.entries()) {
+					const chunkSize = 50;
+					for (let i = 0; i < group.records.length; i += chunkSize) {
+						const chunk = group.records.slice(i, i + chunkSize);
+						const placeholders = chunk
+							.map((_, idx) => {
+								const start = idx * 9 + 1;
+								return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8})`;
+							})
+							.join(', ');
+
+						const values: unknown[] = [];
+						for (const record of chunk) {
+							const b = recordToBindings(record);
+							values.push(
+								b.id,
+								b.userId,
+								b.characterId,
+								b.chatId,
+								b.sortOrder,
+								b.ownerId,
+								b.updatedAt,
+								b.isDeleted,
+								b.data
+							);
+						}
+
+						await db.execute(
+							`INSERT OR REPLACE INTO ${tableName} 
+						(id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data) 
+						VALUES ${placeholders}`,
+							values
+						);
+					}
+				}
+
+				await db.execute('COMMIT');
+
+				// Emit events after successful commit
+				for (const [tableName, group] of recordsByTable.entries()) {
+					this.emitWriteEvent(
+						tableName,
+						group.records.length === 1 ? 'put' : 'putMany',
+						group.records.map((r) => r.id),
+						group.options
+					);
+				}
+			} catch (error) {
+				// Try to rollback
+				const rollbackDb = await this.getDb();
+				rollbackDb.execute('ROLLBACK').catch(() => {});
+				console.error('[TauriDatabaseAdapter] Background flush failed', error);
+
+				// Restore records that weren't overwritten in the meantime
+				for (const [key, val] of snapshot) {
+					if (!this.pendingWrites.has(key)) {
+						this.pendingWrites.set(key, val);
+					}
+				}
+				throw error;
+			}
+		})();
+
+		try {
+			await this.flushPromise;
+		} finally {
+			this.flushPromise = null;
+		}
 	}
 
 	private async getDb(): Promise<Database> {
@@ -135,6 +265,12 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 	}
 
 	async getRecord<T extends BaseRecord>(tableName: TableName, id: string): Promise<T | undefined> {
+		const cacheKey = this.getCacheKey(tableName, id);
+		const pending = this.pendingWrites.get(cacheKey);
+		if (pending) {
+			return structuredClone(pending.record) as T;
+		}
+
 		const db = await this.getDb();
 		const rows = await db.select<DatabaseSqlRow[]>(`SELECT data FROM ${tableName} WHERE id = $1`, [
 			id
@@ -148,50 +284,20 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		record: T,
 		options?: DatabaseWriteOptions
 	): Promise<void> {
-		const db = await this.getDb();
+		const cacheKey = this.getCacheKey(tableName, record.id);
 
-		const b = recordToBindings(record);
-		await db.execute(
-			`INSERT OR REPLACE INTO ${tableName} 
-            (id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-			[
-				b.id,
-				b.userId,
-				b.characterId,
-				b.chatId,
-				b.sortOrder,
-				b.ownerId,
-				b.updatedAt,
-				b.isDeleted,
-				b.data
-			]
-		);
-		this.emitWriteEvent(tableName, 'put', [record.id], options);
-	}
 
-	async putRecords<T extends BaseRecord>(
-		tableName: TableName,
-		records: T[],
-		options?: DatabaseWriteOptions
-	): Promise<void> {
-		const db = await this.getDb();
-
-		const chunkSize = 50;
-
-		for (let i = 0; i < records.length; i += chunkSize) {
-			const chunk = records.slice(i, i + chunkSize);
-			const placeholders = chunk
-				.map((_, idx) => {
-					const start = idx * 9 + 1;
-					return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8})`;
-				})
-				.join(', ');
-
-			const values: unknown[] = [];
-			for (const record of chunk) {
-				const b = recordToBindings(record);
-				values.push(
+		// During a transaction or for immediate writes, bypass the buffer to ensure
+		// atomicity and let SQLite handle the native commit/rollback lifecycle.
+		if (options?.immediate || this.inTransaction) {
+			this.pendingWrites.delete(cacheKey);
+			const db = await this.getDb();
+			const b = recordToBindings(record);
+			await db.execute(
+				`INSERT OR REPLACE INTO ${tableName} 
+				(id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data) 
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+				[
 					b.id,
 					b.userId,
 					b.characterId,
@@ -201,23 +307,86 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 					b.updatedAt,
 					b.isDeleted,
 					b.data
+				]
+			);
+			this.emitWriteEvent(tableName, 'put', [record.id], options);
+			return;
+		}
+
+		this.pendingWrites.set(cacheKey, {
+			tableName,
+			record: structuredClone(record) as BaseRecord,
+			options
+		});
+		this.scheduleFlush();
+	}
+
+	async putRecords<T extends BaseRecord>(
+		tableName: TableName,
+		records: T[],
+		options?: DatabaseWriteOptions
+	): Promise<void> {
+		// During a transaction or for immediate writes, bypass the buffer to ensure
+		// atomicity and let SQLite handle the native commit/rollback lifecycle.
+		if (options?.immediate || this.inTransaction) {
+			for (const rec of records) {
+				this.pendingWrites.delete(this.getCacheKey(tableName, rec.id));
+			}
+
+			const db = await this.getDb();
+			const chunkSize = 50;
+
+			for (let i = 0; i < records.length; i += chunkSize) {
+				const chunk = records.slice(i, i + chunkSize);
+				const placeholders = chunk
+					.map((_, idx) => {
+						const start = idx * 9 + 1;
+						return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8})`;
+					})
+					.join(', ');
+
+				const values: unknown[] = [];
+				for (const record of chunk) {
+					const b = recordToBindings(record);
+					values.push(
+						b.id,
+						b.userId,
+						b.characterId,
+						b.chatId,
+						b.sortOrder,
+						b.ownerId,
+						b.updatedAt,
+						b.isDeleted,
+						b.data
+					);
+				}
+
+				await db.execute(
+					`INSERT OR REPLACE INTO ${tableName} 
+					(id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data) 
+					VALUES ${placeholders}`,
+					values
 				);
 			}
 
-			await db.execute(
-				`INSERT OR REPLACE INTO ${tableName} 
-                (id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data) 
-                VALUES ${placeholders}`,
-				values
+			this.emitWriteEvent(
+				tableName,
+				'putMany',
+				records.map((record) => record.id),
+				options
 			);
+			return;
 		}
 
-		this.emitWriteEvent(
-			tableName,
-			'putMany',
-			records.map((record) => record.id),
-			options
-		);
+		for (const record of records) {
+			const cacheKey = this.getCacheKey(tableName, record.id);
+			this.pendingWrites.set(cacheKey, {
+				tableName,
+				record: structuredClone(record) as BaseRecord,
+				options
+			});
+		}
+		this.scheduleFlush();
 	}
 
 	async deleteRecord(
@@ -225,6 +394,11 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		id: string,
 		options?: DatabaseWriteOptions
 	): Promise<void> {
+		const cacheKey = this.getCacheKey(tableName, id);
+		this.pendingWrites.delete(cacheKey);
+
+		// Note: delete is always immediate in Tauri since it's not a high-frequency operation
+		// that benefits from debouncing, and it clears any pending writes for the same ID.
 		const db = await this.getDb();
 		await db.execute(`DELETE FROM ${tableName} WHERE id = $1`, [id]);
 		this.emitWriteEvent(tableName, 'delete', [id], options);
@@ -236,6 +410,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		indexValue: string,
 		options?: DatabaseWriteOptions
 	): Promise<void> {
+		await this.flush();
 		const db = await this.getDb();
 		const rows = await db.select<{ id: string }[]>(
 			`SELECT id FROM ${tableName} WHERE ${indexName} = $1`,
@@ -255,33 +430,12 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		id: string,
 		options?: DatabaseWriteOptions
 	): Promise<void> {
-		const db = await this.getDb();
-		const now = Date.now();
-		const rows = await db.select<DatabaseSqlRow[]>(`SELECT data FROM ${tableName} WHERE id = $1`, [
-			id
-		]);
-		if (rows.length > 0) {
-			const record = parseRecord<BaseRecord>(rows[0]);
+		const record = await this.getRecord<BaseRecord>(tableName, id);
+
+		if (record) {
 			record.isDeleted = true;
-			record.updatedAt = now;
-			const b = recordToBindings(record);
-			await db.execute(
-				`INSERT OR REPLACE INTO ${tableName}
-            (id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-				[
-					b.id,
-					b.userId,
-					b.characterId,
-					b.chatId,
-					b.sortOrder,
-					b.ownerId,
-					b.updatedAt,
-					b.isDeleted,
-					b.data
-				]
-			);
-			this.emitWriteEvent(tableName, 'softDelete', [id], options);
+			record.updatedAt = Date.now();
+			await this.putRecord(tableName, record, options);
 		}
 	}
 
@@ -291,6 +445,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		indexValue: string,
 		options?: DatabaseWriteOptions
 	): Promise<void> {
+		await this.flush();
 		const db = await this.getDb();
 		const rows = await db.select<DatabaseSqlRow[]>(
 			`SELECT data FROM ${tableName} WHERE ${indexName} = $1`,
@@ -348,9 +503,10 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 	}
 
 	async getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]> {
+		await this.flush();
 		const db = await this.getDb();
 		const rows = await db.select<DatabaseSqlRow[]>(
-			`SELECT data FROM ${tableName} WHERE userId = $1 AND isDeleted = 0 ORDER BY updatedAt ASC`,
+			`SELECT data FROM ${tableName} WHERE userId = $1 AND isDeleted = 0 ORDER BY updatedAt DESC`,
 			[userId]
 		);
 		return rows.map((row) => parseRecord<T>(row));
@@ -363,6 +519,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		limit: number = 50,
 		offset: number = 0
 	): Promise<T[]> {
+		await this.flush();
 		const db = await this.getDb();
 		const rows = await db.select<DatabaseSqlRow[]>(
 			`SELECT data FROM ${tableName} WHERE ${indexName} = $1 AND isDeleted = 0 LIMIT $2 OFFSET $3`,
@@ -378,6 +535,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		upperBound: unknown[],
 		limit: number = 50
 	): Promise<T[]> {
+		await this.flush();
 		const db = await this.getDb();
 
 		const isComposite = indexName.startsWith('[') && indexName.endsWith(']');
@@ -410,6 +568,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		upperBound: unknown[],
 		limit: number = 50
 	): Promise<T[]> {
+		await this.flush();
 		const db = await this.getDb();
 
 		const isComposite = indexName.startsWith('[') && indexName.endsWith(']');
@@ -440,9 +599,10 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		userId: string,
 		sinceUpdatedAt: number
 	): Promise<T[]> {
+		await this.flush();
 		const db = await this.getDb();
 		const rows = await db.select<DatabaseSqlRow[]>(
-			`SELECT data FROM ${tableName} WHERE userId = $1 AND updatedAt > $2`,
+			`SELECT data FROM ${tableName} WHERE userId = $1 AND updatedAt >= $2`,
 			[userId, sinceUpdatedAt]
 		);
 		return rows.map((row) => parseRecord<T>(row));
@@ -453,7 +613,9 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		_mode: 'r' | 'rw',
 		callback: () => Promise<R>
 	): Promise<R> {
+		await this.flush();
 		const db = await this.getDb();
+		this.inTransaction = true;
 		await db.execute('BEGIN TRANSACTION');
 		try {
 			const result = await callback();
@@ -462,6 +624,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		} catch (error) {
 			await db.execute('ROLLBACK');
 			throw error;
+		} finally {
+			this.inTransaction = false;
 		}
 	}
 
