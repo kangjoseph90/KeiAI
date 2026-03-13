@@ -3,9 +3,9 @@
 Stateless Cloudflare Worker that forwards HTTP requests. No logging, no storage, no state.
 
 ```bash
-npm install && npm dev     # Local wrangler dev server
-npm deploy                  # Deploy to Cloudflare
-npm test                    # Vitest with cloudflare vitest-pool-workers
+pnpm install && pnpm dev     # Local wrangler dev server
+pnpm deploy                  # Deploy to Cloudflare
+pnpm test                    # Vitest with cloudflare vitest-pool-workers
 ```
 
 ---
@@ -20,14 +20,14 @@ Generic HTTP proxy that forwards any fetch request to a target URL. Originally d
 
 ## Inviolable Rules
 
-| The proxy NEVER...           | Why                                          |
-| ---------------------------- | -------------------------------------------- |
-| Stores API keys or data      | User privacy — everything is pass-through only |
-| Logs requests or responses   | Zero traceability by design                  |
-| Connects to any database     | Must remain fully stateless                  |
-| Modifies request/response body| Transparency — what goes in comes out       |
-| Stores any data              | Ephemeral-only, no persistence of any kind   |
-| Inspects or parses content   | Not the proxy's concern                      |
+| The proxy NEVER...             | Why                                            |
+| ------------------------------ | ---------------------------------------------- |
+| Stores API keys or data        | User privacy — everything is pass-through only |
+| Logs requests or responses     | Zero traceability by design                    |
+| Connects to any database       | Must remain fully stateless                    |
+| Modifies request/response body | Transparency — what goes in comes out          |
+| Stores any data                | Ephemeral-only, no persistence of any kind     |
+| Inspects or parses content     | Not the proxy's concern                        |
 
 Any new feature must pass this test: **"Does this require state or inspection?"** If yes, it doesn't belong here.
 
@@ -52,30 +52,35 @@ No database. No logging. No state. Just HTTP forwarding with CORS headers.
 ## Endpoints
 
 ### `/health`
+
 Health check endpoint. Returns `200 OK`.
 
 ### `/proxy`
+
 Generic proxy endpoint. Accepts POST requests with the following headers:
 
-| Header | Required | Description |
-|--------|----------|-------------|
-| `x-target-url` | Yes | Target URL to forward the request to |
-| `x-target-method` | No | HTTP method for target (default: `POST`) |
-| `x-target-headers` | No | JSON-encoded headers to forward |
+| Header             | Required | Description                              |
+| ------------------ | -------- | ---------------------------------------- |
+| `x-target-url`     | Yes      | Target URL to forward the request to     |
+| `x-target-method`  | No       | HTTP method for target (default: `POST`) |
+| `x-target-headers` | No       | JSON-encoded headers to forward          |
 
 **Request Format:**
+
 ```typescript
 const response = await fetch('/proxy', {
-  method: 'POST',
-  headers: {
-    'x-target-url': 'https://api.example.com/endpoint',
-    'x-target-method': 'POST',
-    'x-target-headers': encodeURIComponent(JSON.stringify({
-      'Authorization': 'Bearer xxx',
-      'Content-Type': 'application/json'
-    }))
-  },
-  body: JSON.stringify({ data: '...' })
+	method: 'POST',
+	headers: {
+		'x-target-url': 'https://api.example.com/endpoint',
+		'x-target-method': 'POST',
+		'x-target-headers': encodeURIComponent(
+			JSON.stringify({
+				Authorization: 'Bearer xxx',
+				'Content-Type': 'application/json',
+			}),
+		),
+	},
+	body: JSON.stringify({ data: '...' }),
 });
 ```
 
@@ -95,6 +100,7 @@ const response = await fetch('/proxy', {
 ### Current State
 
 ✅ **Implemented** — Generic fetch proxy with:
+
 - Single `/proxy` endpoint for all HTTP forwarding
 - Header-based target specification (RisuAI-style pattern)
 - CORS support (preflight + response headers)
