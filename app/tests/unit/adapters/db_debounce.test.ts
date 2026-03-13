@@ -116,28 +116,28 @@ describe('WebDatabaseAdapter (Debouncing)', () => {
 	it('should prune buffer upon manual deletion to prevent ghost resurrects', async () => {
 		const rec = createTestRecord('db-5');
 		await localDB.putRecord('settings', rec);
-		
+
 		await localDB.deleteRecord('settings', 'db-5');
 
 		const retrieved = await localDB.getRecord('settings', 'db-5');
 		expect(retrieved).toBeUndefined();
-		
+
 		await sleep(600); // Check if flush resurrects it
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const dexieRecAfter = await (localDB as any).getTable('settings').get('db-5');
 		expect(dexieRecAfter).toBeUndefined();
 	});
-    
+
 	it('should autoflush when doing an indexed query that might miss buffered data', async () => {
 		const rec = createTestRecord('db-6', { userId: 'sync-user' });
-		
+
 		// This puts it into the buffer
 		await localDB.putRecord('settings', rec);
 
 		// getUnsyncedChanges does an indexed query on settings userId.
 		// It should implicitly call flush() before checking, making it instantly available.
 		const changes = await localDB.getUnsyncedChanges('settings', 'sync-user', 0);
-		
+
 		expect(changes.length).toBe(1);
 		expect(changes[0].id).toBe('db-6');
 	});

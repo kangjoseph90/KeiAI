@@ -139,4 +139,3 @@ export const activePersona = derived(
 	[activeCharacter, personas],
 	([char, list]) => list.find((p) => p.id === char?.data.personaId) ?? null
 );
-
