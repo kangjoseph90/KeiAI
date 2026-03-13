@@ -14,8 +14,10 @@ import type {
 	CharacterDetail,
 	AppSettings,
 	Persona,
-	PresetDetail
+	PresetDetail,
+	Message
 } from '$lib/services';
+import { MessageService } from '$lib/services';
 
 // Mock Store APIs
 vi.mock('$lib/stores', () => ({
@@ -27,6 +29,17 @@ vi.mock('$lib/stores', () => ({
 	getMergedLorebooks: vi.fn(),
 	getMergedScripts: vi.fn()
 }));
+
+vi.mock('$lib/services', async (importOriginal) => {
+	const original = await importOriginal<typeof import('$lib/services')>();
+	return {
+		...original,
+		MessageService: {
+			getMessagesAfter: vi.fn(),
+			getMessagesBefore: vi.fn()
+		}
+	};
+});
 
 describe('ChatContext', () => {
 	const chatId = 'chat-1';
@@ -134,5 +147,60 @@ describe('ChatContext', () => {
 
 		expect(preset).toEqual(mockPreset);
 		expect(getPresetDetail).toHaveBeenCalledWith('preset-1');
+	});
+
+	describe('getMessages', () => {
+		const mockMessages = [{ id: 'm1' }, { id: 'm2' }] as Message[];
+
+		beforeEach(() => {
+			vi.mocked(getChatDetail).mockResolvedValue({ ...mockChat, messageCount: 100 } as ChatDetail);
+			vi.mocked(MessageService.getMessagesAfter).mockResolvedValue(mockMessages);
+		});
+
+		it('should fetch range from start (0, 5)', async () => {
+			const result = await context.getMessages(0, 5);
+
+			expect(result).toEqual(mockMessages);
+			expect(MessageService.getMessagesAfter).toHaveBeenCalledWith(chatId, '', 5, 0);
+		});
+
+		it('should handle end = undefined (fetch till end)', async () => {
+			await context.getMessages(95);
+
+			expect(MessageService.getMessagesAfter).toHaveBeenCalledWith(chatId, '', 5, 95);
+		});
+
+		it('should handle negative start index (-10)', async () => {
+			await context.getMessages(-10);
+
+			expect(MessageService.getMessagesAfter).toHaveBeenCalledWith(chatId, '', 10, 90);
+		});
+
+		it('should handle RisuAI-style negative range (0, -1)', async () => {
+			await context.getMessages(0, -1);
+
+			expect(MessageService.getMessagesAfter).toHaveBeenCalledWith(chatId, '', 99, 0);
+		});
+
+		it('should clamp indices and handle empty results', async () => {
+			vi.mocked(getChatDetail).mockResolvedValue({ ...mockChat, messageCount: 0 } as ChatDetail);
+			const result = await context.getMessages(0, 5);
+
+			expect(result).toEqual([]);
+			expect(MessageService.getMessagesAfter).not.toHaveBeenCalled();
+		});
+
+		it('should return empty array if realStart >= realEnd', async () => {
+			const result = await context.getMessages(10, 5);
+
+			expect(result).toEqual([]);
+			expect(MessageService.getMessagesAfter).not.toHaveBeenCalled();
+		});
+
+		it('should clamp out-of-bounds start/end', async () => {
+			await context.getMessages(-200, 200);
+
+			expect(MessageService.getMessagesAfter).toHaveBeenCalledWith(chatId, '', 100, 0);
+		});
 	});
 });

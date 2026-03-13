@@ -339,7 +339,8 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		indexName: string,
 		lowerBound: unknown[], // e.g. [chatId, 0]
 		upperBound: unknown[], // e.g. [chatId, cursorTime]
-		limit: number = 50
+		limit: number = 50,
+		offset: number = 0
 	): Promise<T[]> {
 		await this.flush();
 		return (await this.getTable<T>(tableName)
@@ -347,6 +348,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 			.between(lowerBound, upperBound, false, false) // Exclusive bounds
 			.reverse()
 			.filter((record: T) => !record.isDeleted)
+			.offset(offset)
 			.limit(limit) // Read in batches for generator
 			.toArray()) as T[];
 	}
@@ -356,13 +358,15 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		indexName: string,
 		lowerBound: unknown[],
 		upperBound: unknown[],
-		limit: number = 50
+		limit: number = 50,
+		offset: number = 0
 	): Promise<T[]> {
 		await this.flush();
 		return (await this.getTable<T>(tableName)
 			.where(indexName)
 			.between(lowerBound, upperBound, false, false) // Exclusive bounds
 			.filter((record: T) => !record.isDeleted)
+			.offset(offset)
 			.limit(limit)
 			.toArray()) as T[];
 	}

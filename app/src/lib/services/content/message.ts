@@ -50,7 +50,8 @@ export class MessageService {
 	static async getMessagesBefore(
 		chatId: string,
 		cursorSortOrder: string = '\uffff',
-		limit = 50
+		limit = 50,
+		offset = 0
 	): Promise<Message[]> {
 		const { masterKey } = getActiveSession();
 		const records = await localDB.getRecordsBackward<MessageRecord>(
@@ -58,7 +59,8 @@ export class MessageService {
 			'[chatId+sortOrder]',
 			[chatId, ''],
 			[chatId, cursorSortOrder],
-			limit
+			limit,
+			offset
 		);
 
 		// The results are in reverse order (newest to oldest), so we need to reverse
@@ -81,7 +83,8 @@ export class MessageService {
 	static async getMessagesAfter(
 		chatId: string,
 		cursorSortOrder: string = '',
-		limit = 50
+		limit = 50,
+		offset = 0
 	): Promise<Message[]> {
 		const { masterKey } = getActiveSession();
 
@@ -90,7 +93,8 @@ export class MessageService {
 			'[chatId+sortOrder]',
 			[chatId, cursorSortOrder],
 			[chatId, '\uffff'],
-			limit
+			limit,
+			offset
 		);
 
 		return Promise.all(

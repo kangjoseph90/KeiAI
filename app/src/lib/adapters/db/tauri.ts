@@ -532,7 +532,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		indexName: string,
 		lowerBound: unknown[],
 		upperBound: unknown[],
-		limit: number = 50
+		limit: number = 50,
+		offset: number = 0
 	): Promise<T[]> {
 		await this.flush();
 		const db = await this.getDb();
@@ -548,8 +549,14 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 				const lower2 = lowerBound[1];
 				const upper2 = upperBound[1];
 
-				const query = `SELECT data FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} DESC LIMIT $4`;
-				const rows = await db.select<DatabaseSqlRow[]>(query, [val1, lower2, upper2, limit]);
+				const query = `SELECT data FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} DESC LIMIT $4 OFFSET $5`;
+				const rows = await db.select<DatabaseSqlRow[]>(query, [
+					val1,
+					lower2,
+					upper2,
+					limit,
+					offset
+				]);
 				return rows.map((row) => parseRecord<T>(row));
 			}
 		}
@@ -565,7 +572,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		indexName: string,
 		lowerBound: unknown[],
 		upperBound: unknown[],
-		limit: number = 50
+		limit: number = 50,
+		offset: number = 0
 	): Promise<T[]> {
 		await this.flush();
 		const db = await this.getDb();
@@ -581,8 +589,14 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 				const lower2 = lowerBound[1];
 				const upper2 = upperBound[1];
 
-				const query = `SELECT data FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} ASC LIMIT $4`;
-				const rows = await db.select<DatabaseSqlRow[]>(query, [val1, lower2, upper2, limit]);
+				const query = `SELECT data FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} ASC LIMIT $4 OFFSET $5`;
+				const rows = await db.select<DatabaseSqlRow[]>(query, [
+					val1,
+					lower2,
+					upper2,
+					limit,
+					offset
+				]);
 				return rows.map((row) => parseRecord<T>(row));
 			}
 		}
