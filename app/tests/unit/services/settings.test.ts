@@ -33,6 +33,7 @@ describe('SettingsService', () => {
 	const mockMasterKey = {} as CryptoKey;
 	const mockEncryptedData = new Uint8Array([13, 14, 15]);
 	const mockIV = new Uint8Array([16, 17, 18]);
+	const mockNow = 1710000000000;
 
 	const mockSettings: AppSettings = {
 		theme: 'dark',
@@ -42,6 +43,8 @@ describe('SettingsService', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.useFakeTimers();
+		vi.setSystemTime(mockNow);
 
 		vi.mocked(getActiveSession).mockReturnValue({
 			userId: mockUserId,
@@ -99,6 +102,7 @@ describe('SettingsService', () => {
 	describe('set', () => {
 		it('should encrypt and save full settings object', async () => {
 			await SettingsService.set(mockSettings);
+			await vi.runAllTimersAsync();
 
 			expect(encrypt).toHaveBeenCalledWith(mockMasterKey, JSON.stringify(mockSettings));
 			expect(localDB.putRecord).toHaveBeenCalledWith(
@@ -106,7 +110,8 @@ describe('SettingsService', () => {
 				expect.objectContaining({
 					id: mockUserId,
 					encryptedData: mockEncryptedData
-				})
+				}),
+				undefined
 			);
 		});
 	});
@@ -125,6 +130,7 @@ describe('SettingsService', () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
 
 			const result = await SettingsService.update({ theme: 'light' });
+			await vi.runAllTimersAsync();
 
 			expect(result.theme).toBe('light');
 			expect(result.apiKeys.openai).toBe('sk-test'); // Preserved
@@ -135,6 +141,7 @@ describe('SettingsService', () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as SettingsRecord);
 
 			const result = await SettingsService.update({ theme: 'dark' });
+			await vi.runAllTimersAsync();
 
 			expect(result.theme).toBe('dark');
 			expect(localDB.putRecord).toHaveBeenCalled();

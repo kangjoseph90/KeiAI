@@ -117,6 +117,9 @@ describe('PersonaService', () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
 			const result = await PersonaService.update('persona-123', { name: 'Updated' });
 			expect(result.name).toBe('Updated');
+
+			await vi.runAllTimersAsync();
+			expect(localDB.putRecord).toHaveBeenCalled();
 		});
 
 		it('should throw AppError when decrypt fails', async () => {
