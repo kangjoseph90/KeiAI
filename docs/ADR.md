@@ -235,3 +235,27 @@
   - 사용자가 모든 도구 실행을 통제할 수 있어 안전하고 투명한 UX를 제공한다.
   - 파이프라인 코드가 단순해지고 유지보수가 용이해진다.
 
+---
+
+## 017: 토크나이저 시스템 — 6 인코딩 통합 + 단일 라이브러리 전략
+
+- 상태: 채택
+- 맥락: RisuAI는 js-tiktoken 기반으로 OpenAI 인코딩(cl100k, o200k, p50k 등)만 지원하며, 다른 모델(Claude, Llama, DeepSeek 등)은 대략적인 추정치로 처리했다. KeiAI는 주요 모델별 정확한 토큰 카운팅을 목표로 했다.
+- 문제:
+  - 초기 설계에서 11개 인코딩 × 4개 라이브러리(js-tiktoken, @dqbd/tiktoken WASM, @mlc-ai/web-tokenizers, @huggingface/transformers)를 매핑했으나, 번들 크기와 유지보수 비용이 과도했다.
+  - OpenAI 레거시 인코딩(cl100k, p50k, r50k, gpt2)과 니치 인코딩(novelai, novellist, cohere)은 최신 모델에서 사실상 사용되지 않음.
+  - Gemma/Mistral은 SentencePiece(.model) + HuggingFace JSON(.json) 두 형식이 필요 — Web은 SentencePiece, Tauri(Rust)는 JSON을 사용.
+- 검토 과정:
+  1. 11개 인코딩 전체 지원 → 레거시 제거가 목표 중 하나이므로 과잉
+  2. js-tiktoken(순수 JS) vs @dqbd/tiktoken(WASM) → WASM이 빠르지만, o200k_base가 HuggingFace JSON으로도 제공됨을 발견
+  3. Xenova/gpt-4o에서 o200k_base tokenizer.json 발견 → @mlc-ai/web-tokenizers의 `fromJSON()`으로 로드 가능 → tiktoken 계열 라이브러리 자체가 불필요
+- 결정:
+  - **6개 인코딩만 지원**: o200k_base(OpenAI), claude(Anthropic), llama3(Meta+파생), deepseek(DeepSeek), gemma(Google), mistral(Mistral)
+  - **Web**: `@mlc-ai/web-tokenizers` 단일 라이브러리. JSON vocab은 `fromJSON()`, SentencePiece는 `fromSentencePiece()`로 통일. Worker 스레드에서 lazy-load + 캐시.
+  - **Tauri**: Rust 네이티브. `tiktoken-rs`(o200k_base, 데이터 내장) + `tokenizers` 크레이트(나머지 5개, JSON 파일 필요).
+  - **토큰 데이터**: git에 포함하지 않고 `postinstall` 스크립트로 HuggingFace에서 다운로드. gated 모델은 ungated mirror(NousResearch, unsloth, Xenova) 활용.
+- 결과:
+  - Web 번들에서 tiktoken 계열 라이브러리 완전 제거. 단일 WASM 라이브러리로 6개 인코딩 모두 처리.
+  - Tauri는 네이티브 속도로 토큰 카운팅 (10-30x 빠름).
+  - 새 인코딩 추가 시: `TokenizerEncoding` 타입 + worker SPECS + Rust match arm + 다운로드 URL만 추가하면 됨.
+
