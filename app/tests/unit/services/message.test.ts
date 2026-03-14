@@ -353,12 +353,7 @@ describe('MessageService', () => {
 			const result = await MessageService.update('msg-1', { content: 'New content' });
 
 			expect(result.content).toBe('New content');
-			expect(localDB.putRecord).toHaveBeenCalledWith('messages', {
-				...existingRecord,
-				encryptedData: new Uint8Array([99]),
-				encryptedDataIV: new Uint8Array([88]),
-				updatedAt: expect.any(Number)
-			} as unknown as BaseRecord);
+			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 
 		it('should verify chat ownership when expectedChatId is provided', async () => {

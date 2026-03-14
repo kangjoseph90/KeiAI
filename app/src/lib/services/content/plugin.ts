@@ -4,6 +4,7 @@ import { localDB, type PluginRecord } from '$lib/adapters/db';
 import { deepMerge } from '$lib/shared/defaults';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
+import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ function decryptFields(masterKey: CryptoKey, record: PluginRecord): Promise<Plug
 
 export class PluginService {
 	static async list(): Promise<Plugin[]> {
+		await encryptedWriteQueue.flushTable('plugins');
 		const { masterKey, userId } = getActiveSession();
 		const records = await localDB.getAll<PluginRecord>('plugins', userId);
 
@@ -69,6 +71,14 @@ export class PluginService {
 
 	static async get(id: string): Promise<Plugin | null> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<PluginFields>('plugins', id);
+		if (queued) {
+			return {
+				id,
+				...deepMerge(defaultPluginFields, queued as unknown as Record<string, unknown>)
+			};
+		}
+
 		const record = await localDB.getRecord<PluginRecord>('plugins', id);
 		if (!record || record.isDeleted) return null;
 
@@ -111,20 +121,43 @@ export class PluginService {
 
 	static async update(id: string, changes: Partial<PluginFields>): Promise<Plugin> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<PluginFields>('plugins', id);
 		const record = await localDB.getRecord<PluginRecord>('plugins', id);
 		if (!record || record.isDeleted) {
 			throw new AppError('NOT_FOUND', `Plugin not found: ${id}`);
 		}
 
 		try {
-			const current = await decryptFields(masterKey, record);
+			const current = queued
+				? deepMerge(defaultPluginFields, queued as unknown as Record<string, unknown>)
+				: await decryptFields(masterKey, record);
 			const updated: PluginFields = deepMerge(current, changes as Record<string, unknown>);
-			const enc = await encrypt(masterKey, JSON.stringify(updated));
 
-			record.encryptedData = enc.ciphertext;
-			record.encryptedDataIV = enc.iv;
-			record.updatedAt = Date.now();
-			await localDB.putRecord('plugins', record);
+			encryptedWriteQueue.upsert<PluginFields, PluginRecord>({
+				tableName: 'plugins',
+				id,
+				userId: record.userId,
+				createdAt: record.createdAt,
+				nextFields: updated,
+				mergeFields: (queuedCurrent, next) =>
+					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				toRecord: ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					encryptedData,
+					encryptedDataIV
+				}) => ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					isDeleted: false,
+					encryptedData,
+					encryptedDataIV
+				})
+			});
 
 			return { id, ...updated };
 		} catch (error) {
@@ -135,6 +168,7 @@ export class PluginService {
 
 	static async delete(id: string): Promise<void> {
 		try {
+			encryptedWriteQueue.drop('plugins', id);
 			await localDB.softDeleteRecord('plugins', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;

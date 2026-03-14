@@ -4,6 +4,7 @@ import { localDB, type PresetSummaryRecord, type PresetDataRecord } from '$lib/a
 import { deepMerge } from '$lib/shared/defaults';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
+import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -122,6 +123,7 @@ function decryptDataFields(
 export class PresetService {
 	/** List all presets (summary only) */
 	static async list(): Promise<Preset[]> {
+		await encryptedWriteQueue.flushTable('presetSummaries');
 		const { masterKey, userId } = getActiveSession();
 		const records = await localDB.getAll<PresetSummaryRecord>('presetSummaries', userId);
 
@@ -139,6 +141,8 @@ export class PresetService {
 	/** Get full preset (summary + data) */
 	static async getDetail(id: string): Promise<PresetDetail | null> {
 		const { masterKey } = getActiveSession();
+		const queuedSummary = encryptedWriteQueue.peek<PresetSummaryFields>('presetSummaries', id);
+		const queuedData = encryptedWriteQueue.peek<PresetDataFields>('presetData', id);
 
 		const rec = await localDB.getRecord<PresetSummaryRecord>('presetSummaries', id);
 		if (!rec || rec.isDeleted) return null;
@@ -146,8 +150,12 @@ export class PresetService {
 		const dataRec = await localDB.getRecord<PresetDataRecord>('presetData', id);
 		if (!dataRec || dataRec.isDeleted) return null;
 
-		const fields = await decryptSummaryFields(masterKey, rec);
-		const data = await decryptDataFields(masterKey, dataRec);
+		const fields = queuedSummary
+			? deepMerge(defaultPresetSummary, queuedSummary as unknown as Record<string, unknown>)
+			: await decryptSummaryFields(masterKey, rec);
+		const data = queuedData
+			? deepMerge(defaultPresetData, queuedData as unknown as Record<string, unknown>)
+			: await decryptDataFields(masterKey, dataRec);
 
 		return {
 			id: rec.id,
@@ -212,20 +220,43 @@ export class PresetService {
 	/** Update summary only */
 	static async updateSummary(id: string, changes: Partial<PresetSummaryFields>): Promise<Preset> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<PresetSummaryFields>('presetSummaries', id);
 		const record = await localDB.getRecord<PresetSummaryRecord>('presetSummaries', id);
 		if (!record || record.isDeleted) {
 			throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 		}
 
 		try {
-			const current = await decryptSummaryFields(masterKey, record);
+			const current = queued
+				? deepMerge(defaultPresetSummary, queued as unknown as Record<string, unknown>)
+				: await decryptSummaryFields(masterKey, record);
 			const updated: PresetSummaryFields = deepMerge(current, changes as Record<string, unknown>);
-			const enc = await encrypt(masterKey, JSON.stringify(updated));
 
-			record.encryptedData = enc.ciphertext;
-			record.encryptedDataIV = enc.iv;
-			record.updatedAt = Date.now();
-			await localDB.putRecord('presetSummaries', record);
+			encryptedWriteQueue.upsert<PresetSummaryFields, PresetSummaryRecord>({
+				tableName: 'presetSummaries',
+				id,
+				userId: record.userId,
+				createdAt: record.createdAt,
+				nextFields: updated,
+				mergeFields: (queuedCurrent, next) =>
+					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				toRecord: ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					encryptedData,
+					encryptedDataIV
+				}) => ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					isDeleted: false,
+					encryptedData,
+					encryptedDataIV
+				})
+			});
 
 			return { id, ...updated };
 		} catch (error) {
@@ -240,20 +271,43 @@ export class PresetService {
 		changes: Partial<PresetDataFields>
 	): Promise<PresetDataFields> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<PresetDataFields>('presetData', id);
 		const record = await localDB.getRecord<PresetDataRecord>('presetData', id);
 		if (!record || record.isDeleted) {
 			throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 		}
 
 		try {
-			const current = await decryptDataFields(masterKey, record);
+			const current = queued
+				? deepMerge(defaultPresetData, queued as unknown as Record<string, unknown>)
+				: await decryptDataFields(masterKey, record);
 			const updated: PresetDataFields = deepMerge(current, changes as Record<string, unknown>);
-			const enc = await encrypt(masterKey, JSON.stringify(updated));
 
-			record.encryptedData = enc.ciphertext;
-			record.encryptedDataIV = enc.iv;
-			record.updatedAt = Date.now();
-			await localDB.putRecord('presetData', record);
+			encryptedWriteQueue.upsert<PresetDataFields, PresetDataRecord>({
+				tableName: 'presetData',
+				id,
+				userId: record.userId,
+				createdAt: record.createdAt,
+				nextFields: updated,
+				mergeFields: (queuedCurrent, next) =>
+					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				toRecord: ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					encryptedData,
+					encryptedDataIV
+				}) => ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					isDeleted: false,
+					encryptedData,
+					encryptedDataIV
+				})
+			});
 
 			return updated;
 		} catch (error) {
@@ -268,55 +322,17 @@ export class PresetService {
 		summaryChanges?: Partial<PresetSummaryFields>,
 		dataChanges?: Partial<PresetDataFields>
 	): Promise<PresetDetail> {
-		const { masterKey } = getActiveSession();
-		let updatedSummary: PresetSummaryFields | undefined;
-		let updatedData: PresetDataFields | undefined;
-		const finalUpdatedAt = Date.now();
-
-		try {
-			await localDB.transaction(['presetSummaries', 'presetData'], 'rw', async () => {
-				// Read both records upfront ??ensures no partial writes if one is missing
-				const summaryRecord = await localDB.getRecord<PresetSummaryRecord>('presetSummaries', id);
-				const dataRecord = await localDB.getRecord<PresetDataRecord>('presetData', id);
-				if (!summaryRecord || summaryRecord.isDeleted || !dataRecord || dataRecord.isDeleted) {
-					throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
-				}
-
-				if (summaryChanges) {
-					const currentSummary = await decryptSummaryFields(masterKey, summaryRecord);
-					updatedSummary = deepMerge(currentSummary, summaryChanges as Record<string, unknown>);
-					const summaryEnc = await encrypt(masterKey, JSON.stringify(updatedSummary));
-					summaryRecord.encryptedData = summaryEnc.ciphertext;
-					summaryRecord.encryptedDataIV = summaryEnc.iv;
-					summaryRecord.updatedAt = finalUpdatedAt;
-					await localDB.putRecord('presetSummaries', summaryRecord);
-				} else {
-					updatedSummary = await decryptSummaryFields(masterKey, summaryRecord);
-				}
-
-				if (dataChanges) {
-					const currentData = await decryptDataFields(masterKey, dataRecord);
-					updatedData = deepMerge(currentData, dataChanges as Record<string, unknown>);
-					const dataEnc = await encrypt(masterKey, JSON.stringify(updatedData));
-					dataRecord.encryptedData = dataEnc.ciphertext;
-					dataRecord.encryptedDataIV = dataEnc.iv;
-					dataRecord.updatedAt = finalUpdatedAt;
-					await localDB.putRecord('presetData', dataRecord);
-				} else {
-					updatedData = await decryptDataFields(masterKey, dataRecord);
-				}
-			});
-		} catch (error) {
-			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to update preset', error);
-		}
-
-		if (!updatedSummary || !updatedData) {
+		const detail = await this.getDetail(id);
+		if (!detail) {
 			throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
 		}
 
+		const updatedSummary = summaryChanges
+			? await this.updateSummary(id, summaryChanges)
+			: { id, name: detail.name, description: detail.description };
+		const updatedData = dataChanges ? await this.updateData(id, dataChanges) : detail.data;
+
 		return {
-			id,
 			...updatedSummary,
 			data: updatedData
 		};
@@ -324,6 +340,8 @@ export class PresetService {
 
 	static async delete(id: string): Promise<void> {
 		try {
+			encryptedWriteQueue.drop('presetSummaries', id);
+			encryptedWriteQueue.drop('presetData', id);
 			await localDB.transaction(['presetSummaries', 'presetData'], 'rw', async () => {
 				await localDB.softDeleteRecord('presetSummaries', id);
 				await localDB.softDeleteRecord('presetData', id);

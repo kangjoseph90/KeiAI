@@ -171,7 +171,7 @@ describe('PresetService', () => {
 
 			expect(result.name).toBe('New Name');
 			expect(result.data.temperature).toBe(0.5);
-			expect(localDB.putRecord).toHaveBeenCalledTimes(2);
+			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 
 		it('should throw if records not found', async () => {

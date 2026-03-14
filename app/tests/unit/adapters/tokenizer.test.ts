@@ -57,9 +57,7 @@ describe('Tokenizer Adapters', () => {
 			}) as unknown as typeof Worker;
 
 			// Setup comlink mock to return our mock worker
-			vi.mocked(comlink.wrap).mockReturnValue(
-				mockWorker as unknown as Remote<TokenizerWorker>
-			);
+			vi.mocked(comlink.wrap).mockReturnValue(mockWorker as unknown as Remote<TokenizerWorker>);
 
 			adapter = new WebTokenizerAdapter();
 		});

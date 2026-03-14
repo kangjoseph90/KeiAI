@@ -26,7 +26,6 @@ import type {
 	PresetDataRecord,
 	ToolCallRecord
 } from './types';
-import { DB_DEBOUNCE_MS } from './types';
 import { DatabaseWriteEventEmitter } from './events';
 
 class DexieStore extends Dexie {
@@ -72,17 +71,6 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 	private db: DexieStore;
 	private readonly writeEvents = new DatabaseWriteEventEmitter();
 
-	private pendingWrites = new Map<
-		string,
-		{
-			tableName: TableName;
-			record: BaseRecord;
-			options?: DatabaseWriteOptions;
-		}
-	>();
-	private flushPromise: Promise<void> | null = null;
-	private flushTimeout: ReturnType<typeof setTimeout> | null = null;
-
 	constructor() {
 		this.db = new DexieStore();
 	}
@@ -95,91 +83,11 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		return this.db[tableName] as unknown as Table<T, string>;
 	}
 
-	private getCacheKey(tableName: TableName, id: string): string {
-		return `${tableName}:${id}`;
-	}
-
-	private scheduleFlush() {
-		if (this.flushTimeout) {
-			clearTimeout(this.flushTimeout);
-		}
-		this.flushTimeout = setTimeout(() => {
-			this.flush().catch((err) => {
-				console.error('[WebDatabaseAdapter] Delayed flush failed', err);
-			});
-		}, DB_DEBOUNCE_MS);
-	}
-
 	async flush(): Promise<void> {
-		if (this.flushPromise) return this.flushPromise;
-
-		this.flushPromise = (async () => {
-			if (this.flushTimeout) {
-				clearTimeout(this.flushTimeout);
-				this.flushTimeout = null;
-			}
-
-			if (this.pendingWrites.size === 0) return;
-
-			const snapshot = new Map(this.pendingWrites);
-			this.pendingWrites.clear();
-
-			const opsByTable = new Map<
-				TableName,
-				{ records: BaseRecord[]; options?: DatabaseWriteOptions }
-			>();
-			for (const pending of snapshot.values()) {
-				if (!opsByTable.has(pending.tableName)) {
-					opsByTable.set(pending.tableName, { records: [] });
-				}
-				const group = opsByTable.get(pending.tableName)!;
-				group.records.push(pending.record);
-				if (pending.options) group.options = pending.options;
-			}
-
-			try {
-				await Dexie.ignoreTransaction(async () => {
-					await this.transaction(Array.from(opsByTable.keys()), 'rw', async () => {
-						for (const [tableName, group] of opsByTable.entries()) {
-							const table = this.getTable<BaseRecord>(tableName);
-							await table.bulkPut(group.records);
-						}
-					});
-				});
-
-				for (const [tableName, group] of opsByTable.entries()) {
-					this.emitWriteEvent(
-						tableName,
-						group.records.length === 1 ? 'put' : 'putMany',
-						group.records.map((r) => r.id),
-						group.options
-					);
-				}
-			} catch (err) {
-				console.error('[WebDatabaseAdapter] Background flush failed', err);
-				// Restore records that weren't overwritten in the meantime
-				for (const [key, val] of snapshot) {
-					if (!this.pendingWrites.has(key)) {
-						this.pendingWrites.set(key, val);
-					}
-				}
-				throw err;
-			}
-		})();
-
-		try {
-			await this.flushPromise;
-		} finally {
-			this.flushPromise = null;
-		}
+		return Promise.resolve();
 	}
 
 	async getRecord<T extends BaseRecord>(tableName: TableName, id: string): Promise<T | undefined> {
-		const cacheKey = this.getCacheKey(tableName, id);
-		const pending = this.pendingWrites.get(cacheKey);
-		if (pending) {
-			return structuredClone(pending.record) as T;
-		}
 		return await this.getTable<T>(tableName).get(id);
 	}
 
@@ -188,23 +96,8 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		record: T,
 		options?: DatabaseWriteOptions
 	): Promise<void> {
-		const cacheKey = this.getCacheKey(tableName, record.id);
-
-		// If we are inside an active transaction (Dexie-managed or forced immediate),
-		// we MUST bypass the buffer to ensure transaction atomicity and native locking.
-		if (options?.immediate || Dexie.currentTransaction) {
-			this.pendingWrites.delete(cacheKey);
-			await this.getTable<T>(tableName).put(record);
-			this.emitWriteEvent(tableName, 'put', [record.id], options);
-			return;
-		}
-
-		this.pendingWrites.set(cacheKey, {
-			tableName,
-			record: structuredClone(record) as BaseRecord,
-			options
-		});
-		this.scheduleFlush();
+		await this.getTable<T>(tableName).put(record);
+		this.emitWriteEvent(tableName, 'put', [record.id], options);
 	}
 
 	async putRecords<T extends BaseRecord>(
@@ -212,29 +105,13 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		records: T[],
 		options?: DatabaseWriteOptions
 	): Promise<void> {
-		if (options?.immediate || Dexie.currentTransaction) {
-			for (const rec of records) {
-				this.pendingWrites.delete(this.getCacheKey(tableName, rec.id));
-			}
-			await this.getTable<T>(tableName).bulkPut(records);
-			this.emitWriteEvent(
-				tableName,
-				'putMany',
-				records.map((record) => record.id),
-				options
-			);
-			return;
-		}
-
-		for (const record of records) {
-			const cacheKey = this.getCacheKey(tableName, record.id);
-			this.pendingWrites.set(cacheKey, {
-				tableName,
-				record: structuredClone(record) as BaseRecord,
-				options
-			});
-		}
-		this.scheduleFlush();
+		await this.getTable<T>(tableName).bulkPut(records);
+		this.emitWriteEvent(
+			tableName,
+			'putMany',
+			records.map((record) => record.id),
+			options
+		);
 	}
 
 	async deleteRecord(
@@ -242,18 +119,6 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		id: string,
 		options?: DatabaseWriteOptions
 	): Promise<void> {
-		const cacheKey = this.getCacheKey(tableName, id);
-
-		// If we are inside an active transaction (Dexie-managed or forced immediate),
-		// we MUST bypass the buffer to ensure transaction atomicity and native locking.
-		if (options?.immediate || Dexie.currentTransaction) {
-			this.pendingWrites.delete(cacheKey);
-			await this.getTable<BaseRecord>(tableName).delete(id);
-			this.emitWriteEvent(tableName, 'delete', [id], options);
-			return;
-		}
-
-		this.pendingWrites.delete(cacheKey);
 		await this.getTable<BaseRecord>(tableName).delete(id);
 		this.emitWriteEvent(tableName, 'delete', [id], options);
 	}

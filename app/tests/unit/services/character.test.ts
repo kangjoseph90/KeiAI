@@ -251,8 +251,6 @@ describe('CharacterService', () => {
 			expect(result.id).toBe('test-id-123');
 			expect(result.name).toBe('New Character');
 			expect(result.data.systemPrompt).toBe('You are helpful');
-
-			expect(encrypt).toHaveBeenCalledTimes(2); // Once for summary, once for data
 			expect(localDB.transaction).toHaveBeenCalledWith(
 				['characterSummaries', 'characterData'],
 				'rw',
@@ -317,12 +315,7 @@ describe('CharacterService', () => {
 			});
 
 			expect(result.name).toBe('New Name');
-			expect(localDB.putRecord).toHaveBeenCalledWith('characterSummaries', {
-				...existingRecord,
-				encryptedData: new Uint8Array([99]),
-				encryptedDataIV: new Uint8Array([88]),
-				updatedAt: expect.any(Number)
-			});
+			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 
 		it('should throw NOT_FOUND when character does not exist', async () => {
@@ -374,12 +367,7 @@ describe('CharacterService', () => {
 			});
 
 			expect(result.systemPrompt).toBe('New prompt');
-			expect(localDB.putRecord).toHaveBeenCalledWith('characterData', {
-				...existingRecord,
-				encryptedData: new Uint8Array([99]),
-				encryptedDataIV: new Uint8Array([88]),
-				updatedAt: expect.any(Number)
-			});
+			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 	});
 
@@ -420,10 +408,6 @@ describe('CharacterService', () => {
 				iv: new Uint8Array([88])
 			});
 
-			vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
-				await callback();
-			});
-
 			const result = await CharacterService.update(
 				'char-1',
 				{ name: 'New Name' },
@@ -432,11 +416,7 @@ describe('CharacterService', () => {
 
 			expect(result.name).toBe('New Name');
 			expect(result.data.systemPrompt).toBe('New prompt');
-			expect(localDB.transaction).toHaveBeenCalledWith(
-				['characterSummaries', 'characterData'],
-				'rw',
-				expect.any(Function)
-			);
+			expect(localDB.transaction).not.toHaveBeenCalled();
 		});
 	});
 
@@ -456,6 +436,7 @@ describe('CharacterService', () => {
 					'lorebooks',
 					'scripts',
 					'messages',
+					'toolCalls',
 					'characterSummaries',
 					'characterData'
 				],
@@ -480,6 +461,21 @@ describe('CharacterService', () => {
 			// Should call softDeleteByIndex for messages, lorebooks, scripts for each chat
 			expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('messages', 'chatId', 'chat-1');
 			expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('messages', 'chatId', 'chat-2');
+			expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('toolCalls', 'chatId', 'chat-1');
+			expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('toolCalls', 'chatId', 'chat-2');
+		});
+
+		it('should soft delete related tool calls for each chat', async () => {
+			const mockChats = [{ id: 'chat-a', characterId: 'char-1' }] as unknown as BaseRecord[];
+
+			vi.mocked(localDB.getByIndex).mockResolvedValue(mockChats);
+			vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
+				await callback();
+			});
+
+			await CharacterService.delete('char-1');
+
+			expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('toolCalls', 'chatId', 'chat-a');
 		});
 	});
 });

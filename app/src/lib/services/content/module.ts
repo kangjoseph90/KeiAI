@@ -5,6 +5,7 @@ import type { AssetRef, FolderDef, OrderedRef } from '$lib/shared/types';
 import { deepMerge } from '$lib/shared/defaults';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
+import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ function decryptFields(masterKey: CryptoKey, record: ModuleRecord): Promise<Modu
 
 export class ModuleService {
 	static async list(): Promise<Module[]> {
+		await encryptedWriteQueue.flushTable('modules');
 		const { masterKey, userId } = getActiveSession();
 		const records = await localDB.getAll<ModuleRecord>('modules', userId);
 
@@ -69,6 +71,14 @@ export class ModuleService {
 
 	static async get(id: string): Promise<Module | null> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<ModuleFields>('modules', id);
+		if (queued) {
+			return {
+				id,
+				...deepMerge(defaultModuleFields, queued as unknown as Record<string, unknown>)
+			};
+		}
+
 		const record = await localDB.getRecord<ModuleRecord>('modules', id);
 		if (!record || record.isDeleted) return null;
 
@@ -111,20 +121,43 @@ export class ModuleService {
 
 	static async update(id: string, changes: Partial<ModuleFields>): Promise<Module> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<ModuleFields>('modules', id);
 		const record = await localDB.getRecord<ModuleRecord>('modules', id);
 		if (!record || record.isDeleted) {
 			throw new AppError('NOT_FOUND', `Module not found: ${id}`);
 		}
 
 		try {
-			const current = await decryptFields(masterKey, record);
+			const current = queued
+				? deepMerge(defaultModuleFields, queued as unknown as Record<string, unknown>)
+				: await decryptFields(masterKey, record);
 			const updated: ModuleFields = deepMerge(current, changes as Record<string, unknown>);
-			const enc = await encrypt(masterKey, JSON.stringify(updated));
 
-			record.encryptedData = enc.ciphertext;
-			record.encryptedDataIV = enc.iv;
-			record.updatedAt = Date.now();
-			await localDB.putRecord('modules', record);
+			encryptedWriteQueue.upsert<ModuleFields, ModuleRecord>({
+				tableName: 'modules',
+				id,
+				userId: record.userId,
+				createdAt: record.createdAt,
+				nextFields: updated,
+				mergeFields: (queuedCurrent, next) =>
+					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				toRecord: ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					encryptedData,
+					encryptedDataIV
+				}) => ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					isDeleted: false,
+					encryptedData,
+					encryptedDataIV
+				})
+			});
 
 			return { id, ...updated };
 		} catch (error) {
@@ -140,6 +173,13 @@ export class ModuleService {
 
 	static async delete(id: string): Promise<void> {
 		try {
+			await Promise.all([
+				encryptedWriteQueue.flushTable('modules'),
+				encryptedWriteQueue.flushTable('lorebooks'),
+				encryptedWriteQueue.flushTable('scripts')
+			]);
+
+			encryptedWriteQueue.drop('modules', id);
 			await localDB.transaction(['lorebooks', 'scripts', 'modules'], 'rw', async () => {
 				await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
 				await localDB.softDeleteByIndex('scripts', 'ownerId', id);

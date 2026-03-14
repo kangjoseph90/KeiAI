@@ -5,6 +5,7 @@ import { deepMerge } from '$lib/shared/defaults';
 import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
+import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ function decryptFields(masterKey: CryptoKey, record: ScriptRecord): Promise<Scri
 export class ScriptService {
 	/** List scripts owned by a specific parent (character, module) */
 	static async listByOwner(ownerId: string): Promise<Script[]> {
+		await encryptedWriteQueue.flushTable('scripts');
 		const { masterKey } = getActiveSession();
 		const records = await localDB.getByIndex<ScriptRecord>(
 			'scripts',
@@ -71,6 +73,17 @@ export class ScriptService {
 
 	static async get(id: string): Promise<Script | null> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<ScriptFields>('scripts', id);
+		if (queued) {
+			const record = await localDB.getRecord<ScriptRecord>('scripts', id);
+			if (!record || record.isDeleted) return null;
+			return {
+				id,
+				ownerId: record.ownerId,
+				...deepMerge(defaultScriptFields, queued as unknown as Record<string, unknown>)
+			};
+		}
+
 		const record = await localDB.getRecord<ScriptRecord>('scripts', id);
 		if (!record || record.isDeleted) return null;
 
@@ -121,6 +134,7 @@ export class ScriptService {
 		expectedOwnerId?: string
 	): Promise<Script> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<ScriptFields>('scripts', id);
 		const record = await localDB.getRecord<ScriptRecord>('scripts', id);
 		if (!record || record.isDeleted) {
 			throw new AppError('NOT_FOUND', `Script not found: ${id}`);
@@ -130,14 +144,37 @@ export class ScriptService {
 		}
 
 		try {
-			const current = await decryptFields(masterKey, record);
+			const current = queued
+				? deepMerge(defaultScriptFields, queued as unknown as Record<string, unknown>)
+				: await decryptFields(masterKey, record);
 			const updated: ScriptFields = deepMerge(current, changes as Record<string, unknown>);
-			const enc = await encrypt(masterKey, JSON.stringify(updated));
 
-			record.encryptedData = enc.ciphertext;
-			record.encryptedDataIV = enc.iv;
-			record.updatedAt = Date.now();
-			await localDB.putRecord('scripts', record);
+			encryptedWriteQueue.upsert<ScriptFields, ScriptRecord>({
+				tableName: 'scripts',
+				id,
+				userId: record.userId,
+				createdAt: record.createdAt,
+				nextFields: updated,
+				mergeFields: (queuedCurrent, next) =>
+					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				toRecord: ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					encryptedData,
+					encryptedDataIV
+				}) => ({
+					id: recordId,
+					userId: recordUserId,
+					ownerId: record.ownerId,
+					createdAt,
+					updatedAt,
+					isDeleted: false,
+					encryptedData,
+					encryptedDataIV
+				})
+			});
 
 			return { id, ownerId: record.ownerId, ...updated };
 		} catch (error) {
@@ -151,6 +188,7 @@ export class ScriptService {
 			await assertScriptOwnedBy(expectedOwnerId, id);
 		}
 		try {
+			encryptedWriteQueue.drop('scripts', id);
 			await localDB.softDeleteRecord('scripts', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;

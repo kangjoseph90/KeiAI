@@ -185,7 +185,7 @@ describe('ScriptService', () => {
 			expect(result.placement).toBe('output');
 			expect(result.name).toBe('Test Script'); // Preserved from existing
 
-			expect(localDB.putRecord).toHaveBeenCalledWith('scripts', expect.any(Object));
+			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 
 		it('should throw if not found', async () => {

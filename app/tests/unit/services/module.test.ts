@@ -152,7 +152,7 @@ describe('ModuleService', () => {
 
 			expect(result.description).toBe('Updated');
 			expect(result.name).toBe('Test Module'); // Preserved
-			expect(localDB.putRecord).toHaveBeenCalled();
+			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 	});
 

@@ -12,9 +12,6 @@
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
-// ─── Constants ───────────────────────────────────────────────────────
-export const DB_DEBOUNCE_MS = 500;
-
 // ─── Table Registry ──────────────────────────────────────────────────
 
 export type TableName =
@@ -65,7 +62,6 @@ export type DatabaseMutationOrigin = 'local' | 'sync';
 
 export interface DatabaseWriteOptions {
 	origin?: DatabaseMutationOrigin;
-	immediate?: boolean;
 }
 
 export interface DatabaseWriteEvent {

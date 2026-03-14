@@ -4,6 +4,7 @@ import { localDB, type ToolCallRecord } from '$lib/adapters/db';
 import { deepMerge } from '$lib/shared/defaults';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
+import { encryptedWriteQueue } from './write_queue';
 
 export type ToolCallStatus = 'pending' | 'success' | 'rejected' | 'error';
 
@@ -69,6 +70,7 @@ function decryptFields(masterKey: CryptoKey, record: ToolCallRecord): Promise<To
 export class ToolCallService {
 	/** List tool calls for a specific chat */
 	static async listByChat(chatId: string): Promise<ToolCall[]> {
+		await encryptedWriteQueue.flushTable('toolCalls');
 		const { masterKey } = getActiveSession();
 		const records = await localDB.getByIndex<ToolCallRecord>(
 			'toolCalls',
@@ -91,6 +93,17 @@ export class ToolCallService {
 
 	static async get(id: string): Promise<ToolCall | null> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<ToolCallFields>('toolCalls', id);
+		if (queued) {
+			const record = await localDB.getRecord<ToolCallRecord>('toolCalls', id);
+			if (!record || record.isDeleted) return null;
+			return {
+				id,
+				chatId: record.chatId,
+				...deepMerge(defaultToolCallFields, queued as unknown as Record<string, unknown>)
+			};
+		}
+
 		const record = await localDB.getRecord<ToolCallRecord>('toolCalls', id);
 		if (!record || record.isDeleted) return null;
 
@@ -135,20 +148,44 @@ export class ToolCallService {
 
 	static async update(id: string, changes: Partial<ToolCallFields>): Promise<ToolCall> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<ToolCallFields>('toolCalls', id);
 		const record = await localDB.getRecord<ToolCallRecord>('toolCalls', id);
 		if (!record || record.isDeleted) {
 			throw new AppError('NOT_FOUND', `Tool call not found: ${id}`);
 		}
 
 		try {
-			const current = await decryptFields(masterKey, record);
+			const current = queued
+				? deepMerge(defaultToolCallFields, queued as unknown as Record<string, unknown>)
+				: await decryptFields(masterKey, record);
 			const updated: ToolCallFields = deepMerge(current, changes as Record<string, unknown>);
-			const enc = await encrypt(masterKey, JSON.stringify(updated));
 
-			record.encryptedData = enc.ciphertext;
-			record.encryptedDataIV = enc.iv;
-			record.updatedAt = Date.now();
-			await localDB.putRecord('toolCalls', record);
+			encryptedWriteQueue.upsert<ToolCallFields, ToolCallRecord>({
+				tableName: 'toolCalls',
+				id,
+				userId: record.userId,
+				createdAt: record.createdAt,
+				nextFields: updated,
+				mergeFields: (queuedCurrent, next) =>
+					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				toRecord: ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					encryptedData,
+					encryptedDataIV
+				}) => ({
+					id: recordId,
+					userId: recordUserId,
+					chatId: record.chatId,
+					createdAt,
+					updatedAt,
+					isDeleted: false,
+					encryptedData,
+					encryptedDataIV
+				})
+			});
 
 			return { id, chatId: record.chatId, ...updated };
 		} catch (error) {
@@ -159,6 +196,7 @@ export class ToolCallService {
 
 	static async delete(id: string): Promise<void> {
 		try {
+			encryptedWriteQueue.drop('toolCalls', id);
 			await localDB.softDeleteRecord('toolCalls', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
