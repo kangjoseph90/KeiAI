@@ -28,3 +28,6 @@ vite.config.ts.timestamp-*
 # Vitest Coverage
 coverage/
 
+# Tokenizer data (downloaded via postinstall)
+/static/token/
+

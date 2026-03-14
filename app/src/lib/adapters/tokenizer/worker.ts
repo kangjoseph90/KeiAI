@@ -1,64 +1,65 @@
 /**
  * Tokenizer Worker — KeiAI
  *
- * Web Worker that performs tokenization using js-tiktoken.
- * Runs in a separate thread to avoid blocking the main thread.
- * Exposed via Comlink for seamless async communication.
+ * Web Worker that performs tokenization for all supported encodings
+ * using @mlc-ai/web-tokenizers (HuggingFace JSON vocab / SentencePiece).
  *
- * This worker handles pure tokenization only - no caching.
- * Caching is handled by the adapter layer (web.ts, tauri.ts) to share
- * the cache implementation across platforms.
+ * Each tokenizer instance is lazy-loaded on first use and cached.
+ * Token data files are fetched from /token/ (static assets).
  */
 
 import { expose } from 'comlink';
-import {
-	encodingForModel,
-	getEncoding,
-	type TiktokenModel,
-	type TiktokenEncoding
-} from 'js-tiktoken';
-import type { ModelType } from './types';
+import type { TokenizerEncoding } from '$lib/shared/models';
 
-// ─── Encoder Cache ───────────────────────────────────────────────────────────
+// ─── Encoder Interface ───────────────────────────────────────────────────────
 
-/**
- * Encoder instance cache - reuse encoders to avoid re-initialization overhead.
- * This is worker-local since encoder instances are not transferable.
- */
-const encoderCache = new Map<string, ReturnType<typeof getEncoding>>();
+interface Encoder {
+	encode(text: string): { length: number };
+}
 
-function getEncoder(model: ModelType): ReturnType<typeof getEncoding> {
-	const cacheKey = model;
+// ─── Instance Cache ──────────────────────────────────────────────────────────
 
-	if (encoderCache.has(cacheKey)) {
-		return encoderCache.get(cacheKey)!;
-	}
+const cache = new Map<TokenizerEncoding, Encoder>();
 
-	let encoder: ReturnType<typeof getEncoding>;
+// ─── Tokenizer Specs ─────────────────────────────────────────────────────────
 
-	// Try to use encodingForModel for known OpenAI models
-	try {
-		encoder = encodingForModel(model as TiktokenModel);
-	} catch {
-		// Fall back to direct encoding name
-		encoder = getEncoding(model as TiktokenEncoding);
-	}
+type LoadKind = 'json' | 'sentencepiece';
 
-	encoderCache.set(cacheKey, encoder);
+const SPECS: Record<TokenizerEncoding, { kind: LoadKind; path: string }> = {
+	o200k_base: { kind: 'json', path: '/token/o200k_base/tokenizer.json' },
+	claude: { kind: 'json', path: '/token/claude/tokenizer.json' },
+	llama3: { kind: 'json', path: '/token/llama3/tokenizer.json' },
+	deepseek: { kind: 'json', path: '/token/deepseek/tokenizer.json' },
+	gemma: { kind: 'sentencepiece', path: '/token/gemma/tokenizer.model' },
+	mistral: { kind: 'sentencepiece', path: '/token/mistral/tokenizer.model' }
+};
+
+// ─── Loader ──────────────────────────────────────────────────────────────────
+
+async function load(kind: LoadKind, path: string): Promise<Encoder> {
+	const { Tokenizer } = await import('@mlc-ai/web-tokenizers');
+	const buf = await (await fetch(path)).arrayBuffer();
+	return kind === 'json' ? Tokenizer.fromJSON(buf) : Tokenizer.fromSentencePiece(buf);
+}
+
+// ─── Resolver ────────────────────────────────────────────────────────────────
+
+async function getEncoder(encoding: TokenizerEncoding): Promise<Encoder> {
+	const cached = cache.get(encoding);
+	if (cached) return cached;
+
+	const spec = SPECS[encoding];
+	const encoder = await load(spec.kind, spec.path);
+	cache.set(encoding, encoder);
 	return encoder;
 }
 
-// ─── Tokenizer Worker Class ──────────────────────────────────────────────────
+// ─── Worker Class ────────────────────────────────────────────────────────────
 
 class TokenizerWorker {
-	/**
-	 * Count tokens in text for the given model.
-	 * Pure computation - no caching (handled by adapter layer).
-	 */
-	count(text: string, model: ModelType): number {
-		const encoder = getEncoder(model);
-		const tokens = encoder.encode(text);
-		return tokens.length;
+	async count(text: string, encoding: TokenizerEncoding): Promise<number> {
+		const encoder = await getEncoder(encoding);
+		return encoder.encode(text).length;
 	}
 }
 

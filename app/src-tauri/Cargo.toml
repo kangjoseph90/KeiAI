@@ -30,3 +30,5 @@ tauri-plugin-http = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-notification = "2"
+tiktoken-rs = "0.6"
+tokenizers = { version = "0.21", default-features = false }

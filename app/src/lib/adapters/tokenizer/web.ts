@@ -6,7 +6,8 @@
  * Pure computation - no caching (handled by Service layer).
  */
 
-import type { ITokenizerAdapter, ModelType } from './types';
+import type { ITokenizerAdapter } from './types';
+import type { TokenizerEncoding } from '$lib/shared/models';
 import { wrap, type Remote } from 'comlink';
 import { AppError } from '$lib/shared/errors';
 
@@ -14,7 +15,7 @@ import { AppError } from '$lib/shared/errors';
 
 /** Interface matching the TokenizerWorker class exposed in worker.ts */
 interface TokenizerWorker {
-	count(text: string, model: ModelType): number;
+	count(text: string, encoding: TokenizerEncoding): Promise<number>;
 }
 
 // ─── Worker Singleton ───────────────────────────────────────────────────────
@@ -41,10 +42,10 @@ function getWorker(): Remote<TokenizerWorker> {
 // ─── Web Tokenizer Adapter ──────────────────────────────────────────────────
 
 export class WebTokenizerAdapter implements ITokenizerAdapter {
-	async count(text: string, model: ModelType): Promise<number> {
+	async count(text: string, encoding: TokenizerEncoding): Promise<number> {
 		try {
 			const worker = getWorker();
-			return await worker.count(text, model);
+			return await worker.count(text, encoding);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
 
