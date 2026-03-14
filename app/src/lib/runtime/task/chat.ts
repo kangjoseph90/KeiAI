@@ -1,27 +1,24 @@
 /**
  * Chat Pipeline — KeiAI
  *
- * runChat(chatId, provider) is the single entry point for a full AI
- * response cycle. It only knows the chatId — all context is loaded
- * directly from the Service Layer (DB) at call time.
+ * runChat(chatId) is the single entry point for a full AI response cycle.
+ * It only knows the chatId — all context is loaded directly from the Service Layer.
  *
- * Design: Stateless pipeline. AbortController lives here — it controls
- * execution, not display state.
+ * Design: Stateless pipeline with internal provider selection.
  *
- *   - Does NOT read from Svelte stores (stores are UI cache only).
- *   - Snapshots all needed data (character, lorebooks, scripts, preset)
- *     from Service Layer at the start of each run. This ensures background
- *     generations are isolated from UI context switches.
- *   - Writes to task store via stores/runtime/task.ts (content/status).
- *   - Finalize: read task content → createMessage → clearTask.
+ *   - Provider selection based on preset configuration
+ *   - Prompt building from context (character, lorebooks, scripts, etc.)
+ *   - Script processing (input/request/output/display)
+ *   - Support for different models (chat, translation, summarization, etc.)
+ *   - Optional provider override for testing
  *
  * Current state:
- *   ✅ Streaming lifecycle (createTask({kind: 'chat'}) → chunks → _finalize)
+ *   ✅ Streaming lifecycle (createTask → chunks → finalize)
  *   ✅ Abort handling (user Stop → optional partial save)
- *   ✅ Error surfacing (setTaskError → UI bubble stays for dismiss)
- *   🔲 TODO: buildContext(chatId) — snapshot from services
- *   🔲 TODO: PromptBuilder
- *   🔲 TODO: runScripts (output transform, applied per-chunk)
+ *   ✅ Error surfacing (setChatError → UI bubble stays for dismiss)
+ *   ✅ PromptBuilder integration
+ *   ✅ Internal provider selection
+ *   ✅ Script processing (request + output)
  */
 
 import {
@@ -32,20 +29,25 @@ import {
 	clearChatTask,
 	consumeChatTask
 } from '$lib/stores/task/chat';
-import type { ChatTask } from '$lib/stores/types';
 import type { StreamProvider } from '$lib/llm/types';
+import type { OpenAIChat } from '$lib/runtime/prompt/types';
 import { ToolCallService } from '$lib/services/content/tool';
 import { updateMessage } from '$lib/stores/content/message';
 import { createMessage } from '$lib/stores/content/message';
 import { MessageService } from '$lib/services/content/message';
-import { MockStreamProvider } from '$lib/llm/mock';
+import { ChatContext } from '../context/chat';
+import { buildPrompt } from '../prompt/builder';
+import { selectProvider } from './provider';
+import { applyScripts } from '../scripts/executor';
 
 export interface RunChatOptions {
 	/** Save partial content to DB when the user aborts. Default: true */
 	saveOnAbort?: boolean;
+	/** Optional provider override for testing */
+	providerOverride?: StreamProvider;
 }
 
-const defaultOptions: Required<RunChatOptions> = {
+const defaultOptions: RunChatOptions = {
 	saveOnAbort: true
 };
 
@@ -65,29 +67,28 @@ const activeControllers = new Map<string, AbortController>();
  * Fire-and-forget from the UI — all state is communicated through
  * the runtime task store and message store.
  */
-export async function runChat(
-	chatId: string,
-	provider: StreamProvider,
-	options?: RunChatOptions
-): Promise<void> {
+export async function runChat(chatId: string, options?: RunChatOptions): Promise<void> {
 	const opts = { ...defaultOptions, ...options };
 
-	// ── TODO: buildContext(chatId) ────────────────────────────────────
-	// Snapshot all needed data from Service Layer (NOT from stores).
-	// const ctx = await buildContext(chatId);
-	//   → CharacterService.getDetail(charId)
-	//   → LorebookService.listByOwner(charId)
-	//   → ScriptService.listByOwner(charId)
-	//   → PresetService.getDetail(presetId)
-	// This frozen context is used for the entire run, isolated from
-	// UI context switches (user navigating to different characters).
+	// ── Build Context ────────────────────────────────────────────────
+	const ctx = new ChatContext(chatId);
 
-	// ── TODO: PromptBuilder ───────────────────────────────────────────
-	// let prompt = PromptBuilder.build(ctx);
+	// ── Build Prompt ───────────────────────────────────────────────────
+	const messages: OpenAIChat[] = await buildPrompt(ctx);
 
-	// ── TODO: runScripts (request transform) ──────────────────────────
-	// Apply ctx.scripts with placement 'request' to the prompt payload.
-	// prompt = runScripts(ctx.scripts, 'request', prompt);
+	// ── Get Scripts ────────────────────────────────────────────────────
+	const scripts = await ctx.getScripts();
+
+	// ── Apply Request Scripts ─────────────────────────────────────────
+	const processedMessages = await Promise.all(
+		messages.map(async (msg) => ({
+			...msg,
+			content: await applyScripts(msg.content, scripts, 'request')
+		}))
+	);
+
+	// ── Select Provider (use override if provided for testing) ─────────────
+	const provider = opts.providerOverride ?? (await selectProvider());
 
 	// ── 1. Register task + open streaming bubble ───────────────────────
 	const controller = new AbortController();
@@ -96,15 +97,13 @@ export async function runChat(
 
 	// ── 2. Stream chunks ───────────────────────────────────────────────
 	try {
-		for await (const state of provider.stream(controller.signal)) {
-			// ── TODO: runScripts (output transform) ───────────────────
-			// Apply ctx.scripts with placement 'output' to accumulated
-			// raw content. Runs on every chunk so the user sees
-			// transformed content in real-time during streaming.
-			// const processedContent = runScripts(ctx.scripts, 'output', state.content);
-
-			// For now, we update the task state directly with structured data
-			updateChatTask(chatId, state);
+		for await (const state of provider.stream(processedMessages, controller.signal)) {
+			// Apply output scripts to each chunk
+			const processedState = {
+				...state,
+				content: await applyScripts(state.content, scripts, 'output')
+			};
+			updateChatTask(chatId, processedState);
 		}
 	} catch (error) {
 		if (error instanceof DOMException && error.name === 'AbortError') {
@@ -216,11 +215,8 @@ export async function resolveToolCall(
 	const hasPending = updatedToolCalls.some((tc) => tc.status === 'pending');
 	if (hasPending) return;
 
-	// TODO: Get provider from active preset settings instead of Mock
-	const provider = new MockStreamProvider(
-		isApprove ? 'Resuming...' : 'Resuming after rejection...'
-	);
-	await runChat(chatId, provider);
+	// Resume with tool execution result
+	await runChat(chatId);
 }
 
 // ─── Controls ─────────────────────────────────────────────────────────────────

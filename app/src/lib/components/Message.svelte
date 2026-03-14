@@ -19,9 +19,15 @@
 		ChevronDown,
 		ChevronUp
 	} from 'lucide-svelte';
-	import { slide } from 'svelte/transition';
+	import { slide, fade } from 'svelte/transition';
 	import ToolCallGroup from './ToolCallGroup.svelte';
 	import type { ToolCall } from '$lib/services/content/tool';
+	import { activeScripts } from '$lib/stores';
+	import { applyScripts } from '$lib/runtime/scripts/executor';
+	import { marked } from 'marked';
+	import morphdom from 'morphdom';
+	import DOMPurify from 'dompurify';
+	import type { Action } from 'svelte/action';
 
 	// ── Props ─────────────────────────────────────────────────────────────────
 
@@ -53,16 +59,76 @@
 	// ── State ─────────────────────────────────────────────────────────────────
 
 	let thoughtExpanded = $state(false);
+	let displayContent = $state('');
+	let lastContent = $state('');
+	let renderedHtml = $state('');
 
 	// ── Derived ───────────────────────────────────────────────────────────────
 
 	let isUser = $derived(message.role === 'user');
 
-	// TODO: display scripts — run message.content through display regex scripts
-	// to get rendered HTML (markdown, display regex).
-	// Then apply morphdom DOM diffing for smooth streaming updates + animations.
-	// For now: plain text pass-through.
-	let displayContent = $derived(message.content);
+	// ── Actions ───────────────────────────────────────────────────────────────
+
+	/**
+	 * Seamlessly diffs and morphs DOM nodes without losing external bindings,
+	 * ensuring performance is optimal even for rapid streams.
+	 */
+	const morphHtml: Action<HTMLElement, string> = (node, html) => {
+		// Create a persistent template to avoid repeated allocations
+		const template = document.createElement('div');
+
+		const update = (newHtml: string) => {
+			if (!newHtml) {
+				node.innerHTML = '';
+				return;
+			}
+			template.innerHTML = newHtml;
+			morphdom(node, template, {
+				childrenOnly: true,
+				onBeforeElUpdated: (fromEl, toEl) => {
+					// Optimization: don't morph if content is identical
+					if (fromEl.isEqualNode(toEl)) return false;
+					return true;
+				}
+			});
+		};
+
+		update(html);
+
+		return {
+			update
+		};
+	};
+
+	// Refresh display content - throttled for performance during streaming
+	let pendingRefresh = false;
+	async function refreshDisplay() {
+		if (pendingRefresh && message.displayStatus === 'generating') return;
+		pendingRefresh = true;
+
+		// Use requestAnimationFrame to sync with display refresh rate
+		requestAnimationFrame(async () => {
+			try {
+				const processed = await applyScripts(message.content, $activeScripts, 'display');
+				displayContent = processed;
+
+				// Convert markdown to HTML and sanitize
+				const rawHtml = await marked.parse(processed);
+				renderedHtml = DOMPurify.sanitize(rawHtml as string);
+			} finally {
+				pendingRefresh = false;
+			}
+		});
+	}
+
+	// Auto-refresh when message.content changes
+	$effect(() => {
+		const current = message.content;
+		if (current !== lastContent) {
+			lastContent = current;
+			refreshDisplay();
+		}
+	});
 </script>
 
 <!--
@@ -71,6 +137,7 @@
 -->
 <div
 	class="flex max-w-[80%] flex-col gap-1 {isUser ? 'items-end self-end' : 'items-start self-start'}"
+	in:fade={{ duration: 200 }}
 >
 	<!-- ── Edit / Delete controls (user's confirmed messages only) ── -->
 	{#if isUser && message.displayStatus === 'completed' && !isEditing}
@@ -118,22 +185,7 @@
 			</div>
 		</div>
 
-		<!-- ── Streaming bubble ── -->
-	{:else if message.displayStatus === 'generating'}
-		<div class="rounded-2xl bg-muted px-4 py-2 text-sm text-foreground">
-			{#if displayContent}
-				<!-- TODO: replace with morphdom-diffed HTML node once display scripts are wired -->
-				{displayContent}<span
-					class="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-foreground/60 align-middle"
-				></span>
-			{:else}
-				<span class="flex items-center gap-1.5 text-muted-foreground">
-					<Loader2 class="size-3 animate-spin" /> Thinking...
-				</span>
-			{/if}
-		</div>
-
-		<!-- ── Confirmed bubble ── -->
+		<!-- ── Message Content (Generating & Completed) ── -->
 	{:else}
 		<!-- ── Thought process (Char only) ── -->
 		{#if !isUser && message.thought}
@@ -152,28 +204,43 @@
 						<ChevronDown class="size-3" />
 					{/if}
 				</button>
-				{#if thoughtExpanded}
+				{#if thoughtExpanded || message.displayStatus === 'generating'}
 					<div
 						transition:slide={{ duration: 200 }}
 						class="px-3 pb-3 pt-1 text-xs italic leading-relaxed text-muted-foreground/80"
 					>
-						{message.thought}
+						{message.thought || 'Processing thinking...'}
 					</div>
 				{/if}
 			</div>
 		{/if}
 
 		<div
-			class="rounded-2xl px-4 py-2 text-sm {isUser
+			class="relative rounded-2xl px-4 py-2 text-sm {isUser
 				? 'bg-primary text-primary-foreground'
 				: 'bg-muted text-foreground'}"
 		>
-			<!-- TODO: replace with morphdom-diffed HTML once display scripts are wired -->
-			{displayContent}
+			{#if message.displayStatus === 'generating' && !displayContent}
+				<span class="flex items-center gap-1.5 text-muted-foreground">
+					<Loader2 class="size-3 animate-spin" /> Thinking...
+				</span>
+			{:else}
+				<div
+					use:morphHtml={renderedHtml}
+					class="prose prose-sm max-w-none {isUser
+						? '**:text-primary-foreground prose-invert'
+						: 'dark:prose-invert'}"
+				></div>
+
+				<!-- Cursor animation -->
+				{#if message.displayStatus === 'generating'}
+					<span class="ml-1 inline-block h-4 w-0.5 animate-pulse bg-current align-middle"></span>
+				{/if}
+			{/if}
 		</div>
 
 		<!-- ── Tool Calls (Char only) ── -->
-		{#if !isUser && message.toolCalls && message.toolCalls.length > 0}
+		{#if !isUser && message.toolCalls && message.toolCalls.length > 0 && message.displayStatus !== 'generating'}
 			<ToolCallGroup
 				toolCalls={message.toolCalls}
 				{onLoadDetail}

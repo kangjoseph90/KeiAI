@@ -13,36 +13,23 @@ export interface PresetSummaryFields {
 	description: string;
 }
 
-export interface PromptTemplateEntry {
-	type:
-		| 'system'
-		| 'jailbreak'
-		| 'description'
-		| 'persona'
-		| 'lorebook'
-		| 'chat'
-		| 'memory'
-		| 'authornote'
-		| 'postEverything'
-		| 'plain';
-	role: 'system' | 'user' | 'assistant';
-	content?: string;
-}
+export type PromptTemplateEntry =
+	| { name: string; type: 'instruction'; role: 'system' | 'user' | 'assistant'; content: string }
+	| { name: string; type: 'description' }
+	| { name: string; type: 'persona' }
+	| { name: string; type: 'lorebook' }
+	| { name: string; type: 'history'; start: number; end?: number };
 
 export interface PresetDataFields {
 	model: string;
 	templateOrder: PromptTemplateEntry[];
-	authorsNote: string;
-	authorsNoteDepth: number;
-	jailbreakPrompt: string;
-	jailbreakEnabled: boolean;
 	temperature: number;
 	topP: number;
 	topK: number;
 	frequencyPenalty: number;
 	presencePenalty: number;
-	maxTokens: number;
-	maxContextTokens: number;
+	maxResponse: number;
+	maxContext: number;
 	memoryTokensRatio: number;
 }
 
@@ -64,27 +51,21 @@ export const defaultPresetSummary: PresetSummaryFields = {
 export const defaultPresetData: PresetDataFields = {
 	model: '',
 	templateOrder: [
-		{ type: 'system', role: 'system' },
-		{ type: 'description', role: 'system' },
-		{ type: 'persona', role: 'system' },
-		{ type: 'lorebook', role: 'system' },
-		{ type: 'chat', role: 'user' },
-		{ type: 'memory', role: 'system' },
-		{ type: 'authornote', role: 'system' },
-		{ type: 'jailbreak', role: 'system' },
-		{ type: 'postEverything', role: 'system' }
+		{ name: 'System instruction', type: 'instruction', role: 'system', content: '' },
+		{ name: 'Character description', type: 'description' },
+		{ name: 'User persona', type: 'persona' },
+		{ name: 'Lorebook', type: 'lorebook' },
+		{ name: 'Early history', type: 'history', start: 0, end: 10 },
+		{ name: 'Additional instruction', type: 'instruction', role: 'system', content: '' },
+		{ name: 'Recent history', type: 'history', start: -5, end: undefined }
 	],
-	authorsNote: '',
-	authorsNoteDepth: 4,
-	jailbreakPrompt: '',
-	jailbreakEnabled: false,
 	temperature: 0.9,
 	topP: 1,
 	topK: 0,
 	frequencyPenalty: 0,
 	presencePenalty: 0,
-	maxTokens: 600,
-	maxContextTokens: 4096,
+	maxResponse: 600,
+	maxContext: 4096,
 	memoryTokensRatio: 0.2
 };
 

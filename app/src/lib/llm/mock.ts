@@ -5,11 +5,12 @@
  * Yields the response word-by-word with configurable delay between chunks.
  *
  * Usage:
- *   const provider = new MockStreamProvider("Hello world!");
+ *   const provider = new MockStreamProvider([{role: 'user', content: 'Hello'}]);
  *   GenerationManager.generate(chatId, provider);
  */
 
 import type { StreamContent, StreamProvider } from './types';
+import type { OpenAIChat } from '$lib/runtime/prompt/types';
 
 const MOCK_RESPONSES = [
 	'안녕하세요! 저는 KeiAI의 테스트 봇입니다. 이 메시지는 스트리밍으로 전달되고 있으며, 모든 데이터는 E2EE로 암호화되어 로컬 DB에 저장됩니다.',
@@ -22,16 +23,13 @@ const MOCK_RESPONSES = [
 export class MockStreamProvider implements StreamProvider {
 	private readonly response: string;
 	private readonly chunkDelayMs: number;
-	private readonly prompt: string;
 
-	constructor(prompt: string, options: { chunkDelayMs?: number } = {}) {
-		this.prompt = prompt;
-		// Pick a response based on prompt length (deterministic but varied)
-		this.response = MOCK_RESPONSES[prompt.length % MOCK_RESPONSES.length];
+	constructor(options: { chunkDelayMs?: number } = {}) {
+		this.response = MOCK_RESPONSES[Math.floor(Math.random() * MOCK_RESPONSES.length)];
 		this.chunkDelayMs = options.chunkDelayMs ?? 60;
 	}
 
-	async *stream(signal: AbortSignal): AsyncIterable<StreamContent> {
+	async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<StreamContent> {
 		const state: StreamContent = {
 			content: '',
 			thought: ''
@@ -53,8 +51,9 @@ export class MockStreamProvider implements StreamProvider {
 			await delay(this.chunkDelayMs, signal);
 		}
 
-		// 3. Simulate "Tool Call" phase if prompt mentions 'tool' or '날씨'
-		if (this.prompt.includes('tool') || this.prompt.includes('날씨')) {
+		// 3. Simulate "Tool Call" phase if messages mention 'tool' or '날씨'
+		const promptText = messages.map((m) => m.content).join(' ');
+		if (promptText.includes('tool') || promptText.includes('날씨')) {
 			state.toolCalls = [
 				{
 					callId: 'mock_call_' + Math.random().toString(36).slice(2, 9),

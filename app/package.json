@@ -39,6 +39,7 @@
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/svelte": "^5.3.1",
 		"@testing-library/user-event": "^14.6.1",
+		"@types/dompurify": "^3.2.0",
 		"@types/node": "^22",
 		"@vitest/coverage-v8": "^4.0.18",
 		"@vitest/ui": "^4.0.18",
@@ -76,10 +77,13 @@
 		"@tauri-apps/plugin-stronghold": "~2.3.1",
 		"comlink": "^4.4.2",
 		"dexie": "^4.3.0",
+		"dompurify": "^3.3.3",
 		"fractional-indexing": "^3.2.0",
 		"js-tiktoken": "^1.0.21",
 		"lucide-svelte": "^0.576.0",
+		"marked": "^17.0.4",
 		"minidenticons": "^4.2.1",
+		"morphdom": "^2.7.8",
 		"pocketbase": "^0.26.8"
 	}
 }

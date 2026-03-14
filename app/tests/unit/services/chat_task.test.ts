@@ -79,7 +79,7 @@ describe('Chat Pipeline', () => {
 			content: 'Hello world'
 		});
 
-		await runChat(mockChatId, mockProvider);
+		await runChat(mockChatId, { providerOverride: mockProvider });
 
 		expect(createChatTask).toHaveBeenCalledWith(mockChatId);
 		expect(updateChatTask).toHaveBeenCalledWith(mockChatId, { content: 'Hello' });
@@ -97,7 +97,7 @@ describe('Chat Pipeline', () => {
 			})
 		};
 
-		await runChat(mockChatId, mockProvider);
+		await runChat(mockChatId, { providerOverride: mockProvider });
 
 		expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Empty response from model');
 		expect(consumeChatTask).not.toHaveBeenCalled();
@@ -120,7 +120,7 @@ describe('Chat Pipeline', () => {
 			content: 'Partial'
 		});
 
-		await runChat(mockChatId, mockProvider, { saveOnAbort: true });
+		await runChat(mockChatId, { providerOverride: mockProvider, saveOnAbort: true });
 
 		expect(consumeChatTask).toHaveBeenCalledWith(mockChatId);
 	});
@@ -138,7 +138,7 @@ describe('Chat Pipeline', () => {
 			content: 'Partial'
 		});
 
-		await runChat(mockChatId, mockProvider, { saveOnAbort: false });
+		await runChat(mockChatId, { providerOverride: mockProvider, saveOnAbort: false });
 
 		expect(consumeChatTask).not.toHaveBeenCalled();
 		expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
@@ -152,7 +152,7 @@ describe('Chat Pipeline', () => {
 			})
 		};
 
-		await runChat(mockChatId, mockProvider);
+		await runChat(mockChatId, { providerOverride: mockProvider });
 
 		expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Network fail');
 		expect(consumeChatTask).not.toHaveBeenCalled();
