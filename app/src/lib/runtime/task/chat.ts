@@ -70,33 +70,40 @@ const activeControllers = new Map<string, AbortController>();
 export async function runChat(chatId: string, options?: RunChatOptions): Promise<void> {
 	const opts = { ...defaultOptions, ...options };
 
-	// ── Build Context ────────────────────────────────────────────────
-	const ctx = new ChatContext(chatId);
+	// ── 0. Guard: Prevent duplicate runs ─────────────────────────────
+	if (activeControllers.has(chatId)) {
+		console.warn(`Chat ${chatId} is already running.`);
+		return;
+	}
 
-	// ── Build Prompt ───────────────────────────────────────────────────
-	const messages: OpenAIChat[] = await buildPrompt(ctx);
-
-	// ── Get Scripts ────────────────────────────────────────────────────
-	const scripts = await ctx.getScripts();
-
-	// ── Apply Request Scripts ─────────────────────────────────────────
-	const processedMessages = await Promise.all(
-		messages.map(async (msg) => ({
-			...msg,
-			content: await applyScripts(msg.content, scripts, 'request')
-		}))
-	);
-
-	// ── Select Provider (use override if provided for testing) ─────────────
-	const provider = opts.providerOverride ?? (await selectProvider());
-
-	// ── 1. Register task + open streaming bubble ───────────────────────
 	const controller = new AbortController();
 	activeControllers.set(chatId, controller);
-	createChatTask(chatId);
 
-	// ── 2. Stream chunks ───────────────────────────────────────────────
 	try {
+		// ── 1. Register task + open streaming bubble ────────────────────
+		createChatTask(chatId);
+
+		// ── 2. Build Context ───────────────────────────────────────────
+		const ctx = new ChatContext(chatId);
+
+		// ── 3. Build Prompt ────────────────────────────────────────────
+		const messages: OpenAIChat[] = await buildPrompt(ctx);
+
+		// ── 4. Get Scripts ─────────────────────────────────────────────
+		const scripts = await ctx.getScripts();
+
+		// ── 5. Apply Request Scripts ──────────────────────────────────
+		const processedMessages = await Promise.all(
+			messages.map(async (msg) => ({
+				...msg,
+				content: await applyScripts(msg.content, scripts, 'request')
+			}))
+		);
+
+		// ── 6. Select Provider ─────────────────────────────────────────
+		const provider = opts.providerOverride ?? (await selectProvider());
+
+		// ── 7. Stream chunks ─────────────────────────────────────────
 		for await (const state of provider.stream(processedMessages, controller.signal)) {
 			// Apply output scripts to each chunk
 			const processedState = {
@@ -105,6 +112,14 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 			};
 			updateChatTask(chatId, processedState);
 		}
+
+		// ── 8. Finalize ───────────────────────────────────────────────
+		const finalTask = getChatTask(chatId);
+		if (!finalTask || (finalTask.content.length === 0 && !finalTask.toolCalls?.length)) {
+			throw new Error('Empty response from model');
+		}
+
+		await _persistTask(chatId);
 	} catch (error) {
 		if (error instanceof DOMException && error.name === 'AbortError') {
 			// User clicked Stop — save partial content if opted in
@@ -117,22 +132,12 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 			return;
 		}
 
-		// Network / API error — surface to UI, don't persist
-		const msg = error instanceof Error ? error.message : 'Unknown generation error';
+		// Surface all other errors to UI
+		const msg = error instanceof Error ? error.message : 'Unknown pipeline error';
 		setChatTaskError(chatId, msg);
-		return;
 	} finally {
 		activeControllers.delete(chatId);
 	}
-
-	// ── 3. Finalize ────────────────────────────────────────────────────
-	const finalTask = getChatTask(chatId);
-	if (!finalTask || (finalTask.content.length === 0 && !finalTask.toolCalls?.length)) {
-		setChatTaskError(chatId, 'Empty response from model');
-		return;
-	}
-
-	await _persistTask(chatId);
 }
 
 // ─── Persist ──────────────────────────────────────────────────────────────────
@@ -142,7 +147,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
  * Called exclusively from the runtime layer — never from stores or UI.
  */
 async function _persistTask(chatId: string): Promise<void> {
-	const task = consumeChatTask(chatId);
+	const task = getChatTask(chatId);
 	if (!task) return;
 
 	try {
@@ -163,6 +168,9 @@ async function _persistTask(chatId: string): Promise<void> {
 			thought: task.thought,
 			toolCalls: toolCallAbstracts.length > 0 ? toolCallAbstracts : undefined
 		});
+
+		// 3. ONLY clear the ephemeral task AFTER the real message is in the store
+		clearChatTask(chatId);
 	} catch (error) {
 		const msg = error instanceof Error ? error.message : 'Failed to save message';
 		setChatTaskError(chatId, msg);

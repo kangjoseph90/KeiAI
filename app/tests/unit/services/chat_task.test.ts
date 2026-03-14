@@ -126,18 +126,51 @@ describe('Chat Pipeline', () => {
 			status: 'generating',
 			content: 'Hello world'
 		});
-		vi.mocked(consumeChatTask).mockReturnValue({
-			status: 'generating',
-			content: 'Hello world'
-		});
 
 		await runChat(mockChatId, { providerOverride: mockProvider });
 
 		expect(createChatTask).toHaveBeenCalledWith(mockChatId);
 		expect(updateChatTask).toHaveBeenCalledWith(mockChatId, { content: 'Hello' });
 		expect(updateChatTask).toHaveBeenCalledWith(mockChatId, { content: 'Hello world' });
-		expect(consumeChatTask).toHaveBeenCalledWith(mockChatId);
 		expect(createMessage).toHaveBeenCalled();
+		expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
+	});
+
+	it('should prevent duplicate runs for the same chat', async () => {
+		const foreverProvider: StreamProvider = {
+			stream: vi.fn(async function* (_msgs, signal) {
+				yield { content: '' };
+				if (signal.aborted) return;
+				await new Promise((resolve) => {
+					signal.addEventListener('abort', resolve, { once: true });
+				});
+			})
+		};
+
+		// Start first run
+		const firstRun = runChat(mockChatId, { providerOverride: foreverProvider });
+
+		// Attempt second run
+		await runChat(mockChatId, { providerOverride: foreverProvider });
+
+		// Should only have registered once
+		expect(createChatTask).toHaveBeenCalledTimes(1);
+
+		// Cleanup: Manually abort the first run so it doesn't leak into other tests
+		stopChat(mockChatId);
+		try {
+			await firstRun;
+		} catch (e) {
+			// Expected abort
+		}
+	});
+
+	it('should catch and surface errors during prompt building', async () => {
+		vi.mocked(buildPrompt).mockRejectedValue(new Error('Prompt error'));
+
+		await runChat(mockChatId);
+
+		expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Prompt error');
 	});
 
 	it('should handle empty response', async () => {
@@ -151,7 +184,7 @@ describe('Chat Pipeline', () => {
 		await runChat(mockChatId, { providerOverride: mockProvider });
 
 		expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Empty response from model');
-		expect(consumeChatTask).not.toHaveBeenCalled();
+		expect(clearChatTask).not.toHaveBeenCalled();
 	});
 
 	it('should save partial content on abort when saveOnAbort is true', async () => {
@@ -166,14 +199,11 @@ describe('Chat Pipeline', () => {
 			status: 'generating',
 			content: 'Partial'
 		});
-		vi.mocked(consumeChatTask).mockReturnValue({
-			status: 'generating',
-			content: 'Partial'
-		});
 
 		await runChat(mockChatId, { providerOverride: mockProvider, saveOnAbort: true });
 
-		expect(consumeChatTask).toHaveBeenCalledWith(mockChatId);
+		expect(createMessage).toHaveBeenCalled();
+		expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
 	});
 
 	it('should discard content on abort when saveOnAbort is false', async () => {
@@ -206,7 +236,7 @@ describe('Chat Pipeline', () => {
 		await runChat(mockChatId, { providerOverride: mockProvider });
 
 		expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Network fail');
-		expect(consumeChatTask).not.toHaveBeenCalled();
+		expect(clearChatTask).not.toHaveBeenCalled();
 	});
 
 	it('should use provider override when provided', async () => {
@@ -217,10 +247,6 @@ describe('Chat Pipeline', () => {
 		};
 
 		vi.mocked(getChatTask).mockReturnValue({
-			status: 'generating',
-			content: 'Override response'
-		});
-		vi.mocked(consumeChatTask).mockReturnValue({
 			status: 'generating',
 			content: 'Override response'
 		});
@@ -240,10 +266,6 @@ describe('Chat Pipeline', () => {
 
 		vi.mocked(selectProvider).mockResolvedValue(mockProvider);
 		vi.mocked(getChatTask).mockReturnValue({
-			status: 'generating',
-			content: 'Preset response'
-		});
-		vi.mocked(consumeChatTask).mockReturnValue({
 			status: 'generating',
 			content: 'Preset response'
 		});

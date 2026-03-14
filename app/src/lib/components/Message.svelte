@@ -19,7 +19,7 @@
 		ChevronDown,
 		ChevronUp
 	} from 'lucide-svelte';
-	import { slide, fade } from 'svelte/transition';
+	import { onMount } from 'svelte';
 	import ToolCallGroup from './ToolCallGroup.svelte';
 	import type { ToolCall } from '$lib/services/content/tool';
 	import { activeScripts } from '$lib/stores';
@@ -74,7 +74,6 @@
 	 * ensuring performance is optimal even for rapid streams.
 	 */
 	const morphHtml: Action<HTMLElement, string> = (node, html) => {
-		// Create a persistent template to avoid repeated allocations
 		const template = document.createElement('div');
 
 		const update = (newHtml: string) => {
@@ -86,9 +85,25 @@
 			morphdom(node, template, {
 				childrenOnly: true,
 				onBeforeElUpdated: (fromEl, toEl) => {
-					// Optimization: don't morph if content is identical
 					if (fromEl.isEqualNode(toEl)) return false;
+
+					// If it's a word-span and text changed, we might want to re-animate?
+					// Actually, morphdom will skip identical ones and add new ones.
 					return true;
+				},
+				onNodeAdded: (newNode) => {
+					if (newNode instanceof HTMLElement && message.displayStatus === 'generating') {
+						// Only animate if the message is actively streaming
+						newNode.classList.add('reveal-node');
+						// Reclaim GPU resources after animation completes
+						newNode.addEventListener(
+							'animationend',
+							() => {
+								newNode.classList.remove('reveal-node');
+							},
+							{ once: true }
+						);
+					}
 				}
 			});
 		};
@@ -98,6 +113,22 @@
 		return {
 			update
 		};
+	};
+
+	// ── Markdown Setup ────────────────────────────────────────────────────────
+
+	const renderer = new marked.Renderer();
+	renderer.text = (token: string | { text: string }) => {
+		const text = typeof token === 'string' ? token : token.text;
+		if (!text) return '';
+		return text
+			.split(/(\s+)/)
+			.map((t: string) => {
+				if (!t.trim()) return t;
+				// Always wrap in span for structural consistency
+				return `<span class="inline-block whitespace-pre">${t}</span>`;
+			})
+			.join('');
 	};
 
 	// Refresh display content - throttled for performance during streaming
@@ -112,8 +143,8 @@
 				const processed = await applyScripts(message.content, $activeScripts, 'display');
 				displayContent = processed;
 
-				// Convert markdown to HTML and sanitize
-				const rawHtml = await marked.parse(processed);
+				// Always use the custom renderer to prevent layout shifts when spans are removed
+				const rawHtml = await marked.parse(processed, { renderer });
 				renderedHtml = DOMPurify.sanitize(rawHtml as string);
 			} finally {
 				pendingRefresh = false;
@@ -129,6 +160,23 @@
 			refreshDisplay();
 		}
 	});
+
+	// Initialize synchronously to prevent flickering on re-mount (ID changes)
+	onMount(async () => {
+		if (message.content) {
+			displayContent = message.content;
+			// Only use word-spans if actively generating
+			const rawHtml = marked.parse(message.content, { renderer });
+			// In most marked configs, this returns a string synchronously if not using async extensions
+			if (typeof rawHtml === 'string') {
+				renderedHtml = DOMPurify.sanitize(rawHtml);
+			} else {
+				// Fallback for async-only marked versions
+				renderedHtml = DOMPurify.sanitize(await rawHtml);
+			}
+			refreshDisplay();
+		}
+	});
 </script>
 
 <!--
@@ -137,7 +185,6 @@
 -->
 <div
 	class="flex max-w-[80%] flex-col gap-1 {isUser ? 'items-end self-end' : 'items-start self-start'}"
-	in:fade={{ duration: 200 }}
 >
 	<!-- ── Edit / Delete controls (user's confirmed messages only) ── -->
 	{#if isUser && message.displayStatus === 'completed' && !isEditing}
@@ -204,11 +251,8 @@
 						<ChevronDown class="size-3" />
 					{/if}
 				</button>
-				{#if thoughtExpanded || message.displayStatus === 'generating'}
-					<div
-						transition:slide={{ duration: 200 }}
-						class="px-3 pb-3 pt-1 text-xs italic leading-relaxed text-muted-foreground/80"
-					>
+				{#if thoughtExpanded}
+					<div class="px-3 pb-3 pt-1 text-xs italic leading-relaxed text-muted-foreground/80">
 						{message.thought || 'Processing thinking...'}
 					</div>
 				{/if}
@@ -231,11 +275,6 @@
 						? '**:text-primary-foreground prose-invert'
 						: 'dark:prose-invert'}"
 				></div>
-
-				<!-- Cursor animation -->
-				{#if message.displayStatus === 'generating'}
-					<span class="ml-1 inline-block h-4 w-0.5 animate-pulse bg-current align-middle"></span>
-				{/if}
 			{/if}
 		</div>
 
@@ -250,3 +289,23 @@
 		{/if}
 	{/if}
 </div>
+
+<style>
+	@keyframes reveal {
+		from {
+			opacity: 0;
+			clip-path: inset(0 100% 100% 0); /* Top-left hidden */
+		}
+		to {
+			opacity: 1;
+			clip-path: inset(0 0 0 0); /* Full reveal */
+		}
+	}
+
+	/* Use :global to apply to nodes added via morphdom/Action */
+	:global(.reveal-node) {
+		display: inline-block;
+		animation: reveal 0.4s cubic-bezier(0, 0.5, 0.5, 1) forwards;
+		will-change: opacity, transform, clip-path;
+	}
+</style>
