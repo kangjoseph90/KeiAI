@@ -1,16 +1,14 @@
 /**
  * Generation Pipeline Tests — Chat
  *
- * Tests the full streaming lifecycle using the simplified architecture:
- *   - AbortController lives in the pipeline
- *   - Finalization (_persistTask) happens in the pipeline, consuming the store task
+ * Tests the full streaming lifecycle with integrated components.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { runChat, stopChat, dismissChat } from '$lib/runtime/task/chat';
 import type { StreamProvider, StreamContent } from '$lib/llm/types';
 
-// ─── Mock store modules ───────────────────────────────────────────────────────
+// ─── Mock all dependencies ───────────────────────────────────────────────────
 
 vi.mock('$lib/stores/task/chat', () => ({
 	createChatTask: vi.fn(),
@@ -41,6 +39,52 @@ vi.mock('$lib/services/content/message', () => ({
 	}
 }));
 
+vi.mock('$lib/runtime/context/chat', () => {
+	class MockChatContext {
+		public readonly chatId: string;
+		constructor(chatId: string) {
+			this.chatId = chatId;
+		}
+		public async getPreset() {
+			return { id: 'preset-1', data: { templateOrder: [] } };
+		}
+		public async getScripts() {
+			return [];
+		}
+		public async getChat() {
+			return { id: this.chatId, characterId: 'char-1', messageCount: 0 };
+		}
+		public async getCharacter() {
+			return { id: 'char-1', data: { systemPrompt: '' } };
+		}
+		public async getSettings() {
+			return { personaId: null, presetId: null };
+		}
+		public async getPersona() {
+			return null;
+		}
+		public async getLorebooks() {
+			return [];
+		}
+		public async getMessages() {
+			return [];
+		}
+	}
+	return { ChatContext: MockChatContext };
+});
+
+vi.mock('$lib/runtime/prompt/builder', () => ({
+	buildPrompt: vi.fn().mockResolvedValue([])
+}));
+
+vi.mock('$lib/runtime/task/provider', () => ({
+	selectProvider: vi.fn().mockResolvedValue(null)
+}));
+
+vi.mock('$lib/runtime/scripts/executor', () => ({
+	applyScripts: vi.fn((text: string) => Promise.resolve(text))
+}));
+
 import {
 	createChatTask,
 	updateChatTask,
@@ -50,6 +94,8 @@ import {
 	consumeChatTask
 } from '$lib/stores/task/chat';
 import { createMessage } from '$lib/stores/content/message';
+import { buildPrompt } from '$lib/runtime/prompt/builder';
+import { selectProvider } from '$lib/runtime/task/provider';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +106,12 @@ describe('Chat Pipeline', () => {
 		vi.clearAllMocks();
 		vi.mocked(getChatTask).mockReturnValue(null);
 		vi.mocked(consumeChatTask).mockReturnValue(null);
+		vi.mocked(buildPrompt).mockResolvedValue([{ role: 'user', content: 'test' }]);
+		vi.mocked(selectProvider).mockResolvedValue({
+			stream: vi.fn(async function* () {
+				yield { content: 'Response' };
+			})
+		});
 	});
 
 	it('should run a successful chat generation', async () => {
@@ -84,7 +136,6 @@ describe('Chat Pipeline', () => {
 		expect(createChatTask).toHaveBeenCalledWith(mockChatId);
 		expect(updateChatTask).toHaveBeenCalledWith(mockChatId, { content: 'Hello' });
 		expect(updateChatTask).toHaveBeenCalledWith(mockChatId, { content: 'Hello world' });
-		// _persistTask calls consumeChatTask, then createMessage
 		expect(consumeChatTask).toHaveBeenCalledWith(mockChatId);
 		expect(createMessage).toHaveBeenCalled();
 	});
@@ -147,7 +198,7 @@ describe('Chat Pipeline', () => {
 	it('should surface provider errors without persisting', async () => {
 		const mockProvider: StreamProvider = {
 			stream: vi.fn(async function* () {
-				yield { content: '' }; // satisfy generator lint
+				yield { content: '' };
 				throw new Error('Network fail');
 			})
 		};
@@ -156,6 +207,50 @@ describe('Chat Pipeline', () => {
 
 		expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Network fail');
 		expect(consumeChatTask).not.toHaveBeenCalled();
+	});
+
+	it('should use provider override when provided', async () => {
+		const mockProvider: StreamProvider = {
+			stream: vi.fn(async function* () {
+				yield { content: 'Override response' };
+			})
+		};
+
+		vi.mocked(getChatTask).mockReturnValue({
+			status: 'generating',
+			content: 'Override response'
+		});
+		vi.mocked(consumeChatTask).mockReturnValue({
+			status: 'generating',
+			content: 'Override response'
+		});
+
+		await runChat(mockChatId, { providerOverride: mockProvider });
+
+		expect(selectProvider).not.toHaveBeenCalled();
+		expect(createChatTask).toHaveBeenCalledWith(mockChatId);
+	});
+
+	it('should select provider from preset when no override', async () => {
+		const mockProvider: StreamProvider = {
+			stream: vi.fn(async function* () {
+				yield { content: 'Preset response' };
+			})
+		};
+
+		vi.mocked(selectProvider).mockResolvedValue(mockProvider);
+		vi.mocked(getChatTask).mockReturnValue({
+			status: 'generating',
+			content: 'Preset response'
+		});
+		vi.mocked(consumeChatTask).mockReturnValue({
+			status: 'generating',
+			content: 'Preset response'
+		});
+
+		await runChat(mockChatId);
+
+		expect(selectProvider).toHaveBeenCalled();
 	});
 
 	describe('Controls', () => {
