@@ -1,6 +1,7 @@
 import { ChatContext } from '../context/chat';
 import type { PromptTemplateEntry } from '$lib/services/content/preset';
 import type { OpenAIChat } from './types';
+import { defaultPresetData } from '$lib/services/content/preset';
 
 export interface PromptBuilderOptions {
 	maxTokens?: number;
@@ -18,13 +19,11 @@ export class PromptBuilder {
 
 	async build(): Promise<OpenAIChat[]> {
 		const preset = await this.ctx.getPreset();
-		if (!preset) {
-			throw new Error('No preset configured for this chat');
-		}
+
+		// Use default preset structure if none configured
+		const templateOrder = preset?.data.templateOrder ?? defaultPresetData.templateOrder;
 
 		const result: OpenAIChat[] = [];
-
-		const templateOrder = preset.data.templateOrder;
 
 		for (const entry of templateOrder) {
 			await this.processEntry(entry, result);
