@@ -139,7 +139,7 @@ describe('PluginService', () => {
 
 			expect(result.version).toBe('1.1.0');
 			expect(result.name).toBe('Test Plugin');
-			expect(localDB.putRecord).toHaveBeenCalled();
+			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 	});
 

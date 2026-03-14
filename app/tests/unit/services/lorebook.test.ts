@@ -188,7 +188,7 @@ describe('LorebookService', () => {
 			expect(result.name).toBe('Updated name');
 			expect(result.content).toBe('Content'); // Preserved from existing
 
-			expect(localDB.putRecord).toHaveBeenCalledWith('lorebooks', expect.any(Object));
+			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 
 		it('should throw if not found', async () => {

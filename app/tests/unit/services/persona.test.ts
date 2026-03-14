@@ -10,6 +10,7 @@ import { getActiveSession } from '$lib/services/session';
 import { localDB, type PersonaRecord } from '$lib/adapters/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { AppError } from '$lib/shared/errors';
+import { encryptedWriteQueue } from '$lib/services/content/write_queue';
 
 // Mock all dependencies
 vi.mock('$lib/crypto', () => ({
@@ -58,6 +59,7 @@ describe('PersonaService', () => {
 		vi.resetAllMocks(); // Use reset instead of clear for cleaner state
 		vi.useFakeTimers();
 		vi.setSystemTime(mockNow);
+		encryptedWriteQueue.drop('personas', 'persona-123');
 
 		// Default session mock
 		vi.mocked(getActiveSession).mockReturnValue({
@@ -117,11 +119,10 @@ describe('PersonaService', () => {
 			expect(result.name).toBe('Updated');
 		});
 
-		it('should throw AppError on DB failure', async () => {
+		it('should throw AppError when decrypt fails', async () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue({ ...mockRecord });
-			vi.mocked(localDB.putRecord).mockRejectedValueOnce(new Error('DB Error'));
+			vi.mocked(decrypt).mockRejectedValueOnce(new Error('Decrypt Error'));
 
-			// Test AppError wrapping
 			await expect(PersonaService.update('persona-123', { name: 'Fail' })).rejects.toThrow(
 				AppError
 			);

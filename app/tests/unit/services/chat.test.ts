@@ -253,7 +253,6 @@ describe('ChatService', () => {
 			expect(result.title).toBe('New Chat');
 
 			expect(assertCharacterExists).toHaveBeenCalledWith('char-1');
-			expect(encrypt).toHaveBeenCalledTimes(2);
 			expect(localDB.transaction).toHaveBeenCalledWith(
 				['chatSummaries', 'chatData'],
 				'rw',
@@ -268,10 +267,6 @@ describe('ChatService', () => {
 		});
 
 		it('should use default values when not provided', async () => {
-			vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
-				await callback();
-			});
-
 			vi.mocked(deepMerge).mockImplementation((target: unknown, source: unknown) => ({
 				...(target as Record<string, unknown>),
 				...(source as Record<string, unknown>)
@@ -309,12 +304,7 @@ describe('ChatService', () => {
 			const result = await ChatService.updateSummary('chat-1', { title: 'New Title' });
 
 			expect(result.title).toBe('New Title');
-			expect(localDB.putRecord).toHaveBeenCalledWith('chatSummaries', {
-				...existingRecord,
-				encryptedData: new Uint8Array([99]),
-				encryptedDataIV: new Uint8Array([88]),
-				updatedAt: expect.any(Number)
-			} as unknown as BaseRecord);
+			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 
 		it('should throw NOT_FOUND when chat does not exist', async () => {
@@ -347,12 +337,7 @@ describe('ChatService', () => {
 			const result = await ChatService.updateData('chat-1', { variables: { new: 'value' } });
 
 			expect(result.variables).toEqual({ new: 'value' });
-			expect(localDB.putRecord).toHaveBeenCalledWith('chatData', {
-				...existingRecord,
-				encryptedData: new Uint8Array([99]),
-				encryptedDataIV: new Uint8Array([88]),
-				updatedAt: expect.any(Number)
-			} as unknown as BaseRecord);
+			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 	});
 
@@ -421,7 +406,7 @@ describe('ChatService', () => {
 			await ChatService.delete('chat-1');
 
 			expect(localDB.transaction).toHaveBeenCalledWith(
-				['lorebooks', 'scripts', 'messages', 'chatSummaries', 'chatData'],
+				['lorebooks', 'scripts', 'messages', 'chatSummaries', 'chatData', 'toolCalls'],
 				'rw',
 				expect.any(Function)
 			);

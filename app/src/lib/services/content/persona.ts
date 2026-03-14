@@ -5,6 +5,7 @@ import { deepMerge } from '$lib/shared/defaults';
 import { AppError } from '$lib/shared/errors';
 import type { AssetRef } from '$lib/shared/types';
 import { generateId } from '$lib/shared/id';
+import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ function decryptFields(masterKey: CryptoKey, record: PersonaRecord): Promise<Per
 export class PersonaService {
 	/** List all personas */
 	static async list(): Promise<Persona[]> {
+		await encryptedWriteQueue.flushTable('personas');
 		const { masterKey, userId } = getActiveSession();
 		const records = await localDB.getAll<PersonaRecord>('personas', userId);
 
@@ -65,6 +67,14 @@ export class PersonaService {
 
 	static async get(id: string): Promise<Persona | null> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<PersonaFields>('personas', id);
+		if (queued) {
+			return {
+				id,
+				...deepMerge(defaultPersonaFields, queued as unknown as Record<string, unknown>)
+			};
+		}
+
 		const record = await localDB.getRecord<PersonaRecord>('personas', id);
 		if (!record || record.isDeleted) return null;
 
@@ -109,20 +119,43 @@ export class PersonaService {
 	/** Update a persona */
 	static async update(id: string, changes: Partial<PersonaContent>): Promise<Persona> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<PersonaFields>('personas', id);
 		const record = await localDB.getRecord<PersonaRecord>('personas', id);
 		if (!record || record.isDeleted) {
 			throw new AppError('NOT_FOUND', `Persona not found: ${id}`);
 		}
 
 		try {
-			const current = await decryptFields(masterKey, record);
+			const current = queued
+				? deepMerge(defaultPersonaFields, queued as unknown as Record<string, unknown>)
+				: await decryptFields(masterKey, record);
 			const updated: PersonaFields = deepMerge(current, changes as Record<string, unknown>);
-			const enc = await encrypt(masterKey, JSON.stringify(updated));
 
-			record.encryptedData = enc.ciphertext;
-			record.encryptedDataIV = enc.iv;
-			record.updatedAt = Date.now();
-			await localDB.putRecord('personas', record);
+			encryptedWriteQueue.upsert<PersonaFields, PersonaRecord>({
+				tableName: 'personas',
+				id,
+				userId: record.userId,
+				createdAt: record.createdAt,
+				nextFields: updated,
+				mergeFields: (queuedCurrent, next) =>
+					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				toRecord: ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					encryptedData,
+					encryptedDataIV
+				}) => ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					isDeleted: false,
+					encryptedData,
+					encryptedDataIV
+				})
+			});
 
 			return { id, ...updated };
 		} catch (error) {
@@ -134,6 +167,7 @@ export class PersonaService {
 	/** Delete a persona */
 	static async delete(id: string): Promise<void> {
 		try {
+			encryptedWriteQueue.drop('personas', id);
 			await localDB.softDeleteRecord('personas', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;

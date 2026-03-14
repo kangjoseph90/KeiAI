@@ -5,6 +5,7 @@ import { deepMerge } from '$lib/shared/defaults';
 import { assertLorebookOwnedBy, assertOwnedResourceParentExists } from './guards';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
+import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ function decryptFields(masterKey: CryptoKey, record: LorebookRecord): Promise<Lo
 export class LorebookService {
 	/** List lorebooks owned by a specific parent (character, chat, module) */
 	static async listByOwner(ownerId: string): Promise<Lorebook[]> {
+		await encryptedWriteQueue.flushTable('lorebooks');
 		const { masterKey } = getActiveSession();
 		const records = await localDB.getByIndex<LorebookRecord>(
 			'lorebooks',
@@ -72,6 +74,17 @@ export class LorebookService {
 
 	static async get(id: string): Promise<Lorebook | null> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<LorebookFields>('lorebooks', id);
+		if (queued) {
+			const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
+			if (!record || record.isDeleted) return null;
+			return {
+				id,
+				ownerId: record.ownerId,
+				...deepMerge(defaultLorebookFields, queued as unknown as Record<string, unknown>)
+			};
+		}
+
 		const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
 		if (!record || record.isDeleted) return null;
 
@@ -122,6 +135,7 @@ export class LorebookService {
 		expectedOwnerId?: string
 	): Promise<Lorebook> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<LorebookFields>('lorebooks', id);
 		const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
 		if (!record || record.isDeleted) {
 			throw new AppError('NOT_FOUND', `Lorebook not found: ${id}`);
@@ -131,14 +145,37 @@ export class LorebookService {
 		}
 
 		try {
-			const current = await decryptFields(masterKey, record);
+			const current = queued
+				? deepMerge(defaultLorebookFields, queued as unknown as Record<string, unknown>)
+				: await decryptFields(masterKey, record);
 			const updated: LorebookFields = deepMerge(current, changes as Record<string, unknown>);
-			const enc = await encrypt(masterKey, JSON.stringify(updated));
 
-			record.encryptedData = enc.ciphertext;
-			record.encryptedDataIV = enc.iv;
-			record.updatedAt = Date.now();
-			await localDB.putRecord('lorebooks', record);
+			encryptedWriteQueue.upsert<LorebookFields, LorebookRecord>({
+				tableName: 'lorebooks',
+				id,
+				userId: record.userId,
+				createdAt: record.createdAt,
+				nextFields: updated,
+				mergeFields: (queuedCurrent, next) =>
+					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				toRecord: ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					encryptedData,
+					encryptedDataIV
+				}) => ({
+					id: recordId,
+					userId: recordUserId,
+					ownerId: record.ownerId,
+					createdAt,
+					updatedAt,
+					isDeleted: false,
+					encryptedData,
+					encryptedDataIV
+				})
+			});
 
 			return { id, ownerId: record.ownerId, ...updated };
 		} catch (error) {
@@ -152,6 +189,7 @@ export class LorebookService {
 			await assertLorebookOwnedBy(expectedOwnerId, id);
 		}
 		try {
+			encryptedWriteQueue.drop('lorebooks', id);
 			await localDB.softDeleteRecord('lorebooks', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;

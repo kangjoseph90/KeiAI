@@ -65,9 +65,7 @@ describe('Global Stores', () => {
 			activeChat.set({ id: 'chat-1' } as ChatDetail);
 
 			chatTasks.set(
-				new Map<string, ChatTask>([
-					['chat-2', { status: 'generating', content: '...' }]
-				])
+				new Map<string, ChatTask>([['chat-2', { status: 'generating', content: '...' }]])
 			);
 
 			expect(get(isChatRunning)).toBe(false);

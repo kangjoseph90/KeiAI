@@ -7,6 +7,7 @@ import { assertChatExists, assertMessageInChat } from './guards';
 import { AppError } from '$lib/shared/errors';
 import { generateId } from '$lib/shared/id';
 import type { ToolCallAbstract } from './tool';
+import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ export class MessageService {
 		limit = 50,
 		offset = 0
 	): Promise<Message[]> {
+		await encryptedWriteQueue.flushTable('messages');
 		const { masterKey } = getActiveSession();
 		const records = await localDB.getRecordsBackward<MessageRecord>(
 			'messages',
@@ -89,6 +91,7 @@ export class MessageService {
 		limit = 50,
 		offset = 0
 	): Promise<Message[]> {
+		await encryptedWriteQueue.flushTable('messages');
 		const { masterKey } = getActiveSession();
 
 		const records = await localDB.getRecordsForward<MessageRecord>(
@@ -115,6 +118,18 @@ export class MessageService {
 
 	static async get(id: string): Promise<Message | null> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<MessageFields>('messages', id);
+		if (queued) {
+			const record = await localDB.getRecord<MessageRecord>('messages', id);
+			if (!record || record.isDeleted) return null;
+			return {
+				id,
+				chatId: record.chatId,
+				sortOrder: record.sortOrder,
+				...deepMerge(defaultMessageFields, queued as unknown as Record<string, unknown>)
+			};
+		}
+
 		const record = await localDB.getRecord<MessageRecord>('messages', id);
 		if (!record || record.isDeleted) return null;
 
@@ -189,6 +204,7 @@ export class MessageService {
 		expectedChatId?: string
 	): Promise<Message> {
 		const { masterKey } = getActiveSession();
+		const queued = encryptedWriteQueue.peek<MessageFields>('messages', id);
 		const record = await localDB.getRecord<MessageRecord>('messages', id);
 		if (!record || record.isDeleted) {
 			throw new AppError('NOT_FOUND', `Message not found: ${id}`);
@@ -198,14 +214,38 @@ export class MessageService {
 		}
 
 		try {
-			const current = await decryptFields(masterKey, record);
+			const current = queued
+				? deepMerge(defaultMessageFields, queued as unknown as Record<string, unknown>)
+				: await decryptFields(masterKey, record);
 			const updated: MessageFields = deepMerge(current, changes as Record<string, unknown>);
-			const enc = await encrypt(masterKey, JSON.stringify(updated));
 
-			record.encryptedData = enc.ciphertext;
-			record.encryptedDataIV = enc.iv;
-			record.updatedAt = Date.now();
-			await localDB.putRecord('messages', record);
+			encryptedWriteQueue.upsert<MessageFields, MessageRecord>({
+				tableName: 'messages',
+				id,
+				userId: record.userId,
+				createdAt: record.createdAt,
+				nextFields: updated,
+				mergeFields: (queuedCurrent, next) =>
+					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				toRecord: ({
+					id: recordId,
+					userId: recordUserId,
+					createdAt,
+					updatedAt,
+					encryptedData,
+					encryptedDataIV
+				}) => ({
+					id: recordId,
+					userId: recordUserId,
+					chatId: record.chatId,
+					sortOrder: record.sortOrder,
+					createdAt,
+					updatedAt,
+					isDeleted: false,
+					encryptedData,
+					encryptedDataIV
+				})
+			});
 
 			return { id, chatId: record.chatId, sortOrder: record.sortOrder, ...updated };
 		} catch (error) {
@@ -220,6 +260,7 @@ export class MessageService {
 			await assertMessageInChat(expectedChatId, id);
 		}
 		try {
+			encryptedWriteQueue.drop('messages', id);
 			await localDB.softDeleteRecord('messages', id);
 		} catch (error) {
 			if (error instanceof AppError) throw error;
