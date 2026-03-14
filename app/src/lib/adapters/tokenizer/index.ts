@@ -2,12 +2,11 @@
  * Tokenizer Adapter — KeiAI
  *
  * Platform-adaptive tokenizer for counting LLM tokens.
- * Web: Uses Comlink Worker with js-tiktoken
- * Tauri: TODO - Native Rust implementation with tiktoken-rs
+ * Web: Uses Comlink Worker with @mlc-ai/web-tokenizers
+ * Tauri: Native Rust (tiktoken-rs + HuggingFace tokenizers)
  */
 
 export * from './types';
-export * from './web';
 
 import { isTauri } from '@tauri-apps/api/core';
 import { webTokenizer } from './web';

@@ -8,6 +8,7 @@
 		"build": "vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
+		"postinstall": "node scripts/download-tokens.js",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check . && eslint .",
@@ -66,6 +67,7 @@
 		"vitest": "^4.0.18"
 	},
 	"dependencies": {
+		"@mlc-ai/web-tokenizers": "^0.1.6",
 		"@tauri-apps/api": "^2.10.1",
 		"@tauri-apps/plugin-clipboard-manager": "~2.3.2",
 		"@tauri-apps/plugin-dialog": "~2.6.0",
@@ -79,7 +81,6 @@
 		"dexie": "^4.3.0",
 		"dompurify": "^3.3.3",
 		"fractional-indexing": "^3.2.0",
-		"js-tiktoken": "^1.0.21",
 		"lucide-svelte": "^0.576.0",
 		"marked": "^17.0.4",
 		"minidenticons": "^4.2.1",
