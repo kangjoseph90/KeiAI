@@ -86,24 +86,7 @@
 				childrenOnly: true,
 				onBeforeElUpdated: (fromEl, toEl) => {
 					if (fromEl.isEqualNode(toEl)) return false;
-
-					// If it's a word-span and text changed, we might want to re-animate?
-					// Actually, morphdom will skip identical ones and add new ones.
 					return true;
-				},
-				onNodeAdded: (newNode) => {
-					if (newNode instanceof HTMLElement && message.displayStatus === 'generating') {
-						// Only animate if the message is actively streaming
-						newNode.classList.add('reveal-node');
-						// Reclaim GPU resources after animation completes
-						newNode.addEventListener(
-							'animationend',
-							() => {
-								newNode.classList.remove('reveal-node');
-							},
-							{ once: true }
-						);
-					}
 				}
 			});
 		};
@@ -117,34 +100,18 @@
 
 	// ── Markdown Setup ────────────────────────────────────────────────────────
 
-	const renderer = new marked.Renderer();
-	renderer.text = (token: string | { text: string }) => {
-		const text = typeof token === 'string' ? token : token.text;
-		if (!text) return '';
-		return text
-			.split(/(\s+)/)
-			.map((t: string) => {
-				if (!t.trim()) return t;
-				// Always wrap in span for structural consistency
-				return `<span class="inline-block whitespace-pre">${t}</span>`;
-			})
-			.join('');
-	};
-
 	// Refresh display content - throttled for performance during streaming
 	let pendingRefresh = false;
 	async function refreshDisplay() {
 		if (pendingRefresh && message.displayStatus === 'generating') return;
 		pendingRefresh = true;
 
-		// Use requestAnimationFrame to sync with display refresh rate
 		requestAnimationFrame(async () => {
 			try {
 				const processed = await applyScripts(message.content, $activeScripts, 'display');
 				displayContent = processed;
 
-				// Always use the custom renderer to prevent layout shifts when spans are removed
-				const rawHtml = await marked.parse(processed, { renderer });
+				const rawHtml = await marked.parse(processed);
 				renderedHtml = DOMPurify.sanitize(rawHtml as string);
 			} finally {
 				pendingRefresh = false;
@@ -165,13 +132,10 @@
 	onMount(async () => {
 		if (message.content) {
 			displayContent = message.content;
-			// Only use word-spans if actively generating
-			const rawHtml = marked.parse(message.content, { renderer });
-			// In most marked configs, this returns a string synchronously if not using async extensions
+			const rawHtml = marked.parse(message.content);
 			if (typeof rawHtml === 'string') {
 				renderedHtml = DOMPurify.sanitize(rawHtml);
 			} else {
-				// Fallback for async-only marked versions
 				renderedHtml = DOMPurify.sanitize(await rawHtml);
 			}
 			refreshDisplay();
@@ -289,23 +253,3 @@
 		{/if}
 	{/if}
 </div>
-
-<style>
-	@keyframes reveal {
-		from {
-			opacity: 0;
-			clip-path: inset(0 100% 100% 0); /* Top-left hidden */
-		}
-		to {
-			opacity: 1;
-			clip-path: inset(0 0 0 0); /* Full reveal */
-		}
-	}
-
-	/* Use :global to apply to nodes added via morphdom/Action */
-	:global(.reveal-node) {
-		display: inline-block;
-		animation: reveal 0.4s cubic-bezier(0, 0.5, 0.5, 1) forwards;
-		will-change: opacity, transform, clip-path;
-	}
-</style>

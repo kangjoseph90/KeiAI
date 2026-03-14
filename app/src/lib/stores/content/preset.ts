@@ -35,8 +35,7 @@ export async function loadPresets(): Promise<void> {
 export async function selectPreset(id: string): Promise<void> {
 	activePreset.set(await PresetService.getDetail(id));
 	appSettings.update((s) => (s ? { ...s, presetId: id } : s));
-
-	// TODO: Update settings with selected preset
+	await SettingsService.update({ presetId: id });
 }
 
 export async function createPreset(

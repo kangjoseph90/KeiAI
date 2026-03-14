@@ -55,9 +55,8 @@ export const defaultPresetData: PresetDataFields = {
 		{ name: 'Character description', type: 'description' },
 		{ name: 'User persona', type: 'persona' },
 		{ name: 'Lorebook', type: 'lorebook' },
-		{ name: 'Early history', type: 'history', start: 0, end: 10 },
-		{ name: 'Additional instruction', type: 'instruction', role: 'system', content: '' },
-		{ name: 'Recent history', type: 'history', start: -5, end: undefined }
+		{ name: 'Early history', type: 'history', start: -10 },
+		{ name: 'Additional instruction', type: 'instruction', role: 'system', content: '' }
 	],
 	temperature: 0.9,
 	topP: 1,

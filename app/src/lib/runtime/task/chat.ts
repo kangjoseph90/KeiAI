@@ -101,7 +101,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		);
 
 		// ── 6. Select Provider ─────────────────────────────────────────
-		const provider = opts.providerOverride ?? (await selectProvider());
+		const provider = opts.providerOverride ?? (await selectProvider(ctx));
 
 		// ── 7. Stream chunks ─────────────────────────────────────────
 		for await (const state of provider.stream(processedMessages, controller.signal)) {
