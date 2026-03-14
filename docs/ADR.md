@@ -194,24 +194,26 @@
 
 ---
 
-## 015: DB 쓰기 부하 감소를 위한 Write-Buffer 및 디바운싱
+## 015: 암호화 비용 감소를 위한 서비스 레이어 EncryptedWriteQueue
 
-- 상태: 채택
-- 맥락: 사용자가 채팅을 입력하거나 설정을 바꿀 때마다 `localDB`(Tauri SQLite 또는 Web IDB)에 즉시 저장 요청이 발생한다.
-- 문제: 
-  - 타이핑과 같이 연속적으로 상태가 변하는 고빈도 쓰기 환경에서는 디스크 I/O 병목이 발생하여 UI 프리징이나 성능 저하를 유발한다.
+- 상태: 채택 (수정됨)
+- 맥락: 사용자가 채팅을 입력하거나 설정을 바꿀 때마다 서비스 레이어에서 암호화 후 `localDB`에 저장 요청이 발생한다.
+- 문제:
+  - 고빈도 쓰기 환경에서의 실제 병목은 디스크 I/O가 아니라 **매 쓰기마다 수행되는 AES-256-GCM 암호화**였다.
   - UI 렌더링에 필요한 최신 데이터와 DB에 지연 기록된 데이터 간의 정합성(Read-Your-Writes)이 깨질 위험이 있다.
 - 접근법 검토:
-  1. Service(Store) 레벨 디바운싱: 데이터 타입마다 개별적으로 디바운싱 로직이 파편화되어 유지보수가 극히 어려움.
-  2. Adapter 레벨 Write-Buffer: DB 기록 직전 추상화 계층(`WebDatabaseAdapter`, `TauriDatabaseAdapter`) 내부 메모리에 500ms간 보류 대기(Buffer)를 구성.
+  1. Adapter 레벨 Write-Buffer: DB 기록 직전에 디바운싱하면 **암호화는 매번 실행**되므로 실제 병목을 해소하지 못함. 또한 어댑터가 암호화 관심사를 알게 되어 계층 책임이 오염됨.
+  2. Service 레이어 EncryptedWriteQueue: 서비스 레이어에서 **평문 상태로 병합**하고, flush 시점에 단 한 번만 암호화. 어댑터는 순수 pass-through로 유지.
 - 결정:
-  - **어댑터 레벨 Write-Buffer**: `pendingWrites` Map을 생성하여 쓰기를 500ms 디바운스. 연속된 수정은 버퍼 내에서만 교체.
-  - **일관성 보장(Read-Your-Writes)**: `getRecord()` 호출 시 실제 DB보다 메모리 버퍼(`pendingWrites`)를 우선 반환하여 즉각적인 UI 반영 달성.
-  - **우회 기록 허용**: 인증 갱신 파이프라인 등 데이터 보존이 최우선인 특수 상황을 위해 `options.immediate = true` 플래그 제공.
-  - **에셋/유저 어댑터 제외**: `AssetAdapter`와 `UserAdapter`는 단발성 이벤트(로그인, 파일 업로드) 중심이므로 쓰기 지연의 이득보다 프로세스 강제 종료 시 데이터 유실 리스크가 크다. 따라서 주력 데이터 도메인인 `localDB`에만 디바운싱을 국한시킴.
+  - **서비스 레이어 `EncryptedWriteQueue`** (`services/content/write_queue.ts`): `entries` Map에 평문 필드를 보관하며 400ms 디바운스 + 2초 max-wait. 연속된 수정은 평문 상태에서 머지되고, flush 시 한 번만 `encrypt()` → `localDB.putRecord()` 실행.
+  - **일관성 보장(Read-Your-Writes)**: 서비스의 `get()`/`update()` 메서드가 `encryptedWriteQueue.peek()`로 대기 중인 평문을 우선 반환. DB 조회 없이 즉각적인 UI 반영 달성.
+  - **목록 조회 시 일괄 flush**: `list()` 등 전체 레코드 조회 전에 `flushTable()`로 해당 테이블의 대기 중인 쓰기를 모두 완료한 뒤 DB에서 읽음.
+  - **생성은 즉시 기록**: `create()` 메서드는 큐를 우회하여 즉시 암호화 + `localDB.putRecord()` 수행. 신규 레코드의 영속성을 보장.
+  - **라이프사이클 안전장치**: `pagehide`, `beforeunload`, `visibilitychange(hidden)` 이벤트에서 `flushAll()` 호출. 실패 시 재스케줄링(retry).
+  - **에셋/유저 어댑터 제외**: 단발성 이벤트(로그인, 파일 업로드) 중심이므로 디바운싱 대상에서 제외.
 - 결과:
-  - 채팅/시스템 설정 시 발생하는 수십 건의 디스크 쓰기가 단 1건으로 묶여 I/O 성능 대폭 상승.
-  - 상위 서비스 레이어는 기존 동기형 코드 로직을 전혀 수정할 필요 없이 일관된 데이터를 읽을 수 있게 됨.
+  - 연속 수정 시 발생하던 수십 건의 암호화 + 디스크 쓰기가 **단 1건으로 통합**되어 성능 대폭 상승.
+  - 어댑터 레이어는 암호화 관심사 없이 순수 저장소 인터페이스로 유지되어 계층 책임이 깔끔하게 분리됨.
 
 ---
 
