@@ -13,11 +13,11 @@ import type { StreamContent, StreamProvider } from './types';
 import type { OpenAIChat } from '$lib/runtime/prompt/types';
 
 const MOCK_RESPONSES = [
-	'안녕하세요! 저는 KeiAI의 테스트 봇입니다. 이 메시지는 스트리밍으로 전달되고 있으며, 모든 데이터는 E2EE로 암호화되어 로컬 DB에 저장됩니다.',
-	'흥미로운 질문이네요. 저는 생각을 해봤는데, 사실 이 답변 자체가 mock 스트리밍 프로바이더를 통해 단어 단위로 청크를 흘려보내는 방식으로 작동하고 있어요.',
-	'Local-First 아키텍처에 대해 말씀드리면, 서버 없이도 완전히 동작하는 앱을 만드는 것이 핵심 목표입니다. 오프라인에서도 암호화된 채팅이 가능하죠.',
-	'E2EE란 End-to-End Encryption의 약자로, 데이터가 서버에 저장될 때도 오직 본인만 복호화할 수 있는 방식입니다. AES-256-GCM 알고리즘을 사용해 구현했습니다.',
-	'스트리밍이 완료되면 이 메시지는 마스터 키로 암호화되어 IndexedDB에 영구 저장됩니다. 화면에 표시되기 전까지는 평문으로 메모리에만 존재하죠.'
+	'안녕하세요! **KeiAI**의 테스트 봇입니다.\n\n현재 이 메시지는 **스트리밍**으로 전달되고 있으며, 다음과 같은 특징이 있습니다:\n\n* **보안**: 모든 데이터는 E2EE로 암호화됩니다.\n* **로컬**: IndexedDB를 활용한 Local-First 구조입니다.\n* **속도**: 지연 시간이 거의 없는 즉각적인 인터페이스를 지향합니다.',
+	'### 시스템 아키텍처 안내\n\nKeiAI는 다음과 같은 기술 스택을 사용합니다:\n\n1. **Frontend**: Svelte 5 (Runes)\n2. **Database**: PocketBase & Local IndexedDB\n3. **Encryption**: AES-256-GCM\n\n질문이 있으시면 언제든 말씀해 주세요!',
+	'마크다운 테스트를 위해 **굵은 글씨**, *기울임*, 그리고 `code snippet`을 섞어서 답변을 드립니다.\n\n```typescript\nconst message = "Hello, KeiAI!";\nconsole.log(message);\n```\n\n이렇게 여러 줄의 코드 블록도 문제 없이 렌더링되고 스트리밍되는지 확인해 보세요.',
+	'현재 스트리밍되는 텍스트는 **문단 단위**로 페이드인 효과가 적용되고 있습니다.\n\n이 방식은 시각적으로 매우 편안하며 동시에 AI가 실제로 타이핑하는 것과 같은 생동감을 제공합니다. 다음 문단도 한 번 확인해 보세요.\n\n어떠신가요? 블록별로 부드럽게 나타나는 느낌이 잘 살고 있나요?',
+	'> "보안은 선택이 아니라 기본입니다."\n\n위와 같은 **인용구**와 함께 긴 답변을 생성해 보겠습니다. KeiAI는 사용자의 프라이버시를 최우선으로 생각하며, 모든 대화 내용은 제3자가 볼 수 없도록 견고하게 설계되었습니다.'
 ];
 
 export class MockStreamProvider implements StreamProvider {
