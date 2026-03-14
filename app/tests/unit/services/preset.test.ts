@@ -52,17 +52,13 @@ describe('PresetService', () => {
 	const mockDataFields: PresetDataFields = {
 		model: 'test-model',
 		templateOrder: [],
-		authorsNote: '',
-		authorsNoteDepth: 4,
-		jailbreakPrompt: '',
-		jailbreakEnabled: false,
 		temperature: 0.9,
 		topP: 1,
 		topK: 0,
 		frequencyPenalty: 0,
 		presencePenalty: 0,
-		maxTokens: 600,
-		maxContextTokens: 4096,
+		maxResponse: 600,
+		maxContext: 4096,
 		memoryTokensRatio: 0.2
 	};
 

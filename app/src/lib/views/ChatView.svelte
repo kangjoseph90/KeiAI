@@ -6,6 +6,7 @@
 	import Message from '$lib/components/Message.svelte';
 	import {
 		activeChat,
+		activeScripts,
 		chatLorebooks,
 		displayMessages,
 		isChatRunning,
@@ -18,6 +19,7 @@
 	import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/runtime/task';
 	import { MockStreamProvider } from '$lib/llm/mock';
 	import { ToolCallService } from '$lib/services/content/tool';
+	import { applyScripts } from '$lib/runtime/scripts/executor';
 
 	let { chatId }: { chatId: string } = $props();
 
@@ -28,11 +30,11 @@
 
 	async function handleSendMessage() {
 		if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
-		const userText = newMessageText;
+		// Apply input scripts
+		const processedText = await applyScripts(newMessageText, $activeScripts, 'input');
 		newMessageText = '';
-		await createMessage(chatId, { role: 'user', content: userText });
-		const provider = new MockStreamProvider(userText);
-		runChat(chatId, provider);
+		await createMessage(chatId, { role: 'user', content: processedText });
+		runChat(chatId);
 	}
 
 	async function handleUpdateMessage(id: string) {
