@@ -69,9 +69,12 @@ describe('CharacterService', () => {
 	const mockUserId = 'user-123';
 	const mockEncryptedData = new Uint8Array([1, 2, 3]);
 	const mockIV = new Uint8Array([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+	const mockNow = new Date('2023-01-01T12:00:00.000Z');
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.useFakeTimers();
+		vi.setSystemTime(mockNow);
 
 		// Default session mock
 		vi.mocked(getActiveSession).mockReturnValue({
@@ -315,7 +318,8 @@ describe('CharacterService', () => {
 			});
 
 			expect(result.name).toBe('New Name');
-			expect(localDB.putRecord).not.toHaveBeenCalled();
+			await vi.runAllTimersAsync();
+			expect(localDB.putRecord).toHaveBeenCalled();
 		});
 
 		it('should throw NOT_FOUND when character does not exist', async () => {
@@ -367,7 +371,8 @@ describe('CharacterService', () => {
 			});
 
 			expect(result.systemPrompt).toBe('New prompt');
-			expect(localDB.putRecord).not.toHaveBeenCalled();
+			await vi.runAllTimersAsync();
+			expect(localDB.putRecord).toHaveBeenCalled();
 		});
 	});
 
@@ -416,7 +421,9 @@ describe('CharacterService', () => {
 
 			expect(result.name).toBe('New Name');
 			expect(result.data.systemPrompt).toBe('New prompt');
-			expect(localDB.transaction).not.toHaveBeenCalled();
+
+			await vi.runAllTimersAsync();
+			expect(localDB.putRecord).toHaveBeenCalledTimes(2);
 		});
 	});
 
