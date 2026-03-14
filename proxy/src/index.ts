@@ -14,19 +14,22 @@
  */
 
 interface Env {
-	PROXY_API_KEY?: string;
 	ALLOWED_ORIGINS?: string;
 }
 
-function handleCORS(request: Request, env: Env): Response {
+// ─── CORS ────────────────────────────────────────────────────────────────────
+
+function resolveOrigin(request: Request, env: Env): string {
 	const origin = request.headers.get('Origin');
 	const allowedOrigins = env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : [];
-	const responseOrigin = origin && (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) ? origin : allowedOrigins[0] || '*';
+	return origin && (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) ? origin : allowedOrigins[0] || '*';
+}
 
+function handleCORS(request: Request, env: Env): Response {
 	return new Response(null, {
 		status: 204,
 		headers: {
-			'Access-Control-Allow-Origin': responseOrigin,
+			'Access-Control-Allow-Origin': resolveOrigin(request, env),
 			'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
 			'Access-Control-Allow-Headers': '*',
 			'Access-Control-Max-Age': '86400',
@@ -37,11 +40,7 @@ function handleCORS(request: Request, env: Env): Response {
 
 function addCorsHeaders(response: Response, request: Request, env: Env): Response {
 	const newHeaders = new Headers(response.headers);
-	const origin = request.headers.get('Origin');
-	const allowedOrigins = env.ALLOWED_ORIGINS ? env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : [];
-	const responseOrigin = origin && (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) ? origin : allowedOrigins[0] || '*';
-
-	newHeaders.set('Access-Control-Allow-Origin', responseOrigin);
+	newHeaders.set('Access-Control-Allow-Origin', resolveOrigin(request, env));
 	newHeaders.set('Vary', 'Origin');
 
 	return new Response(response.body, {
@@ -49,6 +48,57 @@ function addCorsHeaders(response: Response, request: Request, env: Env): Respons
 		statusText: response.statusText,
 		headers: newHeaders,
 	});
+}
+
+// ─── SSRF Guard ──────────────────────────────────────────────────────────────
+
+const BLOCKED_HOSTNAMES = new Set([
+	'localhost',
+	'metadata.google.internal',
+]);
+
+const BLOCKED_IP_PREFIXES = [
+	'127.', // loopback
+	'10.', // private class A
+	'192.168.', // private class C
+	'169.254.', // link-local / cloud metadata
+	'0.', // current network
+];
+
+function isBlockedTarget(urlStr: string): string | null {
+	let parsed: URL;
+	try {
+		parsed = new URL(urlStr);
+	} catch {
+		return 'Malformed URL';
+	}
+
+	if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+		return 'Only http/https targets allowed';
+	}
+
+	const hostname = parsed.hostname;
+
+	if (BLOCKED_HOSTNAMES.has(hostname)) {
+		return 'Blocked target host';
+	}
+
+	if (hostname.startsWith('[')) {
+		return 'IPv6 targets not allowed';
+	}
+
+	for (const prefix of BLOCKED_IP_PREFIXES) {
+		if (hostname.startsWith(prefix)) {
+			return 'Internal IP targets not allowed';
+		}
+	}
+
+	// 172.16.0.0/12 range
+	if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) {
+		return 'Internal IP targets not allowed';
+	}
+
+	return null;
 }
 
 export default {
@@ -76,21 +126,11 @@ export default {
 				return new Response('Missing x-target-url header', { status: 400 });
 			}
 
-			// 1. Verify Shared Key
-			const proxyKey = env.PROXY_API_KEY;
-			if (proxyKey) {
-				const providedKey = request.headers.get('x-proxy-api-key');
-				if (providedKey !== proxyKey) {
-					return new Response('Unauthorized: Invalid or missing x-proxy-api-key', { status: 401 });
-				}
+			// 1. SSRF Guard — block internal/private targets
+			const blocked = isBlockedTarget(targetUrl);
+			if (blocked) {
+				return new Response(`Forbidden: ${blocked}`, { status: 403 });
 			}
-
-			// 2. Simple IP-based Rate Limiting (Using cf object as a hint)
-			// Note: For production, use Cloudflare's Rate Limiting feature or KV/Durable Objects.
-			// This is a basic check to prevent obvious automated abuse.
-			const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
-			// (Cloudflare Workers Free Tier covers 100k requests/day, so we just log/monitor for now
-			// or could implement a more sophisticated guard if a KV binding was available).
 
 			// Parse target headers
 			let targetHeaders: Record<string, string> = {};

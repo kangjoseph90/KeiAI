@@ -1,0 +1,7 @@
+# Proxy Environment Variables (Cloudflare Workers)
+# Copy this file to .dev.vars and fill in your values.
+# Used by `wrangler dev` for local development only.
+
+# Comma-separated list of allowed origins for CORS.
+# Default is wildcard (*) if empty, but specific origins are recommended.
+ALLOWED_ORIGINS=http://localhost:5173

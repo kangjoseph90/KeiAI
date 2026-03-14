@@ -70,34 +70,7 @@ describe('Proxy worker', () => {
 			expect(response.status).toBe(405);
 		});
 
-		it('returns 401 when x-proxy-api-key is missing but required', async () => {
-			const testEnv = { PROXY_API_KEY: 'secret-key' };
-			const request = new IncomingRequest('http://example.com/proxy', {
-				method: 'POST',
-				headers: { 'x-target-url': 'https://example.com' },
-			});
-			const response = await worker.fetch(request, testEnv as any, createExecutionContext());
-
-			expect(response.status).toBe(401);
-			expect(await response.text()).toContain('Unauthorized');
-		});
-
-		it('returns 401 when x-proxy-api-key is incorrect', async () => {
-			const testEnv = { PROXY_API_KEY: 'secret-key' };
-			const request = new IncomingRequest('http://example.com/proxy', {
-				method: 'POST',
-				headers: {
-					'x-target-url': 'https://example.com',
-					'x-proxy-api-key': 'wrong-key',
-				},
-			});
-			const response = await worker.fetch(request, testEnv as any, createExecutionContext());
-
-			expect(response.status).toBe(401);
-		});
-
-		it('proxies request to target URL with valid key', async () => {
-			const testEnv = { PROXY_API_KEY: 'secret-key' };
+		it('proxies request to target URL', async () => {
 			const targetUrl = 'https://httpbin.org/post';
 			const body = { message: 'hello' };
 
@@ -105,13 +78,12 @@ describe('Proxy worker', () => {
 				method: 'POST',
 				headers: {
 					'x-target-url': targetUrl,
-					'x-proxy-api-key': 'secret-key',
 					'Content-Type': 'application/json',
 				},
 				body: JSON.stringify(body),
 			});
 
-			const response = await worker.fetch(request, testEnv as any, createExecutionContext());
+			const response = await worker.fetch(request, {} as any, createExecutionContext());
 
 			expect(response.status).toBe(200);
 		});
@@ -134,7 +106,7 @@ describe('Proxy worker', () => {
 			const response = await SELF.fetch(request);
 
 			expect(response.ok).toBe(true);
-			expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+			expect(response.headers.has('Access-Control-Allow-Origin')).toBe(true);
 
 			const data = (await response.json()) as { headers: Record<string, string>; data: string };
 			expect(data.headers['X-Custom-Header']).toBe('test-value');
@@ -177,7 +149,6 @@ describe('Proxy worker', () => {
 		});
 
 		it('returns 502 when target fetch fails', async () => {
-			// Mock fetch to simulate a connection error
 			const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Connection failed'));
 
 			const request = new IncomingRequest('http://example.com/proxy', {
@@ -192,6 +163,63 @@ describe('Proxy worker', () => {
 			expect(await response.text()).toContain('Proxy error: Connection failed');
 
 			fetchSpy.mockRestore();
+		});
+	});
+
+	describe('SSRF protection', () => {
+		it('blocks localhost targets', async () => {
+			const request = new IncomingRequest('http://example.com/proxy', {
+				method: 'POST',
+				headers: { 'x-target-url': 'http://localhost/admin' },
+			});
+			const response = await worker.fetch(request, env as any, createExecutionContext());
+
+			expect(response.status).toBe(403);
+			expect(await response.text()).toContain('Blocked target host');
+		});
+
+		it('blocks loopback IP targets', async () => {
+			const request = new IncomingRequest('http://example.com/proxy', {
+				method: 'POST',
+				headers: { 'x-target-url': 'http://127.0.0.1:8090/api' },
+			});
+			const response = await worker.fetch(request, env as any, createExecutionContext());
+
+			expect(response.status).toBe(403);
+			expect(await response.text()).toContain('Internal IP');
+		});
+
+		it('blocks cloud metadata endpoints', async () => {
+			const request = new IncomingRequest('http://example.com/proxy', {
+				method: 'POST',
+				headers: { 'x-target-url': 'http://169.254.169.254/latest/meta-data/' },
+			});
+			const response = await worker.fetch(request, env as any, createExecutionContext());
+
+			expect(response.status).toBe(403);
+		});
+
+		it('blocks private network IPs', async () => {
+			const targets = ['http://10.0.0.1/api', 'http://192.168.1.1/', 'http://172.16.0.1/'];
+
+			for (const target of targets) {
+				const request = new IncomingRequest('http://example.com/proxy', {
+					method: 'POST',
+					headers: { 'x-target-url': target },
+				});
+				const response = await worker.fetch(request, env as any, createExecutionContext());
+				expect(response.status).toBe(403);
+			}
+		});
+
+		it('allows legitimate external targets', async () => {
+			const request = new IncomingRequest('http://example.com/proxy', {
+				method: 'POST',
+				headers: { 'x-target-url': 'https://api.openai.com/v1/chat/completions' },
+			});
+			const response = await worker.fetch(request, env as any, createExecutionContext());
+
+			expect(response.status).not.toBe(403);
 		});
 	});
 

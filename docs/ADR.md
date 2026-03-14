@@ -259,3 +259,26 @@
   - Tauri는 네이티브 속도로 토큰 카운팅 (10-30x 빠름).
   - 새 인코딩 추가 시: `TokenizerEncoding` 타입 + worker SPECS + Rust match arm + 다운로드 URL만 추가하면 됨.
 
+---
+
+## 018: 프록시 API 키 제거 — CORS + SSRF Guard로 대체
+
+- 상태: 채택
+- 맥락: 프록시 Worker에 `PROXY_API_KEY` 공유 시크릿을 두고, 앱 빌드 시 `VITE_PROXY_API_KEY`로 번들에 삽입하여 "앱을 쓰는 사람만" 프록시에 접근하게 하려 했다.
+- 문제:
+  - Vite의 `VITE_` 변수는 빌드 시 JS 번들에 **평문으로 하드코딩**됨. 브라우저 DevTools의 Network 탭이나 번들 소스에서 즉시 추출 가능.
+  - Tauri 바이너리도 문자열 검색으로 키 추출 가능.
+  - 결국 "클라이언트에 하드코딩된 시크릿"은 시크릿이 아님. casual abuse 방지 수준의 속도 범프에 불과.
+  - `.env`/`.dev.vars` 간 키 동기화 부담, 테스트에서 인증 헤더 누락으로 인한 false failure 발생.
+  - 비로그인 유저도 프록시를 사용해야 하므로 사용자별 인증 적용 불가.
+- 결정:
+  - `PROXY_API_KEY` / `VITE_PROXY_API_KEY` 완전 제거.
+  - 대신 두 가지 실질적 방어로 대체:
+    1. **CORS `ALLOWED_ORIGINS`**: 브라우저 요청을 origin 기반으로 제한 (이미 존재).
+    2. **SSRF Guard**: 내부 IP(127.x, 10.x, 192.168.x, 172.16-31.x, 169.254.x), localhost, IPv6, cloud metadata 엔드포인트를 403으로 차단.
+  - 프로덕션 배포 후 Cloudflare Rate Limiting 규칙 추가 권장.
+- 결과:
+  - 환경 변수 관리 단순화 (`.env`에는 `VITE_PROXY_URL`만, `.dev.vars`에는 `ALLOWED_ORIGINS`만).
+  - 허위 보안감 제거. 실질적 방어(CORS + SSRF)에 집중.
+  - 테스트 코드 단순화 (인증 관련 테스트 3개 제거, 나머지에서 헤더 불필요).
+

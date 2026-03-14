@@ -16,7 +16,6 @@ export class WebHttpAdapter extends BaseHttpAdapter {
 
 		if (options?.proxy) {
 			const proxyUrl = import.meta.env.VITE_PROXY_URL;
-			const proxyKey = import.meta.env.VITE_PROXY_API_KEY;
 
 			if (!proxyUrl) {
 				console.warn('[WebHttpAdapter] VITE_PROXY_URL is not set. Falling back to direct fetch.');
@@ -31,9 +30,6 @@ export class WebHttpAdapter extends BaseHttpAdapter {
 				proxyHeaders.set('x-target-url', url);
 				proxyHeaders.set('x-target-method', baseInit.method || 'GET');
 				proxyHeaders.set('x-target-headers', encodeURIComponent(JSON.stringify(targetHeaders)));
-				if (proxyKey) {
-					proxyHeaders.set('x-proxy-api-key', proxyKey);
-				}
 
 				finalUrl = proxyUrl;
 				baseInit = {
