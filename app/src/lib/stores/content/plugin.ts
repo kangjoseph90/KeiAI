@@ -1,8 +1,8 @@
 import { get } from 'svelte/store';
 import { PluginService, SettingsService, type PluginFields, type Plugin } from '$lib/services';
-import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
+import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { plugins, appSettings } from '../state';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 export async function loadPlugins(): Promise<void> {
 	const settings = get(appSettings);

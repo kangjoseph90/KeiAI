@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PluginService, type PluginFields } from '$lib/services/content/plugin';
 import type { PluginRecord } from '$lib/adapters/db';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 // Mock dependencies
 vi.mock('$lib/crypto', () => ({
@@ -26,7 +26,7 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'test-plugin-id')
 }));
 

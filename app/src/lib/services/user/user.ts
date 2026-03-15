@@ -13,10 +13,10 @@ import { localDB, TABLES } from '$lib/adapters/db';
 import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
 import { generateMasterKey, generateIdentityKeyPair } from '$lib/crypto';
-import { generateId } from '$lib/shared/id';
+import { generateId } from '$lib/utils/id';
 import { setSession } from '../session';
 import { minidenticon } from 'minidenticons';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 export class UserService {
 	/**

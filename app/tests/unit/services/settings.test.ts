@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SettingsService, type AppSettings } from '$lib/services/content/settings';
 import type { SettingsRecord } from '$lib/adapters/db';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 // Mock dependencies
 vi.mock('$lib/crypto', () => ({

@@ -36,9 +36,9 @@ import {
 	ScriptService,
 	SettingsService
 } from '$lib/services';
-import { AppError } from '$lib/shared/errors';
-import { generateId } from '$lib/shared/id';
-import { generateSortOrder } from '$lib/shared/ordering';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
+import { generateSortOrder } from '$lib/utils/ordering';
 import type {
 	CharacterDetail,
 	Character,
@@ -48,7 +48,7 @@ import type {
 	AppSettings,
 	CharacterDataFields
 } from '$lib/services';
-import type { FolderDef, OrderedRef } from '$lib/shared/types';
+import type { FolderDef, OrderedRef } from '$lib/types/refs';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
@@ -81,11 +81,11 @@ vi.mock('$lib/services', () => ({
 }));
 
 // Mock Shared
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'new-id')
 }));
 
-vi.mock('$lib/shared/ordering', () => ({
+vi.mock('$lib/utils/ordering', () => ({
 	generateSortOrder: vi.fn(() => 'sort-order'),
 	sortByRefs: vi.fn((list) => list)
 }));

@@ -17,7 +17,7 @@ import { getActiveSession } from '../session';
 import { appAsset, type AssetRecord, type AssetFields } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 import { encryptAsset } from '../asset/util';
 import { BaseSyncEngine, type SyncStatus } from './base';
 import { uploadAsset, deleteRemoteAsset, promoteAsset } from '../asset/remote';

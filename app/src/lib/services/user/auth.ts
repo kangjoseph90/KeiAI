@@ -35,7 +35,7 @@ import { getActiveSession } from '../session';
 import { UserService } from './user';
 import { appUser } from '$lib/adapters/user';
 import { DataSyncService, AssetSyncService, SyncManager } from '../sync';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 export class AuthService {
 	// ─── PB Connection Helpers ────────────────────────────────────────

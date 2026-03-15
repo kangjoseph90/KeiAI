@@ -2,23 +2,8 @@
  * Chat Pipeline — KeiAI
  *
  * runChat(chatId) is the single entry point for a full AI response cycle.
- * It only knows the chatId — all context is loaded directly from the Service Layer.
+ * All context is loaded at the top as plain data — no wrapper classes.
  *
- * Design: Stateless pipeline with internal provider selection.
- *
- *   - Provider selection based on preset configuration
- *   - Prompt building from context (character, lorebooks, scripts, etc.)
- *   - Script processing (input/request/output/display)
- *   - Support for different models (chat, translation, summarization, etc.)
- *   - Optional provider override for testing
- *
- * Current state:
- *   ✅ Streaming lifecycle (createTask → chunks → finalize)
- *   ✅ Abort handling (user Stop → optional partial save)
- *   ✅ Error surfacing (setChatError → UI bubble stays for dismiss)
- *   ✅ PromptBuilder integration
- *   ✅ Internal provider selection
- *   ✅ Script processing (request + output)
  */
 
 import {
@@ -26,19 +11,25 @@ import {
 	updateChatTask,
 	setChatTaskError,
 	getChatTask,
-	clearChatTask,
-	consumeChatTask
-} from '$lib/stores/task/chat';
+	clearChatTask
+} from '$lib/stores/tasks/chat';
+import {
+	getChatDetail,
+	getCharacterDetail,
+	getAppSettings,
+	getPersona,
+	getPresetDetail,
+	getMergedLorebooks,
+	getMergedScripts
+} from '$lib/stores';
 import type { StreamProvider } from '$lib/llm/types';
-import type { OpenAIChat } from '$lib/runtime/prompt/types';
 import { ToolCallService } from '$lib/services/content/tool';
+import { MessageService, type Message } from '$lib/services/content/message';
 import { updateMessage } from '$lib/stores/content/message';
 import { createMessage } from '$lib/stores/content/message';
-import { MessageService } from '$lib/services/content/message';
-import { ChatContext } from '../context/chat';
-import { buildPrompt } from '../prompt/builder';
-import { selectProvider } from './provider';
-import { applyScripts } from '../scripts/executor';
+import { buildPrompt } from '../llm/prompt/builder';
+import { selectProvider } from '../llm/provider';
+import { applyScripts } from '../scripts';
 
 export interface RunChatOptions {
 	/** Save partial content to DB when the user aborts. Default: true */
@@ -83,29 +74,43 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		// ── 1. Register task + open streaming bubble ────────────────────
 		createChatTask(chatId);
 
-		// ── 2. Build Context ───────────────────────────────────────────
-		const ctx = new ChatContext(chatId);
+		// ── 2. Load all context as plain data ─────────────────────────
+		const chat = await getChatDetail(chatId);
+		const [character, settings, lorebooks, scripts] = await Promise.all([
+			getCharacterDetail(chat.characterId),
+			getAppSettings(),
+			getMergedLorebooks(chatId),
+			getMergedScripts(chatId)
+		]);
 
-		// ── 3. Build Prompt ────────────────────────────────────────────
-		const messages: OpenAIChat[] = await buildPrompt(ctx);
+		const preset = settings.presetId ? await getPresetDetail(settings.presetId) : null;
 
-		// ── 4. Get Scripts ─────────────────────────────────────────────
-		const scripts = await ctx.getScripts();
+		// Resolve persona: character override → global fallback → null
+		let persona = null;
+		const personaId = character.data.personaId ?? settings.personaId;
+		if (personaId) {
+			persona = await getPersona(personaId);
+		}
 
-		// ── 5. Apply Request Scripts ──────────────────────────────────
+		// Load messages for history
+		const messages: Message[] = await MessageService.getMessagesAfter(chatId, '');
+
+		// ── 3. Build Prompt (pure function) ──────────────────────────
+		const prompt = buildPrompt({ character, preset, persona, lorebooks, messages });
+
+		// ── 4. Apply Request Scripts ─────────────────────────────────
 		const processedMessages = await Promise.all(
-			messages.map(async (msg) => ({
+			prompt.map(async (msg) => ({
 				...msg,
 				content: await applyScripts(msg.content, scripts, 'request')
 			}))
 		);
 
-		// ── 6. Select Provider ─────────────────────────────────────────
-		const provider = opts.providerOverride ?? (await selectProvider(ctx));
+		// ── 5. Select Provider ──────────────────────────────────────
+		const provider = opts.providerOverride ?? selectProvider(preset, settings);
 
-		// ── 7. Stream chunks ─────────────────────────────────────────
+		// ── 6. Stream chunks ────────────────────────────────────────
 		for await (const state of provider.stream(processedMessages, controller.signal)) {
-			// Apply output scripts to each chunk
 			const processedState = {
 				...state,
 				content: await applyScripts(state.content, scripts, 'output')
@@ -113,7 +118,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 			updateChatTask(chatId, processedState);
 		}
 
-		// ── 8. Finalize ───────────────────────────────────────────────
+		// ── 7. Finalize ─────────────────────────────────────────────
 		const finalTask = getChatTask(chatId);
 		if (!finalTask || (finalTask.content.length === 0 && !finalTask.toolCalls?.length)) {
 			throw new Error('Empty response from model');
@@ -122,7 +127,6 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		await _persistTask(chatId);
 	} catch (error) {
 		if (error instanceof DOMException && error.name === 'AbortError') {
-			// User clicked Stop — save partial content if opted in
 			const task = getChatTask(chatId);
 			if (opts.saveOnAbort && task && task.content.length > 0) {
 				await _persistTask(chatId);
@@ -132,7 +136,6 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 			return;
 		}
 
-		// Surface all other errors to UI
 		const msg = error instanceof Error ? error.message : 'Unknown pipeline error';
 		setChatTaskError(chatId, msg);
 	} finally {

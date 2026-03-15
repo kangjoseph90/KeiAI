@@ -9,7 +9,7 @@ import { PersonaService, type PersonaFields } from '$lib/services/content/person
 import { getActiveSession } from '$lib/services/session';
 import { localDB, type PersonaRecord } from '$lib/adapters/db';
 import { encrypt, decrypt } from '$lib/crypto';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 import { encryptedWriteQueue } from '$lib/services/content/write_queue';
 
 // Mock all dependencies
@@ -31,7 +31,7 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'persona-123')
 }));
 

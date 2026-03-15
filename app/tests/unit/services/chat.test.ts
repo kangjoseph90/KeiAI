@@ -41,11 +41,11 @@ vi.mock('$lib/services/content/guards', () => ({
 	assertChatOwnedByCharacter: vi.fn()
 }));
 
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'test-chat-id')
 }));
 
-vi.mock('$lib/shared/defaults', () => ({
+vi.mock('$lib/utils/defaults', () => ({
 	deepMerge: vi.fn((target: unknown, source: unknown) => {
 		if (
 			typeof target === 'object' &&
@@ -63,8 +63,8 @@ import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
 import { assertCharacterExists, assertChatOwnedByCharacter } from '$lib/services/content/guards';
-import { generateId } from '$lib/shared/id';
-import { deepMerge } from '$lib/shared/defaults';
+import { generateId } from '$lib/utils/id';
+import { deepMerge } from '$lib/utils/defaults';
 
 describe('ChatService', () => {
 	const mockMasterKey = {} as CryptoKey;

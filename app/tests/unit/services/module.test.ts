@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ModuleService, type ModuleFields } from '$lib/services/content/module';
 import type { ModuleRecord, BaseRecord } from '$lib/adapters/db';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 // Mock dependencies
 vi.mock('$lib/crypto', () => ({
@@ -28,7 +28,7 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'test-module-id')
 }));
 

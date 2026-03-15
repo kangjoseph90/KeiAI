@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AppError, getErrorMessage, isErrorCode } from '$lib/shared/errors';
+import { AppError, getErrorMessage, isErrorCode } from '$lib/types/errors';
 
 describe('Shared Errors', () => {
 	describe('AppError', () => {

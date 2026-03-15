@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AssetService } from '$lib/services/asset';
 import type { AssetRecord, AssetRegistryRecord } from '$lib/adapters/asset';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 vi.mock('$lib/services/session', () => ({
 	getActiveSession: vi.fn()
@@ -45,7 +45,7 @@ vi.mock('$lib/crypto', () => ({
 	sha256: vi.fn()
 }));
 
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'asset-123')
 }));
 

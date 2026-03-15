@@ -18,8 +18,8 @@ import {
 import { chats, activeChat, activeCharacter, messages, chatLorebooks } from '$lib/stores/state';
 import { ChatService, LorebookService, CharacterService } from '$lib/services';
 import { loadInitialMessages } from '$lib/stores/content/message';
-import { AppError } from '$lib/shared/errors';
-import { generateId } from '$lib/shared/id';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
 import type {
 	ChatDetail,
 	Chat,
@@ -29,7 +29,7 @@ import type {
 	ChatDataFields,
 	ChatSummaryFields
 } from '$lib/services';
-import type { FolderDef } from '$lib/shared/types';
+import type { FolderDef } from '$lib/types/refs';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
@@ -58,11 +58,11 @@ vi.mock('$lib/stores/content/message', () => ({
 }));
 
 // Mock Shared
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'new-id')
 }));
 
-vi.mock('$lib/shared/ordering', () => ({
+vi.mock('$lib/utils/ordering', () => ({
 	generateSortOrder: vi.fn(() => 'sort-order'),
 	sortByRefs: vi.fn((list) => list)
 }));

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deepMerge } from '$lib/shared/defaults';
+import { deepMerge } from '$lib/utils/defaults';
 
 describe('Shared defaults', () => {
 	describe('deepMerge', () => {

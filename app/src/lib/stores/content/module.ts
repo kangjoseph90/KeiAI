@@ -12,11 +12,11 @@ import {
 	type ScriptFields,
 	type Script
 } from '$lib/services';
-import type { OrderedRef, FolderDef } from '$lib/shared/types';
-import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
+import type { OrderedRef, FolderDef } from '$lib/types/refs';
+import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { modules, appSettings, moduleResources } from '../state';
-import { AppError } from '$lib/shared/errors';
-import { generateId } from '$lib/shared/id';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
 
 export async function getModule(moduleId: string): Promise<Module> {
 	const active = get(modules).find((m) => m.id === moduleId);

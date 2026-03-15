@@ -12,7 +12,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { Upload, UserRoundPen } from 'lucide-svelte';
-	import { getErrorMessage } from '$lib/shared/errors';
+	import { getErrorMessage } from '$lib/types/errors';
 
 	let profileName = $state('');
 	let profileAvatar = $state('');

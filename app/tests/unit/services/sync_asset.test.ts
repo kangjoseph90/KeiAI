@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AssetSyncService } from '$lib/services/sync/asset';
 import type { AssetRecord, AssetRegistryRecord } from '$lib/adapters/asset';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 vi.mock('$lib/adapters/pb', () => ({
 	pb: {

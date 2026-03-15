@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { LRUCache } from '$lib/shared/cache';
+import { LRUCache } from '$lib/utils/cache';
 
 describe('LRUCache', () => {
 	describe('basic operations', () => {

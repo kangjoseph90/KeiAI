@@ -8,11 +8,11 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ChatSummaryRecord, type ChatDataRecord } from '$lib/adapters/db';
-import type { FolderDef, OrderedRef } from '$lib/shared/types';
-import { deepMerge } from '$lib/shared/defaults';
+import type { FolderDef, OrderedRef } from '$lib/types/refs';
+import { deepMerge } from '$lib/utils/defaults';
 import { assertCharacterExists, assertChatOwnedByCharacter } from './guards';
-import { AppError } from '$lib/shared/errors';
-import { generateId } from '$lib/shared/id';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────

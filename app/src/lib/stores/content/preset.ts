@@ -6,9 +6,9 @@ import {
 	type PresetDetail
 } from '$lib/services/content/preset';
 import { SettingsService } from '$lib/services';
-import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
+import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { presets, activePreset, appSettings } from '../state';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 export async function getPresetDetail(id: string): Promise<PresetDetail> {
 	const active = get(activePreset);

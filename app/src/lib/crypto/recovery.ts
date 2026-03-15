@@ -16,7 +16,7 @@
 import { RECOVERY_CODE_LENGTH, RECOVERY_FRONT_LENGTH } from './constants';
 import { wrapMasterKey } from './masterKey';
 import type { RecoveryCodeParts } from './types';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 

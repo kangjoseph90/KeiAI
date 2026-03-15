@@ -1,5 +1,5 @@
 import type { IStorageAdapter } from './types';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 /**
  * WebStorageAdapter — OPFS-backed virtual file system for Web/PWA

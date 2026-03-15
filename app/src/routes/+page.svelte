@@ -28,7 +28,7 @@
 		type ViewMode
 	} from '$lib/router';
 	import type { ComponentType } from 'svelte';
-	import { getErrorMessage } from '$lib/shared/errors';
+	import { getErrorMessage } from '$lib/types/errors';
 
 	import CharactersView from '$lib/views/CharactersView.svelte';
 	import ChatsView from '$lib/views/ChatsView.svelte';

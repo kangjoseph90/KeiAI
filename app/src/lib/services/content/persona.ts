@@ -1,10 +1,10 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type PersonaRecord } from '$lib/adapters/db';
-import { deepMerge } from '$lib/shared/defaults';
-import { AppError } from '$lib/shared/errors';
-import type { AssetRef } from '$lib/shared/types';
-import { generateId } from '$lib/shared/id';
+import { deepMerge } from '$lib/utils/defaults';
+import { AppError } from '$lib/types/errors';
+import type { AssetRef } from '$lib/types/refs';
+import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ────────────────────────────────────────────────────

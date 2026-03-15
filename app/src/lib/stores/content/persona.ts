@@ -1,9 +1,9 @@
 import { get } from 'svelte/store';
 import { PersonaService, type PersonaFields, type Persona } from '$lib/services/content/persona';
 import { SettingsService } from '$lib/services';
-import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
+import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { personas, appSettings } from '../state';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 export async function getPersona(personaId: string): Promise<Persona> {
 	const active = get(personas).find((p) => p.id === personaId);

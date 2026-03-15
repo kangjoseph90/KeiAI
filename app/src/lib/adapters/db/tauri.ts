@@ -8,7 +8,7 @@ import type {
 	DatabaseWriteOptions
 } from './types';
 import { TABLES } from './types';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 import { DatabaseWriteEventEmitter } from './events';
 
 /**

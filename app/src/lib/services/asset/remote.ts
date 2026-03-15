@@ -7,7 +7,7 @@
 
 import { pb } from '$lib/adapters/pb';
 import { appHttp } from '$lib/adapters/http';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 import type { AssetKind } from './types';
 
 // ─── Types ───────────────────────────────────────────────────────────

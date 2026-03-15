@@ -23,7 +23,7 @@
 	import ToolCallGroup from './ToolCallGroup.svelte';
 	import type { ToolCall } from '$lib/services/content/tool';
 	import { activeScripts } from '$lib/stores';
-	import { applyScripts } from '$lib/runtime/scripts/executor';
+	import { applyScripts } from '$lib/scripts';
 	import { marked } from 'marked';
 	import morphdom from 'morphdom';
 	import DOMPurify from 'dompurify';

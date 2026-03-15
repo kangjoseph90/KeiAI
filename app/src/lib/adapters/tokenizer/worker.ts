@@ -9,7 +9,7 @@
  */
 
 import { expose } from 'comlink';
-import type { TokenizerEncoding } from '$lib/shared/models';
+import type { TokenizerEncoding } from '$lib/types/models';
 
 // ─── Encoder Interface ───────────────────────────────────────────────────────
 

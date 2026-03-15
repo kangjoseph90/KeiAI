@@ -16,10 +16,9 @@
 		createChatLorebook,
 		deleteChatLorebook
 	} from '$lib/stores';
-	import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/runtime/task';
-	import { MockStreamProvider } from '$lib/llm/mock';
+	import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
 	import { ToolCallService } from '$lib/services/content/tool';
-	import { applyScripts } from '$lib/runtime/scripts/executor';
+	import { applyScripts } from '$lib/scripts';
 
 	let { chatId }: { chatId: string } = $props();
 

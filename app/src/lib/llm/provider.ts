@@ -1,14 +1,13 @@
 /**
  * Provider Selection — KeiAI
  *
- * Selects the appropriate StreamProvider based on preset configuration.
- * This allows different models for different use cases (chat, translation, etc.).
+ * Pure function: preset + settings in, StreamProvider out.
  */
 
 import type { StreamProvider } from '$lib/llm/types';
-import { MockStreamProvider } from '$lib/llm/mock';
+import { MockStreamProvider } from '$lib/llm/providers';
 import { OpenAIStreamProvider } from '$lib/llm/providers/openai';
-import type { ChatContext } from '../context/chat';
+import type { PresetDetail, AppSettings } from '$lib/services';
 
 const OPENAI_BASE_URL = 'https://api.githubcopilot.com';
 
@@ -16,13 +15,9 @@ const OPENAI_BASE_URL = 'https://api.githubcopilot.com';
  * Select the appropriate provider based on preset + app settings.
  * Falls back to MockStreamProvider when no API key is configured.
  */
-export async function selectProvider(ctx: ChatContext): Promise<StreamProvider> {
-	const settings = await ctx.getSettings();
-	const preset = await ctx.getPreset();
-
+export function selectProvider(preset: PresetDetail | null, settings: AppSettings): StreamProvider {
 	const model = preset?.data.model ?? '';
 
-	// Determine which API key to use based on model name
 	const apiKey = resolveApiKey(model, settings.apiKeys);
 
 	if (!apiKey) {
@@ -65,7 +60,5 @@ function resolveApiKey(
  * For now, defaults to OpenAI. Extendable for custom endpoints later.
  */
 function resolveBaseUrl(model: string): string {
-	// Anthropic models through OpenAI-compatible proxy (e.g. OpenRouter)
-	// or direct OpenAI API
 	return OPENAI_BASE_URL;
 }

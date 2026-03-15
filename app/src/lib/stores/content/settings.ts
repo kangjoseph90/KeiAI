@@ -1,10 +1,10 @@
 import { get } from 'svelte/store';
 import { SettingsService, type AppSettingsContent, type AppSettings } from '$lib/services';
 import { appSettings } from '../state';
-import type { OrderedRef, FolderDef } from '$lib/shared/types';
-import { generateSortOrder } from '$lib/shared/ordering';
-import { AppError } from '$lib/shared/errors';
-import { generateId } from '$lib/shared/id';
+import type { OrderedRef, FolderDef } from '$lib/types/refs';
+import { generateSortOrder } from '$lib/utils/ordering';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
 
 export async function getAppSettings(): Promise<AppSettings> {
 	const active = get(appSettings);

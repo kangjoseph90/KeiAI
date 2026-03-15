@@ -1,5 +1,5 @@
 import type { IClipboardAdapter } from './types';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 /**
  * Web Clipboard Adapter

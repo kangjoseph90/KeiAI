@@ -6,7 +6,7 @@ import {
 	type TableName
 } from '$lib/adapters/db';
 import { getActiveSession } from '../session';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 const WRITE_DEBOUNCE_MS = 400;
 const WRITE_MAX_WAIT_MS = 2000;

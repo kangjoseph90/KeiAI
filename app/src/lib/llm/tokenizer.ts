@@ -6,8 +6,8 @@
  */
 
 import { appTokenizer } from '$lib/adapters/tokenizer';
-import { LRUCache } from '$lib/shared/cache';
-import type { TokenizerEncoding } from '$lib/shared/models';
+import { LRUCache } from '$lib/utils/cache';
+import type { TokenizerEncoding } from '$lib/types/models';
 
 // ─── Cache ───────────────────────────────────────────────────────────────────
 

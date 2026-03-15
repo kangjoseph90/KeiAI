@@ -1,10 +1,10 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ModuleRecord } from '$lib/adapters/db';
-import type { AssetRef, FolderDef, OrderedRef } from '$lib/shared/types';
-import { deepMerge } from '$lib/shared/defaults';
-import { AppError } from '$lib/shared/errors';
-import { generateId } from '$lib/shared/id';
+import type { AssetRef, FolderDef, OrderedRef } from '$lib/types/refs';
+import { deepMerge } from '$lib/utils/defaults';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────

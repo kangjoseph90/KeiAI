@@ -7,9 +7,9 @@
  */
 
 import type { ITokenizerAdapter } from './types';
-import type { TokenizerEncoding } from '$lib/shared/models';
+import type { TokenizerEncoding } from '$lib/types/models';
 import { wrap, type Remote } from 'comlink';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 // ─── Worker Type ────────────────────────────────────────────────────────────
 

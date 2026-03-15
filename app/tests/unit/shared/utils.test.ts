@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateId } from '$lib/shared/id';
+import { generateId } from '$lib/utils/id';
 
 describe('Shared Utilities', () => {
 	describe('id (generateId)', () => {

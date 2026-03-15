@@ -7,7 +7,7 @@ import {
 	type ScriptRecord,
 	type MessageRecord
 } from '$lib/adapters/db';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 export async function assertCharacterExists(characterId: string): Promise<void> {
 	const record = await localDB.getRecord<CharacterSummaryRecord>('characterSummaries', characterId);

@@ -10,7 +10,7 @@
 
 import { getActiveSession } from '../session';
 import { appUser, type UserRecord } from '$lib/adapters/user';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 

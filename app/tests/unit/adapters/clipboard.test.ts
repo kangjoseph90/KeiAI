@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebClipboardAdapter } from '$lib/adapters/clipboard/web';
 import { TauriClipboardAdapter } from '$lib/adapters/clipboard/tauri';
 import { readText, writeText, readImage } from '@tauri-apps/plugin-clipboard-manager';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
 	readText: vi.fn(),

@@ -7,9 +7,9 @@
  */
 
 import type { ITokenizerAdapter } from './types';
-import type { TokenizerEncoding } from '$lib/shared/models';
+import type { TokenizerEncoding } from '$lib/types/models';
 import { invoke } from '@tauri-apps/api/core';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 export class TauriTokenizerAdapter implements ITokenizerAdapter {
 	async count(text: string, encoding: TokenizerEncoding): Promise<number> {
