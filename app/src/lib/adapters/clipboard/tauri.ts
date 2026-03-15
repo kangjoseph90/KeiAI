@@ -1,7 +1,7 @@
 import { readText, writeText, readImage } from '@tauri-apps/plugin-clipboard-manager';
 import type { Image } from '@tauri-apps/api/image';
 import type { IClipboardAdapter } from './types';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 /**
  * Tauri Clipboard Adapter

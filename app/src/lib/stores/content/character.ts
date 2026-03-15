@@ -14,9 +14,9 @@ import {
 	type Lorebook,
 	type Script
 } from '$lib/services';
-import type { OrderedRef, FolderDef } from '$lib/shared/types';
+import type { OrderedRef, FolderDef } from '$lib/types/refs';
 import { clearActiveChat } from './chat';
-import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
+import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
 	characters,
 	activeCharacter,
@@ -28,8 +28,8 @@ import {
 	appSettings,
 	activeCharacterId
 } from '../state';
-import { AppError } from '$lib/shared/errors';
-import { generateId } from '$lib/shared/id';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
 
 export async function getCharacterDetail(characterId: string): Promise<CharacterDetail> {
 	const active = get(activeCharacter);

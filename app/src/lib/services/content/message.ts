@@ -2,10 +2,10 @@ import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type MessageRecord } from '$lib/adapters/db';
 import { generateKeyBetween } from 'fractional-indexing';
-import { deepMerge } from '$lib/shared/defaults';
+import { deepMerge } from '$lib/utils/defaults';
 import { assertChatExists, assertMessageInChat } from './guards';
-import { AppError } from '$lib/shared/errors';
-import { generateId } from '$lib/shared/id';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
 import type { ToolCallAbstract } from './tool';
 import { encryptedWriteQueue } from './write_queue';
 

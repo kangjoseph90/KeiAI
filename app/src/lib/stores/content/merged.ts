@@ -5,7 +5,7 @@ import {
 	type Script,
 	type Module
 } from '$lib/services';
-import { sortByRefs } from '$lib/shared/ordering';
+import { sortByRefs } from '$lib/utils/ordering';
 import { getChatDetail } from './chat';
 import { getCharacterDetail } from './character';
 import { getAppSettings } from './settings';

@@ -10,8 +10,8 @@ import {
 	type LorebookFields,
 	type Lorebook
 } from '$lib/services';
-import type { OrderedRef, FolderDef } from '$lib/shared/types';
-import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
+import type { OrderedRef, FolderDef } from '$lib/types/refs';
+import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
 	chats,
 	activeChat,
@@ -22,8 +22,8 @@ import {
 	activeChatId
 } from '../state';
 import { loadInitialMessages } from './message';
-import { AppError } from '$lib/shared/errors';
-import { generateId } from '$lib/shared/id';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
 
 export async function getChatDetail(chatId: string): Promise<ChatDetail> {
 	const active = get(activeChat);

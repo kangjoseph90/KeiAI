@@ -56,7 +56,7 @@ vi.mock('$lib/crypto', () => ({
 	generateIdentityKeyPair: vi.fn()
 }));
 
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'test-guest-id')
 }));
 

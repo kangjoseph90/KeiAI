@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ScriptService } from '$lib/services/content/script';
 import type { BaseRecord } from '$lib/adapters/db/types';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 // Mock dependencies
 vi.mock('$lib/crypto', () => ({
@@ -34,7 +34,7 @@ vi.mock('$lib/services/content/guards', () => ({
 	assertScriptOwnedBy: vi.fn()
 }));
 
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'test-id')
 }));
 

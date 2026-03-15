@@ -8,8 +8,7 @@
  * CONTRACT: Yields cumulative content (e.g. "1", "12", "123").
  */
 
-import type { StreamContent, StreamProvider } from '../types';
-import type { OpenAIChat } from '$lib/runtime/prompt/types';
+import type { StreamContent, StreamProvider, OpenAIChat } from '../types';
 import type { ToolCallRequest } from '$lib/services/content/tool';
 import { appHttp } from '$lib/adapters/http';
 

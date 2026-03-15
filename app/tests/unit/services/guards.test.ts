@@ -14,7 +14,7 @@ import {
 	type ScriptRecord,
 	type MessageRecord
 } from '$lib/adapters/db';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 // Mock localDB
 vi.mock('$lib/adapters/db', () => ({

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { WriteEventEmitter } from '$lib/shared/events';
+import { WriteEventEmitter } from '$lib/utils/events';
 
 interface TestEvent {
 	id: string;

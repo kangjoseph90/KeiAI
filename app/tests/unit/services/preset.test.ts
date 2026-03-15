@@ -13,7 +13,7 @@ import {
 import { getActiveSession } from '$lib/services/session';
 import { localDB, type PresetSummaryRecord, type PresetDataRecord } from '$lib/adapters/db';
 import { encrypt, decrypt } from '$lib/crypto';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 // Mock all dependencies
 vi.mock('$lib/crypto', () => ({
@@ -35,7 +35,7 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'preset-123')
 }));
 

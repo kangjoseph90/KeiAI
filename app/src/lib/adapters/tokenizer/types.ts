@@ -4,7 +4,7 @@
  * Interface for token counting across different LLM models.
  */
 
-import type { TokenizerEncoding } from '$lib/shared/models';
+import type { TokenizerEncoding } from '$lib/types/models';
 
 /**
  * Tokenizer Adapter Interface

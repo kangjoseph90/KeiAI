@@ -1,4 +1,4 @@
-import { WriteEventEmitter } from '$lib/shared/events';
+import { WriteEventEmitter } from '$lib/utils/events';
 import type { UserWriteEvent } from './types';
 
 export class UserWriteEventEmitter extends WriteEventEmitter<UserWriteEvent> {}

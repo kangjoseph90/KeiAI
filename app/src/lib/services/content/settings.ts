@@ -1,9 +1,9 @@
 import { decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type SettingsRecord } from '$lib/adapters/db';
-import type { OrderedRef, FolderDef, ResourceRef } from '$lib/shared/types';
-import { deepMerge } from '$lib/shared/defaults';
-import { AppError } from '$lib/shared/errors';
+import type { OrderedRef, FolderDef, ResourceRef } from '$lib/types/refs';
+import { deepMerge } from '$lib/utils/defaults';
+import { AppError } from '$lib/types/errors';
 import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────

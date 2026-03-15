@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateSortOrder, sortByRefs } from '$lib/shared/ordering';
-import type { OrderedRef } from '$lib/shared/types';
+import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
+import type { OrderedRef } from '$lib/types/refs';
 
 describe('Ordering Utilities', () => {
 	describe('generateSortOrder', () => {

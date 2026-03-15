@@ -13,7 +13,7 @@ import type {
 	CharacterSummaryFields,
 	CharacterDataFields
 } from '$lib/services/content/character';
-import type { AppError } from '$lib/shared/errors';
+import type { AppError } from '$lib/types/errors';
 import type { BaseRecord } from '$lib/adapters/db/types';
 
 // Mock all dependencies
@@ -40,11 +40,11 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'test-id-123')
 }));
 
-vi.mock('$lib/shared/defaults', () => ({
+vi.mock('$lib/utils/defaults', () => ({
 	deepMerge: vi.fn((target: unknown, source: unknown) => {
 		if (
 			typeof target === 'object' &&
@@ -61,8 +61,8 @@ vi.mock('$lib/shared/defaults', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { generateId } from '$lib/shared/id';
-import { deepMerge } from '$lib/shared/defaults';
+import { generateId } from '$lib/utils/id';
+import { deepMerge } from '$lib/utils/defaults';
 
 describe('CharacterService', () => {
 	const mockMasterKey = {} as CryptoKey;

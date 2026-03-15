@@ -21,11 +21,11 @@ vi.mock('$lib/services', () => ({
 }));
 
 // Mock Shared
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'new-id')
 }));
 
-vi.mock('$lib/shared/ordering', () => ({
+vi.mock('$lib/utils/ordering', () => ({
 	generateSortOrder: vi.fn(() => 'sort-order')
 }));
 

@@ -6,7 +6,6 @@
  */
 
 import type { ToolCallRequest } from '$lib/services/content/tool';
-import type { OpenAIChat } from '$lib/runtime/prompt/types';
 
 /**
  * Abstract streaming interface for any LLM source.
@@ -23,4 +22,11 @@ export type StreamContent = {
 
 export interface StreamProvider {
 	stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<StreamContent>;
+}
+
+// OpenAI-compatible chat message type
+export interface OpenAIChat {
+	role: 'system' | 'user' | 'assistant';
+	content: string;
+	thought?: string;
 }

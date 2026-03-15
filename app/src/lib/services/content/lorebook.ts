@@ -1,10 +1,10 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type LorebookRecord } from '$lib/adapters/db';
-import { deepMerge } from '$lib/shared/defaults';
+import { deepMerge } from '$lib/utils/defaults';
 import { assertLorebookOwnedBy, assertOwnedResourceParentExists } from './guards';
-import { AppError } from '$lib/shared/errors';
-import { generateId } from '$lib/shared/id';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────

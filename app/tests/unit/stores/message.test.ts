@@ -16,7 +16,7 @@ import {
 	type Chat,
 	type ChatDetail
 } from '$lib/services';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 
 // Mock Services
 vi.mock('$lib/services', () => ({

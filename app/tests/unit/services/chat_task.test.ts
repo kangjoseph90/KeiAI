@@ -5,12 +5,12 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { runChat, stopChat, dismissChat } from '$lib/runtime/task/chat';
+import { runChat, stopChat, dismissChat } from '$lib/tasks/chat';
 import type { StreamProvider, StreamContent } from '$lib/llm/types';
 
 // ─── Mock all dependencies ───────────────────────────────────────────────────
 
-vi.mock('$lib/stores/task/chat', () => ({
+vi.mock('$lib/stores/tasks/chat', () => ({
 	createChatTask: vi.fn(),
 	updateChatTask: vi.fn(),
 	setChatTaskError: vi.fn(),
@@ -35,53 +35,32 @@ vi.mock('$lib/services/content/tool', () => ({
 
 vi.mock('$lib/services/content/message', () => ({
 	MessageService: {
-		get: vi.fn().mockResolvedValue(null)
+		get: vi.fn().mockResolvedValue(null),
+		getMessagesAfter: vi.fn().mockResolvedValue([])
 	}
 }));
 
-vi.mock('$lib/runtime/context/chat', () => {
-	class MockChatContext {
-		public readonly chatId: string;
-		constructor(chatId: string) {
-			this.chatId = chatId;
-		}
-		public async getPreset() {
-			return { id: 'preset-1', data: { templateOrder: [] } };
-		}
-		public async getScripts() {
-			return [];
-		}
-		public async getChat() {
-			return { id: this.chatId, characterId: 'char-1', messageCount: 0 };
-		}
-		public async getCharacter() {
-			return { id: 'char-1', data: { systemPrompt: '' } };
-		}
-		public async getSettings() {
-			return { personaId: null, presetId: null };
-		}
-		public async getPersona() {
-			return null;
-		}
-		public async getLorebooks() {
-			return [];
-		}
-		public async getMessages() {
-			return [];
-		}
-	}
-	return { ChatContext: MockChatContext };
-});
-
-vi.mock('$lib/runtime/prompt/builder', () => ({
-	buildPrompt: vi.fn().mockResolvedValue([])
+vi.mock('$lib/stores', () => ({
+	getChatDetail: vi
+		.fn()
+		.mockResolvedValue({ id: 'chat-1', characterId: 'char-1', messageCount: 0 }),
+	getCharacterDetail: vi.fn().mockResolvedValue({ id: 'char-1', data: { systemPrompt: '' } }),
+	getAppSettings: vi.fn().mockResolvedValue({ personaId: null, presetId: null, apiKeys: {} }),
+	getPersona: vi.fn().mockResolvedValue(null),
+	getPresetDetail: vi.fn().mockResolvedValue(null),
+	getMergedLorebooks: vi.fn().mockResolvedValue([]),
+	getMergedScripts: vi.fn().mockResolvedValue([])
 }));
 
-vi.mock('$lib/runtime/task/provider', () => ({
-	selectProvider: vi.fn().mockResolvedValue(null)
+vi.mock('$lib/llm/prompt/builder', () => ({
+	buildPrompt: vi.fn().mockReturnValue([])
 }));
 
-vi.mock('$lib/runtime/scripts/executor', () => ({
+vi.mock('$lib/llm/provider', () => ({
+	selectProvider: vi.fn().mockReturnValue(null)
+}));
+
+vi.mock('$lib/scripts', () => ({
 	applyScripts: vi.fn((text: string) => Promise.resolve(text))
 }));
 
@@ -92,10 +71,10 @@ import {
 	getChatTask,
 	clearChatTask,
 	consumeChatTask
-} from '$lib/stores/task/chat';
+} from '$lib/stores/tasks/chat';
 import { createMessage } from '$lib/stores/content/message';
-import { buildPrompt } from '$lib/runtime/prompt/builder';
-import { selectProvider } from '$lib/runtime/task/provider';
+import { buildPrompt } from '$lib/llm/prompt/builder';
+import { selectProvider } from '$lib/llm/provider';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -106,8 +85,8 @@ describe('Chat Pipeline', () => {
 		vi.clearAllMocks();
 		vi.mocked(getChatTask).mockReturnValue(null);
 		vi.mocked(consumeChatTask).mockReturnValue(null);
-		vi.mocked(buildPrompt).mockResolvedValue([{ role: 'user', content: 'test' }]);
-		vi.mocked(selectProvider).mockResolvedValue({
+		vi.mocked(buildPrompt).mockReturnValue([{ role: 'user', content: 'test' }]);
+		vi.mocked(selectProvider).mockReturnValue({
 			stream: vi.fn(async function* () {
 				yield { content: 'Response' };
 			})
@@ -166,7 +145,9 @@ describe('Chat Pipeline', () => {
 	});
 
 	it('should catch and surface errors during prompt building', async () => {
-		vi.mocked(buildPrompt).mockRejectedValue(new Error('Prompt error'));
+		vi.mocked(buildPrompt).mockImplementation(() => {
+			throw new Error('Prompt error');
+		});
 
 		await runChat(mockChatId);
 
@@ -264,7 +245,7 @@ describe('Chat Pipeline', () => {
 			})
 		};
 
-		vi.mocked(selectProvider).mockResolvedValue(mockProvider);
+		vi.mocked(selectProvider).mockReturnValue(mockProvider);
 		vi.mocked(getChatTask).mockReturnValue({
 			status: 'generating',
 			content: 'Preset response'

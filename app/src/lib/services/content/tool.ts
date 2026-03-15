@@ -1,9 +1,9 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ToolCallRecord } from '$lib/adapters/db';
-import { deepMerge } from '$lib/shared/defaults';
-import { AppError } from '$lib/shared/errors';
-import { generateId } from '$lib/shared/id';
+import { deepMerge } from '$lib/utils/defaults';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
 
 export type ToolCallStatus = 'pending' | 'success' | 'rejected' | 'error';

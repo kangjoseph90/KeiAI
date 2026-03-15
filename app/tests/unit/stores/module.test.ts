@@ -16,9 +16,9 @@ import {
 } from '$lib/stores/content/module';
 import { modules, appSettings, moduleResources } from '$lib/stores/state';
 import { ModuleService, LorebookService, ScriptService, SettingsService } from '$lib/services';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 import type { Module, ModuleContent, Lorebook, Script, AppSettings } from '$lib/services';
-import type { FolderDef } from '$lib/shared/types';
+import type { FolderDef } from '$lib/types/refs';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
@@ -47,11 +47,11 @@ vi.mock('$lib/services', () => ({
 }));
 
 // Mock Shared
-vi.mock('$lib/shared/id', () => ({
+vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'new-id')
 }));
 
-vi.mock('$lib/shared/ordering', () => ({
+vi.mock('$lib/utils/ordering', () => ({
 	generateSortOrder: vi.fn(() => 'sort-order'),
 	sortByRefs: vi.fn((list) => list)
 }));

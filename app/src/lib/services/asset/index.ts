@@ -18,8 +18,8 @@ import { getActiveSession } from '../session';
 import { appAsset, type AssetRegistryRecord } from '$lib/adapters/asset';
 import type { AssetFields, AssetRecord } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
-import { generateId } from '$lib/shared/id';
-import { AppError } from '$lib/shared/errors';
+import { generateId } from '$lib/utils/id';
+import { AppError } from '$lib/types/errors';
 import {
 	preprocessImage,
 	deriveAssetKey,

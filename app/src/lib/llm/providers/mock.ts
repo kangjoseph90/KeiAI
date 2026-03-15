@@ -9,8 +9,7 @@
  *   GenerationManager.generate(chatId, provider);
  */
 
-import type { StreamContent, StreamProvider } from './types';
-import type { OpenAIChat } from '$lib/runtime/prompt/types';
+import type { StreamContent, StreamProvider, OpenAIChat } from '../types';
 
 const MOCK_RESPONSES = [
 	'안녕하세요! **KeiAI**의 테스트 봇입니다.\n\n현재 이 메시지는 **스트리밍**으로 전달되고 있으며, 다음과 같은 특징이 있습니다:\n\n* **보안**: 모든 데이터는 E2EE로 암호화됩니다.\n* **로컬**: IndexedDB를 활용한 Local-First 구조입니다.\n* **속도**: 지연 시간이 거의 없는 즉각적인 인터페이스를 지향합니다.',

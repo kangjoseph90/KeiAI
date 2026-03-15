@@ -7,7 +7,7 @@
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { Button } from '$lib/components/ui/button';
 	import { UserPlus, Check, Trash2 } from 'lucide-svelte';
-	import { getErrorMessage } from '$lib/shared/errors';
+	import { getErrorMessage } from '$lib/types/errors';
 
 	let { open = $bindable(false) } = $props();
 

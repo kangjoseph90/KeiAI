@@ -6,10 +6,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AppError } from '$lib/shared/errors';
+import { AppError } from '$lib/types/errors';
 import { type Remote } from 'comlink';
 import type { ITokenizerAdapter } from '$lib/adapters/tokenizer';
-import type { TokenizerEncoding } from '$lib/shared/models';
+import type { TokenizerEncoding } from '$lib/types/models';
 import { WebTokenizerAdapter } from '$lib/adapters/tokenizer/web';
 import { TauriTokenizerAdapter } from '$lib/adapters/tokenizer/tauri';
 import * as comlink from 'comlink';
