@@ -161,7 +161,10 @@
 						<Input
 							id="preset-model"
 							value={editChatModel.id}
-							oninput={(e) => { editChatModel = { ...editChatModel, id: e.currentTarget.value }; handleDataChange(); }}
+							oninput={(e) => {
+								editChatModel = { ...editChatModel, id: e.currentTarget.value };
+								handleDataChange();
+							}}
 							placeholder="openai::gpt-5.4, custom::xxxxx, etc."
 							class="font-mono text-sm"
 						/>
