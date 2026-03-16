@@ -17,6 +17,7 @@
 		deletePreset,
 		getPresetDetail
 	} from '$lib/stores';
+	import type { ModelConfig } from '$lib/types/models';
 
 	// ── List State ─────────────────────────────────────────────────
 	let newNameInput = $state('');
@@ -25,12 +26,7 @@
 	let editingId = $state<string | null>(null);
 	let editName = $state('');
 	let editDescription = $state('');
-	let editModel = $state('');
-	let editTemperature = $state(0.9);
-	let editTopP = $state(1);
-	let editTopK = $state(0);
-	let editFrequencyPenalty = $state(0);
-	let editPresencePenalty = $state(0);
+	let editChatModel = $state<ModelConfig>({ id: '', provider: 'openai', parameters: {} });
 	let editMaxResponse = $state(600);
 	let editMaxContext = $state(4096);
 
@@ -48,12 +44,7 @@
 		editingId = id;
 		editName = detail.name;
 		editDescription = detail.description;
-		editModel = detail.data.model;
-		editTemperature = detail.data.temperature;
-		editTopP = detail.data.topP;
-		editTopK = detail.data.topK;
-		editFrequencyPenalty = detail.data.frequencyPenalty;
-		editPresencePenalty = detail.data.presencePenalty;
+		editChatModel = { ...detail.data.chatModel };
 		editMaxResponse = detail.data.maxResponse;
 		editMaxContext = detail.data.maxContext;
 	}
@@ -70,12 +61,7 @@
 	function handleDataChange() {
 		if (!editingId) return;
 		updatePresetData(editingId, {
-			model: editModel,
-			temperature: editTemperature,
-			topP: editTopP,
-			topK: editTopK,
-			frequencyPenalty: editFrequencyPenalty,
-			presencePenalty: editPresencePenalty,
+			chatModel: editChatModel,
 			maxResponse: editMaxResponse,
 			maxContext: editMaxContext
 		});
@@ -171,92 +157,23 @@
 
 					<!-- Model -->
 					<div class="flex flex-col gap-1.5">
-						<Label for="preset-model">Model</Label>
+						<Label for="preset-model">Chat Model ID</Label>
 						<Input
 							id="preset-model"
-							bind:value={editModel}
-							oninput={handleDataChange}
-							placeholder="gpt-4o, claude-3.5-sonnet, etc."
+							value={editChatModel.id}
+							oninput={(e) => { editChatModel = { ...editChatModel, id: e.currentTarget.value }; handleDataChange(); }}
+							placeholder="openai::gpt-5.4, custom::xxxxx, etc."
 							class="font-mono text-sm"
 						/>
 						<p class="text-xs text-muted-foreground">
-							OpenAI-compatible model identifier. Used for provider selection and API requests.
+							Select a model from built-in or custom models. Full model selector UI coming soon.
 						</p>
 					</div>
 
 					<Separator />
 
-					<!-- Parameters -->
+					<!-- Token Limits -->
 					<div class="grid grid-cols-2 gap-4">
-						<div class="flex flex-col gap-1.5">
-							<Label for="preset-temp"
-								>Temperature <span class="text-muted-foreground font-normal"
-									>({editTemperature})</span
-								></Label
-							>
-							<input
-								id="preset-temp"
-								type="range"
-								min="0"
-								max="2"
-								step="0.05"
-								bind:value={editTemperature}
-								oninput={handleDataChange}
-								class="w-full"
-							/>
-						</div>
-						<div class="flex flex-col gap-1.5">
-							<Label for="preset-topp"
-								>Top P <span class="text-muted-foreground font-normal">({editTopP})</span></Label
-							>
-							<input
-								id="preset-topp"
-								type="range"
-								min="0"
-								max="1"
-								step="0.05"
-								bind:value={editTopP}
-								oninput={handleDataChange}
-								class="w-full"
-							/>
-						</div>
-						<div class="flex flex-col gap-1.5">
-							<Label for="preset-freq"
-								>Frequency Penalty <span class="text-muted-foreground font-normal"
-									>({editFrequencyPenalty})</span
-								></Label
-							>
-							<input
-								id="preset-freq"
-								type="range"
-								min="-2"
-								max="2"
-								step="0.1"
-								bind:value={editFrequencyPenalty}
-								oninput={handleDataChange}
-								class="w-full"
-							/>
-						</div>
-						<div class="flex flex-col gap-1.5">
-							<Label for="preset-pres"
-								>Presence Penalty <span class="text-muted-foreground font-normal"
-									>({editPresencePenalty})</span
-								></Label
-							>
-							<input
-								id="preset-pres"
-								type="range"
-								min="-2"
-								max="2"
-								step="0.1"
-								bind:value={editPresencePenalty}
-								oninput={handleDataChange}
-								class="w-full"
-							/>
-						</div>
-					</div>
-
-					<div class="grid grid-cols-3 gap-4">
 						<div class="flex flex-col gap-1.5">
 							<Label for="preset-maxresp">Max Response Tokens</Label>
 							<Input
@@ -275,16 +192,6 @@
 								bind:value={editMaxContext}
 								oninput={handleDataChange}
 								min={1}
-							/>
-						</div>
-						<div class="flex flex-col gap-1.5">
-							<Label for="preset-topk">Top K</Label>
-							<Input
-								id="preset-topk"
-								type="number"
-								bind:value={editTopK}
-								oninput={handleDataChange}
-								min={0}
 							/>
 						</div>
 					</div>

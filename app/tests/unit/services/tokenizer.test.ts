@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TokenCounter } from '$lib/llm/tokenizer';
 import { appTokenizer } from '$lib/adapters/tokenizer';
-import type { TokenizerEncoding } from '$lib/types/models';
+import type { LLMTokenizer } from '$lib/types/models';
 
 // Mock the adapter
 vi.mock('$lib/adapters/tokenizer', () => ({
@@ -17,7 +17,7 @@ vi.mock('$lib/adapters/tokenizer', () => ({
 	}
 }));
 
-const ALL_ENCODINGS: TokenizerEncoding[] = [
+const ALL_ENCODINGS: LLMTokenizer[] = [
 	'o200k_base',
 	'claude',
 	'llama3',
@@ -35,7 +35,7 @@ describe('TokenCounter', () => {
 	describe('count', () => {
 		it('should call adapter on cache miss and cache the result', async () => {
 			const text = 'Hello, world!';
-			const encoding: TokenizerEncoding = 'o200k_base';
+			const encoding: LLMTokenizer = 'o200k_base';
 			const expectedCount = 3;
 
 			vi.mocked(appTokenizer.count).mockResolvedValue(expectedCount);
@@ -49,7 +49,7 @@ describe('TokenCounter', () => {
 
 		it('should return cached value on subsequent calls with same input', async () => {
 			const text = 'Hello, world!';
-			const encoding: TokenizerEncoding = 'claude';
+			const encoding: LLMTokenizer = 'claude';
 			const expectedCount = 3;
 
 			vi.mocked(appTokenizer.count).mockResolvedValue(expectedCount);
@@ -65,8 +65,8 @@ describe('TokenCounter', () => {
 
 		it('should treat same text with different encodings as different cache entries', async () => {
 			const text = 'Hello, world!';
-			const enc1: TokenizerEncoding = 'o200k_base';
-			const enc2: TokenizerEncoding = 'llama3';
+			const enc1: LLMTokenizer = 'o200k_base';
+			const enc2: LLMTokenizer = 'llama3';
 
 			vi.mocked(appTokenizer.count).mockResolvedValue(3);
 
@@ -80,7 +80,7 @@ describe('TokenCounter', () => {
 
 		it('should clear cache when clearCache is called', async () => {
 			const text = 'Hello, world!';
-			const encoding: TokenizerEncoding = 'deepseek';
+			const encoding: LLMTokenizer = 'deepseek';
 
 			vi.mocked(appTokenizer.count).mockResolvedValue(3);
 

@@ -5,15 +5,14 @@ import type { OrderedRef, FolderDef, ResourceRef } from '$lib/types/refs';
 import { deepMerge } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { encryptedWriteQueue } from './write_queue';
+import type { CustomModel, BuiltInProvider } from '$lib/types/models';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface AppSettingsContent {
 	theme: 'light' | 'dark' | 'system';
-	apiKeys: {
-		openai?: string;
-		anthropic?: string;
-	};
+	apiKeys: Partial<Record<BuiltInProvider, string>>;
+	customModels?: CustomModel[];
 }
 
 export interface AppSettingsRefs {

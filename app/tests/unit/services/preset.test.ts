@@ -50,16 +50,11 @@ describe('PresetService', () => {
 	};
 
 	const mockDataFields: PresetDataFields = {
-		model: 'test-model',
+		chatModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: { temperature: 0.9 } },
+		auxModel: { id: '', provider: 'openai', parameters: {} },
 		templateOrder: [],
-		temperature: 0.9,
-		topP: 1,
-		topK: 0,
-		frequencyPenalty: 0,
-		presencePenalty: 0,
 		maxResponse: 600,
-		maxContext: 4096,
-		memoryTokensRatio: 0.2
+		maxContext: 4096
 	};
 
 	const mockSummaryRecord: PresetSummaryRecord = {
@@ -132,7 +127,7 @@ describe('PresetService', () => {
 			expect(result).not.toBeNull();
 			expect(result?.id).toBe('preset-123');
 			expect(result?.name).toBe(mockSummaryFields.name);
-			expect(result?.data.model).toBe(mockDataFields.model);
+			expect(result?.data.chatModel.id).toBe(mockDataFields.chatModel.id);
 		});
 
 		it('should return null if either record is missing', async () => {
@@ -162,11 +157,11 @@ describe('PresetService', () => {
 			const result = await PresetService.update(
 				'preset-123',
 				{ name: 'New Name' },
-				{ temperature: 0.5 }
+				{ maxResponse: 800 }
 			);
 
 			expect(result.name).toBe('New Name');
-			expect(result.data.temperature).toBe(0.5);
+			expect(result.data.maxResponse).toBe(800);
 
 			await vi.runAllTimersAsync();
 			expect(localDB.putRecord).toHaveBeenCalledTimes(2);

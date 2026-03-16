@@ -7,7 +7,7 @@
 
 import { appTokenizer } from '$lib/adapters/tokenizer';
 import { LRUCache } from '$lib/utils/cache';
-import type { TokenizerEncoding } from '$lib/types/models';
+import type { LLMTokenizer } from '$lib/types/models';
 
 // ─── Cache ───────────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ export class TokenCounter {
 	 * Count the number of tokens in the given text for the specified encoding.
 	 * Results are cached for performance.
 	 */
-	static async count(text: string, encoding: TokenizerEncoding): Promise<number> {
+	static async count(text: string, encoding: LLMTokenizer): Promise<number> {
 		const cacheKey = `${encoding}:${text}`;
 
 		const cached = tokenCache.get(cacheKey);

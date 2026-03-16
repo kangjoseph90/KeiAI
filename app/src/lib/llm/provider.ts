@@ -1,64 +1,77 @@
 /**
  * Provider Selection — KeiAI
  *
- * Pure function: preset + settings in, StreamProvider out.
+ * Resolves a ModelConfig + AppSettings into a concrete StreamProvider.
+ * Handles both built-in models (provider → settings.apiKeys) and
+ * custom models (model.baseUrl + model.apiKey).
  */
 
 import type { StreamProvider } from '$lib/llm/types';
 import { MockStreamProvider } from '$lib/llm/providers';
 import { OpenAIStreamProvider } from '$lib/llm/providers/openai';
-import type { PresetDetail, AppSettings } from '$lib/services';
-
-const OPENAI_BASE_URL = 'https://api.githubcopilot.com';
+import type { AppSettings } from '$lib/services';
+import {
+	type ModelConfig,
+	type LLMModel,
+	type BuiltInProvider,
+	BUILT_IN_MODELS,
+	getProviderUrl
+} from '$lib/types/models';
 
 /**
- * Select the appropriate provider based on preset + app settings.
- * Falls back to MockStreamProvider when no API key is configured.
+ * Build a StreamProvider from the given model config + app settings.
+ * Falls back to MockStreamProvider when the model is not found or no API key.
  */
-export function selectProvider(preset: PresetDetail | null, settings: AppSettings): StreamProvider {
-	const model = preset?.data.model ?? '';
+export function selectProvider(modelConfig: ModelConfig, settings: AppSettings): StreamProvider {
+	const model = resolveModel(modelConfig, settings);
 
-	const apiKey = resolveApiKey(model, settings.apiKeys);
+	if (!model) {
+		console.warn('[selectProvider] Model not found. Falling back to MockStreamProvider.');
+		return new MockStreamProvider();
+	}
 
-	if (!apiKey) {
+	const connection = resolveConnection(model, settings);
+
+	if (!connection.apiKey) {
 		console.warn('[selectProvider] No API key found. Falling back to MockStreamProvider.');
 		return new MockStreamProvider();
 	}
 
-	const baseUrl = resolveBaseUrl(model);
-
 	return new OpenAIStreamProvider({
-		apiKey,
-		baseUrl,
-		model,
-		params: preset
-			? {
-					temperature: preset.data.temperature,
-					top_p: preset.data.topP,
-					frequency_penalty: preset.data.frequencyPenalty,
-					presence_penalty: preset.data.presencePenalty,
-					max_tokens: preset.data.maxResponse
-				}
-			: undefined
+		apiKey: connection.apiKey,
+		baseUrl: connection.baseUrl,
+		modelId: model.modelId,
+		flags: model.flags,
+		parameters: modelConfig.parameters
 	});
 }
 
 /**
- * Resolve API key from model name.
- * Convention: model string prefix determines the provider.
+ * Look up the full LLMModel definition from a ModelConfig reference.
  */
-function resolveApiKey(
-	model: string,
-	apiKeys: { openai?: string; anthropic?: string }
-): string | undefined {
-	if (model.startsWith('claude')) return apiKeys.anthropic;
-	return apiKeys.openai;
+function resolveModel(config: ModelConfig, settings: AppSettings): LLMModel | undefined {
+	if (config.provider === 'custom') {
+		return settings.customModels?.find((m) => m.id === config.id);
+	}
+	return BUILT_IN_MODELS.find((m) => m.id === config.id);
 }
 
 /**
- * Resolve base URL from model name.
- * For now, defaults to OpenAI. Extendable for custom endpoints later.
+ * Resolve connection details (baseUrl + apiKey) for a model.
+ * Built-in: uses provider defaults + settings.apiKeys.
+ * Custom: uses model's own baseUrl + apiKey.
  */
-function resolveBaseUrl(model: string): string {
-	return OPENAI_BASE_URL;
+function resolveConnection(
+	model: LLMModel,
+	settings: AppSettings
+): { baseUrl: string; apiKey: string | undefined } {
+	if (model.provider === 'custom') {
+		return { baseUrl: model.baseUrl, apiKey: model.apiKey };
+	}
+
+	const provider = model.provider as BuiltInProvider;
+	return {
+		baseUrl: getProviderUrl(provider),
+		apiKey: settings.apiKeys[provider]
+	};
 }

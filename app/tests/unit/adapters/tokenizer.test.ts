@@ -9,14 +9,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AppError } from '$lib/types/errors';
 import { type Remote } from 'comlink';
 import type { ITokenizerAdapter } from '$lib/adapters/tokenizer';
-import type { TokenizerEncoding } from '$lib/types/models';
+import type { LLMTokenizer } from '$lib/types/models';
 import { WebTokenizerAdapter } from '$lib/adapters/tokenizer/web';
 import { TauriTokenizerAdapter } from '$lib/adapters/tokenizer/tauri';
 import * as comlink from 'comlink';
 
 /** Interface matching the TokenizerWorker class for testing purposes */
 interface TokenizerWorker {
-	count(text: string, encoding: TokenizerEncoding): Promise<number>;
+	count(text: string, encoding: LLMTokenizer): Promise<number>;
 }
 
 // Mock Comlink's wrap function
@@ -34,7 +34,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 	invoke: vi.fn()
 }));
 
-const ALL_ENCODINGS: TokenizerEncoding[] = [
+const ALL_ENCODINGS: LLMTokenizer[] = [
 	'o200k_base',
 	'claude',
 	'llama3',
@@ -51,7 +51,7 @@ describe('Tokenizer Adapters', () => {
 	describe('WebTokenizerAdapter', () => {
 		let adapter: ITokenizerAdapter;
 		const mockWorker = {
-			count: vi.fn<(text: string, encoding: TokenizerEncoding) => Promise<number>>()
+			count: vi.fn<(text: string, encoding: LLMTokenizer) => Promise<number>>()
 		};
 
 		beforeEach(async () => {
@@ -73,7 +73,7 @@ describe('Tokenizer Adapters', () => {
 
 		it('should call worker and return result', async () => {
 			const text = 'Hello, world!';
-			const encoding: TokenizerEncoding = 'o200k_base';
+			const encoding: LLMTokenizer = 'o200k_base';
 			const expectedCount = 3;
 
 			mockWorker.count.mockResolvedValue(expectedCount);
@@ -87,7 +87,7 @@ describe('Tokenizer Adapters', () => {
 
 		it('should call worker for each invocation (no caching in adapter)', async () => {
 			const text = 'Hello, world!';
-			const encoding: TokenizerEncoding = 'claude';
+			const encoding: LLMTokenizer = 'claude';
 
 			mockWorker.count.mockResolvedValue(3);
 
@@ -99,7 +99,7 @@ describe('Tokenizer Adapters', () => {
 
 		it('should throw TOKENIZER_ERROR when worker fails', async () => {
 			const text = 'Hello, world!';
-			const encoding: TokenizerEncoding = 'o200k_base';
+			const encoding: LLMTokenizer = 'o200k_base';
 			const workerError = new Error('Worker initialization failed');
 
 			mockWorker.count.mockRejectedValue(workerError);

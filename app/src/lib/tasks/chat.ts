@@ -107,7 +107,12 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		);
 
 		// ── 5. Select Provider ──────────────────────────────────────
-		const provider = opts.providerOverride ?? selectProvider(preset, settings);
+		const modelConfig = preset?.data.chatModel ?? {
+			id: '',
+			provider: 'openai' as const,
+			parameters: {}
+		};
+		const provider = opts.providerOverride ?? selectProvider(modelConfig, settings);
 
 		// ── 6. Stream chunks ────────────────────────────────────────
 		for await (const state of provider.stream(processedMessages, controller.signal)) {

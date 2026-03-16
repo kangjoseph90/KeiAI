@@ -4,7 +4,7 @@
  * Interface for token counting across different LLM models.
  */
 
-import type { TokenizerEncoding } from '$lib/types/models';
+import type { LLMTokenizer } from '$lib/types/models';
 
 /**
  * Tokenizer Adapter Interface
@@ -24,5 +24,5 @@ export interface ITokenizerAdapter {
 	 * @param encoding - The tokenizer encoding to use
 	 * @returns Promise<number> - The token count
 	 */
-	count(text: string, encoding: TokenizerEncoding): Promise<number>;
+	count(text: string, encoding: LLMTokenizer): Promise<number>;
 }

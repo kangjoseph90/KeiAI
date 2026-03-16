@@ -257,7 +257,7 @@
 - 결과:
   - Web 번들에서 tiktoken 계열 라이브러리 완전 제거. 단일 WASM 라이브러리로 6개 인코딩 모두 처리.
   - Tauri는 네이티브 속도로 토큰 카운팅 (10-30x 빠름).
-  - 새 인코딩 추가 시: `TokenizerEncoding` 타입 + worker SPECS + Rust match arm + 다운로드 URL만 추가하면 됨.
+  - 새 인코딩 추가 시: `LLMTokenizer` 타입 + worker SPECS + Rust match arm + 다운로드 URL만 추가하면 됨.
 
 ---
 
@@ -281,4 +281,50 @@
   - 환경 변수 관리 단순화 (`.env`에는 `VITE_PROXY_URL`만, `.dev.vars`에는 `ALLOWED_ORIGINS`만).
   - 허위 보안감 제거. 실질적 방어(CORS + SSRF)에 집중.
   - 테스트 코드 단순화 (인증 관련 테스트 3개 제거, 나머지에서 헤더 불필요).
+
+---
+
+## 019: 런타임 추상화 제거 및 디렉토리 재구성
+
+- 상태: 채택
+- 맥락: `runtime/` 디렉토리에 ChatContext 클래스, PromptBuilder 클래스, selectProvider 등이 있었고, `shared/` 디렉토리에 타입과 유틸리티가 혼재되어 있었다.
+- 문제:
+  - ChatContext는 런타임 상태를 클래스에 묶었지만, 실제로는 함수 호출 시작 시 스냅샷을 찍고 끝까지 쓰는 패턴이라 클래스의 이점이 없었다.
+  - PromptBuilder도 내부 상태가 불필요 — 입력 → 출력의 순수 함수로 충분.
+  - `shared/`에 types, errors, defaults, ID 생성 등이 뒤섞여 있어 역할 경계가 모호했다.
+  - `runtime/`이 generation, scripts, LLM providers를 모두 포함하여 단일 책임을 위반.
+- 결정:
+  - ChatContext 클래스 제거 → `runChat()` 함수가 직접 데이터 스냅샷을 로드하여 파이프라인 실행.
+  - PromptBuilder 클래스 → `buildPrompt()` 순수 함수로 변환.
+  - `shared/` → `types/` (타입 정의) + `utils/` (순수 유틸리티)로 분리.
+  - `runtime/` → `tasks/` (채팅 파이프라인) + `llm/` (프로바이더, 프롬프트 빌더) + `scripts/` (스크립트 엔진)으로 분리.
+- 결과:
+  - 각 디렉토리가 단일 책임을 가지며, import 경로만으로 모듈의 역할을 알 수 있다.
+  - 클래스 기반 추상화가 제거되어 테스트가 단순해지고 데이터 흐름이 명확해진다.
+  - 순수 함수 중심이라 mock 없이 테스트 가능한 범위가 넓어졌다.
+
+---
+
+## 020: 모델 타입 시스템 — BuiltInModel/CustomModel 판별 유니온 + Provider/Format 분리
+
+- 상태: 채택
+- 맥락: LLM 모델 설정이 Preset의 flat 필드(model, temperature, topP 등)에 흩어져 있었다. 내장 모델과 사용자 정의 모델의 구분이 없었고, 프로바이더(API 제공자)와 포맷(와이어 프로토콜)이 혼동되었다.
+- 문제:
+  - flat 필드 방식은 모델 전환 시 파라미터 초기화가 어렵고, 모델별 지원 파라미터 목록을 표현할 수 없다.
+  - RisuAI는 300+ 모델을 하드코딩하되 커스텀 모델은 별도 경로로 처리하여 이원화 문제가 있다.
+  - DeepSeek처럼 "프로바이더는 deepseek, 포맷은 openai_compatible" 같은 경우를 기존 구조로 표현 불가.
+- 대안 검토:
+  - TypeScript enum → E2EE JSON 직렬화 시 숫자로 변환되어 의미 상실, 트리셰이킹 불리
+  - 단일 모델 타입 + isCustom 플래그 → 타입 안전성 약함, 분기가 모든 곳에 퍼짐
+- 결정:
+  - **판별 유니온**: `BuiltInModel` (provider가 `BuiltInProvider` 타입) vs `CustomModel` (provider가 `'custom'`). TypeScript 타입 가드로 안전하게 분기.
+  - **문자열 유니온**: `LLMFormat`, `BuiltInProvider`, `LLMFlags`, `Parameter` 등 모두 `type X = 'a' | 'b' | ...` 형태. JSON 직렬화 안전, 트리셰이킹 유리.
+  - **Provider ≠ Format**: Provider = API 제공자(키/URL 라우팅), Format = 와이어 프로토콜(StreamProvider 클래스 선택). 1:1이 아님.
+  - **ModelConfig**: Preset에 저장되는 모델 참조. `{id, provider, parameters}`. ID 컨벤션: `provider::modelId` (내장) 또는 `custom::nanoid` (커스텀).
+  - **BUILT_IN_MODELS 카탈로그**: `types/models.ts`에 내장 모델 배열로 정의. 내장과 커스텀 모두 동일한 `LLMModel` 인터페이스를 구현.
+  - **StreamProvider 무상태**: 모든 설정(apiKey, baseUrl, modelId, params, capabilities)은 생성자로 주입. 내부에서 Settings/Store 참조 금지.
+- 결과:
+  - 내장 모델과 커스텀 모델이 동일한 타입 경로를 공유하여 UI/로직 이원화 없음.
+  - `selectProvider(ModelConfig, AppSettings)`가 유일한 팩토리 — 모델 해석 → 연결 정보 → Provider 생성을 한 곳에서 처리.
+  - 프리셋의 모델 설정이 `chatModel: ModelConfig` + `auxModel: ModelConfig`로 구조화되어 다중 모델 아키텍처(메인/보조/번역/요약)로의 확장이 용이.
 

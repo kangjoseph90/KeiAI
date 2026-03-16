@@ -5,6 +5,7 @@ import { deepMerge } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
+import type { ModelConfig } from '$lib/types/models';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -21,16 +22,11 @@ export type PromptTemplateEntry =
 	| { name: string; type: 'history'; start: number; end?: number };
 
 export interface PresetDataFields {
-	model: string;
+	chatModel: ModelConfig;
+	auxModel: ModelConfig;
 	templateOrder: PromptTemplateEntry[];
-	temperature: number;
-	topP: number;
-	topK: number;
-	frequencyPenalty: number;
-	presencePenalty: number;
 	maxResponse: number;
 	maxContext: number;
-	memoryTokensRatio: number;
 }
 
 export interface Preset extends PresetSummaryFields {
@@ -49,7 +45,8 @@ export const defaultPresetSummary: PresetSummaryFields = {
 };
 
 export const defaultPresetData: PresetDataFields = {
-	model: '',
+	chatModel: { id: '', provider: 'openai', parameters: {} },
+	auxModel: { id: '', provider: 'openai', parameters: {} },
 	templateOrder: [
 		{ name: 'System instruction', type: 'instruction', role: 'system', content: '' },
 		{ name: 'Character description', type: 'description' },
@@ -58,14 +55,8 @@ export const defaultPresetData: PresetDataFields = {
 		{ name: 'Early history', type: 'history', start: -10 },
 		{ name: 'Additional instruction', type: 'instruction', role: 'system', content: '' }
 	],
-	temperature: 0.9,
-	topP: 1,
-	topK: 0,
-	frequencyPenalty: 0,
-	presencePenalty: 0,
 	maxResponse: 600,
-	maxContext: 4096,
-	memoryTokensRatio: 0.2
+	maxContext: 4096
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────
