@@ -47,14 +47,14 @@ UI → Stores → Services → Adapters → platform APIs
 
 ### Forbidden Imports
 
-| From         | Cannot Import                   | Reason                             |
-| ------------ | ------------------------------- | ---------------------------------- |
-| Service      | Store                           | Services are UI-agnostic           |
-| Store        | another Store (except state.ts) | Circular imports                   |
-| Adapter      | Service or Store                | Adapters know nothing about domain |
-| tasks/       | Svelte stores (writables)       | Pipeline reads stores, writes via actions |
+| From         | Cannot Import                   | Reason                                     |
+| ------------ | ------------------------------- | ------------------------------------------ |
+| Service      | Store                           | Services are UI-agnostic                   |
+| Store        | another Store (except state.ts) | Circular imports                           |
+| Adapter      | Service or Store                | Adapters know nothing about domain         |
+| tasks/       | Svelte stores (writables)       | Pipeline reads stores, writes via actions  |
 | llm/         | Services or Stores              | LLM layer is stateless — all data injected |
-| UI component | localDB or adapter directly     | All data goes through Services     |
+| UI component | localDB or adapter directly     | All data goes through Services             |
 
 ---
 
@@ -205,7 +205,7 @@ All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
 | Store action function | `verbNoun()`                                         | `loadCharacters()`, `selectChat()`              |
 | Guard function        | `assert*()`                                          | `assertChatOwnedByCharacter()`                  |
 | Error code            | `SCREAMING_SNAKE`                                    | `'ENCRYPTION_FAILED'`                           |
-| Shared ref types      | `OrderedRef`, `ResourceRef`, `FolderDef`, `AssetRef` | in `types/refs.ts`                  |
+| Shared ref types      | `OrderedRef`, `ResourceRef`, `FolderDef`, `AssetRef` | in `types/refs.ts`                              |
 | ID generation         | `generateId()`                                       | 15-char lowercase+digits, PocketBase-compatible |
 
 ---
