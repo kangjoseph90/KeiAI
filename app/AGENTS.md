@@ -27,6 +27,18 @@ Adapters (lib/adapters/)
  │  interface + platform impl (Web: IndexedDB/localStorage, Tauri: SQLite/FS)
 ```
 
+### Cross-Cutting Modules
+
+These sit outside the four-layer stack and are importable from any layer:
+
+```
+lib/types/         Domain vocabulary (models.ts, errors.ts, refs.ts)
+lib/utils/         Infrastructure utilities (cache.ts, defaults.ts, events.ts, id.ts, ordering.ts)
+lib/llm/           AI provider layer (provider selection, prompt building, tokenizer, stream providers)
+lib/scripts/       Text transformation (regex-based, used by both UI and tasks)
+lib/tasks/         Pipeline orchestration (chat task, future: translate, summarize)
+```
+
 ### Dependency Direction — Strict Top-Down
 
 ```
@@ -40,7 +52,8 @@ UI → Stores → Services → Adapters → platform APIs
 | Service      | Store                           | Services are UI-agnostic           |
 | Store        | another Store (except state.ts) | Circular imports                   |
 | Adapter      | Service or Store                | Adapters know nothing about domain |
-| generation/  | Svelte stores                   | Pipeline must be stateless         |
+| tasks/       | Svelte stores (writables)       | Pipeline reads stores, writes via actions |
+| llm/         | Services or Stores              | LLM layer is stateless — all data injected |
 | UI component | localDB or adapter directly     | All data goes through Services     |
 
 ---
@@ -102,7 +115,7 @@ L0 (Global):     appSettings, activeUser, pbConnected
 L1 (Workspace):  characters, personas, presets, modules, plugins
 L2 (Character):  activeCharacter, chats, characterLorebooks, characterScripts
 L3 (Chat):       activeChat, messages, chatLorebooks
-Ephemeral:       generationTasks (Map<chatId, GenerationTask>)
+Ephemeral:       chatTasks (Map<chatId, ChatTask>) — in stores/tasks/
 ```
 
 - Leaving a level clears child stores and zeroes decrypted data from memory
@@ -173,7 +186,7 @@ All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
 | Sync    | Fire-and-forget — errors logged, never surfaced to UI                         |
 
 ```typescript
-// Error codes (shared/errors.ts):
+// Error codes (types/errors.ts):
 // NOT_FOUND, OWNERSHIP_VIOLATION, ENCRYPTION_FAILED, DB_WRITE_FAILED,
 // SESSION_EXPIRED, NOT_AUTHENTICATED, INVALID_CREDENTIALS, ALREADY_REGISTERED,
 // INVALID_INPUT, NETWORK_ERROR, STORAGE_ERROR, ...
@@ -192,7 +205,7 @@ All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
 | Store action function | `verbNoun()`                                         | `loadCharacters()`, `selectChat()`              |
 | Guard function        | `assert*()`                                          | `assertChatOwnedByCharacter()`                  |
 | Error code            | `SCREAMING_SNAKE`                                    | `'ENCRYPTION_FAILED'`                           |
-| Shared ref types      | `OrderedRef`, `ResourceRef`, `FolderDef`, `AssetRef` | in `shared/types.ts`                            |
+| Shared ref types      | `OrderedRef`, `ResourceRef`, `FolderDef`, `AssetRef` | in `types/refs.ts`                  |
 | ID generation         | `generateId()`                                       | 15-char lowercase+digits, PocketBase-compatible |
 
 ---
@@ -204,14 +217,19 @@ All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
 import { CharacterService, type CharacterDetail } from '$lib/services';
 import { activeCharacter, loadCharacters } from '$lib/stores';
 
+// ✅ Cross-cutting modules by path
+import type { LLMModel, ModelConfig } from '$lib/types/models';
+import { AppError } from '$lib/types/errors';
+import { generateId } from '$lib/utils/id';
+
 // ✅ Relative paths within same module
-import { deepMerge } from '../shared/defaults';
+import { deepMerge } from '../utils/defaults';
 
 // ❌ Direct file import (bypass barrel)
 import { CharacterService } from '$lib/services/content/character';
 
 // ❌ Extension in import
-import { deepMerge } from '../shared/defaults.js';
+import { deepMerge } from '../utils/defaults.js';
 ```
 
 Every layer has an `index.ts` barrel. Import from the barrel, not individual files.
@@ -290,20 +308,45 @@ Nine adapter interfaces, each with Web + Tauri implementations dispatched via `i
 
 ## Generation Pipeline
 
-`lib/generation/pipeline.ts` orchestrates LLM streaming:
+`lib/tasks/chat.ts` orchestrates LLM streaming:
 
-1. Snapshot all context at call time (character, preset, lorebooks, scripts) — isolated from UI switches
-2. Build prompt from template order
+1. Snapshot all context at call time (character, preset, lorebooks, scripts, messages) — isolated from UI switches
+2. Build prompt from template order (`llm/prompt/builder.ts` — pure function)
 3. Apply request-placement scripts
-4. Open ephemeral `GenerationTask` in store (streaming bubble in UI)
-5. Stream chunks from `StreamProvider`, apply output scripts per-chunk
-6. On success: `createMessage()` → persist → `clearTask()`
-7. On abort: optionally save partial → `clearTask()`
-8. On error: `setTaskError()` — bubble stays for user to dismiss
+4. Resolve model: `preset.data.chatModel` → `ModelConfig` → find `LLMModel` → resolve connection
+5. Create `StreamProvider` via `selectProvider(modelConfig, settings)` (`llm/provider.ts`)
+6. Open ephemeral `ChatTask` in store (streaming bubble in UI)
+7. Stream chunks from `StreamProvider`, apply output scripts per-chunk
+8. On success: `createMessage()` → persist → `clearChatTask()`
+9. On abort: optionally save partial → `clearChatTask()`
+10. On error: `setChatTaskError()` — bubble stays for user to dismiss
 
-The pipeline imports from Services only (never stores). Tasks are keyed by `chatId` and survive context switches.
+### Model System
 
-`StreamProvider` interface: `stream(signal: AbortSignal): AsyncIterable<string>`.
+Models are defined in `types/models.ts`. Two kinds via discriminated union:
+
+- **Built-in** (`BuiltInModel`): Hard-coded catalog, `provider` routes to `settings.apiKeys[provider]` + default base URL
+- **Custom** (`CustomModel`): User-defined in `settings.customModels[]`, owns `baseUrl` + `apiKey` directly
+
+ID convention: `provider::modelId` for built-in (e.g. `openai::gpt-5.4`), `custom::nanoid` for custom.
+
+`ModelConfig` (stored in presets) references a model by `{id, provider, parameters}`.
+
+### StreamProvider Architecture
+
+`StreamProvider` is an interface with a single method: `stream(messages, signal): AsyncIterable<StreamContent>`.
+
+- `LLMModel.format` determines which `StreamProvider` class to use (e.g. `openai_compatible` → `OpenAIStreamProvider`)
+- Providers are **stateless** — all config (apiKey, baseUrl, modelId, params, capabilities) is injected via constructor
+- Providers must **never** import Services, Stores, or Settings directly
+- `selectProvider()` is the single factory: resolves model → connection → instantiates the correct provider class
+
+### Key Design Rules
+
+- **No `any` in pipeline** — all data is typed end-to-end
+- **Data snapshot at top** — `runChat()` loads everything before streaming starts (no mid-generation inconsistency)
+- **Pure functions** — `buildPrompt()` and `selectProvider()` are synchronous, no side effects
+- **Tasks keyed by chatId** — survive context switches, user can navigate away during generation
 
 ---
 
@@ -344,5 +387,8 @@ pnpm lint             # ESLint + Prettier check
 
 - [TESTING.md](TESTING.md) — Test infrastructure, mocking patterns, coverage goals
 - [../pocketbase/AGENTS.md](../pocketbase/AGENTS.md) — Backend schema, hooks, E2EE auth endpoints
-- [../notes/Idea.md](../notes/Idea.md) — Comprehensive architecture design document
-- [../notes/keiai_data_schema_philosophy.md](../notes/keiai_data_schema_philosophy.md) — Data schema philosophy
+- [../proxy/AGENTS.md](../proxy/AGENTS.md) — Stateless proxy rules
+- [../docs/IDEA.md](../docs/IDEA.md) — Comprehensive architecture design document
+- [../docs/ADR.md](../docs/ADR.md) — Architecture decision records
+- [../docs/schema.md](../docs/schema.md) — Data schema philosophy
+- [../docs/asset-system-v2.md](../docs/asset-system-v2.md) — Asset system specification

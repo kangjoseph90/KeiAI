@@ -9,7 +9,7 @@
  */
 
 import { expose } from 'comlink';
-import type { TokenizerEncoding } from '$lib/types/models';
+import type { LLMTokenizer } from '$lib/types/models';
 
 // ─── Encoder Interface ───────────────────────────────────────────────────────
 
@@ -19,13 +19,13 @@ interface Encoder {
 
 // ─── Instance Cache ──────────────────────────────────────────────────────────
 
-const cache = new Map<TokenizerEncoding, Encoder>();
+const cache = new Map<LLMTokenizer, Encoder>();
 
 // ─── Tokenizer Specs ─────────────────────────────────────────────────────────
 
 type LoadKind = 'json' | 'sentencepiece';
 
-const SPECS: Record<TokenizerEncoding, { kind: LoadKind; path: string }> = {
+const SPECS: Record<LLMTokenizer, { kind: LoadKind; path: string }> = {
 	o200k_base: { kind: 'json', path: '/token/o200k_base/tokenizer.json' },
 	claude: { kind: 'json', path: '/token/claude/tokenizer.json' },
 	llama3: { kind: 'json', path: '/token/llama3/tokenizer.json' },
@@ -44,7 +44,7 @@ async function load(kind: LoadKind, path: string): Promise<Encoder> {
 
 // ─── Resolver ────────────────────────────────────────────────────────────────
 
-async function getEncoder(encoding: TokenizerEncoding): Promise<Encoder> {
+async function getEncoder(encoding: LLMTokenizer): Promise<Encoder> {
 	const cached = cache.get(encoding);
 	if (cached) return cached;
 
@@ -57,7 +57,7 @@ async function getEncoder(encoding: TokenizerEncoding): Promise<Encoder> {
 // ─── Worker Class ────────────────────────────────────────────────────────────
 
 class TokenizerWorker {
-	async count(text: string, encoding: TokenizerEncoding): Promise<number> {
+	async count(text: string, encoding: LLMTokenizer): Promise<number> {
 		const encoder = await getEncoder(encoding);
 		return encoder.encode(text).length;
 	}

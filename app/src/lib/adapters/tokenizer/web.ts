@@ -7,7 +7,7 @@
  */
 
 import type { ITokenizerAdapter } from './types';
-import type { TokenizerEncoding } from '$lib/types/models';
+import type { LLMTokenizer } from '$lib/types/models';
 import { wrap, type Remote } from 'comlink';
 import { AppError } from '$lib/types/errors';
 
@@ -15,7 +15,7 @@ import { AppError } from '$lib/types/errors';
 
 /** Interface matching the TokenizerWorker class exposed in worker.ts */
 interface TokenizerWorker {
-	count(text: string, encoding: TokenizerEncoding): Promise<number>;
+	count(text: string, encoding: LLMTokenizer): Promise<number>;
 }
 
 // ─── Worker Singleton ───────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ function getWorker(): Remote<TokenizerWorker> {
 // ─── Web Tokenizer Adapter ──────────────────────────────────────────────────
 
 export class WebTokenizerAdapter implements ITokenizerAdapter {
-	async count(text: string, encoding: TokenizerEncoding): Promise<number> {
+	async count(text: string, encoding: LLMTokenizer): Promise<number> {
 		try {
 			const worker = getWorker();
 			return await worker.count(text, encoding);

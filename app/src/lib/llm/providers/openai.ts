@@ -11,22 +11,19 @@
 import type { StreamContent, StreamProvider, OpenAIChat } from '../types';
 import type { ToolCallRequest } from '$lib/services/content/tool';
 import { appHttp } from '$lib/adapters/http';
+import type { LLMFlags, Parameter } from '$lib/types/models';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface OpenAIProviderConfig {
 	apiKey: string;
+	modelId: string;
 	/** Base URL without trailing slash (e.g. "https://api.openai.com/v1") */
 	baseUrl: string;
-	model: string;
-	/** Passed directly to the API request body */
-	params?: {
-		temperature?: number;
-		top_p?: number;
-		frequency_penalty?: number;
-		presence_penalty?: number;
-		max_tokens?: number;
-	};
+	/** Model capability flags */
+	flags?: LLMFlags[];
+	/** Generation parameters passed directly to the API request body */
+	parameters?: Partial<Record<Parameter, number | string | boolean>>;
 	/** Use proxy adapter for CORS bypass (Web only). Default: true */
 	useProxy?: boolean;
 }
@@ -65,7 +62,7 @@ export class OpenAIStreamProvider implements StreamProvider {
 		if (!reader) throw new Error('Response body is not readable');
 
 		const state: StreamContent = { content: '', thought: '' };
-		// Accumulate partial tool call arguments by index
+		// Accumulate partial tool call arguments strby index
 		const toolCallMap = new Map<number, { id: string; name: string; args: string }>();
 		const decoder = new TextDecoder();
 		let buffer = '';
@@ -157,10 +154,10 @@ export class OpenAIStreamProvider implements StreamProvider {
 		const useProxy = this.config.useProxy ?? true;
 
 		const body = JSON.stringify({
-			model: this.config.model,
+			model: this.config.modelId,
 			messages: messages.map((m) => ({ role: m.role, content: m.content })),
 			stream: true,
-			...this.config.params
+			...this.config.parameters
 		});
 
 		const response = await appHttp.fetch(
