@@ -373,7 +373,7 @@ pnpm check            # Type-check (run periodically + before commit)
 pnpm test             # Watch mode
 pnpm test:run         # All tests once
 pnpm test:coverage    # Coverage report
-pnpm format ./file.ts # Format ONLY the specified file
+pnpm format           # Format files
 pnpm lint             # ESLint + Prettier check
 ```
 

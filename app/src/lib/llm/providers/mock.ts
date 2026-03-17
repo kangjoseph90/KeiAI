@@ -5,11 +5,13 @@
  * Yields the response word-by-word with configurable delay between chunks.
  *
  * Usage:
- *   const provider = new MockStreamProvider([{role: 'user', content: 'Hello'}]);
+ *   const provider = new MockStreamProvider();
  *   GenerationManager.generate(chatId, provider);
  */
 
 import type { StreamContent, StreamProvider, OpenAIChat } from '../types';
+import { debounceStream, type StreamDebounceConfig } from './debounce';
+import { abortableSleep } from '$lib/utils/async';
 
 const MOCK_RESPONSES = [
 	'안녕하세요! **KeiAI**의 테스트 봇입니다.\n\n현재 이 메시지는 **스트리밍**으로 전달되고 있으며, 다음과 같은 특징이 있습니다:\n\n* **보안**: 모든 데이터는 E2EE로 암호화됩니다.\n* **로컬**: IndexedDB를 활용한 Local-First 구조입니다.\n* **속도**: 지연 시간이 거의 없는 즉각적인 인터페이스를 지향합니다.',
@@ -19,16 +21,32 @@ const MOCK_RESPONSES = [
 	'> "보안은 선택이 아니라 기본입니다."\n\n위와 같은 **인용구**와 함께 긴 답변을 생성해 보겠습니다. KeiAI는 사용자의 프라이버시를 최우선으로 생각하며, 모든 대화 내용은 제3자가 볼 수 없도록 견고하게 설계되었습니다.'
 ];
 
+export interface MockProviderConfig {
+	/** Delay between word chunks in ms. Default: 60 */
+	chunkDelayMs?: number;
+	debounce?: StreamDebounceConfig;
+}
+
 export class MockStreamProvider implements StreamProvider {
 	private readonly response: string;
 	private readonly chunkDelayMs: number;
+	private readonly debounceConfig?: StreamDebounceConfig;
 
-	constructor(options: { chunkDelayMs?: number } = {}) {
+	constructor(config: MockProviderConfig = {}) {
 		this.response = MOCK_RESPONSES[Math.floor(Math.random() * MOCK_RESPONSES.length)];
-		this.chunkDelayMs = options.chunkDelayMs ?? 60;
+		this.chunkDelayMs = config.chunkDelayMs ?? 60;
+		this.debounceConfig = config.debounce;
 	}
 
 	async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<StreamContent> {
+		const rawStream = this.rawStream(messages, signal);
+		yield* debounceStream(rawStream, this.debounceConfig);
+	}
+
+	private async *rawStream(
+		messages: OpenAIChat[],
+		signal: AbortSignal
+	): AsyncIterable<StreamContent> {
 		const state: StreamContent = {
 			content: '',
 			thought: ''
@@ -37,7 +55,7 @@ export class MockStreamProvider implements StreamProvider {
 		// 1. Simulate "Thought" phase (first 30%)
 		state.thought = '질문을 분석하고 적절한 답변을 생성하는 중입니다...';
 		yield { ...state };
-		await delay(this.chunkDelayMs * 10, signal);
+		await abortableSleep(this.chunkDelayMs * 10, signal);
 
 		// 2. Simulate "Content" phase
 		const words = this.response.split(' ');
@@ -47,7 +65,7 @@ export class MockStreamProvider implements StreamProvider {
 			state.content += (i === 0 ? '' : ' ') + words[i];
 			yield { ...state };
 
-			await delay(this.chunkDelayMs, signal);
+			await abortableSleep(this.chunkDelayMs, signal);
 		}
 
 		// 3. Simulate "Tool Call" phase if messages mention 'tool' or '날씨'
@@ -63,18 +81,4 @@ export class MockStreamProvider implements StreamProvider {
 			yield { ...state };
 		}
 	}
-}
-
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const timer = setTimeout(resolve, ms);
-		signal.addEventListener(
-			'abort',
-			() => {
-				clearTimeout(timer);
-				reject(new DOMException('AbortError', 'AbortError'));
-			},
-			{ once: true }
-		);
-	});
 }
