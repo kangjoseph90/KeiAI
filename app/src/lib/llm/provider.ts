@@ -37,12 +37,17 @@ export function selectProvider(modelConfig: ModelConfig, settings: AppSettings):
 		return new MockStreamProvider();
 	}
 
+	// TODO: apply retry and debounce parameters from AppSettings
 	return new OpenAIStreamProvider({
-		apiKey: connection.apiKey,
-		baseUrl: connection.baseUrl,
-		modelId: model.modelId,
-		flags: model.flags,
-		parameters: modelConfig.parameters
+		model: {
+			modelId: model.modelId,
+			flags: model.flags,
+			parameters: modelConfig.parameters
+		},
+		http: {
+			apiKey: connection.apiKey,
+			baseUrl: connection.baseUrl
+		}
 	});
 }
 

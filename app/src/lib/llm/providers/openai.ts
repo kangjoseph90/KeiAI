@@ -8,24 +8,23 @@
  * CONTRACT: Yields cumulative content (e.g. "1", "12", "123").
  */
 
-import type { StreamContent, StreamProvider, OpenAIChat } from '../types';
+import type {
+	StreamContent,
+	StreamProvider,
+	OpenAIChat,
+	StreamModelConfig,
+	StreamHttpConfig
+} from '../types';
 import type { ToolCallRequest } from '$lib/services/content/tool';
 import { appHttp } from '$lib/adapters/http';
-import type { LLMFlags, Parameter } from '$lib/types/models';
+import { debounceStream, type StreamDebounceConfig } from './debounce';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface OpenAIProviderConfig {
-	apiKey: string;
-	modelId: string;
-	/** Base URL without trailing slash (e.g. "https://api.openai.com/v1") */
-	baseUrl: string;
-	/** Model capability flags */
-	flags?: LLMFlags[];
-	/** Generation parameters passed directly to the API request body */
-	parameters?: Partial<Record<Parameter, number | string | boolean>>;
-	/** Use proxy adapter for CORS bypass (Web only). Default: true */
-	useProxy?: boolean;
+	model: StreamModelConfig;
+	http: StreamHttpConfig;
+	debounce?: StreamDebounceConfig;
 }
 
 /** Shape of a single SSE chunk from OpenAI's streaming API */
@@ -57,6 +56,14 @@ export class OpenAIStreamProvider implements StreamProvider {
 	}
 
 	async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<StreamContent> {
+		const rawStream = this.rawStream(messages, signal);
+		yield* debounceStream(rawStream, this.config.debounce);
+	}
+
+	private async *rawStream(
+		messages: OpenAIChat[],
+		signal: AbortSignal
+	): AsyncIterable<StreamContent> {
 		const response = await this.fetchStream(messages, signal);
 		const reader = response.body?.getReader();
 		if (!reader) throw new Error('Response body is not readable');
@@ -149,15 +156,15 @@ export class OpenAIStreamProvider implements StreamProvider {
 	// ─── Internals ──────────────────────────────────────────────────────────
 
 	private async fetchStream(messages: OpenAIChat[], signal: AbortSignal): Promise<Response> {
-		const url = `${this.config.baseUrl}/chat/completions`;
-		// Web browsers need proxy for CORS bypass; Tauri can call directly
-		const useProxy = this.config.useProxy ?? true;
+		const { model, http } = this.config;
+		const url = `${http.baseUrl}/chat/completions`;
+		const useProxy = http.useProxy ?? true;
 
 		const body = JSON.stringify({
-			model: this.config.modelId,
+			model: model.modelId,
 			messages: messages.map((m) => ({ role: m.role, content: m.content })),
 			stream: true,
-			...this.config.parameters
+			...model.parameters
 		});
 
 		const response = await appHttp.fetch(
@@ -166,11 +173,11 @@ export class OpenAIStreamProvider implements StreamProvider {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					Authorization: `Bearer ${this.config.apiKey}`
+					Authorization: `Bearer ${http.apiKey}`
 				},
 				body
 			},
-			{ proxy: useProxy, signal }
+			{ proxy: useProxy, signal, retry: http.retry, timeout: http.timeout }
 		);
 
 		if (!response.ok) {
