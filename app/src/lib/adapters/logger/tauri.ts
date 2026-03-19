@@ -1,5 +1,5 @@
 import { BaseDirectory } from '@tauri-apps/api/path';
-import { exists, mkdir, readDir, readTextFile, remove, writeTextFile } from '@tauri-apps/plugin-fs';
+import { exists, mkdir, readDir, remove, writeTextFile } from '@tauri-apps/plugin-fs';
 import type { ILoggerAdapter, Logger, LogLevel } from './types';
 
 const LOG_DIR = 'logs';
@@ -92,12 +92,10 @@ export class TauriLoggerAdapter implements ILoggerAdapter {
 		await this.ensureLogDir();
 		const filePath = `${LOG_DIR}/${getDatePart(date)}.log`;
 		const nextLine = `${line}\n`;
-		if (await exists(filePath, { baseDir: BaseDirectory.AppData })) {
-			const current = await readTextFile(filePath, { baseDir: BaseDirectory.AppData });
-			await writeTextFile(filePath, `${current}${nextLine}`, { baseDir: BaseDirectory.AppData });
-			return;
-		}
-		await writeTextFile(filePath, nextLine, { baseDir: BaseDirectory.AppData });
+		await writeTextFile(filePath, nextLine, {
+			baseDir: BaseDirectory.AppData,
+			append: true
+		});
 	}
 
 	private async write(
