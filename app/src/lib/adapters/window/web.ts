@@ -1,4 +1,7 @@
 import type { IWindowAdapter } from './types';
+import { createLogger } from '$lib/adapters/logger';
+
+const logger = createLogger('adapter:window:web');
 
 /**
  * Web Window Adapter
@@ -8,20 +11,20 @@ import type { IWindowAdapter } from './types';
  */
 export class WebWindowAdapter implements IWindowAdapter {
 	async minimize(): Promise<void> {
-		console.warn('Window minimization is not supported on the web.');
+		logger.warn('Window minimization is not supported on the web.');
 	}
 
 	async maximize(): Promise<void> {
-		console.warn('Window maximization is not supported on the web.');
+		logger.warn('Window maximization is not supported on the web.');
 	}
 
 	async unmaximize(): Promise<void> {
-		console.warn('Window unmaximization is not supported on the web.');
+		logger.warn('Window unmaximization is not supported on the web.');
 	}
 
 	async close(): Promise<void> {
 		window.close();
-		console.warn('Window close may not work on the web unless the script opened the window.');
+		logger.warn('Window close may not work on the web unless the script opened the window.');
 	}
 
 	async setTitle(title: string): Promise<void> {
@@ -29,7 +32,7 @@ export class WebWindowAdapter implements IWindowAdapter {
 	}
 
 	async setAlwaysOnTop(_alwaysOnTop: boolean): Promise<void> {
-		console.warn('setAlwaysOnTop is not supported on the web.');
+		logger.warn('setAlwaysOnTop is not supported on the web.');
 	}
 }
 

@@ -36,6 +36,9 @@ import { UserService } from './user';
 import { appUser } from '$lib/adapters/user';
 import { DataSyncService, AssetSyncService, SyncManager } from '../sync';
 import { AppError } from '$lib/types/errors';
+import { createLogger } from '$lib/adapters/logger';
+
+const logger = createLogger('service:auth');
 
 export class AuthService {
 	// ─── PB Connection Helpers ────────────────────────────────────────
@@ -107,7 +110,7 @@ export class AuthService {
 				const fetchResponse = await fetch(existing.avatar);
 				createData.avatar = await fetchResponse.blob();
 			} catch (e) {
-				console.warn('Failed to parse local avatar for PB upload', e);
+				logger.warn('Failed to parse local avatar for PB upload', e);
 			}
 		}
 

@@ -1,5 +1,8 @@
 import type { IClipboardAdapter } from './types';
 import { AppError } from '$lib/types/errors';
+import { createLogger } from '$lib/adapters/logger';
+
+const logger = createLogger('adapter:clipboard:web');
 
 /**
  * Web Clipboard Adapter
@@ -13,7 +16,7 @@ export class WebClipboardAdapter implements IClipboardAdapter {
 			if (!navigator.clipboard) return null;
 			return await navigator.clipboard.readText();
 		} catch (error) {
-			console.error('Failed to read text from clipboard:', error);
+			logger.error('Failed to read text from clipboard:', error);
 			return null;
 		}
 	}
@@ -47,7 +50,7 @@ export class WebClipboardAdapter implements IClipboardAdapter {
 			}
 			return null;
 		} catch (error) {
-			console.error('Failed to read image from clipboard:', error);
+			logger.error('Failed to read image from clipboard:', error);
 			return null;
 		}
 	}

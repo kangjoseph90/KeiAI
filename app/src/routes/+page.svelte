@@ -29,10 +29,12 @@
 	} from '$lib/router';
 	import type { ComponentType } from 'svelte';
 	import { getErrorMessage } from '$lib/types/errors';
+	import { createLogger } from '$lib/adapters/logger';
 
 	let ready = $state(false);
 	let errorMsg = $state('');
 	let manageAccountsOpen = $state(false);
+	const logger = createLogger('route:page');
 
 	const sidebarItems: { view: ViewMode; label: string; icon: ComponentType }[] = [
 		{ view: 'characters', label: 'Characters', icon: Users },
@@ -86,7 +88,7 @@
 			}
 		} catch (e) {
 			// 복호화 실패 or 소유권 불일치 → 홈으로
-			console.warn('Route restore failed, falling back to characters:', e);
+			logger.warn('Route restore failed, falling back to characters:', e);
 			clearActiveCharacter();
 			navigate({ view: 'characters' });
 		}
@@ -112,7 +114,7 @@
 				clearActiveCharacter();
 			}
 		} catch (e) {
-			console.error('Navigation failed:', e);
+			logger.error('Navigation failed:', e);
 			navigate({ view: 'characters' });
 			return;
 		}

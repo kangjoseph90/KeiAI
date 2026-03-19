@@ -1,7 +1,9 @@
 import type { IHttpAdapter, HttpOptions } from './types';
 import { fetchWithRetry } from './retry';
+import { createLogger } from '$lib/adapters/logger';
 
 import { BaseHttpAdapter } from './base';
+const logger = createLogger('adapter:http:web');
 
 /**
  * Web HTTP Adapter
@@ -18,7 +20,7 @@ export class WebHttpAdapter extends BaseHttpAdapter {
 			const proxyUrl = import.meta.env.VITE_PROXY_URL;
 
 			if (!proxyUrl) {
-				console.warn('[WebHttpAdapter] VITE_PROXY_URL is not set. Falling back to direct fetch.');
+				logger.warn('VITE_PROXY_URL is not set. Falling back to direct fetch.');
 			} else {
 				const targetHeaders: Record<string, string> = {};
 				const headers = new Headers(baseInit.headers);

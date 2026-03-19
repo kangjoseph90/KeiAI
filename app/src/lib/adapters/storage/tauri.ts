@@ -2,6 +2,9 @@ import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-f
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { appDataDir, join, dirname } from '@tauri-apps/api/path';
 import type { IStorageAdapter } from './types';
+import { createLogger } from '$lib/adapters/logger';
+
+const logger = createLogger('adapter:storage:tauri');
 
 /**
  * TauriStorageAdapter — Native file system-backed storage for Tauri Desktop/Mobile
@@ -84,7 +87,7 @@ export class TauriStorageAdapter implements IStorageAdapter {
 			await remove(fullPath);
 			this.urlCache.delete(path);
 		} catch (e) {
-			console.error(`TauriStorageAdapter.delete(${path}) failed:`, e);
+			logger.error(`TauriStorageAdapter.delete(${path}) failed:`, e);
 		}
 	}
 

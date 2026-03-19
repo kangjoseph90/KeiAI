@@ -1,4 +1,7 @@
 import type { IDialogAdapter, FileDialogOptions } from './types';
+import { createLogger } from '$lib/adapters/logger';
+
+const logger = createLogger('adapter:dialog:web');
 
 /**
  * Web Dialog Adapter
@@ -13,17 +16,17 @@ export class WebDialogAdapter implements IDialogAdapter {
 		// Cannot return a raw path on the web.
 		// Returns a dummy path to indicate "success" if you were to wire this to an input element
 		// but realistically, you should use an Upload button in the UI for the web.
-		console.warn('openFile is not fully supported on the web. Returning null.');
+		logger.warn('openFile is not fully supported on the web. Returning null.');
 		return null;
 	}
 
 	async openMultipleFiles(_options?: FileDialogOptions): Promise<string[] | null> {
-		console.warn('openMultipleFiles is not fully supported on the web. Returning null.');
+		logger.warn('openMultipleFiles is not fully supported on the web. Returning null.');
 		return null;
 	}
 
 	async saveFile(_options?: FileDialogOptions): Promise<string | null> {
-		console.warn('saveFile is not fully supported on the web. Returning null.');
+		logger.warn('saveFile is not fully supported on the web. Returning null.');
 		return null;
 	}
 

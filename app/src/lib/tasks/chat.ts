@@ -30,6 +30,7 @@ import { createMessage } from '$lib/stores/content/message';
 import { buildPrompt } from '../llm/prompt/builder';
 import { selectProvider } from '../llm/provider';
 import { applyScripts } from '../scripts';
+import { createLogger } from '$lib/adapters/logger';
 
 export interface RunChatOptions {
 	/** Save partial content to DB when the user aborts. Default: true */
@@ -41,6 +42,7 @@ export interface RunChatOptions {
 const defaultOptions: RunChatOptions = {
 	saveOnAbort: true
 };
+const logger = createLogger('task:chat');
 
 // ─── Active Controllers ────────────────────────────────────────────────────────
 
@@ -63,7 +65,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
 	// ── 0. Guard: Prevent duplicate runs ─────────────────────────────
 	if (activeControllers.has(chatId)) {
-		console.warn(`Chat ${chatId} is already running.`);
+		logger.warn(`Chat ${chatId} is already running.`);
 		return;
 	}
 

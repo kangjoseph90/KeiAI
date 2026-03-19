@@ -21,6 +21,7 @@ import { AppError } from '$lib/types/errors';
 import { encryptAsset } from '../asset/util';
 import { BaseSyncEngine, type SyncStatus } from './base';
 import { uploadAsset, deleteRemoteAsset, promoteAsset } from '../asset/remote';
+import { createLogger } from '$lib/adapters/logger';
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -28,6 +29,8 @@ type RealtimeEvent = {
 	action: string;
 	record: Record<string, unknown>;
 };
+
+const logger = createLogger('sync:asset');
 
 export interface AssetSyncStatus extends SyncStatus {
 	pendingCount: number;
@@ -238,7 +241,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 		} catch (err) {
 			cursorSafeToAdvance = false;
 			syncError = err;
-			console.error('[AssetSync] Failed to pull assets', err);
+			logger.error('Failed to pull assets', err);
 		}
 
 		if (cursorSafeToAdvance && nextCursor > lastSyncTime) {
@@ -281,7 +284,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 				void this.pushRecord(local);
 			}
 		} catch (err) {
-			console.error('[AssetSync] Realtime event error', err);
+			logger.error('Realtime event error', err);
 		}
 	}
 
@@ -308,7 +311,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 		try {
 			await batch.send();
 		} catch (err) {
-			console.error(`[AssetSync] Failed to push ${record.id}`, err);
+			logger.error(`Failed to push ${record.id}`, err);
 		}
 	}
 
@@ -320,7 +323,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 		try {
 			await batch.send();
 		} catch (err) {
-			console.error('[AssetSync] Failed to push batch', err);
+			logger.error('Failed to push batch', err);
 		}
 	}
 
@@ -370,7 +373,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 				await appAsset.deleteRegistry(entry.id);
 			} catch (error) {
 				if (this.isAuthError(error)) throw error;
-				console.error(`[AssetSync] Failed to process delete for ${entry.id}:`, error);
+				logger.error(`Failed to process delete for ${entry.id}:`, error);
 			}
 		}
 	}
@@ -449,7 +452,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 			} catch (error) {
 				if (this.isQuotaError(error)) throw error;
 				if (this.isAuthError(error)) throw error;
-				console.error(`[AssetSync] Failed to sync asset ${entry.id}:`, error);
+				logger.error(`Failed to sync asset ${entry.id}:`, error);
 			}
 		}
 	}

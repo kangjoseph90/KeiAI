@@ -26,11 +26,14 @@ import {
 } from '$lib/adapters/db';
 import { appKV } from '$lib/adapters/kv';
 import { BaseSyncEngine } from './base';
+import { createLogger } from '$lib/adapters/logger';
 
 type RealtimeEvent = {
 	action: string;
 	record: Record<string, unknown>;
 };
+
+const logger = createLogger('sync:data');
 
 export class DataSyncEngine extends BaseSyncEngine {
 	// ─── State ────────────────────────────────────────────────────────
@@ -202,7 +205,7 @@ export class DataSyncEngine extends BaseSyncEngine {
 		} catch (err) {
 			cursorSafeToAdvance = false;
 			syncError = err;
-			console.error(`Failed to pull ${tableName}`, err);
+			logger.error(`Failed to pull ${tableName}`, err);
 		}
 
 		if (cursorSafeToAdvance && nextCursor > lastSyncTime) {
@@ -235,7 +238,7 @@ export class DataSyncEngine extends BaseSyncEngine {
 		try {
 			await batch.send();
 		} catch (err) {
-			console.error(`Failed to push corrections batch to ${tableName}`, err);
+			logger.error(`Failed to push corrections batch to ${tableName}`, err);
 		}
 	}
 
@@ -255,7 +258,7 @@ export class DataSyncEngine extends BaseSyncEngine {
 				void this.pushRecord(tableName, local);
 			}
 		} catch (err) {
-			console.error(`Realtime event error for ${tableName}`, err);
+			logger.error(`Realtime event error for ${tableName}`, err);
 		}
 	}
 
@@ -288,7 +291,7 @@ export class DataSyncEngine extends BaseSyncEngine {
 		try {
 			await batch.send();
 		} catch (err) {
-			console.error(`Failed to push ${record.id} to ${tableName}`, err);
+			logger.error(`Failed to push ${record.id} to ${tableName}`, err);
 		}
 	}
 
@@ -342,7 +345,7 @@ export class DataSyncEngine extends BaseSyncEngine {
 		try {
 			await batch.send();
 		} catch (err) {
-			console.error('Failed to push recent writes batch', err);
+			logger.error('Failed to push recent writes batch', err);
 		}
 	}
 
