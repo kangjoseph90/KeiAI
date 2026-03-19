@@ -30,16 +30,6 @@
 	import type { ComponentType } from 'svelte';
 	import { getErrorMessage } from '$lib/types/errors';
 
-	import CharactersView from '$lib/views/CharactersView.svelte';
-	import ChatsView from '$lib/views/ChatsView.svelte';
-	import ChatView from '$lib/views/ChatView.svelte';
-	import PersonasView from '$lib/views/PersonasView.svelte';
-	import PresetsView from '$lib/views/PresetsView.svelte';
-	import ModulesView from '$lib/views/ModulesView.svelte';
-	import PluginsView from '$lib/views/PluginsView.svelte';
-	import SettingsView from '$lib/views/SettingsView.svelte';
-	import ManageAccountsDialog from '$lib/views/ManageAccountsDialog.svelte';
-
 	let ready = $state(false);
 	let errorMsg = $state('');
 	let manageAccountsOpen = $state(false);
@@ -271,25 +261,43 @@
 			<!-- View Content -->
 			<div class="flex-1 overflow-y-auto p-6">
 				{#if $route.view === 'characters'}
-					<CharactersView onNavigate={handleNavigate} />
+					{#await import('$lib/views/CharactersView.svelte') then m}
+						<m.default onNavigate={handleNavigate} />
+					{/await}
 				{:else if $route.view === 'chats' && $route.charId}
-					<ChatsView charId={$route.charId} onNavigate={handleNavigate} />
+					{#await import('$lib/views/ChatsView.svelte') then m}
+						<m.default charId={$route.charId} onNavigate={handleNavigate} />
+					{/await}
 				{:else if $route.view === 'chat' && $route.chatId}
-					<ChatView chatId={$route.chatId} />
+					{#await import('$lib/views/ChatView.svelte') then m}
+						<m.default chatId={$route.chatId} />
+					{/await}
 				{:else if $route.view === 'personas'}
-					<PersonasView />
+					{#await import('$lib/views/PersonasView.svelte') then m}
+						<m.default />
+					{/await}
 				{:else if $route.view === 'presets'}
-					<PresetsView />
+					{#await import('$lib/views/PresetsView.svelte') then m}
+						<m.default />
+					{/await}
 				{:else if $route.view === 'modules'}
-					<ModulesView />
+					{#await import('$lib/views/ModulesView.svelte') then m}
+						<m.default />
+					{/await}
 				{:else if $route.view === 'plugins'}
-					<PluginsView />
+					{#await import('$lib/views/PluginsView.svelte') then m}
+						<m.default />
+					{/await}
 				{:else if $route.view === 'settings'}
-					<SettingsView />
+					{#await import('$lib/views/SettingsView.svelte') then m}
+						<m.default />
+					{/await}
 				{/if}
 			</div>
 		</div>
 
-		<ManageAccountsDialog bind:open={manageAccountsOpen} />
+		{#await import('$lib/views/ManageAccountsDialog.svelte') then m}
+			<m.default bind:open={manageAccountsOpen} />
+		{/await}
 	{/if}
 </main>

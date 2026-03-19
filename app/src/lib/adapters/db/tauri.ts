@@ -38,28 +38,40 @@ interface DatabaseSqlRow {
 	data: string; // JSON.stringify(...)
 }
 
+interface RecordBindingShape {
+	id: string;
+	userId?: string;
+	updatedAt?: number;
+	isDeleted?: boolean;
+	characterId?: string;
+	chatId?: string;
+	sortOrder?: string;
+	ownerId?: string;
+	encryptedData?: Uint8Array<ArrayBufferLike> | string;
+	encryptedDataIV?: Uint8Array<ArrayBufferLike> | string;
+}
+
 // Convert record to DB row bindings safely
 function recordToBindings<T extends BaseRecord>(record: T): DatabaseSqlRow {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const clone = { ...record } as any;
+	const clone: RecordBindingShape = { ...record };
 
 	const bindings: DatabaseSqlRow = {
 		id: clone.id,
 		userId: clone.userId ?? null,
-		characterId: (clone as { characterId?: string }).characterId ?? null,
-		chatId: (clone as { chatId?: string }).chatId ?? null,
-		sortOrder: (clone as { sortOrder?: string }).sortOrder ?? null,
-		ownerId: (clone as { ownerId?: string }).ownerId ?? null,
+		characterId: clone.characterId ?? null,
+		chatId: clone.chatId ?? null,
+		sortOrder: clone.sortOrder ?? null,
+		ownerId: clone.ownerId ?? null,
 		updatedAt: clone.updatedAt ?? null,
 		isDeleted: clone.isDeleted ? 1 : 0,
 		data: '' // placeholder
 	};
 
 	if (clone.encryptedData instanceof Uint8Array) {
-		clone.encryptedData = toBase64(clone.encryptedData);
+		clone.encryptedData = toBase64(clone.encryptedData as Uint8Array<ArrayBuffer>);
 	}
 	if (clone.encryptedDataIV instanceof Uint8Array) {
-		clone.encryptedDataIV = toBase64(clone.encryptedDataIV);
+		clone.encryptedDataIV = toBase64(clone.encryptedDataIV as Uint8Array<ArrayBuffer>);
 	}
 
 	bindings.data = JSON.stringify(clone);
