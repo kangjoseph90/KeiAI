@@ -10,6 +10,7 @@ import type { StreamProvider } from '$lib/llm/types';
 import { MockStreamProvider } from '$lib/llm/providers';
 import { OpenAIStreamProvider } from '$lib/llm/providers/openai';
 import type { AppSettings } from '$lib/services';
+import { createLogger } from '$lib/adapters/logger';
 import {
 	type ModelConfig,
 	type LLMModel,
@@ -17,6 +18,8 @@ import {
 	BUILT_IN_MODELS,
 	getProviderUrl
 } from '$lib/types/models';
+
+const logger = createLogger('llm:provider');
 
 /**
  * Build a StreamProvider from the given model config + app settings.
@@ -26,14 +29,14 @@ export function selectProvider(modelConfig: ModelConfig, settings: AppSettings):
 	const model = resolveModel(modelConfig, settings);
 
 	if (!model) {
-		console.warn('[selectProvider] Model not found. Falling back to MockStreamProvider.');
+		logger.warn('Model not found. Falling back to MockStreamProvider.');
 		return new MockStreamProvider();
 	}
 
 	const connection = resolveConnection(model, settings);
 
 	if (!connection.apiKey) {
-		console.warn('[selectProvider] No API key found. Falling back to MockStreamProvider.');
+		logger.warn('No API key found. Falling back to MockStreamProvider.');
 		return new MockStreamProvider();
 	}
 

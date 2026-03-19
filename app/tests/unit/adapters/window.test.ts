@@ -35,7 +35,7 @@ describe('Window Adapters', () => {
 			await adapter.close();
 			expect(window.close).toHaveBeenCalled();
 			expect(console.warn).toHaveBeenCalledWith(
-				expect.stringContaining('script opened the window')
+				expect.stringContaining('[KeiAI][WARN][adapter:window:web] Window close may not work')
 			);
 		});
 

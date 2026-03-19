@@ -19,6 +19,9 @@ import { getActiveSession } from '../session';
 import { ProfileService, type Profile } from '../user/profile';
 import { appUser } from '$lib/adapters/user';
 import { BaseSyncEngine } from './base';
+import { createLogger } from '$lib/adapters/logger';
+
+const logger = createLogger('sync:profile');
 
 export class ProfileSyncEngine extends BaseSyncEngine {
 	private subscribed = false;
@@ -60,7 +63,7 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 					const fetchResponse = await fetch(user.avatar);
 					updateData.avatar = await fetchResponse.blob();
 				} catch (e) {
-					console.warn('[ProfileSync] Failed to parse avatar data URI for upload', e);
+					logger.warn('Failed to parse avatar data URI for upload', e);
 				}
 			}
 
@@ -69,7 +72,7 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 			// Keeping the Data URI locally ensures instant loading and works around Tauri caching issues.
 			await pb.collection('users').update(userId, updateData);
 		} catch (err) {
-			console.error('[ProfileSync] Push failed', err);
+			logger.error('Push failed', err);
 		}
 	}
 
@@ -150,7 +153,7 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 
 			return updated;
 		} catch (err) {
-			console.error('[ProfileSync] Realtime event error', err);
+			logger.error('Realtime event error', err);
 			return null;
 		}
 	}
@@ -194,7 +197,7 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 				this.onRemoteUpdate?.();
 			}
 		} catch (err) {
-			console.error('[ProfileSync] Pull failed', err);
+			logger.error('Pull failed', err);
 			throw err;
 		}
 	}
@@ -222,7 +225,7 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 
 			return `data:${contentType};base64,${base64}`;
 		} catch (err) {
-			console.warn('[ProfileSync] Failed to convert image to data URI', err);
+			logger.warn('Failed to convert image to data URI', err);
 			return url; // Fallback to original URL
 		}
 	}

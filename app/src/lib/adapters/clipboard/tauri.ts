@@ -2,6 +2,9 @@ import { readText, writeText, readImage } from '@tauri-apps/plugin-clipboard-man
 import type { Image } from '@tauri-apps/api/image';
 import type { IClipboardAdapter } from './types';
 import { AppError } from '$lib/types/errors';
+import { createLogger } from '$lib/adapters/logger';
+
+const logger = createLogger('adapter:clipboard:tauri');
 
 /**
  * Tauri Clipboard Adapter
@@ -14,7 +17,7 @@ export class TauriClipboardAdapter implements IClipboardAdapter {
 			const hasText = await readText();
 			return hasText || null;
 		} catch (error) {
-			console.error('Failed to read text from clipboard (Tauri):', error);
+			logger.error('Failed to read text from clipboard (Tauri):', error);
 			return null;
 		}
 	}
@@ -41,7 +44,7 @@ export class TauriClipboardAdapter implements IClipboardAdapter {
 			const rgbaBytes = await image.rgba();
 			return new Uint8Array(rgbaBytes);
 		} catch (error) {
-			console.error('Failed to read image from clipboard (Tauri):', error);
+			logger.error('Failed to read image from clipboard (Tauri):', error);
 			return null;
 		}
 	}

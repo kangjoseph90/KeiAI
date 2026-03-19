@@ -210,6 +210,17 @@ All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
 
 ---
 
+## Logging Conventions
+
+- 앱 코드에서는 `console.*`를 직접 호출하지 말고 `createLogger(namespace?)`를 사용한다.
+- Namespace는 `domain:module[:detail]` 형식의 소문자 콜론 구분자를 사용한다.
+  - 예: `sync:asset`, `adapter:http:web`, `service:user:auth`
+- Web 포맷: `[KeiAI][LEVEL][namespace?] message`
+- Tauri 포맷: `[HH:mm:ss.SSS][LEVEL][namespace?] message` (일 단위 파일, 7일 보관)
+- Logger 메서드 인자는 문자열 + payload 인자를 함께 전달해 디버깅 컨텍스트를 유지한다.
+
+---
+
 ## Import Conventions
 
 ```typescript
@@ -282,7 +293,7 @@ $effect(() => { ... });
 
 ## Adapter Pattern
 
-Nine adapter interfaces, each with Web + Tauri implementations dispatched via `isTauri()`:
+Ten adapter interfaces, each with Web + Tauri implementations dispatched via `isTauri()`:
 
 | Adapter        | Web                  | Tauri                    | Purpose                           |
 | -------------- | -------------------- | ------------------------ | --------------------------------- |
@@ -295,6 +306,7 @@ Nine adapter interfaces, each with Web + Tauri implementations dispatched via `i
 | `dialog`       | Browser prompt       | Native dialog            | File open/save, confirmations     |
 | `notification` | Notification API     | Plugin                   | OS notifications                  |
 | `window`       | N/A                  | Plugin                   | Window management (Tauri-only)    |
+| `logger`       | Console formatter    | File logger              | Structured app logging            |
 
 ### Adding a New Adapter
 
