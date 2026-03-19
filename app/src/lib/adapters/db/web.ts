@@ -258,8 +258,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 		callback: () => Promise<R>
 	): Promise<R> {
 		await this.flush();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		return await this.db.transaction(mode as unknown as any, tables, callback);
+		return await this.db.transaction(mode, tables, callback);
 	}
 
 	private emitWriteEvent(
