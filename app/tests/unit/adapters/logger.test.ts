@@ -81,22 +81,20 @@ describe('Logger adapters', () => {
 			const [pathArg, contentArg, optionArg] = mockWriteTextFile.mock.calls[0] as [
 				string,
 				string,
-				{ baseDir: string }
+				{ baseDir: string; append: boolean }
 			];
 			expect(pathArg.startsWith('logs/')).toBe(true);
 			expect(pathArg.endsWith('.log')).toBe(true);
 			expect(contentArg).toContain('[INFO][sync:asset] sync started');
-			expect(optionArg).toEqual({ baseDir: 'AppData' });
+			expect(optionArg).toEqual({ baseDir: 'AppData', append: true });
 		});
 
 		it('appends to existing daily log file', async () => {
 			mockExists.mockImplementation(async (path: string) => {
 				if (path === 'logs') return true;
-				if (path.startsWith('logs/') && path.endsWith('.log')) return true;
 				return false;
 			});
 			mockReadDir.mockResolvedValue([]);
-			mockReadTextFile.mockResolvedValue('[11:00:00.000][INFO] old line\n');
 			mockWriteTextFile.mockResolvedValue(undefined);
 
 			const adapter = new TauriLoggerAdapter();
@@ -104,15 +102,17 @@ describe('Logger adapters', () => {
 			logger.error('new line');
 			await flushAsync();
 
+			// With append mode, we don't read the file first
+			expect(mockReadTextFile).not.toHaveBeenCalled();
 			expect(mockWriteTextFile).toHaveBeenCalled();
 			const [, contentArg, optionArg] = mockWriteTextFile.mock.calls[0] as [
 				string,
 				string,
-				{ baseDir: string }
+				{ baseDir: string; append: boolean }
 			];
-			expect(contentArg).toContain('[11:00:00.000][INFO] old line');
+			// Only the new line is written (not concatenated with old content)
 			expect(contentArg).toContain('[ERROR] new line');
-			expect(optionArg).toEqual({ baseDir: 'AppData' });
+			expect(optionArg).toEqual({ baseDir: 'AppData', append: true });
 		});
 	});
 
