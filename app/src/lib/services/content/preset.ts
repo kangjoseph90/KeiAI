@@ -40,13 +40,13 @@ export interface PresetDetail extends Preset {
 // ─── Defaults ──────────────────────────────────────────────────────────
 
 export const defaultPresetSummary: PresetSummaryFields = {
-	name: '',
+	name: 'New Preset',
 	description: ''
 };
 
 export const defaultPresetData: PresetDataFields = {
-	chatModel: { id: '', provider: 'openai', parameters: {} },
-	auxModel: { id: '', provider: 'openai', parameters: {} },
+	chatModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: {} },
+	auxModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: {} },
 	templateOrder: [
 		{ name: 'System instruction', type: 'instruction', role: 'system', content: '' },
 		{ name: 'Character description', type: 'description' },

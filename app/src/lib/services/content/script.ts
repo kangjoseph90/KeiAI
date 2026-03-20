@@ -24,7 +24,7 @@ export interface Script extends ScriptFields {
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultScriptFields: ScriptFields = {
-	name: '',
+	name: 'New Script',
 	regex: '',
 	replacement: '',
 	placement: 'display',

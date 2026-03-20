@@ -33,7 +33,7 @@ export interface Module extends ModuleFields {
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultModuleFields: ModuleFields = {
-	name: '',
+	name: 'New Module',
 	description: ''
 };
 

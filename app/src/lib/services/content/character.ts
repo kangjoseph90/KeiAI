@@ -49,7 +49,7 @@ export interface CharacterDetail extends Character {
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultSummaryFields: CharacterSummaryFields = {
-	name: '',
+	name: 'New Character',
 	shortDescription: ''
 };
 
