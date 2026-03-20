@@ -3,6 +3,7 @@ import { PersonaService, type PersonaFields, type Persona } from '$lib/services/
 import { SettingsService } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { personas, appSettings } from '../state';
+import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
 export async function getPersona(personaId: string): Promise<Persona> {
@@ -18,7 +19,7 @@ export async function getPersona(personaId: string): Promise<Persona> {
  * Callers (e.g. route load functions) are responsible for error boundaries.
  */
 export async function loadPersonas(): Promise<void> {
-	const settings = get(appSettings);
+	const settings = await getAppSettings();
 	const list = await PersonaService.list();
 	if (settings?.personaRefs) {
 		personas.set(sortByRefs(list, settings.personaRefs));
@@ -28,11 +29,7 @@ export async function loadPersonas(): Promise<void> {
 }
 
 export async function createPersona(fields: Partial<PersonaFields> = {}): Promise<Persona> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	// Create Record in DB
 	const persona = await PersonaService.create(fields);
@@ -67,11 +64,7 @@ export async function updatePersona(
 }
 
 export async function deletePersona(personaId: string): Promise<void> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	// Remove from parent's refs
 	const existingRefs = settings.personaRefs || [];

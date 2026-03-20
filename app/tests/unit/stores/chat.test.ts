@@ -147,7 +147,7 @@ describe('Chat Store', () => {
 			vi.mocked(CharacterService.updateData).mockRejectedValue(new Error('Fail'));
 
 			await expect(createChat('char-1')).rejects.toThrow();
-			expect(ChatService.delete).toHaveBeenCalledWith('chat-1', 'char-1');
+			expect(ChatService.delete).toHaveBeenCalledWith('chat-1');
 		});
 	});
 

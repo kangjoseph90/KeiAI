@@ -2,10 +2,19 @@ import { get } from 'svelte/store';
 import { PluginService, SettingsService, type PluginFields, type Plugin } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { plugins, appSettings } from '../state';
+import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
+export async function getPlugin(pluginId: string): Promise<Plugin> {
+	const active = get(plugins).find((p) => p.id === pluginId);
+	if (active) return active;
+	const db = await PluginService.get(pluginId);
+	if (!db) throw new AppError('NOT_FOUND', `Plugin not found: ${pluginId}`);
+	return db;
+}
+
 export async function loadPlugins(): Promise<void> {
-	const settings = get(appSettings);
+	const settings = await getAppSettings();
 	const list = await PluginService.list();
 	if (settings?.pluginRefs) {
 		plugins.set(sortByRefs(list, settings.pluginRefs));
@@ -14,12 +23,8 @@ export async function loadPlugins(): Promise<void> {
 	}
 }
 
-export async function createPlugin(fields: Partial<PluginFields>): Promise<Plugin> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+export async function createPlugin(fields: Partial<PluginFields> = {}): Promise<Plugin> {
+	const settings = await getAppSettings();
 
 	// Create Record in DB
 	const plugin = await PluginService.create(fields);
@@ -45,26 +50,25 @@ export async function createPlugin(fields: Partial<PluginFields>): Promise<Plugi
 	return plugin;
 }
 
-export async function updatePlugin(id: string, changes: Partial<PluginFields>): Promise<void> {
-	const updated = await PluginService.update(id, changes);
-	plugins.update((list) => list.map((p) => (p.id === id ? updated : p)));
+export async function updatePlugin(
+	pluginId: string,
+	changes: Partial<PluginFields>
+): Promise<void> {
+	const updated = await PluginService.update(pluginId, changes);
+	plugins.update((list) => list.map((p) => (p.id === pluginId ? updated : p)));
 }
 
-export async function deletePlugin(id: string): Promise<void> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+export async function deletePlugin(pluginId: string): Promise<void> {
+	const settings = await getAppSettings();
 
 	// Remove from parent's refs
 	const existingRefs = settings.pluginRefs || [];
-	const pluginRefs = existingRefs.filter((r) => r.id !== id);
+	const pluginRefs = existingRefs.filter((r) => r.id !== pluginId);
 	await SettingsService.update({ pluginRefs });
 
 	// Remove record from DB
 	try {
-		await PluginService.delete(id);
+		await PluginService.delete(pluginId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
 		await SettingsService.update({ pluginRefs: existingRefs });
@@ -73,5 +77,5 @@ export async function deletePlugin(id: string): Promise<void> {
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, pluginRefs } : s));
-	plugins.update((list) => list.filter((p) => p.id !== id));
+	plugins.update((list) => list.filter((p) => p.id !== pluginId));
 }

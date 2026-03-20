@@ -10,7 +10,6 @@ import { getActiveSession } from '../session';
 import { localDB, type ChatSummaryRecord, type ChatDataRecord } from '$lib/adapters/db';
 import type { FolderDef, OrderedRef } from '$lib/types/refs';
 import { deepMerge } from '$lib/utils/defaults';
-import { assertCharacterExists, assertChatOwnedByCharacter } from './guards';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
@@ -141,8 +140,6 @@ export class ChatService {
 		summary: Partial<ChatSummaryFields> = {},
 		data: Partial<ChatDataFields> = {}
 	): Promise<ChatDetail> {
-		await assertCharacterExists(characterId);
-
 		const resolvedSummary: ChatSummaryFields = deepMerge(
 			defaultSummaryFields,
 			summary as Record<string, unknown>
@@ -317,11 +314,7 @@ export class ChatService {
 	}
 
 	/** Cascade soft-delete: owned lorebooks, scripts, messages, then chat itself */
-	static async delete(id: string, expectedCharacterId?: string): Promise<void> {
-		if (expectedCharacterId) {
-			await assertChatOwnedByCharacter(id, expectedCharacterId);
-		}
-
+	static async delete(id: string): Promise<void> {
 		try {
 			await Promise.all([
 				encryptedWriteQueue.flushTable('chatSummaries'),

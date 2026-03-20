@@ -3,7 +3,6 @@ import { getActiveSession } from '../session';
 import { localDB, type MessageRecord } from '$lib/adapters/db';
 import { generateKeyBetween } from 'fractional-indexing';
 import { deepMerge } from '$lib/utils/defaults';
-import { assertChatExists, assertMessageInChat } from './guards';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { ToolCallAbstract } from './tool';
@@ -148,8 +147,6 @@ export class MessageService {
 		fields: Partial<MessageFields> = {},
 		providedSortOrder?: string
 	): Promise<Message> {
-		await assertChatExists(chatId);
-
 		const resolved: MessageFields = deepMerge(
 			defaultMessageFields,
 			fields as Record<string, unknown>
@@ -198,19 +195,12 @@ export class MessageService {
 	}
 
 	/** Update a message */
-	static async update(
-		id: string,
-		changes: Partial<MessageFields>,
-		expectedChatId?: string
-	): Promise<Message> {
+	static async update(id: string, changes: Partial<MessageFields>): Promise<Message> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<MessageFields>('messages', id);
 		const record = await localDB.getRecord<MessageRecord>('messages', id);
 		if (!record || record.isDeleted) {
 			throw new AppError('NOT_FOUND', `Message not found: ${id}`);
-		}
-		if (expectedChatId) {
-			await assertMessageInChat(expectedChatId, id);
 		}
 
 		try {
@@ -255,10 +245,7 @@ export class MessageService {
 	}
 
 	/** Soft-delete a message */
-	static async delete(id: string, expectedChatId?: string): Promise<void> {
-		if (expectedChatId) {
-			await assertMessageInChat(expectedChatId, id);
-		}
+	static async delete(id: string): Promise<void> {
 		try {
 			encryptedWriteQueue.drop('messages', id);
 			await localDB.softDeleteRecord('messages', id);

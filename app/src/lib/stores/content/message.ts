@@ -52,7 +52,10 @@ export async function loadNewerMessages(chatId: string, limit = 50): Promise<voi
 	}
 }
 
-export async function createMessage(chatId: string, fields: Partial<MessageFields>): Promise<void> {
+export async function createMessage(
+	chatId: string,
+	fields: Partial<MessageFields> = {}
+): Promise<void> {
 	const preview = fields.content?.substring(0, 50) ?? '';
 
 	// DB writes — always happen with explicit chatId
@@ -76,8 +79,7 @@ export async function createMessage(chatId: string, fields: Partial<MessageField
 
 export async function updateMessage(msgId: string, changes: Partial<MessageFields>): Promise<void> {
 	// DB write — always happens
-	const currentChatId = get(activeChatId);
-	const updated = await MessageService.update(msgId, changes, currentChatId ?? undefined);
+	const updated = await MessageService.update(msgId, changes);
 
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) !== updated.chatId) return;
@@ -104,7 +106,7 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
 		currentMessages.length > 0 && currentMessages[currentMessages.length - 1].id === msgId;
 
 	// DB write — always happens
-	await MessageService.delete(msgId, chatId);
+	await MessageService.delete(msgId);
 
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) !== chatId) return;

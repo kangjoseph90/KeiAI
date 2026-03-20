@@ -22,6 +22,7 @@ import {
 	activeChatId
 } from '../state';
 import { loadInitialMessages } from './message';
+import { getCharacterDetail } from './character';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 
@@ -34,11 +35,7 @@ export async function getChatDetail(chatId: string): Promise<ChatDetail> {
 }
 
 export async function selectChat(chatId: string, characterId: string): Promise<void> {
-	const detail = await ChatService.getDetail(chatId);
-
-	if (!detail) {
-		throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
-	}
+	const detail = await getChatDetail(chatId);
 
 	// 검증 성공 시 채팅 로드
 	clearActiveChat();
@@ -67,15 +64,7 @@ export async function createChat(
 	summary: Partial<ChatSummaryFields> = {},
 	data: Partial<ChatDataFields> = {}
 ): Promise<ChatDetail> {
-	// Use cached active character if possible
-	const char =
-		characterId === get(activeCharacterId)
-			? get(activeCharacter)
-			: await CharacterService.getDetail(characterId);
-
-	if (!char) {
-		throw new AppError(`NOT_FOUND`, `Character not found`);
-	}
+	const char = await getCharacterDetail(characterId);
 
 	// Create Record in DB
 	const chat = await ChatService.create(characterId, summary, data);
@@ -90,7 +79,7 @@ export async function createChat(
 		await CharacterService.updateData(characterId, { chatRefs });
 	} catch (error) {
 		// If parent's refs update fails, roll back DB
-		await ChatService.delete(chat.id, characterId);
+		await ChatService.delete(chat.id);
 		throw error;
 	}
 
@@ -137,15 +126,7 @@ export async function updateChatFull(
 }
 
 export async function deleteChat(chatId: string, characterId: string): Promise<void> {
-	// Use cached active character if possible
-	const char =
-		characterId === get(activeCharacterId)
-			? get(activeCharacter)
-			: await CharacterService.getDetail(characterId);
-
-	if (!char) {
-		throw new AppError(`NOT_FOUND`, `Character not found`);
-	}
+	const char = await getCharacterDetail(characterId);
 
 	// Remove from parent's refs
 	const existingRefs = char.data.chatRefs || [];
@@ -153,7 +134,7 @@ export async function deleteChat(chatId: string, characterId: string): Promise<v
 	await CharacterService.updateData(characterId, { chatRefs });
 
 	try {
-		await ChatService.delete(chatId, characterId);
+		await ChatService.delete(chatId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
 		await CharacterService.updateData(characterId, { chatRefs: existingRefs });
@@ -177,12 +158,7 @@ export async function createChatLorebook(
 	chatId: string,
 	fields: Partial<LorebookFields>
 ): Promise<Lorebook> {
-	// Use cached active chat if possible
-	const chat = chatId === get(activeChatId) ? get(activeChat) : await ChatService.getDetail(chatId);
-
-	if (!chat) {
-		throw new AppError(`NOT_FOUND`, `Chat not found`);
-	}
+	const chat = await getChatDetail(chatId);
 
 	// Create Record in DB
 	const lb = await LorebookService.create(chatId, fields);
@@ -211,12 +187,7 @@ export async function createChatLorebook(
 }
 
 export async function deleteChatLorebook(chatId: string, lorebookId: string): Promise<void> {
-	// Use cached active chat if possible
-	const chat = chatId === get(activeChatId) ? get(activeChat) : await ChatService.getDetail(chatId);
-
-	if (!chat) {
-		throw new AppError(`NOT_FOUND`, `Chat not found`);
-	}
+	const chat = await getChatDetail(chatId);
 
 	// Remove from parent's refs
 	const existingRefs = chat.data.lorebookRefs || [];
@@ -224,7 +195,7 @@ export async function deleteChatLorebook(chatId: string, lorebookId: string): Pr
 	await ChatService.updateData(chatId, { lorebookRefs });
 
 	try {
-		await LorebookService.delete(lorebookId, chatId);
+		await LorebookService.delete(lorebookId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
 		await ChatService.updateData(chatId, { lorebookRefs: existingRefs });
@@ -248,12 +219,7 @@ export async function createChatFolder(
 	name: string,
 	parentId?: string
 ): Promise<FolderDef> {
-	// Use cached active chat if possible
-	const chat = chatId === get(activeChatId) ? get(activeChat) : await ChatService.getDetail(chatId);
-
-	if (!chat) {
-		throw new AppError(`NOT_FOUND`, `Chat not found`);
-	}
+	const chat = await getChatDetail(chatId);
 
 	const folders = chat.data.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -282,12 +248,7 @@ export async function updateChatFolder(
 	folderId: string,
 	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
-	// Use cached active chat if possible
-	const chat = chatId === get(activeChatId) ? get(activeChat) : await ChatService.getDetail(chatId);
-
-	if (!chat) {
-		throw new AppError(`NOT_FOUND`, `Chat not found`);
-	}
+	const chat = await getChatDetail(chatId);
 
 	const folders = chat.data.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -311,12 +272,7 @@ export async function deleteChatFolder(
 	folderType: ChatFolderType,
 	folderId: string
 ): Promise<void> {
-	// Use cached active chat if possible
-	const chat = chatId === get(activeChatId) ? get(activeChat) : await ChatService.getDetail(chatId);
-
-	if (!chat) {
-		throw new AppError(`NOT_FOUND`, `Chat not found`);
-	}
+	const chat = await getChatDetail(chatId);
 
 	const folders = chat.data.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -342,12 +298,7 @@ export async function moveChatItem(
 	newFolderId?: string,
 	newSortOrder?: string
 ): Promise<void> {
-	// Use cached active chat if possible
-	const chat = chatId === get(activeChatId) ? get(activeChat) : await ChatService.getDetail(chatId);
-
-	if (!chat) {
-		throw new AppError(`NOT_FOUND`, `Chat not found`);
-	}
+	const chat = await getChatDetail(chatId);
 
 	let refKey: keyof typeof chat.data;
 	switch (folderType) {

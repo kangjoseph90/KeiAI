@@ -29,11 +29,6 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/content/guards', () => ({
-	assertOwnedResourceParentExists: vi.fn(),
-	assertLorebookOwnedBy: vi.fn()
-}));
-
 vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'test-id')
 }));
@@ -41,10 +36,6 @@ vi.mock('$lib/utils/id', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import {
-	assertOwnedResourceParentExists,
-	assertLorebookOwnedBy
-} from '$lib/services/content/guards';
 
 describe('LorebookService', () => {
 	const mockUserId = 'user-123';
@@ -76,9 +67,6 @@ describe('LorebookService', () => {
 		});
 
 		vi.mocked(decrypt).mockResolvedValue(JSON.stringify(defaultLorebookParams));
-
-		vi.mocked(assertOwnedResourceParentExists).mockResolvedValue(undefined);
-		vi.mocked(assertLorebookOwnedBy).mockResolvedValue(undefined);
 	});
 
 	describe('listByOwner', () => {
@@ -159,7 +147,6 @@ describe('LorebookService', () => {
 			expect(result.name).toBe('Custom Name');
 			expect(result.insertionDepth).toBe(0); // From defaults
 
-			expect(assertOwnedResourceParentExists).toHaveBeenCalledWith('owner-1');
 			expect(localDB.putRecord).toHaveBeenCalledWith(
 				'lorebooks',
 				expect.objectContaining({
@@ -198,21 +185,6 @@ describe('LorebookService', () => {
 				'Lorebook not found: missing'
 			);
 		});
-
-		it('should assert ownership if expectedOwnerId provided', async () => {
-			const mockRecord = {
-				id: 'lb-1',
-				ownerId: 'owner-1',
-				isDeleted: false,
-				encryptedData: mockEncryptedData,
-				encryptedDataIV: mockIV
-			} as unknown as BaseRecord;
-			vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
-
-			await LorebookService.update('lb-1', { name: 'new' }, 'owner-1');
-
-			expect(assertLorebookOwnedBy).toHaveBeenCalledWith('owner-1', 'lb-1');
-		});
 	});
 
 	describe('delete', () => {
@@ -220,12 +192,6 @@ describe('LorebookService', () => {
 			await LorebookService.delete('lb-1');
 
 			expect(localDB.softDeleteRecord).toHaveBeenCalledWith('lorebooks', 'lb-1');
-		});
-
-		it('should assert ownership if provided', async () => {
-			await LorebookService.delete('lb-1', 'owner-1');
-
-			expect(assertLorebookOwnedBy).toHaveBeenCalledWith('owner-1', 'lb-1');
 		});
 	});
 });
