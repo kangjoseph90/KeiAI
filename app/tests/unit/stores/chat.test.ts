@@ -13,7 +13,7 @@ import {
 	createChatFolder,
 	updateChatFolder,
 	deleteChatFolder,
-	moveChatLorebook
+	moveChatItem
 } from '$lib/stores/content/chat';
 import { chats, activeChat, activeCharacter, messages, chatLorebooks } from '$lib/stores/state';
 import { ChatService, LorebookService, CharacterService } from '$lib/services';
@@ -174,7 +174,7 @@ describe('Chat Store', () => {
 			activeChat.set(mockChatDetail);
 			vi.mocked(ChatService.updateData).mockResolvedValue({} as ChatDataFields);
 
-			const folder = await createChatFolder('chat-1', 'My Folder');
+			const folder = await createChatFolder('chat-1', 'lorebooks', 'My Folder');
 
 			expect(folder.name).toBe('My Folder');
 			expect(get(activeChat)?.data.folders?.lorebooks).toContainEqual(folder);
@@ -189,13 +189,27 @@ describe('Chat Store', () => {
 			activeChat.set(chatWithFolder);
 			vi.mocked(ChatService.updateData).mockResolvedValue({} as ChatDataFields);
 
-			await updateChatFolder('chat-1', 'f1', { name: 'New' });
+			await updateChatFolder('chat-1', 'lorebooks', 'f1', { name: 'New' });
 
 			expect(get(activeChat)?.data.folders?.lorebooks?.[0].name).toBe('New');
 		});
+
+		it('should delete a chat lorebook folder', async () => {
+			const folder: FolderDef = { id: 'f1', name: 'Delete Me', sortOrder: 'a' };
+			const chatWithFolder = {
+				...mockChatDetail,
+				data: { ...mockChatDetail.data, folders: { lorebooks: [folder] } }
+			};
+			activeChat.set(chatWithFolder);
+			vi.mocked(ChatService.updateData).mockResolvedValue({} as ChatDataFields);
+
+			await deleteChatFolder('chat-1', 'lorebooks', 'f1');
+
+			expect(get(activeChat)?.data.folders?.lorebooks).toHaveLength(0);
+		});
 	});
 
-	describe('moveChatLorebook', () => {
+	describe('moveChatItem', () => {
 		it('should move lorebook to a different folder', async () => {
 			const chatWithRefs = {
 				...mockChatDetail,
@@ -207,7 +221,7 @@ describe('Chat Store', () => {
 			activeChat.set(chatWithRefs);
 			vi.mocked(ChatService.updateData).mockResolvedValue({} as ChatDataFields);
 
-			await moveChatLorebook('chat-1', 'lb-1', 'folder-1');
+			await moveChatItem('chat-1', 'lorebooks', 'lb-1', 'folder-1');
 
 			expect(get(activeChat)?.data.lorebookRefs?.[0].folderId).toBe('folder-1');
 		});

@@ -10,11 +10,11 @@ import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { presets, activePreset, appSettings } from '../state';
 import { AppError } from '$lib/types/errors';
 
-export async function getPresetDetail(id: string): Promise<PresetDetail> {
+export async function getPresetDetail(presetId: string): Promise<PresetDetail> {
 	const active = get(activePreset);
-	if (active?.id === id) return active;
-	const db = await PresetService.getDetail(id);
-	if (!db) throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
+	if (active?.id === presetId) return active;
+	const db = await PresetService.getDetail(presetId);
+	if (!db) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
 	return db;
 }
 
@@ -32,15 +32,15 @@ export async function loadPresets(): Promise<void> {
 	}
 }
 
-export async function selectPreset(id: string): Promise<void> {
-	activePreset.set(await PresetService.getDetail(id));
-	appSettings.update((s) => (s ? { ...s, presetId: id } : s));
-	await SettingsService.update({ presetId: id });
+export async function selectPreset(presetId: string): Promise<void> {
+	activePreset.set(await PresetService.getDetail(presetId));
+	appSettings.update((s) => (s ? { ...s, presetId: presetId } : s));
+	await SettingsService.update({ presetId: presetId });
 }
 
 export async function createPreset(
-	fields: Partial<PresetSummaryFields>,
-	data?: Partial<PresetDataFields>
+	summary: Partial<PresetSummaryFields> = {},
+	data: Partial<PresetDataFields> = {}
 ): Promise<PresetDetail> {
 	const settings = get(appSettings) || (await SettingsService.get());
 
@@ -49,7 +49,7 @@ export async function createPreset(
 	}
 
 	// Create Record in DB
-	const detail = await PresetService.create(fields, data);
+	const detail = await PresetService.create(summary, data);
 
 	// Add to parent's refs
 	const existingRefs = settings.presetRefs || [];
@@ -73,33 +73,33 @@ export async function createPreset(
 }
 
 export async function updatePresetSummary(
-	id: string,
+	presetId: string,
 	changes: Partial<PresetSummaryFields>
 ): Promise<void> {
-	const updated = await PresetService.updateSummary(id, changes);
-	presets.update((list) => list.map((p) => (p.id === id ? updated : p)));
-	activePreset.update((p) => (p && p.id === id ? { ...p, ...updated } : p));
+	const updated = await PresetService.updateSummary(presetId, changes);
+	presets.update((list) => list.map((p) => (p.id === presetId ? updated : p)));
+	activePreset.update((p) => (p && p.id === presetId ? { ...p, ...updated } : p));
 }
 
 export async function updatePresetData(
-	id: string,
+	presetId: string,
 	changes: Partial<PresetDataFields>
 ): Promise<void> {
-	const data = await PresetService.updateData(id, changes);
-	activePreset.update((p) => (p && p.id === id ? { ...p, data } : p));
+	const data = await PresetService.updateData(presetId, changes);
+	activePreset.update((p) => (p && p.id === presetId ? { ...p, data } : p));
 }
 
 export async function updatePresetFull(
-	id: string,
+	presetId: string,
 	summaryChanges: Partial<PresetSummaryFields>,
 	dataChanges: Partial<PresetDataFields>
 ): Promise<void> {
-	const result = await PresetService.update(id, summaryChanges, dataChanges);
-	presets.update((list) => list.map((p) => (p.id === id ? result : p)));
-	activePreset.update((p) => (p && p.id === id ? result : p));
+	const result = await PresetService.update(presetId, summaryChanges, dataChanges);
+	presets.update((list) => list.map((p) => (p.id === presetId ? result : p)));
+	activePreset.update((p) => (p && p.id === presetId ? result : p));
 }
 
-export async function deletePreset(id: string): Promise<void> {
+export async function deletePreset(presetId: string): Promise<void> {
 	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
@@ -108,12 +108,12 @@ export async function deletePreset(id: string): Promise<void> {
 
 	// Remove from parent's refs
 	const existingRefs = settings.presetRefs || [];
-	const presetRefs = existingRefs.filter((r) => r.id !== id);
+	const presetRefs = existingRefs.filter((r) => r.id !== presetId);
 	await SettingsService.update({ presetRefs });
 
 	// Remove record from DB
 	try {
-		await PresetService.delete(id);
+		await PresetService.delete(presetId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
 		await SettingsService.update({ presetRefs: existingRefs });
@@ -122,8 +122,8 @@ export async function deletePreset(id: string): Promise<void> {
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, presetRefs } : s));
-	presets.update((list) => list.filter((p) => p.id !== id));
-	if (get(activePreset)?.id === id) {
+	presets.update((list) => list.filter((p) => p.id !== presetId));
+	if (get(activePreset)?.id === presetId) {
 		activePreset.set(null);
 	}
 }

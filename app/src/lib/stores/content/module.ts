@@ -59,7 +59,7 @@ export async function loadModules(): Promise<void> {
 	moduleResources.set(new Map(entries));
 }
 
-export async function createModule(fields: ModuleFields): Promise<Module> {
+export async function createModule(fields: Partial<ModuleFields> = {}): Promise<Module> {
 	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
@@ -95,12 +95,15 @@ export async function createModule(fields: ModuleFields): Promise<Module> {
 	return mod;
 }
 
-export async function updateModule(id: string, changes: Partial<ModuleContent>): Promise<void> {
-	const updated = await ModuleService.updateContent(id, changes);
-	modules.update((list) => list.map((m) => (m.id === id ? updated : m)));
+export async function updateModule(
+	moduleId: string,
+	changes: Partial<ModuleContent>
+): Promise<void> {
+	const updated = await ModuleService.updateContent(moduleId, changes);
+	modules.update((list) => list.map((m) => (m.id === moduleId ? updated : m)));
 }
 
-export async function deleteModule(id: string): Promise<void> {
+export async function deleteModule(moduleId: string): Promise<void> {
 	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
@@ -109,12 +112,12 @@ export async function deleteModule(id: string): Promise<void> {
 
 	// Remove from parent's refs
 	const existingRefs = settings.moduleRefs || [];
-	const moduleRefs = existingRefs.filter((r) => r.id !== id);
+	const moduleRefs = existingRefs.filter((r) => r.id !== moduleId);
 	await SettingsService.update({ moduleRefs });
 
 	// Remove record from DB
 	try {
-		await ModuleService.delete(id);
+		await ModuleService.delete(moduleId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
 		await SettingsService.update({ moduleRefs: existingRefs });
@@ -123,10 +126,10 @@ export async function deleteModule(id: string): Promise<void> {
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, moduleRefs } : s));
-	modules.update((list) => list.filter((m) => m.id !== id));
+	modules.update((list) => list.filter((m) => m.id !== moduleId));
 	moduleResources.update((map) => {
 		const m = new Map(map);
-		m.delete(id);
+		m.delete(moduleId);
 		return m;
 	});
 }

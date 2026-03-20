@@ -27,7 +27,7 @@ export async function loadPersonas(): Promise<void> {
 	}
 }
 
-export async function createPersona(fields: Partial<PersonaFields>): Promise<Persona> {
+export async function createPersona(fields: Partial<PersonaFields> = {}): Promise<Persona> {
 	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
@@ -58,12 +58,15 @@ export async function createPersona(fields: Partial<PersonaFields>): Promise<Per
 	return persona;
 }
 
-export async function updatePersona(id: string, changes: Partial<PersonaFields>): Promise<void> {
-	const updated = await PersonaService.update(id, changes);
-	personas.update((list) => list.map((p) => (p.id === id ? updated : p)));
+export async function updatePersona(
+	personaId: string,
+	changes: Partial<PersonaFields>
+): Promise<void> {
+	const updated = await PersonaService.update(personaId, changes);
+	personas.update((list) => list.map((p) => (p.id === personaId ? updated : p)));
 }
 
-export async function deletePersona(id: string): Promise<void> {
+export async function deletePersona(personaId: string): Promise<void> {
 	const settings = get(appSettings) || (await SettingsService.get());
 
 	if (!settings) {
@@ -72,12 +75,12 @@ export async function deletePersona(id: string): Promise<void> {
 
 	// Remove from parent's refs
 	const existingRefs = settings.personaRefs || [];
-	const personaRefs = existingRefs.filter((r) => r.id !== id);
+	const personaRefs = existingRefs.filter((r) => r.id !== personaId);
 	await SettingsService.update({ personaRefs });
 
 	// Remove record from DB
 	try {
-		await PersonaService.delete(id);
+		await PersonaService.delete(personaId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
 		await SettingsService.update({ personaRefs: existingRefs });
@@ -86,5 +89,5 @@ export async function deletePersona(id: string): Promise<void> {
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, personaRefs } : s));
-	personas.update((list) => list.filter((p) => p.id !== id));
+	personas.update((list) => list.filter((p) => p.id !== personaId));
 }
