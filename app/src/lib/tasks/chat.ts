@@ -31,6 +31,7 @@ import { buildPrompt } from '../llm/prompt/builder';
 import { selectProvider } from '../llm/provider';
 import { applyScripts } from '../scripts';
 import { createLogger } from '$lib/adapters/logger';
+import { AppError } from '$lib/types/errors';
 
 export interface RunChatOptions {
 	/** Save partial content to DB when the user aborts. Default: true */
@@ -85,14 +86,11 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 			getMergedScripts(chatId)
 		]);
 
-		const preset = settings.presetId ? await getPresetDetail(settings.presetId) : null;
+		if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
+		const preset = await getPresetDetail(settings.presetId);
 
-		// Resolve persona: character override → global fallback → null
-		let persona = null;
-		const personaId = character.data.personaId ?? settings.personaId;
-		if (personaId) {
-			persona = await getPersona(personaId);
-		}
+		if (!settings.personaId) throw new AppError('INVALID_INPUT', 'No persona selected');
+		const persona = await getPersona(settings.personaId);
 
 		// Load messages for history
 		const messages: Message[] = await MessageService.getMessagesAfter(chatId, '');
@@ -109,12 +107,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		);
 
 		// ── 5. Select Provider ──────────────────────────────────────
-		const modelConfig = preset?.data.chatModel ?? {
-			id: '',
-			provider: 'openai' as const,
-			parameters: {}
-		};
-		const provider = opts.providerOverride ?? selectProvider(modelConfig, settings);
+		const provider = opts.providerOverride ?? selectProvider(preset.data.chatModel, settings);
 
 		// ── 6. Stream chunks ────────────────────────────────────────
 		for await (const state of provider.stream(processedMessages, controller.signal)) {
@@ -131,12 +124,12 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 			throw new Error('Empty response from model');
 		}
 
-		await _persistTask(chatId);
+		await persistTask(chatId);
 	} catch (error) {
 		if (error instanceof DOMException && error.name === 'AbortError') {
 			const task = getChatTask(chatId);
 			if (opts.saveOnAbort && task && task.content.length > 0) {
-				await _persistTask(chatId);
+				await persistTask(chatId);
 			} else {
 				clearChatTask(chatId);
 			}
@@ -156,7 +149,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
  * Consume the ephemeral task from the store and write it to the DB.
  * Called exclusively from the runtime layer — never from stores or UI.
  */
-async function _persistTask(chatId: string): Promise<void> {
+async function persistTask(chatId: string): Promise<void> {
 	const task = getChatTask(chatId);
 	if (!task) return;
 

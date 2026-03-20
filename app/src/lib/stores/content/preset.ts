@@ -102,11 +102,21 @@ export async function updatePresetFull(
 }
 
 export async function deletePreset(presetId: string): Promise<void> {
+	const currentList = get(presets);
+	if (currentList.length <= 1) {
+		throw new AppError('DELETE_LAST_ITEM', 'Cannot delete the last preset.');
+	}
+
 	const settings = await getAppSettings();
 
 	// Remove from parent's refs
 	const existingRefs = settings.presetRefs || [];
 	const presetRefs = existingRefs.filter((r) => r.id !== presetId);
+
+	// If deleting the active preset, select a fallback first
+	const isActivePreset = get(activePreset)?.id === presetId;
+	const fallback = isActivePreset ? currentList.find((p) => p.id !== presetId) : undefined;
+
 	await SettingsService.update({ presetRefs });
 
 	// Remove record from DB
@@ -121,7 +131,11 @@ export async function deletePreset(presetId: string): Promise<void> {
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, presetRefs } : s));
 	presets.update((list) => list.filter((p) => p.id !== presetId));
-	if (get(activePreset)?.id === presetId) {
+
+	// Select fallback if the deleted preset was active
+	if (fallback) {
+		await selectPreset(fallback.id);
+	} else if (isActivePreset) {
 		activePreset.set(null);
 	}
 }

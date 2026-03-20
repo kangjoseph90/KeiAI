@@ -164,6 +164,7 @@ export const activeScripts = derived(
 
 // Active preset from app settings. Managed by preset store logic.
 export const activePreset = writable<PresetDetail | null>(null);
+export const activePersona = writable<Persona | null>(null);
 
 // ─── Derived Resources ─────────────────────────────────────────────────
 export const activeCharacterId = derived(activeCharacter, (c) => c?.id);
@@ -171,8 +172,3 @@ export const hasActiveCharacter = derived(activeCharacter, (c) => !!c);
 
 export const activeChatId = derived(activeChat, (c) => c?.id);
 export const hasActiveChat = derived(activeChat, (c) => !!c);
-
-export const activePersona = derived(
-	[activeCharacter, personas],
-	([char, list]) => list.find((p) => p.id === char?.data.personaId) ?? null
-);

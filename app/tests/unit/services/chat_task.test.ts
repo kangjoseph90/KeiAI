@@ -45,9 +45,14 @@ vi.mock('$lib/stores', () => ({
 		.fn()
 		.mockResolvedValue({ id: 'chat-1', characterId: 'char-1', messageCount: 0 }),
 	getCharacterDetail: vi.fn().mockResolvedValue({ id: 'char-1', data: { systemPrompt: '' } }),
-	getAppSettings: vi.fn().mockResolvedValue({ personaId: null, presetId: null, apiKeys: {} }),
-	getPersona: vi.fn().mockResolvedValue(null),
-	getPresetDetail: vi.fn().mockResolvedValue(null),
+	getAppSettings: vi
+		.fn()
+		.mockResolvedValue({ personaId: 'persona-1', presetId: 'preset-1', apiKeys: {} }),
+	getPersona: vi.fn().mockResolvedValue({ id: 'persona-1', name: '', description: '' }),
+	getPresetDetail: vi.fn().mockResolvedValue({
+		id: 'preset-1',
+		data: { chatModel: { id: '', provider: 'openai', parameters: {} } }
+	}),
 	getMergedLorebooks: vi.fn().mockResolvedValue([]),
 	getMergedScripts: vi.fn().mockResolvedValue([])
 }));

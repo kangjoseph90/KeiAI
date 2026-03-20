@@ -87,6 +87,7 @@ export async function performLogout(): Promise<void> {
 /**
  * Create a new guest area: stop sync, clear PB auth, create guest, reload.
  * Called from ManageAccountsDialog — orchestrates network + service layers.
+ * TODO: Setup Initial contents (Persona, Preset, Character, etc.)
  */
 export async function performCreateNewGuest(): Promise<void> {
 	SyncManager.stopAutoSync();
