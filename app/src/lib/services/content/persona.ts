@@ -28,7 +28,7 @@ export interface Persona extends PersonaFields {
 // ─── Defaults ────────────────────────────────────────────────────────
 
 const defaultPersonaFields: PersonaFields = {
-	name: '',
+	name: 'New Persona',
 	description: ''
 };
 

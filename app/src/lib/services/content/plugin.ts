@@ -29,7 +29,7 @@ export interface Plugin extends PluginFields {
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultPluginFields: PluginFields = {
-	name: '',
+	name: 'New Plugin',
 	description: '',
 	version: '',
 	code: '',

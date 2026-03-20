@@ -18,7 +18,7 @@ import { AuthService, UserService } from '$lib/services';
 import { SyncManager } from '$lib/services/sync';
 import { loadProfile } from './profile';
 import { clearActiveCharacter } from '../content/character';
-import { loadGlobalState } from '../init';
+import { loadGlobalState, initDefaultContents } from '../init';
 
 // ─── PB Connection State ─────────────────────────────────────────────
 
@@ -87,11 +87,11 @@ export async function performLogout(): Promise<void> {
 /**
  * Create a new guest area: stop sync, clear PB auth, create guest, reload.
  * Called from ManageAccountsDialog — orchestrates network + service layers.
- * TODO: Setup Initial contents (Persona, Preset, Character, etc.)
  */
 export async function performCreateNewGuest(): Promise<void> {
 	SyncManager.stopAutoSync();
 	AuthService.clearAuth();
 	await UserService.createGuest();
+	await initDefaultContents();
 	window.location.reload();
 }

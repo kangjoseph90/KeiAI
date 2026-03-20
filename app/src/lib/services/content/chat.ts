@@ -48,7 +48,7 @@ export interface ChatDetail extends Chat {
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultSummaryFields: ChatSummaryFields = {
-	title: '',
+	title: 'New Chat',
 	lastMessagePreview: '',
 	messageCount: 0
 };

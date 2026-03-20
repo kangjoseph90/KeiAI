@@ -26,7 +26,7 @@ export interface Lorebook extends LorebookFields {
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultLorebookFields: LorebookFields = {
-	name: '',
+	name: 'New Lorebook',
 	keys: [],
 	content: '',
 	insertionDepth: 0,
