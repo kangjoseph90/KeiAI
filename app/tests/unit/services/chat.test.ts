@@ -257,7 +257,7 @@ describe('ChatService', () => {
 
 			const result = await ChatService.create('char-1');
 
-			expect(result.title).toBe('');
+			expect(result.title).toBe('New Chat');
 			expect(result.data).toEqual({});
 		});
 	});

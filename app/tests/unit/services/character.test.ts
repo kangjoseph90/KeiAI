@@ -273,7 +273,7 @@ describe('CharacterService', () => {
 
 			const result = await CharacterService.create();
 
-			expect(result.name).toBe('');
+			expect(result.name).toBe('New Character');
 			expect(result.data.systemPrompt).toBe('');
 		});
 
