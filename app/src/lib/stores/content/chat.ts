@@ -240,8 +240,11 @@ export async function deleteChatLorebook(chatId: string, lorebookId: string): Pr
 
 // ─── Chat-owned Folder & Item Management ──────────────────────
 
+export type ChatFolderType = 'lorebooks';
+
 export async function createChatFolder(
 	chatId: string,
+	folderType: ChatFolderType,
 	name: string,
 	parentId?: string
 ): Promise<FolderDef> {
@@ -253,16 +256,16 @@ export async function createChatFolder(
 	}
 
 	const folders = chat.data.folders ?? {};
-	const lorebookFolders = folders.lorebooks ?? [];
+	const typeFolders = folders[folderType] ?? [];
 
 	const newFolder = {
 		id: generateId(),
 		name,
-		sortOrder: generateSortOrder(lorebookFolders as OrderedRef[]),
+		sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
 		parentId
 	};
 
-	const updatedFolders = { ...folders, lorebooks: [...lorebookFolders, newFolder] };
+	const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
 
 	await ChatService.updateData(chatId, { folders: updatedFolders });
 
@@ -275,6 +278,7 @@ export async function createChatFolder(
 
 export async function updateChatFolder(
 	chatId: string,
+	folderType: ChatFolderType,
 	folderId: string,
 	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
@@ -286,15 +290,13 @@ export async function updateChatFolder(
 	}
 
 	const folders = chat.data.folders ?? {};
-	const lorebookFolders = folders.lorebooks ?? [];
+	const typeFolders = folders[folderType] ?? [];
 
-	const updatedLorebookFolders = lorebookFolders.map((f) =>
-		f.id === folderId ? { ...f, ...changes } : f
-	);
+	const updatedTypeFolders = typeFolders.map((f) => (f.id === folderId ? { ...f, ...changes } : f));
 
 	const updatedFolders = {
 		...folders,
-		lorebooks: updatedLorebookFolders
+		[folderType]: updatedTypeFolders
 	};
 
 	await ChatService.updateData(chatId, { folders: updatedFolders });
@@ -304,7 +306,11 @@ export async function updateChatFolder(
 	}
 }
 
-export async function deleteChatFolder(chatId: string, folderId: string): Promise<void> {
+export async function deleteChatFolder(
+	chatId: string,
+	folderType: ChatFolderType,
+	folderId: string
+): Promise<void> {
 	// Use cached active chat if possible
 	const chat = chatId === get(activeChatId) ? get(activeChat) : await ChatService.getDetail(chatId);
 
@@ -313,13 +319,13 @@ export async function deleteChatFolder(chatId: string, folderId: string): Promis
 	}
 
 	const folders = chat.data.folders ?? {};
-	const lorebookFolders = folders.lorebooks ?? [];
+	const typeFolders = folders[folderType] ?? [];
 
-	const updatedLorebookFolders = lorebookFolders.filter((f) => f.id !== folderId);
+	const updatedTypeFolders = typeFolders.filter((f) => f.id !== folderId);
 
 	const updatedFolders = {
 		...folders,
-		lorebooks: updatedLorebookFolders
+		[folderType]: updatedTypeFolders
 	};
 
 	await ChatService.updateData(chatId, { folders: updatedFolders });
@@ -329,9 +335,10 @@ export async function deleteChatFolder(chatId: string, folderId: string): Promis
 	}
 }
 
-export async function moveChatLorebook(
+export async function moveChatItem(
 	chatId: string,
-	lorebookId: string,
+	folderType: ChatFolderType,
+	itemId: string,
 	newFolderId?: string,
 	newSortOrder?: string
 ): Promise<void> {
@@ -342,9 +349,18 @@ export async function moveChatLorebook(
 		throw new AppError(`NOT_FOUND`, `Chat not found`);
 	}
 
-	const refs = (chat.data.lorebookRefs as OrderedRef[]) ?? [];
+	let refKey: keyof typeof chat.data;
+	switch (folderType) {
+		case 'lorebooks':
+			refKey = 'lorebookRefs';
+			break;
+		default:
+			return;
+	}
+
+	const refs = (chat.data[refKey] as OrderedRef[]) ?? [];
 	const updatedRefs = refs.map((ref) => {
-		if (ref.id !== lorebookId) return ref;
+		if (ref.id !== itemId) return ref;
 		return {
 			...ref,
 			folderId: newFolderId,
@@ -352,9 +368,9 @@ export async function moveChatLorebook(
 		};
 	});
 
-	await ChatService.updateData(chatId, { lorebookRefs: updatedRefs });
+	await ChatService.updateData(chatId, { [refKey]: updatedRefs });
 
 	if (chatId === get(activeChatId)) {
-		activeChat.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs: updatedRefs } } : c));
+		activeChat.update((c) => (c ? { ...c, data: { ...c.data, [refKey]: updatedRefs } } : c));
 	}
 }
