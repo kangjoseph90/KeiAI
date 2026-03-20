@@ -16,7 +16,6 @@ export interface CharacterSummaryFields {
 
 export interface CharacterDataRefs {
 	lastActiveChatId?: string;
-	personaId?: string;
 	avatarAssetId?: string;
 
 	chatRefs?: OrderedRef[];

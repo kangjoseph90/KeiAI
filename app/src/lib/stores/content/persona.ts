@@ -2,7 +2,7 @@ import { get } from 'svelte/store';
 import { PersonaService, type PersonaFields, type Persona } from '$lib/services/content/persona';
 import { SettingsService } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
-import { personas, appSettings } from '../state';
+import { personas, appSettings, activePersona } from '../state';
 import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
@@ -30,6 +30,13 @@ export async function loadPersonas(): Promise<void> {
 	} else {
 		personas.set(list);
 	}
+}
+
+export async function selectPersona(personaId: string): Promise<void> {
+	const persona = await getPersona(personaId);
+	activePersona.set(persona);
+	appSettings.update((s) => (s ? { ...s, personaId: personaId } : s));
+	await SettingsService.update({ personaId: personaId });
 }
 
 export async function createPersona(fields: Partial<PersonaFields> = {}): Promise<Persona> {
@@ -68,12 +75,24 @@ export async function updatePersona(
 }
 
 export async function deletePersona(personaId: string): Promise<void> {
+	const currentList = get(personas);
+	if (currentList.length <= 1) {
+		throw new AppError('DELETE_LAST_ITEM', 'Cannot delete the last persona.');
+	}
+
 	const settings = await getAppSettings();
 
 	// Remove from parent's refs
 	const existingRefs = settings.personaRefs || [];
 	const personaRefs = existingRefs.filter((r) => r.id !== personaId);
-	await SettingsService.update({ personaRefs });
+
+	// If deleting the selected persona, determine a fallback
+	const isDeletingSelected = settings.personaId === personaId;
+	const fallback = isDeletingSelected ? currentList.find((p) => p.id !== personaId) : undefined;
+
+	const settingsChanges = fallback ? { personaRefs, personaId: fallback.id } : { personaRefs };
+
+	await SettingsService.update(settingsChanges);
 
 	// Remove record from DB
 	try {
@@ -85,6 +104,6 @@ export async function deletePersona(personaId: string): Promise<void> {
 	}
 
 	// Update Store
-	appSettings.update((s) => (s ? { ...s, personaRefs } : s));
+	appSettings.update((s) => (s ? { ...s, ...settingsChanges } : s));
 	personas.update((list) => list.filter((p) => p.id !== personaId));
 }

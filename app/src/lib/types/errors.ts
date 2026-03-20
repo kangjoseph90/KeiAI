@@ -19,7 +19,8 @@ export type ErrorCode =
 	| 'TOKENIZER_ERROR'
 	| 'NOT_IMPLEMENTED'
 	| 'ASSET_ERROR'
-	| 'QUOTA_EXCEEDED';
+	| 'QUOTA_EXCEEDED'
+	| 'DELETE_LAST_ITEM';
 
 export class AppError extends Error {
 	constructor(
