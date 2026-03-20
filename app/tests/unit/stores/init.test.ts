@@ -3,19 +3,21 @@ import { initDefaultContents } from '$lib/stores/init';
 
 // Mock store functions
 vi.mock('$lib/stores/content/persona', () => ({
-	createPersona: vi.fn()
+	createPersona: vi.fn(),
+	selectPersona: vi.fn()
 }));
 
 vi.mock('$lib/stores/content/preset', () => ({
-	createPreset: vi.fn()
+	createPreset: vi.fn(),
+	selectPreset: vi.fn()
 }));
 
 vi.mock('$lib/stores/content/character', () => ({
 	createCharacter: vi.fn()
 }));
 
-import { createPersona } from '$lib/stores/content/persona';
-import { createPreset } from '$lib/stores/content/preset';
+import { createPersona, selectPersona } from '$lib/stores/content/persona';
+import { createPreset, selectPreset } from '$lib/stores/content/preset';
 import { createCharacter } from '$lib/stores/content/character';
 
 describe('Init Store', () => {
@@ -24,6 +26,8 @@ describe('Init Store', () => {
 		vi.mocked(createPersona).mockResolvedValue({ id: 'persona-1' } as never);
 		vi.mocked(createPreset).mockResolvedValue({ id: 'preset-1' } as never);
 		vi.mocked(createCharacter).mockResolvedValue({ id: 'char-1' } as never);
+		vi.mocked(selectPersona).mockResolvedValue(undefined);
+		vi.mocked(selectPreset).mockResolvedValue(undefined);
 	});
 
 	describe('initDefaultContents', () => {
@@ -54,6 +58,13 @@ describe('Init Store', () => {
 			expect(createPersona).toHaveBeenCalled();
 			expect(createPreset).toHaveBeenCalled();
 			expect(createCharacter).toHaveBeenCalled();
+		});
+
+		it('should select the created persona and preset', async () => {
+			await initDefaultContents();
+
+			expect(selectPersona).toHaveBeenCalledWith('persona-1');
+			expect(selectPreset).toHaveBeenCalledWith('preset-1');
 		});
 
 		it('should propagate errors from persona creation', async () => {

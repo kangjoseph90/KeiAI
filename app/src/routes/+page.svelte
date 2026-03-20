@@ -17,7 +17,8 @@
 		activeCharacter,
 		activeChat,
 		activeUser,
-		userEmail
+		userEmail,
+		initDefaultContents
 	} from '$lib/stores';
 	import {
 		route,
@@ -131,11 +132,13 @@
 			// still hold a stale JWT. Clear it so sync starts from a clean state.
 			if (!wasRestored) {
 				AuthService.clearAuth();
+				// Create default persona, preset, and character
+				await initDefaultContents();
 			}
 			await loadProfile();
+			await loadGlobalState();
 			SyncManager.startAutoSync({ onProfileUpdate: loadProfile });
 			await SyncManager.syncAll();
-			await loadGlobalState();
 			ready = true;
 
 			const initialRoute = getCurrentHashRoute();
