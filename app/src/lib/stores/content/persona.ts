@@ -6,6 +6,10 @@ import { personas, appSettings } from '../state';
 import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
+/**
+ * Returns persona from store cache first, then from DB if needed.
+ * Explicitly throws error if not found
+ */
 export async function getPersona(personaId: string): Promise<Persona> {
 	const active = get(personas).find((p) => p.id === personaId);
 	if (active) return active;

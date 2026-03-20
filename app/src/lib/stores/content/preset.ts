@@ -11,6 +11,10 @@ import { presets, activePreset, appSettings } from '../state';
 import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
+/**
+ * Returns preset detail from store cache first, then from DB if needed.
+ * Explicitly throws error if not found
+ */
 export async function getPresetDetail(presetId: string): Promise<PresetDetail> {
 	const active = get(activePreset);
 	if (active?.id === presetId) return active;

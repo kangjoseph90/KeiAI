@@ -11,6 +11,10 @@ import { getCharacterDetail } from './character';
 import { getAppSettings } from './settings';
 import { getModule } from './module';
 
+/**
+ * Returns active module IDs for a character.
+ * Combines globally enabled modules and character-specific modules.
+ */
 export async function getActiveModuleIds(characterId: string): Promise<Set<string>> {
 	const [settings, char] = await Promise.all([getAppSettings(), getCharacterDetail(characterId)]);
 
@@ -24,6 +28,10 @@ export async function getActiveModuleIds(characterId: string): Promise<Set<strin
 	return ids;
 }
 
+/**
+ * Returns merged lorebooks from chat, character, and active modules.
+ * Fetches from DB and combines in priority order.
+ */
 export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
 	const chat = await getChatDetail(chatId);
 	const char = await getCharacterDetail(chat.characterId);
@@ -49,6 +57,10 @@ export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
 	return [...modLB, ...charSorted, ...chatSorted];
 }
 
+/**
+ * Returns merged scripts from character and active modules.
+ * Fetches from DB and combines in priority order.
+ */
 export async function getMergedScripts(chatId: string): Promise<Script[]> {
 	const chat = await getChatDetail(chatId);
 	const char = await getCharacterDetail(chat.characterId);

@@ -89,7 +89,8 @@ export function consumeChatTask(chatId: string): ChatTask | null {
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 /**
- * Get a snapshot of the current chat task.
+ * Returns chat task snapshot from in-memory store.
+ * Returns null if no task exists for the given chatId
  */
 export function getChatTask(chatId: string): ChatTask | null {
 	return get(chatTasks).get(chatId) ?? null;
