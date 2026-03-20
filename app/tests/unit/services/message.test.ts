@@ -30,11 +30,6 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/content/guards', () => ({
-	assertChatExists: vi.fn(),
-	assertMessageInChat: vi.fn()
-}));
-
 vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'test-msg-id')
 }));
@@ -60,7 +55,6 @@ vi.mock('fractional-indexing', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { assertChatExists, assertMessageInChat } from '$lib/services/content/guards';
 import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';
 import { generateKeyBetween } from 'fractional-indexing';
@@ -102,10 +96,6 @@ describe('MessageService', () => {
 
 		// Default generateKeyBetween mock
 		vi.mocked(generateKeyBetween).mockReturnValue('a0');
-
-		// Guards pass by default
-		vi.mocked(assertChatExists).mockResolvedValue(undefined);
-		vi.mocked(assertMessageInChat).mockResolvedValue(undefined);
 	});
 
 	describe('getMessagesBefore (pagination)', () => {
@@ -286,7 +276,6 @@ describe('MessageService', () => {
 			expect(result.content).toBe('Hi');
 			expect(result.sortOrder).toBe('a0');
 
-			expect(assertChatExists).toHaveBeenCalledWith('chat-1');
 			expect(generateKeyBetween).toHaveBeenCalledWith(null, null);
 		});
 
@@ -356,24 +345,6 @@ describe('MessageService', () => {
 			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 
-		it('should verify chat ownership when expectedChatId is provided', async () => {
-			vi.mocked(localDB.getRecord).mockResolvedValue({
-				id: 'msg-1',
-				chatId: 'chat-1',
-				sortOrder: 'a0',
-				userId: mockUserId,
-				createdAt: 1000,
-				updatedAt: 1000,
-				isDeleted: false,
-				encryptedData: new Uint8Array([1]),
-				encryptedDataIV: new Uint8Array([2])
-			} as unknown as BaseRecord);
-
-			await MessageService.update('msg-1', { content: 'New' }, 'chat-1');
-
-			expect(assertMessageInChat).toHaveBeenCalledWith('chat-1', 'msg-1');
-		});
-
 		it('should throw NOT_FOUND when message does not exist', async () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
 
@@ -386,12 +357,6 @@ describe('MessageService', () => {
 			await MessageService.delete('msg-1');
 
 			expect(localDB.softDeleteRecord).toHaveBeenCalledWith('messages', 'msg-1');
-		});
-
-		it('should verify chat ownership when expectedChatId is provided', async () => {
-			await MessageService.delete('msg-1', 'chat-1');
-
-			expect(assertMessageInChat).toHaveBeenCalledWith('chat-1', 'msg-1');
 		});
 	});
 });

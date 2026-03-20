@@ -2,7 +2,6 @@ import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ScriptRecord } from '$lib/adapters/db';
 import { deepMerge } from '$lib/utils/defaults';
-import { assertOwnedResourceParentExists, assertScriptOwnedBy } from './guards';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
@@ -96,8 +95,6 @@ export class ScriptService {
 	}
 
 	static async create(ownerId: string, fields: Partial<ScriptFields> = {}): Promise<Script> {
-		await assertOwnedResourceParentExists(ownerId);
-
 		const resolved: ScriptFields = deepMerge(
 			defaultScriptFields,
 			fields as Record<string, unknown>
@@ -128,19 +125,12 @@ export class ScriptService {
 		return { id, ownerId, ...resolved };
 	}
 
-	static async update(
-		id: string,
-		changes: Partial<ScriptFields>,
-		expectedOwnerId?: string
-	): Promise<Script> {
+	static async update(id: string, changes: Partial<ScriptFields>): Promise<Script> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<ScriptFields>('scripts', id);
 		const record = await localDB.getRecord<ScriptRecord>('scripts', id);
 		if (!record || record.isDeleted) {
 			throw new AppError('NOT_FOUND', `Script not found: ${id}`);
-		}
-		if (expectedOwnerId) {
-			await assertScriptOwnedBy(expectedOwnerId, id);
 		}
 
 		try {
@@ -183,10 +173,7 @@ export class ScriptService {
 		}
 	}
 
-	static async delete(id: string, expectedOwnerId?: string): Promise<void> {
-		if (expectedOwnerId) {
-			await assertScriptOwnedBy(expectedOwnerId, id);
-		}
+	static async delete(id: string): Promise<void> {
 		try {
 			encryptedWriteQueue.drop('scripts', id);
 			await localDB.softDeleteRecord('scripts', id);

@@ -169,7 +169,7 @@ describe('Module Store', () => {
 			expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
 				lorebookRefs: []
 			});
-			expect(LorebookService.delete).toHaveBeenCalledWith('lb-1', 'mod-1');
+			expect(LorebookService.delete).toHaveBeenCalledWith('lb-1');
 		});
 	});
 

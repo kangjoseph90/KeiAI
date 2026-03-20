@@ -36,11 +36,7 @@ export async function createGlobalFolder(
 	name: string,
 	parentId?: string
 ): Promise<FolderDef> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	const folders = settings.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -64,11 +60,7 @@ export async function updateGlobalFolder(
 	folderId: string,
 	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	const folders = settings.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -85,11 +77,7 @@ export async function deleteGlobalFolder(
 	folderType: GlobalFolderType,
 	folderId: string
 ): Promise<void> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	const folders = settings.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -106,11 +94,7 @@ export async function moveGlobalItem(
 	newFolderId?: string,
 	newSortOrder?: string
 ): Promise<void> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	let refKey: keyof AppSettings;
 	switch (folderType) {

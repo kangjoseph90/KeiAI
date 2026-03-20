@@ -36,11 +36,6 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/content/guards', () => ({
-	assertCharacterExists: vi.fn(),
-	assertChatOwnedByCharacter: vi.fn()
-}));
-
 vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'test-chat-id')
 }));
@@ -62,7 +57,6 @@ vi.mock('$lib/utils/defaults', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { assertCharacterExists, assertChatOwnedByCharacter } from '$lib/services/content/guards';
 import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';
 
@@ -102,10 +96,6 @@ describe('ChatService', () => {
 
 		// Default generateId mock
 		vi.mocked(generateId).mockReturnValue('test-chat-id');
-
-		// Guards pass by default
-		vi.mocked(assertCharacterExists).mockResolvedValue(undefined);
-		vi.mocked(assertChatOwnedByCharacter).mockResolvedValue(undefined);
 	});
 
 	describe('listByCharacter', () => {
@@ -252,18 +242,11 @@ describe('ChatService', () => {
 			expect(result.characterId).toBe('char-1');
 			expect(result.title).toBe('New Chat');
 
-			expect(assertCharacterExists).toHaveBeenCalledWith('char-1');
 			expect(localDB.transaction).toHaveBeenCalledWith(
 				['chatSummaries', 'chatData'],
 				'rw',
 				expect.any(Function)
 			);
-		});
-
-		it('should verify character exists before creating chat', async () => {
-			vi.mocked(assertCharacterExists).mockRejectedValue(new Error('Character not found'));
-
-			await expect(ChatService.create('char-1')).rejects.toThrow();
 		});
 
 		it('should use default values when not provided', async () => {
@@ -410,16 +393,6 @@ describe('ChatService', () => {
 				'rw',
 				expect.any(Function)
 			);
-		});
-
-		it('should verify chat ownership when expectedCharacterId is provided', async () => {
-			vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
-				await callback();
-			});
-
-			await ChatService.delete('chat-1', 'char-1');
-
-			expect(assertChatOwnedByCharacter).toHaveBeenCalledWith('chat-1', 'char-1');
 		});
 
 		it('should soft delete related lorebooks, scripts, and messages', async () => {

@@ -15,6 +15,7 @@ import {
 import type { OrderedRef, FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { modules, appSettings, moduleResources } from '../state';
+import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 
@@ -31,7 +32,7 @@ export async function getModule(moduleId: string): Promise<Module> {
  * Callers (e.g. route load functions) are responsible for error boundaries.
  */
 export async function loadModules(): Promise<void> {
-	const settings = get(appSettings);
+	const settings = await getAppSettings();
 	const mods = await ModuleService.list();
 
 	if (settings?.moduleRefs) {
@@ -60,11 +61,7 @@ export async function loadModules(): Promise<void> {
 }
 
 export async function createModule(fields: Partial<ModuleFields> = {}): Promise<Module> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	// Create Record in DB
 	const mod = await ModuleService.create(fields);
@@ -104,11 +101,7 @@ export async function updateModule(
 }
 
 export async function deleteModule(moduleId: string): Promise<void> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	// Remove from parent's refs
 	const existingRefs = settings.moduleRefs || [];
@@ -140,10 +133,7 @@ export async function createModuleLorebook(
 	moduleId: string,
 	fields: Partial<LorebookFields>
 ): Promise<Lorebook> {
-	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
-	if (!mod) {
-		throw new AppError(`NOT_FOUND`, `Module not found`);
-	}
+	const mod = await getModule(moduleId);
 
 	// Create Record in DB
 	const lb = await LorebookService.create(moduleId, fields);
@@ -175,11 +165,7 @@ export async function createModuleLorebook(
 }
 
 export async function deleteModuleLorebook(moduleId: string, lorebookId: string): Promise<void> {
-	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
-
-	if (!mod) {
-		throw new AppError(`NOT_FOUND`, `Module not found`);
-	}
+	const mod = await getModule(moduleId);
 
 	// Remove from parent's refs
 	const existingRefs = mod.lorebookRefs || [];
@@ -187,7 +173,7 @@ export async function deleteModuleLorebook(moduleId: string, lorebookId: string)
 	await ModuleService.update(moduleId, { lorebookRefs });
 
 	try {
-		await LorebookService.delete(lorebookId, moduleId);
+		await LorebookService.delete(lorebookId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
 		await ModuleService.update(moduleId, { lorebookRefs: existingRefs });
@@ -214,11 +200,7 @@ export async function createModuleScript(
 	moduleId: string,
 	fields: Partial<ScriptFields>
 ): Promise<Script> {
-	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
-
-	if (!mod) {
-		throw new AppError(`NOT_FOUND`, `Module not found`);
-	}
+	const mod = await getModule(moduleId);
 
 	// Create Record in DB
 	const sc = await ScriptService.create(moduleId, fields);
@@ -250,11 +232,7 @@ export async function createModuleScript(
 }
 
 export async function deleteModuleScript(moduleId: string, scriptId: string): Promise<void> {
-	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
-
-	if (!mod) {
-		throw new AppError(`NOT_FOUND`, `Module not found`);
-	}
+	const mod = await getModule(moduleId);
 
 	// Remove from parent's refs
 	const existingRefs = mod.scriptRefs || [];
@@ -262,7 +240,7 @@ export async function deleteModuleScript(moduleId: string, scriptId: string): Pr
 	await ModuleService.update(moduleId, { scriptRefs });
 
 	try {
-		await ScriptService.delete(scriptId, moduleId);
+		await ScriptService.delete(scriptId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
 		await ModuleService.update(moduleId, { scriptRefs: existingRefs });
@@ -290,11 +268,7 @@ export async function createModuleFolder(
 	name: string,
 	parentId?: string
 ): Promise<FolderDef> {
-	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
-
-	if (!mod) {
-		throw new AppError(`NOT_FOUND`, `Module not found`);
-	}
+	const mod = await getModule(moduleId);
 
 	const folders = mod.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -323,11 +297,7 @@ export async function updateModuleFolder(
 	folderId: string,
 	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
-	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
-
-	if (!mod) {
-		throw new AppError(`NOT_FOUND`, `Module not found`);
-	}
+	const mod = await getModule(moduleId);
 
 	const folders = mod.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -353,11 +323,7 @@ export async function deleteModuleFolder(
 	folderType: ModuleFolderType,
 	folderId: string
 ): Promise<void> {
-	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
-
-	if (!mod) {
-		throw new AppError(`NOT_FOUND`, `Module not found`);
-	}
+	const mod = await getModule(moduleId);
 
 	const folders = mod.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -383,11 +349,7 @@ export async function moveModuleItem(
 	newFolderId?: string,
 	newSortOrder?: string
 ): Promise<void> {
-	const mod = get(modules).find((m) => m.id === moduleId) || (await ModuleService.get(moduleId));
-
-	if (!mod) {
-		throw new AppError(`NOT_FOUND`, `Module not found`);
-	}
+	const mod = await getModule(moduleId);
 
 	let refKey: keyof typeof mod;
 	switch (folderType) {

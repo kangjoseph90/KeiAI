@@ -8,6 +8,7 @@ import {
 import { SettingsService } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { presets, activePreset, appSettings } from '../state';
+import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
 export async function getPresetDetail(presetId: string): Promise<PresetDetail> {
@@ -23,7 +24,7 @@ export async function getPresetDetail(presetId: string): Promise<PresetDetail> {
  * Callers (e.g. route load functions) are responsible for error boundaries.
  */
 export async function loadPresets(): Promise<void> {
-	const settings = get(appSettings);
+	const settings = await getAppSettings();
 	const list = await PresetService.list();
 	if (settings?.presetRefs) {
 		presets.set(sortByRefs(list, settings.presetRefs));
@@ -33,7 +34,8 @@ export async function loadPresets(): Promise<void> {
 }
 
 export async function selectPreset(presetId: string): Promise<void> {
-	activePreset.set(await PresetService.getDetail(presetId));
+	const detail = await getPresetDetail(presetId);
+	activePreset.set(detail);
 	appSettings.update((s) => (s ? { ...s, presetId: presetId } : s));
 	await SettingsService.update({ presetId: presetId });
 }
@@ -42,11 +44,7 @@ export async function createPreset(
 	summary: Partial<PresetSummaryFields> = {},
 	data: Partial<PresetDataFields> = {}
 ): Promise<PresetDetail> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	// Create Record in DB
 	const detail = await PresetService.create(summary, data);
@@ -100,11 +98,7 @@ export async function updatePresetFull(
 }
 
 export async function deletePreset(presetId: string): Promise<void> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	// Remove from parent's refs
 	const existingRefs = settings.presetRefs || [];

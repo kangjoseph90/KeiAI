@@ -28,6 +28,7 @@ import {
 	appSettings,
 	activeCharacterId
 } from '../state';
+import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 
@@ -44,7 +45,7 @@ export async function getCharacterDetail(characterId: string): Promise<Character
  * Callers (e.g. route load functions) are responsible for error boundaries.
  */
 export async function loadCharacters(): Promise<void> {
-	const settings = get(appSettings);
+	const settings = await getAppSettings();
 	const list = await CharacterService.list();
 	if (settings?.characterRefs) {
 		characters.set(sortByRefs(list, settings.characterRefs));
@@ -54,11 +55,7 @@ export async function loadCharacters(): Promise<void> {
 }
 
 export async function selectCharacter(characterId: string): Promise<void> {
-	const detail = await CharacterService.getDetail(characterId);
-
-	if (!detail) {
-		throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-	}
+	const detail = await getCharacterDetail(characterId);
 
 	activeCharacter.set(detail);
 
@@ -124,11 +121,7 @@ export async function createCharacter(
 	summary: Partial<CharacterSummaryFields> = {},
 	data: Partial<CharacterDataFields> = {}
 ): Promise<CharacterDetail> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	// Create record in DB
 	const detail = await CharacterService.create(summary, data);
@@ -154,11 +147,7 @@ export async function createCharacter(
 }
 
 export async function deleteCharacter(characterId: string): Promise<void> {
-	const settings = get(appSettings) || (await SettingsService.get());
-
-	if (!settings) {
-		throw new AppError('NOT_FOUND', 'Settings not found');
-	}
+	const settings = await getAppSettings();
 
 	// Remove from parent's refs
 	const existingRefs = settings.characterRefs || [];
@@ -189,14 +178,7 @@ export async function createCharacterLorebook(
 	fields: Partial<LorebookFields>
 ): Promise<Lorebook> {
 	// Use cached active character if possible
-	const char =
-		characterId === get(activeCharacterId)
-			? get(activeCharacter)
-			: await CharacterService.getDetail(characterId);
-
-	if (!char) {
-		throw new AppError(`NOT_FOUND`, `Character not found`);
-	}
+	const char = await getCharacterDetail(characterId);
 
 	// Create Record in DB
 	const lb = await LorebookService.create(characterId, fields);
@@ -229,14 +211,7 @@ export async function deleteCharacterLorebook(
 	lorebookId: string
 ): Promise<void> {
 	// Use cached active character if possible
-	const char =
-		characterId === get(activeCharacterId)
-			? get(activeCharacter)
-			: await CharacterService.getDetail(characterId);
-
-	if (!char) {
-		throw new AppError(`NOT_FOUND`, `Character not found`);
-	}
+	const char = await getCharacterDetail(characterId);
 
 	// Remove from parent's refs
 	const existingRefs = char.data.lorebookRefs || [];
@@ -244,7 +219,7 @@ export async function deleteCharacterLorebook(
 	await CharacterService.updateData(characterId, { lorebookRefs });
 
 	try {
-		await LorebookService.delete(lorebookId, characterId);
+		await LorebookService.delete(lorebookId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
 		await CharacterService.updateData(characterId, { lorebookRefs: existingRefs });
@@ -265,14 +240,7 @@ export async function createCharacterScript(
 	fields: Partial<ScriptFields>
 ): Promise<Script> {
 	// Use cached active character if possible
-	const char =
-		characterId === get(activeCharacterId)
-			? get(activeCharacter)
-			: await CharacterService.getDetail(characterId);
-
-	if (!char) {
-		throw new AppError(`NOT_FOUND`, `Character not found`);
-	}
+	const char = await getCharacterDetail(characterId);
 
 	// Create Record in DB
 	const sc = await ScriptService.create(characterId, fields);
@@ -302,14 +270,7 @@ export async function createCharacterScript(
 
 export async function deleteCharacterScript(characterId: string, scriptId: string): Promise<void> {
 	// Use cached active character if possible
-	const char =
-		characterId === get(activeCharacterId)
-			? get(activeCharacter)
-			: await CharacterService.getDetail(characterId);
-
-	if (!char) {
-		throw new AppError(`NOT_FOUND`, `Character not found`);
-	}
+	const char = await getCharacterDetail(characterId);
 
 	// Remove from parent's refs
 	const existingRefs = char.data.scriptRefs || [];
@@ -317,7 +278,7 @@ export async function deleteCharacterScript(characterId: string, scriptId: strin
 	await CharacterService.updateData(characterId, { scriptRefs });
 
 	try {
-		await ScriptService.delete(scriptId, characterId);
+		await ScriptService.delete(scriptId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
 		await CharacterService.updateData(characterId, { scriptRefs: existingRefs });
@@ -342,14 +303,7 @@ export async function createCharacterFolder(
 	parentId?: string
 ): Promise<FolderDef> {
 	// Use cached active character if possible
-	const char =
-		characterId === get(activeCharacterId)
-			? get(activeCharacter)
-			: await CharacterService.getDetail(characterId);
-
-	if (!char) {
-		throw new AppError(`NOT_FOUND`, `Character not found`);
-	}
+	const char = await getCharacterDetail(characterId);
 
 	const folders = char.data.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -382,14 +336,7 @@ export async function updateCharacterFolder(
 	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
 	// Use cached active character if possible
-	const char =
-		characterId === get(activeCharacterId)
-			? get(activeCharacter)
-			: await CharacterService.getDetail(characterId);
-
-	if (!char) {
-		throw new AppError(`NOT_FOUND`, `Character not found`);
-	}
+	const char = await getCharacterDetail(characterId);
 
 	const folders = char.data.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -411,14 +358,7 @@ export async function deleteCharacterFolder(
 	folderId: string
 ): Promise<void> {
 	// Use cached active character if possible
-	const char =
-		characterId === get(activeCharacterId)
-			? get(activeCharacter)
-			: await CharacterService.getDetail(characterId);
-
-	if (!char) {
-		throw new AppError(`NOT_FOUND`, `Character not found`);
-	}
+	const char = await getCharacterDetail(characterId);
 
 	const folders = char.data.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
@@ -440,14 +380,7 @@ export async function moveCharacterItem(
 	newSortOrder?: string
 ): Promise<void> {
 	// Use cached active character if possible
-	const char =
-		characterId === get(activeCharacterId)
-			? get(activeCharacter)
-			: await CharacterService.getDetail(characterId);
-
-	if (!char) {
-		throw new AppError(`NOT_FOUND`, `Character not found`);
-	}
+	const char = await getCharacterDetail(characterId);
 
 	let refKey: keyof typeof char.data;
 	switch (folderType) {

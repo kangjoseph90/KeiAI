@@ -29,11 +29,6 @@ vi.mock('$lib/adapters/db', () => ({
 	}
 }));
 
-vi.mock('$lib/services/content/guards', () => ({
-	assertOwnedResourceParentExists: vi.fn(),
-	assertScriptOwnedBy: vi.fn()
-}));
-
 vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'test-id')
 }));
@@ -41,7 +36,6 @@ vi.mock('$lib/utils/id', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
-import { assertOwnedResourceParentExists, assertScriptOwnedBy } from '$lib/services/content/guards';
 
 describe('ScriptService', () => {
 	const mockUserId = 'user-123';
@@ -73,9 +67,6 @@ describe('ScriptService', () => {
 		});
 
 		vi.mocked(decrypt).mockResolvedValue(JSON.stringify(defaultScriptParams));
-
-		vi.mocked(assertOwnedResourceParentExists).mockResolvedValue(undefined);
-		vi.mocked(assertScriptOwnedBy).mockResolvedValue(undefined);
 	});
 
 	describe('listByOwner', () => {
@@ -156,7 +147,6 @@ describe('ScriptService', () => {
 			expect(result.name).toBe('Custom Name');
 			expect(result.placement).toBe('display'); // From defaults
 
-			expect(assertOwnedResourceParentExists).toHaveBeenCalledWith('owner-1');
 			expect(localDB.putRecord).toHaveBeenCalledWith(
 				'scripts',
 				expect.objectContaining({
@@ -195,21 +185,6 @@ describe('ScriptService', () => {
 				'Script not found: missing'
 			);
 		});
-
-		it('should assert ownership if expectedOwnerId provided', async () => {
-			const mockRecord = {
-				id: 's-1',
-				ownerId: 'owner-1',
-				isDeleted: false,
-				encryptedData: mockEncryptedData,
-				encryptedDataIV: mockIV
-			} as unknown as BaseRecord;
-			vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
-
-			await ScriptService.update('s-1', { name: 'new' }, 'owner-1');
-
-			expect(assertScriptOwnedBy).toHaveBeenCalledWith('owner-1', 's-1');
-		});
 	});
 
 	describe('delete', () => {
@@ -217,12 +192,6 @@ describe('ScriptService', () => {
 			await ScriptService.delete('s-1');
 
 			expect(localDB.softDeleteRecord).toHaveBeenCalledWith('scripts', 's-1');
-		});
-
-		it('should assert ownership if provided', async () => {
-			await ScriptService.delete('s-1', 'owner-1');
-
-			expect(assertScriptOwnedBy).toHaveBeenCalledWith('owner-1', 's-1');
 		});
 	});
 });
