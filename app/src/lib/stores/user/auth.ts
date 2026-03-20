@@ -18,7 +18,7 @@ import { AuthService, UserService } from '$lib/services';
 import { SyncManager } from '$lib/services/sync';
 import { loadProfile } from './profile';
 import { clearActiveCharacter } from '../content/character';
-import { loadGlobalState, initDefaultContents } from '../init';
+import { loadGlobalState } from '../init';
 
 // ─── PB Connection State ─────────────────────────────────────────────
 
@@ -85,13 +85,12 @@ export async function performLogout(): Promise<void> {
 }
 
 /**
- * Create a new guest area: stop sync, clear PB auth, create guest, reload.
- * Called from ManageAccountsDialog — orchestrates network + service layers.
+ * Create a new guest area: stop sync, clear PB auth, clear activeUserId, reload.
+ * After reload, restoreOrCreateGuest() will create a fresh guest and initDefaultContents()
+ * will be called with clean store state.
  */
 export async function performCreateNewGuest(): Promise<void> {
 	SyncManager.stopAutoSync();
 	AuthService.clearAuth();
-	await UserService.createGuest();
-	await initDefaultContents();
-	window.location.reload();
+	await UserService.switchUser(''); // Clear activeUserId KV and reload
 }
