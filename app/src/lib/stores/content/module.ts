@@ -19,6 +19,10 @@ import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 
+/**
+ * Returns module from store cache first, then from DB if needed.
+ * Explicitly throws error if not found
+ */
 export async function getModule(moduleId: string): Promise<Module> {
 	const active = get(modules).find((m) => m.id === moduleId);
 	if (active) return active;

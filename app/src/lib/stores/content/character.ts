@@ -32,6 +32,10 @@ import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 
+/**
+ * Returns character detail from store cache first, then from DB if needed.
+ * Explicitly throws error if not found
+ */
 export async function getCharacterDetail(characterId: string): Promise<CharacterDetail> {
 	const active = get(activeCharacter);
 	if (active?.id === characterId) return active;

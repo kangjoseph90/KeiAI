@@ -5,6 +5,10 @@ import { plugins, appSettings } from '../state';
 import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
+/**
+ * Returns plugin from store cache first, then from DB if needed.
+ * Explicitly throws error if not found
+ */
 export async function getPlugin(pluginId: string): Promise<Plugin> {
 	const active = get(plugins).find((p) => p.id === pluginId);
 	if (active) return active;

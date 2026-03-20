@@ -26,6 +26,10 @@ import { getCharacterDetail } from './character';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 
+/**
+ * Returns chat detail from store cache first, then from DB if needed.
+ * Explicitly throws error if not found
+ */
 export async function getChatDetail(chatId: string): Promise<ChatDetail> {
 	const active = get(activeChat);
 	if (active?.id === chatId) return active;

@@ -6,6 +6,10 @@ import { generateSortOrder } from '$lib/utils/ordering';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 
+/**
+ * Returns app settings from store cache first, then from DB if needed.
+ * Explicitly throws error if not found
+ */
 export async function getAppSettings(): Promise<AppSettings> {
 	const active = get(appSettings);
 	if (active) return active;
