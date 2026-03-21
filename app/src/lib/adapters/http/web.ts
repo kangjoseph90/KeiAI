@@ -3,6 +3,7 @@ import { fetchWithRetry } from './retry';
 import { createLogger } from '$lib/adapters/logger';
 
 import { BaseHttpAdapter } from './base';
+import { PROXY_URL } from '$lib/config';
 const logger = createLogger('adapter:http:web');
 
 /**
@@ -17,7 +18,7 @@ export class WebHttpAdapter extends BaseHttpAdapter {
 		let baseInit = { ...init };
 
 		if (options?.proxy) {
-			const proxyUrl = import.meta.env.VITE_PROXY_URL;
+			const proxyUrl = PROXY_URL;
 
 			if (!proxyUrl) {
 				logger.warn('VITE_PROXY_URL is not set. Falling back to direct fetch.');

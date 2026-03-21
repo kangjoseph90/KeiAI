@@ -10,6 +10,7 @@
 
 import { expose } from 'comlink';
 import type { LLMTokenizer } from '$lib/types/models';
+import { cdnFetch } from '$lib/utils/cdn';
 
 // ─── Encoder Interface ───────────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ const SPECS: Record<LLMTokenizer, { kind: LoadKind; path: string }> = {
 
 async function load(kind: LoadKind, path: string): Promise<Encoder> {
 	const { Tokenizer } = await import('@mlc-ai/web-tokenizers');
-	const buf = await (await fetch(path)).arrayBuffer();
+	const buf = await cdnFetch(path);
 	return kind === 'json' ? Tokenizer.fromJSON(buf) : Tokenizer.fromSentencePiece(buf);
 }
 

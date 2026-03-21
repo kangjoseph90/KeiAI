@@ -4,7 +4,8 @@
  * Image processing, hashing, and encryption utilities.
  */
 
-import { FIXED_SALT, MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT, WEBP_QUALITY, CDN_BASE_URL } from './types';
+import { MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT, WEBP_QUALITY } from './types';
+import { CDN_BASE_URL, FIXED_SALT } from '$lib/config';
 import { sha256, fromHex, encryptBytes, decryptBytes, type Bytes } from '$lib/crypto';
 
 // ─── Image Loading & Resizing ─────────────────────────────────────────────
@@ -179,5 +180,5 @@ export function isValidImageHeader(bytes: Uint8Array): boolean {
 }
 
 export function getRemoteURL(hash: string): string {
-	return `${CDN_BASE_URL}/${hash}`;
+	return `${CDN_BASE_URL}/assets/${hash}`;
 }
