@@ -121,7 +121,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		// ── 7. Finalize ─────────────────────────────────────────────
 		const finalTask = getChatTask(chatId);
 		if (!finalTask || (finalTask.content.length === 0 && !finalTask.toolCalls?.length)) {
-			throw new Error('Empty response from model');
+			throw new AppError('NETWORK_ERROR', 'Empty response from model');
 		}
 
 		await persistTask(chatId);

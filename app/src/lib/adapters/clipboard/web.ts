@@ -24,7 +24,7 @@ export class WebClipboardAdapter implements IClipboardAdapter {
 	async writeText(text: string): Promise<void> {
 		try {
 			if (!navigator.clipboard) {
-				throw new Error('Clipboard API not available');
+				throw new AppError('CLIPBOARD_ERROR', 'Clipboard API not available');
 			}
 			await navigator.clipboard.writeText(text);
 		} catch (error) {
@@ -58,7 +58,7 @@ export class WebClipboardAdapter implements IClipboardAdapter {
 	async writeImage(data: Uint8Array): Promise<void> {
 		try {
 			if (!navigator.clipboard) {
-				throw new Error('Clipboard API not available');
+				throw new AppError('CLIPBOARD_ERROR', 'Clipboard API not available');
 			}
 			// Fallback assumption to png for web
 			const buffer = data.buffer.slice(

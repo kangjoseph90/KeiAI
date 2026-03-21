@@ -25,6 +25,8 @@ let activeIdentityKeyPair: CryptoKeyPair | null = null;
 
 // ─── Accessors ───────────────────────────────────────────────────────
 
+import { AppError } from '$lib/types/errors';
+
 export function getActiveSession(): {
 	userId: string;
 	masterKey: CryptoKey;
@@ -32,7 +34,7 @@ export function getActiveSession(): {
 	identityKeyPair: CryptoKeyPair;
 } {
 	if (!activeUserId || !activeMasterKey || !activeIdentityKeyPair) {
-		throw new Error('Session not initialized.');
+		throw new AppError('SESSION_EXPIRED', 'Session not initialized.');
 	}
 	return {
 		userId: activeUserId,
