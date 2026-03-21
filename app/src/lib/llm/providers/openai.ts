@@ -16,6 +16,7 @@ import type {
 	StreamHttpConfig
 } from '../types';
 import type { ToolCallRequest } from '$lib/services/content/tool';
+import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { debounceStream, type StreamDebounceConfig } from './debounce';
 
@@ -66,7 +67,7 @@ export class OpenAIStreamProvider implements StreamProvider {
 	): AsyncIterable<StreamContent> {
 		const response = await this.fetchStream(messages, signal);
 		const reader = response.body?.getReader();
-		if (!reader) throw new Error('Response body is not readable');
+		if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
 		const state: StreamContent = { content: '', thought: '' };
 		// Accumulate partial tool call arguments strby index
@@ -182,7 +183,10 @@ export class OpenAIStreamProvider implements StreamProvider {
 
 		if (!response.ok) {
 			const errorBody = await response.text().catch(() => '');
-			throw new Error(`API error ${response.status}: ${errorBody || response.statusText}`);
+			throw new AppError(
+				'NETWORK_ERROR',
+				`API error ${response.status}: ${errorBody || response.statusText}`
+			);
 		}
 
 		return response;

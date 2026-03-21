@@ -1,3 +1,4 @@
+import { AppError } from '$lib/types/errors';
 import { CDN_BASE_URL } from '$lib/config';
 
 const CACHE_NAME = 'kei-cdn-v1';
@@ -22,7 +23,7 @@ export async function cdnFetch(path: string): Promise<ArrayBuffer> {
 
 	const response = await fetch(url);
 	if (!response.ok) {
-		throw new Error(`CDN fetch failed: ${response.status} ${url}`);
+		throw new AppError('ASSET_ERROR', `CDN fetch failed: ${response.status} ${url}`);
 	}
 
 	// Persist response to cache
