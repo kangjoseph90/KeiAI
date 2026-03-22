@@ -12,9 +12,10 @@ import { createLogger } from '$lib/adapters/logger';
 import {
 	type EmbeddingModelConfig,
 	type EmbeddingModel,
-	type BuiltInEmbeddingProvider,
+	type RemoteEmbeddingProvider,
 	BUILT_IN_EMBEDDING_MODELS,
-	getEmbeddingProviderUrl
+	getEmbeddingProviderUrl,
+	isRemoteEmbeddingProvider
 } from '$lib/types/models/embedding';
 
 const logger = createLogger('embedding:provider');
@@ -75,9 +76,16 @@ function resolveConnection(
 		return { baseUrl: model.baseUrl, apiKey: model.apiKey };
 	}
 
-	const provider = model.provider as BuiltInEmbeddingProvider;
+	if (isRemoteEmbeddingProvider(model.provider)) {
+		return {
+			baseUrl: getEmbeddingProviderUrl(model.provider),
+			apiKey: settings.apiKeys[model.provider]
+		};
+	}
+
+	// Local provider (e.g. minilm)
 	return {
-		baseUrl: getEmbeddingProviderUrl(provider),
-		apiKey: settings.apiKeys[provider]
+		baseUrl: '',
+		apiKey: 'local'
 	};
 }

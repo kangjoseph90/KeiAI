@@ -1,5 +1,5 @@
-import type { BuiltInLLMProvider } from './llm';
-import type { BuiltInTTSProvider } from './tts';
-import type { BuiltInEmbeddingProvider } from './embedding';
+import type { RemoteLLMProvider } from './llm';
+import type { RemoteTTSProvider } from './tts';
+import type { RemoteEmbeddingProvider } from './embedding';
 
-export type ApiProvider = BuiltInLLMProvider | BuiltInTTSProvider | BuiltInEmbeddingProvider;
+export type ApiProvider = RemoteLLMProvider | RemoteTTSProvider | RemoteEmbeddingProvider;

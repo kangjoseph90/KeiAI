@@ -1,15 +1,22 @@
 /**
  * TTS Provider Selection — KeiAI
  *
- * Resolves a TTSProvider name + AppSettings into a concrete TTSStreamProvider.
- * Each provider is its own class (no shared format abstraction).
+ * Resolves a TTSModelConfig + AppSettings into a concrete TTSStreamProvider.
+ * Mirrors LLM/Embedding pattern: resolveModel → resolveConnection → class by format.
  */
 
 import type { TTSStreamProvider } from './types';
-import type { TTSModelConfig, TTSProvider } from '$lib/types/models/tts';
 import type { AppSettings } from '$lib/services';
 import { OpenAITTSStreamProvider } from './providers/openai';
 import { createLogger } from '$lib/adapters/logger';
+import {
+	type TTSModelConfig,
+	type TTSModel,
+	type RemoteTTSProvider,
+	BUILT_IN_TTS_MODELS,
+	getTTSProviderUrl,
+	isRemoteTTSProvider
+} from '$lib/types/models/tts';
 
 const logger = createLogger('tts:provider');
 
@@ -17,37 +24,71 @@ export function selectTTSProvider(
 	modelConfig: TTSModelConfig,
 	settings: AppSettings
 ): TTSStreamProvider | null {
-	switch (modelConfig.provider) {
-		case 'openai': {
-			const apiKey = settings.apiKeys.openai;
-			if (!apiKey) {
-				logger.warn('No OpenAI API key for TTS.');
-				return null;
-			}
-			return new OpenAITTSStreamProvider({ apiKey, voiceId: modelConfig.voiceId });
-		}
+	const model = resolveModel(modelConfig, settings);
 
-		case 'elevenlabs': {
+	if (!model) {
+		logger.warn('TTS model not found.');
+		return null;
+	}
+
+	const connection = resolveConnection(model, settings);
+
+	if (!connection.apiKey) {
+		logger.warn('No API key found for TTS.');
+		return null;
+	}
+
+	switch (model.format) {
+		case 'openai':
+			return new OpenAITTSStreamProvider({
+				apiKey: connection.apiKey,
+				baseUrl: connection.baseUrl,
+				modelId: model.modelId,
+				voiceId: modelConfig.voiceId
+			});
+
+		case 'elevenlabs':
 			// TODO: implement ElevenLabsTTSStreamProvider
 			logger.warn('ElevenLabs TTS not yet implemented.');
 			return null;
-		}
 
-		case 'google': {
+		case 'google':
 			// TODO: implement GoogleTTSStreamProvider
 			logger.warn('Google TTS not yet implemented.');
 			return null;
-		}
 
-		case 'kokoro': {
-			// TODO: implement KokoroTTSStreamProvider (local)
-			logger.warn('Kokoro TTS not yet implemented.');
+		default:
+			logger.warn(`Unknown TTS format: ${model.format}`);
 			return null;
-		}
-
-		default: {
-			logger.warn(`Unknown TTS provider: ${modelConfig.provider}`);
-			return null;
-		}
 	}
+}
+
+function resolveModel(config: TTSModelConfig, settings: AppSettings): TTSModel | undefined {
+	if (config.provider === 'custom') {
+		// TODO: settings.customTTSModels
+		return undefined;
+	}
+	return BUILT_IN_TTS_MODELS.find((m) => m.id === config.id);
+}
+
+function resolveConnection(
+	model: TTSModel,
+	settings: AppSettings
+): { baseUrl: string; apiKey: string | undefined } {
+	if (model.provider === 'custom') {
+		return { baseUrl: model.baseUrl, apiKey: model.apiKey };
+	}
+
+	if (isRemoteTTSProvider(model.provider)) {
+		return {
+			baseUrl: getTTSProviderUrl(model.provider),
+			apiKey: settings.apiKeys[model.provider]
+		};
+	}
+
+	// Local provider (e.g. kokoro)
+	return {
+		baseUrl: '',
+		apiKey: 'local'
+	};
 }

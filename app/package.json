@@ -67,6 +67,7 @@
 		"vitest": "^4.0.18"
 	},
 	"dependencies": {
+		"@huggingface/transformers": "^3.8.1",
 		"@mlc-ai/web-tokenizers": "^0.1.6",
 		"@tauri-apps/api": "^2.10.1",
 		"@tauri-apps/plugin-clipboard-manager": "~2.3.2",
