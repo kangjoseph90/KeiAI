@@ -1,0 +1,35 @@
+/**
+ * Tauri Inference Adapter — KeiAI
+ *
+ * Stub implementation for Tauri desktop.
+ * Native inference via Rust (ONNX Runtime / candle) is a future milestone.
+ */
+
+import type { IInferenceAdapter, ModelSpec, EmbedOptions, SynthesizeOptions } from './types';
+
+export class TauriInferenceAdapter implements IInferenceAdapter {
+	async embed(_spec: ModelSpec, _texts: string[], _options?: EmbedOptions): Promise<number[][]> {
+		throw new Error('Native inference not yet implemented. Use remote embedding providers.');
+	}
+
+	async *synthesize(
+		_spec: ModelSpec,
+		_text: string,
+		_voiceId: string,
+		_options?: SynthesizeOptions
+	): AsyncIterable<ArrayBuffer> {
+		// Throw before any yield — the unreachable yield satisfies the async generator return type.
+		throw new Error('Native inference not yet implemented. Use remote TTS providers.');
+		yield new ArrayBuffer(0);
+	}
+
+	async dispose(_modelId: string): Promise<void> {
+		// no-op
+	}
+
+	async disposeAll(): Promise<void> {
+		// no-op
+	}
+}
+
+export const tauriInference = new TauriInferenceAdapter();

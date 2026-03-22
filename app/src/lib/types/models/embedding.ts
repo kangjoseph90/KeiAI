@@ -1,12 +1,14 @@
 // ─── Format (Protocol) ──────────────────────────────────────────────────────
 
-export type EmbeddingFormat = 'openai_compatible' | 'google';
+export type EmbeddingFormat = 'openai_compatible' | 'google' | 'onnx';
 
 // ─── Provider Types ─────────────────────────────────────────────────────────
 
-export type BuiltInEmbeddingProvider = 'openai' | 'google';
+export type RemoteEmbeddingProvider = 'openai' | 'google';
+export type LocalEmbeddingProvider = 'minilm';
+export type BuiltInEmbeddingProvider = RemoteEmbeddingProvider | LocalEmbeddingProvider;
+
 export type CustomEmbeddingProvider = 'custom';
-// TODO: export type LocalEmbeddingProvider = 'onnx' | 'transformers';
 export type EmbeddingProvider = BuiltInEmbeddingProvider | CustomEmbeddingProvider;
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
@@ -14,10 +16,11 @@ export type EmbeddingProvider = BuiltInEmbeddingProvider | CustomEmbeddingProvid
 const providerNames: Record<EmbeddingProvider, string> = {
 	openai: 'OpenAI',
 	google: 'Google',
+	minilm: 'MiniLM',
 	custom: 'Custom'
 };
 
-const builtInProviderUrls: Record<BuiltInEmbeddingProvider, string> = {
+const remoteProviderUrls: Record<RemoteEmbeddingProvider, string> = {
 	openai: 'https://api.openai.com/v1',
 	google: 'https://generativelanguage.googleapis.com/v1beta'
 };
@@ -26,8 +29,14 @@ export function getEmbeddingProviderName(provider: EmbeddingProvider): string {
 	return providerNames[provider] || provider;
 }
 
-export function getEmbeddingProviderUrl(provider: BuiltInEmbeddingProvider): string {
-	return builtInProviderUrls[provider] || provider;
+export function getEmbeddingProviderUrl(provider: RemoteEmbeddingProvider): string {
+	return remoteProviderUrls[provider] || provider;
+}
+
+export function isRemoteEmbeddingProvider(
+	provider: EmbeddingProvider
+): provider is RemoteEmbeddingProvider {
+	return provider in remoteProviderUrls;
 }
 
 // ─── Model Definitions ─────────────────────────────────────────────────────
@@ -91,7 +100,10 @@ const GOOGLE_EMBEDDING_MODELS: BuiltInEmbeddingModel[] = [
 	}
 ];
 
+const MINILM_EMBEDDING_MODELS: BuiltInEmbeddingModel[] = [];
+
 export const BUILT_IN_EMBEDDING_MODELS: BuiltInEmbeddingModel[] = [
 	...OPENAI_EMBEDDING_MODELS,
-	...GOOGLE_EMBEDDING_MODELS
+	...GOOGLE_EMBEDDING_MODELS,
+	...MINILM_EMBEDDING_MODELS
 ];

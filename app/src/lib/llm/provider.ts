@@ -14,9 +14,10 @@ import { createLogger } from '$lib/adapters/logger';
 import {
 	type LLMModelConfig,
 	type LLMModel,
-	type BuiltInLLMProvider,
+	type RemoteLLMProvider,
 	BUILT_IN_LLM_MODELS,
-	getLLMProviderUrl
+	getLLMProviderUrl,
+	isRemoteLLMProvider
 } from '$lib/types/models/llm';
 
 const logger = createLogger('llm:provider');
@@ -93,9 +94,16 @@ function resolveConnection(
 		return { baseUrl: model.baseUrl, apiKey: model.apiKey };
 	}
 
-	const provider = model.provider as BuiltInLLMProvider;
+	if (isRemoteLLMProvider(model.provider)) {
+		return {
+			baseUrl: getLLMProviderUrl(model.provider),
+			apiKey: settings.apiKeys[model.provider]
+		};
+	}
+
+	// Local provider (e.g. webllm)
 	return {
-		baseUrl: getLLMProviderUrl(provider),
-		apiKey: settings.apiKeys[provider]
+		baseUrl: '',
+		apiKey: 'local'
 	};
 }

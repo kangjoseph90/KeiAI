@@ -8,7 +8,7 @@
 import { get } from 'svelte/store';
 import { chatTasks } from '../state';
 import type { ChatTask } from '../types';
-import type { StreamContent } from '$lib/llm/types';
+import type { LLMStreamContent } from '$lib/llm/types';
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 
@@ -33,7 +33,7 @@ export function createChatTask(chatId: string): void {
 /**
  * Update the chat task state with the latest stream content.
  */
-export function updateChatTask(chatId: string, state: StreamContent): void {
+export function updateChatTask(chatId: string, state: LLMStreamContent): void {
 	chatTasks.update((map) => {
 		const task = map.get(chatId);
 		if (!task) return map;

@@ -21,13 +21,16 @@ export type LLMTokenizer =
 export type LLMFormat =
 	| 'openai_compatible' // OpenAI Completions API
 	| 'anthropic'
-	| 'google';
+	| 'google'
+	| 'webllm';
 
 // ─── Built-in Provider Types ─────────────────────────────────────────────────────────
 
-export type BuiltInLLMProvider = 'openai' | 'anthropic' | 'deepseek' | 'google' | 'mistral';
+export type RemoteLLMProvider = 'openai' | 'anthropic' | 'deepseek' | 'google' | 'mistral';
+export type LocalLLMProvider = 'webllm';
+export type BuiltInLLMProvider = RemoteLLMProvider | LocalLLMProvider;
+
 export type CustomLLMProvider = 'custom';
-// TODO: export type LocalLLMProvider
 export type LLMProvider = BuiltInLLMProvider | CustomLLMProvider;
 
 // model capability flags
@@ -63,10 +66,11 @@ const tokenizerNames: Record<LLMTokenizer, string> = {
 const formatNames: Record<LLMFormat, string> = {
 	openai_compatible: 'OpenAI Compatible',
 	anthropic: 'Anthropic Claude',
-	google: 'Google Cloud'
+	google: 'Google Cloud',
+	webllm: 'WebLLM'
 };
 
-const builtInProviderUrls: Record<BuiltInLLMProvider, string> = {
+const remoteProviderUrls: Record<RemoteLLMProvider, string> = {
 	openai: 'https://api.openai.com/v1',
 	anthropic: 'https://api.anthropic.com/v1',
 	deepseek: 'https://api.deepseek.com',
@@ -80,6 +84,7 @@ const providerNames: Record<LLMProvider, string> = {
 	deepseek: 'DeepSeek',
 	google: 'Google',
 	mistral: 'Mistral',
+	webllm: 'WebLLM',
 	custom: 'Custom'
 };
 
@@ -110,8 +115,12 @@ export function getLLMFormatName(format: LLMFormat): string {
 	return formatNames[format] || format;
 }
 
-export function getLLMProviderUrl(provider: BuiltInLLMProvider): string {
-	return builtInProviderUrls[provider] || provider;
+export function getLLMProviderUrl(provider: RemoteLLMProvider): string {
+	return remoteProviderUrls[provider] || provider;
+}
+
+export function isRemoteLLMProvider(provider: LLMProvider): provider is RemoteLLMProvider {
+	return provider in remoteProviderUrls;
 }
 
 export function getLLMProviderName(provider: LLMProvider): string {
@@ -218,6 +227,8 @@ const MISTRAL_MODELS: BuiltInLLMModel[] = [
 		parameters: ['temperature']
 	}
 ];
+
+const WEBLLM_MODELS: BuiltInLLMModel[] = [];
 
 export const BUILT_IN_LLM_MODELS: BuiltInLLMModel[] = [
 	...OPENAI_MODELS,
