@@ -32,9 +32,11 @@ Adapters (lib/adapters/)
 These sit outside the four-layer stack and are importable from any layer:
 
 ```
-lib/types/         Domain vocabulary (models.ts, errors.ts, refs.ts)
-lib/utils/         Infrastructure utilities (cache.ts, defaults.ts, events.ts, id.ts, ordering.ts)
-lib/llm/           AI provider layer (provider selection, prompt building, tokenizer, stream providers)
+lib/types/         Domain vocabulary (models/, errors.ts, refs.ts)
+lib/utils/         Infrastructure utilities (cache.ts, defaults.ts, events.ts, id.ts, ordering.ts, stream.ts)
+lib/llm/           LLM provider layer (OpenAI-compatible streaming, prompt building, tokenizer)
+lib/tts/           TTS provider layer (OpenAI TTS, ElevenLabs — per-provider classes)
+lib/embedding/     Embedding provider layer (OpenAI-compatible batch embedding)
 lib/scripts/       Text transformation (regex-based, used by both UI and tasks)
 lib/tasks/         Pipeline orchestration (chat task, future: translate, summarize)
 ```
@@ -325,39 +327,55 @@ Ten adapter interfaces, each with Web + Tauri implementations dispatched via `is
 1. Snapshot all context at call time (character, preset, lorebooks, scripts, messages) — isolated from UI switches
 2. Build prompt from template order (`llm/prompt/builder.ts` — pure function)
 3. Apply request-placement scripts
-4. Resolve model: `preset.data.chatModel` → `ModelConfig` → find `LLMModel` → resolve connection
-5. Create `StreamProvider` via `selectProvider(modelConfig, settings)` (`llm/provider.ts`)
+4. Resolve model: `preset.data.chatModel` → `LLMModelConfig` → find `LLMModel` → resolve connection
+5. Create `LLMStreamProvider` via `selectLLMProvider(modelConfig, settings)` (`llm/provider.ts`)
 6. Open ephemeral `ChatTask` in store (streaming bubble in UI)
-7. Stream chunks from `StreamProvider`, apply output scripts per-chunk
+7. Stream chunks from `LLMStreamProvider`, apply output scripts per-chunk
 8. On success: `createMessage()` → persist → `clearChatTask()`
 9. On abort: optionally save partial → `clearChatTask()`
 10. On error: `setChatTaskError()` — bubble stays for user to dismiss
 
+### Provider Architecture — "같은 인터페이스 = 같은 클래스"
+
+Three protocol layers share a common selection pattern: `selectXXXProvider(modelConfig, settings)`
+
+| Layer            | Input          | Output                            | Class Dispatch                                            |
+| ---------------- | -------------- | --------------------------------- | --------------------------------------------------------- |
+| `lib/llm/`       | `OpenAIChat[]` | `AsyncIterable<LLMStreamContent>` | Format-based (`openai_compatible`, `anthropic`, `google`) |
+| `lib/tts/`       | `text`         | `AsyncIterable<TTSStreamChunk>`   | Provider-based (no standard format)                       |
+| `lib/embedding/` | `text[]`       | `Promise<EmbeddingResult>`        | Format-based (`openai_compatible`, `google`)              |
+
+- **Format-based** (LLM, Embedding): Multiple providers share one class when they use the same wire protocol (e.g. OpenAI format). URL + API key swap only.
+- **Provider-based** (TTS): Each provider has a distinct class because API formats are incompatible.
+- **Local models**: Dispatch by runtime (`onnx`, `llama_cpp`). One class per runtime, multiple models.
+- See [ADR 021](../docs/ADR.md) for full rationale.
+
 ### Model System
 
-Models are defined in `types/models.ts`. Two kinds via discriminated union:
+Models are defined in `types/models/llm.ts` (LLM), `types/models/tts.ts` (TTS), `types/models/embedding.ts` (Embedding).
+Two kinds via discriminated union:
 
-- **Built-in** (`BuiltInModel`): Hard-coded catalog, `provider` routes to `settings.apiKeys[provider]` + default base URL
-- **Custom** (`CustomModel`): User-defined in `settings.customModels[]`, owns `baseUrl` + `apiKey` directly
+- **Built-in** (`BuiltInLLMModel`): Hard-coded catalog, `provider` routes to `settings.apiKeys[provider]` + default base URL
+- **Custom** (`CustomLLMModel`): User-defined in `settings.customModels[]`, owns `baseUrl` + `apiKey` directly
 
 ID convention: `provider::modelId` for built-in (e.g. `openai::gpt-5.4`), `custom::nanoid` for custom.
 
-`ModelConfig` (stored in presets) references a model by `{id, provider, parameters}`.
+`LLMModelConfig` (stored in presets) references a model by `{id, provider, parameters}`.
 
-### StreamProvider Architecture
+### LLMStreamProvider Architecture
 
-`StreamProvider` is an interface with a single method: `stream(messages, signal): AsyncIterable<StreamContent>`.
+`LLMStreamProvider` is an interface with a single method: `stream(messages, signal): AsyncIterable<LLMStreamContent>`.
 
-- `LLMModel.format` determines which `StreamProvider` class to use (e.g. `openai_compatible` → `OpenAIStreamProvider`)
+- `LLMModel.format` determines which `LLMStreamProvider` class to use (e.g. `openai_compatible` → `OpenAILLMStreamProvider`)
 - Providers are **stateless** — all config (apiKey, baseUrl, modelId, params, capabilities) is injected via constructor
 - Providers must **never** import Services, Stores, or Settings directly
-- `selectProvider()` is the single factory: resolves model → connection → instantiates the correct provider class
+- `selectLLMProvider()` is the single factory: resolves model → connection → instantiates the correct provider class
 
 ### Key Design Rules
 
 - **No `any` in pipeline** — all data is typed end-to-end
 - **Data snapshot at top** — `runChat()` loads everything before streaming starts (no mid-generation inconsistency)
-- **Pure functions** — `buildPrompt()` and `selectProvider()` are synchronous, no side effects
+- **Pure functions** — `buildPrompt()` and `selectLLMProvider()` are synchronous, no side effects
 - **Tasks keyed by chatId** — survive context switches, user can navigate away during generation
 
 ---

@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { runChat, stopChat, dismissChat } from '$lib/tasks/chat';
-import type { StreamProvider, StreamContent } from '$lib/llm/types';
+import type { LLMStreamProvider, LLMStreamContent } from '$lib/llm/types';
 
 // ─── Mock all dependencies ───────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ vi.mock('$lib/llm/prompt/builder', () => ({
 }));
 
 vi.mock('$lib/llm/provider', () => ({
-	selectProvider: vi.fn().mockReturnValue(null)
+	selectLLMProvider: vi.fn().mockReturnValue(null)
 }));
 
 vi.mock('$lib/scripts', () => ({
@@ -79,7 +79,7 @@ import {
 } from '$lib/stores/tasks/chat';
 import { createMessage } from '$lib/stores/content/message';
 import { buildPrompt } from '$lib/llm/prompt/builder';
-import { selectProvider } from '$lib/llm/provider';
+import { selectLLMProvider } from '$lib/llm/provider';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ describe('Chat Pipeline', () => {
 		vi.mocked(getChatTask).mockReturnValue(null);
 		vi.mocked(consumeChatTask).mockReturnValue(null);
 		vi.mocked(buildPrompt).mockReturnValue([{ role: 'user', content: 'test' }]);
-		vi.mocked(selectProvider).mockReturnValue({
+		vi.mocked(selectLLMProvider).mockReturnValue({
 			stream: vi.fn(async function* () {
 				yield { content: 'Response' };
 			})
@@ -99,7 +99,7 @@ describe('Chat Pipeline', () => {
 	});
 
 	it('should run a successful chat generation', async () => {
-		const mockProvider: StreamProvider = {
+		const mockProvider: LLMStreamProvider = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Hello' };
 				yield { content: 'Hello world' };
@@ -121,7 +121,7 @@ describe('Chat Pipeline', () => {
 	});
 
 	it('should prevent duplicate runs for the same chat', async () => {
-		const foreverProvider: StreamProvider = {
+		const foreverProvider: LLMStreamProvider = {
 			stream: vi.fn(async function* (_msgs, signal) {
 				yield { content: '' };
 				if (signal.aborted) return;
@@ -160,9 +160,9 @@ describe('Chat Pipeline', () => {
 	});
 
 	it('should handle empty response', async () => {
-		const mockProvider: StreamProvider = {
+		const mockProvider: LLMStreamProvider = {
 			stream: vi.fn(async function* () {
-				const empty: StreamContent[] = [];
+				const empty: LLMStreamContent[] = [];
 				for (const chunk of empty) yield chunk;
 			})
 		};
@@ -174,7 +174,7 @@ describe('Chat Pipeline', () => {
 	});
 
 	it('should save partial content on abort when saveOnAbort is true', async () => {
-		const mockProvider: StreamProvider = {
+		const mockProvider: LLMStreamProvider = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Partial' };
 				throw new DOMException('Aborted', 'AbortError');
@@ -193,7 +193,7 @@ describe('Chat Pipeline', () => {
 	});
 
 	it('should discard content on abort when saveOnAbort is false', async () => {
-		const mockProvider: StreamProvider = {
+		const mockProvider: LLMStreamProvider = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Partial' };
 				throw new DOMException('Aborted', 'AbortError');
@@ -212,7 +212,7 @@ describe('Chat Pipeline', () => {
 	});
 
 	it('should surface provider errors without persisting', async () => {
-		const mockProvider: StreamProvider = {
+		const mockProvider: LLMStreamProvider = {
 			stream: vi.fn(async function* () {
 				yield { content: '' };
 				throw new Error('Network fail');
@@ -226,7 +226,7 @@ describe('Chat Pipeline', () => {
 	});
 
 	it('should use provider override when provided', async () => {
-		const mockProvider: StreamProvider = {
+		const mockProvider: LLMStreamProvider = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Override response' };
 			})
@@ -239,18 +239,18 @@ describe('Chat Pipeline', () => {
 
 		await runChat(mockChatId, { providerOverride: mockProvider });
 
-		expect(selectProvider).not.toHaveBeenCalled();
+		expect(selectLLMProvider).not.toHaveBeenCalled();
 		expect(createChatTask).toHaveBeenCalledWith(mockChatId);
 	});
 
 	it('should select provider from preset when no override', async () => {
-		const mockProvider: StreamProvider = {
+		const mockProvider: LLMStreamProvider = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Preset response' };
 			})
 		};
 
-		vi.mocked(selectProvider).mockReturnValue(mockProvider);
+		vi.mocked(selectLLMProvider).mockReturnValue(mockProvider);
 		vi.mocked(getChatTask).mockReturnValue({
 			status: 'generating',
 			content: 'Preset response'
@@ -258,7 +258,7 @@ describe('Chat Pipeline', () => {
 
 		await runChat(mockChatId);
 
-		expect(selectProvider).toHaveBeenCalled();
+		expect(selectLLMProvider).toHaveBeenCalled();
 	});
 
 	describe('Controls', () => {

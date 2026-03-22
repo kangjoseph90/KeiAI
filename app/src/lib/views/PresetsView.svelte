@@ -17,7 +17,7 @@
 		deletePreset,
 		getPresetDetail
 	} from '$lib/stores';
-	import type { ModelConfig } from '$lib/types/models';
+	import type { LLMModelConfig } from '$lib/types/models/llm';
 
 	// ── List State ─────────────────────────────────────────────────
 	let newNameInput = $state('');
@@ -26,7 +26,7 @@
 	let editingId = $state<string | null>(null);
 	let editName = $state('');
 	let editDescription = $state('');
-	let editChatModel = $state<ModelConfig>({ id: '', provider: 'openai', parameters: {} });
+	let editChatModel = $state<LLMModelConfig>({ id: '', provider: 'openai', parameters: {} });
 	let editMaxResponse = $state(600);
 	let editMaxContext = $state(4096);
 

@@ -25,9 +25,10 @@ export type LLMFormat =
 
 // ─── Built-in Provider Types ─────────────────────────────────────────────────────────
 
-export type BuiltInProvider = 'openai' | 'anthropic' | 'deepseek' | 'google' | 'mistral';
-export type CustomProvider = 'custom';
-export type LLMProvider = BuiltInProvider | CustomProvider;
+export type BuiltInLLMProvider = 'openai' | 'anthropic' | 'deepseek' | 'google' | 'mistral';
+export type CustomLLMProvider = 'custom';
+// TODO: export type LocalLLMProvider
+export type LLMProvider = BuiltInLLMProvider | CustomLLMProvider;
 
 // model capability flags
 
@@ -35,7 +36,7 @@ export type LLMFlags = 'streaming' | 'imageInput';
 
 // Parameter
 
-export type Parameter =
+export type LLMParameter =
 	| 'temperature'
 	| 'top_k'
 	| 'min_p'
@@ -65,7 +66,7 @@ const formatNames: Record<LLMFormat, string> = {
 	google: 'Google Cloud'
 };
 
-const builtInProviderUrls: Record<BuiltInProvider, string> = {
+const builtInProviderUrls: Record<BuiltInLLMProvider, string> = {
 	openai: 'https://api.openai.com/v1',
 	anthropic: 'https://api.anthropic.com/v1',
 	deepseek: 'https://api.deepseek.com',
@@ -87,7 +88,7 @@ const flagNames: Record<LLMFlags, string> = {
 	imageInput: 'Image Input'
 };
 
-const parameterNames: Record<Parameter, string> = {
+const parameterNames: Record<LLMParameter, string> = {
 	temperature: 'Temperature',
 	top_k: 'Top-K',
 	min_p: 'Min-P',
@@ -101,27 +102,27 @@ const parameterNames: Record<Parameter, string> = {
 	verbosity: 'Verbosity'
 };
 
-export function getTokenizerName(encoding: LLMTokenizer): string {
+export function getLLMTokenizerName(encoding: LLMTokenizer): string {
 	return tokenizerNames[encoding] || encoding;
 }
 
-export function getFormatName(format: LLMFormat): string {
+export function getLLMFormatName(format: LLMFormat): string {
 	return formatNames[format] || format;
 }
 
-export function getProviderUrl(provider: BuiltInProvider): string {
+export function getLLMProviderUrl(provider: BuiltInLLMProvider): string {
 	return builtInProviderUrls[provider] || provider;
 }
 
-export function getProviderName(provider: LLMProvider): string {
+export function getLLMProviderName(provider: LLMProvider): string {
 	return providerNames[provider] || provider;
 }
 
-export function getFlagName(flag: LLMFlags): string {
+export function getLLMFlagName(flag: LLMFlags): string {
 	return flagNames[flag] || flag;
 }
 
-export function getParameterName(param: Parameter): string {
+export function getLLMParameterName(param: LLMParameter): string {
 	return parameterNames[param] || param;
 }
 
@@ -134,26 +135,26 @@ export interface LLMModelBase {
 	tokenizer: LLMTokenizer;
 }
 
-export interface BuiltInModel extends LLMModelBase {
-	provider: BuiltInProvider;
-	parameters: Parameter[];
+export interface BuiltInLLMModel extends LLMModelBase {
+	provider: BuiltInLLMProvider;
+	parameters: LLMParameter[];
 }
 
-export interface CustomModel extends LLMModelBase {
-	provider: CustomProvider;
+export interface CustomLLMModel extends LLMModelBase {
+	provider: CustomLLMProvider;
 	baseUrl: string;
 	apiKey?: string;
 }
 
-export type LLMModel = BuiltInModel | CustomModel;
+export type LLMModel = BuiltInLLMModel | CustomLLMModel;
 
-export interface ModelConfig {
+export interface LLMModelConfig {
 	id: string;
 	provider: LLMProvider;
-	parameters: Partial<Record<Parameter, number | string | boolean>>;
+	parameters: Partial<Record<LLMParameter, number | string | boolean>>;
 }
 
-const OPENAI_MODELS: BuiltInModel[] = [
+const OPENAI_MODELS: BuiltInLLMModel[] = [
 	{
 		id: 'openai::gpt-5.4',
 		name: 'GPT-5.4',
@@ -166,7 +167,7 @@ const OPENAI_MODELS: BuiltInModel[] = [
 	}
 ];
 
-const ANTHROPIC_MODELS: BuiltInModel[] = [
+const ANTHROPIC_MODELS: BuiltInLLMModel[] = [
 	{
 		id: 'anthropic::claude-4-6-sonnet',
 		name: 'Claude 4.6 Sonnet',
@@ -179,7 +180,7 @@ const ANTHROPIC_MODELS: BuiltInModel[] = [
 	}
 ];
 
-const DEEPSEEK_MODELS: BuiltInModel[] = [
+const DEEPSEEK_MODELS: BuiltInLLMModel[] = [
 	{
 		id: 'deepseek::deepseek-chat',
 		name: 'DeepSeek Chat',
@@ -192,7 +193,7 @@ const DEEPSEEK_MODELS: BuiltInModel[] = [
 	}
 ];
 
-const GOOGLE_MODELS: BuiltInModel[] = [
+const GOOGLE_MODELS: BuiltInLLMModel[] = [
 	{
 		id: 'google::gemini-3.1-pro',
 		name: 'Gemini 3.1 Pro',
@@ -205,7 +206,7 @@ const GOOGLE_MODELS: BuiltInModel[] = [
 	}
 ];
 
-const MISTRAL_MODELS: BuiltInModel[] = [
+const MISTRAL_MODELS: BuiltInLLMModel[] = [
 	{
 		id: 'mistral::mistral-large-2512',
 		name: 'Mistral Large 3',
@@ -218,7 +219,7 @@ const MISTRAL_MODELS: BuiltInModel[] = [
 	}
 ];
 
-export const BUILT_IN_MODELS: BuiltInModel[] = [
+export const BUILT_IN_LLM_MODELS: BuiltInLLMModel[] = [
 	...OPENAI_MODELS,
 	...ANTHROPIC_MODELS,
 	...DEEPSEEK_MODELS,

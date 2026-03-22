@@ -2,30 +2,30 @@
  * LLM Adapter Types — KeiAI
  *
  * Shared interfaces for the LLM adapter layer.
- * All providers (Mock, OpenAI, Claude, …) implement StreamProvider.
+ * All providers (Mock, OpenAI, Claude, …) implement LLMStreamProvider.
  */
 
 import type { ToolCallRequest } from '$lib/services/content/tool';
 import type { RetryOptions } from '$lib/adapters/http/types';
-import type { LLMFlags, Parameter } from '$lib/types/models';
+import type { LLMFlags, LLMParameter } from '$lib/types/models/llm';
 
 // ─── Stream Content ──────────────────────────────────────────────────────────
 
 /**
- * Abstract streaming interface for any LLM source.
+ * Abstract streaming interface (LLMFormat) for any LLM source.
  *
  * The provider owns chunk debouncing/batching.
  * CONTRACT: Yields cumulative content (e.g. "1", "12", "123")
  * instead of individual chunks.
  */
-export type StreamContent = {
+export type LLMStreamContent = {
 	content: string;
 	thought?: string;
 	toolCalls?: ToolCallRequest[];
 };
 
-export interface StreamProvider {
-	stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<StreamContent>;
+export interface LLMStreamProvider {
+	stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent>;
 }
 
 // ─── Chat Message ────────────────────────────────────────────────────────────
@@ -40,10 +40,10 @@ export interface OpenAIChat {
 // ─── Provider Config (Role-Based) ────────────────────────────────────────────
 
 /** Model identity & generation parameters */
-export interface StreamModelConfig {
+export interface LLMStreamModelConfig {
 	modelId: string;
 	flags?: LLMFlags[];
-	parameters?: Partial<Record<Parameter, number | string | boolean>>;
+	parameters?: Partial<Record<LLMParameter, number | string | boolean>>;
 }
 
 /**
@@ -56,7 +56,7 @@ export interface StreamModelConfig {
  *     | { type: 'bearer'; token: string }
  *     | { type: 'header'; headers: Record<string, string> }
  */
-export interface StreamHttpConfig {
+export interface LLMStreamHttpConfig {
 	apiKey: string;
 	/** Base URL without trailing slash (e.g. "https://api.openai.com/v1") */
 	baseUrl: string;

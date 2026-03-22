@@ -7,7 +7,7 @@
 
 import { appTokenizer } from '$lib/adapters/tokenizer';
 import { LRUCache } from '$lib/utils/cache';
-import type { LLMTokenizer } from '$lib/types/models';
+import type { LLMTokenizer } from '$lib/types/models/llm';
 
 // ─── Cache ───────────────────────────────────────────────────────────────────
 

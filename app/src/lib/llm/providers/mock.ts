@@ -1,16 +1,16 @@
 /**
- * Mock Stream Provider — Development / Testing
+ * Mock LLM Stream Provider — Development / Testing
  *
  * Simulates a streaming LLM response for UI development without a real API.
  * Yields the response word-by-word with configurable delay between chunks.
  *
  * Usage:
- *   const provider = new MockStreamProvider();
+ *   const provider = new MockLLMStreamProvider();
  *   GenerationManager.generate(chatId, provider);
  */
 
-import type { StreamContent, StreamProvider, OpenAIChat } from '../types';
-import { debounceStream, type StreamDebounceConfig } from './debounce';
+import type { LLMStreamContent, LLMStreamProvider, OpenAIChat } from '../types';
+import { debounceStream, type StreamDebounceConfig } from '$lib/utils/stream';
 import { abortableSleep } from '$lib/utils/async';
 
 const MOCK_RESPONSES = [
@@ -27,7 +27,7 @@ export interface MockProviderConfig {
 	debounce?: StreamDebounceConfig;
 }
 
-export class MockStreamProvider implements StreamProvider {
+export class MockLLMStreamProvider implements LLMStreamProvider {
 	private readonly response: string;
 	private readonly chunkDelayMs: number;
 	private readonly debounceConfig?: StreamDebounceConfig;
@@ -38,7 +38,7 @@ export class MockStreamProvider implements StreamProvider {
 		this.debounceConfig = config.debounce;
 	}
 
-	async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<StreamContent> {
+	async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent> {
 		const rawStream = this.rawStream(messages, signal);
 		yield* debounceStream(rawStream, this.debounceConfig);
 	}
@@ -46,8 +46,8 @@ export class MockStreamProvider implements StreamProvider {
 	private async *rawStream(
 		messages: OpenAIChat[],
 		signal: AbortSignal
-	): AsyncIterable<StreamContent> {
-		const state: StreamContent = {
+	): AsyncIterable<LLMStreamContent> {
+		const state: LLMStreamContent = {
 			content: '',
 			thought: ''
 		};

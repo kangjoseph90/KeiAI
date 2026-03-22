@@ -5,7 +5,7 @@ import { deepMerge } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
-import type { ModelConfig } from '$lib/types/models';
+import type { LLMModelConfig } from '$lib/types/models/llm';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -22,8 +22,8 @@ export type PromptTemplateEntry =
 	| { name: string; type: 'history'; start: number; end?: number };
 
 export interface PresetDataFields {
-	chatModel: ModelConfig;
-	auxModel: ModelConfig;
+	chatModel: LLMModelConfig;
+	auxModel: LLMModelConfig;
 	templateOrder: PromptTemplateEntry[];
 	maxResponse: number;
 	maxContext: number;
