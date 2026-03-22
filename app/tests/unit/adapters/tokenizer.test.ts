@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AppError } from '$lib/types/errors';
 import { type Remote } from 'comlink';
 import type { ITokenizerAdapter } from '$lib/adapters/tokenizer';
-import type { LLMTokenizer } from '$lib/types/models';
+import type { LLMTokenizer } from '$lib/types/models/llm';
 import { WebTokenizerAdapter } from '$lib/adapters/tokenizer/web';
 import { TauriTokenizerAdapter } from '$lib/adapters/tokenizer/tauri';
 import * as comlink from 'comlink';

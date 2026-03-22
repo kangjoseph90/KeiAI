@@ -5,8 +5,6 @@
  * These are strictly application/domain layer concepts, decoupled from DB schema.
  */
 
-import type { LLMProvider, Parameter } from './models';
-
 /** Ordered reference for 1:N parent→child lists */
 export interface OrderedRef {
 	id: string;

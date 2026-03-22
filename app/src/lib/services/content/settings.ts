@@ -5,14 +5,17 @@ import type { OrderedRef, FolderDef, ResourceRef } from '$lib/types/refs';
 import { deepMerge } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { encryptedWriteQueue } from './write_queue';
-import type { CustomModel, BuiltInProvider } from '$lib/types/models';
+import type { CustomLLMModel, BuiltInLLMProvider } from '$lib/types/models/llm';
+import type { ApiProvider } from '$lib/types/models/provider';
+import type { TTSModelConfig } from '$lib/types/models/tts';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface AppSettingsContent {
 	theme: 'light' | 'dark' | 'system';
-	apiKeys: Partial<Record<BuiltInProvider, string>>;
-	customModels?: CustomModel[];
+	apiKeys: Partial<Record<ApiProvider, string>>;
+	customModels?: CustomLLMModel[];
+	ttsModel?: TTSModelConfig;
 }
 
 export interface AppSettingsRefs {

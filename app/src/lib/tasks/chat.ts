@@ -22,13 +22,13 @@ import {
 	getMergedLorebooks,
 	getMergedScripts
 } from '$lib/stores';
-import type { StreamProvider } from '$lib/llm/types';
+import type { LLMStreamProvider } from '$lib/llm/types';
 import { ToolCallService } from '$lib/services/content/tool';
 import { MessageService, type Message } from '$lib/services/content/message';
 import { updateMessage } from '$lib/stores/content/message';
 import { createMessage } from '$lib/stores/content/message';
 import { buildPrompt } from '../llm/prompt/builder';
-import { selectProvider } from '../llm/provider';
+import { selectLLMProvider } from '../llm/provider';
 import { applyScripts } from '../scripts';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
@@ -37,7 +37,7 @@ export interface RunChatOptions {
 	/** Save partial content to DB when the user aborts. Default: true */
 	saveOnAbort?: boolean;
 	/** Optional provider override for testing */
-	providerOverride?: StreamProvider;
+	providerOverride?: LLMStreamProvider;
 }
 
 const defaultOptions: RunChatOptions = {
@@ -107,7 +107,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		);
 
 		// ── 5. Select Provider ──────────────────────────────────────
-		const provider = opts.providerOverride ?? selectProvider(preset.data.chatModel, settings);
+		const provider = opts.providerOverride ?? selectLLMProvider(preset.data.chatModel, settings);
 
 		// ── 6. Stream chunks ────────────────────────────────────────
 		for await (const state of provider.stream(processedMessages, controller.signal)) {

@@ -1,7 +1,7 @@
 /**
  * OpenAI-Compatible Stream Provider — KeiAI
  *
- * Implements the StreamProvider interface for any OpenAI-compatible API.
+ * Implements the LLMStreamProvider interface for any OpenAI-compatible API.
  * Covers: OpenAI, OpenRouter, Ollama, vLLM, LM Studio, and any other
  * service that speaks the OpenAI Chat Completions SSE format.
  *
@@ -9,22 +9,22 @@
  */
 
 import type {
-	StreamContent,
-	StreamProvider,
+	LLMStreamContent,
+	LLMStreamProvider,
 	OpenAIChat,
-	StreamModelConfig,
-	StreamHttpConfig
+	LLMStreamModelConfig,
+	LLMStreamHttpConfig
 } from '../types';
 import type { ToolCallRequest } from '$lib/services/content/tool';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
-import { debounceStream, type StreamDebounceConfig } from './debounce';
+import { debounceStream, type StreamDebounceConfig } from '$lib/utils/stream';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface OpenAIProviderConfig {
-	model: StreamModelConfig;
-	http: StreamHttpConfig;
+	model: LLMStreamModelConfig;
+	http: LLMStreamHttpConfig;
 	debounce?: StreamDebounceConfig;
 }
 
@@ -49,14 +49,14 @@ interface OpenAIDelta {
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
-export class OpenAIStreamProvider implements StreamProvider {
+export class OpenAILLMStreamProvider implements LLMStreamProvider {
 	private readonly config: OpenAIProviderConfig;
 
 	constructor(config: OpenAIProviderConfig) {
 		this.config = config;
 	}
 
-	async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<StreamContent> {
+	async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent> {
 		const rawStream = this.rawStream(messages, signal);
 		yield* debounceStream(rawStream, this.config.debounce);
 	}
@@ -64,12 +64,12 @@ export class OpenAIStreamProvider implements StreamProvider {
 	private async *rawStream(
 		messages: OpenAIChat[],
 		signal: AbortSignal
-	): AsyncIterable<StreamContent> {
+	): AsyncIterable<LLMStreamContent> {
 		const response = await this.fetchStream(messages, signal);
 		const reader = response.body?.getReader();
 		if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
-		const state: StreamContent = { content: '', thought: '' };
+		const state: LLMStreamContent = { content: '', thought: '' };
 		// Accumulate partial tool call arguments strby index
 		const toolCallMap = new Map<number, { id: string; name: string; args: string }>();
 		const decoder = new TextDecoder();

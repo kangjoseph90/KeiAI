@@ -9,7 +9,7 @@
  */
 
 import { expose } from 'comlink';
-import type { LLMTokenizer } from '$lib/types/models';
+import type { LLMTokenizer } from '$lib/types/models/llm';
 import { cdnFetch } from '$lib/utils/cdn';
 
 // ─── Encoder Interface ───────────────────────────────────────────────────────

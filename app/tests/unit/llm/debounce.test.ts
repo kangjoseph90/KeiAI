@@ -3,33 +3,33 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { debounceStream } from '$lib/llm/providers/debounce';
-import type { StreamContent } from '$lib/llm/types';
+import { debounceStream } from '$lib/utils/stream';
+import type { LLMStreamContent } from '$lib/llm/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function snap(content: string): StreamContent {
+function snap(content: string): LLMStreamContent {
 	return { content };
 }
 
-async function collect(iter: AsyncIterable<StreamContent>): Promise<StreamContent[]> {
-	const results: StreamContent[] = [];
+async function collect(iter: AsyncIterable<LLMStreamContent>): Promise<LLMStreamContent[]> {
+	const results: LLMStreamContent[] = [];
 	for await (const item of iter) {
 		results.push(item);
 	}
 	return results;
 }
 
-async function* fromArray(items: StreamContent[]): AsyncIterable<StreamContent> {
+async function* fromArray(items: LLMStreamContent[]): AsyncIterable<LLMStreamContent> {
 	for (const item of items) {
 		yield item;
 	}
 }
 
 async function* fromArrayWithDelay(
-	items: StreamContent[],
+	items: LLMStreamContent[],
 	delayMs: number
-): AsyncIterable<StreamContent> {
+): AsyncIterable<LLMStreamContent> {
 	for (const item of items) {
 		await new Promise((r) => setTimeout(r, delayMs));
 		yield item;
@@ -127,7 +127,7 @@ describe('debounceStream', () => {
 
 	describe('with thought and toolCalls', () => {
 		it('should preserve thought and toolCalls through debounce', async () => {
-			const items: StreamContent[] = [
+			const items: LLMStreamContent[] = [
 				{ content: '', thought: 'thinking...' },
 				{ content: 'hello', thought: 'thinking...' },
 				{

@@ -7,7 +7,7 @@
  */
 
 import type { ITokenizerAdapter } from './types';
-import type { LLMTokenizer } from '$lib/types/models';
+import type { LLMTokenizer } from '$lib/types/models/llm';
 import { wrap, type Remote } from 'comlink';
 import { AppError } from '$lib/types/errors';
 

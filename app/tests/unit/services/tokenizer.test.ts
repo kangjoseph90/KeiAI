@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TokenCounter } from '$lib/llm/tokenizer';
 import { appTokenizer } from '$lib/adapters/tokenizer';
-import type { LLMTokenizer } from '$lib/types/models';
+import type { LLMTokenizer } from '$lib/types/models/llm';
 
 // Mock the adapter
 vi.mock('$lib/adapters/tokenizer', () => ({

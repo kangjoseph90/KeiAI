@@ -1,67 +1,83 @@
 /**
  * Provider Selection — KeiAI
  *
- * Resolves a ModelConfig + AppSettings into a concrete StreamProvider.
+ * Resolves a LLMModelConfig + AppSettings into a concrete LLMStreamProvider.
  * Handles both built-in models (provider → settings.apiKeys) and
  * custom models (model.baseUrl + model.apiKey).
  */
 
-import type { StreamProvider } from '$lib/llm/types';
-import { MockStreamProvider } from '$lib/llm/providers';
-import { OpenAIStreamProvider } from '$lib/llm/providers/openai';
+import type { LLMStreamProvider } from '$lib/llm/types';
+import { MockLLMStreamProvider } from '$lib/llm/providers';
+import { OpenAILLMStreamProvider } from '$lib/llm/providers/openai';
 import type { AppSettings } from '$lib/services';
 import { createLogger } from '$lib/adapters/logger';
 import {
-	type ModelConfig,
+	type LLMModelConfig,
 	type LLMModel,
-	type BuiltInProvider,
-	BUILT_IN_MODELS,
-	getProviderUrl
-} from '$lib/types/models';
+	type BuiltInLLMProvider,
+	BUILT_IN_LLM_MODELS,
+	getLLMProviderUrl
+} from '$lib/types/models/llm';
 
 const logger = createLogger('llm:provider');
 
 /**
- * Build a StreamProvider from the given model config + app settings.
- * Falls back to MockStreamProvider when the model is not found or no API key.
+ * Build a LLMStreamProvider from the given model config + app settings.
+ * Falls back to MockLLMStreamProvider when the model is not found or no API key.
  */
-export function selectProvider(modelConfig: ModelConfig, settings: AppSettings): StreamProvider {
+export function selectLLMProvider(
+	modelConfig: LLMModelConfig,
+	settings: AppSettings
+): LLMStreamProvider {
 	const model = resolveModel(modelConfig, settings);
 
 	if (!model) {
-		logger.warn('Model not found. Falling back to MockStreamProvider.');
-		return new MockStreamProvider();
+		logger.warn('Model not found. Falling back to MockLLMStreamProvider.');
+		return new MockLLMStreamProvider();
 	}
 
 	const connection = resolveConnection(model, settings);
 
 	if (!connection.apiKey) {
-		logger.warn('No API key found. Falling back to MockStreamProvider.');
-		return new MockStreamProvider();
+		logger.warn('No API key found. Falling back to MockLLMStreamProvider.');
+		return new MockLLMStreamProvider();
 	}
 
-	// TODO: apply retry and debounce parameters from AppSettings
-	return new OpenAIStreamProvider({
-		model: {
-			modelId: model.modelId,
-			flags: model.flags,
-			parameters: modelConfig.parameters
-		},
-		http: {
-			apiKey: connection.apiKey,
-			baseUrl: connection.baseUrl
-		}
-	});
+	switch (model.format) {
+		case 'openai_compatible':
+			return new OpenAILLMStreamProvider({
+				model: {
+					modelId: model.modelId,
+					flags: model.flags,
+					parameters: modelConfig.parameters
+				},
+				http: {
+					apiKey: connection.apiKey,
+					baseUrl: connection.baseUrl
+				}
+			});
+		case 'anthropic':
+			// TODO: implement AnthropicLLMStreamProvider
+			logger.warn('Anthropic LLM not yet implemented.');
+			return new MockLLMStreamProvider();
+		case 'google':
+			// TODO: implement GoogleLLMStreamProvider
+			logger.warn('Google LLM not yet implemented.');
+			return new MockLLMStreamProvider();
+		default:
+			logger.warn(`Unknown LLM format: ${model.format}`);
+			return new MockLLMStreamProvider();
+	}
 }
 
 /**
- * Look up the full LLMModel definition from a ModelConfig reference.
+ * Look up the full LLMModel definition from a LLMModelConfig reference.
  */
-function resolveModel(config: ModelConfig, settings: AppSettings): LLMModel | undefined {
+function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel | undefined {
 	if (config.provider === 'custom') {
 		return settings.customModels?.find((m) => m.id === config.id);
 	}
-	return BUILT_IN_MODELS.find((m) => m.id === config.id);
+	return BUILT_IN_LLM_MODELS.find((m) => m.id === config.id);
 }
 
 /**
@@ -77,9 +93,9 @@ function resolveConnection(
 		return { baseUrl: model.baseUrl, apiKey: model.apiKey };
 	}
 
-	const provider = model.provider as BuiltInProvider;
+	const provider = model.provider as BuiltInLLMProvider;
 	return {
-		baseUrl: getProviderUrl(provider),
+		baseUrl: getLLMProviderUrl(provider),
 		apiKey: settings.apiKeys[provider]
 	};
 }

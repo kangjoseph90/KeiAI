@@ -1,17 +1,8 @@
 /**
- * Stream Debounce — KeiAI
+ * Async Stream Utilities — KeiAI
  *
- * Time-based throttle wrapper for AsyncIterable<StreamContent>.
- * Reduces store/UI update frequency while preserving data integrity.
- *
- * Strategy:
- *   - Leading edge: first chunk yields immediately (UI sees "response started" fast)
- *   - Throttle: skips chunks that arrive within intervalMs of last yield
- *   - Final flush: pending state always yields when source completes
- *   - intervalMs = 0 → passthrough (no throttle)
+ * Generic helpers for handling AsyncIterables.
  */
-
-import type { StreamContent } from '../types';
 
 export interface StreamDebounceConfig {
 	/** Minimum ms between yields. 0 = disabled (every chunk). Default: 0 */
@@ -21,13 +12,19 @@ export interface StreamDebounceConfig {
 }
 
 /**
- * Wrap an async iterable of StreamContent with time-based throttle.
+ * Wrap an async iterable with time-based throttle.
  * Yields at most once per `intervalMs`, always flushing the final state.
+ *
+ * Strategy:
+ *   - Leading edge: first chunk yields immediately (UI responsiveness)
+ *   - Throttle: skips chunks that arrive within intervalMs of last yield
+ *   - Final flush: pending state always yields when source completes
+ *   - intervalMs = 0 → passthrough (no throttle)
  */
-export async function* debounceStream(
-	source: AsyncIterable<StreamContent>,
+export async function* debounceStream<T>(
+	source: AsyncIterable<T>,
 	config?: StreamDebounceConfig
-): AsyncIterable<StreamContent> {
+): AsyncIterable<T> {
 	const intervalMs = config?.intervalMs ?? 0;
 	const leadingEdge = config?.leadingEdge ?? true;
 
@@ -38,7 +35,7 @@ export async function* debounceStream(
 	}
 
 	let lastYieldTime = 0;
-	let pending: StreamContent | null = null;
+	let pending: T | null = null;
 	let isFirst = true;
 
 	for await (const state of source) {
