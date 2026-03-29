@@ -42,7 +42,9 @@ export const characterModules = readonly(StoreState.characterModules);
 export const chats = readonly(StoreState.chats);
 export const activeChat = readonly(StoreState.activeChat);
 export const chatLorebooks = readonly(StoreState.chatLorebooks);
-export const messages = readonly(StoreState.messages);
+export const messageMap = readonly(StoreState.messageMap);
+// `messages` is already a Readable<Message[]> (derived) — no readonly wrapper needed
+export { messages } from './state';
 export const chatTasks = readonly(StoreState.chatTasks);
 export const activePreset = readonly(StoreState.activePreset);
 export const activeLorebooks = readonly(StoreState.activeLorebooks);

@@ -25,8 +25,7 @@ import {
 import type { LLMStreamProvider } from '$lib/llm/types';
 import { ToolCallService } from '$lib/services/content/tool';
 import { MessageService, type Message } from '$lib/services/content/message';
-import { updateMessage } from '$lib/stores/content/message';
-import { createMessage } from '$lib/stores/content/message';
+import { updateMessage, createMessage, getMessage } from '$lib/stores/content/message';
 import { buildPrompt } from '../llm/prompt/builder';
 import { selectLLMProvider } from '../llm/provider';
 import { applyScripts } from '../scripts';
@@ -211,8 +210,8 @@ export async function resolveToolCall(
 		}
 	});
 
-	// 2. Reflect the status change in the message (DB + Store sync via updateMessage)
-	const message = await MessageService.get(messageId);
+	// 2. Reflect the status change in the message (store cache → IDB fallback)
+	const message = await getMessage(messageId);
 	if (!message?.toolCalls) return;
 
 	const updatedToolCalls = message.toolCalls.map((tc) =>

@@ -5,7 +5,7 @@
  * Logic (functions) stays in per-domain files that import from this module.
  */
 
-import { derived, writable } from 'svelte/store';
+import { derived, writable, type Readable } from 'svelte/store';
 import type {
 	AppSettings,
 	Profile,
@@ -72,7 +72,21 @@ export const chats = writable<Chat[]>([]);
 export const activeChat = writable<ChatDetail | null>(null);
 export const chatLorebooks = writable<Lorebook[]>([]);
 export const chatScripts = writable<Script[]>([]);
-export const messages = writable<Message[]>([]);
+
+/**
+ * Normalized message cache for the active chat.
+ * Keyed by message id — O(1) lookup.
+ * Use the `messages` derived store for UI rendering (sorted by sortOrder).
+ */
+export const messageMap = writable<Map<string, Message>>(new Map());
+
+/**
+ * Sorted-by-sortOrder view of messageMap. Read-only for UI consumption.
+ * Recomputed only when messageMap changes.
+ */
+export const messages: Readable<Message[]> = derived(messageMap, ($map) =>
+	Array.from($map.values()).sort((a, b) => a.sortOrder.localeCompare(b.sortOrder))
+);
 
 // ─── Runtime States (Ephemeral — not persisted to DB) ─────────────────
 /**

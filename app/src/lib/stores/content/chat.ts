@@ -16,7 +16,7 @@ import {
 	chats,
 	activeChat,
 	activeCharacter,
-	messages,
+	messageMap,
 	chatLorebooks,
 	activeCharacterId,
 	activeChatId
@@ -60,7 +60,7 @@ export async function selectChat(chatId: string, characterId: string): Promise<v
 export function clearActiveChat(): void {
 	activeChat.set(null);
 	chatLorebooks.set([]);
-	messages.set([]);
+	messageMap.set(new Map());
 }
 
 export async function createChat(
