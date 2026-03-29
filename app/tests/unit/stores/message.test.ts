@@ -6,9 +6,10 @@ import {
 	loadNewerMessages,
 	createMessage,
 	updateMessage,
-	deleteMessage
+	deleteMessage,
+	getMessage
 } from '$lib/stores/content/message';
-import { messages, chats, activeChat, activeChatId } from '$lib/stores/state';
+import { messages, messageMap, chats, activeChat } from '$lib/stores/state';
 import {
 	MessageService,
 	ChatService,
@@ -16,7 +17,6 @@ import {
 	type Chat,
 	type ChatDetail
 } from '$lib/services';
-import { AppError } from '$lib/types/errors';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
@@ -25,7 +25,8 @@ vi.mock('$lib/services', () => ({
 		getMessagesAfter: vi.fn(),
 		create: vi.fn(),
 		update: vi.fn(),
-		delete: vi.fn()
+		delete: vi.fn(),
+		get: vi.fn()
 	},
 	ChatService: {
 		updateSummary: vi.fn()
@@ -44,7 +45,8 @@ describe('Message Store', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		messages.set([]);
+		// Reset via messageMap (the writable source)
+		messageMap.set(new Map());
 		chats.set([]);
 		activeChat.set({ id: mockChatId, messageCount: 0 } as ChatDetail);
 	});
@@ -71,26 +73,55 @@ describe('Message Store', () => {
 	});
 
 	describe('Pagination', () => {
-		it('loadOlderMessages should prepend older messages', async () => {
-			messages.set([mockMessage]);
+		it('loadOlderMessages should prepend older messages (sorted via derived)', async () => {
+			// sortOrder 'a' — existing message
+			messageMap.set(new Map([['msg-1', mockMessage]]));
 			const olderMsg = { ...mockMessage, id: 'msg-old', sortOrder: '0' };
 			vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([olderMsg]);
 
 			await loadOlderMessages(mockChatId);
 
 			expect(MessageService.getMessagesBefore).toHaveBeenCalledWith(mockChatId, 'a', 50);
+			// derived store sorts by sortOrder: '0' < 'a'
 			expect(get(messages)).toEqual([olderMsg, mockMessage]);
 		});
 
-		it('loadNewerMessages should append newer messages', async () => {
-			messages.set([mockMessage]);
+		it('loadNewerMessages should append newer messages (sorted via derived)', async () => {
+			messageMap.set(new Map([['msg-1', mockMessage]]));
 			const newerMsg = { ...mockMessage, id: 'msg-new', sortOrder: 'b' };
 			vi.mocked(MessageService.getMessagesAfter).mockResolvedValue([newerMsg]);
 
 			await loadNewerMessages(mockChatId);
 
 			expect(MessageService.getMessagesAfter).toHaveBeenCalledWith(mockChatId, 'a', 50);
+			// derived store sorts by sortOrder: 'a' < 'b'
 			expect(get(messages)).toEqual([mockMessage, newerMsg]);
+		});
+	});
+
+	describe('getMessage', () => {
+		it('should return from store cache without hitting IDB', async () => {
+			messageMap.set(new Map([['msg-1', mockMessage]]));
+
+			const result = await getMessage('msg-1');
+
+			expect(result).toEqual(mockMessage);
+			expect(MessageService.get).not.toHaveBeenCalled();
+		});
+
+		it('should fall back to IDB if not in cache', async () => {
+			vi.mocked(MessageService.get).mockResolvedValue(mockMessage);
+
+			const result = await getMessage('msg-1');
+
+			expect(result).toEqual(mockMessage);
+			expect(MessageService.get).toHaveBeenCalledWith('msg-1');
+		});
+
+		it('should throw NOT_FOUND if not in cache and not in IDB', async () => {
+			vi.mocked(MessageService.get).mockResolvedValue(null);
+
+			await expect(getMessage('missing-id')).rejects.toMatchObject({ code: 'NOT_FOUND' });
 		});
 	});
 
@@ -115,18 +146,20 @@ describe('Message Store', () => {
 	});
 
 	describe('updateMessage', () => {
-		it('should update message content', async () => {
-			messages.set([mockMessage]);
+		it('should update message content in messageMap', async () => {
+			messageMap.set(new Map([['msg-1', mockMessage]]));
 			const updatedMsg = { ...mockMessage, content: 'Updated' };
 			vi.mocked(MessageService.update).mockResolvedValue(updatedMsg);
 
 			await updateMessage('msg-1', { content: 'Updated' });
 
 			expect(get(messages)[0].content).toBe('Updated');
+			// O(1) lookup: verify Map contains updated value
+			expect(get(messageMap).get('msg-1')?.content).toBe('Updated');
 		});
 
 		it('should update chat preview if it is the last message', async () => {
-			messages.set([mockMessage]);
+			messageMap.set(new Map([['msg-1', mockMessage]]));
 			const updatedMsg = { ...mockMessage, content: 'Last updated' };
 			vi.mocked(MessageService.update).mockResolvedValue(updatedMsg);
 			vi.mocked(ChatService.updateSummary).mockResolvedValue({ id: mockChatId } as Chat);
@@ -138,13 +171,14 @@ describe('Message Store', () => {
 	});
 
 	describe('deleteMessage', () => {
-		it('should remove message from store', async () => {
-			messages.set([mockMessage]);
+		it('should remove message from messageMap', async () => {
+			messageMap.set(new Map([['msg-1', mockMessage]]));
 			vi.mocked(MessageService.delete).mockResolvedValue(undefined);
 
 			await deleteMessage(mockChatId, 'msg-1');
 
 			expect(get(messages)).toHaveLength(0);
+			expect(get(messageMap).has('msg-1')).toBe(false);
 			expect(ChatService.updateSummary).toHaveBeenCalledWith(mockChatId, {
 				lastMessagePreview: '',
 				messageCount: 0

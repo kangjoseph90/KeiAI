@@ -1,6 +1,9 @@
 /**
  * Message Store — Chat-owned Message CRUD
  *
+ * Internal state: messageMap (Map<id, Message>) — O(1) lookup by id.
+ * UI reads the `messages` derived store (sorted by sortOrder).
+ *
  * Messages belong to a chat (1:N via chatId FK).
  * All functions take explicit chatId. DB writes always happen;
  * store (UI cache) updates are guarded by activeChatId check.
@@ -11,9 +14,29 @@ import {
 	MessageService,
 	ChatService,
 	type MessageFields,
+	type Message,
 	type ChatSummaryFields
 } from '$lib/services';
-import { messages, chats, activeChat, activeChatId } from '../state';
+import { messages, messageMap, chats, activeChat, activeChatId } from '../state';
+import { AppError } from '$lib/types/errors';
+
+// ─── Getter ────────────────────────────────────────────────────────────
+
+/**
+ * Returns a message from the active store (O(1) Map lookup) first,
+ * then falls back to IDB if not cached.
+ * Follows the same pattern as getModule(), getChatDetail(), etc.
+ */
+export async function getMessage(messageId: string): Promise<Message> {
+	const cached = get(messageMap).get(messageId);
+	if (cached) return cached;
+
+	const db = await MessageService.get(messageId);
+	if (!db) throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
+	return db;
+}
+
+// ─── Load ──────────────────────────────────────────────────────────────
 
 /**
  * Service errors propagate to the caller — this function does not catch them.
@@ -22,7 +45,7 @@ import { messages, chats, activeChat, activeChatId } from '../state';
 export async function loadInitialMessages(chatId: string, limit = 50): Promise<void> {
 	const initialMsgs = await MessageService.getMessagesBefore(chatId, '\uffff', limit);
 	if (get(activeChatId) === chatId) {
-		messages.set(initialMsgs);
+		messageMap.set(new Map(initialMsgs.map((m) => [m.id, m])));
 	}
 }
 
@@ -35,7 +58,11 @@ export async function loadOlderMessages(chatId: string, limit = 50): Promise<voi
 
 	// Store update — only if still viewing this chat
 	if (olderMsgs.length > 0 && get(activeChatId) === chatId) {
-		messages.update((list) => [...olderMsgs, ...list]);
+		messageMap.update((map) => {
+			const next = new Map(map);
+			for (const msg of olderMsgs) next.set(msg.id, msg);
+			return next;
+		});
 	}
 }
 
@@ -48,9 +75,15 @@ export async function loadNewerMessages(chatId: string, limit = 50): Promise<voi
 
 	// Store update — only if still viewing this chat
 	if (newerMsgs.length > 0 && get(activeChatId) === chatId) {
-		messages.update((list) => [...list, ...newerMsgs]);
+		messageMap.update((map) => {
+			const next = new Map(map);
+			for (const msg of newerMsgs) next.set(msg.id, msg);
+			return next;
+		});
 	}
 }
+
+// ─── CRUD ──────────────────────────────────────────────────────────────
 
 export async function createMessage(
 	chatId: string,
@@ -72,7 +105,11 @@ export async function createMessage(
 
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) !== chatId) return;
-	messages.update((prev) => [...prev, newMessage]);
+	messageMap.update((map) => {
+		const next = new Map(map);
+		next.set(newMessage.id, newMessage);
+		return next;
+	});
 	chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
 	activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
 }
@@ -84,7 +121,11 @@ export async function updateMessage(msgId: string, changes: Partial<MessageField
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) !== updated.chatId) return;
 
-	messages.update((list) => list.map((m) => (m.id === msgId ? updated : m)));
+	messageMap.update((map) => {
+		const next = new Map(map);
+		next.set(msgId, updated);
+		return next;
+	});
 
 	// Only update chat preview if the edited message is the last one
 	const currentMessages = get(messages);
@@ -111,7 +152,11 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) !== chatId) return;
 
-	messages.update((list) => list.filter((m) => m.id !== msgId));
+	messageMap.update((map) => {
+		const next = new Map(map);
+		next.delete(msgId);
+		return next;
+	});
 
 	const currentChat = get(activeChat);
 	const newCount = Math.max(0, (currentChat?.messageCount ?? 1) - 1);

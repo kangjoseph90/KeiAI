@@ -15,7 +15,7 @@ import {
 	deleteChatFolder,
 	moveChatItem
 } from '$lib/stores/content/chat';
-import { chats, activeChat, activeCharacter, messages, chatLorebooks } from '$lib/stores/state';
+import { chats, activeChat, activeCharacter, messageMap, chatLorebooks } from '$lib/stores/state';
 import { ChatService, LorebookService, CharacterService } from '$lib/services';
 import { loadInitialMessages } from '$lib/stores/content/message';
 import { AppError } from '$lib/types/errors';
@@ -99,7 +99,7 @@ describe('Chat Store', () => {
 		chats.set([]);
 		activeChat.set(null);
 		activeCharacter.set({ id: 'char-1' } as CharacterDetail);
-		messages.set([]);
+		messageMap.set(new Map());
 		chatLorebooks.set([]);
 	});
 

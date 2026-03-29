@@ -9,6 +9,7 @@ import {
 	activeUser,
 	pbConnected,
 	isLoggedIn,
+	messageMap,
 	messages,
 	chatTasks,
 	activeChat,
@@ -24,7 +25,7 @@ describe('Global Stores', () => {
 		appSettings.set(null);
 		activeUser.set(null);
 		pbConnected.set(false);
-		messages.set([]);
+		messageMap.set(new Map());
 		chatTasks.set(new Map());
 		activeChat.set(null);
 	});
@@ -80,7 +81,7 @@ describe('Global Stores', () => {
 			const dbMessages: Message[] = [
 				{ id: 'm1', chatId, role: 'user', content: 'hello', sortOrder: 'a' } as Message
 			];
-			messages.set(dbMessages);
+			messageMap.set(new Map(dbMessages.map((m) => [m.id, m])));
 
 			chatTasks.set(
 				new Map<string, ChatTask>([[chatId, { status: 'generating', content: 'world' }]])
@@ -99,7 +100,7 @@ describe('Global Stores', () => {
 		it('should only show DB messages if no generation task', () => {
 			const chatId = 'chat-1';
 			activeChat.set({ id: chatId } as ChatDetail);
-			messages.set([{ id: 'm1' } as Message]);
+			messageMap.set(new Map([['m1', { id: 'm1' } as Message]]));
 			chatTasks.set(new Map());
 
 			const display = get(displayMessages);
