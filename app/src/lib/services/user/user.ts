@@ -183,13 +183,10 @@ export class UserService {
 			);
 		}
 
-		for (const table of TABLES) {
-			await localDB.deleteByIndex(table, 'userId', userId);
-		}
+		const dbPromises = TABLES.map((table) => localDB.deleteByIndex(table, 'userId', userId));
+		const kvPromises = TABLES.map((table) => appKV.remove(`lastSync_${table}_${userId}`));
 
-		for (const table of TABLES) {
-			await appKV.remove(`lastSync_${table}_${userId}`);
-		}
+		await Promise.all([...dbPromises, ...kvPromises]);
 
 		// Asset sync has its own cursor (separate from DataSyncEngine)
 		await appKV.remove(`lastSync_assets_${userId}`);
