@@ -1,6 +1,6 @@
-// ─── Format (Protocol / Runtime) ────────────────────────────────────────────
+// ─── Handler (Protocol / Runtime) ────────────────────────────────────────────
 
-export type TTSFormat =
+export type TTSHandler =
 	| 'openai' // OpenAI /audio/speech
 	| 'elevenlabs' // ElevenLabs /text-to-speech
 	| 'google' // Google Cloud TTS
@@ -17,7 +17,7 @@ export type TTSProvider = BuiltInTTSProvider | CustomTTSProvider;
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
 
-const formatNames: Record<TTSFormat, string> = {
+const handlerNames: Record<TTSHandler, string> = {
 	openai: 'OpenAI Audio',
 	elevenlabs: 'ElevenLabs',
 	google: 'Google Cloud TTS',
@@ -38,8 +38,8 @@ const remoteProviderUrls: Record<RemoteTTSProvider, string> = {
 	google: 'https://texttospeech.googleapis.com/v1'
 };
 
-export function getTTSFormatName(format: TTSFormat): string {
-	return formatNames[format] || format;
+export function getTTSHandlerName(handler: TTSHandler): string {
+	return handlerNames[handler] || handler;
 }
 
 export function getTTSProviderName(provider: TTSProvider): string {
@@ -57,14 +57,14 @@ export function isRemoteTTSProvider(provider: TTSProvider): provider is RemoteTT
 // ─── Model Definitions ─────────────────────────────────────────────────────
 //
 // Unlike LLM (shared parameters across formats), TTS parameters are
-// format-specific and too divergent for a common enum.
+// handler-specific and too divergent for a common enum.
 // Parameters live in the provider config (constructor), not here.
 
 export interface TTSModelBase {
 	id: string;
 	name: string;
 	modelId: string;
-	format: TTSFormat;
+	handler: TTSHandler;
 }
 
 export interface BuiltInTTSModel extends TTSModelBase {
@@ -95,14 +95,14 @@ const OPENAI_TTS_MODELS: BuiltInTTSModel[] = [
 		name: 'TTS-1',
 		modelId: 'tts-1',
 		provider: 'openai',
-		format: 'openai'
+		handler: 'openai'
 	},
 	{
 		id: 'openai::tts-1-hd',
 		name: 'TTS-1 HD',
 		modelId: 'tts-1-hd',
 		provider: 'openai',
-		format: 'openai'
+		handler: 'openai'
 	}
 ];
 

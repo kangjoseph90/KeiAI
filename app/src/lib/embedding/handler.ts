@@ -1,13 +1,13 @@
 /**
- * Embedding Provider Selection — KeiAI
+ * Embedding Handler Selection — KeiAI
  *
- * Resolves an EmbeddingModelConfig + AppSettings into a concrete EmbeddingStreamProvider.
- * Mirrors LLM's selectLLMProvider pattern: resolveModel → resolveConnection → class by format.
+ * Resolves an EmbeddingModelConfig + AppSettings into a concrete EmbeddingHandler.
+ * Mirrors LLM's selectLLMHandler pattern: resolveModel → resolveConnection → class by handler.
  */
 
-import type { EmbeddingStreamProvider } from './types';
+import type { EmbeddingHandler } from './types';
 import type { AppSettings } from '$lib/services';
-import { OpenAIEmbeddingProvider } from './providers/openai';
+import { OpenAIEmbeddingHandler } from './handlers/openai';
 import { createLogger } from '$lib/adapters/logger';
 import {
 	type EmbeddingModelConfig,
@@ -18,12 +18,12 @@ import {
 	isRemoteEmbeddingProvider
 } from '$lib/types/models/embedding';
 
-const logger = createLogger('embedding:provider');
+const logger = createLogger('embedding:handler');
 
-export function selectEmbeddingProvider(
+export function selectEmbeddingHandler(
 	modelConfig: EmbeddingModelConfig,
 	settings: AppSettings
-): EmbeddingStreamProvider | null {
+): EmbeddingHandler | null {
 	const model = resolveModel(modelConfig, settings);
 
 	if (!model) {
@@ -38,21 +38,21 @@ export function selectEmbeddingProvider(
 		return null;
 	}
 
-	switch (model.format) {
+	switch (model.handler) {
 		case 'openai_compatible':
-			return new OpenAIEmbeddingProvider({
+			return new OpenAIEmbeddingHandler({
 				apiKey: connection.apiKey,
 				baseUrl: connection.baseUrl,
 				modelId: model.modelId
 			});
 
 		case 'google':
-			// TODO: implement GoogleEmbeddingProvider
+			// TODO: implement GoogleEmbeddingHandler
 			logger.warn('Google Embedding not yet implemented.');
 			return null;
 
 		default:
-			logger.warn(`Unknown embedding format: ${model.format}`);
+			logger.warn(`Unknown embedding handler: ${model.handler}`);
 			return null;
 	}
 }

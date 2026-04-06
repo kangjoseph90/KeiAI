@@ -10,6 +10,6 @@ export interface EmbeddingResult {
 	vectors: number[][];
 }
 
-export interface EmbeddingStreamProvider {
+export interface EmbeddingHandler {
 	embed(texts: string[], signal?: AbortSignal): Promise<EmbeddingResult>;
 }

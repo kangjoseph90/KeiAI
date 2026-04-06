@@ -1,2 +1,2 @@
-export type { EmbeddingResult, EmbeddingStreamProvider } from './types';
-export { selectEmbeddingProvider } from './provider';
+export type { EmbeddingResult, EmbeddingHandler } from './types';
+export { selectEmbeddingHandler } from './handler';

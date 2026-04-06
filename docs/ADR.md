@@ -305,42 +305,42 @@
 
 ---
 
-## 020: 모델 타입 시스템 — BuiltInModel/CustomModel 판별 유니온 + Provider/Format 분리
+## 020: 모델 타입 시스템 — BuiltInModel/CustomModel 판별 유니온 + Provider/Handler 분리
 
 - 상태: 채택
-- 맥락: LLM 모델 설정이 Preset의 flat 필드(model, temperature, topP 등)에 흩어져 있었다. 내장 모델과 사용자 정의 모델의 구분이 없었고, 프로바이더(API 제공자)와 포맷(와이어 프로토콜)이 혼동되었다.
+- 맥락: LLM 모델 설정이 Preset의 flat 필드(model, temperature, topP 등)에 흩어져 있었다. 내장 모델과 사용자 정의 모델의 구분이 없었고, 프로바이더(API 제공자)와 핸들러(와이어 프로토콜)가 혼동되었다.
 - 문제:
     - flat 필드 방식은 모델 전환 시 파라미터 초기화가 어렵고, 모델별 지원 파라미터 목록을 표현할 수 없다.
     - RisuAI는 300+ 모델을 하드코딩하되 커스텀 모델은 별도 경로로 처리하여 이원화 문제가 있다.
-    - DeepSeek처럼 "프로바이더는 deepseek, 포맷은 openai_compatible" 같은 경우를 기존 구조로 표현 불가.
+    - DeepSeek처럼 "프로바이더는 deepseek, 핸들러는 openai_compatible" 같은 경우를 기존 구조로 표현 불가.
 - 대안 검토:
     - TypeScript enum → E2EE JSON 직렬화 시 숫자로 변환되어 의미 상실, 트리셰이킹 불리
     - 단일 모델 타입 + isCustom 플래그 → 타입 안전성 약함, 분기가 모든 곳에 퍼짐
 - 결정:
     - **판별 유니온**: `BuiltInModel` (provider가 `BuiltInProvider` 타입) vs `CustomModel` (provider가 `'custom'`). TypeScript 타입 가드로 안전하게 분기.
-    - **문자열 유니온**: `LLMFormat`, `BuiltInProvider`, `LLMFlags`, `Parameter` 등 모두 `type X = 'a' | 'b' | ...` 형태. JSON 직렬화 안전, 트리셰이킹 유리.
-    - **Provider ≠ Format**: Provider = API 제공자(키/URL 라우팅), Format = 와이어 프로토콜(StreamProvider 클래스 선택). 1:1이 아님.
+    - **문자열 유니온**: `LLMHandler`, `BuiltInProvider`, `LLMFlags`, `Parameter` 등 모두 `type X = 'a' | 'b' | ...` 형태. JSON 직렬화 안전, 트리셰이킹 유리.
+    - **Provider ≠ Handler**: Provider = API 제공자(키/URL 라우팅), Handler = 와이어 프로토콜(StreamHandler 클래스 선택). 1:1이 아님.
     - **ModelConfig**: Preset에 저장되는 모델 참조. `{id, provider, parameters}`. ID 컨벤션: `provider::modelId` (내장) 또는 `custom::nanoid` (커스텀).
     - **BUILT_IN_MODELS 카탈로그**: `types/models.ts`에 내장 모델 배열로 정의. 내장과 커스텀 모두 동일한 `LLMModel` 인터페이스를 구현.
-    - **StreamProvider 무상태**: 모든 설정(apiKey, baseUrl, modelId, params, capabilities)은 생성자로 주입. 내부에서 Settings/Store 참조 금지.
+    - **StreamHandler 무상태**: 모든 설정(apiKey, baseUrl, modelId, params, capabilities)은 생성자로 주입. 내부에서 Settings/Store 참조 금지.
 - 결과:
     - 내장 모델과 커스텀 모델이 동일한 타입 경로를 공유하여 UI/로직 이원화 없음.
-    - `selectProvider(ModelConfig, AppSettings)`가 유일한 팩토리 — 모델 해석 → 연결 정보 → Provider 생성을 한 곳에서 처리.
+    - `selectHandler(ModelConfig, AppSettings)`가 유일한 팩토리 — 모델 해석 → 연결 정보 → Handler 생성을 한 곳에서 처리.
     - 프리셋의 모델 설정이 `chatModel: ModelConfig` + `auxModel: ModelConfig`로 구조화되어 다중 모델 아키텍처(메인/보조/번역/요약)로의 확장이 용이.
 
 ---
 
-## 021: 프로바이더 계층 — "같은 인터페이스로 통신 가능하면 같은 클래스"
+## 021: provider-handler 계층 — "같은 인터페이스로 통신 가능하면 같은 클래스"
 
 - 상태: 채택
 - 맥락: LLM 외에 TTS, Embedding 등 다양한 AI 프로토콜을 지원해야 하며, 각각 여러 프로바이더(OpenAI, Google, ElevenLabs, 로컬 ONNX 등)를 지원해야 한다.
 - 원칙: **같은 와이어 프로토콜(또는 런타임 인터페이스)로 통신 가능하면 같은 클래스를 공유한다.**
-    - API: 분기 단위 = Format(와이어 프로토콜). URL과 API Key만 교체.
+    - API: 분기 단위 = Handler(와이어 프로토콜). URL과 API Key만 교체.
     - 로컬: 분기 단위 = Runtime(실행환경). 모델 파일만 교체.
 - 적용:
-    - **LLM**: `openai_compatible` 포맷 하나로 OpenAI, DeepSeek, Mistral 등 공유 → `OpenAILLMStreamProvider`
-    - **Embedding**: LLM과 동일 패턴 → `OpenAIEmbeddingProvider`
-    - **TTS**: API 포맷 비통일 → 프로바이더별 클래스 (`OpenAITTSStreamProvider`, `ElevenLabsTTSStreamProvider`)
-    - **로컬 공통**: ONNX Runtime 하나로 여러 모델 커버 (`OnnxTTSProvider`, `OnnxEmbeddingProvider`)
-- 공통 선택 패턴: `selectXXXProvider(modelConfig, settings)` → `resolveModel()` → `resolveConnection()` → Format/Runtime 기반 클래스 생성
-- 결과: 새 프로바이더 추가 시 기존 포맷과 호환되면 URL만 추가, 새 포맷이면 클래스 하나만 추가. 프로토콜 레이어(LLM/TTS/Embedding)와 태스크 레이어(chat/translate/summarize)가 명확히 분리.
+    - **LLM**: `openai_compatible` 핸들러 하나로 OpenAI, DeepSeek, Mistral 등 공유 → `OpenAILLMStreamHandler`
+    - **Embedding**: LLM과 동일 패턴 → `OpenAIEmbeddingHandler`
+    - **TTS**: API 핸들러 비통일 → 핸들러별 클래스 (`OpenAITTSStreamHandler`, `ElevenLabsTTSStreamHandler`)
+    - **로컬 공통**: ONNX Runtime 하나로 여러 모델 커버 (`OnnxTTSHandler`, `OnnxEmbeddingHandler`)
+- 공통 선택 패턴: `selectXXXHandler(modelConfig, settings)` → `resolveModel()` → `resolveConnection()` → Handler/Runtime 기반 클래스 생성
+- 결과: 새 provider 추가 시 기존 handler와 호환되면 URL만 추가, 새 handler면 클래스 하나만 추가. 프로토콜 레이어(LLM/TTS/Embedding)와 태스크 레이어(chat/translate/summarize)가 명확히 분리.

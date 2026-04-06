@@ -1,11 +1,11 @@
 /**
- * OpenAI Embedding Provider — KeiAI
+ * OpenAI Embedding Handler — KeiAI
  *
- * Implements EmbeddingStreamProvider for OpenAI's /embeddings endpoint.
+ * Implements EmbeddingHandler for OpenAI's /embeddings endpoint.
  * Also covers any OpenAI-compatible embedding API.
  */
 
-import type { EmbeddingResult, EmbeddingStreamProvider } from '../types';
+import type { EmbeddingResult, EmbeddingHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
 import { AppError } from '$lib/types/errors';
 
@@ -19,9 +19,9 @@ export interface OpenAIEmbeddingConfig {
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
+// ─── Handler ─────────────────────────────────────────────────────────────────
 
-export class OpenAIEmbeddingProvider implements EmbeddingStreamProvider {
+export class OpenAIEmbeddingHandler implements EmbeddingHandler {
 	private readonly apiKey: string;
 	private readonly modelId: string;
 	private readonly baseUrl: string;
