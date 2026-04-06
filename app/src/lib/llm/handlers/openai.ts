@@ -1,7 +1,7 @@
 /**
- * OpenAI-Compatible Stream Provider — KeiAI
+ * OpenAI-Compatible Stream Handler — KeiAI
  *
- * Implements the LLMStreamProvider interface for any OpenAI-compatible API.
+ * Implements the LLMStreamHandler interface for any OpenAI-compatible API.
  * Covers: OpenAI, OpenRouter, Ollama, vLLM, LM Studio, and any other
  * service that speaks the OpenAI Chat Completions SSE format.
  *
@@ -10,7 +10,7 @@
 
 import type {
 	LLMStreamContent,
-	LLMStreamProvider,
+	LLMStreamHandler,
 	OpenAIChat,
 	LLMStreamModelConfig,
 	LLMStreamHttpConfig
@@ -22,7 +22,7 @@ import { debounceStream, type StreamDebounceConfig } from '$lib/utils/stream';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface OpenAIProviderConfig {
+export interface OpenAIHandlerConfig {
 	model: LLMStreamModelConfig;
 	http: LLMStreamHttpConfig;
 	debounce?: StreamDebounceConfig;
@@ -47,12 +47,12 @@ interface OpenAIDelta {
 	}>;
 }
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
+// ─── Handler ─────────────────────────────────────────────────────────────────
 
-export class OpenAILLMStreamProvider implements LLMStreamProvider {
-	private readonly config: OpenAIProviderConfig;
+export class OpenAILLMStreamHandler implements LLMStreamHandler {
+	private readonly config: OpenAIHandlerConfig;
 
-	constructor(config: OpenAIProviderConfig) {
+	constructor(config: OpenAIHandlerConfig) {
 		this.config = config;
 	}
 
@@ -70,7 +70,7 @@ export class OpenAILLMStreamProvider implements LLMStreamProvider {
 		if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
 		const state: LLMStreamContent = { content: '', thought: '' };
-		// Accumulate partial tool call arguments strby index
+		// Accumulate partial tool call arguments string by index
 		const toolCallMap = new Map<number, { id: string; name: string; args: string }>();
 		const decoder = new TextDecoder();
 		let buffer = '';

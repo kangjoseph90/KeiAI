@@ -1,2 +1,2 @@
-export type { TTSStreamChunk, TTSStreamProvider } from './types';
-export { selectTTSProvider } from './provider';
+export type { TTSStreamChunk, TTSStreamHandler } from './types';
+export { selectTTSHandler } from './handler';

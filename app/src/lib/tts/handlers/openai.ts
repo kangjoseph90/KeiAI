@@ -1,11 +1,11 @@
 /**
- * OpenAI TTS Provider — KeiAI
+ * OpenAI TTS Handler — KeiAI
  *
- * Implements TTSStreamProvider for OpenAI's /audio/speech endpoint.
+ * Implements TTSStreamHandler for OpenAI's /audio/speech endpoint.
  * Streams raw PCM audio chunks via AsyncIterable.
  */
 
-import type { TTSStreamChunk, TTSStreamProvider } from '../types';
+import type { TTSStreamChunk, TTSStreamHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
 import { AppError } from '$lib/types/errors';
 
@@ -18,9 +18,9 @@ export interface OpenAITTSConfig {
 	voiceId: string;
 }
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
+// ─── Handler ─────────────────────────────────────────────────────────────────
 
-export class OpenAITTSStreamProvider implements TTSStreamProvider {
+export class OpenAITTSStreamHandler implements TTSStreamHandler {
 	private readonly apiKey: string;
 	private readonly baseUrl: string;
 	private readonly modelId: string;

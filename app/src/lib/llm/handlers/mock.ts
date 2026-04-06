@@ -1,15 +1,15 @@
 /**
- * Mock LLM Stream Provider — Development / Testing
+ * Mock LLM Stream Handler — Development / Testing
  *
  * Simulates a streaming LLM response for UI development without a real API.
  * Yields the response word-by-word with configurable delay between chunks.
  *
  * Usage:
- *   const provider = new MockLLMStreamProvider();
- *   GenerationManager.generate(chatId, provider);
+ *   const handler = new MockLLMStreamHandler();
+ *   GenerationManager.generate(chatId, handler);
  */
 
-import type { LLMStreamContent, LLMStreamProvider, OpenAIChat } from '../types';
+import type { LLMStreamContent, LLMStreamHandler, OpenAIChat } from '../types';
 import { debounceStream, type StreamDebounceConfig } from '$lib/utils/stream';
 import { abortableSleep } from '$lib/utils/async';
 
@@ -21,18 +21,18 @@ const MOCK_RESPONSES = [
 	'> "보안은 선택이 아니라 기본입니다."\n\n위와 같은 **인용구**와 함께 긴 답변을 생성해 보겠습니다. KeiAI는 사용자의 프라이버시를 최우선으로 생각하며, 모든 대화 내용은 제3자가 볼 수 없도록 견고하게 설계되었습니다.'
 ];
 
-export interface MockProviderConfig {
+export interface MockHandlerConfig {
 	/** Delay between word chunks in ms. Default: 60 */
 	chunkDelayMs?: number;
 	debounce?: StreamDebounceConfig;
 }
 
-export class MockLLMStreamProvider implements LLMStreamProvider {
+export class MockLLMStreamHandler implements LLMStreamHandler {
 	private readonly response: string;
 	private readonly chunkDelayMs: number;
 	private readonly debounceConfig?: StreamDebounceConfig;
 
-	constructor(config: MockProviderConfig = {}) {
+	constructor(config: MockHandlerConfig = {}) {
 		this.response = MOCK_RESPONSES[Math.floor(Math.random() * MOCK_RESPONSES.length)];
 		this.chunkDelayMs = config.chunkDelayMs ?? 60;
 		this.debounceConfig = config.debounce;
