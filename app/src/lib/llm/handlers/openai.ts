@@ -70,7 +70,7 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
 		if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
 		const state: LLMStreamContent = { content: '', thought: '' };
-		// Accumulate partial tool call arguments str by index
+		// Accumulate partial tool call arguments string by index
 		const toolCallMap = new Map<number, { id: string; name: string; args: string }>();
 		const decoder = new TextDecoder();
 		let buffer = '';
