@@ -1,13 +1,13 @@
 /**
- * TTS Provider Selection — KeiAI
+ * TTS Handler Selection — KeiAI
  *
- * Resolves a TTSModelConfig + AppSettings into a concrete TTSStreamProvider.
- * Mirrors LLM/Embedding pattern: resolveModel → resolveConnection → class by format.
+ * Resolves a TTSModelConfig + AppSettings into a concrete TTSStreamHandler.
+ * Mirrors LLM/Embedding pattern: resolveModel → resolveConnection → class by handler.
  */
 
-import type { TTSStreamProvider } from './types';
+import type { TTSStreamHandler } from './types';
 import type { AppSettings } from '$lib/services';
-import { OpenAITTSStreamProvider } from './providers/openai';
+import { OpenAITTSStreamHandler } from './handlers/openai';
 import { createLogger } from '$lib/adapters/logger';
 import {
 	type TTSModelConfig,
@@ -18,12 +18,12 @@ import {
 	isRemoteTTSProvider
 } from '$lib/types/models/tts';
 
-const logger = createLogger('tts:provider');
+const logger = createLogger('tts:handler');
 
-export function selectTTSProvider(
+export function selectTTSHandler(
 	modelConfig: TTSModelConfig,
 	settings: AppSettings
-): TTSStreamProvider | null {
+): TTSStreamHandler | null {
 	const model = resolveModel(modelConfig, settings);
 
 	if (!model) {
@@ -38,9 +38,9 @@ export function selectTTSProvider(
 		return null;
 	}
 
-	switch (model.format) {
+	switch (model.handler) {
 		case 'openai':
-			return new OpenAITTSStreamProvider({
+			return new OpenAITTSStreamHandler({
 				apiKey: connection.apiKey,
 				baseUrl: connection.baseUrl,
 				modelId: model.modelId,
@@ -48,17 +48,17 @@ export function selectTTSProvider(
 			});
 
 		case 'elevenlabs':
-			// TODO: implement ElevenLabsTTSStreamProvider
+			// TODO: implement ElevenLabsTTSStreamHandler
 			logger.warn('ElevenLabs TTS not yet implemented.');
 			return null;
 
 		case 'google':
-			// TODO: implement GoogleTTSStreamProvider
+			// TODO: implement GoogleTTSStreamHandler
 			logger.warn('Google TTS not yet implemented.');
 			return null;
 
 		default:
-			logger.warn(`Unknown TTS format: ${model.format}`);
+			logger.warn(`Unknown TTS handler: ${model.handler}`);
 			return null;
 	}
 }

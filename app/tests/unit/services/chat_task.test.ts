@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { runChat, stopChat, dismissChat } from '$lib/tasks/chat';
-import type { LLMStreamProvider, LLMStreamContent } from '$lib/llm/types';
+import type { LLMStreamHandler, LLMStreamContent } from '$lib/llm/types';
 
 // ─── Mock all dependencies ───────────────────────────────────────────────────
 
@@ -61,8 +61,8 @@ vi.mock('$lib/llm/prompt/builder', () => ({
 	buildPrompt: vi.fn().mockReturnValue([])
 }));
 
-vi.mock('$lib/llm/provider', () => ({
-	selectLLMProvider: vi.fn().mockReturnValue(null)
+vi.mock('$lib/llm/handler', () => ({
+	selectLLMHandler: vi.fn().mockReturnValue(null)
 }));
 
 vi.mock('$lib/scripts', () => ({
@@ -79,7 +79,7 @@ import {
 } from '$lib/stores/tasks/chat';
 import { createMessage } from '$lib/stores/content/message';
 import { buildPrompt } from '$lib/llm/prompt/builder';
-import { selectLLMProvider } from '$lib/llm/provider';
+import { selectLLMHandler } from '$lib/llm/handler';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ describe('Chat Pipeline', () => {
 		vi.mocked(getChatTask).mockReturnValue(null);
 		vi.mocked(consumeChatTask).mockReturnValue(null);
 		vi.mocked(buildPrompt).mockReturnValue([{ role: 'user', content: 'test' }]);
-		vi.mocked(selectLLMProvider).mockReturnValue({
+		vi.mocked(selectLLMHandler).mockReturnValue({
 			stream: vi.fn(async function* () {
 				yield { content: 'Response' };
 			})
@@ -99,7 +99,7 @@ describe('Chat Pipeline', () => {
 	});
 
 	it('should run a successful chat generation', async () => {
-		const mockProvider: LLMStreamProvider = {
+		const mockHandler: LLMStreamHandler = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Hello' };
 				yield { content: 'Hello world' };
@@ -111,7 +111,7 @@ describe('Chat Pipeline', () => {
 			content: 'Hello world'
 		});
 
-		await runChat(mockChatId, { providerOverride: mockProvider });
+		await runChat(mockChatId, { handlerOverride: mockHandler });
 
 		expect(createChatTask).toHaveBeenCalledWith(mockChatId);
 		expect(updateChatTask).toHaveBeenCalledWith(mockChatId, { content: 'Hello' });
@@ -121,7 +121,7 @@ describe('Chat Pipeline', () => {
 	});
 
 	it('should prevent duplicate runs for the same chat', async () => {
-		const foreverProvider: LLMStreamProvider = {
+		const foreverHandler: LLMStreamHandler = {
 			stream: vi.fn(async function* (_msgs, signal) {
 				yield { content: '' };
 				if (signal.aborted) return;
@@ -132,10 +132,10 @@ describe('Chat Pipeline', () => {
 		};
 
 		// Start first run
-		const firstRun = runChat(mockChatId, { providerOverride: foreverProvider });
+		const firstRun = runChat(mockChatId, { handlerOverride: foreverHandler });
 
 		// Attempt second run
-		await runChat(mockChatId, { providerOverride: foreverProvider });
+		await runChat(mockChatId, { handlerOverride: foreverHandler });
 
 		// Should only have registered once
 		expect(createChatTask).toHaveBeenCalledTimes(1);
@@ -160,21 +160,21 @@ describe('Chat Pipeline', () => {
 	});
 
 	it('should handle empty response', async () => {
-		const mockProvider: LLMStreamProvider = {
+		const mockHandler: LLMStreamHandler = {
 			stream: vi.fn(async function* () {
 				const empty: LLMStreamContent[] = [];
 				for (const chunk of empty) yield chunk;
 			})
 		};
 
-		await runChat(mockChatId, { providerOverride: mockProvider });
+		await runChat(mockChatId, { handlerOverride: mockHandler });
 
 		expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Empty response from model');
 		expect(clearChatTask).not.toHaveBeenCalled();
 	});
 
 	it('should save partial content on abort when saveOnAbort is true', async () => {
-		const mockProvider: LLMStreamProvider = {
+		const mockHandler: LLMStreamHandler = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Partial' };
 				throw new DOMException('Aborted', 'AbortError');
@@ -186,14 +186,14 @@ describe('Chat Pipeline', () => {
 			content: 'Partial'
 		});
 
-		await runChat(mockChatId, { providerOverride: mockProvider, saveOnAbort: true });
+		await runChat(mockChatId, { handlerOverride: mockHandler, saveOnAbort: true });
 
 		expect(createMessage).toHaveBeenCalled();
 		expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
 	});
 
 	it('should discard content on abort when saveOnAbort is false', async () => {
-		const mockProvider: LLMStreamProvider = {
+		const mockHandler: LLMStreamHandler = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Partial' };
 				throw new DOMException('Aborted', 'AbortError');
@@ -205,28 +205,28 @@ describe('Chat Pipeline', () => {
 			content: 'Partial'
 		});
 
-		await runChat(mockChatId, { providerOverride: mockProvider, saveOnAbort: false });
+		await runChat(mockChatId, { handlerOverride: mockHandler, saveOnAbort: false });
 
 		expect(consumeChatTask).not.toHaveBeenCalled();
 		expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
 	});
 
-	it('should surface provider errors without persisting', async () => {
-		const mockProvider: LLMStreamProvider = {
+	it('should surface handler errors without persisting', async () => {
+		const mockHandler: LLMStreamHandler = {
 			stream: vi.fn(async function* () {
 				yield { content: '' };
 				throw new Error('Network fail');
 			})
 		};
 
-		await runChat(mockChatId, { providerOverride: mockProvider });
+		await runChat(mockChatId, { handlerOverride: mockHandler });
 
 		expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Network fail');
 		expect(clearChatTask).not.toHaveBeenCalled();
 	});
 
-	it('should use provider override when provided', async () => {
-		const mockProvider: LLMStreamProvider = {
+	it('should use handler override when provided', async () => {
+		const mockHandler: LLMStreamHandler = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Override response' };
 			})
@@ -237,20 +237,20 @@ describe('Chat Pipeline', () => {
 			content: 'Override response'
 		});
 
-		await runChat(mockChatId, { providerOverride: mockProvider });
+		await runChat(mockChatId, { handlerOverride: mockHandler });
 
-		expect(selectLLMProvider).not.toHaveBeenCalled();
+		expect(selectLLMHandler).not.toHaveBeenCalled();
 		expect(createChatTask).toHaveBeenCalledWith(mockChatId);
 	});
 
-	it('should select provider from preset when no override', async () => {
-		const mockProvider: LLMStreamProvider = {
+	it('should select handler from preset when no override', async () => {
+		const mockHandler: LLMStreamHandler = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Preset response' };
 			})
 		};
 
-		vi.mocked(selectLLMProvider).mockReturnValue(mockProvider);
+		vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
 		vi.mocked(getChatTask).mockReturnValue({
 			status: 'generating',
 			content: 'Preset response'
@@ -258,7 +258,7 @@ describe('Chat Pipeline', () => {
 
 		await runChat(mockChatId);
 
-		expect(selectLLMProvider).toHaveBeenCalled();
+		expect(selectLLMHandler).toHaveBeenCalled();
 	});
 
 	describe('Controls', () => {

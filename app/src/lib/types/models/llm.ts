@@ -1,7 +1,7 @@
 /**
  * Model & Tokenizer Definitions — KeiAI
  *
- * Shared vocabulary for model metadata, tokenizer types, and API formats.
+ * Shared vocabulary for model metadata, tokenizer types, and API handlers.
  * Referenced by adapters (tokenizer), llm (provider/prompt), and UI (model selector).
  */
 
@@ -16,9 +16,9 @@ export type LLMTokenizer =
 	| 'gemma' // Google (Gemini 1.5/2.0/2.5)
 	| 'mistral'; // Mistral (Large, Codestral)
 
-// ─── API Format ─────────────────────────────────────────────────────────────
+// ─── API Handler ─────────────────────────────────────────────────────────────
 
-export type LLMFormat =
+export type LLMHandler =
 	| 'openai_compatible' // OpenAI Completions API
 	| 'anthropic'
 	| 'google'
@@ -63,7 +63,7 @@ const tokenizerNames: Record<LLMTokenizer, string> = {
 	mistral: 'Mistral'
 };
 
-const formatNames: Record<LLMFormat, string> = {
+const handlerNames: Record<LLMHandler, string> = {
 	openai_compatible: 'OpenAI Compatible',
 	anthropic: 'Anthropic Claude',
 	google: 'Google Cloud',
@@ -111,8 +111,8 @@ export function getLLMTokenizerName(encoding: LLMTokenizer): string {
 	return tokenizerNames[encoding] || encoding;
 }
 
-export function getLLMFormatName(format: LLMFormat): string {
-	return formatNames[format] || format;
+export function getLLMHandlerName(handler: LLMHandler): string {
+	return handlerNames[handler] || handler;
 }
 
 export function getLLMProviderUrl(provider: RemoteLLMProvider): string {
@@ -139,7 +139,7 @@ export interface LLMModelBase {
 	id: string;
 	name: string;
 	modelId: string; // The ID used by the provider API (e.g. "gpt-4o", "claude-2")
-	format: LLMFormat;
+	handler: LLMHandler;
 	flags: LLMFlags[];
 	tokenizer: LLMTokenizer;
 }
@@ -169,7 +169,7 @@ const OPENAI_MODELS: BuiltInLLMModel[] = [
 		name: 'GPT-5.4',
 		modelId: 'gpt-5.4',
 		provider: 'openai',
-		format: 'openai_compatible',
+		handler: 'openai_compatible',
 		tokenizer: 'o200k_base',
 		flags: ['streaming'],
 		parameters: ['temperature']
@@ -182,7 +182,7 @@ const ANTHROPIC_MODELS: BuiltInLLMModel[] = [
 		name: 'Claude 4.6 Sonnet',
 		modelId: 'claude-4-6-sonnet',
 		provider: 'anthropic',
-		format: 'anthropic',
+		handler: 'anthropic',
 		tokenizer: 'claude',
 		flags: ['streaming'],
 		parameters: ['temperature']
@@ -195,7 +195,7 @@ const DEEPSEEK_MODELS: BuiltInLLMModel[] = [
 		name: 'DeepSeek Chat',
 		modelId: 'deepseek-chat',
 		provider: 'deepseek',
-		format: 'openai_compatible',
+		handler: 'openai_compatible',
 		tokenizer: 'deepseek',
 		flags: ['streaming'],
 		parameters: ['temperature']
@@ -208,7 +208,7 @@ const GOOGLE_MODELS: BuiltInLLMModel[] = [
 		name: 'Gemini 3.1 Pro',
 		modelId: 'gemini-3.1-pro',
 		provider: 'google',
-		format: 'google',
+		handler: 'google',
 		tokenizer: 'gemma',
 		flags: ['streaming'],
 		parameters: ['temperature']
@@ -221,7 +221,7 @@ const MISTRAL_MODELS: BuiltInLLMModel[] = [
 		name: 'Mistral Large 3',
 		modelId: 'mistral-large-2512',
 		provider: 'mistral',
-		format: 'openai_compatible',
+		handler: 'openai_compatible',
 		tokenizer: 'mistral',
 		flags: ['streaming'],
 		parameters: ['temperature']

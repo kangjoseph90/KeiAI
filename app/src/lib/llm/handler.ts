@@ -1,14 +1,14 @@
 /**
- * Provider Selection — KeiAI
+ * Handler Selection — KeiAI
  *
- * Resolves a LLMModelConfig + AppSettings into a concrete LLMStreamProvider.
+ * Resolves a LLMModelConfig + AppSettings into a concrete LLMStreamHandler.
  * Handles both built-in models (provider → settings.apiKeys) and
  * custom models (model.baseUrl + model.apiKey).
  */
 
-import type { LLMStreamProvider } from '$lib/llm/types';
-import { MockLLMStreamProvider } from '$lib/llm/providers';
-import { OpenAILLMStreamProvider } from '$lib/llm/providers/openai';
+import type { LLMStreamHandler } from '$lib/llm/types';
+import { MockLLMStreamHandler } from '$lib/llm/handlers';
+import { OpenAILLMStreamHandler } from '$lib/llm/handlers/openai';
 import type { AppSettings } from '$lib/services';
 import { createLogger } from '$lib/adapters/logger';
 import {
@@ -20,33 +20,33 @@ import {
 	isRemoteLLMProvider
 } from '$lib/types/models/llm';
 
-const logger = createLogger('llm:provider');
+const logger = createLogger('llm:handler');
 
 /**
- * Build a LLMStreamProvider from the given model config + app settings.
- * Falls back to MockLLMStreamProvider when the model is not found or no API key.
+ * Build a LLMStreamHandler from the given model config + app settings.
+ * Falls back to MockLLMStreamHandler when the model is not found or no API key.
  */
-export function selectLLMProvider(
+export function selectLLMHandler(
 	modelConfig: LLMModelConfig,
 	settings: AppSettings
-): LLMStreamProvider {
+): LLMStreamHandler {
 	const model = resolveModel(modelConfig, settings);
 
 	if (!model) {
-		logger.warn('Model not found. Falling back to MockLLMStreamProvider.');
-		return new MockLLMStreamProvider();
+		logger.warn('Model not found. Falling back to MockLLMStreamHandler.');
+		return new MockLLMStreamHandler();
 	}
 
 	const connection = resolveConnection(model, settings);
 
 	if (!connection.apiKey) {
-		logger.warn('No API key found. Falling back to MockLLMStreamProvider.');
-		return new MockLLMStreamProvider();
+		logger.warn('No API key found. Falling back to MockLLMStreamHandler.');
+		return new MockLLMStreamHandler();
 	}
 
-	switch (model.format) {
+	switch (model.handler) {
 		case 'openai_compatible':
-			return new OpenAILLMStreamProvider({
+			return new OpenAILLMStreamHandler({
 				model: {
 					modelId: model.modelId,
 					flags: model.flags,
@@ -58,16 +58,16 @@ export function selectLLMProvider(
 				}
 			});
 		case 'anthropic':
-			// TODO: implement AnthropicLLMStreamProvider
+			// TODO: implement AnthropicLLMStreamHandler
 			logger.warn('Anthropic LLM not yet implemented.');
-			return new MockLLMStreamProvider();
+			return new MockLLMStreamHandler();
 		case 'google':
-			// TODO: implement GoogleLLMStreamProvider
+			// TODO: implement GoogleLLMStreamHandler
 			logger.warn('Google LLM not yet implemented.');
-			return new MockLLMStreamProvider();
+			return new MockLLMStreamHandler();
 		default:
-			logger.warn(`Unknown LLM format: ${model.format}`);
-			return new MockLLMStreamProvider();
+			logger.warn(`Unknown LLM handler: ${model.handler}`);
+			return new MockLLMStreamHandler();
 	}
 }
 

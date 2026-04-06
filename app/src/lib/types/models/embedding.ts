@@ -1,6 +1,6 @@
-// ─── Format (Protocol) ──────────────────────────────────────────────────────
+// ─── Handler (Protocol) ──────────────────────────────────────────────────────
 
-export type EmbeddingFormat = 'openai_compatible' | 'google' | 'onnx';
+export type EmbeddingHandler = 'openai_compatible' | 'google' | 'onnx';
 
 // ─── Provider Types ─────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ export interface EmbeddingModelBase {
 	id: string;
 	name: string;
 	modelId: string;
-	format: EmbeddingFormat;
+	handler: EmbeddingHandler;
 	dimensions?: number;
 }
 
@@ -76,7 +76,7 @@ const OPENAI_EMBEDDING_MODELS: BuiltInEmbeddingModel[] = [
 		name: 'Embedding 3 Small',
 		modelId: 'text-embedding-3-small',
 		provider: 'openai',
-		format: 'openai_compatible',
+		handler: 'openai_compatible',
 		dimensions: 1536
 	},
 	{
@@ -84,7 +84,7 @@ const OPENAI_EMBEDDING_MODELS: BuiltInEmbeddingModel[] = [
 		name: 'Embedding 3 Large',
 		modelId: 'text-embedding-3-large',
 		provider: 'openai',
-		format: 'openai_compatible',
+		handler: 'openai_compatible',
 		dimensions: 3072
 	}
 ];
@@ -95,7 +95,7 @@ const GOOGLE_EMBEDDING_MODELS: BuiltInEmbeddingModel[] = [
 		name: 'Text Embedding 005',
 		modelId: 'text-embedding-005',
 		provider: 'google',
-		format: 'google',
+		handler: 'google',
 		dimensions: 768
 	}
 ];

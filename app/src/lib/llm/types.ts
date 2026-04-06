@@ -2,7 +2,7 @@
  * LLM Adapter Types — KeiAI
  *
  * Shared interfaces for the LLM adapter layer.
- * All providers (Mock, OpenAI, Claude, …) implement LLMStreamProvider.
+ * All handlers (Mock, OpenAI, Claude, …) implement LLMStreamHandler.
  */
 
 import type { ToolCallRequest } from '$lib/services/content/tool';
@@ -12,9 +12,9 @@ import type { LLMFlags, LLMParameter } from '$lib/types/models/llm';
 // ─── Stream Content ──────────────────────────────────────────────────────────
 
 /**
- * Abstract streaming interface (LLMFormat) for any LLM source.
+ * Abstract streaming interface (LLMHandler) for any LLM source.
  *
- * The provider owns chunk debouncing/batching.
+ * The handler owns chunk debouncing/batching.
  * CONTRACT: Yields cumulative content (e.g. "1", "12", "123")
  * instead of individual chunks.
  */
@@ -24,7 +24,7 @@ export type LLMStreamContent = {
 	toolCalls?: ToolCallRequest[];
 };
 
-export interface LLMStreamProvider {
+export interface LLMStreamHandler {
 	stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent>;
 }
 
@@ -37,7 +37,7 @@ export interface OpenAIChat {
 	thought?: string;
 }
 
-// ─── Provider Config (Role-Based) ────────────────────────────────────────────
+// ─── Handler Config (Role-Based) ────────────────────────────────────────────
 
 /** Model identity & generation parameters */
 export interface LLMStreamModelConfig {
