@@ -8,9 +8,7 @@ export type TTSHandler =
 
 // ─── Provider Types ─────────────────────────────────────────────────────────
 
-export type RemoteTTSProvider = 'openai' | 'elevenlabs' | 'google';
-export type LocalTTSProvider = 'kokoro';
-export type BuiltInTTSProvider = RemoteTTSProvider | LocalTTSProvider;
+export type BuiltInTTSProvider = 'openai' | 'elevenlabs' | 'google' | 'kokoro';
 
 export type CustomTTSProvider = 'custom';
 export type TTSProvider = BuiltInTTSProvider | CustomTTSProvider;
@@ -32,26 +30,12 @@ const providerNames: Record<TTSProvider, string> = {
 	custom: 'Custom'
 };
 
-const remoteProviderUrls: Record<RemoteTTSProvider, string> = {
-	openai: 'https://api.openai.com/v1',
-	elevenlabs: 'https://api.elevenlabs.io/v1',
-	google: 'https://texttospeech.googleapis.com/v1'
-};
-
 export function getTTSHandlerName(handler: TTSHandler): string {
 	return handlerNames[handler] || handler;
 }
 
 export function getTTSProviderName(provider: TTSProvider): string {
 	return providerNames[provider] || provider;
-}
-
-export function getTTSProviderUrl(provider: RemoteTTSProvider): string {
-	return remoteProviderUrls[provider] || provider;
-}
-
-export function isRemoteTTSProvider(provider: TTSProvider): provider is RemoteTTSProvider {
-	return provider in remoteProviderUrls;
 }
 
 // ─── Model Definitions ─────────────────────────────────────────────────────
@@ -64,7 +48,6 @@ export interface TTSModelBase {
 	id: string;
 	name: string;
 	modelId: string;
-	handler: TTSHandler;
 }
 
 export interface BuiltInTTSModel extends TTSModelBase {
@@ -73,19 +56,12 @@ export interface BuiltInTTSModel extends TTSModelBase {
 
 export interface CustomTTSModel extends TTSModelBase {
 	provider: CustomTTSProvider;
+	handler: TTSHandler;
 	baseUrl: string;
 	apiKey?: string;
 }
 
 export type TTSModel = BuiltInTTSModel | CustomTTSModel;
-
-// ─── Runtime Config (stored in AppSettings / Preset) ────────────────────────
-
-export interface TTSModelConfig {
-	id: string;
-	provider: TTSProvider;
-	voiceId: string;
-}
 
 // ─── Built-in Model Registry ────────────────────────────────────────────────
 
@@ -94,15 +70,13 @@ const OPENAI_TTS_MODELS: BuiltInTTSModel[] = [
 		id: 'openai::tts-1',
 		name: 'TTS-1',
 		modelId: 'tts-1',
-		provider: 'openai',
-		handler: 'openai'
+		provider: 'openai'
 	},
 	{
 		id: 'openai::tts-1-hd',
 		name: 'TTS-1 HD',
 		modelId: 'tts-1-hd',
-		provider: 'openai',
-		handler: 'openai'
+		provider: 'openai'
 	}
 ];
 

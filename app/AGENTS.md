@@ -339,11 +339,11 @@ Ten adapter interfaces, each with Web + Tauri implementations dispatched via `is
 
 Three protocol layers share a common selection pattern: `selectXXXHandler(modelConfig, settings)`
 
-| Layer            | Input          | Output                            | Class Dispatch                                            |
-| ---------------- | -------------- | --------------------------------- | --------------------------------------------------------- |
+| Layer            | Input          | Output                            | Class Dispatch                                             |
+| ---------------- | -------------- | --------------------------------- | ---------------------------------------------------------- |
 | `lib/llm/`       | `OpenAIChat[]` | `AsyncIterable<LLMStreamContent>` | Handler-based (`openai_compatible`, `anthropic`, `google`) |
-| `lib/tts/`       | `text`         | `AsyncIterable<TTSStreamChunk>`   | Handler-based (`openai`, `elevenlabs`, `google`)          |
-| `lib/embedding/` | `text[]`       | `Promise<EmbeddingResult>`        | Handler-based (`openai_compatible`, `google`)             |
+| `lib/tts/`       | `text`         | `AsyncIterable<TTSStreamChunk>`   | Handler-based (`openai`, `elevenlabs`, `google`)           |
+| `lib/embedding/` | `text[]`       | `Promise<EmbeddingResult>`        | Handler-based (`openai_compatible`, `google`)              |
 
 - **Handler-based** (LLM, Embedding): Multiple providers share one class when they use the same wire protocol (e.g. OpenAI-compatible handler). URL + API key swap only.
 - **Handler-based** (TTS): Each handler has a distinct class because API handlers are incompatible.

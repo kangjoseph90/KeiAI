@@ -68,7 +68,7 @@ describe('Module Store', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		modules.set([]);
-		appSettings.set({ theme: 'dark', apiKeys: {}, moduleRefs: [] } as AppSettings);
+		appSettings.set({ theme: 'dark', providers: {}, moduleRefs: [] } as AppSettings);
 		moduleResources.set(new Map());
 	});
 

@@ -16,16 +16,16 @@
 	// Sync from store on mount
 	$effect(() => {
 		if ($appSettings) {
-			openaiKey = $appSettings.apiKeys?.openai ?? '';
-			anthropicKey = $appSettings.apiKeys?.anthropic ?? '';
+			openaiKey = $appSettings.providers.openai?.apiKey ?? '';
+			anthropicKey = $appSettings.providers.anthropic?.apiKey ?? '';
 		}
 	});
 
 	function handleKeyChange() {
 		updateSettings({
-			apiKeys: {
-				openai: openaiKey.trim() || undefined,
-				anthropic: anthropicKey.trim() || undefined
+			providers: {
+				openai: { apiKey: openaiKey.trim() },
+				anthropic: { apiKey: anthropicKey.trim() }
 			}
 		});
 	}

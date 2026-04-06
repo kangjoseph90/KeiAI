@@ -5,17 +5,15 @@ import type { OrderedRef, FolderDef, ResourceRef } from '$lib/types/refs';
 import { deepMerge } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { encryptedWriteQueue } from './write_queue';
-import type { CustomLLMModel, BuiltInLLMProvider } from '$lib/types/models/llm';
-import type { ApiProvider } from '$lib/types/models/provider';
-import type { TTSModelConfig } from '$lib/types/models/tts';
+import type { CustomLLMModel } from '$lib/types/models/llm';
+import type { ProviderConfig } from '$lib/types/models/provider';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface AppSettingsContent {
 	theme: 'light' | 'dark' | 'system';
-	apiKeys: Partial<Record<ApiProvider, string>>;
+	providers: ProviderConfig;
 	customModels?: CustomLLMModel[];
-	ttsModel?: TTSModelConfig;
 }
 
 export interface AppSettingsRefs {
@@ -39,9 +37,29 @@ export interface AppSettingsRefs {
 
 export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}
 
-const defaultSettings: AppSettingsContent = {
+export const defaultSettings: AppSettingsContent = {
 	theme: 'system',
-	apiKeys: {}
+	providers: {
+		openai: {
+			apiKey: ''
+		},
+		anthropic: {
+			apiKey: ''
+		},
+		google: {
+			apiKey: ''
+		},
+		mistral: {
+			apiKey: ''
+		},
+		deepseek: {
+			apiKey: ''
+		},
+		webllm: {
+			modelUrl: ''
+		},
+		mock: {}
+	}
 };
 
 // ─── Service ──────────────────────────────────────────────────────────

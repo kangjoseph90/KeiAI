@@ -125,7 +125,12 @@ describe('Character Store', () => {
 		characterModules.set([]);
 		chats.set([]);
 		modules.set([]);
-		appSettings.set({ theme: 'dark', apiKeys: {}, characterRefs: [], chatRefs: [] } as AppSettings);
+		appSettings.set({
+			theme: 'dark',
+			providers: {},
+			characterRefs: [],
+			chatRefs: []
+		} as AppSettings);
 	});
 
 	describe('loadCharacters', () => {
@@ -214,7 +219,7 @@ describe('Character Store', () => {
 			vi.mocked(CharacterService.create).mockResolvedValue(mockCharacterDetail);
 			vi.mocked(SettingsService.update).mockResolvedValue({
 				theme: 'dark',
-				apiKeys: {},
+				providers: {},
 				characterRefs: []
 			} as AppSettings);
 
@@ -241,12 +246,12 @@ describe('Character Store', () => {
 			characters.set([mockCharacter]);
 			appSettings.set({
 				theme: 'dark',
-				apiKeys: {},
+				providers: {},
 				characterRefs: [{ id: 'char-1', sortOrder: 'a' }]
 			} as AppSettings);
 			vi.mocked(SettingsService.update).mockResolvedValue({
 				theme: 'dark',
-				apiKeys: {},
+				providers: {},
 				characterRefs: []
 			} as AppSettings);
 			vi.mocked(CharacterService.delete).mockResolvedValue(undefined);

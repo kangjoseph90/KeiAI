@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { SettingsService, type AppSettings } from '$lib/services/content/settings';
+import { SettingsService, type AppSettings, defaultSettings } from '$lib/services/content/settings';
 import type { SettingsRecord } from '$lib/adapters/db';
 import { AppError } from '$lib/types/errors';
 
@@ -37,7 +37,9 @@ describe('SettingsService', () => {
 
 	const mockSettings: AppSettings = {
 		theme: 'dark',
-		apiKeys: { openai: 'sk-test' },
+		providers: {
+			openai: { apiKey: 'sk-test' }
+		},
 		characterRefs: []
 	};
 
@@ -78,7 +80,7 @@ describe('SettingsService', () => {
 			const result = await SettingsService.get();
 
 			expect(result.theme).toBe('dark');
-			expect(result.apiKeys.openai).toBe('sk-test');
+			expect(result.providers.openai?.apiKey).toBe('sk-test');
 			expect(localDB.getRecord).toHaveBeenCalledWith('settings', mockUserId);
 		});
 
@@ -88,7 +90,9 @@ describe('SettingsService', () => {
 			const result = await SettingsService.get();
 
 			expect(result.theme).toBe('system');
-			expect(result.apiKeys).toEqual({});
+			expect(result.providers).toEqual({
+				...defaultSettings.providers
+			});
 		});
 
 		it('should throw AppError on decryption failure', async () => {
@@ -104,7 +108,11 @@ describe('SettingsService', () => {
 			await SettingsService.set(mockSettings);
 			await vi.runAllTimersAsync();
 
-			expect(encrypt).toHaveBeenCalledWith(mockMasterKey, JSON.stringify(mockSettings));
+			// deepMerge merges with defaults, so the encrypted object includes all default providers
+			expect(encrypt).toHaveBeenCalledWith(
+				mockMasterKey,
+				expect.stringContaining('"openai":{"apiKey":"sk-test"}')
+			);
 			expect(localDB.putRecord).toHaveBeenCalledWith(
 				'settings',
 				expect.objectContaining({
@@ -133,7 +141,7 @@ describe('SettingsService', () => {
 			await vi.runAllTimersAsync();
 
 			expect(result.theme).toBe('light');
-			expect(result.apiKeys.openai).toBe('sk-test'); // Preserved
+			expect(result.providers.openai?.apiKey).toBe('sk-test'); // Preserved
 			expect(localDB.putRecord).toHaveBeenCalled();
 		});
 

@@ -2,46 +2,155 @@
  * Handler Selection — KeiAI
  *
  * Resolves a LLMModelConfig + AppSettings into a concrete LLMStreamHandler.
- * Handles both built-in models (provider → settings.apiKeys) and
- * custom models (model.baseUrl + model.apiKey).
+ * Dispatches by **provider** (not handler), since each built-in provider
+ * determines its own handler class. Custom models specify handler explicitly.
  */
 
 import type { LLMStreamHandler } from '$lib/llm/types';
-import { MockLLMStreamHandler } from '$lib/llm/handlers';
+import { MockLLMStreamHandler, type MockBehavior } from '$lib/llm/handlers';
 import { OpenAILLMStreamHandler } from '$lib/llm/handlers/openai';
 import type { AppSettings } from '$lib/services';
 import { createLogger } from '$lib/adapters/logger';
 import {
 	type LLMModelConfig,
 	type LLMModel,
-	type RemoteLLMProvider,
-	BUILT_IN_LLM_MODELS,
-	getLLMProviderUrl,
-	isRemoteLLMProvider
+	type BuiltInLLMModel,
+	type CustomLLMModel,
+	BUILT_IN_LLM_MODELS
 } from '$lib/types/models/llm';
 
 const logger = createLogger('llm:handler');
 
 /**
  * Build a LLMStreamHandler from the given model config + app settings.
- * Falls back to MockLLMStreamHandler when the model is not found or no API key.
+ * Returns null when the model is not found or no API key is configured.
  */
 export function selectLLMHandler(
 	modelConfig: LLMModelConfig,
 	settings: AppSettings
-): LLMStreamHandler {
+): LLMStreamHandler | null {
 	const model = resolveModel(modelConfig, settings);
 
 	if (!model) {
-		logger.warn('Model not found. Falling back to MockLLMStreamHandler.');
-		return new MockLLMStreamHandler();
+		logger.warn('Model not found.');
+		return null;
 	}
 
-	const connection = resolveConnection(model, settings);
+	// Custom models: dispatch by handler field
+	if (model.provider === 'custom') {
+		return selectCustomHandler(model, settings);
+	}
 
-	if (!connection.apiKey) {
-		logger.warn('No API key found. Falling back to MockLLMStreamHandler.');
-		return new MockLLMStreamHandler();
+	// Built-in models: dispatch by provider
+	return selectBuiltInHandler(model, modelConfig, settings);
+}
+
+function selectBuiltInHandler(
+	model: BuiltInLLMModel,
+	modelConfig: LLMModelConfig,
+	settings: AppSettings
+): LLMStreamHandler | null {
+	switch (model.provider) {
+		case 'openai': {
+			const apiKey = settings.providers.openai?.apiKey;
+			if (!apiKey) {
+				logger.warn('No OpenAI API key.');
+				return null;
+			}
+			return new OpenAILLMStreamHandler({
+				model: {
+					modelId: model.modelId,
+					flags: model.flags,
+					parameters: modelConfig.parameters
+				},
+				http: {
+					apiKey,
+					baseUrl: 'https://api.openai.com/v1'
+				}
+			});
+		}
+
+		case 'anthropic': {
+			const apiKey = settings.providers.anthropic?.apiKey;
+			if (!apiKey) {
+				logger.warn('No Anthropic API key.');
+				return null;
+			}
+			// TODO: implement AnthropicLLMStreamHandler
+			logger.warn('Anthropic LLM not yet implemented.');
+			return null;
+		}
+
+		case 'deepseek': {
+			const apiKey = settings.providers.deepseek?.apiKey;
+			if (!apiKey) {
+				logger.warn('No DeepSeek API key.');
+				return null;
+			}
+			return new OpenAILLMStreamHandler({
+				model: {
+					modelId: model.modelId,
+					flags: model.flags,
+					parameters: modelConfig.parameters
+				},
+				http: {
+					apiKey,
+					baseUrl: 'https://api.deepseek.com'
+				}
+			});
+		}
+
+		case 'google': {
+			const apiKey = settings.providers.google?.apiKey;
+			if (!apiKey) {
+				logger.warn('No Google API key.');
+				return null;
+			}
+			// TODO: implement GoogleLLMStreamHandler
+			logger.warn('Google LLM not yet implemented.');
+			return null;
+		}
+
+		case 'mistral': {
+			const apiKey = settings.providers.mistral?.apiKey;
+			if (!apiKey) {
+				logger.warn('No Mistral API key.');
+				return null;
+			}
+			return new OpenAILLMStreamHandler({
+				model: {
+					modelId: model.modelId,
+					flags: model.flags,
+					parameters: modelConfig.parameters
+				},
+				http: {
+					apiKey,
+					baseUrl: 'https://api.mistral.ai/v1'
+				}
+			});
+		}
+
+		case 'webllm':
+			// TODO: implement WebLLMHandler — no API key needed
+			logger.warn('WebLLM not yet implemented.');
+			return null;
+
+		case 'mock':
+			return new MockLLMStreamHandler({ behavior: model.modelId as MockBehavior });
+
+		default:
+			logger.warn(`Unknown provider: ${model.provider}`);
+			return null;
+	}
+}
+
+function selectCustomHandler(
+	model: CustomLLMModel,
+	_settings: AppSettings
+): LLMStreamHandler | null {
+	if (!model.apiKey) {
+		logger.warn('No API key for custom model.');
+		return null;
 	}
 
 	switch (model.handler) {
@@ -50,24 +159,29 @@ export function selectLLMHandler(
 				model: {
 					modelId: model.modelId,
 					flags: model.flags,
-					parameters: modelConfig.parameters
+					parameters: {}
 				},
 				http: {
-					apiKey: connection.apiKey,
-					baseUrl: connection.baseUrl
+					apiKey: model.apiKey,
+					baseUrl: model.baseUrl
 				}
 			});
+
 		case 'anthropic':
-			// TODO: implement AnthropicLLMStreamHandler
-			logger.warn('Anthropic LLM not yet implemented.');
-			return new MockLLMStreamHandler();
+			logger.warn('Custom Anthropic handler not yet implemented.');
+			return null;
+
 		case 'google':
-			// TODO: implement GoogleLLMStreamHandler
-			logger.warn('Google LLM not yet implemented.');
-			return new MockLLMStreamHandler();
+			logger.warn('Custom Google handler not yet implemented.');
+			return null;
+
+		case 'webllm':
+			logger.warn('Custom WebLLM handler not yet implemented.');
+			return null;
+
 		default:
-			logger.warn(`Unknown LLM handler: ${model.handler}`);
-			return new MockLLMStreamHandler();
+			logger.warn(`Unknown custom handler: ${model.handler}`);
+			return null;
 	}
 }
 
@@ -79,31 +193,4 @@ function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel |
 		return settings.customModels?.find((m) => m.id === config.id);
 	}
 	return BUILT_IN_LLM_MODELS.find((m) => m.id === config.id);
-}
-
-/**
- * Resolve connection details (baseUrl + apiKey) for a model.
- * Built-in: uses provider defaults + settings.apiKeys.
- * Custom: uses model's own baseUrl + apiKey.
- */
-function resolveConnection(
-	model: LLMModel,
-	settings: AppSettings
-): { baseUrl: string; apiKey: string | undefined } {
-	if (model.provider === 'custom') {
-		return { baseUrl: model.baseUrl, apiKey: model.apiKey };
-	}
-
-	if (isRemoteLLMProvider(model.provider)) {
-		return {
-			baseUrl: getLLMProviderUrl(model.provider),
-			apiKey: settings.apiKeys[model.provider]
-		};
-	}
-
-	// Local provider (e.g. webllm)
-	return {
-		baseUrl: '',
-		apiKey: 'local'
-	};
 }

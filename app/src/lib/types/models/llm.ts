@@ -26,9 +26,14 @@ export type LLMHandler =
 
 // ─── Built-in Provider Types ─────────────────────────────────────────────────────────
 
-export type RemoteLLMProvider = 'openai' | 'anthropic' | 'deepseek' | 'google' | 'mistral';
-export type LocalLLMProvider = 'webllm';
-export type BuiltInLLMProvider = RemoteLLMProvider | LocalLLMProvider;
+export type BuiltInLLMProvider =
+	| 'openai'
+	| 'anthropic'
+	| 'deepseek'
+	| 'google'
+	| 'mistral'
+	| 'webllm'
+	| 'mock';
 
 export type CustomLLMProvider = 'custom';
 export type LLMProvider = BuiltInLLMProvider | CustomLLMProvider;
@@ -70,14 +75,6 @@ const handlerNames: Record<LLMHandler, string> = {
 	webllm: 'WebLLM'
 };
 
-const remoteProviderUrls: Record<RemoteLLMProvider, string> = {
-	openai: 'https://api.openai.com/v1',
-	anthropic: 'https://api.anthropic.com/v1',
-	deepseek: 'https://api.deepseek.com',
-	google: 'https://generativelanguage.googleapis.com/v1beta',
-	mistral: 'https://api.mistral.ai/v1'
-};
-
 const providerNames: Record<LLMProvider, string> = {
 	openai: 'OpenAI',
 	anthropic: 'Anthropic',
@@ -85,6 +82,7 @@ const providerNames: Record<LLMProvider, string> = {
 	google: 'Google',
 	mistral: 'Mistral',
 	webllm: 'WebLLM',
+	mock: 'Mock',
 	custom: 'Custom'
 };
 
@@ -115,14 +113,6 @@ export function getLLMHandlerName(handler: LLMHandler): string {
 	return handlerNames[handler] || handler;
 }
 
-export function getLLMProviderUrl(provider: RemoteLLMProvider): string {
-	return remoteProviderUrls[provider] || provider;
-}
-
-export function isRemoteLLMProvider(provider: LLMProvider): provider is RemoteLLMProvider {
-	return provider in remoteProviderUrls;
-}
-
 export function getLLMProviderName(provider: LLMProvider): string {
 	return providerNames[provider] || provider;
 }
@@ -139,7 +129,6 @@ export interface LLMModelBase {
 	id: string;
 	name: string;
 	modelId: string; // The ID used by the provider API (e.g. "gpt-4o", "claude-2")
-	handler: LLMHandler;
 	flags: LLMFlags[];
 	tokenizer: LLMTokenizer;
 }
@@ -151,6 +140,7 @@ export interface BuiltInLLMModel extends LLMModelBase {
 
 export interface CustomLLMModel extends LLMModelBase {
 	provider: CustomLLMProvider;
+	handler: LLMHandler;
 	baseUrl: string;
 	apiKey?: string;
 }
@@ -169,7 +159,6 @@ const OPENAI_MODELS: BuiltInLLMModel[] = [
 		name: 'GPT-5.4',
 		modelId: 'gpt-5.4',
 		provider: 'openai',
-		handler: 'openai_compatible',
 		tokenizer: 'o200k_base',
 		flags: ['streaming'],
 		parameters: ['temperature']
@@ -182,7 +171,6 @@ const ANTHROPIC_MODELS: BuiltInLLMModel[] = [
 		name: 'Claude 4.6 Sonnet',
 		modelId: 'claude-4-6-sonnet',
 		provider: 'anthropic',
-		handler: 'anthropic',
 		tokenizer: 'claude',
 		flags: ['streaming'],
 		parameters: ['temperature']
@@ -195,7 +183,6 @@ const DEEPSEEK_MODELS: BuiltInLLMModel[] = [
 		name: 'DeepSeek Chat',
 		modelId: 'deepseek-chat',
 		provider: 'deepseek',
-		handler: 'openai_compatible',
 		tokenizer: 'deepseek',
 		flags: ['streaming'],
 		parameters: ['temperature']
@@ -208,7 +195,6 @@ const GOOGLE_MODELS: BuiltInLLMModel[] = [
 		name: 'Gemini 3.1 Pro',
 		modelId: 'gemini-3.1-pro',
 		provider: 'google',
-		handler: 'google',
 		tokenizer: 'gemma',
 		flags: ['streaming'],
 		parameters: ['temperature']
@@ -221,7 +207,6 @@ const MISTRAL_MODELS: BuiltInLLMModel[] = [
 		name: 'Mistral Large 3',
 		modelId: 'mistral-large-2512',
 		provider: 'mistral',
-		handler: 'openai_compatible',
 		tokenizer: 'mistral',
 		flags: ['streaming'],
 		parameters: ['temperature']
@@ -230,10 +215,41 @@ const MISTRAL_MODELS: BuiltInLLMModel[] = [
 
 const WEBLLM_MODELS: BuiltInLLMModel[] = [];
 
+const MOCK_MODELS: BuiltInLLMModel[] = [
+	{
+		id: 'mock::default',
+		name: 'Default',
+		modelId: 'default',
+		provider: 'mock',
+		tokenizer: 'o200k_base',
+		flags: ['streaming'],
+		parameters: []
+	},
+	{
+		id: 'mock::echo',
+		name: 'Echo',
+		modelId: 'echo',
+		provider: 'mock',
+		tokenizer: 'o200k_base',
+		flags: ['streaming'],
+		parameters: []
+	},
+	{
+		id: 'mock::markdown',
+		name: 'Markdown',
+		modelId: 'markdown',
+		provider: 'mock',
+		tokenizer: 'o200k_base',
+		flags: ['streaming'],
+		parameters: []
+	}
+];
+
 export const BUILT_IN_LLM_MODELS: BuiltInLLMModel[] = [
 	...OPENAI_MODELS,
 	...ANTHROPIC_MODELS,
 	...DEEPSEEK_MODELS,
 	...GOOGLE_MODELS,
-	...MISTRAL_MODELS
+	...MISTRAL_MODELS,
+	...MOCK_MODELS
 ];

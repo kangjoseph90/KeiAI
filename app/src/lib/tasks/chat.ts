@@ -107,6 +107,9 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
 		// ── 5. Select Handler ──────────────────────────────────────
 		const handler = opts.handlerOverride ?? selectLLMHandler(preset.data.chatModel, settings);
+		if (!handler) {
+			throw new AppError('INVALID_INPUT', 'Failed to create LLM handler. Check API key.');
+		}
 
 		// ── 6. Stream chunks ────────────────────────────────────────
 		for await (const state of handler.stream(processedMessages, controller.signal)) {
