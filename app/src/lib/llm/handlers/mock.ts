@@ -1,5 +1,5 @@
 /**
- * Mock LLM Stream Provider — Development / Testing
+ * Mock LLM Stream Handler — Development / Testing
  *
  * Simulates a streaming LLM response for UI development without a real API.
  * Yields the response word-by-word with configurable delay between chunks.
