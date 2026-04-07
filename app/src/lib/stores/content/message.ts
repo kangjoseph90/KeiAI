@@ -19,6 +19,7 @@ import {
 } from '$lib/services';
 import { messages, messageMap, chats, activeChat, activeChatId } from '../state';
 import { AppError } from '$lib/types/errors';
+import type { DeepPartial } from '$lib/utils/defaults';
 
 // ─── Getter ────────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ export async function loadNewerMessages(chatId: string, limit = 50): Promise<voi
 
 export async function createMessage(
 	chatId: string,
-	fields: Partial<MessageFields> = {}
+	fields: DeepPartial<MessageFields> = {}
 ): Promise<void> {
 	const preview = fields.content?.substring(0, 50) ?? '';
 
@@ -114,7 +115,10 @@ export async function createMessage(
 	activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
 }
 
-export async function updateMessage(msgId: string, changes: Partial<MessageFields>): Promise<void> {
+export async function updateMessage(
+	msgId: string,
+	changes: DeepPartial<MessageFields>
+): Promise<void> {
 	// DB write — always happens
 	const updated = await MessageService.update(msgId, changes);
 
@@ -160,7 +164,7 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
 
 	const currentChat = get(activeChat);
 	const newCount = Math.max(0, (currentChat?.messageCount ?? 1) - 1);
-	const summaryChanges: Partial<ChatSummaryFields> = { messageCount: newCount };
+	const summaryChanges: DeepPartial<ChatSummaryFields> = { messageCount: newCount };
 
 	if (isLastMessage) {
 		const remainingMessages = get(messages);

@@ -1,7 +1,7 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type PresetSummaryRecord, type PresetDataRecord } from '$lib/adapters/db';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
@@ -137,8 +137,8 @@ export class PresetService {
 
 	/** Create a preset (writes to both tables) */
 	static async create(
-		summary: Partial<PresetSummaryFields> = {},
-		data: Partial<PresetDataFields> = {}
+		summary: DeepPartial<PresetSummaryFields> = {},
+		data: DeepPartial<PresetDataFields> = {}
 	): Promise<PresetDetail> {
 		const resolvedSummary: PresetSummaryFields = deepMerge(
 			defaultPresetSummary,
@@ -189,7 +189,10 @@ export class PresetService {
 	}
 
 	/** Update summary only */
-	static async updateSummary(id: string, changes: Partial<PresetSummaryFields>): Promise<Preset> {
+	static async updateSummary(
+		id: string,
+		changes: DeepPartial<PresetSummaryFields>
+	): Promise<Preset> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<PresetSummaryFields>('presetSummaries', id);
 		const record = await localDB.getRecord<PresetSummaryRecord>('presetSummaries', id);
@@ -239,7 +242,7 @@ export class PresetService {
 	/** Update data only */
 	static async updateData(
 		id: string,
-		changes: Partial<PresetDataFields>
+		changes: DeepPartial<PresetDataFields>
 	): Promise<PresetDataFields> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<PresetDataFields>('presetData', id);
@@ -290,8 +293,8 @@ export class PresetService {
 	/** Update summary and/or data transactionally */
 	static async update(
 		id: string,
-		summaryChanges?: Partial<PresetSummaryFields>,
-		dataChanges?: Partial<PresetDataFields>
+		summaryChanges?: DeepPartial<PresetSummaryFields>,
+		dataChanges?: DeepPartial<PresetDataFields>
 	): Promise<PresetDetail> {
 		const detail = await this.getDetail(id);
 		if (!detail) {

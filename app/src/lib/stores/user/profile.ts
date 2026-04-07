@@ -10,6 +10,7 @@
 
 import { ProfileService, type ProfileFields } from '$lib/services';
 import { activeUser } from '../state';
+import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
  * Load (or refresh) the current user's profile into the activeUser store.
@@ -28,7 +29,7 @@ export async function loadProfile(): Promise<void> {
  * Update the current user's profile (name, avatar).
  * Writes to local DB + triggers sync push via ProfileService.
  */
-export async function updateProfile(changes: Partial<ProfileFields>): Promise<void> {
+export async function updateProfile(changes: DeepPartial<ProfileFields>): Promise<void> {
 	const updated = await ProfileService.update(changes);
 	activeUser.set(updated);
 }

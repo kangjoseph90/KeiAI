@@ -17,7 +17,11 @@ function isPlainObject(val: unknown): val is Record<string, unknown> {
 	return val !== null && typeof val === 'object' && !Array.isArray(val);
 }
 
-export function deepMerge<T>(base: T, overlay: Record<string, unknown>): T {
+export function deepMerge<T>(base: T, overlay?: Record<string, unknown> | null): T {
+	if (!overlay || typeof overlay !== 'object') {
+		return base;
+	}
+
 	const result = { ...base } as Record<string, unknown>;
 
 	for (const key of Object.keys(overlay)) {

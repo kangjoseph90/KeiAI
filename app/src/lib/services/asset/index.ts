@@ -20,6 +20,7 @@ import type { AssetFields, AssetRecord } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
 import { generateId } from '$lib/utils/id';
 import { AppError } from '$lib/types/errors';
+import type { DeepPartial } from '$lib/utils/defaults';
 import {
 	preprocessImage,
 	deriveAssetKey,
@@ -113,7 +114,7 @@ async function touchRegistry(id: string): Promise<AssetRegistryRecord | null> {
  * Encrypts the new fields and writes to the asset table, then
  * mirrors changed fields to the registry entry.
  */
-async function updateAsset(id: string, changes: Partial<AssetFields>): Promise<AssetFields> {
+async function updateAsset(id: string, changes: DeepPartial<AssetFields>): Promise<AssetFields> {
 	const { masterKey, userId } = getActiveSession();
 	const asset = await appAsset.getAsset(id);
 	if (!asset) throw new AppError('NOT_FOUND', `Asset ${id} not found`);

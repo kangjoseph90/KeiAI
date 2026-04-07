@@ -63,7 +63,7 @@ export async function createGlobalFolder(
 export async function updateGlobalFolder(
 	folderType: GlobalFolderType,
 	folderId: string,
-	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
+	changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
 	const settings = await getAppSettings();
 
@@ -132,6 +132,6 @@ export async function moveGlobalItem(
 		};
 	});
 
-	const updated = await SettingsService.update({ [refKey]: updatedRefs } as Partial<AppSettings>);
+	const updated = await SettingsService.update({ [refKey]: updatedRefs });
 	appSettings.set(updated);
 }

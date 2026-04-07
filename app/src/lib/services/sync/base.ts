@@ -1,3 +1,5 @@
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
+
 export type SyncState = 'idle' | 'syncing' | 'network_error' | 'quota_error' | 'auth_error';
 
 export interface SyncProgress {
@@ -26,11 +28,13 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
 	private readonly listeners = new Set<SyncStatusListener<TStatus>>();
 	private status: TStatus;
 
-	protected constructor(initialStatus?: Partial<TStatus>) {
-		this.status = {
-			state: 'idle',
-			...initialStatus
-		} as TStatus;
+	protected constructor(initialStatus?: DeepPartial<TStatus>) {
+		this.status = deepMerge(
+			{
+				state: 'idle'
+			} as TStatus,
+			initialStatus as Record<string, unknown>
+		);
 	}
 
 	getState(): TStatus {
@@ -65,14 +69,11 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
 		this.updateStatus({
 			state: 'idle',
 			progress: undefined
-		} as Partial<TStatus>);
+		} as DeepPartial<TStatus>);
 	}
 
-	protected updateStatus(patch: Partial<TStatus>): void {
-		this.status = {
-			...this.status,
-			...patch
-		};
+	protected updateStatus(patch: DeepPartial<TStatus>): void {
+		this.status = deepMerge(this.status, patch as Record<string, unknown>);
 		this.emitStatus();
 	}
 
@@ -113,7 +114,7 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
 	private async drainQueue(): Promise<void> {
 		while (this.rerunRequested) {
 			this.rerunRequested = false;
-			this.updateStatus({ state: 'syncing' } as Partial<TStatus>);
+			this.updateStatus({ state: 'syncing' } as DeepPartial<TStatus>);
 
 			try {
 				await this.performSync();
@@ -121,21 +122,21 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
 					this.updateStatus({
 						state: 'idle',
 						progress: undefined
-					} as Partial<TStatus>);
+					} as DeepPartial<TStatus>);
 				}
 			} catch (error) {
 				if (this.isAbortError(error)) {
 					this.updateStatus({
 						state: 'idle',
 						progress: undefined
-					} as Partial<TStatus>);
+					} as DeepPartial<TStatus>);
 					continue;
 				}
 
 				this.updateStatus({
 					state: this.toErrorState(error),
 					progress: undefined
-				} as Partial<TStatus>);
+				} as DeepPartial<TStatus>);
 				break;
 			}
 		}

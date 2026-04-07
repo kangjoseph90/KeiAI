@@ -2,7 +2,7 @@ import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type CharacterSummaryRecord, type CharacterDataRecord } from '$lib/adapters/db';
 import type { OrderedRef, FolderDef, AssetRef } from '$lib/types/refs';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
@@ -137,8 +137,8 @@ export class CharacterService {
 
 	/** Create a character - caller must add to parent's characterRefs */
 	static async create(
-		summary: Partial<CharacterSummaryFields> = {},
-		data: Partial<CharacterDataFields> = {}
+		summary: DeepPartial<CharacterSummaryFields> = {},
+		data: DeepPartial<CharacterDataFields> = {}
 	): Promise<CharacterDetail> {
 		const resolvedSummary: CharacterSummaryFields = deepMerge(
 			defaultSummaryFields,
@@ -191,7 +191,7 @@ export class CharacterService {
 	/** Update summary only */
 	static async updateSummary(
 		id: string,
-		changes: Partial<CharacterSummaryFields>
+		changes: DeepPartial<CharacterSummaryFields>
 	): Promise<Character> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<CharacterSummaryFields>('characterSummaries', id);
@@ -245,7 +245,7 @@ export class CharacterService {
 	/** Update data only */
 	static async updateData(
 		id: string,
-		changes: Partial<CharacterDataFields>
+		changes: DeepPartial<CharacterDataFields>
 	): Promise<CharacterDataFields> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<CharacterDataFields>('characterData', id);
@@ -296,8 +296,8 @@ export class CharacterService {
 	/** Update summary and/or data transactionally */
 	static async update(
 		id: string,
-		summaryChanges?: Partial<CharacterSummaryFields>,
-		dataChanges?: Partial<CharacterDataFields>
+		summaryChanges?: DeepPartial<CharacterSummaryFields>,
+		dataChanges?: DeepPartial<CharacterDataFields>
 	): Promise<CharacterDetail> {
 		const detail = await this.getDetail(id);
 		if (!detail) {

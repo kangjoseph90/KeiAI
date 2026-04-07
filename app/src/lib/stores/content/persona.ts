@@ -2,6 +2,7 @@ import { get } from 'svelte/store';
 import { PersonaService, type PersonaFields, type Persona } from '$lib/services/content/persona';
 import { SettingsService } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
+import type { DeepPartial } from '$lib/utils/defaults';
 import { personas, appSettings, activePersona } from '../state';
 import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
@@ -39,7 +40,7 @@ export async function selectPersona(personaId: string): Promise<void> {
 	await SettingsService.update({ personaId: personaId });
 }
 
-export async function createPersona(fields: Partial<PersonaFields> = {}): Promise<Persona> {
+export async function createPersona(fields: DeepPartial<PersonaFields> = {}): Promise<Persona> {
 	const settings = await getAppSettings();
 
 	// Create Record in DB
@@ -68,7 +69,7 @@ export async function createPersona(fields: Partial<PersonaFields> = {}): Promis
 
 export async function updatePersona(
 	personaId: string,
-	changes: Partial<PersonaFields>
+	changes: DeepPartial<PersonaFields>
 ): Promise<void> {
 	const updated = await PersonaService.update(personaId, changes);
 	personas.update((list) => list.map((p) => (p.id === personaId ? updated : p)));

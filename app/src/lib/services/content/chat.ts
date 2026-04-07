@@ -9,7 +9,7 @@ import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ChatSummaryRecord, type ChatDataRecord } from '$lib/adapters/db';
 import type { FolderDef, OrderedRef } from '$lib/types/refs';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
@@ -137,8 +137,8 @@ export class ChatService {
 	/** Create a chat - caller must add to parent's chatRefs */
 	static async create(
 		characterId: string,
-		summary: Partial<ChatSummaryFields> = {},
-		data: Partial<ChatDataFields> = {}
+		summary: DeepPartial<ChatSummaryFields> = {},
+		data: DeepPartial<ChatDataFields> = {}
 	): Promise<ChatDetail> {
 		const resolvedSummary: ChatSummaryFields = deepMerge(
 			defaultSummaryFields,
@@ -191,7 +191,7 @@ export class ChatService {
 	}
 
 	/** Update summary only */
-	static async updateSummary(id: string, changes: Partial<ChatSummaryFields>): Promise<Chat> {
+	static async updateSummary(id: string, changes: DeepPartial<ChatSummaryFields>): Promise<Chat> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<ChatSummaryFields>('chatSummaries', id);
 		const record = await localDB.getRecord<ChatSummaryRecord>('chatSummaries', id);
@@ -240,7 +240,10 @@ export class ChatService {
 	}
 
 	/** Update data only */
-	static async updateData(id: string, changes: Partial<ChatDataFields>): Promise<ChatDataFields> {
+	static async updateData(
+		id: string,
+		changes: DeepPartial<ChatDataFields>
+	): Promise<ChatDataFields> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<ChatDataFields>('chatData', id);
 		const record = await localDB.getRecord<ChatDataRecord>('chatData', id);
@@ -291,8 +294,8 @@ export class ChatService {
 	/** Update summary and/or data transactionally */
 	static async update(
 		id: string,
-		summaryChanges?: Partial<ChatSummaryFields>,
-		dataChanges?: Partial<ChatDataFields>
+		summaryChanges?: DeepPartial<ChatSummaryFields>,
+		dataChanges?: DeepPartial<ChatDataFields>
 	): Promise<ChatDetail> {
 		const detail = await this.getDetail(id);
 		if (!detail) {

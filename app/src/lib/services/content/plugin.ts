@@ -1,7 +1,7 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type PluginRecord } from '$lib/adapters/db';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
@@ -89,7 +89,7 @@ export class PluginService {
 		};
 	}
 
-	static async create(fields: Partial<PluginFields> = {}): Promise<Plugin> {
+	static async create(fields: DeepPartial<PluginFields> = {}): Promise<Plugin> {
 		const resolved: PluginFields = deepMerge(
 			defaultPluginFields,
 			fields as Record<string, unknown>
@@ -119,7 +119,7 @@ export class PluginService {
 		return { id, ...resolved };
 	}
 
-	static async update(id: string, changes: Partial<PluginFields>): Promise<Plugin> {
+	static async update(id: string, changes: DeepPartial<PluginFields>): Promise<Plugin> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<PluginFields>('plugins', id);
 		const record = await localDB.getRecord<PluginRecord>('plugins', id);

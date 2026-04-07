@@ -1,7 +1,7 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type LorebookRecord } from '$lib/adapters/db';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
@@ -95,7 +95,10 @@ export class LorebookService {
 		};
 	}
 
-	static async create(ownerId: string, fields: Partial<LorebookFields> = {}): Promise<Lorebook> {
+	static async create(
+		ownerId: string,
+		fields: DeepPartial<LorebookFields> = {}
+	): Promise<Lorebook> {
 		const resolved: LorebookFields = deepMerge(
 			defaultLorebookFields,
 			fields as Record<string, unknown>
@@ -126,7 +129,7 @@ export class LorebookService {
 		return { id, ownerId, ...resolved };
 	}
 
-	static async update(id: string, changes: Partial<LorebookFields>): Promise<Lorebook> {
+	static async update(id: string, changes: DeepPartial<LorebookFields>): Promise<Lorebook> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<LorebookFields>('lorebooks', id);
 		const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);

@@ -2,7 +2,7 @@ import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type MessageRecord } from '$lib/adapters/db';
 import { generateKeyBetween } from 'fractional-indexing';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { ToolCallAbstract } from './tool';
@@ -144,7 +144,7 @@ export class MessageService {
 	/** Create a message */
 	static async create(
 		chatId: string,
-		fields: Partial<MessageFields> = {},
+		fields: DeepPartial<MessageFields> = {},
 		providedSortOrder?: string
 	): Promise<Message> {
 		const resolved: MessageFields = deepMerge(
@@ -195,7 +195,7 @@ export class MessageService {
 	}
 
 	/** Update a message */
-	static async update(id: string, changes: Partial<MessageFields>): Promise<Message> {
+	static async update(id: string, changes: DeepPartial<MessageFields>): Promise<Message> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<MessageFields>('messages', id);
 		const record = await localDB.getRecord<MessageRecord>('messages', id);

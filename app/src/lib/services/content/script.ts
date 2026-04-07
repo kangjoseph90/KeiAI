@@ -1,7 +1,7 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ScriptRecord } from '$lib/adapters/db';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
@@ -94,7 +94,7 @@ export class ScriptService {
 		};
 	}
 
-	static async create(ownerId: string, fields: Partial<ScriptFields> = {}): Promise<Script> {
+	static async create(ownerId: string, fields: DeepPartial<ScriptFields> = {}): Promise<Script> {
 		const resolved: ScriptFields = deepMerge(
 			defaultScriptFields,
 			fields as Record<string, unknown>
@@ -125,7 +125,7 @@ export class ScriptService {
 		return { id, ownerId, ...resolved };
 	}
 
-	static async update(id: string, changes: Partial<ScriptFields>): Promise<Script> {
+	static async update(id: string, changes: DeepPartial<ScriptFields>): Promise<Script> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<ScriptFields>('scripts', id);
 		const record = await localDB.getRecord<ScriptRecord>('scripts', id);

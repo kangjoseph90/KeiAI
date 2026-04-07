@@ -77,10 +77,13 @@ Every service follows the same data lifecycle:
 
 ```
 Read:  DB record → decrypt(M, blob) → JSON.parse → deepMerge(defaults, parsed) → domain object
-Write: domain object → JSON.stringify → encrypt(M, json) → DB record → fire-and-forget sync push
+Update: DeepPartial<T> → deepMerge(current, patch) → JSON.stringify → encrypt(M, json) → DB record
+Write: JSON.stringify(full) → encrypt(M, json) → DB record → fire-and-forget sync push
 ```
 
-`deepMerge(defaults, stored)` on every read means new fields auto-populate without migration code.
+- `deepMerge(defaults, stored)` on every read means new fields auto-populate without migration code.
+- `DeepPartial<T>` allows safe, nested updates without restructuring the entire object.
+- Arrays are **overwritten**, objects are **recursively merged**.
 
 ### Local-First, Sync-Later
 

@@ -18,6 +18,7 @@ import { modules, appSettings, moduleResources } from '../state';
 import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
  * Returns module from store cache first, then from DB if needed.
@@ -64,7 +65,7 @@ export async function loadModules(): Promise<void> {
 	moduleResources.set(new Map(entries));
 }
 
-export async function createModule(fields: Partial<ModuleFields> = {}): Promise<Module> {
+export async function createModule(fields: DeepPartial<ModuleFields> = {}): Promise<Module> {
 	const settings = await getAppSettings();
 
 	// Create Record in DB
@@ -98,7 +99,7 @@ export async function createModule(fields: Partial<ModuleFields> = {}): Promise<
 
 export async function updateModule(
 	moduleId: string,
-	changes: Partial<ModuleContent>
+	changes: DeepPartial<ModuleContent>
 ): Promise<void> {
 	const updated = await ModuleService.updateContent(moduleId, changes);
 	modules.update((list) => list.map((m) => (m.id === moduleId ? updated : m)));
@@ -135,7 +136,7 @@ export async function deleteModule(moduleId: string): Promise<void> {
 
 export async function createModuleLorebook(
 	moduleId: string,
-	fields: Partial<LorebookFields>
+	fields: DeepPartial<LorebookFields>
 ): Promise<Lorebook> {
 	const mod = await getModule(moduleId);
 
@@ -202,7 +203,7 @@ export async function deleteModuleLorebook(moduleId: string, lorebookId: string)
 
 export async function createModuleScript(
 	moduleId: string,
-	fields: Partial<ScriptFields>
+	fields: DeepPartial<ScriptFields>
 ): Promise<Script> {
 	const mod = await getModule(moduleId);
 
@@ -299,7 +300,7 @@ export async function updateModuleFolder(
 	moduleId: string,
 	folderType: ModuleFolderType,
 	folderId: string,
-	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
+	changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
 	const mod = await getModule(moduleId);
 

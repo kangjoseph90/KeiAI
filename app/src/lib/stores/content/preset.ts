@@ -7,6 +7,7 @@ import {
 } from '$lib/services/content/preset';
 import { SettingsService } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
+import type { DeepPartial } from '$lib/utils/defaults';
 import { presets, activePreset, appSettings } from '../state';
 import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
@@ -45,8 +46,8 @@ export async function selectPreset(presetId: string): Promise<void> {
 }
 
 export async function createPreset(
-	summary: Partial<PresetSummaryFields> = {},
-	data: Partial<PresetDataFields> = {}
+	summary: DeepPartial<PresetSummaryFields> = {},
+	data: DeepPartial<PresetDataFields> = {}
 ): Promise<PresetDetail> {
 	const settings = await getAppSettings();
 
@@ -76,7 +77,7 @@ export async function createPreset(
 
 export async function updatePresetSummary(
 	presetId: string,
-	changes: Partial<PresetSummaryFields>
+	changes: DeepPartial<PresetSummaryFields>
 ): Promise<void> {
 	const updated = await PresetService.updateSummary(presetId, changes);
 	presets.update((list) => list.map((p) => (p.id === presetId ? updated : p)));
@@ -85,7 +86,7 @@ export async function updatePresetSummary(
 
 export async function updatePresetData(
 	presetId: string,
-	changes: Partial<PresetDataFields>
+	changes: DeepPartial<PresetDataFields>
 ): Promise<void> {
 	const data = await PresetService.updateData(presetId, changes);
 	activePreset.update((p) => (p && p.id === presetId ? { ...p, data } : p));
@@ -93,8 +94,8 @@ export async function updatePresetData(
 
 export async function updatePresetFull(
 	presetId: string,
-	summaryChanges: Partial<PresetSummaryFields>,
-	dataChanges: Partial<PresetDataFields>
+	summaryChanges: DeepPartial<PresetSummaryFields>,
+	dataChanges: DeepPartial<PresetDataFields>
 ): Promise<void> {
 	const result = await PresetService.update(presetId, summaryChanges, dataChanges);
 	presets.update((list) => list.map((p) => (p.id === presetId ? result : p)));

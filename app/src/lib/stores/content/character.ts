@@ -31,6 +31,7 @@ import {
 import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
  * Returns character detail from store cache first, then from DB if needed.
@@ -90,7 +91,7 @@ export function clearActiveCharacter(): void {
 
 export async function updateCharacterSummary(
 	characterId: string,
-	changes: Partial<CharacterSummaryFields>
+	changes: DeepPartial<CharacterSummaryFields>
 ): Promise<void> {
 	const updated = await CharacterService.updateSummary(characterId, changes);
 	characters.update((list) => list.map((c) => (c.id === characterId ? updated : c)));
@@ -101,7 +102,7 @@ export async function updateCharacterSummary(
 
 export async function updateCharacterData(
 	characterId: string,
-	changes: Partial<CharacterDataContent>
+	changes: DeepPartial<CharacterDataContent>
 ): Promise<void> {
 	const data = await CharacterService.updateData(characterId, changes);
 	if (characterId === get(activeCharacterId)) {
@@ -111,8 +112,8 @@ export async function updateCharacterData(
 
 export async function updateCharacterFull(
 	characterId: string,
-	summaryChanges: Partial<CharacterSummaryFields>,
-	dataChanges: Partial<CharacterDataContent>
+	summaryChanges: DeepPartial<CharacterSummaryFields>,
+	dataChanges: DeepPartial<CharacterDataContent>
 ): Promise<void> {
 	const result = await CharacterService.update(characterId, summaryChanges, dataChanges);
 	characters.update((list) => list.map((c) => (c.id === characterId ? result : c)));
@@ -122,8 +123,8 @@ export async function updateCharacterFull(
 }
 
 export async function createCharacter(
-	summary: Partial<CharacterSummaryFields> = {},
-	data: Partial<CharacterDataFields> = {}
+	summary: DeepPartial<CharacterSummaryFields> = {},
+	data: DeepPartial<CharacterDataFields> = {}
 ): Promise<CharacterDetail> {
 	const settings = await getAppSettings();
 
@@ -179,7 +180,7 @@ export async function deleteCharacter(characterId: string): Promise<void> {
 
 export async function createCharacterLorebook(
 	characterId: string,
-	fields: Partial<LorebookFields>
+	fields: DeepPartial<LorebookFields>
 ): Promise<Lorebook> {
 	// Use cached active character if possible
 	const char = await getCharacterDetail(characterId);
@@ -241,7 +242,7 @@ export async function deleteCharacterLorebook(
 
 export async function createCharacterScript(
 	characterId: string,
-	fields: Partial<ScriptFields>
+	fields: DeepPartial<ScriptFields>
 ): Promise<Script> {
 	// Use cached active character if possible
 	const char = await getCharacterDetail(characterId);
@@ -337,7 +338,7 @@ export async function updateCharacterFolder(
 	characterId: string,
 	folderType: CharacterFolderType,
 	folderId: string,
-	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
+	changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
 	// Use cached active character if possible
 	const char = await getCharacterDetail(characterId);

@@ -2,7 +2,7 @@ import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ModuleRecord } from '$lib/adapters/db';
 import type { AssetRef, FolderDef, OrderedRef } from '$lib/types/refs';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
@@ -89,7 +89,7 @@ export class ModuleService {
 		};
 	}
 
-	static async create(fields: Partial<ModuleFields> = {}): Promise<Module> {
+	static async create(fields: DeepPartial<ModuleFields> = {}): Promise<Module> {
 		const resolved: ModuleFields = deepMerge(
 			defaultModuleFields,
 			fields as Record<string, unknown>
@@ -119,7 +119,7 @@ export class ModuleService {
 		return { id, ...resolved };
 	}
 
-	static async update(id: string, changes: Partial<ModuleFields>): Promise<Module> {
+	static async update(id: string, changes: DeepPartial<ModuleFields>): Promise<Module> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<ModuleFields>('modules', id);
 		const record = await localDB.getRecord<ModuleRecord>('modules', id);
@@ -167,7 +167,7 @@ export class ModuleService {
 	}
 
 	/** Update content fields only ??safe entry point for store layer */
-	static async updateContent(id: string, changes: Partial<ModuleContent>): Promise<Module> {
+	static async updateContent(id: string, changes: DeepPartial<ModuleContent>): Promise<Module> {
 		return this.update(id, changes);
 	}
 

@@ -344,3 +344,21 @@
     - **로컬 공통**: ONNX Runtime 하나로 여러 모델 커버 (`OnnxTTSHandler`, `OnnxEmbeddingHandler`)
 - 공통 선택 패턴: `selectXXXHandler(modelConfig, settings)` → `resolveModel()` → `resolveConnection()` → Handler/Runtime 기반 클래스 생성
 - 결과: 새 provider 추가 시 기존 handler와 호환되면 URL만 추가, 새 handler면 클래스 하나만 추가. 프로토콜 레이어(LLM/TTS/Embedding)와 태스크 레이어(chat/translate/summarize)가 명확히 분리.
+
+---
+
+## 022: DeepPartial을 이용한 타입 안전한 중첩 데이터 업데이트
+
+- 상태: 채택
+- 맥락: AppSettings나 CharacterDataFields와 같은 객체는 여러 단계로 중첩된 구조를 가지고 있다. 기존에는 Partial<T>를 사용하거나 전체 객체를 재구성하여 업데이트를 수행했다.
+- 문제: 
+    - `Partial<T>`는 1단계 깊이의 필드만 선택적으로 허용하므로, 중첩된 객체(예: `settings.openai.apiKey`)의 일부만 변경하려 해도 부위별로 분해했다가 다시 조립해야 하는 번거로움이 있었다.
+    - 업데이트 로직이 서비스 레이어마다 파편화되어 있어 유지보수가 어렵고 타입 안정성이 떨어졌다.
+- 결정:
+    - **DeepPartial<T> 도입**: 재귀적으로 모든 하위 필드를 optional로 만드는 `DeepPartial` 유틸리티 타입을 `$lib/utils/defaults.ts`에 정의하고 전역적으로 사용.
+    - **deepMerge 기반 업데이트**: 서비스 레이어의 `update` 메서드들이 `DeepPartial<T>`를 입력으로 받고, `deepMerge` 유틸리티를 사용해 기존 데이터와 병합하도록 표준화.
+- 결과:
+    - `CharacterService.update(id, { data: { variables: { key: 'value' } } })`와 같이 깊은 경로의 필드만 안전하고 간결하게 업데이트 가능.
+    - 대규모 설정 객체 관리 시 타입 정의가 누락되거나 잘못된 구조로 업데이트되는 실수를 컴파일 타임에 방지.
+- 참고: `$lib/utils/defaults.ts`의 `deepMerge`는 배열은 덮어쓰고 객체만 재귀적으로 병합하는 규칙을 따른다.
+

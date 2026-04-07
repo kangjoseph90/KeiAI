@@ -1,7 +1,7 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ToolCallRecord } from '$lib/adapters/db';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
@@ -115,7 +115,7 @@ export class ToolCallService {
 		};
 	}
 
-	static async create(chatId: string, fields: Partial<ToolCallFields> = {}): Promise<ToolCall> {
+	static async create(chatId: string, fields: DeepPartial<ToolCallFields> = {}): Promise<ToolCall> {
 		const resolved: ToolCallFields = deepMerge(
 			defaultToolCallFields,
 			fields as Record<string, unknown>
@@ -146,7 +146,7 @@ export class ToolCallService {
 		return { id, chatId, ...resolved };
 	}
 
-	static async update(id: string, changes: Partial<ToolCallFields>): Promise<ToolCall> {
+	static async update(id: string, changes: DeepPartial<ToolCallFields>): Promise<ToolCall> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<ToolCallFields>('toolCalls', id);
 		const record = await localDB.getRecord<ToolCallRecord>('toolCalls', id);

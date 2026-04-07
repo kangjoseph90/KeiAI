@@ -11,6 +11,7 @@
 import { getActiveSession } from '../session';
 import { appUser, type UserRecord } from '$lib/adapters/user';
 import { AppError } from '$lib/types/errors';
+import type { DeepPartial } from '$lib/utils/defaults';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ export class ProfileService {
 	}
 
 	/** Update the current user's profile fields. */
-	static async update(changes: Partial<ProfileFields>): Promise<Profile> {
+	static async update(changes: DeepPartial<ProfileFields>): Promise<Profile> {
 		const { userId } = getActiveSession();
 		const user = await appUser.getUser(userId);
 		if (!user) {

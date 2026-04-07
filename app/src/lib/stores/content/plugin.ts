@@ -4,6 +4,7 @@ import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { plugins, appSettings } from '../state';
 import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
+import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
  * Returns plugin from store cache first, then from DB if needed.
@@ -27,7 +28,7 @@ export async function loadPlugins(): Promise<void> {
 	}
 }
 
-export async function createPlugin(fields: Partial<PluginFields> = {}): Promise<Plugin> {
+export async function createPlugin(fields: DeepPartial<PluginFields> = {}): Promise<Plugin> {
 	const settings = await getAppSettings();
 
 	// Create Record in DB
@@ -56,7 +57,7 @@ export async function createPlugin(fields: Partial<PluginFields> = {}): Promise<
 
 export async function updatePlugin(
 	pluginId: string,
-	changes: Partial<PluginFields>
+	changes: DeepPartial<PluginFields>
 ): Promise<void> {
 	const updated = await PluginService.update(pluginId, changes);
 	plugins.update((list) => list.map((p) => (p.id === pluginId ? updated : p)));

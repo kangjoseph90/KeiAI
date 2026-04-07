@@ -25,6 +25,7 @@ import { loadInitialMessages } from './message';
 import { getCharacterDetail } from './character';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
  * Returns chat detail from store cache first, then from DB if needed.
@@ -65,8 +66,8 @@ export function clearActiveChat(): void {
 
 export async function createChat(
 	characterId: string,
-	summary: Partial<ChatSummaryFields> = {},
-	data: Partial<ChatDataFields> = {}
+	summary: DeepPartial<ChatSummaryFields> = {},
+	data: DeepPartial<ChatDataFields> = {}
 ): Promise<ChatDetail> {
 	const char = await getCharacterDetail(characterId);
 
@@ -98,7 +99,7 @@ export async function createChat(
 
 export async function updateChat(
 	chatId: string,
-	changes: Partial<ChatSummaryFields>
+	changes: DeepPartial<ChatSummaryFields>
 ): Promise<void> {
 	const updated = await ChatService.updateSummary(chatId, changes);
 	chats.update((list) => list.map((c) => (c.id === chatId ? updated : c)));
@@ -109,7 +110,7 @@ export async function updateChat(
 
 export async function updateChatData(
 	chatId: string,
-	changes: Partial<ChatDataContent>
+	changes: DeepPartial<ChatDataContent>
 ): Promise<void> {
 	const data = await ChatService.updateData(chatId, changes);
 	if (chatId === get(activeChatId)) {
@@ -119,8 +120,8 @@ export async function updateChatData(
 
 export async function updateChatFull(
 	chatId: string,
-	summaryChanges: Partial<ChatSummaryFields>,
-	dataChanges: Partial<ChatDataContent>
+	summaryChanges: DeepPartial<ChatSummaryFields>,
+	dataChanges: DeepPartial<ChatDataContent>
 ): Promise<void> {
 	const result = await ChatService.update(chatId, summaryChanges, dataChanges);
 	chats.update((list) => list.map((c) => (c.id === chatId ? result : c)));
@@ -160,7 +161,7 @@ export async function deleteChat(chatId: string, characterId: string): Promise<v
 
 export async function createChatLorebook(
 	chatId: string,
-	fields: Partial<LorebookFields>
+	fields: DeepPartial<LorebookFields>
 ): Promise<Lorebook> {
 	const chat = await getChatDetail(chatId);
 
@@ -250,7 +251,7 @@ export async function updateChatFolder(
 	chatId: string,
 	folderType: ChatFolderType,
 	folderId: string,
-	changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
+	changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
 	const chat = await getChatDetail(chatId);
 
