@@ -12,7 +12,7 @@ import { AppError } from '$lib/types/errors';
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 export interface OpenAITTSConfig {
-	apiKey: string;
+	apiKey?: string;
 	baseUrl: string;
 	modelId: string;
 	voiceId: string;
@@ -21,29 +21,23 @@ export interface OpenAITTSConfig {
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export class OpenAITTSStreamHandler implements TTSStreamHandler {
-	private readonly apiKey: string;
-	private readonly baseUrl: string;
-	private readonly modelId: string;
-	private readonly voiceId: string;
+	private readonly config: OpenAITTSConfig;
 
 	constructor(config: OpenAITTSConfig) {
-		this.apiKey = config.apiKey;
-		this.baseUrl = config.baseUrl;
-		this.modelId = config.modelId;
-		this.voiceId = config.voiceId;
+		this.config = config;
 	}
 
 	async *synthesize(text: string, signal: AbortSignal): AsyncIterable<TTSStreamChunk> {
-		const response = await appHttp.fetch(`${this.baseUrl}/audio/speech`, {
+		const response = await appHttp.fetch(`${this.config.baseUrl}/audio/speech`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: `Bearer ${this.apiKey}`
+				...(this.config.apiKey ? { Authorization: `Bearer ${this.config.apiKey}` } : {})
 			},
 			body: JSON.stringify({
-				model: this.modelId,
+				model: this.config.modelId,
 				input: text,
-				voice: this.voiceId,
+				voice: this.config.voiceId,
 				response_format: 'pcm'
 			}),
 			signal

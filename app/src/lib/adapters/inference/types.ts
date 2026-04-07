@@ -51,6 +51,16 @@ export interface SynthesizeOptions {
 	onProgress?: InferenceProgressCallback;
 }
 
+export interface GenerateOptions {
+	device?: InferenceDevice;
+	onProgress?: InferenceProgressCallback;
+	max_new_tokens?: number;
+	temperature?: number;
+	top_p?: number;
+	top_k?: number;
+	repetition_penalty?: number;
+}
+
 // ─── Interface ───────────────────────────────────────────────────────────────
 
 export interface IInferenceAdapter {
@@ -70,6 +80,16 @@ export interface IInferenceAdapter {
 		voiceId: string,
 		options?: SynthesizeOptions
 	): AsyncIterable<ArrayBuffer>;
+
+	/**
+	 * Generate text via an LLM.
+	 * Yields stream chunks (tokens).
+	 */
+	generate(
+		spec: ModelSpec,
+		messages: { role: string; content: string }[],
+		options?: GenerateOptions
+	): AsyncIterable<string>;
 
 	/** Release a cached model pipeline to free memory. */
 	dispose(modelId: string): Promise<void>;

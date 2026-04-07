@@ -19,6 +19,7 @@ import { ModuleService, LorebookService, ScriptService, SettingsService } from '
 import { AppError } from '$lib/types/errors';
 import type { Module, ModuleContent, Lorebook, Script, AppSettings } from '$lib/services';
 import type { FolderDef } from '$lib/types/refs';
+import { makeSettings } from '../../utils';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
@@ -68,7 +69,7 @@ describe('Module Store', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		modules.set([]);
-		appSettings.set({ theme: 'dark', providers: {}, moduleRefs: [] } as AppSettings);
+		appSettings.set(makeSettings({ theme: 'dark', moduleRefs: [] }));
 		moduleResources.set(new Map());
 	});
 
@@ -124,9 +125,11 @@ describe('Module Store', () => {
 	describe('deleteModule', () => {
 		it('should delete module and remove from stores', async () => {
 			modules.set([mockModule]);
-			appSettings.set({
-				moduleRefs: [{ id: 'mod-1', sortOrder: 'a', enabled: true }]
-			} as AppSettings);
+			appSettings.set(
+				makeSettings({
+					moduleRefs: [{ id: 'mod-1', sortOrder: 'a', enabled: true }]
+				})
+			);
 			vi.mocked(SettingsService.update).mockResolvedValue({} as AppSettings);
 
 			await deleteModule('mod-1');

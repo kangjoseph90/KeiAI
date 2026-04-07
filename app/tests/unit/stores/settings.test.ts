@@ -11,6 +11,7 @@ import {
 import { appSettings } from '$lib/stores/state';
 import { SettingsService } from '$lib/services';
 import type { AppSettings } from '$lib/services';
+import { makeSettings } from '../../utils';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
@@ -30,15 +31,14 @@ vi.mock('$lib/utils/ordering', () => ({
 }));
 
 describe('Settings Store', () => {
-	const mockSettings: AppSettings = {
+	const mockSettings: AppSettings = makeSettings({
 		theme: 'dark',
-		apiKeys: {},
 		characterRefs: [],
 		personaRefs: [],
 		presetRefs: [],
 		moduleRefs: [],
 		pluginRefs: []
-	} as unknown as AppSettings;
+	});
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -70,10 +70,12 @@ describe('Settings Store', () => {
 
 	describe('Folder Management', () => {
 		it('should create global folder', async () => {
-			vi.mocked(SettingsService.update).mockResolvedValue({
-				...mockSettings,
-				folders: { characters: [{ id: 'new-id', name: 'Folder', sortOrder: 'sort-order' }] }
-			} as unknown as AppSettings);
+			vi.mocked(SettingsService.update).mockResolvedValue(
+				makeSettings({
+					...mockSettings,
+					folders: { characters: [{ id: 'new-id', name: 'Folder', sortOrder: 'sort-order' }] }
+				})
+			);
 
 			const folder = await createGlobalFolder('characters', 'Folder');
 
@@ -86,11 +88,13 @@ describe('Settings Store', () => {
 				...mockSettings,
 				folders: { characters: [{ id: 'f1', name: 'Old', sortOrder: 'a' }] }
 			};
-			appSettings.set(settingsWithFolder as unknown as AppSettings);
-			vi.mocked(SettingsService.update).mockResolvedValue({
-				...mockSettings,
-				folders: { characters: [{ id: 'f1', name: 'New', sortOrder: 'a' }] }
-			} as unknown as AppSettings);
+			appSettings.set(makeSettings(settingsWithFolder));
+			vi.mocked(SettingsService.update).mockResolvedValue(
+				makeSettings({
+					...mockSettings,
+					folders: { characters: [{ id: 'f1', name: 'New', sortOrder: 'a' }] }
+				})
+			);
 
 			await updateGlobalFolder('characters', 'f1', { name: 'New' });
 
@@ -102,11 +106,13 @@ describe('Settings Store', () => {
 				...mockSettings,
 				folders: { characters: [{ id: 'f1', name: 'Folder', sortOrder: 'a' }] }
 			};
-			appSettings.set(settingsWithFolder as unknown as AppSettings);
-			vi.mocked(SettingsService.update).mockResolvedValue({
-				...mockSettings,
-				folders: { characters: [] }
-			} as unknown as AppSettings);
+			appSettings.set(makeSettings(settingsWithFolder));
+			vi.mocked(SettingsService.update).mockResolvedValue(
+				makeSettings({
+					...mockSettings,
+					folders: { characters: [] }
+				})
+			);
 
 			await deleteGlobalFolder('characters', 'f1');
 
@@ -120,11 +126,13 @@ describe('Settings Store', () => {
 				...mockSettings,
 				characterRefs: [{ id: 'char-1', sortOrder: 'a' }]
 			};
-			appSettings.set(settingsWithRef as unknown as AppSettings);
-			vi.mocked(SettingsService.update).mockResolvedValue({
-				...mockSettings,
-				characterRefs: [{ id: 'char-1', sortOrder: 'a', folderId: 'f1' }]
-			} as unknown as AppSettings);
+			appSettings.set(makeSettings(settingsWithRef));
+			vi.mocked(SettingsService.update).mockResolvedValue(
+				makeSettings({
+					...mockSettings,
+					characterRefs: [{ id: 'char-1', sortOrder: 'a', folderId: 'f1' }]
+				})
+			);
 
 			await moveGlobalItem('characters', 'char-1', 'f1');
 

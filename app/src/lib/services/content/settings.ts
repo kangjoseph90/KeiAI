@@ -2,18 +2,47 @@ import { decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type SettingsRecord } from '$lib/adapters/db';
 import type { OrderedRef, FolderDef, ResourceRef } from '$lib/types/refs';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { encryptedWriteQueue } from './write_queue';
 import type { CustomLLMModel } from '$lib/types/models/llm';
-import type { ProviderConfig } from '$lib/types/models/provider';
+import type {
+	AnthropicProviderConfig,
+	CustomProviderConfig,
+	DeepSeekProviderConfig,
+	GoogleProviderConfig,
+	MistralProviderConfig,
+	NovelAIProviderConfig,
+	OpenAIProviderConfig,
+	OpenRouterProviderConfig,
+	TransformersProviderConfig,
+	VoyageAIProviderConfig,
+	ElevenLabsProviderConfig,
+	KokoroProviderConfig,
+	MiniLMProviderConfig
+} from '$lib/types/models/provider';
+import type { EmbeddingProvider } from '$lib/types/models/embedding';
+import type { TTSProvider } from '$lib/types/models/tts';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface AppSettingsContent {
 	theme: 'light' | 'dark' | 'system';
-	providers: ProviderConfig;
-	customModels?: CustomLLMModel[];
+	openai: OpenAIProviderConfig;
+	anthropic: AnthropicProviderConfig;
+	google: GoogleProviderConfig;
+	mistral: MistralProviderConfig;
+	deepseek: DeepSeekProviderConfig;
+	novelai: NovelAIProviderConfig;
+	voyageai: VoyageAIProviderConfig;
+	openrouter: OpenRouterProviderConfig;
+	transformers: TransformersProviderConfig;
+	elevenlabs: ElevenLabsProviderConfig;
+	kokoro: KokoroProviderConfig;
+	minilm: MiniLMProviderConfig;
+	custom: CustomProviderConfig;
+	embeddingProvider: EmbeddingProvider;
+	ttsProvider: TTSProvider;
 }
 
 export interface AppSettingsRefs {
@@ -39,27 +68,86 @@ export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}
 
 export const defaultSettings: AppSettingsContent = {
 	theme: 'system',
-	providers: {
-		openai: {
+	openai: {
+		tts: {
+			modelId: 'tts-1',
+			voiceId: 'alloy'
+		},
+		embedding: {
+			modelId: 'text-embedding-3-small'
+		}
+	},
+	anthropic: {},
+	google: {
+		apiKey: '',
+		tts: {
+			modelId: 'gemini-2.5-flash-preview-tts',
+			voiceId: 'zephyr'
+		},
+		embedding: {
+			modelId: 'gemini-embedding-2-preview'
+		}
+	},
+	mistral: {
+		apiKey: ''
+	},
+	deepseek: {
+		apiKey: ''
+	},
+	novelai: {
+		apiKey: '',
+		tts: {
+			voiceId: 'aini',
+			version: 'v2'
+		}
+	},
+	voyageai: {
+		embedding: {
+			modelId: 'voyage-4-large'
+		}
+	},
+	openrouter: {
+		embedding: {
+			modelId: 'openai/text-embedding-3-small'
+		}
+	},
+	transformers: {
+		embedding: {
+			modelId: 'onnx-community/Qwen3-Embedding-0.6B-ONNX'
+		},
+		tts: {
+			modelId: 'onnx-community/Kokoro-82M-v1.0-ONNX',
+			voiceId: 'af_heart'
+		}
+	},
+	elevenlabs: {
+		apiKey: '',
+		tts: {
+			voiceId: ''
+		}
+	},
+	kokoro: {
+		tts: {
+			voiceId: 'af_heart'
+		}
+	},
+	minilm: {
+		embedding: {
+			modelId: 'onnx-community/all-MiniLM-L6-v2-ONNX'
+		}
+	},
+	custom: {
+		llm: {
+			models: []
+		},
+		embedding: {
+			modelId: '',
+			baseUrl: '',
 			apiKey: ''
-		},
-		anthropic: {
-			apiKey: ''
-		},
-		google: {
-			apiKey: ''
-		},
-		mistral: {
-			apiKey: ''
-		},
-		deepseek: {
-			apiKey: ''
-		},
-		webllm: {
-			modelUrl: ''
-		},
-		mock: {}
-	}
+		}
+	},
+	embeddingProvider: 'openai',
+	ttsProvider: 'openai'
 };
 
 // ─── Service ──────────────────────────────────────────────────────────
@@ -92,7 +180,7 @@ export class SettingsService {
 		}
 	}
 
-	static async set(settings: AppSettings): Promise<void> {
+	static async set(settings: DeepPartial<AppSettings>): Promise<void> {
 		const { userId } = getActiveSession();
 
 		try {
@@ -131,7 +219,7 @@ export class SettingsService {
 	}
 
 	/** Partial update ??read-modify-write with merge */
-	static async update(changes: Partial<AppSettings>): Promise<AppSettings> {
+	static async update(changes: DeepPartial<AppSettings>): Promise<AppSettings> {
 		const { masterKey, userId } = getActiveSession();
 
 		try {

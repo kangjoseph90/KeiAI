@@ -1,7 +1,7 @@
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type PersonaRecord } from '$lib/adapters/db';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import type { AssetRef } from '$lib/types/refs';
 import { generateId } from '$lib/utils/id';
@@ -86,7 +86,7 @@ export class PersonaService {
 	}
 
 	/** Create a persona */
-	static async create(fields: Partial<PersonaFields> = {}): Promise<Persona> {
+	static async create(fields: DeepPartial<PersonaFields> = {}): Promise<Persona> {
 		const resolved: PersonaFields = deepMerge(
 			defaultPersonaFields,
 			fields as Record<string, unknown>
@@ -117,7 +117,7 @@ export class PersonaService {
 	}
 
 	/** Update a persona */
-	static async update(id: string, changes: Partial<PersonaContent>): Promise<Persona> {
+	static async update(id: string, changes: DeepPartial<PersonaFields>): Promise<Persona> {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<PersonaFields>('personas', id);
 		const record = await localDB.getRecord<PersonaRecord>('personas', id);

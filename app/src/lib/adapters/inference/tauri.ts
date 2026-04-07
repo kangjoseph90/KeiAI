@@ -5,7 +5,14 @@
  * Native inference via Rust (ONNX Runtime / candle) is a future milestone.
  */
 
-import type { IInferenceAdapter, ModelSpec, EmbedOptions, SynthesizeOptions } from './types';
+import type {
+	IInferenceAdapter,
+	ModelSpec,
+	EmbedOptions,
+	SynthesizeOptions,
+	InferenceProgressCallback,
+	GenerateOptions
+} from './types';
 
 export class TauriInferenceAdapter implements IInferenceAdapter {
 	async embed(_spec: ModelSpec, _texts: string[], _options?: EmbedOptions): Promise<number[][]> {
@@ -21,6 +28,15 @@ export class TauriInferenceAdapter implements IInferenceAdapter {
 		// Throw before any yield — the unreachable yield satisfies the async generator return type.
 		throw new Error('Native inference not yet implemented. Use remote TTS providers.');
 		yield new ArrayBuffer(0);
+	}
+
+	async *generate(
+		_spec: ModelSpec,
+		_messages: { role: string; content: string }[],
+		_options?: GenerateOptions
+	): AsyncIterable<string> {
+		throw new Error('Tauri inference not implemented yet');
+		yield '';
 	}
 
 	async dispose(_modelId: string): Promise<void> {

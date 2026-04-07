@@ -21,8 +21,7 @@ export type LLMTokenizer =
 export type LLMHandler =
 	| 'openai_compatible' // OpenAI Completions API
 	| 'anthropic'
-	| 'google'
-	| 'webllm';
+	| 'google';
 
 // ─── Built-in Provider Types ─────────────────────────────────────────────────────────
 
@@ -32,7 +31,8 @@ export type BuiltInLLMProvider =
 	| 'deepseek'
 	| 'google'
 	| 'mistral'
-	| 'webllm'
+	| 'openrouter'
+	| 'transformers'
 	| 'mock';
 
 export type CustomLLMProvider = 'custom';
@@ -71,8 +71,7 @@ const tokenizerNames: Record<LLMTokenizer, string> = {
 const handlerNames: Record<LLMHandler, string> = {
 	openai_compatible: 'OpenAI Compatible',
 	anthropic: 'Anthropic Claude',
-	google: 'Google Cloud',
-	webllm: 'WebLLM'
+	google: 'Google Cloud'
 };
 
 const providerNames: Record<LLMProvider, string> = {
@@ -81,7 +80,8 @@ const providerNames: Record<LLMProvider, string> = {
 	deepseek: 'DeepSeek',
 	google: 'Google',
 	mistral: 'Mistral',
-	webllm: 'WebLLM',
+	openrouter: 'OpenRouter',
+	transformers: 'Transformers',
 	mock: 'Mock',
 	custom: 'Custom'
 };
@@ -150,6 +150,7 @@ export type LLMModel = BuiltInLLMModel | CustomLLMModel;
 export interface LLMModelConfig {
 	id: string;
 	provider: LLMProvider;
+	tokenizer?: LLMTokenizer;
 	parameters: Partial<Record<LLMParameter, number | string | boolean>>;
 }
 
@@ -212,8 +213,6 @@ const MISTRAL_MODELS: BuiltInLLMModel[] = [
 		parameters: ['temperature']
 	}
 ];
-
-const WEBLLM_MODELS: BuiltInLLMModel[] = [];
 
 const MOCK_MODELS: BuiltInLLMModel[] = [
 	{

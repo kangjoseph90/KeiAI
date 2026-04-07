@@ -12,21 +12,17 @@ import type {
 	LLMStreamContent,
 	LLMStreamHandler,
 	OpenAIChat,
-	LLMStreamModelConfig,
-	LLMStreamHttpConfig
+	RemoteLLMHandlerConfig
 } from '../types';
 import type { ToolCallRequest } from '$lib/services/content/tool';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
-import { debounceStream, type StreamDebounceConfig } from '$lib/utils/stream';
+import { debounceStream } from '$lib/utils/stream';
+import { createLogger } from '$lib/adapters/logger';
+
+const logger = createLogger('llm:openai-compat');
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface OpenAIHandlerConfig {
-	model: LLMStreamModelConfig;
-	http: LLMStreamHttpConfig;
-	debounce?: StreamDebounceConfig;
-}
 
 /** Shape of a single SSE chunk from OpenAI's streaming API */
 interface OpenAIDelta {
@@ -50,9 +46,9 @@ interface OpenAIDelta {
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export class OpenAILLMStreamHandler implements LLMStreamHandler {
-	private readonly config: OpenAIHandlerConfig;
+	private readonly config: RemoteLLMHandlerConfig;
 
-	constructor(config: OpenAIHandlerConfig) {
+	constructor(config: RemoteLLMHandlerConfig) {
 		this.config = config;
 	}
 
@@ -157,15 +153,16 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
 	// ─── Internals ──────────────────────────────────────────────────────────
 
 	private async fetchStream(messages: OpenAIChat[], signal: AbortSignal): Promise<Response> {
-		const { model, http } = this.config;
-		const url = `${http.baseUrl}/chat/completions`;
-		const useProxy = http.useProxy ?? true;
+		const config = this.config;
+
+		const url = `${config.baseUrl}/chat/completions`;
+		const useProxy = config.useProxy ?? true;
 
 		const body = JSON.stringify({
-			model: model.modelId,
+			model: config.modelId,
 			messages: messages.map((m) => ({ role: m.role, content: m.content })),
 			stream: true,
-			...model.parameters
+			...config.parameters
 		});
 
 		const response = await appHttp.fetch(
@@ -174,11 +171,11 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					Authorization: `Bearer ${http.apiKey}`
+					...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {})
 				},
 				body
 			},
-			{ proxy: useProxy, signal, retry: http.retry, timeout: http.timeout }
+			{ proxy: useProxy, signal, retry: config.retry, timeout: config.timeout }
 		);
 
 		if (!response.ok) {

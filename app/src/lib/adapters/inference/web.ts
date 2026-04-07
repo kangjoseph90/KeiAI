@@ -13,6 +13,7 @@ import type {
 	ModelSpec,
 	EmbedOptions,
 	SynthesizeOptions,
+	GenerateOptions,
 	InferenceProgressCallback
 } from './types';
 import { createLogger } from '$lib/adapters/logger';
@@ -120,6 +121,69 @@ export class WebInferenceAdapter implements IInferenceAdapter {
 		const copy = new ArrayBuffer(audio.byteLength);
 		new Uint8Array(copy).set(new Uint8Array(audio.buffer, audio.byteOffset, audio.byteLength));
 		yield copy;
+	}
+
+	async *generate(
+		spec: ModelSpec,
+		messages: { role: string; content: string }[],
+		options?: GenerateOptions
+	): AsyncIterable<string> {
+		const device = options?.device ?? 'webgpu';
+		const generator = await getOrLoadPipeline('text-generation', spec, device, options?.onProgress);
+
+		let resolvedMessages = messages;
+		if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+			resolvedMessages = messages.slice(0, -1);
+		}
+
+		// TextStreamer handles extracting just the newly generated tokens
+		const { TextStreamer } = await import('@huggingface/transformers');
+		const streamer = new TextStreamer(generator.tokenizer, { skip_prompt: true });
+
+		// We need a queue to bridge the callback-based streamer into an AsyncIterable
+		const queue: (string | null)[] = [];
+		let resolveNext: (() => void) | null = null;
+
+		// Monkey-patch the streamer to push to our queue
+		const originalPut = streamer.put.bind(streamer);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		streamer.put = (value: any) => {
+			originalPut(value); // calls tokenizer internally
+		};
+		const originalOnFinalizedText = streamer.on_finalized_text.bind(streamer);
+		streamer.on_finalized_text = (text: string, streamEnd?: boolean) => {
+			originalOnFinalizedText(text, streamEnd ?? false);
+			queue.push(text);
+			if (streamEnd) {
+				queue.push(null); // EOF indicator
+			}
+			resolveNext?.();
+		};
+
+		// Start generation asynchronously
+		generator(resolvedMessages, {
+			streamer,
+			max_new_tokens: options?.max_new_tokens ?? 512,
+			temperature: options?.temperature ?? 0.7,
+			top_p: options?.top_p ?? 0.9,
+			top_k: options?.top_k ?? 50,
+			repetition_penalty: options?.repetition_penalty ?? 1.1,
+			do_sample: true
+		}).catch((err: unknown) => {
+			logger.error('Generation failed:', err);
+			queue.push(null);
+			resolveNext?.();
+		});
+
+		// Yield from queue
+		while (true) {
+			if (queue.length === 0) {
+				await new Promise<void>((r) => (resolveNext = r));
+			}
+			const token = queue.shift();
+			if (token === null) break;
+			if (token !== undefined) yield token;
+		}
 	}
 
 	async dispose(modelId: string): Promise<void> {

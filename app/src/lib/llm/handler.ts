@@ -9,6 +9,9 @@
 import type { LLMStreamHandler } from '$lib/llm/types';
 import { MockLLMStreamHandler, type MockBehavior } from '$lib/llm/handlers';
 import { OpenAILLMStreamHandler } from '$lib/llm/handlers/openai';
+import { TransformersLLMStreamHandler } from '$lib/llm/handlers/transformers';
+import { AnthropicLLMStreamHandler } from '$lib/llm/handlers/anthropic';
+import { GoogleLLMStreamHandler } from '$lib/llm/handlers/google';
 import type { AppSettings } from '$lib/services';
 import { createLogger } from '$lib/adapters/logger';
 import {
@@ -16,7 +19,8 @@ import {
 	type LLMModel,
 	type BuiltInLLMModel,
 	type CustomLLMModel,
-	BUILT_IN_LLM_MODELS
+	BUILT_IN_LLM_MODELS,
+	type LLMParameter
 } from '$lib/types/models/llm';
 
 const logger = createLogger('llm:handler');
@@ -52,88 +56,72 @@ function selectBuiltInHandler(
 ): LLMStreamHandler | null {
 	switch (model.provider) {
 		case 'openai': {
-			const apiKey = settings.providers.openai?.apiKey;
-			if (!apiKey) {
-				logger.warn('No OpenAI API key.');
-				return null;
-			}
 			return new OpenAILLMStreamHandler({
-				model: {
-					modelId: model.modelId,
-					flags: model.flags,
-					parameters: modelConfig.parameters
-				},
-				http: {
-					apiKey,
-					baseUrl: 'https://api.openai.com/v1'
-				}
+				modelId: model.modelId,
+				flags: model.flags,
+				parameters: modelConfig.parameters,
+				apiKey: settings.openai.apiKey,
+				baseUrl: 'https://api.openai.com/v1'
 			});
 		}
 
 		case 'anthropic': {
-			const apiKey = settings.providers.anthropic?.apiKey;
-			if (!apiKey) {
-				logger.warn('No Anthropic API key.');
-				return null;
-			}
-			// TODO: implement AnthropicLLMStreamHandler
-			logger.warn('Anthropic LLM not yet implemented.');
-			return null;
+			return new AnthropicLLMStreamHandler({
+				modelId: model.modelId,
+				flags: model.flags,
+				parameters: modelConfig.parameters,
+				apiKey: settings.anthropic.apiKey,
+				baseUrl: 'https://api.anthropic.com/v1'
+			});
 		}
 
 		case 'deepseek': {
-			const apiKey = settings.providers.deepseek?.apiKey;
-			if (!apiKey) {
-				logger.warn('No DeepSeek API key.');
-				return null;
-			}
 			return new OpenAILLMStreamHandler({
-				model: {
-					modelId: model.modelId,
-					flags: model.flags,
-					parameters: modelConfig.parameters
-				},
-				http: {
-					apiKey,
-					baseUrl: 'https://api.deepseek.com'
-				}
+				modelId: model.modelId,
+				flags: model.flags,
+				parameters: modelConfig.parameters,
+				apiKey: settings.deepseek.apiKey,
+				baseUrl: 'https://api.deepseek.com'
 			});
 		}
 
 		case 'google': {
-			const apiKey = settings.providers.google?.apiKey;
-			if (!apiKey) {
-				logger.warn('No Google API key.');
-				return null;
-			}
-			// TODO: implement GoogleLLMStreamHandler
-			logger.warn('Google LLM not yet implemented.');
-			return null;
-		}
-
-		case 'mistral': {
-			const apiKey = settings.providers.mistral?.apiKey;
-			if (!apiKey) {
-				logger.warn('No Mistral API key.');
-				return null;
-			}
-			return new OpenAILLMStreamHandler({
-				model: {
-					modelId: model.modelId,
-					flags: model.flags,
-					parameters: modelConfig.parameters
-				},
-				http: {
-					apiKey,
-					baseUrl: 'https://api.mistral.ai/v1'
-				}
+			return new GoogleLLMStreamHandler({
+				modelId: model.modelId,
+				flags: model.flags,
+				parameters: modelConfig.parameters,
+				apiKey: settings.google.apiKey,
+				baseUrl: 'https://generativelanguage.googleapis.com/v1beta'
 			});
 		}
 
-		case 'webllm':
-			// TODO: implement WebLLMHandler — no API key needed
-			logger.warn('WebLLM not yet implemented.');
-			return null;
+		case 'mistral': {
+			return new OpenAILLMStreamHandler({
+				modelId: model.modelId,
+				flags: model.flags,
+				parameters: modelConfig.parameters,
+				apiKey: settings.mistral.apiKey,
+				baseUrl: 'https://api.mistral.ai/v1'
+			});
+		}
+
+		case 'openrouter': {
+			return new OpenAILLMStreamHandler({
+				modelId: model.modelId,
+				flags: model.flags,
+				parameters: modelConfig.parameters,
+				apiKey: settings.openrouter.apiKey,
+				baseUrl: 'https://openrouter.ai/api/v1'
+			});
+		}
+
+		case 'transformers': {
+			return new TransformersLLMStreamHandler({
+				modelId: model.modelId,
+				flags: model.flags,
+				parameters: modelConfig.parameters
+			});
+		}
 
 		case 'mock':
 			return new MockLLMStreamHandler({ behavior: model.modelId as MockBehavior });
@@ -148,36 +136,30 @@ function selectCustomHandler(
 	model: CustomLLMModel,
 	_settings: AppSettings
 ): LLMStreamHandler | null {
-	if (!model.apiKey) {
-		logger.warn('No API key for custom model.');
-		return null;
-	}
-
 	switch (model.handler) {
 		case 'openai_compatible':
 			return new OpenAILLMStreamHandler({
-				model: {
-					modelId: model.modelId,
-					flags: model.flags,
-					parameters: {}
-				},
-				http: {
-					apiKey: model.apiKey,
-					baseUrl: model.baseUrl
-				}
+				modelId: model.modelId,
+				flags: model.flags,
+				apiKey: model.apiKey,
+				baseUrl: model.baseUrl
 			});
 
 		case 'anthropic':
-			logger.warn('Custom Anthropic handler not yet implemented.');
-			return null;
+			return new AnthropicLLMStreamHandler({
+				modelId: model.modelId,
+				flags: model.flags,
+				apiKey: model.apiKey,
+				baseUrl: model.baseUrl
+			});
 
 		case 'google':
-			logger.warn('Custom Google handler not yet implemented.');
-			return null;
-
-		case 'webllm':
-			logger.warn('Custom WebLLM handler not yet implemented.');
-			return null;
+			return new GoogleLLMStreamHandler({
+				modelId: model.modelId,
+				flags: model.flags,
+				apiKey: model.apiKey,
+				baseUrl: model.baseUrl
+			});
 
 		default:
 			logger.warn(`Unknown custom handler: ${model.handler}`);
@@ -189,8 +171,24 @@ function selectCustomHandler(
  * Look up the full LLMModel definition from a LLMModelConfig reference.
  */
 function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel | undefined {
+	// Custom models
 	if (config.provider === 'custom') {
-		return settings.customModels?.find((m) => m.id === config.id);
+		return settings.custom.llm.models?.find((m: CustomLLMModel) => m.id === config.id);
 	}
+
+	// Dynamic models
+	if (config.provider === 'openrouter' || config.provider === 'transformers') {
+		return {
+			id: `${config.provider}::${config.id}`,
+			name: config.id,
+			modelId: config.id,
+			provider: config.provider,
+			tokenizer: config.tokenizer ?? 'o200k_base',
+			flags: [],
+			parameters: Object.keys(config.parameters) as LLMParameter[]
+		} as BuiltInLLMModel;
+	}
+
+	// Static models
 	return BUILT_IN_LLM_MODELS.find((m) => m.id === config.id);
 }

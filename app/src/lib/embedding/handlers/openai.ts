@@ -12,35 +12,33 @@ import { AppError } from '$lib/types/errors';
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 export interface OpenAIEmbeddingConfig {
-	apiKey: string;
+	apiKey?: string;
 	modelId: string;
-	baseUrl?: string;
+	baseUrl: string;
 }
-
-const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export class OpenAIEmbeddingHandler implements EmbeddingHandler {
-	private readonly apiKey: string;
-	private readonly modelId: string;
-	private readonly baseUrl: string;
+	private readonly config: OpenAIEmbeddingConfig;
 
 	constructor(config: OpenAIEmbeddingConfig) {
-		this.apiKey = config.apiKey;
-		this.modelId = config.modelId;
-		this.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
+		this.config = config;
 	}
 
 	async embed(texts: string[], signal?: AbortSignal): Promise<EmbeddingResult> {
-		const response = await appHttp.fetch(`${this.baseUrl}/embeddings`, {
+		const headers: Record<string, string> = {
+			'Content-Type': 'application/json'
+		};
+		if (this.config.apiKey) {
+			headers.Authorization = `Bearer ${this.config.apiKey}`;
+		}
+
+		const response = await appHttp.fetch(`${this.config.baseUrl}/embeddings`, {
 			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				Authorization: `Bearer ${this.apiKey}`
-			},
+			headers,
 			body: JSON.stringify({
-				model: this.modelId,
+				model: this.config.modelId,
 				input: texts
 			}),
 			signal

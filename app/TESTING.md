@@ -224,6 +224,38 @@ it('should handle user click', async () => {
 - Test **user behavior**, not implementation details
 - Don't assert on CSS classes or internal state
 
+- Skip crypto edge cases | Always test tamper detection + wrong key |
+- Use hard-coded partial objects for complex types | Use `makeSettings()` / `makeCharacter()` helpers |
+
+---
+
+## Test Utilities & Fixtures
+
+When testing modules with deeply nested configurations (like `AppSettings`), use the helper utilities in `tests/utils.ts` to avoid type errors and verbose setup.
+
+### `DeepPartial<T>`
+
+Found in `$lib/utils/defaults`, this type makes every property in a tree optional. Use it for update inputs or test overrides where you don't want to satisfy a large, required interface.
+
+### `makeSettings(overrides)`
+
+Builds a complete, valid `AppSettings` object by recursively merging your overrides onto the `defaultSettings`.
+
+```typescript
+import { makeSettings } from '../utils';
+
+// NO: verbose and fails if new required fields are added
+appSettings.set({ theme: 'dark', ...restOfRequiredFields } as AppSettings);
+
+// YES: clean, type-safe, and future-proof
+appSettings.set(
+	makeSettings({
+		theme: 'dark',
+		openai: { apiKey: 'sk-test' }
+	})
+);
+```
+
 ---
 
 ## Global Test Setup (tests/setup.ts)

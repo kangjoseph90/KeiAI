@@ -5,6 +5,7 @@ import type { OrderedRef, FolderDef } from '$lib/types/refs';
 import { generateSortOrder } from '$lib/utils/ordering';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
  * Returns app settings from store cache first, then from DB if needed.
@@ -26,7 +27,7 @@ export async function loadSettings(): Promise<void> {
 	appSettings.set(await SettingsService.get());
 }
 
-export async function updateSettings(changes: Partial<AppSettingsContent>): Promise<void> {
+export async function updateSettings(changes: DeepPartial<AppSettings>): Promise<void> {
 	const updated = await SettingsService.update(changes);
 	appSettings.set(updated);
 }

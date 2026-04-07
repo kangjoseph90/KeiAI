@@ -48,6 +48,7 @@ import type {
 	AppSettings,
 	CharacterDataFields
 } from '$lib/services';
+import { makeSettings } from '../../utils';
 import type { FolderDef, OrderedRef } from '$lib/types/refs';
 
 // Mock Services
@@ -125,12 +126,12 @@ describe('Character Store', () => {
 		characterModules.set([]);
 		chats.set([]);
 		modules.set([]);
-		appSettings.set({
-			theme: 'dark',
-			providers: {},
-			characterRefs: [],
-			chatRefs: []
-		} as AppSettings);
+		appSettings.set(
+			makeSettings({
+				theme: 'dark',
+				characterRefs: []
+			})
+		);
 	});
 
 	describe('loadCharacters', () => {
@@ -146,7 +147,7 @@ describe('Character Store', () => {
 
 		it('should sort characters if refs exist in settings', async () => {
 			const mockList = [mockCharacter];
-			appSettings.set({ characterRefs: [{ id: 'char-1', sortOrder: 'a' }] } as AppSettings);
+			appSettings.set(makeSettings({ characterRefs: [{ id: 'char-1', sortOrder: 'a' }] }));
 			vi.mocked(CharacterService.list).mockResolvedValue(mockList);
 
 			await loadCharacters();
@@ -217,11 +218,12 @@ describe('Character Store', () => {
 	describe('createCharacter', () => {
 		it('should create character and update stores', async () => {
 			vi.mocked(CharacterService.create).mockResolvedValue(mockCharacterDetail);
-			vi.mocked(SettingsService.update).mockResolvedValue({
-				theme: 'dark',
-				providers: {},
-				characterRefs: []
-			} as AppSettings);
+			vi.mocked(SettingsService.update).mockResolvedValue(
+				makeSettings({
+					theme: 'dark',
+					characterRefs: []
+				})
+			);
 
 			const result = await createCharacter({ name: 'New' });
 
@@ -244,16 +246,18 @@ describe('Character Store', () => {
 	describe('deleteCharacter', () => {
 		it('should delete character and remove from stores', async () => {
 			characters.set([mockCharacter]);
-			appSettings.set({
-				theme: 'dark',
-				providers: {},
-				characterRefs: [{ id: 'char-1', sortOrder: 'a' }]
-			} as AppSettings);
-			vi.mocked(SettingsService.update).mockResolvedValue({
-				theme: 'dark',
-				providers: {},
-				characterRefs: []
-			} as AppSettings);
+			appSettings.set(
+				makeSettings({
+					theme: 'dark',
+					characterRefs: [{ id: 'char-1', sortOrder: 'a' }]
+				})
+			);
+			vi.mocked(SettingsService.update).mockResolvedValue(
+				makeSettings({
+					theme: 'dark',
+					characterRefs: []
+				})
+			);
 			vi.mocked(CharacterService.delete).mockResolvedValue(undefined);
 
 			await deleteCharacter('char-1');

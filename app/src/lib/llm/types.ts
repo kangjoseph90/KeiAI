@@ -8,6 +8,7 @@
 import type { ToolCallRequest } from '$lib/services/content/tool';
 import type { RetryOptions } from '$lib/adapters/http/types';
 import type { LLMFlags, LLMParameter } from '$lib/types/models/llm';
+import type { StreamDebounceConfig } from '$lib/utils/stream';
 
 // ─── Stream Content ──────────────────────────────────────────────────────────
 
@@ -37,33 +38,25 @@ export interface OpenAIChat {
 	thought?: string;
 }
 
-// ─── Handler Config (Role-Based) ────────────────────────────────────────────
-
-/** Model identity & generation parameters */
-export interface LLMStreamModelConfig {
+/**
+ * Base configuration shared by ALL LLM stream handlers.
+ * Contains only generation-related concerns.
+ */
+export interface LLMStreamHandlerConfig {
 	modelId: string;
 	flags?: LLMFlags[];
 	parameters?: Partial<Record<LLMParameter, number | string | boolean>>;
+	debounce?: StreamDebounceConfig;
 }
 
 /**
- * HTTP transport: auth, endpoint, proxy, retry.
- *
- * NOTE: `apiKey` assumes Bearer token auth (OpenAI, DeepSeek, Mistral, etc.).
- * When adding OAuth2 (Vertex AI), Azure AD, or SigV4 (Bedrock), replace
- * `apiKey` with a discriminated union:
- *   type AuthConfig =
- *     | { type: 'bearer'; token: string }
- *     | { type: 'header'; headers: Record<string, string> }
+ * Extended configuration for remote (HTTP-based) LLM stream handlers.
+ * Adds transport fields on top of the base generation config.
  */
-export interface LLMStreamHttpConfig {
-	apiKey: string;
-	/** Base URL without trailing slash (e.g. "https://api.openai.com/v1") */
+export interface RemoteLLMHandlerConfig extends LLMStreamHandlerConfig {
 	baseUrl: string;
-	/** Use proxy adapter for CORS bypass (Web only). Default: true */
+	apiKey?: string;
 	useProxy?: boolean;
-	/** Retry options for transient failures */
 	retry?: RetryOptions;
-	/** Request timeout in ms */
 	timeout?: number;
 }
