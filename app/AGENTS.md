@@ -412,8 +412,6 @@ pnpm lint             # ESLint + Prettier check
 
 **Cycle**: Write module → Write tests → Pass tests → `pnpm check` → `pnpm format <files>` → Commit.
 
-**Never** run `pnpm format` without a file argument — it rewrites every file and destroys git blame.
-
 ---
 
 ## See Also

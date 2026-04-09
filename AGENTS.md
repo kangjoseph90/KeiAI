@@ -60,7 +60,6 @@ PocketBase → Sync (pull encrypted blob) → Service (decrypt + deepMerge defau
 ## Cross-Cutting Conventions
 
 - **No `any` type** anywhere in TypeScript code
-- **Format specific files** only: `pnpm format ./path/to/file.ts` — never run `pnpm format` globally (destroys git history)
 - **Type-check before commit**: `pnpm check` in `app/`
 - **Test after every module change**: write test → pass → then move on
 - Refer to each subproject's AGENTS.md for layer-specific rules
