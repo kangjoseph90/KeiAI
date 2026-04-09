@@ -11,6 +11,12 @@ export interface OpenAIProviderConfig {
 	embedding: {
 		modelId: string;
 	};
+	imagegen: {
+		modelId: string;
+	};
+	stt: {
+		modelId: string;
+	};
 }
 
 // ─── Anthropic ───────────────────────────────────────────────────────────────
@@ -28,6 +34,12 @@ export interface GoogleProviderConfig {
 		voiceId: string;
 	};
 	embedding: {
+		modelId: string;
+	};
+	imagegen: {
+		modelId: string;
+	};
+	stt: {
 		modelId: string;
 	};
 }
@@ -59,6 +71,9 @@ export interface NovelAIProviderConfig {
 export interface VoyageAIProviderConfig {
 	apiKey?: string;
 	embedding: {
+		modelId: string;
+	};
+	reranker: {
 		modelId: string;
 	};
 }
@@ -106,6 +121,48 @@ export interface TransformersProviderConfig {
 	tts: {
 		modelId: string;
 		voiceId: string;
+	};
+	stt: {
+		modelId: string;
+	};
+	reranker: {
+		modelId: string;
+	};
+}
+
+// ─── Stability AI ────────────────────────────────────────────────────────
+
+export interface StabilityProviderConfig {
+	apiKey?: string;
+	imagegen: {
+		modelId: string;
+	};
+}
+
+// ─── Groq ────────────────────────────────────────────────────────────────
+
+export interface GroqProviderConfig {
+	apiKey?: string;
+	stt: {
+		modelId: string;
+	};
+}
+
+// ─── Cohere ─────────────────────────────────────────────────────────────
+
+export interface CohereProviderConfig {
+	apiKey?: string;
+	reranker: {
+		modelId: string;
+	};
+}
+
+// ─── Jina AI ────────────────────────────────────────────────────────────
+
+export interface JinaProviderConfig {
+	apiKey?: string;
+	reranker: {
+		modelId: string;
 	};
 }
 

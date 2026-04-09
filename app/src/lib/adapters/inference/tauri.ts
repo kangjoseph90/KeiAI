@@ -10,8 +10,10 @@ import type {
 	ModelSpec,
 	EmbedOptions,
 	SynthesizeOptions,
-	InferenceProgressCallback,
-	GenerateOptions
+	GenerateOptions,
+	TranscribeOptions,
+	TranscribeResult,
+	RerankOptions
 } from './types';
 
 export class TauriInferenceAdapter implements IInferenceAdapter {
@@ -37,6 +39,23 @@ export class TauriInferenceAdapter implements IInferenceAdapter {
 	): AsyncIterable<string> {
 		throw new Error('Tauri inference not implemented yet');
 		yield '';
+	}
+
+	async transcribe(
+		_spec: ModelSpec,
+		_audio: Blob | Float32Array,
+		_options?: TranscribeOptions
+	): Promise<TranscribeResult> {
+		throw new Error('Native inference not yet implemented. Use remote STT providers.');
+	}
+
+	async rerank(
+		_spec: ModelSpec,
+		_query: string,
+		_documents: string[],
+		_options?: RerankOptions
+	): Promise<number[]> {
+		throw new Error('Native inference not yet implemented. Use remote Reranker providers.');
 	}
 
 	async dispose(_modelId: string): Promise<void> {

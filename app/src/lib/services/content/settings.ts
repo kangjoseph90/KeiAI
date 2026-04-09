@@ -19,10 +19,17 @@ import type {
 	VoyageAIProviderConfig,
 	ElevenLabsProviderConfig,
 	KokoroProviderConfig,
-	MiniLMProviderConfig
+	MiniLMProviderConfig,
+	StabilityProviderConfig,
+	GroqProviderConfig,
+	CohereProviderConfig,
+	JinaProviderConfig
 } from '$lib/types/models/provider';
 import type { EmbeddingProvider } from '$lib/types/models/embedding';
 import type { TTSProvider } from '$lib/types/models/tts';
+import type { ImageGenProvider } from '$lib/types/models/imagegen';
+import type { STTProvider } from '$lib/types/models/stt';
+import type { RerankerProvider } from '$lib/types/models/reranker';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -40,9 +47,16 @@ export interface AppSettingsContent {
 	elevenlabs: ElevenLabsProviderConfig;
 	kokoro: KokoroProviderConfig;
 	minilm: MiniLMProviderConfig;
+	stability: StabilityProviderConfig;
+	groq: GroqProviderConfig;
+	cohere: CohereProviderConfig;
+	jina: JinaProviderConfig;
 	custom: CustomProviderConfig;
 	embeddingProvider: EmbeddingProvider;
 	ttsProvider: TTSProvider;
+	imagegenProvider: ImageGenProvider;
+	sttProvider: STTProvider;
+	rerankerProvider: RerankerProvider;
 }
 
 export interface AppSettingsRefs {
@@ -75,6 +89,12 @@ export const defaultSettings: AppSettingsContent = {
 		},
 		embedding: {
 			modelId: 'text-embedding-3-small'
+		},
+		imagegen: {
+			modelId: 'gpt-image-1'
+		},
+		stt: {
+			modelId: 'whisper-1'
 		}
 	},
 	anthropic: {},
@@ -86,6 +106,12 @@ export const defaultSettings: AppSettingsContent = {
 		},
 		embedding: {
 			modelId: 'gemini-embedding-2-preview'
+		},
+		imagegen: {
+			modelId: 'imagen-3.0-generate-002'
+		},
+		stt: {
+			modelId: 'latest_long'
 		}
 	},
 	mistral: {
@@ -104,6 +130,9 @@ export const defaultSettings: AppSettingsContent = {
 	voyageai: {
 		embedding: {
 			modelId: 'voyage-4-large'
+		},
+		reranker: {
+			modelId: 'rerank-2'
 		}
 	},
 	openrouter: {
@@ -118,6 +147,12 @@ export const defaultSettings: AppSettingsContent = {
 		tts: {
 			modelId: 'onnx-community/Kokoro-82M-v1.0-ONNX',
 			voiceId: 'af_heart'
+		},
+		stt: {
+			modelId: 'onnx-community/whisper-tiny'
+		},
+		reranker: {
+			modelId: 'Xenova/bge-reranker-base'
 		}
 	},
 	elevenlabs: {
@@ -136,6 +171,30 @@ export const defaultSettings: AppSettingsContent = {
 			modelId: 'onnx-community/all-MiniLM-L6-v2-ONNX'
 		}
 	},
+	stability: {
+		apiKey: '',
+		imagegen: {
+			modelId: 'stable-diffusion-3.5-large'
+		}
+	},
+	groq: {
+		apiKey: '',
+		stt: {
+			modelId: 'whisper-large-v3'
+		}
+	},
+	cohere: {
+		apiKey: '',
+		reranker: {
+			modelId: 'rerank-v3.5'
+		}
+	},
+	jina: {
+		apiKey: '',
+		reranker: {
+			modelId: 'jina-reranker-v2-base-multilingual'
+		}
+	},
 	custom: {
 		llm: {
 			models: []
@@ -147,7 +206,10 @@ export const defaultSettings: AppSettingsContent = {
 		}
 	},
 	embeddingProvider: 'openai',
-	ttsProvider: 'openai'
+	ttsProvider: 'openai',
+	imagegenProvider: 'openai',
+	sttProvider: 'openai',
+	rerankerProvider: 'cohere'
 };
 
 // ─── Service ──────────────────────────────────────────────────────────
@@ -218,7 +280,7 @@ export class SettingsService {
 		}
 	}
 
-	/** Partial update ??read-modify-write with merge */
+	/** Partial update – read-modify-write with merge */
 	static async update(changes: DeepPartial<AppSettings>): Promise<AppSettings> {
 		const { masterKey, userId } = getActiveSession();
 

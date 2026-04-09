@@ -61,6 +61,23 @@ export interface GenerateOptions {
 	repetition_penalty?: number;
 }
 
+export interface TranscribeOptions {
+	device?: InferenceDevice;
+	onProgress?: InferenceProgressCallback;
+	/** Language code, e.g. "en", "ko". Default: auto-detect. */
+	language?: string;
+}
+
+export interface RerankOptions {
+	device?: InferenceDevice;
+	onProgress?: InferenceProgressCallback;
+}
+
+export interface TranscribeResult {
+	text: string;
+	segments?: { text: string; start: number; end: number }[];
+}
+
 // ─── Interface ───────────────────────────────────────────────────────────────
 
 export interface IInferenceAdapter {
@@ -90,6 +107,27 @@ export interface IInferenceAdapter {
 		messages: { role: string; content: string }[],
 		options?: GenerateOptions
 	): AsyncIterable<string>;
+
+	/**
+	 * Transcribe audio to text.
+	 * Returns the transcription with optional segment timestamps.
+	 */
+	transcribe(
+		spec: ModelSpec,
+		audio: Blob | Float32Array,
+		options?: TranscribeOptions
+	): Promise<TranscribeResult>;
+
+	/**
+	 * Rerank documents against a query using a Cross-Encoder.
+	 * Returns an array of relevance scores corresponding to the documents.
+	 */
+	rerank(
+		spec: ModelSpec,
+		query: string,
+		documents: string[],
+		options?: RerankOptions
+	): Promise<number[]>;
 
 	/** Release a cached model pipeline to free memory. */
 	dispose(modelId: string): Promise<void>;

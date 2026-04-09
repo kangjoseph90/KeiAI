@@ -14,6 +14,9 @@ import type {
 	EmbedOptions,
 	SynthesizeOptions,
 	GenerateOptions,
+	TranscribeOptions,
+	TranscribeResult,
+	RerankOptions,
 	InferenceProgressCallback
 } from './types';
 import { createLogger } from '$lib/adapters/logger';
@@ -184,6 +187,72 @@ export class WebInferenceAdapter implements IInferenceAdapter {
 			if (token === null) break;
 			if (token !== undefined) yield token;
 		}
+	}
+
+	async transcribe(
+		spec: ModelSpec,
+		audio: Blob | Float32Array,
+		options?: TranscribeOptions
+	): Promise<TranscribeResult> {
+		const device = options?.device ?? 'wasm';
+		const transcriber = await getOrLoadPipeline(
+			'automatic-speech-recognition',
+			spec,
+			device,
+			options?.onProgress
+		);
+
+		// Convert Blob to Float32Array if needed
+		let audioData: Blob | Float32Array = audio;
+		if (audio instanceof Blob) {
+			const arrayBuffer = await audio.arrayBuffer();
+			const { decodeAudio } = await import('$lib/utils/audio');
+			audioData = await decodeAudio(arrayBuffer);
+		}
+
+		const result = await transcriber(audioData, {
+			return_timestamps: true,
+			...(options?.language ? { language: options.language } : {})
+		});
+
+		const segments = result.chunks?.map(
+			(c: { text: string; timestamp: [number | null, number | null] }) => ({
+				text: c.text,
+				start: c.timestamp?.[0] ?? 0,
+				end: c.timestamp?.[1] ?? 0
+			})
+		);
+
+		return {
+			text: result.text ?? '',
+			segments: segments?.length ? segments : undefined
+		};
+	}
+
+	async rerank(
+		spec: ModelSpec,
+		query: string,
+		documents: string[],
+		options?: RerankOptions
+	): Promise<number[]> {
+		const device = options?.device ?? 'wasm';
+		const classifier = await getOrLoadPipeline(
+			'text-classification',
+			spec,
+			device,
+			options?.onProgress
+		);
+
+		const scores: number[] = [];
+		// Transformers.js 'text-classification' pipeline supports (text, text_pair) arguments
+		for (const doc of documents) {
+			const out = await classifier(query, doc);
+			// Depending on the model, it might return an array of objects like [{ label: 'LABEL_0', score: 0.99 }]
+			// Rerankers typically just have one output score.
+			scores.push(out instanceof Array ? out[0].score : out.score);
+		}
+
+		return scores;
 	}
 
 	async dispose(modelId: string): Promise<void> {
