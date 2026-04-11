@@ -20,7 +20,7 @@
 		Copy,
 		RefreshCw
 	} from 'lucide-svelte';
-	import { onMount } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import ToolCallGroup from './ToolCallGroup.svelte';
 	import type { ToolCall } from '$lib/services/content/tool';
 	import { activeScripts } from '$lib/stores';
@@ -111,41 +111,84 @@
 	// ── Markdown ──────────────────────────────────────────────────────────────
 
 	let pendingRefresh = false;
-	async function refreshDisplay() {
-		if (pendingRefresh && message.displayStatus === 'generating') return;
+	let missedUpdate = false;
+	let lastRenderTime = 0;
+	let renderTimeout: ReturnType<typeof setTimeout> | null = null;
+	const RENDER_THROTTLE_MS = 150;
+
+	async function executeRender(contentToRender: string) {
+		if (pendingRefresh) {
+			missedUpdate = true;
+			return;
+		}
 		pendingRefresh = true;
 
 		requestAnimationFrame(async () => {
 			try {
-				const processed = await applyScripts(message.content, $activeScripts, 'display');
+				const processed = await applyScripts(contentToRender, $activeScripts, 'display');
 				displayContent = processed;
-
 				const rawHtml = await parseMarkdownAsync(processed);
 				renderedHtml = DOMPurify.sanitize(rawHtml as string);
 			} finally {
 				pendingRefresh = false;
+				lastRenderTime = Date.now();
+				if (missedUpdate) {
+					missedUpdate = false;
+					refreshDisplay(); // Retry with the latest message.content
+				}
 			}
 		});
 	}
 
+	function refreshDisplay() {
+		const currentContent = message.content;
+
+		// If completely done or error, render immediately without throttling
+		if (message.displayStatus !== 'generating') {
+			if (renderTimeout) {
+				clearTimeout(renderTimeout);
+				renderTimeout = null;
+			}
+			executeRender(currentContent);
+			return;
+		}
+
+		// Throttling logic for generating state
+		const now = Date.now();
+		const timeSinceLastRender = now - lastRenderTime;
+
+		if (timeSinceLastRender >= RENDER_THROTTLE_MS) {
+			if (renderTimeout) {
+				clearTimeout(renderTimeout);
+				renderTimeout = null;
+			}
+			executeRender(currentContent);
+		} else if (!renderTimeout) {
+			renderTimeout = setTimeout(() => {
+				renderTimeout = null;
+				executeRender(message.content); // Use latest content when timeout fires
+			}, RENDER_THROTTLE_MS - timeSinceLastRender);
+		}
+	}
+
+	let lastStatus = '';
+
 	$effect(() => {
 		const current = message.content;
-		if (current !== lastContent) {
+		const status = message.displayStatus;
+
+		// Ensure refresh on both content updates and status transitions (e.g. generating -> completed)
+		if (current !== lastContent || status !== lastStatus) {
 			lastContent = current;
+			lastStatus = status;
 			refreshDisplay();
 		}
 	});
 
-	onMount(async () => {
-		if (message.content) {
-			displayContent = message.content;
-			const rawHtml = await parseMarkdownAsync(message.content);
-			if (typeof rawHtml === 'string') {
-				renderedHtml = DOMPurify.sanitize(rawHtml);
-			} else {
-				renderedHtml = DOMPurify.sanitize(await rawHtml);
-			}
-			refreshDisplay();
+	onDestroy(() => {
+		if (renderTimeout) {
+			clearTimeout(renderTimeout);
+			renderTimeout = null;
 		}
 	});
 </script>
