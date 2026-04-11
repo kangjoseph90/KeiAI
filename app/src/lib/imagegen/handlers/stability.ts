@@ -7,6 +7,7 @@
 
 import type { ImageGenResult, ImageGenHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
+import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -31,7 +32,7 @@ export class StabilityImageGenHandler implements ImageGenHandler {
 
 	async generate(prompt: string, signal?: AbortSignal): Promise<ImageGenResult> {
 		const response = await appHttp.fetch(
-			`${this.config.baseUrl}/v2beta/stable-image/generate/${this.config.modelId}`,
+			buildUrl(this.config.baseUrl, `/v2beta/stable-image/generate/${this.config.modelId}`),
 			{
 				method: 'POST',
 				headers: {

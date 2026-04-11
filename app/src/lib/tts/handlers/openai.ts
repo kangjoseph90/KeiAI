@@ -7,6 +7,7 @@
 
 import type { TTSStreamChunk, TTSStreamHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
+import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ export class OpenAITTSStreamHandler implements TTSStreamHandler {
 	}
 
 	async *synthesize(text: string, signal: AbortSignal): AsyncIterable<TTSStreamChunk> {
-		const response = await appHttp.fetch(`${this.config.baseUrl}/audio/speech`, {
+		const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/audio/speech'), {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',

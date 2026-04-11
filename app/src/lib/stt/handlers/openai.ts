@@ -7,6 +7,7 @@
 
 import type { STTResult, STTHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
+import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -39,7 +40,7 @@ export class OpenAISTTHandler implements STTHandler {
 			headers.Authorization = `Bearer ${this.config.apiKey}`;
 		}
 
-		const response = await appHttp.fetch(`${this.config.baseUrl}/audio/transcriptions`, {
+		const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/audio/transcriptions'), {
 			method: 'POST',
 			headers,
 			body: formData,

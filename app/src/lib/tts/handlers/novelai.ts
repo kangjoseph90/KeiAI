@@ -7,6 +7,7 @@
 import type { TTSStreamHandler, TTSStreamChunk } from '../types';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
+import { buildUrl } from '$lib/utils/url';
 
 export interface NovelAITTSConfig {
 	apiKey?: string;
@@ -25,7 +26,7 @@ export class NovelAITTSStreamHandler implements TTSStreamHandler {
 	async *synthesize(text: string, signal?: AbortSignal): AsyncIterable<TTSStreamChunk> {
 		if (!text.trim()) return;
 
-		const url = `${this.config.baseUrl}/ai/generate-voice`;
+		const url = buildUrl(this.config.baseUrl, '/ai/generate-voice');
 
 		const response = await appHttp.fetch(
 			url,

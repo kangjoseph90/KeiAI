@@ -13,6 +13,7 @@ import type {
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { debounceStream } from '$lib/utils/stream';
+import { buildUrl } from '$lib/utils/url';
 
 interface GeminiContent {
 	role: string; // 'user' or 'model'
@@ -99,7 +100,8 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
 
 	private async fetchStream(messages: OpenAIChat[], signal: AbortSignal): Promise<Response> {
 		const config = this.config;
-		const url = `${config.baseUrl}/models/${config.modelId}:streamGenerateContent?alt=sse${config.apiKey ? `&key=${config.apiKey}` : ''}`;
+		const baseEndpoint = `/models/${config.modelId}:streamGenerateContent?alt=sse`;
+		const url = `${buildUrl(config.baseUrl, baseEndpoint)}${config.apiKey ? `&key=${config.apiKey}` : ''}`;
 		const useProxy = config.useProxy ?? true;
 
 		// Convert OpenAI messages to Gemini format

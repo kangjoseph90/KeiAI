@@ -7,6 +7,7 @@
 import type { TTSStreamHandler, TTSStreamChunk } from '../types';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
+import { buildUrl } from '$lib/utils/url';
 
 export interface ElevenLabsTTSConfig {
 	apiKey?: string;
@@ -24,7 +25,7 @@ export class ElevenLabsTTSStreamHandler implements TTSStreamHandler {
 	async *synthesize(text: string, signal?: AbortSignal): AsyncIterable<TTSStreamChunk> {
 		if (!text.trim()) return;
 
-		const url = `${this.config.baseUrl}/text-to-speech/${this.config.voiceId}/stream`;
+		const url = buildUrl(this.config.baseUrl, `/text-to-speech/${this.config.voiceId}/stream`);
 
 		const response = await appHttp.fetch(
 			url,

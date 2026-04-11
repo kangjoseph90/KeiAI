@@ -7,6 +7,7 @@
 
 import type { STTResult, STTHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
+import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -34,7 +35,7 @@ export class GoogleSTTHandler implements STTHandler {
 			new Uint8Array(audioBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
 		);
 
-		const response = await appHttp.fetch(`${this.config.baseUrl}/v1/speech:recognize`, {
+		const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/v1/speech:recognize'), {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',

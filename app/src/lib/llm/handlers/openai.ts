@@ -18,6 +18,7 @@ import type { ToolCallRequest } from '$lib/services/content/tool';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { debounceStream } from '$lib/utils/stream';
+import { buildUrl } from '$lib/utils/url';
 import { createLogger } from '$lib/adapters/logger';
 
 const logger = createLogger('llm:openai-compat');
@@ -155,7 +156,7 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
 	private async fetchStream(messages: OpenAIChat[], signal: AbortSignal): Promise<Response> {
 		const config = this.config;
 
-		const url = `${config.baseUrl}/chat/completions`;
+		const url = buildUrl(config.baseUrl, '/chat/completions');
 		const useProxy = config.useProxy ?? true;
 
 		const body = JSON.stringify({

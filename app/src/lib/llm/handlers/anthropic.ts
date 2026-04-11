@@ -13,6 +13,7 @@ import type {
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { debounceStream } from '$lib/utils/stream';
+import { buildUrl } from '$lib/utils/url';
 
 interface AnthropicMessage {
 	role: 'user' | 'assistant';
@@ -81,7 +82,7 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
 
 	private async fetchStream(messages: OpenAIChat[], signal: AbortSignal): Promise<Response> {
 		const config = this.config;
-		const url = `${config.baseUrl}/messages`;
+		const url = buildUrl(config.baseUrl, '/messages');
 		const useProxy = config.useProxy ?? true;
 
 		const systemMessage = messages.find((m) => m.role === 'system')?.content;

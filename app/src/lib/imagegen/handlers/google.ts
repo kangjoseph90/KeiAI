@@ -7,6 +7,7 @@
 
 import type { ImageGenResult, ImageGenHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
+import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -33,7 +34,7 @@ export class GoogleImageGenHandler implements ImageGenHandler {
 			? this.config.modelId
 			: `models/${this.config.modelId}`;
 
-		const response = await appHttp.fetch(`${this.config.baseUrl}/${modelName}:predict`, {
+		const response = await appHttp.fetch(buildUrl(this.config.baseUrl, `/${modelName}:predict`), {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',

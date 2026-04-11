@@ -7,6 +7,7 @@
 
 import type { ImageGenResult, ImageGenHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
+import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -39,7 +40,7 @@ export class OpenAIImageGenHandler implements ImageGenHandler {
 			headers.Authorization = `Bearer ${this.config.apiKey}`;
 		}
 
-		const response = await appHttp.fetch(`${this.config.baseUrl}/images/generations`, {
+		const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/images/generations'), {
 			method: 'POST',
 			headers,
 			body: JSON.stringify({

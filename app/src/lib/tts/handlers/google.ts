@@ -7,6 +7,7 @@
 import type { TTSStreamHandler, TTSStreamChunk } from '../types';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
+import { buildUrl } from '$lib/utils/url';
 
 export interface GoogleTTSConfig {
 	apiKey?: string;
@@ -26,7 +27,7 @@ export class GoogleTTSStreamHandler implements TTSStreamHandler {
 		if (!text.trim()) return;
 
 		// It uses the same generateContent REST endpoint
-		const url = `${this.config.baseUrl}/models/${this.config.modelId}:generateContent`;
+		const url = buildUrl(this.config.baseUrl, `/models/${this.config.modelId}:generateContent`);
 
 		const body = JSON.stringify({
 			contents: [
