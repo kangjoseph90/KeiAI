@@ -1,11 +1,9 @@
-﻿<script lang="ts">
+<script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { UserService, AuthService } from '$lib/services';
 	import { SyncManager } from '$lib/services/sync';
-	import { BookText, Layers, Plug, Settings, User, Users } from 'lucide-svelte';
-	import { Button } from '$lib/components/ui/button';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import * as Avatar from '$lib/components/ui/avatar';
+	import AppSidebar from '$lib/components/layout/AppSidebar.svelte';
+	import SettingsOverlay from '$lib/components/layout/SettingsOverlay.svelte';
 	import {
 		loadGlobalState,
 		loadProfile,
@@ -16,7 +14,7 @@
 		clearActiveCharacter,
 		activeCharacter,
 		activeChat,
-		activeUser,
+		chats,
 		userEmail,
 		initDefaultContents
 	} from '$lib/stores';
@@ -25,102 +23,115 @@
 		navigate,
 		initHashListener,
 		getCurrentHashRoute,
-		type RouteState,
-		type ViewMode
+		type RouteState
 	} from '$lib/router';
-	import type { ComponentType } from 'svelte';
+	import { createChat } from '$lib/stores';
 	import { getErrorMessage } from '$lib/types/errors';
 	import { createLogger } from '$lib/adapters/logger';
 
 	let ready = $state(false);
 	let errorMsg = $state('');
+	let sidebarCollapsed = $state(false);
+	let settingsOpen = $state(false);
 	let manageAccountsOpen = $state(false);
 	const logger = createLogger('route:page');
 
-	const sidebarItems: { view: ViewMode; label: string; icon: ComponentType }[] = [
-		{ view: 'characters', label: 'Characters', icon: Users },
-		{ view: 'personas', label: 'Personas', icon: User },
-		{ view: 'presets', label: 'Presets', icon: BookText },
-		{ view: 'modules', label: 'Modules', icon: Layers },
-		{ view: 'plugins', label: 'Plugins', icon: Plug },
-		{ view: 'settings', label: 'Settings', icon: Settings }
-	];
+	/**
+	 * Select a character and navigate to its latest chat.
+	 * If no chat exists, create one automatically.
+	 */
+	async function handleSelectChar(charId: string) {
+		try {
+			await selectCharacter(charId);
 
-	// 현재 route에서 헤더 타이틀 계산
-	function getTitle(r: RouteState): string {
-		switch (r.view) {
-			case 'characters':
-				return 'Characters';
-			case 'chats':
-				return $activeCharacter ? `${$activeCharacter.name}'s Chats` : 'Chats';
-			case 'chat':
-				return $activeChat ? `Chat: ${$activeChat.title}` : 'Chat';
-			case 'personas':
-				return 'Personas';
-			case 'presets':
-				return 'Prompt Presets';
-			case 'modules':
-				return 'Modules';
-			case 'plugins':
-				return 'Plugins';
-			case 'settings':
-				return 'Global App Settings';
+			// Try to open the last active chat
+			const charData = $activeCharacter;
+			if (charData?.data?.lastActiveChatId) {
+				try {
+					await selectChat(charData.data.lastActiveChatId, charId);
+					navigate({ view: 'chat', charId, chatId: charData.data.lastActiveChatId });
+					return;
+				} catch {
+					// lastActiveChatId may be stale, fall through
+				}
+			}
+
+			// Try the most recent chat from the loaded list
+			const chatList = $chats;
+			if (chatList && chatList.length > 0) {
+				const latestChat = chatList[0];
+				await selectChat(latestChat.id, charId);
+				navigate({ view: 'chat', charId, chatId: latestChat.id });
+				return;
+			}
+
+			// No chats exist — create one
+			const newChat = await createChat(charId, {
+				title: `Chat`,
+				lastMessagePreview: ''
+			});
+			await selectChat(newChat.id, charId);
+			navigate({ view: 'chat', charId, chatId: newChat.id });
+		} catch (e) {
+			logger.error('Failed to select character:', e);
 		}
 	}
 
-	function getBackTarget(r: RouteState): RouteState | null {
-		if (r.view === 'chat' && r.charId) return { view: 'chats', charId: r.charId };
-		if (r.view === 'chats') return { view: 'characters' };
-		return null;
-	}
-
-	// URL 복원 시 소유권 검증 포함
+	// Restore route from URL on boot
 	async function restoreRoute(initial: RouteState): Promise<void> {
 		try {
-			if (initial.view === 'chats' && initial.charId) {
+			if (initial.view === 'chat' && initial.charId) {
 				await selectCharacter(initial.charId);
-				navigate(initial);
-			} else if (initial.view === 'chat' && initial.charId && initial.chatId) {
-				await selectCharacter(initial.charId);
-				await selectChat(initial.chatId, initial.charId);
+				if (initial.chatId) {
+					await selectChat(initial.chatId, initial.charId);
+				}
 				navigate(initial);
 			} else {
 				navigate(initial);
 			}
 		} catch (e) {
-			// 복호화 실패 or 소유권 불일치 → 홈으로
-			logger.warn('Route restore failed, falling back to characters:', e);
+			logger.warn('Route restore failed, falling back to home:', e);
 			clearActiveCharacter();
-			navigate({ view: 'characters' });
+			navigate({ view: 'home' });
 		}
 	}
 
-	// navigate 시 store 상태 동기화
-	async function handleNavigate(next: RouteState): Promise<void> {
-		try {
-			if (next.view === 'characters') {
-				clearActiveCharacter();
-			} else if (next.view === 'chats' && next.charId) {
-				if ($activeCharacter?.id !== next.charId) {
-					await selectCharacter(next.charId);
-				}
-			} else if (next.view === 'chat' && next.charId && next.chatId) {
-				if ($activeCharacter?.id !== next.charId) {
-					await selectCharacter(next.charId);
-				}
-				if ($activeChat?.id !== next.chatId) {
-					await selectChat(next.chatId, next.charId);
-				}
-			} else if (!['personas', 'presets', 'modules', 'plugins', 'settings'].includes(next.view)) {
-				clearActiveCharacter();
-			}
-		} catch (e) {
-			logger.error('Navigation failed:', e);
-			navigate({ view: 'characters' });
+	// Sync store state when route changes (back/forward nav)
+	let prevRoute: RouteState | null = null;
+	$effect(() => {
+		const r = $route;
+		if (!ready || !prevRoute) {
+			prevRoute = r;
 			return;
 		}
-		navigate(next);
-	}
+		if (
+			prevRoute.view === r.view &&
+			prevRoute.charId === r.charId &&
+			prevRoute.chatId === r.chatId
+		) {
+			prevRoute = r;
+			return;
+		}
+		prevRoute = r;
+
+		(async () => {
+			try {
+				if (r.view === 'home') {
+					clearActiveCharacter();
+				} else if (r.view === 'chat' && r.charId) {
+					if ($activeCharacter?.id !== r.charId) {
+						await selectCharacter(r.charId);
+					}
+					if (r.chatId && $activeChat?.id !== r.chatId) {
+						await selectChat(r.chatId, r.charId);
+					}
+				}
+			} catch (e) {
+				logger.error('Navigation failed:', e);
+				navigate({ view: 'home' });
+			}
+		})();
+	});
 
 	let _cleanupHash: (() => void) | undefined;
 
@@ -128,11 +139,8 @@
 		try {
 			startSyncStatusTracking();
 			const wasRestored = await UserService.restoreOrCreateGuest();
-			// If the local DB was cleared (storage eviction, first install), PB may
-			// still hold a stale JWT. Clear it so sync starts from a clean state.
 			if (!wasRestored) {
 				AuthService.clearAuth();
-				// Create default persona, preset, and character
 				await initDefaultContents();
 			}
 			await loadProfile();
@@ -155,27 +163,6 @@
 		stopSyncStatusTracking();
 		_cleanupHash?.();
 	});
-
-	// route store 변화를 감지해 store 동기화 (뒤로가기/앞으로가기 처리)
-	let prevRoute: RouteState | null = null;
-	$effect(() => {
-		const r = $route;
-		if (!ready || !prevRoute) {
-			prevRoute = r;
-			return;
-		}
-		// 같은 route면 무시
-		if (
-			prevRoute.view === r.view &&
-			prevRoute.charId === r.charId &&
-			prevRoute.chatId === r.chatId
-		) {
-			prevRoute = r;
-			return;
-		}
-		prevRoute = r;
-		handleNavigate(r);
-	});
 </script>
 
 <main class="flex h-screen bg-background text-foreground overflow-hidden">
@@ -192,115 +179,40 @@
 			<p class="text-muted-foreground text-sm">Initializing Secure Local Session...</p>
 		</div>
 	{:else}
-		<!-- Sidebar Navigation -->
-		<nav class="flex w-48 shrink-0 flex-col gap-1 border-r p-4 justify-between">
-			<div class="flex flex-col gap-1">
-				<p class="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-					Menu
-				</p>
-				{#each sidebarItems as item (item.view)}
-					{@const isActive =
-						$route.view === item.view ||
-						(item.view === 'characters' && ($route.view === 'chats' || $route.view === 'chat'))}
-					<Button
-						variant={isActive ? 'default' : 'ghost'}
-						class="justify-start gap-2"
-						onclick={() => handleNavigate({ view: item.view as ViewMode })}
-					>
-						<item.icon class="size-4" />
-						{item.label}
-					</Button>
-				{/each}
-			</div>
+		<!-- Sidebar -->
+		<AppSidebar
+			collapsed={sidebarCollapsed}
+			route={$route}
+			onToggle={() => (sidebarCollapsed = !sidebarCollapsed)}
+			onNavigate={(r) => {
+				if (r.view === 'chat' && r.charId) {
+					handleSelectChar(r.charId);
+				}
+			}}
+			onOpenSettings={() => (settingsOpen = true)}
+		/>
 
-			<div class="mt-auto">
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger class="w-full">
-						<div
-							class="flex items-center gap-2 p-2 hover:bg-muted/50 rounded-md transition-colors text-left cursor-pointer"
-						>
-							<Avatar.Root class="size-8">
-								<Avatar.Image src={$activeUser?.avatar} alt={$activeUser?.name ?? 'User'} />
-								<Avatar.Fallback
-									>{($activeUser?.name ?? 'U').charAt(0).toUpperCase()}</Avatar.Fallback
-								>
-							</Avatar.Root>
-							<div class="flex flex-col overflow-hidden">
-								<span class="text-sm font-medium truncate">{$activeUser?.name ?? 'Guest User'}</span
-								>
-								<span class="text-xs text-muted-foreground truncate"
-									>{$userEmail ?? 'Offline / Local'}</span
-								>
-							</div>
-						</div>
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="start" class="w-48">
-						<DropdownMenu.Label>My Account</DropdownMenu.Label>
-						<DropdownMenu.Separator />
-						<DropdownMenu.Item onclick={() => (manageAccountsOpen = true)}>
-							<Users class="mr-2 size-4" />
-							<span>Manage Profiles</span>
-						</DropdownMenu.Item>
-						<DropdownMenu.Item onclick={() => handleNavigate({ view: 'settings' })}>
-							<Settings class="mr-2 size-4" />
-							<span>App Settings</span>
-						</DropdownMenu.Item>
-					</DropdownMenu.Content>
-				</DropdownMenu.Root>
-			</div>
-		</nav>
-
-		<!-- Main Content Area -->
+		<!-- Main Content -->
 		<div class="flex flex-1 flex-col overflow-hidden">
-			<!-- Header -->
-			<div class="flex shrink-0 items-center justify-between border-b px-6 py-4">
-				<h2 class="text-lg font-semibold">{getTitle($route)}</h2>
-				{#if getBackTarget($route)}
-					{@const back = getBackTarget($route)!}
-					<Button variant="outline" size="sm" class="gap-1.5" onclick={() => handleNavigate(back)}>
-						← Back
-					</Button>
-				{/if}
-			</div>
-
-			<!-- View Content -->
-			<div class="flex-1 overflow-y-auto p-6">
-				{#if $route.view === 'characters'}
-					{#await import('$lib/views/CharactersView.svelte') then m}
-						<m.default onNavigate={handleNavigate} />
-					{/await}
-				{:else if $route.view === 'chats' && $route.charId}
-					{#await import('$lib/views/ChatsView.svelte') then m}
-						<m.default charId={$route.charId} onNavigate={handleNavigate} />
-					{/await}
-				{:else if $route.view === 'chat' && $route.chatId}
-					{#await import('$lib/views/ChatView.svelte') then m}
-						<m.default chatId={$route.chatId} />
-					{/await}
-				{:else if $route.view === 'personas'}
-					{#await import('$lib/views/PersonasView.svelte') then m}
-						<m.default />
-					{/await}
-				{:else if $route.view === 'presets'}
-					{#await import('$lib/views/PresetsView.svelte') then m}
-						<m.default />
-					{/await}
-				{:else if $route.view === 'modules'}
-					{#await import('$lib/views/ModulesView.svelte') then m}
-						<m.default />
-					{/await}
-				{:else if $route.view === 'plugins'}
-					{#await import('$lib/views/PluginsView.svelte') then m}
-						<m.default />
-					{/await}
-				{:else if $route.view === 'settings'}
-					{#await import('$lib/views/SettingsView.svelte') then m}
-						<m.default />
-					{/await}
-				{/if}
-			</div>
+			{#if $route.view === 'chat' && $route.charId}
+				{#await import('$lib/views/ChatView.svelte') then m}
+					<m.default chatId={$route.chatId ?? ''} />
+				{/await}
+			{:else}
+				<!-- Welcome / Home Screen -->
+				<div class="flex h-full flex-col items-center justify-center gap-4 text-center">
+					<h1 class="text-2xl font-bold">Welcome to KeiAI</h1>
+					<p class="max-w-md text-muted-foreground">
+						Select a character from the sidebar to start chatting, or create a new one.
+					</p>
+				</div>
+			{/if}
 		</div>
 
+		<!-- Settings Overlay -->
+		<SettingsOverlay bind:open={settingsOpen} onClose={() => (settingsOpen = false)} />
+
+		<!-- Manage Accounts Dialog -->
 		{#await import('$lib/views/ManageAccountsDialog.svelte') then m}
 			<m.default bind:open={manageAccountsOpen} />
 		{/await}

@@ -1,9 +1,8 @@
 <script lang="ts">
 	/**
-	 * Message Component — Svelte 5 Runes
-	 *
-	 * Renders a single message in any display state.
-	 * Callbacks handle all side-effects — this component is pure UI.
+	 * Message Component — Enhanced with RisuAI-style actions.
+	 * Copy, Regenerate, Edit, Delete actions on hover.
+	 * Character avatar + name display.
 	 */
 	import type { DisplayMessage } from '$lib/stores';
 	import { Button } from '$lib/components/ui/button';
@@ -17,7 +16,9 @@
 		X,
 		Brain,
 		ChevronDown,
-		ChevronUp
+		ChevronUp,
+		Copy,
+		RefreshCw
 	} from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import ToolCallGroup from './ToolCallGroup.svelte';
@@ -35,25 +36,30 @@
 		message,
 		isEditing = false,
 		editText = $bindable(''),
+		characterName = '',
 		onEdit = () => {},
 		onSave = () => {},
 		onCancelEdit = () => {},
 		onDelete = () => {},
 		onDismissError = () => {},
 		onResolveTool = () => {},
-		onLoadDetail = async (_id: string) => null
+		onLoadDetail = async (_id: string) => null,
+		onRegenerate = () => {},
+		onCopy = () => {}
 	}: {
 		message: DisplayMessage;
 		isEditing?: boolean;
 		editText?: string;
+		characterName?: string;
 		onEdit?: () => void;
 		onSave?: (text: string) => void;
 		onCancelEdit?: () => void;
 		onDelete?: () => void;
 		onDismissError?: () => void;
-		/** called with (toolCallId, 'approve' | 'reject') */
 		onResolveTool?: (id: string, decision: 'approve' | 'reject') => void;
 		onLoadDetail?: (id: string) => Promise<ToolCall | null>;
+		onRegenerate?: () => void;
+		onCopy?: () => void;
 	} = $props();
 
 	// ── State ─────────────────────────────────────────────────────────────────
@@ -62,6 +68,7 @@
 	let displayContent = $state('');
 	let lastContent = $state('');
 	let renderedHtml = $state('');
+	let copied = $state(false);
 
 	// ── Derived ───────────────────────────────────────────────────────────────
 
@@ -69,10 +76,6 @@
 
 	// ── Actions ───────────────────────────────────────────────────────────────
 
-	/**
-	 * Seamlessly diffs and morphs DOM nodes without losing external bindings,
-	 * ensuring performance is optimal even for rapid streams.
-	 */
 	const morphHtml: Action<HTMLElement, string> = (node, html) => {
 		const template = document.createElement('div');
 
@@ -93,14 +96,20 @@
 
 		update(html);
 
-		return {
-			update
-		};
+		return { update };
 	};
 
-	// ── Markdown Setup ────────────────────────────────────────────────────────
+	// ── Copy ──────────────────────────────────────────────────────────────────
 
-	// Refresh display content - throttled for performance during streaming
+	async function handleCopy() {
+		await navigator.clipboard.writeText(message.content);
+		copied = true;
+		onCopy();
+		setTimeout(() => (copied = false), 2000);
+	}
+
+	// ── Markdown ──────────────────────────────────────────────────────────────
+
 	let pendingRefresh = false;
 	async function refreshDisplay() {
 		if (pendingRefresh && message.displayStatus === 'generating') return;
@@ -119,7 +128,6 @@
 		});
 	}
 
-	// Auto-refresh when message.content changes
 	$effect(() => {
 		const current = message.content;
 		if (current !== lastContent) {
@@ -128,7 +136,6 @@
 		}
 	});
 
-	// Initialize synchronously to prevent flickering on re-mount (ID changes)
 	onMount(async () => {
 		if (message.content) {
 			displayContent = message.content;
@@ -143,113 +150,173 @@
 	});
 </script>
 
-<!--
-  Outer wrapper: aligns bubble left (char) or right (user).
-  max-w-[80%] keeps long messages from spanning the full width.
--->
+<!-- Message Container -->
 <div
-	class="flex max-w-[80%] flex-col gap-1 {isUser ? 'items-end self-end' : 'items-start self-start'}"
+	class="group flex gap-3 {isUser ? 'flex-row-reverse justify-start' : 'flex-row justify-start'}"
 >
-	<!-- ── Edit / Delete controls (user's confirmed messages only) ── -->
-	{#if isUser && message.displayStatus === 'completed' && !isEditing}
-		<div class="flex gap-1">
-			<Button size="sm" variant="ghost" class="h-6 w-6 p-0" onclick={onEdit}>
-				<Pencil class="size-3" />
-			</Button>
-			<Button size="sm" variant="ghost" class="h-6 w-6 p-0 text-destructive" onclick={onDelete}>
-				<Trash2 class="size-3" />
-			</Button>
+	<!-- Avatar (Character only) -->
+	{#if !isUser}
+		<div
+			class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground"
+		>
+			{characterName.charAt(0).toUpperCase() || 'A'}
 		</div>
 	{/if}
 
-	<!-- ── Edit mode ── -->
-	{#if isEditing && message.displayStatus === 'completed'}
-		<div class="flex w-full flex-col gap-2">
-			<Textarea bind:value={editText} class="min-h-16 w-full" />
-			<div class="flex justify-end gap-2">
-				<Button size="sm" class="gap-1.5" onclick={() => onSave(editText)}>
-					<Check class="size-4" /> Save
-				</Button>
-				<Button size="sm" variant="outline" class="gap-1.5" onclick={onCancelEdit}>
-					<X class="size-4" /> Cancel
-				</Button>
-			</div>
-		</div>
+	<!-- Content Column -->
+	<div class="flex max-w-[75%] flex-col gap-1 {isUser ? 'items-end' : 'items-start'}">
+		<!-- Character Name -->
+		{#if !isUser && characterName}
+			<span class="text-xs font-medium text-muted-foreground">{characterName}</span>
+		{/if}
 
-		<!-- ── Error bubble ── -->
-	{:else if message.displayStatus === 'error'}
-		<div
-			class="flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"
-		>
-			<AlertCircle class="mt-0.5 size-4 shrink-0" />
-			<div class="flex flex-col gap-1">
-				<span class="font-medium">Generation failed</span>
-				<span class="text-xs opacity-80">{message.errorMessage ?? 'Unknown error'}</span>
-				<Button
-					size="sm"
-					variant="outline"
-					class="mt-1 h-6 gap-1 self-start text-xs"
-					onclick={onDismissError}
-				>
-					<X class="size-3" /> Dismiss
-				</Button>
+		<!-- Edit Mode -->
+		{#if isEditing && message.displayStatus === 'completed'}
+			<div class="flex w-full flex-col gap-2">
+				<Textarea bind:value={editText} class="min-h-16 w-full" />
+				<div class="flex justify-end gap-2">
+					<Button size="sm" class="gap-1.5" onclick={() => onSave(editText)}>
+						<Check class="size-4" /> Save
+					</Button>
+					<Button size="sm" variant="outline" class="gap-1.5" onclick={onCancelEdit}>
+						<X class="size-4" /> Cancel
+					</Button>
+				</div>
 			</div>
-		</div>
 
-		<!-- ── Message Content (Generating & Completed) ── -->
-	{:else}
-		<!-- ── Thought process (Char only) ── -->
-		{#if !isUser && message.thought}
-			<div class="mb-1 w-full overflow-hidden rounded-xl border bg-muted/20">
-				<button
-					class="flex w-full items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-muted/40"
-					onclick={() => (thoughtExpanded = !thoughtExpanded)}
-				>
-					<div class="flex items-center gap-1.5">
-						<Brain class="size-3 text-primary/70" />
-						Thinking Process
-					</div>
+			<!-- Error Bubble -->
+		{:else if message.displayStatus === 'error'}
+			<div
+				class="flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"
+			>
+				<AlertCircle class="mt-0.5 size-4 shrink-0" />
+				<div class="flex flex-col gap-1">
+					<span class="font-medium">Generation failed</span>
+					<span class="text-xs opacity-80">{message.errorMessage ?? 'Unknown error'}</span>
+					<Button
+						size="sm"
+						variant="outline"
+						class="mt-1 h-6 gap-1 self-start text-xs"
+						onclick={onDismissError}
+					>
+						<X class="size-3" /> Dismiss
+					</Button>
+				</div>
+			</div>
+
+			<!-- Message Content -->
+		{:else}
+			<!-- Thought Process (Character only) -->
+			{#if !isUser && message.thought}
+				<div class="mb-1 w-full overflow-hidden rounded-xl border bg-muted/20">
+					<button
+						class="flex w-full items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-muted/40"
+						onclick={() => (thoughtExpanded = !thoughtExpanded)}
+					>
+						<div class="flex items-center gap-1.5">
+							<Brain class="size-3 text-primary/70" />
+							Thinking Process
+						</div>
+						{#if thoughtExpanded}
+							<ChevronUp class="size-3" />
+						{:else}
+							<ChevronDown class="size-3" />
+						{/if}
+					</button>
 					{#if thoughtExpanded}
-						<ChevronUp class="size-3" />
-					{:else}
-						<ChevronDown class="size-3" />
+						<div class="px-3 pb-3 pt-1 text-xs italic leading-relaxed text-muted-foreground/80">
+							{message.thought || 'Processing thinking...'}
+						</div>
 					{/if}
-				</button>
-				{#if thoughtExpanded}
-					<div class="px-3 pb-3 pt-1 text-xs italic leading-relaxed text-muted-foreground/80">
-						{message.thought || 'Processing thinking...'}
-					</div>
+				</div>
+			{/if}
+
+			<!-- Bubble -->
+			<div
+				class="relative rounded-2xl px-4 py-2.5 text-sm {isUser
+					? 'bg-primary text-primary-foreground'
+					: 'bg-muted text-foreground'}"
+			>
+				{#if message.displayStatus === 'generating' && !displayContent}
+					<span class="flex items-center gap-1.5 text-muted-foreground">
+						<Loader2 class="size-3 animate-spin" /> Thinking...
+					</span>
+				{:else}
+					<div
+						use:morphHtml={renderedHtml}
+						class="prose prose-sm max-w-none {isUser
+							? '**:text-primary-foreground prose-invert'
+							: 'dark:prose-invert'}"
+					></div>
 				{/if}
 			</div>
-		{/if}
 
-		<div
-			class="relative rounded-2xl px-4 py-2 text-sm {isUser
-				? 'bg-primary text-primary-foreground'
-				: 'bg-muted text-foreground'}"
-		>
-			{#if message.displayStatus === 'generating' && !displayContent}
-				<span class="flex items-center gap-1.5 text-muted-foreground">
-					<Loader2 class="size-3 animate-spin" /> Thinking...
-				</span>
-			{:else}
-				<div
-					use:morphHtml={renderedHtml}
-					class="prose prose-sm max-w-none {isUser
-						? '**:text-primary-foreground prose-invert'
-						: 'dark:prose-invert'}"
-				></div>
+			<!-- Tool Calls (Character only) -->
+			{#if !isUser && message.toolCalls && message.toolCalls.length > 0 && message.displayStatus !== 'generating'}
+				<ToolCallGroup
+					toolCalls={message.toolCalls}
+					{onLoadDetail}
+					onApprove={(id) => onResolveTool(id, 'approve')}
+					onReject={(id) => onResolveTool(id, 'reject')}
+				/>
 			{/if}
-		</div>
 
-		<!-- ── Tool Calls (Char only) ── -->
-		{#if !isUser && message.toolCalls && message.toolCalls.length > 0 && message.displayStatus !== 'generating'}
-			<ToolCallGroup
-				toolCalls={message.toolCalls}
-				{onLoadDetail}
-				onApprove={(id) => onResolveTool(id, 'approve')}
-				onReject={(id) => onResolveTool(id, 'reject')}
-			/>
+			<!-- Action Buttons (hover) -->
+			{#if message.displayStatus === 'completed'}
+				<div
+					class="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 {isUser
+						? 'flex-row-reverse'
+						: ''}"
+				>
+					<!-- Copy -->
+					<Button
+						variant="ghost"
+						size="sm"
+						class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+						onclick={handleCopy}
+					>
+						{#if copied}
+							<Check class="size-3" />
+						{:else}
+							<Copy class="size-3" />
+						{/if}
+					</Button>
+
+					<!-- Regenerate (Character only) -->
+					{#if !isUser}
+						<Button
+							variant="ghost"
+							size="sm"
+							class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+							onclick={onRegenerate}
+						>
+							<RefreshCw class="size-3" />
+						</Button>
+					{/if}
+
+					<!-- Edit (User only) -->
+					{#if isUser}
+						<Button
+							variant="ghost"
+							size="sm"
+							class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+							onclick={onEdit}
+						>
+							<Pencil class="size-3" />
+						</Button>
+					{/if}
+
+					<!-- Delete -->
+					<Button
+						variant="ghost"
+						size="sm"
+						class="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-destructive"
+						onclick={onDelete}
+					>
+						<Trash2 class="size-3" />
+					</Button>
+				</div>
+			{/if}
 		{/if}
-	{/if}
+	</div>
 </div>

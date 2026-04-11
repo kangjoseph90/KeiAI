@@ -2,15 +2,7 @@ import { writable, derived, get } from 'svelte/store';
 
 // ─── Route Types ──────────────────────────────────────────────────────
 
-export type ViewMode =
-	| 'characters'
-	| 'chats'
-	| 'chat'
-	| 'personas'
-	| 'presets'
-	| 'modules'
-	| 'plugins'
-	| 'settings';
+export type ViewMode = 'home' | 'chat';
 
 export interface RouteState {
 	view: ViewMode;
@@ -19,50 +11,36 @@ export interface RouteState {
 }
 
 // ─── URL Scheme ───────────────────────────────────────────────────────
-// #/characters
-// #/chats/{charId}
-// #/chat/{charId}/{chatId}
-// #/personas
-// #/presets
-// #/modules
-// #/plugins
-// #/settings
+// #/                          → home (character not selected)
+// #/chat/{charId}             → character's active/recent chat
+// #/chat/{charId}/{chatId}    → specific chat
 
 function buildHash(route: RouteState): string {
 	switch (route.view) {
-		case 'chats':
-			return `#/chats/${route.charId}`;
 		case 'chat':
-			return `#/chat/${route.charId}/${route.chatId}`;
+			if (route.chatId) return `#/chat/${route.charId}/${route.chatId}`;
+			if (route.charId) return `#/chat/${route.charId}`;
+			return '#/';
 		default:
-			return `#/${route.view}`;
+			return '#/';
 	}
 }
 
 function parseHash(hash: string): RouteState {
 	const path = hash.replace(/^#\//, '');
-	const parts = path.split('/');
-	const view = parts[0] as ViewMode;
+	if (!path || path === '/') return { view: 'home' };
 
-	switch (view) {
-		case 'chats':
-			return { view: 'chats', charId: parts[1] };
-		case 'chat':
-			return { view: 'chat', charId: parts[1], chatId: parts[2] };
-		case 'personas':
-		case 'presets':
-		case 'modules':
-		case 'plugins':
-		case 'settings':
-			return { view };
-		default:
-			return { view: 'characters' };
+	const parts = path.split('/');
+	if (parts[0] === 'chat') {
+		if (parts[1] && parts[2]) return { view: 'chat', charId: parts[1], chatId: parts[2] };
+		if (parts[1]) return { view: 'chat', charId: parts[1] };
 	}
+	return { view: 'home' };
 }
 
 // ─── Store ────────────────────────────────────────────────────────────
 
-const _route = writable<RouteState>({ view: 'characters' });
+const _route = writable<RouteState>({ view: 'home' });
 
 export const route = derived(_route, (r) => r);
 
@@ -77,7 +55,7 @@ export function navigate(next: RouteState): void {
 // ─── Boot / Hash Change ───────────────────────────────────────────────
 
 export function getCurrentHashRoute(): RouteState {
-	return parseHash(window.location.hash || '#/characters');
+	return parseHash(window.location.hash || '#/');
 }
 
 export function initHashListener(): () => void {

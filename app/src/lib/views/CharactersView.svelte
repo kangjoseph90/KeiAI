@@ -47,7 +47,7 @@
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<Card
 				class="cursor-pointer transition-colors hover:bg-accent"
-				onclick={() => onNavigate({ view: 'chats', charId: char.id })}
+				onclick={() => onNavigate({ view: 'chat', charId: char.id })}
 			>
 				<CardContent class="p-4">
 					{#if editModeId === char.id}
