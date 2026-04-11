@@ -25,7 +25,7 @@
 	import type { ToolCall } from '$lib/services/content/tool';
 	import { activeScripts } from '$lib/stores';
 	import { applyScripts } from '$lib/scripts';
-	import { marked } from 'marked';
+	import { parseMarkdownAsync } from '$lib/markdown';
 	import morphdom from 'morphdom';
 	import DOMPurify from 'dompurify';
 	import type { Action } from 'svelte/action';
@@ -120,7 +120,7 @@
 				const processed = await applyScripts(message.content, $activeScripts, 'display');
 				displayContent = processed;
 
-				const rawHtml = await marked.parse(processed);
+				const rawHtml = await parseMarkdownAsync(processed);
 				renderedHtml = DOMPurify.sanitize(rawHtml as string);
 			} finally {
 				pendingRefresh = false;
@@ -139,7 +139,7 @@
 	onMount(async () => {
 		if (message.content) {
 			displayContent = message.content;
-			const rawHtml = marked.parse(message.content);
+			const rawHtml = await parseMarkdownAsync(message.content);
 			if (typeof rawHtml === 'string') {
 				renderedHtml = DOMPurify.sanitize(rawHtml);
 			} else {

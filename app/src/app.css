@@ -2,6 +2,8 @@
 
 @import 'tw-animate-css';
 
+@plugin "@tailwindcss/typography";
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -118,4 +120,15 @@
 	body {
 		@apply bg-background text-foreground;
 	}
+}
+
+/* Markdown prose styles */
+.prose pre {
+	@apply overflow-x-auto rounded-lg border bg-muted;
+}
+.prose code:not(pre code) {
+	@apply rounded bg-muted px-1.5 py-0.5 text-sm font-mono;
+}
+.prose pre code.hljs {
+	@apply bg-transparent p-0 text-sm;
 }
