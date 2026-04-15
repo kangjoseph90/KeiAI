@@ -13,7 +13,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const STATIC_DIR = join(__dirname, '..', 'static', 'token');
+const PUBLIC_DIR = join(__dirname, '..', 'public', 'token');
 
 /** @type {Array<{ outPath: string, url: string }>} */
 const FILES = [
@@ -60,7 +60,7 @@ const FILES = [
 const force = process.argv.includes('--force');
 
 async function download(file) {
-	const dest = join(STATIC_DIR, file.outPath);
+	const dest = join(PUBLIC_DIR, file.outPath);
 
 	if (!force && existsSync(dest)) {
 		console.log(`  ✓ ${file.outPath} (cached)`);
@@ -83,7 +83,7 @@ async function download(file) {
 
 async function main() {
 	console.log('📦 Downloading tokenizer data...');
-	console.log(`   Target: ${STATIC_DIR}\n`);
+	console.log(`   Target: ${PUBLIC_DIR}\n`);
 
 	for (const file of FILES) {
 		await download(file);

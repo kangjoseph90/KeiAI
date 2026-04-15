@@ -23,7 +23,7 @@ cd proxy && pnpm install && pnpm dev   # Local wrangler
 
 | Directory     | Purpose                                           | Docs                                                             |
 | ------------- | ------------------------------------------------- | ---------------------------------------------------------------- |
-| `app/`        | SvelteKit frontend, E2EE engine, all client logic | [app/AGENTS.md](app/AGENTS.md), [app/TESTING.md](app/TESTING.md) |
+| `app/`        | Svelte frontend, E2EE engine, all client logic | [app/AGENTS.md](app/AGENTS.md), [app/TESTING.md](app/TESTING.md) |
 | `pocketbase/` | Blind data store, auth hooks, encrypted sync      | [pocketbase/AGENTS.md](pocketbase/AGENTS.md)                     |
 | `proxy/`      | Stateless AI API forwarding (Cloudflare Workers)  | [proxy/AGENTS.md](proxy/AGENTS.md)                               |
 | `notes/`      | Architecture philosophy, design docs              | Reference only                                                   |

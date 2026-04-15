@@ -16,7 +16,7 @@
     "check": "pnpm -C app check",
     "format": "pnpm -r format",
     "prepare": "husky",
-    "postinstall": "pnpm -C app prepare"
+    "postinstall": "node app/scripts/download-tokens.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

@@ -1,18 +1,25 @@
-import { sveltekit } from '@sveltejs/kit/vite';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
+import { resolve } from 'path';
 
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
-	plugins: [tailwindcss(), sveltekit()],
+	plugins: [tailwindcss(), svelte()],
 	envDir: '../',
+
+	resolve: {
+		alias: {
+			$lib: resolve('./src/lib')
+		}
+	},
 
 	// Vitest configuration
 	test: {
 		open: false,
 		include: ['src/**/*.{test,spec}.{js,ts}', 'tests/**/*.{test,spec}.{js,ts}'],
-		exclude: ['node_modules', '.svelte-kit', 'dist'],
+		exclude: ['node_modules', 'dist'],
 		environment: 'happy-dom',
 		environmentOptions: {
 			happyDom: {
@@ -42,16 +49,21 @@ export default defineConfig({
 	envPrefix: ['VITE_', 'TAURI_ENV_*'],
 
 	build: {
-		// Tauri uses Chromium on Windows and WebKit on macOS and Linux
+		// Tauri v2 uses modern runtimes (WebView2 ≥ Chromium 119, WebKit, modern mobile)
 		target:
 			process.env.TAURI_ENV_PLATFORM === 'windows'
-				? 'chrome105'
+				? 'chrome119'
 				: process.env.TAURI_ENV_PLATFORM === 'android' || process.env.TAURI_ENV_PLATFORM === 'ios'
-					? ['es2021', 'chrome100', 'safari13']
-					: ['es2021', 'chrome100', 'safari13'],
+					? ['es2022', 'chrome119', 'safari17']
+					: ['es2022', 'chrome119', 'safari17'],
 		// don't minify for debug builds
-		minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
+		minify: !process.env.TAURI_ENV_DEBUG ? true : false,
 		// produce sourcemaps for debug builds
-		sourcemap: !!process.env.TAURI_ENV_DEBUG
+		sourcemap: !!process.env.TAURI_ENV_DEBUG,
+		rolldownOptions: {
+			checks: {
+				pluginTimings: false
+			}
+		}
 	}
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import './app.css';
 	import { onMount, onDestroy } from 'svelte';
 	import { UserService, AuthService } from '$lib/services';
 	import { SyncManager } from '$lib/services/sync';

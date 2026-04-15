@@ -1,6 +1,6 @@
 # KeiAI App — AGENTS.md
 
-SvelteKit frontend with client-side E2EE. TypeScript strict, Svelte 5, Tailwind CSS, Tauri (desktop/mobile).
+Svelte frontend with client-side E2EE. TypeScript strict, Svelte 5, Tailwind CSS, Tauri (desktop/mobile).
 
 ```bash
 pnpm install && pnpm dev          # http://localhost:5173
@@ -14,7 +14,7 @@ pnpm format ./path/to/file.ts     # Format ONLY specific files — NEVER run pnp
 ## Architecture — Four-Layer Stack
 
 ```
-UI (routes/, views/, components/)
+UI (views/, components/)
  │  reads: readonly Svelte stores  │  calls: store action functions
  ▼
 Stores (lib/stores/)

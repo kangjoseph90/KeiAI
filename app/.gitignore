@@ -7,6 +7,7 @@ node_modules
 .wrangler
 /.svelte-kit
 /build
+/dist
 
 # OS
 .DS_Store
@@ -29,5 +30,5 @@ vite.config.ts.timestamp-*
 coverage/
 
 # Tokenizer data (downloaded via postinstall)
-/static/token/
+/public/token/
 

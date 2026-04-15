@@ -4,7 +4,7 @@
 	"version": "0.1.0",
 	"identifier": "com.kei.ai",
 	"build": {
-		"frontendDist": "../.svelte-kit/output/client",
+		"frontendDist": "../dist",
 		"devUrl": "http://localhost:5173",
 		"beforeDevCommand": "pnpm dev",
 		"beforeBuildCommand": "pnpm build"
@@ -34,7 +34,7 @@
 			"icons/icon.ico"
 		],
 		"resources": {
-			"../static/token/**/*": "token/"
+			"../public/token/**/*": "token/"
 		}
 	}
 }
