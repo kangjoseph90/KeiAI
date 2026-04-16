@@ -31,6 +31,7 @@
 		createChatLorebook,
 		deleteChatLorebook,
 		selectChat,
+		forkChat,
 		appSettings
 	} from '$lib/stores';
 	import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
@@ -82,10 +83,10 @@
 		await updateMessage(messageId, { activeSwipeIndex: newIndex });
 	}
 
-	/** Fork the chat at a given message's sortOrder — copies all history up to that point. */
-	async function handleFork(_messageSortOrder: string) {
-		// TODO: implement forkChat store action
-		console.log('Fork at', _messageSortOrder);
+	/** Fork the chat at a given message — copies all history up to that point into a new chat. */
+	async function handleFork(messageId: string) {
+		const newChatId = await forkChat(messageId);
+		handleSwitchChat(newChatId);
 	}
 
 	async function handleAddLorebook() {
@@ -206,7 +207,7 @@
 								onLoadDetail={(toolCallId) => ToolCallService.get(toolCallId)}
 								onRegenerate={() => handleRegenerate(msg.id)}
 								onSwipe={(newIndex) => handleSwipe(msg.id, newIndex)}
-								onFork={() => handleFork(msg.sortOrder)}
+								onFork={() => handleFork(msg.id)}
 								isLastMessage={msg.id === $displayMessages[$displayMessages.length - 1]?.id}
 							/>
 						{/each}

@@ -1,6 +1,7 @@
 import { get } from 'svelte/store';
 import {
 	ChatService,
+	MessageService,
 	LorebookService,
 	CharacterService,
 	type ChatDetail,
@@ -155,6 +156,107 @@ export async function deleteChat(chatId: string, characterId: string): Promise<v
 	if (chatId === get(activeChatId)) {
 		clearActiveChat();
 	}
+}
+
+// ─── Fork ──────────────────────────────────────────────────────────
+
+/**
+ * Forks a chat at a specific message, copying all history up to that point
+ * into a new thread. Includes chat-specific lorebooks.
+ */
+export async function forkChat(messageId: string): Promise<string> {
+	// Find fork point message and its chat context
+	const forkMessage = await MessageService.get(messageId);
+	if (!forkMessage) {
+		throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
+	}
+	const chatId = forkMessage.chatId;
+
+	// Find preceding history
+	const beforeMessages = await MessageService.getMessagesBefore(
+		chatId,
+		forkMessage.sortOrder,
+		Number.MAX_SAFE_INTEGER
+	);
+	const allMessages = [...beforeMessages, forkMessage];
+
+	// Fetch original chat metadata and character context
+	const originalChat = await ChatService.getDetail(chatId);
+	if (!originalChat) {
+		throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+	}
+	const characterId = originalChat.characterId;
+
+	const { lorebookRefs: _, ...dataCopy } = originalChat.data;
+	const lastMsg = allMessages[allMessages.length - 1];
+	const lastMessagePreview =
+		lastMsg.swipes[lastMsg.activeSwipeIndex]?.content?.substring(0, 50) ?? '';
+
+	const newChat = await ChatService.create(
+		characterId,
+		{
+			title: `${originalChat.title} (Fork)`,
+			messageCount: allMessages.length,
+			lastMessagePreview
+		},
+		dataCopy
+	);
+
+	// Batch copy messages concurrently
+	await Promise.all(
+		allMessages.map((msg) =>
+			MessageService.create(
+				newChat.id,
+				{
+					role: msg.role,
+					swipes: msg.swipes,
+					activeSwipeIndex: msg.activeSwipeIndex
+				},
+				msg.sortOrder
+			)
+		)
+	);
+
+	// Copy lorebooks and reconstruct references
+	const lorebooks = await LorebookService.listByOwner(chatId);
+	const copiedLorebooks = await Promise.all(
+		lorebooks.map(async (lb) => {
+			const { id: _lbId, ownerId: _ownerId, ...fields } = lb;
+			return LorebookService.create(newChat.id, fields);
+		})
+	);
+
+	const lorebookRefs: OrderedRef[] = [];
+	for (const copiedLb of copiedLorebooks) {
+		lorebookRefs.push({ id: copiedLb.id, sortOrder: generateSortOrder(lorebookRefs) });
+	}
+
+	if (lorebookRefs.length > 0) {
+		await ChatService.updateData(newChat.id, { lorebookRefs });
+	}
+
+	// Update character's chat references with safe rollback
+	const char = await getCharacterDetail(characterId);
+	const existingRefs = char.data.chatRefs || [];
+	const chatRefs: OrderedRef[] = [
+		...existingRefs,
+		{ id: newChat.id, sortOrder: generateSortOrder(existingRefs) }
+	];
+
+	try {
+		await CharacterService.updateData(characterId, { chatRefs });
+	} catch (error) {
+		await ChatService.delete(newChat.id);
+		throw error;
+	}
+
+	// Update store for UI responsiveness
+	if (characterId === get(activeCharacterId)) {
+		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, chatRefs } } : c));
+		chats.update((list) => [...list, newChat]);
+	}
+
+	return newChat.id;
 }
 
 // ─── Chat-owned Lorebook CRUD ─────────────────────────────────────
