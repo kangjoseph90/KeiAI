@@ -68,6 +68,9 @@ importers:
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
+      json5:
+        specifier: ^2.2.3
+        version: 2.2.3
       lucide-svelte:
         specifier: ^0.576.0
         version: 0.576.0(svelte@5.53.11)
@@ -161,7 +164,7 @@ importers:
         version: 5.53.11
       svelte-check:
         specifier: ^4.3.6
-        version: 4.4.5(picomatch@4.0.4)(svelte@5.53.11)(typescript@5.9.3)
+        version: 4.4.5(picomatch@4.0.3)(svelte@5.53.11)(typescript@5.9.3)
       tailwind-merge:
         specifier: ^3.5.0
         version: 3.5.0
@@ -2175,6 +2178,11 @@ packages:
 
   json-stringify-safe@5.0.1:
     resolution: {integrity: sha512-ZClg6AaYvamvYEE82d3Iyd3vSSIjQ+odgjaTzRuO3s7toCdFKczob2i0zCh7JE8kWn17yvAWhUVxvqGwUalsRA==}
+
+  json5@2.2.3:
+    resolution: {integrity: sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==}
+    engines: {node: '>=6'}
+    hasBin: true
 
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
@@ -4660,10 +4668,6 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.3
 
-  fdir@6.5.0(picomatch@4.0.4):
-    optionalDependencies:
-      picomatch: 4.0.4
-
   fflate@0.8.2: {}
 
   file-entry-cache@8.0.0:
@@ -4814,6 +4818,8 @@ snapshots:
   json-stable-stringify-without-jsonify@1.0.1: {}
 
   json-stringify-safe@5.0.1: {}
+
+  json5@2.2.3: {}
 
   keyv@4.5.4:
     dependencies:
@@ -5342,11 +5348,11 @@ snapshots:
     dependencies:
       has-flag: 4.0.0
 
-  svelte-check@4.4.5(picomatch@4.0.4)(svelte@5.53.11)(typescript@5.9.3):
+  svelte-check@4.4.5(picomatch@4.0.3)(svelte@5.53.11)(typescript@5.9.3):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       chokidar: 4.0.3
-      fdir: 6.5.0(picomatch@4.0.4)
+      fdir: 6.5.0(picomatch@4.0.3)
       picocolors: 1.1.1
       sade: 1.8.1
       svelte: 5.53.11

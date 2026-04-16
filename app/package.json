@@ -80,6 +80,7 @@
 		"dompurify": "^3.3.3",
 		"fractional-indexing": "^3.2.0",
 		"highlight.js": "^11.11.1",
+		"json5": "^2.2.3",
 		"lucide-svelte": "^0.576.0",
 		"marked": "^17.0.4",
 		"minidenticons": "^4.2.1",
