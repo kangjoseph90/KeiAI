@@ -39,7 +39,8 @@ describe('Message Store', () => {
 		id: 'msg-1',
 		chatId: mockChatId,
 		role: 'user',
-		content: 'Hello',
+		swipes: [{ content: 'Hello', createdAt: 1000 }],
+		activeSwipeIndex: 0,
 		sortOrder: 'a'
 	};
 
@@ -134,7 +135,10 @@ describe('Message Store', () => {
 			vi.mocked(ChatService.updateSummary).mockResolvedValue(updatedChat);
 			chats.set([{ id: mockChatId } as Chat]);
 
-			await createMessage(mockChatId, { content: 'New message content' });
+			await createMessage(mockChatId, {
+				swipes: [{ content: 'New message content', createdAt: Date.now() }],
+				activeSwipeIndex: 0
+			});
 
 			expect(get(messages)).toContainEqual(newMessage);
 			expect(ChatService.updateSummary).toHaveBeenCalledWith(mockChatId, {
@@ -146,25 +150,31 @@ describe('Message Store', () => {
 	});
 
 	describe('updateMessage', () => {
-		it('should update message content in messageMap', async () => {
+		it('should update message swipes in messageMap', async () => {
 			messageMap.set(new Map([['msg-1', mockMessage]]));
-			const updatedMsg = { ...mockMessage, content: 'Updated' };
+			const updatedMsg: Message = {
+				...mockMessage,
+				swipes: [{ content: 'Updated', createdAt: 2000 }]
+			};
 			vi.mocked(MessageService.update).mockResolvedValue(updatedMsg);
 
-			await updateMessage('msg-1', { content: 'Updated' });
+			await updateMessage('msg-1', { swipes: [{ content: 'Updated', createdAt: 2000 }] });
 
-			expect(get(messages)[0].content).toBe('Updated');
+			expect(get(messages)[0].swipes[0].content).toBe('Updated');
 			// O(1) lookup: verify Map contains updated value
-			expect(get(messageMap).get('msg-1')?.content).toBe('Updated');
+			expect(get(messageMap).get('msg-1')?.swipes[0].content).toBe('Updated');
 		});
 
 		it('should update chat preview if it is the last message', async () => {
 			messageMap.set(new Map([['msg-1', mockMessage]]));
-			const updatedMsg = { ...mockMessage, content: 'Last updated' };
+			const updatedMsg: Message = {
+				...mockMessage,
+				swipes: [{ content: 'Last updated', createdAt: 2000 }]
+			};
 			vi.mocked(MessageService.update).mockResolvedValue(updatedMsg);
 			vi.mocked(ChatService.updateSummary).mockResolvedValue({ id: mockChatId } as Chat);
 
-			await updateMessage('msg-1', { content: 'Last updated' });
+			await updateMessage('msg-1', { swipes: [{ content: 'Last updated', createdAt: 2000 }] });
 
 			expect(ChatService.updateSummary).toHaveBeenCalled();
 		});

@@ -67,10 +67,12 @@ function processEntry(entry: PromptTemplateEntry, input: PromptInput, result: Op
 		}
 		case 'history':
 			for (const msg of resolveHistorySlice(input.messages, entry.start, entry.end)) {
+				const activeSwipe = msg.swipes[msg.activeSwipeIndex];
+				if (!activeSwipe) continue;
 				result.push({
 					role: mapMessageRole(msg.role),
-					content: msg.content,
-					thought: msg.thought
+					content: activeSwipe.content,
+					thought: activeSwipe.thought
 				});
 			}
 			break;

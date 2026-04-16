@@ -37,6 +37,8 @@ export interface RunChatOptions {
 	saveOnAbort?: boolean;
 	/** Optional handler override for testing */
 	handlerOverride?: LLMStreamHandler;
+	/** If set, this run is a reroll — write to this message's swipes instead of creating a new message */
+	targetMessageId?: string;
 }
 
 const defaultOptions: RunChatOptions = {
@@ -74,7 +76,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
 	try {
 		// ── 1. Register task + open streaming bubble ────────────────────
-		createChatTask(chatId);
+		createChatTask(chatId, opts.targetMessageId);
 
 		// ── 2. Load all context as plain data ─────────────────────────
 		const chat = await getChatDetail(chatId);
@@ -166,13 +168,36 @@ async function persistTask(chatId: string): Promise<void> {
 			})
 		);
 
-		// 2. Create Message in DB (store update handled inside createMessage)
-		await createMessage(chatId, {
-			role: 'char',
+		const newSwipe = {
 			content: task.content,
 			thought: task.thought,
-			toolCalls: toolCallAbstracts.length > 0 ? toolCallAbstracts : undefined
-		});
+			toolCalls: toolCallAbstracts.length > 0 ? toolCallAbstracts : undefined,
+			createdAt: Date.now()
+		};
+
+		if (task.targetMessageId) {
+			// ── Reroll: add new swipe to the existing message ────────────────
+			const settings = await getAppSettings();
+			const saveSwipes = settings.chat.saveMessagesOnSwipe;
+
+			const existing = await getMessage(task.targetMessageId);
+			const nextSwipes = saveSwipes
+				? [...existing.swipes, newSwipe] // preserving: append
+				: [newSwipe]; // destructive: replace all
+			const nextIndex = nextSwipes.length - 1;
+
+			await updateMessage(task.targetMessageId, {
+				swipes: nextSwipes,
+				activeSwipeIndex: nextIndex
+			});
+		} else {
+			// ── New message ──────────────────────────────────────────────────
+			await createMessage(chatId, {
+				role: 'char',
+				swipes: [newSwipe],
+				activeSwipeIndex: 0
+			});
+		}
 
 		// 3. ONLY clear the ephemeral task AFTER the real message is in the store
 		clearChatTask(chatId);
@@ -213,16 +238,23 @@ export async function resolveToolCall(
 		}
 	});
 
-	// 2. Reflect the status change in the message (store cache → IDB fallback)
+	// 2. Reflect the status change in the active swipe's toolCalls
 	const message = await getMessage(messageId);
-	if (!message?.toolCalls) return;
+	if (!message) return;
 
-	const updatedToolCalls = message.toolCalls.map((tc) =>
+	const activeSwipe = message.swipes[message.activeSwipeIndex];
+	if (!activeSwipe?.toolCalls) return;
+
+	const updatedToolCalls = activeSwipe.toolCalls.map((tc) =>
 		tc.id === toolCallId
 			? { ...tc, status: isApprove ? ('success' as const) : ('rejected' as const) }
 			: tc
 	);
-	await updateMessage(messageId, { toolCalls: updatedToolCalls });
+
+	const updatedSwipes = message.swipes.map((s, i) =>
+		i === message.activeSwipeIndex ? { ...s, toolCalls: updatedToolCalls } : s
+	);
+	await updateMessage(messageId, { swipes: updatedSwipes });
 
 	// 3. If all tool calls are settled, resume the pipeline
 	const hasPending = updatedToolCalls.some((tc) => tc.status === 'pending');

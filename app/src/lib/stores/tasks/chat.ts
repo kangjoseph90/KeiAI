@@ -14,15 +14,17 @@ import type { LLMStreamContent } from '$lib/llm/types';
 
 /**
  * Register a new chat task in the store.
+ * Pass targetMessageId to mark this as a reroll of an existing message.
  */
-export function createChatTask(chatId: string): void {
+export function createChatTask(chatId: string, targetMessageId?: string): void {
 	chatTasks.update((map) => {
 		const next = new Map(map);
 		next.set(chatId, {
 			status: 'generating',
 			content: '',
 			thought: '',
-			toolCalls: []
+			toolCalls: [],
+			targetMessageId
 		});
 		return next;
 	});

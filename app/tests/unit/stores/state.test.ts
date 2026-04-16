@@ -74,12 +74,19 @@ describe('Global Stores', () => {
 	});
 
 	describe('Display Messages (Derived)', () => {
-		it('should merge messages and active generation task', () => {
+		it('should merge messages and active generation task (new message)', () => {
 			const chatId = 'chat-1';
 			activeChat.set({ id: chatId } as ChatDetail);
 
 			const dbMessages: Message[] = [
-				{ id: 'm1', chatId, role: 'user', content: 'hello', sortOrder: 'a' } as Message
+				{
+					id: 'm1',
+					chatId,
+					role: 'user',
+					swipes: [{ content: 'hello', createdAt: 1000 }],
+					activeSwipeIndex: 0,
+					sortOrder: 'a'
+				} as Message
 			];
 			messageMap.set(new Map(dbMessages.map((m) => [m.id, m])));
 
@@ -93,14 +100,16 @@ describe('Global Stores', () => {
 			expect(display[0].id).toBe('m1');
 			expect(display[0].displayStatus).toBe('completed');
 			expect(display[1].id).toBe('__generating_chat-1');
-			expect(display[1].content).toBe('world');
+			expect(display[1].swipes[0].content).toBe('world');
 			expect(display[1].displayStatus).toBe('generating');
 		});
 
 		it('should only show DB messages if no generation task', () => {
 			const chatId = 'chat-1';
 			activeChat.set({ id: chatId } as ChatDetail);
-			messageMap.set(new Map([['m1', { id: 'm1' } as Message]]));
+			messageMap.set(
+				new Map([['m1', { id: 'm1', swipes: [], activeSwipeIndex: 0 } as unknown as Message]])
+			);
 			chatTasks.set(new Map());
 
 			const display = get(displayMessages);

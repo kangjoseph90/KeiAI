@@ -30,7 +30,8 @@
 		deleteMessage,
 		createChatLorebook,
 		deleteChatLorebook,
-		selectChat
+		selectChat,
+		appSettings
 	} from '$lib/stores';
 	import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
 	import { ToolCallService } from '$lib/services/content/tool';
@@ -51,19 +52,40 @@
 		if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
 		const processedText = await applyScripts(newMessageText, $activeScripts, 'input');
 		newMessageText = '';
-		await createMessage(chatId, { role: 'user', content: processedText });
+		await createMessage(chatId, {
+			role: 'user',
+			swipes: [{ content: processedText, createdAt: Date.now() }],
+			activeSwipeIndex: 0
+		});
 		runChat(chatId);
 	}
 
 	async function handleUpdateMessage(id: string) {
 		if (!editMessageText.trim()) return;
-		await updateMessage(id, { content: editMessageText });
+		// Find the message to update the content in the active swipe
+		const msg = $displayMessages.find((m) => m.id === id);
+		if (!msg) return;
+		const updatedSwipes = msg.swipes.map((s, i) =>
+			i === msg.activeSwipeIndex ? { ...s, content: editMessageText } : s
+		);
+		await updateMessage(id, { swipes: updatedSwipes });
 		editModeId = null;
 	}
 
 	async function handleRegenerate(messageId: string) {
-		await deleteMessage(chatId, messageId);
-		runChat(chatId);
+		// Instead of deleting and re-creating, target the existing message for reroll.
+		// The task layer appends a new swipe (or replaces, based on saveMessagesOnSwipe).
+		runChat(chatId, { targetMessageId: messageId });
+	}
+
+	async function handleSwipe(messageId: string, newIndex: number) {
+		await updateMessage(messageId, { activeSwipeIndex: newIndex });
+	}
+
+	/** Fork the chat at a given message's sortOrder — copies all history up to that point. */
+	async function handleFork(_messageSortOrder: string) {
+		// TODO: implement forkChat store action
+		console.log('Fork at', _messageSortOrder);
 	}
 
 	async function handleAddLorebook() {
@@ -171,7 +193,9 @@
 								characterName={$activeCharacter?.name ?? ''}
 								onEdit={() => {
 									editModeId = msg.id;
-									editMessageText = msg.content;
+									// Initialize edit text from the active swipe
+									const activeSwipe = msg.swipes[msg.activeSwipeIndex];
+									editMessageText = activeSwipe?.content ?? '';
 								}}
 								onSave={() => handleUpdateMessage(msg.id)}
 								onDelete={() => deleteMessage(chatId, msg.id)}
@@ -181,6 +205,9 @@
 									resolveToolCall(chatId, msg.id, toolCallId, decision)}
 								onLoadDetail={(toolCallId) => ToolCallService.get(toolCallId)}
 								onRegenerate={() => handleRegenerate(msg.id)}
+								onSwipe={(newIndex) => handleSwipe(msg.id, newIndex)}
+								onFork={() => handleFork(msg.sortOrder)}
+								isLastMessage={msg.id === $displayMessages[$displayMessages.length - 1]?.id}
 							/>
 						{/each}
 					</div>

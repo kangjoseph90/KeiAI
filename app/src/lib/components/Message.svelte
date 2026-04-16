@@ -17,6 +17,9 @@
 		Brain,
 		ChevronDown,
 		ChevronUp,
+		ChevronLeft,
+		ChevronRight,
+		GitBranch,
 		Copy,
 		RefreshCw
 	} from 'lucide-svelte';
@@ -37,6 +40,7 @@
 		isEditing = false,
 		editText = $bindable(''),
 		characterName = '',
+		isLastMessage = false,
 		onEdit = () => {},
 		onSave = () => {},
 		onCancelEdit = () => {},
@@ -45,12 +49,15 @@
 		onResolveTool = () => {},
 		onLoadDetail = async (_id: string) => null,
 		onRegenerate = () => {},
+		onSwipe = (_index: number) => {},
+		onFork = () => {},
 		onCopy = () => {}
 	}: {
 		message: DisplayMessage;
 		isEditing?: boolean;
 		editText?: string;
 		characterName?: string;
+		isLastMessage?: boolean;
 		onEdit?: () => void;
 		onSave?: (text: string) => void;
 		onCancelEdit?: () => void;
@@ -59,6 +66,8 @@
 		onResolveTool?: (id: string, decision: 'approve' | 'reject') => void;
 		onLoadDetail?: (id: string) => Promise<ToolCall | null>;
 		onRegenerate?: () => void;
+		onSwipe?: (index: number) => void;
+		onFork?: () => void;
 		onCopy?: () => void;
 	} = $props();
 
@@ -73,6 +82,9 @@
 	// ── Derived ───────────────────────────────────────────────────────────────
 
 	let isUser = $derived(message.role === 'user');
+
+	/** The swipe that is currently active for this message. */
+	let activeSwipe = $derived(message.swipes[message.activeSwipeIndex]);
 
 	// ── Actions ───────────────────────────────────────────────────────────────
 
@@ -102,7 +114,7 @@
 	// ── Copy ──────────────────────────────────────────────────────────────────
 
 	async function handleCopy() {
-		await navigator.clipboard.writeText(message.content);
+		await navigator.clipboard.writeText(activeSwipe?.content ?? '');
 		copied = true;
 		onCopy();
 		setTimeout(() => (copied = false), 2000);
@@ -141,7 +153,7 @@
 	}
 
 	function refreshDisplay() {
-		const currentContent = message.content;
+		const currentContent = activeSwipe?.content ?? '';
 
 		// If completely done or error, render immediately without throttling
 		if (message.displayStatus !== 'generating') {
@@ -166,7 +178,7 @@
 		} else if (!renderTimeout) {
 			renderTimeout = setTimeout(() => {
 				renderTimeout = null;
-				executeRender(message.content); // Use latest content when timeout fires
+				executeRender(activeSwipe?.content ?? ''); // Use latest content when timeout fires
 			}, RENDER_THROTTLE_MS - timeSinceLastRender);
 		}
 	}
@@ -174,7 +186,7 @@
 	let lastStatus = '';
 
 	$effect(() => {
-		const current = message.content;
+		const current = activeSwipe?.content ?? '';
 		const status = message.displayStatus;
 
 		// Ensure refresh on both content updates and status transitions (e.g. generating -> completed)
@@ -250,7 +262,7 @@
 			<!-- Message Content -->
 		{:else}
 			<!-- Thought Process (Character only) -->
-			{#if !isUser && message.thought}
+			{#if !isUser && activeSwipe?.thought}
 				<div class="mb-1 w-full overflow-hidden rounded-xl border bg-muted/20">
 					<button
 						class="flex w-full items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-muted/40"
@@ -268,7 +280,7 @@
 					</button>
 					{#if thoughtExpanded}
 						<div class="px-3 pb-3 pt-1 text-xs italic leading-relaxed text-muted-foreground/80">
-							{message.thought || 'Processing thinking...'}
+							{activeSwipe.thought || 'Processing thinking...'}
 						</div>
 					{/if}
 				</div>
@@ -295,22 +307,45 @@
 			</div>
 
 			<!-- Tool Calls (Character only) -->
-			{#if !isUser && message.toolCalls && message.toolCalls.length > 0 && message.displayStatus !== 'generating'}
+			{#if !isUser && activeSwipe?.toolCalls && activeSwipe.toolCalls.length > 0 && message.displayStatus !== 'generating'}
 				<ToolCallGroup
-					toolCalls={message.toolCalls}
+					toolCalls={activeSwipe.toolCalls}
 					{onLoadDetail}
 					onApprove={(id) => onResolveTool(id, 'approve')}
 					onReject={(id) => onResolveTool(id, 'reject')}
 				/>
 			{/if}
 
-			<!-- Action Buttons (hover) -->
+			<!-- Single Action Row (hover) -->
 			{#if message.displayStatus === 'completed'}
 				<div
-					class="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 {isUser
+					class="mt-0.5 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 {isUser
 						? 'flex-row-reverse'
-						: ''}"
+						: 'flex-row'}"
 				>
+					<!-- Swipe Navigator (Character only, multiple swipes) -->
+					{#if !isUser && message.swipes.length > 1}
+						<div class="flex items-center gap-0.5 text-xs text-muted-foreground mr-1">
+							<button
+								class="rounded p-0.5 hover:bg-muted disabled:opacity-30"
+								disabled={message.activeSwipeIndex === 0}
+								onclick={() => onSwipe(message.activeSwipeIndex - 1)}
+							>
+								<ChevronLeft class="size-3.5" />
+							</button>
+							<span class="tabular-nums font-medium"
+								>{message.activeSwipeIndex + 1} / {message.swipes.length}</span
+							>
+							<button
+								class="rounded p-0.5 hover:bg-muted disabled:opacity-30"
+								disabled={message.activeSwipeIndex === message.swipes.length - 1}
+								onclick={() => onSwipe(message.activeSwipeIndex + 1)}
+							>
+								<ChevronRight class="size-3.5" />
+							</button>
+						</div>
+					{/if}
+
 					<!-- Copy -->
 					<Button
 						variant="ghost"
@@ -325,15 +360,27 @@
 						{/if}
 					</Button>
 
-					<!-- Regenerate (Character only) -->
 					{#if !isUser}
+						<!-- Regenerate: last char message only -->
+						{#if isLastMessage}
+							<Button
+								variant="ghost"
+								size="sm"
+								class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+								onclick={onRegenerate}
+							>
+								<RefreshCw class="size-3" />
+							</Button>
+						{/if}
+
+						<!-- Fork: always available for char messages -->
 						<Button
 							variant="ghost"
 							size="sm"
 							class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
-							onclick={onRegenerate}
+							onclick={onFork}
 						>
-							<RefreshCw class="size-3" />
+							<GitBranch class="size-3" />
 						</Button>
 					{/if}
 

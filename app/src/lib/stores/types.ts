@@ -24,6 +24,8 @@ export interface ChatTask {
 	content: string;
 	thought?: string;
 	toolCalls?: ToolCallRequest[];
+	/** If set, this task is a reroll of an existing message (not a new message). */
+	targetMessageId?: string;
 }
 
 // ─── Display Message Types ────────────────────────────────────────────────────

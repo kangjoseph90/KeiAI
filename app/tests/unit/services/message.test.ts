@@ -59,6 +59,15 @@ import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';
 import { generateKeyBetween } from 'fractional-indexing';
 
+// Helper to create a minimal MessageFields payload
+function makeFields(content: string, role: MessageFields['role'] = 'user'): MessageFields {
+	return {
+		role,
+		swipes: [{ content, createdAt: 1000 }],
+		activeSwipeIndex: 0
+	};
+}
+
 describe('MessageService', () => {
 	const mockMasterKey = {} as CryptoKey;
 	const mockUserId = 'user-123';
@@ -82,8 +91,8 @@ describe('MessageService', () => {
 			iv: mockIV
 		});
 
-		// Default decrypt mock
-		vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ role: 'user', content: 'Hello' }));
+		// Default decrypt mock — returns new swipes structure
+		vi.mocked(decrypt).mockResolvedValue(JSON.stringify(makeFields('Hello')));
 
 		// Default deepMerge mock
 		vi.mocked(deepMerge).mockImplementation((target: unknown, source: unknown) => ({
@@ -128,8 +137,8 @@ describe('MessageService', () => {
 
 			vi.mocked(localDB.getRecordsBackward).mockResolvedValue(mockRecords);
 			vi.mocked(decrypt)
-				.mockResolvedValueOnce(JSON.stringify({ role: 'user', content: 'Msg 1' }))
-				.mockResolvedValueOnce(JSON.stringify({ role: 'char', content: 'Msg 2' }));
+				.mockResolvedValueOnce(JSON.stringify(makeFields('Msg 1')))
+				.mockResolvedValueOnce(JSON.stringify(makeFields('Msg 2', 'char')));
 
 			const result = await MessageService.getMessagesBefore('chat-1', 'a1', 10);
 
@@ -140,7 +149,7 @@ describe('MessageService', () => {
 
 		it('should use default cursor when not provided', async () => {
 			vi.mocked(localDB.getRecordsBackward).mockResolvedValue([]);
-			vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ role: 'user', content: 'Hi' }));
+			vi.mocked(decrypt).mockResolvedValue(JSON.stringify(makeFields('Hi')));
 
 			await MessageService.getMessagesBefore('chat-1');
 
@@ -156,7 +165,7 @@ describe('MessageService', () => {
 
 		it('should respect custom limit', async () => {
 			vi.mocked(localDB.getRecordsBackward).mockResolvedValue([]);
-			vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ role: 'user', content: 'Hi' }));
+			vi.mocked(decrypt).mockResolvedValue(JSON.stringify(makeFields('Hi')));
 
 			await MessageService.getMessagesBefore('chat-1', 'a0', 100);
 
@@ -200,8 +209,8 @@ describe('MessageService', () => {
 
 			vi.mocked(localDB.getRecordsForward).mockResolvedValue(mockRecords);
 			vi.mocked(decrypt)
-				.mockResolvedValueOnce(JSON.stringify({ role: 'user', content: 'Msg 1' }))
-				.mockResolvedValueOnce(JSON.stringify({ role: 'char', content: 'Msg 2' }));
+				.mockResolvedValueOnce(JSON.stringify(makeFields('Msg 1')))
+				.mockResolvedValueOnce(JSON.stringify(makeFields('Msg 2', 'char')));
 
 			const result = await MessageService.getMessagesAfter('chat-1', 'a0', 10);
 
@@ -226,14 +235,14 @@ describe('MessageService', () => {
 			} as unknown as BaseRecord;
 
 			vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
-			vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ role: 'user', content: 'Hello' }));
+			vi.mocked(decrypt).mockResolvedValue(JSON.stringify(makeFields('Hello')));
 
 			const result = await MessageService.get('msg-1');
 
 			expect(result).not.toBeNull();
 			expect(result?.id).toBe('msg-1');
 			expect(result?.role).toBe('user');
-			expect(result?.content).toBe('Hello');
+			expect(result?.swipes[result.activeSwipeIndex].content).toBe('Hello');
 		});
 
 		it('should return null when message does not exist', async () => {
@@ -268,12 +277,12 @@ describe('MessageService', () => {
 			vi.mocked(localDB.getRecordsBackward).mockResolvedValue([]);
 			vi.mocked(generateKeyBetween).mockReturnValue('a0');
 
-			const result = await MessageService.create('chat-1', { role: 'user', content: 'Hi' });
+			const result = await MessageService.create('chat-1', makeFields('Hi'));
 
 			expect(result.id).toBe('test-msg-id');
 			expect(result.chatId).toBe('chat-1');
 			expect(result.role).toBe('user');
-			expect(result.content).toBe('Hi');
+			expect(result.swipes[result.activeSwipeIndex].content).toBe('Hi');
 			expect(result.sortOrder).toBe('a0');
 
 			expect(generateKeyBetween).toHaveBeenCalledWith(null, null);
@@ -282,11 +291,7 @@ describe('MessageService', () => {
 		it('should use provided sortOrder when given', async () => {
 			vi.mocked(localDB.getRecordsBackward).mockResolvedValue([]);
 
-			const result = await MessageService.create(
-				'chat-1',
-				{ role: 'char', content: 'Hello' },
-				'a5'
-			);
+			const result = await MessageService.create('chat-1', makeFields('Hello', 'char'), 'a5');
 
 			expect(result.sortOrder).toBe('a5');
 			// Should not call generateKeyBetween when sortOrder is provided
@@ -311,7 +316,7 @@ describe('MessageService', () => {
 			vi.mocked(localDB.getRecordsBackward).mockResolvedValue(lastRecords);
 			vi.mocked(generateKeyBetween).mockReturnValue('a6');
 
-			const result = await MessageService.create('chat-1', { role: 'user', content: 'Next' });
+			const result = await MessageService.create('chat-1', makeFields('Next'));
 
 			expect(result.sortOrder).toBe('a6');
 			expect(generateKeyBetween).toHaveBeenCalledWith('a5', null);
@@ -319,7 +324,7 @@ describe('MessageService', () => {
 	});
 
 	describe('update', () => {
-		it('should update message content', async () => {
+		it('should update message swipes', async () => {
 			const existingRecord = {
 				id: 'msg-1',
 				chatId: 'chat-1',
@@ -333,22 +338,28 @@ describe('MessageService', () => {
 			} as unknown as BaseRecord;
 
 			vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
-			vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ role: 'user', content: 'Old' }));
+			vi.mocked(decrypt).mockResolvedValue(JSON.stringify(makeFields('Old')));
 			vi.mocked(encrypt).mockResolvedValue({
 				ciphertext: new Uint8Array([99]),
 				iv: new Uint8Array([88])
 			});
 
-			const result = await MessageService.update('msg-1', { content: 'New content' });
+			const updatedSwipes = [{ content: 'New content', createdAt: 2000 }];
+			const result = await MessageService.update('msg-1', {
+				swipes: updatedSwipes,
+				activeSwipeIndex: 0
+			});
 
-			expect(result.content).toBe('New content');
+			expect(result.swipes[result.activeSwipeIndex].content).toBe('New content');
 			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 
 		it('should throw NOT_FOUND when message does not exist', async () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
 
-			await expect(MessageService.update('non-existent', { content: 'New' })).rejects.toThrow();
+			await expect(
+				MessageService.update('non-existent', { swipes: [{ content: 'New', createdAt: 0 }] })
+			).rejects.toThrow();
 		});
 	});
 

@@ -35,6 +35,13 @@ import type { RerankerProvider } from '$lib/types/models/reranker';
 
 export interface AppSettingsContent {
 	theme: 'light' | 'dark' | 'system';
+	chat: {
+		/**
+		 * When true, rerolling a message preserves all previous swipes.
+		 * When false, the previous content is discarded (destructive reroll).
+		 */
+		saveMessagesOnSwipe: boolean;
+	};
 	openai: OpenAIProviderConfig;
 	anthropic: AnthropicProviderConfig;
 	google: GoogleProviderConfig;
@@ -82,6 +89,9 @@ export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}
 
 export const defaultSettings: AppSettingsContent = {
 	theme: 'system',
+	chat: {
+		saveMessagesOnSwipe: true
+	},
 	openai: {
 		tts: {
 			modelId: 'tts-1',
