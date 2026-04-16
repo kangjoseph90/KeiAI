@@ -21,7 +21,8 @@ vi.mock('$lib/stores/tasks/chat', () => ({
 
 vi.mock('$lib/stores/content/message', () => ({
 	createMessage: vi.fn().mockResolvedValue(undefined),
-	updateMessage: vi.fn().mockResolvedValue(undefined)
+	updateMessage: vi.fn().mockResolvedValue(undefined),
+	getMessage: vi.fn()
 }));
 
 vi.mock('$lib/services/content/tool', () => ({
@@ -45,9 +46,12 @@ vi.mock('$lib/stores', () => ({
 		.fn()
 		.mockResolvedValue({ id: 'chat-1', characterId: 'char-1', messageCount: 0 }),
 	getCharacterDetail: vi.fn().mockResolvedValue({ id: 'char-1', data: { systemPrompt: '' } }),
-	getAppSettings: vi
-		.fn()
-		.mockResolvedValue({ personaId: 'persona-1', presetId: 'preset-1', apiKeys: {} }),
+	getAppSettings: vi.fn().mockResolvedValue({
+		personaId: 'persona-1',
+		presetId: 'preset-1',
+		apiKeys: {},
+		chat: { saveMessagesOnSwipe: true }
+	}),
 	getPersona: vi.fn().mockResolvedValue({ id: 'persona-1', name: '', description: '' }),
 	getPresetDetail: vi.fn().mockResolvedValue({
 		id: 'preset-1',
@@ -77,7 +81,9 @@ import {
 	clearChatTask,
 	consumeChatTask
 } from '$lib/stores/tasks/chat';
-import { createMessage } from '$lib/stores/content/message';
+import { createMessage, updateMessage, getMessage } from '$lib/stores/content/message';
+import { MessageService } from '$lib/services/content/message';
+import { getAppSettings } from '$lib/stores';
 import { buildPrompt } from '$lib/llm/prompt/builder';
 import { selectLLMHandler } from '$lib/llm/handler';
 
@@ -113,7 +119,7 @@ describe('Chat Pipeline', () => {
 
 		await runChat(mockChatId, { handlerOverride: mockHandler });
 
-		expect(createChatTask).toHaveBeenCalledWith(mockChatId);
+		expect(createChatTask).toHaveBeenCalledWith(mockChatId, undefined);
 		expect(updateChatTask).toHaveBeenCalledWith(mockChatId, { content: 'Hello' });
 		expect(updateChatTask).toHaveBeenCalledWith(mockChatId, { content: 'Hello world' });
 		expect(createMessage).toHaveBeenCalled();
@@ -240,10 +246,10 @@ describe('Chat Pipeline', () => {
 		await runChat(mockChatId, { handlerOverride: mockHandler });
 
 		expect(selectLLMHandler).not.toHaveBeenCalled();
-		expect(createChatTask).toHaveBeenCalledWith(mockChatId);
+		expect(createChatTask).toHaveBeenCalledWith(mockChatId, undefined);
 	});
 
-	it('should select handler from preset when no override', async () => {
+	it('selects handler from preset when no override', async () => {
 		const mockHandler: LLMStreamHandler = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Preset response' };
@@ -259,6 +265,84 @@ describe('Chat Pipeline', () => {
 		await runChat(mockChatId);
 
 		expect(selectLLMHandler).toHaveBeenCalled();
+	});
+
+	describe('Reroll (targetMessageId)', () => {
+		const targetMessageId = 'msg-1';
+		const mockExistingMessage = {
+			id: targetMessageId,
+			chatId: mockChatId,
+			role: 'char',
+			swipes: [{ content: 'Old content', createdAt: 1000, thought: '', toolCalls: [] }],
+			activeSwipeIndex: 0
+		};
+
+		it('should create a new swipe when saveMessagesOnSwipe is true', async () => {
+			const mockHandler: LLMStreamHandler = {
+				stream: vi.fn(async function* () {
+					yield { content: 'New content' };
+				})
+			};
+
+			vi.mocked(getChatTask).mockReturnValue({
+				status: 'generating',
+				content: 'New content',
+				targetMessageId
+			});
+			// any 금지 -> 타입 단언
+			vi.mocked(getMessage).mockResolvedValue(
+				mockExistingMessage as unknown as import('$lib/services').Message
+			);
+
+			await runChat(mockChatId, { handlerOverride: mockHandler, targetMessageId });
+
+			expect(createChatTask).toHaveBeenCalledWith(mockChatId, targetMessageId);
+			expect(updateMessage).toHaveBeenCalledWith(
+				targetMessageId,
+				expect.objectContaining({
+					activeSwipeIndex: 1,
+					swipes: expect.arrayContaining([
+						expect.objectContaining({ content: 'Old content' }),
+						expect.objectContaining({ content: 'New content' })
+					])
+				})
+			);
+			expect(createMessage).not.toHaveBeenCalled();
+		});
+
+		it('should overwrite swipes when saveMessagesOnSwipe is false', async () => {
+			vi.mocked(getAppSettings).mockResolvedValue({
+				personaId: 'persona-1',
+				presetId: 'preset-1',
+				apiKeys: {},
+				chat: { saveMessagesOnSwipe: false }
+			} as unknown as import('$lib/services').AppSettingsContent);
+
+			const mockHandler: LLMStreamHandler = {
+				stream: vi.fn(async function* () {
+					yield { content: 'Replaced content' };
+				})
+			};
+
+			vi.mocked(getChatTask).mockReturnValue({
+				status: 'generating',
+				content: 'Replaced content',
+				targetMessageId
+			});
+			vi.mocked(getMessage).mockResolvedValue(
+				mockExistingMessage as unknown as import('$lib/services').Message
+			);
+
+			await runChat(mockChatId, { handlerOverride: mockHandler, targetMessageId });
+
+			expect(updateMessage).toHaveBeenCalledWith(
+				targetMessageId,
+				expect.objectContaining({
+					activeSwipeIndex: 0,
+					swipes: [expect.objectContaining({ content: 'Replaced content' })] // Only one swipe
+				})
+			);
+		});
 	});
 
 	describe('Controls', () => {

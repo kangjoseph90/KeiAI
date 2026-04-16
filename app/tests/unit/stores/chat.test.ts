@@ -13,16 +13,18 @@ import {
 	createChatFolder,
 	updateChatFolder,
 	deleteChatFolder,
-	moveChatItem
+	moveChatItem,
+	forkChat
 } from '$lib/stores/content/chat';
 import { chats, activeChat, activeCharacter, messageMap, chatLorebooks } from '$lib/stores/state';
-import { ChatService, LorebookService, CharacterService } from '$lib/services';
+import { ChatService, LorebookService, CharacterService, MessageService } from '$lib/services';
 import { loadInitialMessages } from '$lib/stores/content/message';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type {
 	ChatDetail,
 	Chat,
+	Message,
 	Lorebook,
 	CharacterDetail,
 	CharacterDataFields,
@@ -49,6 +51,11 @@ vi.mock('$lib/services', () => ({
 	CharacterService: {
 		getDetail: vi.fn(),
 		updateData: vi.fn()
+	},
+	MessageService: {
+		get: vi.fn(),
+		getMessagesBefore: vi.fn(),
+		create: vi.fn()
 	}
 }));
 
@@ -224,6 +231,77 @@ describe('Chat Store', () => {
 			await moveChatItem('chat-1', 'lorebooks', 'lb-1', 'folder-1');
 
 			expect(get(activeChat)?.data.lorebookRefs?.[0].folderId).toBe('folder-1');
+		});
+	});
+
+	describe('forkChat', () => {
+		const mockMessage = {
+			id: 'msg-2',
+			chatId: 'chat-1',
+			sortOrder: 'b',
+			role: 'char',
+			swipes: [{ content: 'Fork me', createdAt: 2000 }],
+			activeSwipeIndex: 0
+		};
+		const mockPrevMessage = {
+			id: 'msg-1',
+			chatId: 'chat-1',
+			sortOrder: 'a',
+			role: 'user',
+			swipes: [{ content: 'Hello', createdAt: 1000 }],
+			activeSwipeIndex: 0
+		};
+		const mockLorebook = { id: 'lb-1', ownerId: 'chat-1', keys: ['test'] } as unknown as Lorebook;
+
+		beforeEach(() => {
+			activeCharacter.set(mockCharacterDetail);
+			vi.mocked(MessageService.get).mockResolvedValue(mockMessage as unknown as Message);
+			vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([
+				mockPrevMessage
+			] as unknown as Message[]);
+			vi.mocked(ChatService.getDetail).mockResolvedValue(mockChatDetail);
+			vi.mocked(ChatService.create).mockResolvedValue({ ...mockChatDetail, id: 'new-chat-id' });
+			vi.mocked(LorebookService.listByOwner).mockResolvedValue([mockLorebook]);
+			vi.mocked(LorebookService.create).mockResolvedValue({
+				...mockLorebook,
+				id: 'new-lb-id',
+				ownerId: 'new-chat-id'
+			});
+			vi.mocked(CharacterService.updateData).mockResolvedValue({} as CharacterDataFields);
+			vi.mocked(MessageService.create).mockResolvedValue({} as unknown as Message);
+		});
+
+		it('should fork chat successfully', async () => {
+			const newChatId = await forkChat('msg-2');
+
+			expect(newChatId).toBe('new-chat-id');
+			// Verifies original messages were preserved and copied into the new chat
+			expect(MessageService.create).toHaveBeenCalledTimes(2);
+			expect(LorebookService.create).toHaveBeenCalledWith(
+				'new-chat-id',
+				expect.objectContaining({ keys: ['test'] })
+			);
+			expect(CharacterService.updateData).toHaveBeenCalledWith(
+				'char-1',
+				expect.objectContaining({
+					chatRefs: expect.arrayContaining([expect.objectContaining({ id: 'new-chat-id' })])
+				})
+			);
+			expect(get(chats)).toContainEqual(expect.objectContaining({ id: 'new-chat-id' }));
+		});
+
+		it('should rollback and delete created chat if character update fails', async () => {
+			vi.mocked(CharacterService.updateData).mockRejectedValue(new Error('Update failed'));
+
+			await expect(forkChat('msg-2')).rejects.toThrow('Update failed');
+
+			expect(ChatService.delete).toHaveBeenCalledWith('new-chat-id');
+		});
+
+		it('should throw error if message is not found', async () => {
+			vi.mocked(MessageService.get).mockResolvedValue(null);
+
+			await expect(forkChat('msg-not-found')).rejects.toThrow(AppError);
 		});
 	});
 });
