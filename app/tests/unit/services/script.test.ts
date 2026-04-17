@@ -47,7 +47,7 @@ describe('ScriptService', () => {
 		name: 'Test Script',
 		regex: '.*',
 		replacement: 'test',
-		placement: 'display',
+		phase: 'display',
 		enabled: true
 	};
 
@@ -145,7 +145,7 @@ describe('ScriptService', () => {
 			expect(result.id).toBe('test-id');
 			expect(result.ownerId).toBe('owner-1');
 			expect(result.name).toBe('Custom Name');
-			expect(result.placement).toBe('display'); // From defaults
+			expect(result.phase).toBe('display'); // From defaults
 
 			expect(localDB.putRecord).toHaveBeenCalledWith(
 				'scripts',
@@ -170,9 +170,9 @@ describe('ScriptService', () => {
 
 			vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
 
-			const result = await ScriptService.update('s-1', { placement: 'output' });
+			const result = await ScriptService.update('s-1', { phase: 'output' });
 
-			expect(result.placement).toBe('output');
+			expect(result.phase).toBe('output');
 			expect(result.name).toBe('Test Script'); // Preserved from existing
 
 			expect(localDB.putRecord).not.toHaveBeenCalled();

@@ -9,10 +9,15 @@ import { encryptedWriteQueue } from './write_queue';
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ScriptFields {
+	type: 'regex';
 	name: string;
 	regex: string;
 	replacement: string;
-	placement: 'input' | 'request' | 'output' | 'display';
+	phase: 'input' | 'request' | 'output' | 'display';
+	advanced: boolean; // use advanced settings
+	flag: string;
+	order: number;
+	repeat: number; // 0 = loop until converge
 	enabled: boolean;
 }
 
@@ -24,10 +29,15 @@ export interface Script extends ScriptFields {
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultScriptFields: ScriptFields = {
+	type: 'regex',
 	name: 'New Script',
 	regex: '',
 	replacement: '',
-	placement: 'display',
+	phase: 'display',
+	advanced: false,
+	flag: 'g',
+	order: 100,
+	repeat: 1,
 	enabled: true
 };
 

@@ -26,8 +26,7 @@
 	import { onDestroy } from 'svelte';
 	import ToolCallGroup from './ToolCallGroup.svelte';
 	import type { ToolCall } from '$lib/services/content/tool';
-	import { activeScripts } from '$lib/stores';
-	import { applyScripts } from '$lib/scripts';
+	import { runPipeline } from '$lib/pipeline';
 	import { parseMarkdownAsync } from '$lib/markdown';
 	import morphdom from 'morphdom';
 	import DOMPurify from 'dompurify';
@@ -137,7 +136,7 @@
 
 		requestAnimationFrame(async () => {
 			try {
-				const processed = await applyScripts(contentToRender, $activeScripts, 'display');
+				const processed = await runPipeline(message.chatId, 'display', contentToRender);
 				displayContent = processed;
 				const rawHtml = await parseMarkdownAsync(processed);
 				renderedHtml = DOMPurify.sanitize(rawHtml as string);

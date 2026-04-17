@@ -52,6 +52,7 @@
 	<div class="fixed inset-0 z-50 bg-black/50" onclick={onClose} role="presentation"></div>
 
 	<!-- Settings Panel -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="fixed inset-0 z-50 flex animate-in fade-in duration-200"
 		onclick={(e) => {

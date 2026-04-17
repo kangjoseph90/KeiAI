@@ -28,7 +28,7 @@ import { MessageService, type Message } from '$lib/services/content/message';
 import { updateMessage, createMessage, getMessage } from '$lib/stores/content/message';
 import { buildPrompt } from '../llm/prompt/builder';
 import { selectLLMHandler } from '../llm/handler';
-import { applyScripts } from '../scripts';
+import { runPipeline } from '../pipeline';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
 
@@ -103,7 +103,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		const processedMessages = await Promise.all(
 			prompt.map(async (msg) => ({
 				...msg,
-				content: await applyScripts(msg.content, scripts, 'request')
+				content: await runPipeline(chatId, 'request', msg.content)
 			}))
 		);
 
@@ -117,7 +117,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		for await (const state of handler.stream(processedMessages, controller.signal)) {
 			const processedState = {
 				...state,
-				content: await applyScripts(state.content, scripts, 'output')
+				content: await runPipeline(chatId, 'output', state.content)
 			};
 			updateChatTask(chatId, processedState);
 		}

@@ -173,42 +173,6 @@ export const displayMessages = derived(
 );
 
 // ─── Context Resources ─────────────────────────────────────────────────
-// Module IDs: globally enabled OR character-referenced
-export const activeModuleIds = derived([appSettings, activeCharacter], ([settings, char]) => {
-	const globalEnabledIds = new Set(
-		settings?.moduleRefs?.filter((r) => r.enabled).map((r) => r.id) ?? []
-	);
-	const charModuleIds = char?.data.moduleRefs?.map((r) => r.id) ?? [];
-
-	// Union: globally enabled OR character-referenced
-	const allIds = new Set([...globalEnabledIds, ...charModuleIds]);
-	return Array.from(allIds);
-});
-
-// Merged from modules + character + chat
-export const activeLorebooks = derived(
-	[moduleResources, activeModuleIds, characterLorebooks, chatLorebooks],
-	([resources, activeIds, charLorebooks, chatLorebooks]) => {
-		// Get lorebooks from active modules
-		const moduleLorebooks = activeIds.flatMap((id) => resources.get(id)?.lorebooks ?? []);
-
-		// Merge all: modules + character + chat
-		return [...moduleLorebooks, ...charLorebooks, ...chatLorebooks];
-	}
-);
-
-// Merged from modules + character + chat
-export const activeScripts = derived(
-	[moduleResources, activeModuleIds, characterScripts, chatScripts],
-	([resources, activeIds, charScripts, chatScripts]) => {
-		// Get scripts from active modules
-		const moduleScripts = activeIds.flatMap((id) => resources.get(id)?.scripts ?? []);
-
-		// Merge all: modules + character + chat
-		return [...moduleScripts, ...charScripts, ...chatScripts];
-	}
-);
-
 // Active preset from app settings. Managed by preset store logic.
 export const activePreset = writable<PresetDetail | null>(null);
 export const activePersona = writable<Persona | null>(null);

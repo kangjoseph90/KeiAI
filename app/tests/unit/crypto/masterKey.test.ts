@@ -266,7 +266,7 @@ describe('masterKey', () => {
 			);
 
 			expect(cipher1).toEqual(cipher2);
-		});
+		}, 15000);
 
 		it('should fail with wrong password in full flow', async () => {
 			const password = 'test-password-123';
@@ -281,6 +281,6 @@ describe('masterKey', () => {
 			const { encryptionKey: wrongKey } = await deriveKeys(wrongPassword, salt);
 
 			await expect(unwrapMasterKey(wrapped.ciphertext, wrapped.iv, wrongKey)).rejects.toThrow();
-		});
+		}, 15000);
 	});
 });

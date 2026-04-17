@@ -34,7 +34,6 @@ export async function getActiveModuleIds(characterId: string): Promise<Set<strin
  */
 export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
 	const chat = await getChatDetail(chatId);
-	const char = await getCharacterDetail(chat.characterId);
 	const activeModuleIds = await getActiveModuleIds(chat.characterId);
 
 	const [chatLB, charLB, modules] = await Promise.all([
@@ -45,16 +44,13 @@ export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
 
 	const modLBResults = await Promise.all(
 		modules.map(async (mod) => {
-			const lb = await LorebookService.listByOwner(mod.id);
-			return sortByRefs(lb, mod.lorebookRefs ?? []);
+			return await LorebookService.listByOwner(mod.id);
 		})
 	);
 
 	const modLB = modLBResults.flat();
-	const charSorted = sortByRefs(charLB, char.data.lorebookRefs ?? []);
-	const chatSorted = sortByRefs(chatLB, chat.data.lorebookRefs ?? []);
 
-	return [...modLB, ...charSorted, ...chatSorted];
+	return [...modLB, ...charLB, ...chatLB];
 }
 
 /**
@@ -63,7 +59,6 @@ export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
  */
 export async function getMergedScripts(chatId: string): Promise<Script[]> {
 	const chat = await getChatDetail(chatId);
-	const char = await getCharacterDetail(chat.characterId);
 	const activeModuleIds = await getActiveModuleIds(chat.characterId);
 
 	const [charSC, modules] = await Promise.all([
@@ -73,13 +68,11 @@ export async function getMergedScripts(chatId: string): Promise<Script[]> {
 
 	const modSCResults = await Promise.all(
 		modules.map(async (mod) => {
-			const sc = await ScriptService.listByOwner(mod.id);
-			return sortByRefs(sc, mod.scriptRefs ?? []);
+			return await ScriptService.listByOwner(mod.id);
 		})
 	);
 
 	const modSC = modSCResults.flat();
-	const charSorted = sortByRefs(charSC, char.data.scriptRefs ?? []);
 
-	return [...modSC, ...charSorted];
+	return [...modSC, ...charSC];
 }

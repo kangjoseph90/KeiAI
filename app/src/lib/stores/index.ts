@@ -47,9 +47,6 @@ export const messageMap = readonly(StoreState.messageMap);
 export { messages } from './state';
 export const chatTasks = readonly(StoreState.chatTasks);
 export const activePreset = readonly(StoreState.activePreset);
-export const activeLorebooks = readonly(StoreState.activeLorebooks);
-export const activeScripts = readonly(StoreState.activeScripts);
-
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
 	activeCharacterId,
@@ -74,8 +71,6 @@ export * from './content/preset';
 export * from './content/chat';
 export * from './content/module';
 export * from './content/plugin';
-export * from './content/lorebook';
-export * from './content/script';
 export * from './content/message';
 export * from './content/merged';
 export * from './tasks/chat';

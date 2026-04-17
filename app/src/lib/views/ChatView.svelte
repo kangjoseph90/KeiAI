@@ -21,7 +21,6 @@
 		activeCharacter,
 		activeChat,
 		chats,
-		activeScripts,
 		chatLorebooks,
 		displayMessages,
 		isChatRunning,
@@ -36,7 +35,7 @@
 	} from '$lib/stores';
 	import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
 	import { ToolCallService } from '$lib/services/content/tool';
-	import { applyScripts } from '$lib/scripts';
+	import { runPipeline } from '$lib/pipeline';
 	import { navigate } from '$lib/router';
 	import { tick } from 'svelte';
 
@@ -51,7 +50,7 @@
 
 	async function handleSendMessage() {
 		if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
-		const processedText = await applyScripts(newMessageText, $activeScripts, 'input');
+		const processedText = await runPipeline(chatId, 'input', newMessageText);
 		newMessageText = '';
 		await createMessage(chatId, {
 			role: 'user',
