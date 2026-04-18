@@ -62,6 +62,7 @@ describe('Module Store', () => {
 		id: 'mod-1',
 		name: 'Test Module',
 		description: 'Description',
+		charjs: { code: '', allowLowLevel: false },
 		lorebookRefs: [],
 		scriptRefs: []
 	};

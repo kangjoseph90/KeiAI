@@ -6,6 +6,7 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
+import type { CharJS } from '$lib/charjs/types';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ export interface ModuleRefs {
 export interface ModuleContent {
 	name: string;
 	description: string;
+	charjs: CharJS;
 }
 
 export interface ModuleFields extends ModuleContent, ModuleRefs {}
@@ -34,7 +36,11 @@ export interface Module extends ModuleFields {
 
 const defaultModuleFields: ModuleFields = {
 	name: 'New Module',
-	description: ''
+	description: '',
+	charjs: {
+		code: '',
+		allowLowLevel: false
+	}
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────

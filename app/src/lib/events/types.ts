@@ -1,0 +1,14 @@
+/** Built-in event types and their data shapes */
+export interface EventType {
+	'message:sent': { content: string };
+	'message:received': { content: string };
+	'chat:started': Record<string, never>;
+	'chat:switched': Record<string, never>;
+	'chat:deleted': Record<string, never>;
+}
+
+/**
+ * Branded type for custom (non-built-in) event names.
+ * Prevents accidentally passing a built-in event name where a custom one is expected.
+ */
+export type EventName<E> = E extends keyof EventType ? never : E;

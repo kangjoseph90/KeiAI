@@ -6,6 +6,7 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
+import type { CharJS } from '$lib/charjs/types';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -33,7 +34,8 @@ export interface CharacterDataRefs {
 
 export interface CharacterDataContent {
 	systemPrompt: string;
-	greetingMessage?: string;
+	greetingMessage: string;
+	charjs: CharJS;
 }
 
 export interface CharacterDataFields extends CharacterDataContent, CharacterDataRefs {}
@@ -54,7 +56,12 @@ const defaultSummaryFields: CharacterSummaryFields = {
 };
 
 const defaultDataFields: CharacterDataFields = {
-	systemPrompt: ''
+	systemPrompt: '',
+	greetingMessage: '',
+	charjs: {
+		code: '',
+		allowLowLevel: false
+	}
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────

@@ -9,12 +9,6 @@
  *  request: string
  *  output: string
  *  display: string
- *
- * TODO: Char JS scripts (one per character/module)
- *      Since they run on QuickJS and we don't know exactly when they'll be called,
- *      we cache instances evaluating these codes using a TTL to maintain separation from stores.
- *      The pipeline requests handlers directly from these instances.
- *      Plugins follow the same instance-based pattern, but with a persistent cache.
  */
 
 import { collectPipelineHandlers } from './handler';

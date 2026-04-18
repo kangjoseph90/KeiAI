@@ -61,6 +61,30 @@ vi.mock('$lib/stores', () => ({
 	getMergedScripts: vi.fn().mockResolvedValue([])
 }));
 
+vi.mock('$lib/stores/content/chat', () => ({
+	getChatDetail: vi.fn().mockResolvedValue({ id: 'chat-1', characterId: 'char-1', messageCount: 0 })
+}));
+
+vi.mock('$lib/stores/content/character', () => ({
+	getCharacterDetail: vi.fn().mockResolvedValue({
+		id: 'char-1',
+		data: { systemPrompt: '', charjs: { code: '', allowLowLevel: false } }
+	})
+}));
+
+vi.mock('$lib/stores/content/merged', () => ({
+	getActiveModuleIds: vi.fn().mockResolvedValue(new Set())
+}));
+
+vi.mock('$lib/stores/content/module', () => ({
+	getModule: vi.fn().mockResolvedValue({ id: 'mod-1', charjs: { code: '' } })
+}));
+
+vi.mock('$lib/charjs', () => ({
+	getOrCreateInstance: vi.fn().mockResolvedValue(null),
+	invokeHandler: vi.fn()
+}));
+
 vi.mock('$lib/llm/prompt/builder', () => ({
 	buildPrompt: vi.fn().mockReturnValue([])
 }));

@@ -109,6 +109,8 @@ describe('Character Store', () => {
 		...mockCharacter,
 		data: {
 			systemPrompt: 'Prompt',
+			greetingMessage: '',
+			charjs: { code: '', allowLowLevel: false },
 			chatRefs: [],
 			lorebookRefs: [],
 			scriptRefs: [],

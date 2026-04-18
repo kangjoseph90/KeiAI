@@ -64,6 +64,7 @@
 	},
 	"dependencies": {
 		"@huggingface/transformers": "^3.8.1",
+		"@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.32.0",
 		"@mlc-ai/web-tokenizers": "^0.1.6",
 		"@tailwindcss/typography": "^0.5.19",
 		"@tauri-apps/api": "^2.10.1",
@@ -85,6 +86,7 @@
 		"marked": "^17.0.4",
 		"minidenticons": "^4.2.1",
 		"morphdom": "^2.7.8",
-		"pocketbase": "^0.26.8"
+		"pocketbase": "^0.26.8",
+		"quickjs-emscripten": "^0.32.0"
 	}
 }
