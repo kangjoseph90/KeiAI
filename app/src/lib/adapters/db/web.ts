@@ -24,7 +24,8 @@ import type {
 	PluginRecord,
 	PresetSummaryRecord,
 	PresetDataRecord,
-	ToolCallRecord
+	ToolCallRecord,
+	CharJSRecord
 } from './types';
 import { DatabaseWriteEventEmitter } from './events';
 
@@ -43,6 +44,7 @@ class DexieStore extends Dexie {
 	presetSummaries!: Table<PresetSummaryRecord, string>;
 	presetData!: Table<PresetDataRecord, string>;
 	toolCalls!: Table<ToolCallRecord, string>;
+	charjs!: Table<CharJSRecord, string>;
 
 	constructor() {
 		super('KeiLocalDB');
@@ -62,7 +64,8 @@ class DexieStore extends Dexie {
 			plugins: 'id, userId, updatedAt, isDeleted',
 			presetSummaries: 'id, userId, updatedAt, isDeleted',
 			presetData: 'id, userId, updatedAt, isDeleted',
-			toolCalls: 'id, userId, chatId, updatedAt, isDeleted'
+			toolCalls: 'id, userId, chatId, updatedAt, isDeleted',
+			charjs: 'id, userId, ownerId, updatedAt, isDeleted'
 		});
 	}
 }

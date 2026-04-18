@@ -45,7 +45,7 @@ describe('ModuleService', () => {
 	const defaultFields: ModuleFields = {
 		name: 'Test Module',
 		description: 'Test Description',
-		charjs: { code: '', allowLowLevel: false }
+		allowLowLevel: false
 	};
 
 	beforeEach(() => {
@@ -166,12 +166,13 @@ describe('ModuleService', () => {
 			await ModuleService.delete('mod-1');
 
 			expect(localDB.transaction).toHaveBeenCalledWith(
-				['lorebooks', 'scripts', 'modules'],
+				['lorebooks', 'scripts', 'charjs', 'modules'],
 				'rw',
 				expect.any(Function)
 			);
 			expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('lorebooks', 'ownerId', 'mod-1');
 			expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('scripts', 'ownerId', 'mod-1');
+			expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('charjs', 'ownerId', 'mod-1');
 			expect(localDB.softDeleteRecord).toHaveBeenCalledWith('modules', 'mod-1');
 		});
 	});

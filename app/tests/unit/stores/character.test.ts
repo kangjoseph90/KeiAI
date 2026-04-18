@@ -13,6 +13,8 @@ import {
 	deleteCharacterLorebook,
 	createCharacterScript,
 	deleteCharacterScript,
+	createCharacterCharJS,
+	deleteCharacterCharJS,
 	createCharacterFolder,
 	updateCharacterFolder,
 	deleteCharacterFolder,
@@ -23,6 +25,7 @@ import {
 	activeCharacter,
 	characterLorebooks,
 	characterScripts,
+	characterCharJS,
 	characterModules,
 	chats,
 	modules,
@@ -34,6 +37,7 @@ import {
 	ChatService,
 	LorebookService,
 	ScriptService,
+	CharJSService,
 	SettingsService
 } from '$lib/services';
 import { AppError } from '$lib/types/errors';
@@ -44,6 +48,7 @@ import type {
 	Character,
 	Lorebook,
 	Script,
+	CharJS,
 	Chat,
 	AppSettings,
 	CharacterDataFields
@@ -71,6 +76,11 @@ vi.mock('$lib/services', () => ({
 		listByOwner: vi.fn()
 	},
 	ScriptService: {
+		create: vi.fn(),
+		delete: vi.fn(),
+		listByOwner: vi.fn()
+	},
+	CharJSService: {
 		create: vi.fn(),
 		delete: vi.fn(),
 		listByOwner: vi.fn()
@@ -110,10 +120,11 @@ describe('Character Store', () => {
 		data: {
 			systemPrompt: 'Prompt',
 			greetingMessage: '',
-			charjs: { code: '', allowLowLevel: false },
+			allowLowLevel: false,
 			chatRefs: [],
 			lorebookRefs: [],
 			scriptRefs: [],
+			charjsRefs: [],
 			moduleRefs: [],
 			folders: {}
 		}
@@ -125,6 +136,7 @@ describe('Character Store', () => {
 		activeCharacter.set(null);
 		characterLorebooks.set([]);
 		characterScripts.set([]);
+		characterCharJS.set([]);
 		characterModules.set([]);
 		chats.set([]);
 		modules.set([]);
@@ -164,6 +176,7 @@ describe('Character Store', () => {
 			vi.mocked(ChatService.listByCharacter).mockResolvedValue([]);
 			vi.mocked(LorebookService.listByOwner).mockResolvedValue([]);
 			vi.mocked(ScriptService.listByOwner).mockResolvedValue([]);
+			vi.mocked(CharJSService.listByOwner).mockResolvedValue([]);
 
 			await selectCharacter('char-1');
 
@@ -172,6 +185,7 @@ describe('Character Store', () => {
 			expect(get(chats)).toEqual([]);
 			expect(get(characterLorebooks)).toEqual([]);
 			expect(get(characterScripts)).toEqual([]);
+			expect(get(characterCharJS)).toEqual([]);
 		});
 
 		it('should throw error if character not found', async () => {
@@ -266,6 +280,42 @@ describe('Character Store', () => {
 
 			expect(get(characters)).toHaveLength(0);
 			expect(get(appSettings)?.characterRefs).toHaveLength(0);
+		});
+	});
+
+	describe('createCharacterCharJS', () => {
+		it('should create CharJS script and update store', async () => {
+			activeCharacter.set(mockCharacterDetail);
+			const cjs = { id: 'cjs-1', name: 'New Script' } as CharJS;
+			vi.mocked(CharJSService.create).mockResolvedValue(cjs);
+			vi.mocked(CharacterService.updateData).mockResolvedValue({} as CharacterDataFields);
+
+			await createCharacterCharJS('char-1', { name: 'New Script' });
+
+			expect(get(activeCharacter)?.data.charjsRefs).toHaveLength(1);
+			expect(get(characterCharJS)).toContainEqual(cjs);
+			expect(CharacterService.updateData).toHaveBeenCalledWith('char-1', {
+				charjsRefs: expect.arrayContaining([{ id: 'cjs-1', sortOrder: 'sort-order' }])
+			});
+		});
+	});
+
+	describe('deleteCharacterCharJS', () => {
+		it('should delete CharJS script and remove from refs', async () => {
+			const charWithRefs = {
+				...mockCharacterDetail,
+				data: { ...mockCharacterDetail.data, charjsRefs: [{ id: 'cjs-1', sortOrder: 'a' }] }
+			};
+			activeCharacter.set(charWithRefs);
+			characterCharJS.set([{ id: 'cjs-1' } as CharJS]);
+			vi.mocked(CharacterService.updateData).mockResolvedValue({} as CharacterDataFields);
+			vi.mocked(CharJSService.delete).mockResolvedValue(undefined);
+
+			await deleteCharacterCharJS('char-1', 'cjs-1');
+
+			expect(get(activeCharacter)?.data.charjsRefs).toHaveLength(0);
+			expect(get(characterCharJS)).toHaveLength(0);
+			expect(CharJSService.delete).toHaveBeenCalledWith('cjs-1');
 		});
 	});
 

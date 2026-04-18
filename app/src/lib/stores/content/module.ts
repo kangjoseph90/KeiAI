@@ -3,6 +3,7 @@ import {
 	ModuleService,
 	LorebookService,
 	ScriptService,
+	CharJSService,
 	SettingsService,
 	type ModuleFields,
 	type ModuleContent,
@@ -10,7 +11,9 @@ import {
 	type LorebookFields,
 	type Lorebook,
 	type ScriptFields,
-	type Script
+	type Script,
+	type CharJSFields,
+	type CharJS
 } from '$lib/services';
 import type { OrderedRef, FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
@@ -48,17 +51,19 @@ export async function loadModules(): Promise<void> {
 
 	const entries = await Promise.all(
 		mods.map(async (mod) => {
-			const [lorebooks, scripts] = await Promise.all([
+			const [lorebooks, scripts, charjs] = await Promise.all([
 				LorebookService.listByOwner(mod.id),
-				ScriptService.listByOwner(mod.id)
+				ScriptService.listByOwner(mod.id),
+				CharJSService.listByOwner(mod.id)
 			]);
 			return [
 				mod.id,
 				{
 					lorebooks: sortByRefs(lorebooks, mod.lorebookRefs ?? []),
-					scripts: sortByRefs(scripts, mod.scriptRefs ?? [])
+					scripts: sortByRefs(scripts, mod.scriptRefs ?? []),
+					charjs: sortByRefs(charjs, mod.charjsRefs ?? [])
 				}
-			] as const;
+			] as [string, { lorebooks: Lorebook[]; scripts: Script[]; charjs: CharJS[] }];
 		})
 	);
 
@@ -90,7 +95,7 @@ export async function createModule(fields: DeepPartial<ModuleFields> = {}): Prom
 	modules.update((list) => [...list, mod]);
 	moduleResources.update((map) => {
 		const m = new Map(map);
-		m.set(mod.id, { lorebooks: [], scripts: [] });
+		m.set(mod.id, { lorebooks: [], scripts: [], charjs: [] });
 		return m;
 	});
 
@@ -161,7 +166,7 @@ export async function createModuleLorebook(
 	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, lorebookRefs } : m)));
 	moduleResources.update((map) => {
 		const m = new Map(map);
-		const entry = m.get(moduleId) ?? { lorebooks: [], scripts: [] };
+		const entry = m.get(moduleId) ?? { lorebooks: [], scripts: [], charjs: [] };
 		m.set(moduleId, { ...entry, lorebooks: [...entry.lorebooks, lb] });
 		return m;
 	});
@@ -228,7 +233,7 @@ export async function createModuleScript(
 	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, scriptRefs } : m)));
 	moduleResources.update((map) => {
 		const m = new Map(map);
-		const entry = m.get(moduleId) ?? { lorebooks: [], scripts: [] };
+		const entry = m.get(moduleId) ?? { lorebooks: [], scripts: [], charjs: [] };
 		m.set(moduleId, { ...entry, scripts: [...entry.scripts, sc] });
 		return m;
 	});
@@ -263,9 +268,65 @@ export async function deleteModuleScript(moduleId: string, scriptId: string): Pr
 	});
 }
 
+// ─── Module-owned CharJS CRUD ───────────────────────────────────────
+
+export async function createModuleCharJS(
+	moduleId: string,
+	fields: DeepPartial<CharJSFields>
+): Promise<CharJS> {
+	const mod = await getModule(moduleId);
+
+	const cjs = await CharJSService.create(moduleId, fields);
+
+	const existingRefs = mod.charjsRefs || [];
+	const charjsRefs: OrderedRef[] = [
+		...existingRefs,
+		{ id: cjs.id, sortOrder: generateSortOrder(existingRefs) }
+	];
+	try {
+		await ModuleService.update(moduleId, { charjsRefs });
+	} catch (error) {
+		await CharJSService.delete(cjs.id);
+		throw error;
+	}
+
+	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, charjsRefs } : m)));
+	moduleResources.update((map) => {
+		const m = new Map(map);
+		const entry = m.get(moduleId) ?? { lorebooks: [], scripts: [], charjs: [] };
+		m.set(moduleId, { ...entry, charjs: [...entry.charjs, cjs] });
+		return m;
+	});
+
+	return cjs;
+}
+
+export async function deleteModuleCharJS(moduleId: string, charjsId: string): Promise<void> {
+	const mod = await getModule(moduleId);
+
+	const existingRefs = mod.charjsRefs || [];
+	const charjsRefs = existingRefs.filter((r) => r.id !== charjsId);
+	await ModuleService.update(moduleId, { charjsRefs });
+
+	try {
+		await CharJSService.delete(charjsId);
+	} catch (error) {
+		await ModuleService.update(moduleId, { charjsRefs: existingRefs });
+		throw error;
+	}
+
+	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, charjsRefs } : m)));
+	moduleResources.update((map) => {
+		const m = new Map(map);
+		const entry = m.get(moduleId);
+		if (entry) m.set(moduleId, { ...entry, charjs: entry.charjs.filter((s) => s.id !== charjsId) });
+		return m;
+	});
+}
+
 // ─── Module-owned Folder & Item Management ──────────────────────
 
-export type ModuleFolderType = 'lorebooks' | 'scripts';
+export type ModuleFolderType = 'lorebooks' | 'scripts' | 'charjs';
 
 export async function createModuleFolder(
 	moduleId: string,
@@ -363,6 +424,9 @@ export async function moveModuleItem(
 			break;
 		case 'scripts':
 			refKey = 'scriptRefs';
+			break;
+		case 'charjs':
+			refKey = 'charjsRefs';
 			break;
 		default:
 			return;

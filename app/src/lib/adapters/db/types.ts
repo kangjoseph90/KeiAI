@@ -28,7 +28,8 @@ export type TableName =
 	| 'plugins'
 	| 'presetSummaries'
 	| 'presetData'
-	| 'toolCalls';
+	| 'toolCalls'
+	| 'charjs';
 
 export const SYNC_TABLES: TableName[] = [
 	'characterSummaries',
@@ -43,7 +44,8 @@ export const SYNC_TABLES: TableName[] = [
 	'modules',
 	'plugins',
 	'presetSummaries',
-	'presetData'
+	'presetData',
+	'charjs'
 ];
 
 export const LOCAL_TABLES: TableName[] = ['toolCalls'];
@@ -128,6 +130,9 @@ export interface LorebookRecord extends EncryptedRecord {
 	ownerId: string;
 }
 export interface ScriptRecord extends EncryptedRecord {
+	ownerId: string;
+}
+export interface CharJSRecord extends EncryptedRecord {
 	ownerId: string;
 }
 export type ModuleRecord = EncryptedRecord;

@@ -4,6 +4,7 @@ import {
 	ChatService,
 	LorebookService,
 	ScriptService,
+	CharJSService,
 	SettingsService,
 	type CharacterSummaryFields,
 	type CharacterDataFields,
@@ -11,8 +12,10 @@ import {
 	type CharacterDetail,
 	type LorebookFields,
 	type ScriptFields,
+	type CharJSFields,
 	type Lorebook,
-	type Script
+	type Script,
+	type CharJS
 } from '$lib/services';
 import type { OrderedRef, FolderDef } from '$lib/types/refs';
 import { clearActiveChat } from './chat';
@@ -22,6 +25,7 @@ import {
 	activeCharacter,
 	characterLorebooks,
 	characterScripts,
+	characterCharJS,
 	characterModules,
 	chats,
 	modules,
@@ -71,13 +75,15 @@ export async function selectCharacter(characterId: string): Promise<void> {
 	const moduleIds = detail.data.moduleRefs?.map((r) => r.id) ?? [];
 	characterModules.set(get(modules).filter((m) => moduleIds.includes(m.id)));
 
-	const [lorebooks, scripts] = await Promise.all([
+	const [lorebooks, scripts, charjs] = await Promise.all([
 		LorebookService.listByOwner(characterId),
-		ScriptService.listByOwner(characterId)
+		ScriptService.listByOwner(characterId),
+		CharJSService.listByOwner(characterId)
 	]);
 
 	characterLorebooks.set(sortByRefs(lorebooks, detail.data.lorebookRefs ?? []));
 	characterScripts.set(sortByRefs(scripts, detail.data.scriptRefs ?? []));
+	characterCharJS.set(sortByRefs(charjs, detail.data.charjsRefs ?? []));
 }
 
 export function clearActiveCharacter(): void {
@@ -85,6 +91,7 @@ export function clearActiveCharacter(): void {
 	chats.set([]);
 	characterLorebooks.set([]);
 	characterScripts.set([]);
+	characterCharJS.set([]);
 	characterModules.set([]);
 	clearActiveChat();
 }
@@ -297,9 +304,58 @@ export async function deleteCharacterScript(characterId: string, scriptId: strin
 	}
 }
 
+// ─── Character-owned CharJS CRUD ───────────────────────────────────
+
+export async function createCharacterCharJS(
+	characterId: string,
+	fields: DeepPartial<CharJSFields>
+): Promise<CharJS> {
+	const char = await getCharacterDetail(characterId);
+	const cjs = await CharJSService.create(characterId, fields);
+
+	const existingRefs = char.data.charjsRefs || [];
+	const charjsRefs: OrderedRef[] = [
+		...existingRefs,
+		{ id: cjs.id, sortOrder: generateSortOrder(existingRefs) }
+	];
+	try {
+		await CharacterService.updateData(characterId, { charjsRefs });
+	} catch (error) {
+		await CharJSService.delete(cjs.id);
+		throw error;
+	}
+
+	if (characterId === get(activeCharacterId)) {
+		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, charjsRefs } } : c));
+		characterCharJS.update((list) => [...list, cjs]);
+	}
+
+	return cjs;
+}
+
+export async function deleteCharacterCharJS(characterId: string, charjsId: string): Promise<void> {
+	const char = await getCharacterDetail(characterId);
+
+	const existingRefs = char.data.charjsRefs || [];
+	const charjsRefs = existingRefs.filter((r) => r.id !== charjsId);
+	await CharacterService.updateData(characterId, { charjsRefs });
+
+	try {
+		await CharJSService.delete(charjsId);
+	} catch (error) {
+		await CharacterService.updateData(characterId, { charjsRefs: existingRefs });
+		throw error;
+	}
+
+	if (characterId === get(activeCharacterId)) {
+		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, charjsRefs } } : c));
+		characterCharJS.update((list) => list.filter((cjs) => cjs.id !== charjsId));
+	}
+}
+
 // ─── Character-owned Folder & Item Management ──────────────────────
 
-export type CharacterFolderType = 'chats' | 'lorebooks' | 'scripts' | 'modules';
+export type CharacterFolderType = 'chats' | 'lorebooks' | 'scripts' | 'modules' | 'charjs';
 
 export async function createCharacterFolder(
 	characterId: string,
@@ -400,6 +456,9 @@ export async function moveCharacterItem(
 			break;
 		case 'modules':
 			refKey = 'moduleRefs';
+			break;
+		case 'charjs':
+			refKey = 'charjsRefs';
 			break;
 		default:
 			return;

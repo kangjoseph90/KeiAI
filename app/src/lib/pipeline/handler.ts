@@ -1,11 +1,6 @@
 import { applyRegexScript } from '$lib/scripts/regex';
 import { getMergedScripts } from '$lib/stores';
-import { getOrCreateInstance, invokeHandler } from '$lib/charjs';
-import { getChatDetail } from '$lib/stores/content/chat';
-import { getCharacterDetail } from '$lib/stores/content/character';
-import { getActiveModuleIds } from '$lib/stores/content/merged';
-import { getModule } from '$lib/stores/content/module';
-import type { CharJS } from '$lib/charjs';
+import { collectCharJSInstances, invokeHandler } from '$lib/charjs';
 import type { Phase, PhaseType, PipelineHandler } from './types';
 
 export async function collectPipelineHandlers<K extends keyof PhaseType>(
@@ -58,34 +53,13 @@ async function collectCharJSHandlers(
 	phase: string
 ): Promise<PipelineHandler<unknown>[]> {
 	const handlers: PipelineHandler<unknown>[] = [];
+	const instances = await collectCharJSInstances(chatId);
 
-	const chat = await getChatDetail(chatId);
-	const character = await getCharacterDetail(chat.characterId);
-	const activeModuleIds = await getActiveModuleIds(chat.characterId);
-
-	// Collect charjs sources: character + active modules
-	const sources: Array<{ ownerId: string; charjs: CharJS }> = [];
-
-	if (character.data.charjs.code) {
-		sources.push({ ownerId: character.id, charjs: character.data.charjs });
-	}
-
-	const modules = await Promise.all([...activeModuleIds].map((id) => getModule(id)));
-	for (const mod of modules) {
-		if (mod.charjs.code) {
-			sources.push({ ownerId: mod.id, charjs: mod.charjs });
-		}
-	}
-
-	// Get or create instances and collect handlers for this phase
-	for (const { ownerId, charjs } of sources) {
-		const instance = await getOrCreateInstance(ownerId, chatId, charjs);
-		if (!instance) continue;
-
+	for (const instance of instances) {
 		const registered = instance.pipelineHandlers.get(phase) ?? [];
 		for (const h of registered) {
 			handlers.push({
-				id: `charjs:${ownerId}:${phase}`,
+				id: `charjs:${instance.charjs.id}:${phase}`,
 				phase,
 				order: h.order,
 				run: async (data: unknown) => {

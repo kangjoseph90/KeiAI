@@ -6,16 +6,17 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
-import type { CharJS } from '$lib/charjs/types';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ModuleRefs {
 	lorebookRefs?: OrderedRef[];
 	scriptRefs?: OrderedRef[];
+	charjsRefs?: OrderedRef[];
 	folders?: {
 		lorebooks?: FolderDef[];
 		scripts?: FolderDef[];
+		charjs?: FolderDef[];
 	};
 	assets?: AssetRef[];
 }
@@ -23,7 +24,7 @@ export interface ModuleRefs {
 export interface ModuleContent {
 	name: string;
 	description: string;
-	charjs: CharJS;
+	allowLowLevel: boolean;
 }
 
 export interface ModuleFields extends ModuleContent, ModuleRefs {}
@@ -37,10 +38,7 @@ export interface Module extends ModuleFields {
 const defaultModuleFields: ModuleFields = {
 	name: 'New Module',
 	description: '',
-	charjs: {
-		code: '',
-		allowLowLevel: false
-	}
+	allowLowLevel: false
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -182,13 +180,15 @@ export class ModuleService {
 			await Promise.all([
 				encryptedWriteQueue.flushTable('modules'),
 				encryptedWriteQueue.flushTable('lorebooks'),
-				encryptedWriteQueue.flushTable('scripts')
+				encryptedWriteQueue.flushTable('scripts'),
+				encryptedWriteQueue.flushTable('charjs')
 			]);
 
 			encryptedWriteQueue.drop('modules', id);
-			await localDB.transaction(['lorebooks', 'scripts', 'modules'], 'rw', async () => {
+			await localDB.transaction(['lorebooks', 'scripts', 'charjs', 'modules'], 'rw', async () => {
 				await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
 				await localDB.softDeleteByIndex('scripts', 'ownerId', id);
+				await localDB.softDeleteByIndex('charjs', 'ownerId', id);
 				await localDB.softDeleteRecord('modules', id);
 			});
 		} catch (error) {

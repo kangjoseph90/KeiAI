@@ -8,6 +8,7 @@ export * from './user/profile';
 export * from './content/lorebook';
 export * from './content/script';
 export * from './content/module';
+export * from './content/charjs';
 export * from './content/plugin';
 export * from './content/preset';
 export * from './user/user';

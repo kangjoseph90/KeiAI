@@ -20,7 +20,8 @@ import type {
 	Module,
 	Plugin,
 	Lorebook,
-	Script
+	Script,
+	CharJS
 } from '$lib/services';
 import type { AssetSyncStatus, SyncStatus } from '$lib/services';
 import type { DisplayMessage, ChatTask } from './types';
@@ -57,6 +58,7 @@ export const moduleResources = writable(
 		{
 			lorebooks: Lorebook[];
 			scripts: Script[];
+			charjs: CharJS[];
 		}
 	>()
 );
@@ -65,6 +67,7 @@ export const moduleResources = writable(
 export const activeCharacter = writable<CharacterDetail | null>(null);
 export const characterLorebooks = writable<Lorebook[]>([]);
 export const characterScripts = writable<Script[]>([]);
+export const characterCharJS = writable<CharJS[]>([]);
 export const characterModules = writable<Module[]>([]);
 export const chats = writable<Chat[]>([]);
 

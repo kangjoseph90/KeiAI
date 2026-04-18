@@ -144,6 +144,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		);
 		await db.execute(`CREATE INDEX IF NOT EXISTS idx_lorebooks_ownerId ON lorebooks (ownerId)`);
 		await db.execute(`CREATE INDEX IF NOT EXISTS idx_scripts_ownerId ON scripts (ownerId)`);
+		await db.execute(`CREATE INDEX IF NOT EXISTS idx_charjs_ownerId ON charjs (ownerId)`);
 
 		// Compound index strictly required for pagination performance in messages
 		await db.execute(

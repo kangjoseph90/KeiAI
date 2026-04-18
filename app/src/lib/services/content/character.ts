@@ -6,7 +6,6 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
-import type { CharJS } from '$lib/charjs/types';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -23,11 +22,13 @@ export interface CharacterDataRefs {
 	moduleRefs?: OrderedRef[];
 	lorebookRefs?: OrderedRef[];
 	scriptRefs?: OrderedRef[];
+	charjsRefs?: OrderedRef[];
 	folders?: {
 		chats?: FolderDef[];
 		modules?: FolderDef[];
 		lorebooks?: FolderDef[];
 		scripts?: FolderDef[];
+		charjs?: FolderDef[];
 	};
 	assets?: AssetRef[];
 }
@@ -35,7 +36,7 @@ export interface CharacterDataRefs {
 export interface CharacterDataContent {
 	systemPrompt: string;
 	greetingMessage: string;
-	charjs: CharJS;
+	allowLowLevel: boolean;
 }
 
 export interface CharacterDataFields extends CharacterDataContent, CharacterDataRefs {}
@@ -58,10 +59,7 @@ const defaultSummaryFields: CharacterSummaryFields = {
 const defaultDataFields: CharacterDataFields = {
 	systemPrompt: '',
 	greetingMessage: '',
-	charjs: {
-		code: '',
-		allowLowLevel: false
-	}
+	allowLowLevel: false
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -329,7 +327,8 @@ export class CharacterService {
 				encryptedWriteQueue.flushTable('messages'),
 				encryptedWriteQueue.flushTable('toolCalls'),
 				encryptedWriteQueue.flushTable('lorebooks'),
-				encryptedWriteQueue.flushTable('scripts')
+				encryptedWriteQueue.flushTable('scripts'),
+				encryptedWriteQueue.flushTable('charjs')
 			]);
 
 			encryptedWriteQueue.drop('characterSummaries', id);
@@ -343,7 +342,8 @@ export class CharacterService {
 					'messages',
 					'toolCalls',
 					'characterSummaries',
-					'characterData'
+					'characterData',
+					'charjs'
 				],
 				'rw',
 				async () => {
@@ -355,11 +355,13 @@ export class CharacterService {
 						await localDB.softDeleteByIndex('toolCalls', 'chatId', chatId);
 						await localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId);
 						await localDB.softDeleteByIndex('scripts', 'ownerId', chatId);
+						await localDB.softDeleteByIndex('charjs', 'ownerId', chatId);
 					}
 					await localDB.softDeleteByIndex('chatSummaries', 'characterId', id);
 					await localDB.softDeleteByIndex('chatData', 'characterId', id);
 					await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
 					await localDB.softDeleteByIndex('scripts', 'ownerId', id);
+					await localDB.softDeleteByIndex('charjs', 'ownerId', id);
 					await localDB.softDeleteRecord('characterSummaries', id);
 					await localDB.softDeleteRecord('characterData', id);
 				}

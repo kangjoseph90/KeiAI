@@ -60,6 +60,7 @@
 		}}
 		role="dialog"
 		aria-label="Settings"
+		tabindex="-1"
 	>
 		<div
 			class="mx-auto my-auto flex h-[85vh] w-[90vw] max-w-5xl overflow-hidden rounded-xl border bg-background shadow-2xl"

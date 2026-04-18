@@ -1,7 +1,7 @@
 /**
  * CharJS Engine Pool
  * Manages QuickJS sandbox instances with TTL-based caching.
- * Cache key = `${ownerId}:${chatId}` — each chat gets its own isolated instance.
+ * Cache key = `${charjsId}:${chatId}` — each chat gets its own isolated instance.
  */
 
 import { newQuickJSAsyncWASMModuleFromVariant } from 'quickjs-emscripten';
@@ -11,10 +11,12 @@ import type {
 	QuickJSAsyncContext,
 	QuickJSHandle
 } from 'quickjs-emscripten';
-import type { CharJS, CharJSInstance } from './types';
+import type { CharJSInstance } from './types';
+import type { CharJS } from '$lib/services/content/charjs';
 import { injectKeiAPI } from './sandbox';
 import { Mutex } from '$lib/utils/mutex';
 import { createLogger } from '$lib/adapters/logger';
+import { CharJSService } from '$lib/services/content/charjs';
 
 // ─── Safe Marshaling ───────────────────────────────────────────────
 
@@ -46,6 +48,7 @@ const EVAL_TIMEOUT_MS = 5000; // 5s for initial code evaluation
 const HANDLER_TIMEOUT_MS = 3000; // 3s per handler invocation
 
 const instances = new Map<string, CharJSInstance>();
+const pendingInstances = new Map<string, Promise<CharJSInstance | null>>();
 
 const logger = createLogger('charjs:engine');
 
@@ -78,20 +81,24 @@ function evictInstances(): void {
 }
 
 function destroyInstance(cacheKey: string, instance: CharJSInstance): void {
-	// Dispose all pipeline handler handles
-	for (const handlers of instance.pipelineHandlers.values()) {
-		for (const h of handlers) {
-			h.fnHandle.dispose();
+	try {
+		for (const handlers of instance.pipelineHandlers.values()) {
+			for (const h of handlers) {
+				if (h.fnHandle.alive) h.fnHandle.dispose();
+			}
 		}
-	}
-	// Dispose all event listener handles
-	for (const listeners of instance.eventListeners.values()) {
-		for (const h of listeners) {
-			h.dispose();
+		for (const listeners of instance.eventListeners.values()) {
+			for (const h of listeners) {
+				if (h.alive) h.dispose();
+			}
 		}
+		if (instance.ctx.alive) instance.ctx.dispose();
+		if (instance.runtime.alive) instance.runtime.dispose();
+	} catch (err) {
+		logger.warn(`Error during QuickJS dispose:`, err);
+	} finally {
+		instances.delete(cacheKey);
 	}
-	instance.ctx.dispose();
-	instances.delete(cacheKey);
 }
 
 export function destroyAllInstances(): void {
@@ -116,11 +123,11 @@ export function destroyInstancesByChatId(chatId: string): void {
 // ─── Instance Management ───────────────────────────────────────────
 
 async function createInstance(
-	ownerId: string,
 	chatId: string,
-	charjs: CharJS
+	charjs: CharJS,
+	allowLowLevel: boolean
 ): Promise<CharJSInstance> {
-	const cacheKey = `${ownerId}:${chatId}`;
+	const cacheKey = `${charjs.id}:${chatId}`;
 	const mod = await getWASMModule();
 	const runtime = mod.newRuntime();
 
@@ -130,10 +137,10 @@ async function createInstance(
 	const ctx = runtime.newContext();
 
 	const instance: CharJSInstance = {
-		ownerId,
+		charjs,
 		chatId,
-		code: charjs.code,
-		allowLowLevel: charjs.allowLowLevel,
+		allowLowLevel,
+		runtime,
 		ctx,
 		pipelineHandlers: new Map(),
 		eventListeners: new Map(),
@@ -142,7 +149,7 @@ async function createInstance(
 	};
 
 	// Inject Kei API based on permissions
-	injectKeiAPI(ctx, instance, charjs.allowLowLevel);
+	injectKeiAPI(ctx, instance);
 
 	// Safety: interrupt handler for initial evaluation
 	const evalStart = Date.now();
@@ -153,8 +160,7 @@ async function createInstance(
 	if (result.error) {
 		const error = ctx.dump(result.error);
 		result.error.dispose();
-		logger.error(`Error evaluating code for ${cacheKey}:`, error);
-		// Still cache the instance — it just has no handlers registered
+		logger.error(`Error evaluating code for script '${charjs.name}':`, error);
 	} else {
 		result.value.dispose();
 	}
@@ -169,35 +175,44 @@ async function createInstance(
 
 /**
  * Get or create a CharJS engine instance.
- * Cache key = `${ownerId}:${chatId}` for chat-scoped isolation.
- * Returns null if charjs has no code.
+ * Cache key = `${charjsId}:${chatId}` for script-scoped isolation.
+ * Fetches CharJS data from DB only on cache miss.
  */
 export async function getOrCreateInstance(
-	ownerId: string,
 	chatId: string,
-	charjs: CharJS
+	charjsId: string,
+	allowLowLevel: boolean
 ): Promise<CharJSInstance | null> {
-	// Skip empty scripts
-	if (!charjs.code.trim()) return null;
-
-	const cacheKey = `${ownerId}:${chatId}`;
+	const cacheKey = `${charjsId}:${chatId}`;
 	const existing = instances.get(cacheKey);
 
-	if (
-		existing &&
-		existing.code === charjs.code &&
-		existing.allowLowLevel === charjs.allowLowLevel
-	) {
-		existing.lastAccessed = Date.now();
-		return existing;
-	}
-
-	// Code or permission changed — rebuild
 	if (existing) {
-		destroyInstance(cacheKey, existing);
+		if (existing.allowLowLevel !== allowLowLevel) {
+			destroyInstance(cacheKey, existing);
+		} else {
+			existing.lastAccessed = Date.now();
+			return existing;
+		}
 	}
 
-	return await createInstance(ownerId, chatId, charjs);
+	const pending = pendingInstances.get(cacheKey);
+	if (pending) return pending;
+
+	// Cache miss — fetch data and create
+	const promise = (async () => {
+		try {
+			const charjs = await CharJSService.get(charjsId);
+			if (!charjs || !charjs.enabled || !charjs.code.trim()) {
+				return null;
+			}
+			return await createInstance(chatId, charjs, allowLowLevel);
+		} finally {
+			pendingInstances.delete(cacheKey);
+		}
+	})();
+
+	pendingInstances.set(cacheKey, promise);
+	return promise;
 }
 
 /**
@@ -234,7 +249,7 @@ export async function invokeHandler(
 		if (result.error) {
 			const error = ctx.dump(result.error);
 			result.error.dispose();
-			logger.error(`Handler error for ${instance.ownerId}:`, error);
+			logger.error(`Handler error for ${instance.charjs.name}:`, error);
 			return undefined;
 		}
 
@@ -244,23 +259,13 @@ export async function invokeHandler(
 	});
 }
 
-/**
- * Emit an event to all CharJS instances for a specific chat.
- * Fire-and-forget: errors are logged but don't propagate.
- */
-export async function emitEvent(chatId: string, event: string, data?: unknown): Promise<void> {
-	for (const instance of instances.values()) {
-		if (instance.chatId !== chatId) continue;
+// ─── Auto Invalidation ───────────────────────────────────────────────
 
-		const listeners = instance.eventListeners.get(event) ?? [];
-		for (const listener of listeners) {
-			// Fire and forget to prevent deadlock, and use setTimeout (macro-task) to prevent
-			// infinite micro-task loops from freezing the browser UI.
-			setTimeout(() => {
-				invokeHandler(instance, listener, data ?? null).catch((err) => {
-					logger.error(`Event '${event}' handler error for ${instance.ownerId}:`, err);
-				});
-			}, 0);
+CharJSService.onChange((id) => {
+	const prefix = `${id}:`;
+	for (const [key, instance] of instances.entries()) {
+		if (key.startsWith(prefix)) {
+			destroyInstance(key, instance);
 		}
 	}
-}
+});

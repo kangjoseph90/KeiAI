@@ -445,7 +445,8 @@ describe('CharacterService', () => {
 					'messages',
 					'toolCalls',
 					'characterSummaries',
-					'characterData'
+					'characterData',
+					'charjs'
 				],
 				'rw',
 				expect.any(Function)

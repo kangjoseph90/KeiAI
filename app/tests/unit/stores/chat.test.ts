@@ -98,7 +98,7 @@ describe('Chat Store', () => {
 		data: {
 			systemPrompt: '',
 			greetingMessage: '',
-			charjs: { code: '', allowLowLevel: false },
+			allowLowLevel: false,
 			chatRefs: []
 		}
 	};

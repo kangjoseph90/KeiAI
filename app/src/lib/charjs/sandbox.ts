@@ -10,13 +10,9 @@ import type { CharJSInstance } from './types';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
 
-export function injectKeiAPI(
-	ctx: QuickJSAsyncContext,
-	instance: CharJSInstance,
-	allowLowLevel: boolean
-): void {
+export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance): void {
 	const keiObj = ctx.newObject();
-	const logger = createLogger(`charjs:sandbox:${instance.ownerId}:${instance.chatId}`);
+	const logger = createLogger(`charjs:sandbox:${instance.charjs.name}`);
 
 	// ── KeiAPI.log(...args) ────────────────────────────────────
 	const logFn = ctx.newFunction('log', (...args) => {
@@ -99,17 +95,13 @@ export function injectKeiAPI(
 	ctx.setProp(keiObj, 'setVar', setVarFn);
 	setVarFn.dispose();
 
-	// ── KeiAPI.getChatId() / KeiAPI.getOwnerId() ───────────────
+	// ── KeiAPI.getChatId() ───────────────
 	const getChatIdFn = ctx.newFunction('getChatId', () => ctx.newString(instance.chatId));
 	ctx.setProp(keiObj, 'getChatId', getChatIdFn);
 	getChatIdFn.dispose();
 
-	const getOwnerIdFn = ctx.newFunction('getOwnerId', () => ctx.newString(instance.ownerId));
-	ctx.setProp(keiObj, 'getOwnerId', getOwnerIdFn);
-	getOwnerIdFn.dispose();
-
 	// ── Low Level APIs (runtime permission check) ─────────────
-	injectLowLevelAPIs(ctx, keiObj, instance, allowLowLevel);
+	injectLowLevelAPIs(ctx, keiObj, instance);
 
 	// ── Mount to global ────────────────────────────────────────
 	ctx.setProp(ctx.global, 'KeiAPI', keiObj);
@@ -121,14 +113,13 @@ export function injectKeiAPI(
 function injectLowLevelAPIs(
 	ctx: QuickJSAsyncContext,
 	keiObj: ReturnType<QuickJSAsyncContext['newObject']>,
-	instance: CharJSInstance,
-	allowLowLevel: boolean
+	instance: CharJSInstance
 ): void {
 	// TODO: Wire to actual LLM/image handlers
 	// TODO: When allowLowLevel=false, show permission request UI to user instead of auto-granting
 
 	async function requirePermission(): Promise<void> {
-		if (allowLowLevel) return;
+		if (instance.allowLowLevel) return;
 		// TODO: notify user and throw
 		// do not edit permission on runtime - edit on explicit user interactions
 		// allow low level permission is included in character import - warning ui when importing

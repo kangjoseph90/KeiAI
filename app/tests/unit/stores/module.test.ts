@@ -12,12 +12,20 @@ import {
 	createModuleFolder,
 	updateModuleFolder,
 	deleteModuleFolder,
-	moveModuleItem
+	moveModuleItem,
+	createModuleCharJS,
+	deleteModuleCharJS
 } from '$lib/stores/content/module';
 import { modules, appSettings, moduleResources } from '$lib/stores/state';
-import { ModuleService, LorebookService, ScriptService, SettingsService } from '$lib/services';
+import {
+	ModuleService,
+	LorebookService,
+	ScriptService,
+	CharJSService,
+	SettingsService
+} from '$lib/services';
 import { AppError } from '$lib/types/errors';
-import type { Module, ModuleContent, Lorebook, Script, AppSettings } from '$lib/services';
+import type { Module, ModuleContent, Lorebook, Script, CharJS, AppSettings } from '$lib/services';
 import type { FolderDef } from '$lib/types/refs';
 import { makeSettings } from '../../utils';
 
@@ -37,6 +45,11 @@ vi.mock('$lib/services', () => ({
 		delete: vi.fn()
 	},
 	ScriptService: {
+		listByOwner: vi.fn(),
+		create: vi.fn(),
+		delete: vi.fn()
+	},
+	CharJSService: {
 		listByOwner: vi.fn(),
 		create: vi.fn(),
 		delete: vi.fn()
@@ -62,9 +75,10 @@ describe('Module Store', () => {
 		id: 'mod-1',
 		name: 'Test Module',
 		description: 'Description',
-		charjs: { code: '', allowLowLevel: false },
+		allowLowLevel: false,
 		lorebookRefs: [],
-		scriptRefs: []
+		scriptRefs: [],
+		charjsRefs: []
 	};
 
 	beforeEach(() => {
@@ -79,6 +93,7 @@ describe('Module Store', () => {
 			vi.mocked(ModuleService.list).mockResolvedValue([mockModule]);
 			vi.mocked(LorebookService.listByOwner).mockResolvedValue([]);
 			vi.mocked(ScriptService.listByOwner).mockResolvedValue([]);
+			vi.mocked(CharJSService.listByOwner).mockResolvedValue([]);
 
 			await loadModules();
 
@@ -174,6 +189,38 @@ describe('Module Store', () => {
 				lorebookRefs: []
 			});
 			expect(LorebookService.delete).toHaveBeenCalledWith('lb-1');
+		});
+
+		it('should create module charjs', async () => {
+			modules.set([mockModule]);
+			const mockCjs: CharJS = {
+				id: 'cjs-1',
+				name: 'New Script',
+				ownerId: 'mod-1',
+				code: '',
+				enabled: true
+			};
+			vi.mocked(CharJSService.create).mockResolvedValue(mockCjs);
+			vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
+
+			await createModuleCharJS('mod-1', { name: 'New Script' });
+
+			expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
+				charjsRefs: expect.arrayContaining([{ id: 'cjs-1', sortOrder: 'sort-order' }])
+			});
+		});
+
+		it('should delete module charjs', async () => {
+			const modWithRef = { ...mockModule, charjsRefs: [{ id: 'cjs-1', sortOrder: 'a' }] };
+			modules.set([modWithRef]);
+			vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
+
+			await deleteModuleCharJS('mod-1', 'cjs-1');
+
+			expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
+				charjsRefs: []
+			});
+			expect(CharJSService.delete).toHaveBeenCalledWith('cjs-1');
 		});
 	});
 

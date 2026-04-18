@@ -129,6 +129,9 @@ migrate(
     createEncryptedTable("scripts", [
       { name: "ownerId", type: "text", required: true },
     ]);
+    createEncryptedTable("charjs", [
+      { name: "ownerId", type: "text", required: true },
+    ]);
 
     // ─── Chat Relations ───────────────────────────────────────────────
     createEncryptedTable("chatSummaries", [
@@ -220,6 +223,7 @@ migrate(
       "chatData",
       "chatSummaries",
       "scripts",
+      "charjs",
       "lorebooks",
       "assets",
       "presetData",

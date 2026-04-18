@@ -82,6 +82,7 @@ vi.mock('$lib/stores/content/module', () => ({
 
 vi.mock('$lib/charjs', () => ({
 	getOrCreateInstance: vi.fn().mockResolvedValue(null),
+	collectCharJSInstances: vi.fn().mockResolvedValue([]),
 	invokeHandler: vi.fn()
 }));
 

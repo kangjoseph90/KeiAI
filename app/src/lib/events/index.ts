@@ -17,7 +17,7 @@
  *  emitEvent(chatId, custom, unknown)        — open for extension
  */
 
-import { emitEvent as charjsEmitEvent } from '$lib/charjs/engine';
+import { collectCharJSInstances, invokeHandler } from '$lib/charjs';
 import type { EventType, EventName } from './types';
 
 // ── Built-in events (fully typed) ──────────────────────────────────
@@ -40,5 +40,25 @@ export async function emitEvent<E extends string>(
 
 export async function emitEvent(chatId: string, event: string, data?: unknown): Promise<void> {
 	// TODO: Plugin handlers
-	await charjsEmitEvent(chatId, event, data);
+
+	try {
+		const instances = await collectCharJSInstances(chatId);
+
+		for (const instance of instances) {
+			const listeners = instance.eventListeners.get(event) ?? [];
+			for (const listener of listeners) {
+				// Fire and forget to prevent deadlock, and use setTimeout (macro-task) to prevent UI freezing
+				setTimeout(() => {
+					invokeHandler(instance, listener, data ?? null).catch((err) => {
+						console.error(
+							`Event '${event}' handler error for script ${instance.charjs.name}:`,
+							err
+						);
+					});
+				}, 0);
+			}
+		}
+	} catch (error) {
+		console.error(`Error emitting event '${event}' for chat ${chatId}:`, error);
+	}
 }

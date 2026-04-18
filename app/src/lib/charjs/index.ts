@@ -1,8 +1,8 @@
 export {
 	getOrCreateInstance,
 	invokeHandler,
-	emitEvent,
 	destroyAllInstances,
 	destroyInstancesByChatId
 } from './engine';
-export type { CharJS, CharJSInstance } from './types';
+export { collectCharJSInstances } from './collect';
+export type { CharJSInstance } from './types';
