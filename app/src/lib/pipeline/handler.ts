@@ -53,7 +53,7 @@ async function collectCharJSHandlers(
 	phase: string
 ): Promise<PipelineHandler<unknown>[]> {
 	const handlers: PipelineHandler<unknown>[] = [];
-	const instances = await collectCharJSInstances(chatId);
+	const instances = await collectCharJSInstances(chatId, 'pipe', phase);
 
 	for (const instance of instances) {
 		const registered = instance.pipelineHandlers.get(phase) ?? [];

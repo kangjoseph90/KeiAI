@@ -1,10 +1,5 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
-import {
-	getOrCreateInstance,
-	invokeHandler,
-	destroyAllInstances,
-	destroyInstancesByChatId
-} from '$lib/charjs';
+import { getOrCreateInstance, invokeHandler, destroyAllInstances } from '$lib/charjs';
 import { CharJSService, type CharJS } from '$lib/services/content/charjs';
 
 const CHARJS_BASIC: CharJS = {
@@ -53,7 +48,13 @@ describe('Engine Pool', () => {
 
 	describe('getOrCreateInstance', () => {
 		it('returns null for empty code', async () => {
-			const instance = await getOrCreateInstance('chat1', CHARJS_BASIC.id, false);
+			const instance = await getOrCreateInstance(
+				'chat1',
+				CHARJS_BASIC.id,
+				'pipe',
+				'display',
+				false
+			);
 			expect(instance).toBeNull();
 		});
 
@@ -65,37 +66,107 @@ describe('Engine Pool', () => {
 				enabled: true,
 				code: '   \n\t  '
 			});
-			const instance = await getOrCreateInstance('chat1', 'empty_ws', false);
+			const instance = await getOrCreateInstance('chat1', 'empty_ws', 'pipe', 'display', false);
 			expect(instance).toBeNull();
 		});
 
 		it('creates instance for valid code', async () => {
-			const instance = await getOrCreateInstance('chat1', CHARJS_WITH_HANDLER.id, false);
+			const instance = await getOrCreateInstance(
+				'chat1',
+				CHARJS_WITH_HANDLER.id,
+				'pipe',
+				'display',
+				false
+			);
 			expect(instance).not.toBeNull();
 			expect(instance!.chatId).toBe('chat1');
 			expect(instance!.charjs.id).toBe(CHARJS_WITH_HANDLER.id);
+			expect(instance!.mode).toBe('pipe:display');
+		});
+
+		it('returns instance even if no handler for requested mode', async () => {
+			// Now we don't cache null for "no handler", so we get a live VM
+			const instance = await getOrCreateInstance(
+				'chat1',
+				CHARJS_WITH_HANDLER.id,
+				'pipe',
+				'input',
+				false
+			);
+			expect(instance).not.toBeNull();
+			expect(instance!.pipelineHandlers.get('input')).toBeUndefined();
 		});
 
 		it('returns cached instance on second call with same key', async () => {
-			const a = await getOrCreateInstance('chat1', CHARJS_WITH_HANDLER.id, false);
-			const b = await getOrCreateInstance('chat1', CHARJS_WITH_HANDLER.id, false);
+			const a = await getOrCreateInstance(
+				'chat1',
+				CHARJS_WITH_HANDLER.id,
+				'pipe',
+				'display',
+				false
+			);
+			const b = await getOrCreateInstance(
+				'chat1',
+				CHARJS_WITH_HANDLER.id,
+				'pipe',
+				'display',
+				false
+			);
 			expect(a).toBe(b);
 		});
 
 		it('creates separate instances for different chatIds', async () => {
-			const a = await getOrCreateInstance('chat1', CHARJS_WITH_HANDLER.id, false);
-			const b = await getOrCreateInstance('chat2', CHARJS_WITH_HANDLER.id, false);
+			const a = await getOrCreateInstance(
+				'chat1',
+				CHARJS_WITH_HANDLER.id,
+				'pipe',
+				'display',
+				false
+			);
+			const b = await getOrCreateInstance(
+				'chat2',
+				CHARJS_WITH_HANDLER.id,
+				'pipe',
+				'display',
+				false
+			);
+			expect(a).not.toBe(b);
+		});
+
+		it('creates separate instances for different modes', async () => {
+			const a = await getOrCreateInstance(
+				'chat1',
+				CHARJS_MULTI_HANDLER.id,
+				'pipe',
+				'display',
+				false
+			);
+			const b = await getOrCreateInstance('chat1', CHARJS_MULTI_HANDLER.id, 'pipe', 'input', false);
+			expect(a).not.toBeNull();
+			expect(b).not.toBeNull();
 			expect(a).not.toBe(b);
 		});
 
 		it('rebuilds instance when allowLowLevel changes', async () => {
-			const a = await getOrCreateInstance('chat1', CHARJS_WITH_HANDLER.id, false);
-			const b = await getOrCreateInstance('chat1', CHARJS_WITH_HANDLER.id, true);
+			const a = await getOrCreateInstance(
+				'chat1',
+				CHARJS_WITH_HANDLER.id,
+				'pipe',
+				'display',
+				false
+			);
+			const b = await getOrCreateInstance('chat1', CHARJS_WITH_HANDLER.id, 'pipe', 'display', true);
 			expect(b).not.toBe(a);
 		});
 
 		it('registers pipeline handlers from script code', async () => {
-			const instance = await getOrCreateInstance('chat1', CHARJS_MULTI_HANDLER.id, false);
+			const instance = await getOrCreateInstance(
+				'chat1',
+				CHARJS_MULTI_HANDLER.id,
+				'pipe',
+				'display',
+				false
+			);
 			const handlers = instance!.pipelineHandlers.get('display');
 			expect(handlers).toHaveLength(2);
 			expect(handlers![0].order).toBe(1);
@@ -105,14 +176,26 @@ describe('Engine Pool', () => {
 
 	describe('invokeHandler', () => {
 		it('processes data through a registered handler', async () => {
-			const instance = await getOrCreateInstance('chat1', CHARJS_WITH_HANDLER.id, false);
+			const instance = await getOrCreateInstance(
+				'chat1',
+				CHARJS_WITH_HANDLER.id,
+				'pipe',
+				'display',
+				false
+			);
 			const handler = instance!.pipelineHandlers.get('display')![0];
 			const result = await invokeHandler(instance!, handler.fnHandle, 'hello');
 			expect(result).toBe('hello_processed');
 		});
 
 		it('chains multiple handlers in order', async () => {
-			const instance = await getOrCreateInstance('chat1', CHARJS_MULTI_HANDLER.id, false);
+			const instance = await getOrCreateInstance(
+				'chat1',
+				CHARJS_MULTI_HANDLER.id,
+				'pipe',
+				'display',
+				false
+			);
 			const handlers = instance!.pipelineHandlers.get('display')!;
 
 			let data = 'start';
@@ -131,7 +214,7 @@ describe('Engine Pool', () => {
 				enabled: true,
 				code: `KeiAPI.addPipelineHandler('display', (data) => { throw new Error('boom'); });`
 			});
-			const instance = await getOrCreateInstance('chat1', 'error_script', false);
+			const instance = await getOrCreateInstance('chat1', 'error_script', 'pipe', 'display', false);
 			const handler = instance!.pipelineHandlers.get('display')![0];
 			const result = await invokeHandler(instance!, handler.fnHandle, 'test');
 			expect(result).toBeUndefined();
@@ -145,7 +228,7 @@ describe('Engine Pool', () => {
 				enabled: true,
 				code: `KeiAPI.addPipelineHandler('display', (data) => data + '_done');`
 			});
-			const instance = await getOrCreateInstance('chat1', 'mutex_script', false);
+			const instance = await getOrCreateInstance('chat1', 'mutex_script', 'pipe', 'display', false);
 			const handler = instance!.pipelineHandlers.get('display')![0];
 
 			const results = await Promise.all(
@@ -154,20 +237,6 @@ describe('Engine Pool', () => {
 
 			expect(results.every((r) => r !== undefined)).toBe(true);
 			expect(results).toHaveLength(10);
-		});
-	});
-
-	describe('destroyInstancesByChatId', () => {
-		it('removes only instances for the given chatId', async () => {
-			const a = await getOrCreateInstance('chat1', CHARJS_WITH_HANDLER.id, false);
-			const b = await getOrCreateInstance('chat2', CHARJS_WITH_HANDLER.id, false);
-
-			destroyInstancesByChatId('chat1');
-
-			const a2 = await getOrCreateInstance('chat1', CHARJS_WITH_HANDLER.id, false);
-			const b2 = await getOrCreateInstance('chat2', CHARJS_WITH_HANDLER.id, false);
-			expect(a2).not.toBe(a);
-			expect(b2).toBe(b);
 		});
 	});
 });

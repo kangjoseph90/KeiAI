@@ -1,15 +1,22 @@
 import { getOrCreateInstance } from './engine';
-import type { CharJSInstance } from './types';
+import type { CharJSInstance, ModeKind } from './types';
 import { getChatDetail } from '$lib/stores/content/chat';
 import { getCharacterDetail } from '$lib/stores/content/character';
 import { getActiveModuleIds } from '$lib/stores/content/merged';
 import { getModule } from '$lib/stores/content/module';
 
 /**
- * Collect all active CharJS instances for a chat.
- * Resolves character + module charjsRefs → creates/reuses instances.
+ * Collect all active CharJS instances for a chat + specific mode.
+ * Resolves character + module charjsRefs → creates/reuses per-mode instances.
+ *
+ * @param kind - 'pipe' for pipeline phases, 'event' for event listeners
+ * @param mode - the specific phase or event name (e.g. 'output', 'message:sent')
  */
-export async function collectCharJSInstances(chatId: string): Promise<CharJSInstance[]> {
+export async function collectCharJSInstances(
+	chatId: string,
+	kind: ModeKind,
+	mode: string
+): Promise<CharJSInstance[]> {
 	const chat = await getChatDetail(chatId);
 	const character = await getCharacterDetail(chat.characterId);
 	const activeModuleIds = await getActiveModuleIds(chat.characterId);
@@ -32,7 +39,7 @@ export async function collectCharJSInstances(chatId: string): Promise<CharJSInst
 	}
 
 	const instances = await Promise.all(
-		charjsRequests.map((req) => getOrCreateInstance(chatId, req.id, req.allowLowLevel))
+		charjsRequests.map((req) => getOrCreateInstance(chatId, req.id, kind, mode, req.allowLowLevel))
 	);
 
 	return instances.filter((i): i is CharJSInstance => i !== null);

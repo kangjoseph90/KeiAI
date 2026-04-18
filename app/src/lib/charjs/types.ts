@@ -3,10 +3,13 @@ import type { Mutex } from '$lib/utils/mutex';
 
 import type { CharJS } from '$lib/services/content/charjs';
 
+export type ModeKind = 'pipe' | 'event';
+
 /** Runtime instance managed by the engine pool */
 export interface CharJSInstance {
 	charjs: CharJS;
 	chatId: string;
+	mode: string;
 	allowLowLevel: boolean;
 	runtime: QuickJSAsyncRuntime;
 	ctx: QuickJSAsyncContext;

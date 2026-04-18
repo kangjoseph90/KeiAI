@@ -42,7 +42,7 @@ export async function emitEvent(chatId: string, event: string, data?: unknown): 
 	// TODO: Plugin handlers
 
 	try {
-		const instances = await collectCharJSInstances(chatId);
+		const instances = await collectCharJSInstances(chatId, 'event', event);
 
 		for (const instance of instances) {
 			const listeners = instance.eventListeners.get(event) ?? [];

@@ -1,7 +1,10 @@
 /**
  * CharJS Engine Pool
  * Manages QuickJS sandbox instances with TTL-based caching.
- * Cache key = `${charjsId}:${chatId}` — each chat gets its own isolated instance.
+ * Cache key = `${charjsId}:${chatId}:${kind}:${mode}` — per-mode isolation for parallelism.
+ *
+ * Each (script, chat, mode) triple gets its own VM so that different pipeline
+ * phases and event handlers never block each other.
  */
 
 import { newQuickJSAsyncWASMModuleFromVariant } from 'quickjs-emscripten';
@@ -11,7 +14,7 @@ import type {
 	QuickJSAsyncContext,
 	QuickJSHandle
 } from 'quickjs-emscripten';
-import type { CharJSInstance } from './types';
+import type { CharJSInstance, ModeKind } from './types';
 import type { CharJS } from '$lib/services/content/charjs';
 import { injectKeiAPI } from './sandbox';
 import { Mutex } from '$lib/utils/mutex';
@@ -55,6 +58,11 @@ const logger = createLogger('charjs:engine');
 let wasmModule: QuickJSAsyncWASMModule | null = null;
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
+// ─── Cache Key ──────────────────────────────────────────────────────
+function cacheKey(charjsId: string, chatId: string, kind: ModeKind, mode: string): string {
+	return `${charjsId}:${chatId}:${kind}:${mode}`;
+}
+
 // ─── WASM Module Loading (lazy, one-time) ──────────────────────────
 
 async function getWASMModule(): Promise<QuickJSAsyncWASMModule> {
@@ -80,7 +88,7 @@ function evictInstances(): void {
 	}
 }
 
-function destroyInstance(cacheKey: string, instance: CharJSInstance): void {
+function destroyInstance(key: string, instance: CharJSInstance): void {
 	try {
 		for (const handlers of instance.pipelineHandlers.values()) {
 			for (const h of handlers) {
@@ -97,7 +105,7 @@ function destroyInstance(cacheKey: string, instance: CharJSInstance): void {
 	} catch (err) {
 		logger.warn(`Error during QuickJS dispose:`, err);
 	} finally {
-		instances.delete(cacheKey);
+		instances.delete(key);
 	}
 }
 
@@ -111,23 +119,16 @@ export function destroyAllInstances(): void {
 	}
 }
 
-/** Destroy all instances for a specific chat (e.g., when chat is closed). */
-export function destroyInstancesByChatId(chatId: string): void {
-	for (const [key, instance] of instances) {
-		if (instance.chatId === chatId) {
-			destroyInstance(key, instance);
-		}
-	}
-}
-
 // ─── Instance Management ───────────────────────────────────────────
 
 async function createInstance(
 	chatId: string,
 	charjs: CharJS,
+	kind: ModeKind,
+	mode: string,
 	allowLowLevel: boolean
 ): Promise<CharJSInstance> {
-	const cacheKey = `${charjs.id}:${chatId}`;
+	const key = cacheKey(charjs.id, chatId, kind, mode);
 	const mod = await getWASMModule();
 	const runtime = mod.newRuntime();
 
@@ -139,6 +140,7 @@ async function createInstance(
 	const instance: CharJSInstance = {
 		charjs,
 		chatId,
+		mode: `${kind}:${mode}`,
 		allowLowLevel,
 		runtime,
 		ctx,
@@ -155,7 +157,7 @@ async function createInstance(
 	const evalStart = Date.now();
 	runtime.setInterruptHandler(() => Date.now() - evalStart > EVAL_TIMEOUT_MS);
 
-	// Execute user code — this triggers KeiAPI.pipeline.addHandler() calls
+	// Execute user code — this triggers KeiAPI.addPipelineHandler() / KeiAPI.onEvent() calls
 	const result = await ctx.evalCodeAsync(charjs.code);
 	if (result.error) {
 		const error = ctx.dump(result.error);
@@ -168,34 +170,35 @@ async function createInstance(
 	// Reset interrupt handler to per-invocation timeout
 	runtime.setInterruptHandler(() => false);
 
-	instances.set(cacheKey, instance);
+	instances.set(key, instance);
 	startInstanceCleanup();
 	return instance;
 }
 
 /**
- * Get or create a CharJS engine instance.
- * Cache key = `${charjsId}:${chatId}` for script-scoped isolation.
- * Fetches CharJS data from DB only on cache miss.
+ * Get or create a CharJS engine instance for a specific mode.
+ * Cache key = `${charjsId}:${chatId}:${kind}:${mode}` for per-mode isolation.
  */
 export async function getOrCreateInstance(
 	chatId: string,
 	charjsId: string,
+	kind: ModeKind,
+	mode: string,
 	allowLowLevel: boolean
 ): Promise<CharJSInstance | null> {
-	const cacheKey = `${charjsId}:${chatId}`;
-	const existing = instances.get(cacheKey);
+	const key = cacheKey(charjsId, chatId, kind, mode);
+	const existing = instances.get(key);
 
 	if (existing) {
 		if (existing.allowLowLevel !== allowLowLevel) {
-			destroyInstance(cacheKey, existing);
+			destroyInstance(key, existing);
 		} else {
 			existing.lastAccessed = Date.now();
 			return existing;
 		}
 	}
 
-	const pending = pendingInstances.get(cacheKey);
+	const pending = pendingInstances.get(key);
 	if (pending) return pending;
 
 	// Cache miss — fetch data and create
@@ -205,13 +208,13 @@ export async function getOrCreateInstance(
 			if (!charjs || !charjs.enabled || !charjs.code.trim()) {
 				return null;
 			}
-			return await createInstance(chatId, charjs, allowLowLevel);
+			return await createInstance(chatId, charjs, kind, mode, allowLowLevel);
 		} finally {
-			pendingInstances.delete(cacheKey);
+			pendingInstances.delete(key);
 		}
 	})();
 
-	pendingInstances.set(cacheKey, promise);
+	pendingInstances.set(key, promise);
 	return promise;
 }
 
