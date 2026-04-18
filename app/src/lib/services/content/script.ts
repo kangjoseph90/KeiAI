@@ -17,7 +17,7 @@ export interface ScriptFields {
 	advanced: boolean; // use advanced settings
 	flag: string;
 	order: number;
-	repeat: number; // 0 = loop until converge
+	repeat: number;
 	enabled: boolean;
 }
 
