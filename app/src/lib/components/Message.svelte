@@ -134,21 +134,22 @@
 		}
 		pendingRefresh = true;
 
-		requestAnimationFrame(async () => {
-			try {
-				const processed = await runPipeline(message.chatId, 'display', contentToRender);
-				displayContent = processed;
-				const rawHtml = await parseMarkdownAsync(processed);
-				renderedHtml = DOMPurify.sanitize(rawHtml as string);
-			} finally {
-				pendingRefresh = false;
-				lastRenderTime = Date.now();
-				if (missedUpdate) {
-					missedUpdate = false;
-					refreshDisplay(); // Retry with the latest message.content
-				}
+		try {
+			const processed = await runPipeline(message.chatId, 'display', contentToRender);
+			const rawHtml = await parseMarkdownAsync(processed);
+			const sanitized = DOMPurify.sanitize(rawHtml as string);
+
+			// Update states atomically
+			displayContent = processed;
+			renderedHtml = sanitized;
+		} finally {
+			pendingRefresh = false;
+			lastRenderTime = Date.now();
+			if (missedUpdate) {
+				missedUpdate = false;
+				refreshDisplay(); // Retry with the latest message.content
 			}
-		});
+		}
 	}
 
 	function refreshDisplay() {
@@ -190,6 +191,11 @@
 
 		// Ensure refresh on both content updates and status transitions (e.g. generating -> completed)
 		if (current !== lastContent || status !== lastStatus) {
+			// Synchronously clear state when a fresh generation starts to prevent showing old content
+			if (status === 'generating' && current === '') {
+				displayContent = '';
+				renderedHtml = '';
+			}
 			lastContent = current;
 			lastStatus = status;
 			refreshDisplay();
