@@ -13,6 +13,7 @@
 
 import { collectPipelineHandlers } from './handler';
 import type { PhaseType, Phase } from './types';
+import { isSafeMode } from '$lib/config';
 
 export async function runPipeline<K extends keyof PhaseType>(
 	chatId: string,
@@ -25,6 +26,7 @@ export async function runPipeline<P extends string, T>(
 	data: T
 ): Promise<T>;
 export async function runPipeline(chatId: string, phase: string, data: unknown): Promise<unknown> {
+	if (isSafeMode()) return data;
 	const handlers = await collectPipelineHandlers(chatId, phase);
 	let result = data;
 	for (const handler of handlers) {

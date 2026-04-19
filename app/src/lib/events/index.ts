@@ -19,6 +19,7 @@
 
 import { collectCharJSInstances, invokeHandler } from '$lib/charjs';
 import type { EventType, EventName } from './types';
+import { isSafeMode } from '$lib/config';
 
 // ── Built-in events (fully typed) ──────────────────────────────────
 
@@ -39,6 +40,8 @@ export async function emitEvent<E extends string>(
 // ── Implementation ───────────────────────────────────────────────────
 
 export async function emitEvent(chatId: string, event: string, data?: unknown): Promise<void> {
+	if (isSafeMode()) return;
+
 	// TODO: Plugin handlers
 
 	try {

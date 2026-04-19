@@ -17,6 +17,13 @@ export const PROXY_URL = import.meta.env.VITE_PROXY_URL ?? '';
 /** PocketBase server URL */
 export const PB_URL = import.meta.env.VITE_PB_URL ?? '';
 
+/** Safe mode — disables pipes, events */
+let safeMode = false;
+export const isSafeMode = () => safeMode;
+export const setSafeMode = (v: boolean) => {
+	safeMode = v;
+};
+
 // Validation (Fail fast in non-worker context if required vars are missing)
 if (typeof window !== 'undefined') {
 	if (!CDN_BASE_URL) {
