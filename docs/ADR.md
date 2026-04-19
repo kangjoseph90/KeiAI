@@ -98,7 +98,7 @@
 
 ## 008: 백그라운드 생성 & Store 독립적 Generation Pipeline
 
-- 상태: 채택
+- 상태: 폐기 → ADR 026으로 대체
 - 맥락: RisuAI에서 채팅을 보내면 생성이 끝날 때까지 꼼짝없이 기다려야 했다. 스트리밍 렌더링도 매끄럽지 못했다.
 - 불편했던 점:
     - 생성 중 다른 채팅방으로 이동 불가
@@ -179,7 +179,7 @@
 
 ## 014: 범용적인 런타임 태스크 아키텍처 (Runtime Task Architecture)
 
-- 상태: 채택
+- 상태: 폐기 → ADR 026으로 대체
 - 맥락: 초기에는 채팅 생성 루틴(`GenerationTask`)만 처리했다. 하지만 향후 그룹 챗, 번역, 요약, Tool Calling 등 다양한 비동기 작업을 범용적으로 처리할 수 있는 구조가 필요했다.
 - 문제:
     - 기존 `generationTasks`는 채팅에 강결합되어 있어 다른 종류의 작업을 추가하기 어려웠다.
@@ -424,3 +424,26 @@
     - 한 스크립트 내 구문/무한루프 에러가 다른 스크립트 컨텍스트에 전이되지 않는 격리성 달성.
     - `pendingInstances` 도입과 비동기 병렬 초기화를 통해 스트리밍 렌더링(Cold Start) 시 CPU 블록 완화 달성.
 - 참고: ADR 024 (CharJS 엔진), ADR 023 (파이프라인 설계)
+
+---
+
+## 026: 즉시 영속 메시지와 Thin Task 트래커
+
+- 상태: 채택
+- 맥락: ADR 008에서 Task가 스트리밍 콘텐츠를 들고 있다가 완료 시 persist하는 구조를 채택했고, ADR 014에서 범용 RuntimeTask 아키텍처를 설계했다. 두 접근 모두 파이프라인 완료 후 메시지를 DB에 기록하는 방식이었다.
+- 문제:
+    - Task가 content, thought, toolCalls를 들고 있어 파이프라인 중간에 앱이 종료되면 데이터가 날아간다.
+    - persist 로직이 파이프라인의 마지막 단계에 몰려 있어, abort 시 저장 여부 결정, reroll 시 기존 메시지와 병합 등 책임이 무거웠다.
+    - RuntimeTask의 범용 설계(Self-Describing, taskId 키, Mapping-Aware Store)가 실제 사용에서 과도했다. 현재는 채팅 생성만 존재한다.
+    - Variable 시스템이 미구현 상태였다.
+- 결정:
+    - 즉시 영속: `runChat` 시작 시 빈 메시지를 DB에 생성. 스트리밍 청크마다 `updateMessage`로 swipe를 갱신. abort/에러 발생 시에도 이미 기록된 내용이 DB에 남는다.
+    - Thin Task: `ChatTask`는 status, messageId, controller만 추적. content를 들지 않는다. `displayMessages` derived store는 DB 메시지에 status 오버레이만 추가한다. 가상 메시지/가상 swipe 생성은 없다.
+    - Variable 시스템: 각 swipe에 `variables: Record<string, string>` 저장. 새 swipe는 `deepMerge(chat.data.defaultVariables, 이전 swipe의 variables)`로 초기화. 샌드박스에서 `getVar`/`setVar`로 접근.
+    - Reroll 단순화: `targetMessageId: string` 대신 `reroll: boolean` 플래그. 파이프라인이 `getMessagesBefore`로 마지막 메시지를 찾아 새 swipe를 추가.
+- 결과:
+    - 파이프라인 중단 시 데이터 유실 없음.
+    - persist 로직이 제거되어 파이프라인 코드가 단순해짐.
+    - displayMessages 로직이 대폭 단순화됨.
+    - Variable이 swipe 단위로 영속되어 채팅 세션 간에 유지됨.
+- 참고: ADR 008 (폐기), ADR 014 (폐기), ADR 015 (EncryptedWriteQueue), ADR 016 (한 태스크 = 한 네트워크 요청)

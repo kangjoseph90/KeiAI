@@ -72,10 +72,10 @@
 		editModeId = null;
 	}
 
-	async function handleRegenerate(messageId: string) {
+	async function handleRegenerate() {
 		// Instead of deleting and re-creating, target the existing message for reroll.
 		// The task layer appends a new swipe (or replaces, based on saveMessagesOnSwipe).
-		runChat(chatId, { targetMessageId: messageId });
+		runChat(chatId, { reroll: true });
 	}
 
 	async function handleSwipe(messageId: string, newIndex: number) {
@@ -204,7 +204,7 @@
 								onResolveTool={(toolCallId, decision) =>
 									resolveToolCall(chatId, msg.id, toolCallId, decision)}
 								onLoadDetail={(toolCallId) => ToolCallService.get(toolCallId)}
-								onRegenerate={() => handleRegenerate(msg.id)}
+								onRegenerate={() => handleRegenerate()}
 								onSwipe={(newIndex) => handleSwipe(msg.id, newIndex)}
 								onFork={() => handleFork(msg.id)}
 								isLastMessage={msg.id === $displayMessages[$displayMessages.length - 1]?.id}

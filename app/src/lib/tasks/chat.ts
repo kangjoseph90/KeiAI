@@ -2,13 +2,12 @@
  * Chat Pipeline — KeiAI
  *
  * runChat(chatId) is the single entry point for a full AI response cycle.
- * All context is loaded at the top as plain data — no wrapper classes.
- *
+ * Messages are persisted to DB immediately on creation.
+ * The ChatTask is a thin state tracker — not a content holder.
  */
 
 import {
 	createChatTask,
-	updateChatTask,
 	setChatTaskError,
 	getChatTask,
 	clearChatTask
@@ -19,41 +18,27 @@ import {
 	getAppSettings,
 	getPersona,
 	getPresetDetail,
-	getMergedLorebooks,
-	getMergedScripts
+	getMergedLorebooks
 } from '$lib/stores';
 import type { LLMStreamHandler } from '$lib/llm/types';
 import { ToolCallService } from '$lib/services/content/tool';
-import { MessageService, type Message } from '$lib/services/content/message';
+import { MessageService, type Message, type MessageSwipe } from '$lib/services/content/message';
 import { updateMessage, createMessage, getMessage } from '$lib/stores/content/message';
 import { buildPrompt } from '../llm/prompt/builder';
 import { selectLLMHandler } from '../llm/handler';
 import { runPipeline } from '../pipeline';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
+import { deepMerge } from '$lib/utils/defaults';
 
 export interface RunChatOptions {
-	/** Save partial content to DB when the user aborts. Default: true */
-	saveOnAbort?: boolean;
 	/** Optional handler override for testing */
 	handlerOverride?: LLMStreamHandler;
 	/** If set, this run is a reroll — write to this message's swipes instead of creating a new message */
-	targetMessageId?: string;
+	reroll?: boolean;
 }
 
-const defaultOptions: RunChatOptions = {
-	saveOnAbort: true
-};
 const logger = createLogger('task:chat');
-
-// ─── Active Controllers ────────────────────────────────────────────────────────
-
-/**
- * chatId → AbortController for all in-flight chat generations.
- * Lives here (pipeline layer) — execution control is separate from display state.
- * UI calls stopChat(chatId) to abort; this map is the authority.
- */
-const activeControllers = new Map<string, AbortController>();
 
 // ─── Pipeline ─────────────────────────────────────────────────────────────────
 
@@ -63,43 +48,80 @@ const activeControllers = new Map<string, AbortController>();
  * the runtime task store and message store.
  */
 export async function runChat(chatId: string, options?: RunChatOptions): Promise<void> {
-	const opts = { ...defaultOptions, ...options };
-
+	const opts = options ?? {};
 	// ── 0. Guard: Prevent duplicate runs ─────────────────────────────
-	if (activeControllers.has(chatId)) {
+	const existing = getChatTask(chatId);
+	if (existing) {
 		logger.warn(`Chat ${chatId} is already running.`);
 		return;
 	}
 
 	const controller = new AbortController();
-	activeControllers.set(chatId, controller);
-
 	try {
-		// ── 1. Register task + open streaming bubble ────────────────────
-		createChatTask(chatId, opts.targetMessageId);
+		// If not reroll, create new message slot
+		if (!opts.reroll) {
+			await createMessage(chatId, {
+				role: 'char'
+			});
+		}
 
-		// ── 2. Load all context as plain data ─────────────────────────
-		const chat = await getChatDetail(chatId);
-		const [character, settings, lorebooks, scripts] = await Promise.all([
-			getCharacterDetail(chat.characterId),
+		// ── 1. Load all context ──────────────────────────────────────────
+		const [chat, settings, lorebooks] = await Promise.all([
+			getChatDetail(chatId),
 			getAppSettings(),
-			getMergedLorebooks(chatId),
-			getMergedScripts(chatId)
+			getMergedLorebooks(chatId)
 		]);
 
 		if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
-		const preset = await getPresetDetail(settings.presetId);
-
 		if (!settings.personaId) throw new AppError('INVALID_INPUT', 'No persona selected');
-		const persona = await getPersona(settings.personaId);
 
-		// Load messages for history
-		const messages: Message[] = await MessageService.getMessagesAfter(chatId, '');
+		const [character, preset, persona] = await Promise.all([
+			getCharacterDetail(chat.characterId),
+			getPresetDetail(settings.presetId),
+			getPersona(settings.personaId)
+		]);
 
-		// ── 3. Build Prompt (pure function) ──────────────────────────
-		const prompt = buildPrompt({ character, preset, persona, lorebooks, messages });
+		const messages: Message[] = await MessageService.getMessagesBefore(chatId, '\uffff', 2);
+		const targetMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+		if (!targetMessage) throw new AppError('INVALID_INPUT', 'No messages found');
 
-		// ── 4. Apply Request Scripts ─────────────────────────────────
+		const lastMessage = messages.length > 1 ? messages[messages.length - 2] : null;
+
+		const targetMessageId = targetMessage.id;
+		const targetSortOrder = targetMessage.sortOrder;
+
+		// setup variables
+		const variables = lastMessage?.swipes[lastMessage.activeSwipeIndex]?.variables ?? {};
+		const swipeIndex = settings.chat.saveMessagesOnSwipe
+			? targetMessage.swipes.length
+			: Math.max(targetMessage.swipes.length - 1, 0);
+
+		targetMessage.swipes[swipeIndex] = {
+			content: '',
+			variables: deepMerge(chat.data.defaultVariables, variables),
+			createdAt: Date.now()
+		};
+		targetMessage.activeSwipeIndex = swipeIndex;
+
+		await updateMessage(targetMessage.id, targetMessage);
+
+		// ── 3. Register task ──────────────────────────────────────────
+		createChatTask(chatId, targetMessageId, controller);
+
+		// ── 5. Build Prompt (pure function) ──────────────────────────────
+
+		// TODO: lazy load messages
+		const promptMessages = await MessageService.getMessagesBefore(chatId, targetSortOrder, 1000);
+
+		const prompt = buildPrompt({
+			character,
+			preset,
+			persona,
+			lorebooks,
+			messages: promptMessages
+		});
+
+		// ── 6. Apply Request Scripts ─────────────────────────────────
 		const processedMessages = await Promise.all(
 			prompt.map(async (msg) => ({
 				...msg,
@@ -107,103 +129,42 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 			}))
 		);
 
-		// ── 5. Select Handler ──────────────────────────────────────
+		// ── 7. Select Handler ──────────────────────────────────────
 		const handler = opts.handlerOverride ?? selectLLMHandler(preset.data.chatModel, settings);
 		if (!handler) {
 			throw new AppError('INVALID_INPUT', 'Failed to create LLM handler. Check API key.');
 		}
 
-		// ── 6. Stream chunks ────────────────────────────────────────
+		// ── 8. Stream chunks → update swipe in DB ─────────────────────
 		for await (const state of handler.stream(processedMessages, controller.signal)) {
-			const processedState = {
-				...state,
-				content: await runPipeline(chatId, 'output', state.content)
-			};
-			updateChatTask(chatId, processedState);
+			const processedContent = await runPipeline(chatId, 'output', state.content);
+
+			const msg = await getMessage(targetMessageId);
+			const updatedSwipes = msg.swipes.map((s, i) =>
+				i === swipeIndex
+					? { ...s, content: processedContent, thought: state.thought ?? s.thought }
+					: s
+			);
+			await updateMessage(targetMessageId, { swipes: updatedSwipes });
 		}
 
-		// ── 7. Finalize ─────────────────────────────────────────────
-		const finalTask = getChatTask(chatId);
-		if (!finalTask || (finalTask.content.length === 0 && !finalTask.toolCalls?.length)) {
-			throw new AppError('NETWORK_ERROR', 'Empty response from model');
-		}
-
-		await persistTask(chatId);
-	} catch (error) {
-		if (error instanceof DOMException && error.name === 'AbortError') {
-			const task = getChatTask(chatId);
-			if (opts.saveOnAbort && task && task.content.length > 0) {
-				await persistTask(chatId);
-			} else {
-				clearChatTask(chatId);
-			}
+		// ── 9. Finalize ─────────────────────────────────────────────
+		const finalMsg = await getMessage(targetMessageId);
+		const finalSwipe = finalMsg.swipes[swipeIndex];
+		if (!finalSwipe || finalSwipe.content.length === 0) {
+			setChatTaskError(chatId, 'Empty response from model');
 			return;
 		}
 
-		const msg = error instanceof Error ? error.message : 'Unknown pipeline error';
-		setChatTaskError(chatId, msg);
-	} finally {
-		activeControllers.delete(chatId);
-	}
-}
-
-// ─── Persist ──────────────────────────────────────────────────────────────────
-
-/**
- * Consume the ephemeral task from the store and write it to the DB.
- * Called exclusively from the runtime layer — never from stores or UI.
- */
-async function persistTask(chatId: string): Promise<void> {
-	const task = getChatTask(chatId);
-	if (!task) return;
-
-	try {
-		// 1. Create Tool Calls in DB, collect abstract references
-		const toolCallAbstracts = await Promise.all(
-			(task.toolCalls ?? []).map(async (tc) => {
-				const created = await ToolCallService.create(chatId, {
-					call: { callId: tc.callId ?? '', name: tc.name, args: tc.args ?? {} }
-				});
-				return { id: created.id, name: created.call.name, status: 'pending' as const };
-			})
-		);
-
-		const newSwipe = {
-			content: task.content,
-			thought: task.thought,
-			toolCalls: toolCallAbstracts.length > 0 ? toolCallAbstracts : undefined,
-			createdAt: Date.now()
-		};
-
-		if (task.targetMessageId) {
-			// ── Reroll: add new swipe to the existing message ────────────────
-			const settings = await getAppSettings();
-			const saveSwipes = settings.chat.saveMessagesOnSwipe;
-
-			const existing = await getMessage(task.targetMessageId);
-			const nextSwipes = saveSwipes
-				? [...existing.swipes, newSwipe] // preserving: append
-				: [newSwipe]; // destructive: replace all
-			const nextIndex = nextSwipes.length - 1;
-
-			await updateMessage(task.targetMessageId, {
-				swipes: nextSwipes,
-				activeSwipeIndex: nextIndex
-			});
-		} else {
-			// ── New message ──────────────────────────────────────────────────
-			await createMessage(chatId, {
-				role: 'char',
-				swipes: [newSwipe],
-				activeSwipeIndex: 0
-			});
-		}
-
-		// 3. ONLY clear the ephemeral task AFTER the real message is in the store
 		clearChatTask(chatId);
 	} catch (error) {
-		const msg = error instanceof Error ? error.message : 'Failed to save message';
-		setChatTaskError(chatId, msg);
+		if (error instanceof DOMException && error.name === 'AbortError') {
+			clearChatTask(chatId);
+			return;
+		}
+
+		const errMsg = error instanceof Error ? error.message : 'Unknown pipeline error';
+		setChatTaskError(chatId, errMsg);
 	}
 }
 
@@ -212,9 +173,6 @@ async function persistTask(chatId: string): Promise<void> {
 /**
  * Resolve a tool call (approve or reject) and resume the chat if all
  * tool calls in the message are settled.
- *
- * This is the single entry point for tool interaction — UI calls this,
- * no store or service calls from UI directly.
  */
 export async function resolveToolCall(
 	chatId: string,
@@ -268,10 +226,11 @@ export async function resolveToolCall(
 
 /** Abort the in-flight stream for a chat. */
 export function stopChat(chatId: string): void {
-	activeControllers.get(chatId)?.abort();
+	const task = getChatTask(chatId);
+	task?.controller.abort();
 }
 
-/** Dismiss an error state — removes the virtual bubble. */
+/** Dismiss an error state — clears the task. */
 export function dismissChat(chatId: string): void {
 	clearChatTask(chatId);
 }

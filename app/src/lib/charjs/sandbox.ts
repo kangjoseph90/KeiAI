@@ -9,6 +9,8 @@ import type { QuickJSAsyncContext } from 'quickjs-emscripten';
 import type { CharJSInstance } from './types';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
+import { MessageService } from '$lib/services';
+import { updateMessage } from '$lib/stores';
 
 export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance): void {
 	const keiObj = ctx.newObject();
@@ -76,13 +78,20 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
 	emitEventFn.dispose();
 
 	// ── KeiAPI.getVar(key) / KeiAPI.setVar(key, value) ─────────
-	// TODO: Wire to actual ChatVar storage using instance.chatId
-	const vars = new Map<string, string>();
-
 	const getVarFn = ctx.newFunction('getVar', (keyHandle) => {
 		const key = ctx.getString(keyHandle);
-		const value = vars.get(key);
-		return value !== undefined ? ctx.newString(value) : ctx.null;
+		const promise = ctx.newPromise();
+
+		MessageService.getMessagesBefore(instance.chatId, '\uffff', 1)
+			.then((msgs) => {
+				const last = msgs[0];
+				const vars = last?.swipes[last.activeSwipeIndex]?.variables ?? {};
+				const val = vars[key];
+				promise.resolve(val !== undefined ? ctx.newString(val) : ctx.null);
+			})
+			.catch(() => promise.resolve(ctx.null));
+
+		return promise.handle;
 	});
 	ctx.setProp(keiObj, 'getVar', getVarFn);
 	getVarFn.dispose();
@@ -90,7 +99,26 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
 	const setVarFn = ctx.newFunction('setVar', (keyHandle, valueHandle) => {
 		const key = ctx.getString(keyHandle);
 		const value = ctx.getString(valueHandle);
-		vars.set(key, value);
+		const promise = ctx.newPromise();
+
+		MessageService.getMessagesBefore(instance.chatId, '\uffff', 1)
+			.then(async (msgs) => {
+				const last = msgs[0];
+				if (!last) return promise.resolve(ctx.undefined);
+
+				const swipe = last.swipes[last.activeSwipeIndex];
+				const nextVars = { ...(swipe.variables ?? {}), [key]: value };
+
+				const nextSwipes = last.swipes.map((s, i) =>
+					i === last.activeSwipeIndex ? { ...s, variables: nextVars } : s
+				);
+
+				await updateMessage(last.id, { swipes: nextSwipes });
+				promise.resolve(ctx.undefined);
+			})
+			.catch(() => promise.resolve(ctx.undefined));
+
+		return promise.handle;
 	});
 	ctx.setProp(keiObj, 'setVar', setVarFn);
 	setVarFn.dispose();

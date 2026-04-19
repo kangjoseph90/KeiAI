@@ -24,7 +24,7 @@ const createMockPocketBase = () => ({
 		isValid: false,
 		clear: vi.fn(),
 		save: vi.fn(),
-		onChange: [] as Array<(token: string, model: unknown) => void>
+		onChange: vi.fn()
 	},
 	collection: vi.fn(() => ({
 		getList: vi.fn(() => ({ items: [], totalItems: 0 })),

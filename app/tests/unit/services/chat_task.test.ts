@@ -1,7 +1,7 @@
 /**
  * Generation Pipeline Tests — Chat
  *
- * Tests the full streaming lifecycle with integrated components.
+ * Tests the DB-first streaming lifecycle.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -12,16 +12,15 @@ import type { LLMStreamHandler, LLMStreamContent } from '$lib/llm/types';
 
 vi.mock('$lib/stores/tasks/chat', () => ({
 	createChatTask: vi.fn(),
-	updateChatTask: vi.fn(),
 	setChatTaskError: vi.fn(),
 	getChatTask: vi.fn(),
-	clearChatTask: vi.fn(),
-	consumeChatTask: vi.fn().mockReturnValue(null)
+	clearChatTask: vi.fn()
 }));
 
 vi.mock('$lib/stores/content/message', () => ({
 	createMessage: vi.fn().mockResolvedValue(undefined),
 	updateMessage: vi.fn().mockResolvedValue(undefined),
+	deleteMessage: vi.fn().mockResolvedValue(undefined),
 	getMessage: vi.fn()
 }));
 
@@ -34,17 +33,20 @@ vi.mock('$lib/services/content/tool', () => ({
 	}
 }));
 
-vi.mock('$lib/services/content/message', () => ({
-	MessageService: {
-		get: vi.fn().mockResolvedValue(null),
-		getMessagesAfter: vi.fn().mockResolvedValue([])
-	}
-}));
+vi.mock('$lib/services/content/message', () => {
+	return {
+		MessageService: {
+			get: vi.fn().mockResolvedValue(null),
+			getMessagesAfter: vi.fn().mockResolvedValue([]),
+			getMessagesBefore: vi.fn().mockResolvedValue([])
+		}
+	};
+});
 
 vi.mock('$lib/stores', () => ({
 	getChatDetail: vi
 		.fn()
-		.mockResolvedValue({ id: 'chat-1', characterId: 'char-1', messageCount: 0 }),
+		.mockResolvedValue({ id: 'chat-1', characterId: 'char-1', data: { defaultVariables: {} } }),
 	getCharacterDetail: vi.fn().mockResolvedValue({ id: 'char-1', data: { systemPrompt: '' } }),
 	getAppSettings: vi.fn().mockResolvedValue({
 		personaId: 'persona-1',
@@ -62,7 +64,9 @@ vi.mock('$lib/stores', () => ({
 }));
 
 vi.mock('$lib/stores/content/chat', () => ({
-	getChatDetail: vi.fn().mockResolvedValue({ id: 'chat-1', characterId: 'char-1', messageCount: 0 })
+	getChatDetail: vi
+		.fn()
+		.mockResolvedValue({ id: 'chat-1', characterId: 'char-1', data: { defaultVariables: {} } })
 }));
 
 vi.mock('$lib/stores/content/character', () => ({
@@ -94,23 +98,47 @@ vi.mock('$lib/llm/handler', () => ({
 	selectLLMHandler: vi.fn().mockReturnValue(null)
 }));
 
-vi.mock('$lib/scripts', () => ({
-	applyScripts: vi.fn((text: string) => Promise.resolve(text))
+vi.mock('$lib/pipeline', () => ({
+	runPipeline: vi.fn((_chatId: string, _phase: string, data: unknown) => Promise.resolve(data))
 }));
 
 import {
 	createChatTask,
-	updateChatTask,
 	setChatTaskError,
 	getChatTask,
-	clearChatTask,
-	consumeChatTask
+	clearChatTask
 } from '$lib/stores/tasks/chat';
-import { createMessage, updateMessage, getMessage } from '$lib/stores/content/message';
+import {
+	createMessage,
+	updateMessage,
+	deleteMessage,
+	getMessage
+} from '$lib/stores/content/message';
 import { MessageService } from '$lib/services/content/message';
 import { getAppSettings } from '$lib/stores';
 import { buildPrompt } from '$lib/llm/prompt/builder';
 import { selectLLMHandler } from '$lib/llm/handler';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const mockNewMessage = {
+	id: 'msg-new',
+	chatId: 'chat-1',
+	role: 'char',
+	swipes: [],
+	activeSwipeIndex: 0,
+	sortOrder: 'a0'
+};
+
+function makeMockTask(overrides: Record<string, unknown> = {}) {
+	return {
+		status: 'generating' as const,
+		messageId: 'msg-new',
+		controller: new AbortController(),
+		errorMessage: undefined,
+		...overrides
+	};
+}
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -120,13 +148,26 @@ describe('Chat Pipeline', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.mocked(getChatTask).mockReturnValue(null);
-		vi.mocked(consumeChatTask).mockReturnValue(null);
 		vi.mocked(buildPrompt).mockReturnValue([{ role: 'user', content: 'test' }]);
 		vi.mocked(selectLLMHandler).mockReturnValue({
 			stream: vi.fn(async function* () {
 				yield { content: 'Response' };
 			})
 		});
+		// Default: createMessage returns a new message
+		vi.mocked(createMessage).mockResolvedValue(
+			mockNewMessage as unknown as import('$lib/services').Message
+		);
+		// Default: getMessage returns message with content
+		vi.mocked(getMessage).mockResolvedValue({
+			...mockNewMessage,
+			swipes: [{ content: 'Hello world', createdAt: Date.now(), variables: {} }]
+		} as unknown as import('$lib/services').Message);
+
+		// Default: getMessagesBefore returns history
+		vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([
+			mockNewMessage as unknown as import('$lib/services').Message
+		]);
 	});
 
 	it('should run a successful chat generation', async () => {
@@ -137,17 +178,15 @@ describe('Chat Pipeline', () => {
 			})
 		};
 
-		vi.mocked(getChatTask).mockReturnValue({
-			status: 'generating',
-			content: 'Hello world'
-		});
-
 		await runChat(mockChatId, { handlerOverride: mockHandler });
 
-		expect(createChatTask).toHaveBeenCalledWith(mockChatId, undefined);
-		expect(updateChatTask).toHaveBeenCalledWith(mockChatId, { content: 'Hello' });
-		expect(updateChatTask).toHaveBeenCalledWith(mockChatId, { content: 'Hello world' });
+		// Should create message in DB immediately
 		expect(createMessage).toHaveBeenCalled();
+		// Should register task with messageId
+		expect(createChatTask).toHaveBeenCalledWith(mockChatId, 'msg-new', expect.any(AbortController));
+		// Should update swipe content during streaming
+		expect(updateMessage).toHaveBeenCalled();
+		// Should clear task on success
 		expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
 	});
 
@@ -162,22 +201,14 @@ describe('Chat Pipeline', () => {
 			})
 		};
 
-		// Start first run
-		const firstRun = runChat(mockChatId, { handlerOverride: foreverHandler });
+		// Simulate existing task
+		vi.mocked(getChatTask).mockReturnValue(makeMockTask());
 
-		// Attempt second run
+		// Attempt run while one is active
 		await runChat(mockChatId, { handlerOverride: foreverHandler });
 
-		// Should only have registered once
-		expect(createChatTask).toHaveBeenCalledTimes(1);
-
-		// Cleanup: Manually abort the first run so it doesn't leak into other tests
-		stopChat(mockChatId);
-		try {
-			await firstRun;
-		} catch (e) {
-			// Expected abort
-		}
+		// Should not have created a new task
+		expect(createChatTask).not.toHaveBeenCalled();
 	});
 
 	it('should catch and surface errors during prompt building', async () => {
@@ -198,13 +229,19 @@ describe('Chat Pipeline', () => {
 			})
 		};
 
+		// getMessage returns swipe with empty content for empty check
+		vi.mocked(getMessage).mockResolvedValue({
+			...mockNewMessage,
+			swipes: [{ content: '', createdAt: Date.now() }]
+		} as unknown as import('$lib/services').Message);
+
 		await runChat(mockChatId, { handlerOverride: mockHandler });
 
 		expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Empty response from model');
 		expect(clearChatTask).not.toHaveBeenCalled();
 	});
 
-	it('should save partial content on abort when saveOnAbort is true', async () => {
+	it('should cleanup on abort', async () => {
 		const mockHandler: LLMStreamHandler = {
 			stream: vi.fn(async function* () {
 				yield { content: 'Partial' };
@@ -212,37 +249,12 @@ describe('Chat Pipeline', () => {
 			})
 		};
 
-		vi.mocked(getChatTask).mockReturnValue({
-			status: 'generating',
-			content: 'Partial'
-		});
+		await runChat(mockChatId, { handlerOverride: mockHandler });
 
-		await runChat(mockChatId, { handlerOverride: mockHandler, saveOnAbort: true });
-
-		expect(createMessage).toHaveBeenCalled();
 		expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
 	});
 
-	it('should discard content on abort when saveOnAbort is false', async () => {
-		const mockHandler: LLMStreamHandler = {
-			stream: vi.fn(async function* () {
-				yield { content: 'Partial' };
-				throw new DOMException('Aborted', 'AbortError');
-			})
-		};
-
-		vi.mocked(getChatTask).mockReturnValue({
-			status: 'generating',
-			content: 'Partial'
-		});
-
-		await runChat(mockChatId, { handlerOverride: mockHandler, saveOnAbort: false });
-
-		expect(consumeChatTask).not.toHaveBeenCalled();
-		expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
-	});
-
-	it('should surface handler errors without persisting', async () => {
+	it('should surface handler errors', async () => {
 		const mockHandler: LLMStreamHandler = {
 			stream: vi.fn(async function* () {
 				yield { content: '' };
@@ -263,15 +275,10 @@ describe('Chat Pipeline', () => {
 			})
 		};
 
-		vi.mocked(getChatTask).mockReturnValue({
-			status: 'generating',
-			content: 'Override response'
-		});
-
 		await runChat(mockChatId, { handlerOverride: mockHandler });
 
 		expect(selectLLMHandler).not.toHaveBeenCalled();
-		expect(createChatTask).toHaveBeenCalledWith(mockChatId, undefined);
+		expect(createChatTask).toHaveBeenCalledWith(mockChatId, 'msg-new', expect.any(AbortController));
 	});
 
 	it('selects handler from preset when no override', async () => {
@@ -282,10 +289,6 @@ describe('Chat Pipeline', () => {
 		};
 
 		vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
-		vi.mocked(getChatTask).mockReturnValue({
-			status: 'generating',
-			content: 'Preset response'
-		});
 
 		await runChat(mockChatId);
 
@@ -299,74 +302,45 @@ describe('Chat Pipeline', () => {
 			chatId: mockChatId,
 			role: 'char',
 			swipes: [{ content: 'Old content', createdAt: 1000, thought: '', toolCalls: [] }],
-			activeSwipeIndex: 0
+			activeSwipeIndex: 0,
+			sortOrder: 'a0'
 		};
 
-		it('should create a new swipe when saveMessagesOnSwipe is true', async () => {
+		it('should add a new swipe for reroll', async () => {
 			const mockHandler: LLMStreamHandler = {
 				stream: vi.fn(async function* () {
 					yield { content: 'New content' };
 				})
 			};
 
-			vi.mocked(getChatTask).mockReturnValue({
-				status: 'generating',
-				content: 'New content',
-				targetMessageId
-			});
-			// any 금지 -> 타입 단언
-			vi.mocked(getMessage).mockResolvedValue(
+			// Mock historical context for reroll: last 2 messages are [..., existing]
+			vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([
 				mockExistingMessage as unknown as import('$lib/services').Message
-			);
+			]);
 
-			await runChat(mockChatId, { handlerOverride: mockHandler, targetMessageId });
+			// Return a message with the new swipe for the final empty check
+			vi.mocked(getMessage)
+				.mockResolvedValueOnce(mockExistingMessage as unknown as import('$lib/services').Message) // swipe creation
+				.mockResolvedValue({
+					...mockExistingMessage,
+					swipes: [
+						...mockExistingMessage.swipes,
+						{ content: 'New content', createdAt: Date.now() }
+					],
+					activeSwipeIndex: 1
+				} as unknown as import('$lib/services').Message);
 
-			expect(createChatTask).toHaveBeenCalledWith(mockChatId, targetMessageId);
+			await runChat(mockChatId, { handlerOverride: mockHandler, reroll: true });
+
+			// Should add swipe to existing message, not create new message
 			expect(updateMessage).toHaveBeenCalledWith(
 				targetMessageId,
 				expect.objectContaining({
 					activeSwipeIndex: 1,
-					swipes: expect.arrayContaining([
-						expect.objectContaining({ content: 'Old content' }),
-						expect.objectContaining({ content: 'New content' })
-					])
+					swipes: expect.arrayContaining([expect.objectContaining({ content: 'Old content' })])
 				})
 			);
 			expect(createMessage).not.toHaveBeenCalled();
-		});
-
-		it('should overwrite swipes when saveMessagesOnSwipe is false', async () => {
-			vi.mocked(getAppSettings).mockResolvedValue({
-				personaId: 'persona-1',
-				presetId: 'preset-1',
-				apiKeys: {},
-				chat: { saveMessagesOnSwipe: false }
-			} as unknown as import('$lib/services').AppSettingsContent);
-
-			const mockHandler: LLMStreamHandler = {
-				stream: vi.fn(async function* () {
-					yield { content: 'Replaced content' };
-				})
-			};
-
-			vi.mocked(getChatTask).mockReturnValue({
-				status: 'generating',
-				content: 'Replaced content',
-				targetMessageId
-			});
-			vi.mocked(getMessage).mockResolvedValue(
-				mockExistingMessage as unknown as import('$lib/services').Message
-			);
-
-			await runChat(mockChatId, { handlerOverride: mockHandler, targetMessageId });
-
-			expect(updateMessage).toHaveBeenCalledWith(
-				targetMessageId,
-				expect.objectContaining({
-					activeSwipeIndex: 0,
-					swipes: [expect.objectContaining({ content: 'Replaced content' })] // Only one swipe
-				})
-			);
 		});
 	});
 
@@ -378,6 +352,15 @@ describe('Chat Pipeline', () => {
 
 		it('stopChat does not throw when no active controller', () => {
 			expect(() => stopChat(mockChatId)).not.toThrow();
+		});
+
+		it('stopChat should abort via task controller', () => {
+			const mockController = new AbortController();
+			vi.mocked(getChatTask).mockReturnValue(makeMockTask({ controller: mockController }));
+
+			stopChat(mockChatId);
+
+			expect(mockController.signal.aborted).toBe(true);
 		});
 	});
 });

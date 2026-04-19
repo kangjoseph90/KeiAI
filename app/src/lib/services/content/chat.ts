@@ -31,7 +31,7 @@ export interface ChatDataRefs {
 
 export interface ChatDataContent {
 	systemPromptOverride?: string;
-	variables?: Record<string, unknown>;
+	defaultVariables?: Record<string, string>;
 }
 
 export interface ChatDataFields extends ChatDataContent, ChatDataRefs {}

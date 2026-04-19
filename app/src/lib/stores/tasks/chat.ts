@@ -1,54 +1,38 @@
 /**
- * Chat Task Store — Domain-Specific Generation State
+ * Chat Task Store — Thin Generation State Tracker
  *
- * Manages ephemeral in-flight chat tasks. Keyed by chatId.
- * These are UI-only — never persisted to DB.
+ * Tracks which message/swipe is currently being generated.
+ * The message already exists in DB — this is UI state only.
+ * Keyed by chatId.
  */
 
 import { get } from 'svelte/store';
 import { chatTasks } from '../state';
 import type { ChatTask } from '../types';
-import type { LLMStreamContent } from '$lib/llm/types';
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 
 /**
- * Register a new chat task in the store.
- * Pass targetMessageId to mark this as a reroll of an existing message.
+ * Register a new generation task.
+ * The message/swipe must already exist in DB before calling this.
  */
-export function createChatTask(chatId: string, targetMessageId?: string): void {
+export function createChatTask(
+	chatId: string,
+	messageId: string,
+	controller: AbortController
+): void {
 	chatTasks.update((map) => {
 		const next = new Map(map);
 		next.set(chatId, {
 			status: 'generating',
-			content: '',
-			thought: '',
-			toolCalls: [],
-			targetMessageId
+			messageId,
+			controller
 		});
 		return next;
 	});
 }
 
-// ─── Streaming ────────────────────────────────────────────────────────────────
-
-/**
- * Update the chat task state with the latest stream content.
- */
-export function updateChatTask(chatId: string, state: LLMStreamContent): void {
-	chatTasks.update((map) => {
-		const task = map.get(chatId);
-		if (!task) return map;
-		const next = new Map(map);
-		next.set(chatId, {
-			...task,
-			content: state.content,
-			thought: state.thought,
-			toolCalls: state.toolCalls
-		});
-		return next;
-	});
-}
+// ─── Status ───────────────────────────────────────────────────────────────────
 
 /**
  * Mark the task as failed.
@@ -75,17 +59,6 @@ export function clearChatTask(chatId: string): void {
 		next.delete(chatId);
 		return next;
 	});
-}
-
-/**
- * Consume the task: return a snapshot and immediately clear it from
- * the store. The runtime layer is responsible for persisting to DB.
- */
-export function consumeChatTask(chatId: string): ChatTask | null {
-	const task = getChatTask(chatId);
-	if (!task) return null;
-	clearChatTask(chatId);
-	return task;
 }
 
 // ─── Read ─────────────────────────────────────────────────────────────────────

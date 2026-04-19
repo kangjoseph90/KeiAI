@@ -19,6 +19,15 @@ import {
 import type { AppSettings, Profile, ChatDetail, Message } from '$lib/services';
 import type { ChatTask } from '$lib/stores/types';
 
+function makeMockTask(overrides: Partial<ChatTask> = {}): ChatTask {
+	return {
+		status: 'generating',
+		messageId: 'm-gen',
+		controller: new AbortController(),
+		...overrides
+	};
+}
+
 describe('Global Stores', () => {
 	beforeEach(() => {
 		// Reset stores to default state
@@ -55,9 +64,7 @@ describe('Global Stores', () => {
 			const chatId = 'chat-1';
 			activeChat.set({ id: chatId } as ChatDetail);
 
-			chatTasks.set(
-				new Map<string, ChatTask>([[chatId, { status: 'generating', content: '...' }]])
-			);
+			chatTasks.set(new Map<string, ChatTask>([[chatId, makeMockTask()]]));
 
 			expect(get(isChatRunning)).toBe(true);
 		});
@@ -65,16 +72,14 @@ describe('Global Stores', () => {
 		it('should not indicate generation for different chat', () => {
 			activeChat.set({ id: 'chat-1' } as ChatDetail);
 
-			chatTasks.set(
-				new Map<string, ChatTask>([['chat-2', { status: 'generating', content: '...' }]])
-			);
+			chatTasks.set(new Map<string, ChatTask>([['chat-2', makeMockTask()]]));
 
 			expect(get(isChatRunning)).toBe(false);
 		});
 	});
 
 	describe('Display Messages (Derived)', () => {
-		it('should merge messages and active generation task (new message)', () => {
+		it('should mark generating message from DB with displayStatus', () => {
 			const chatId = 'chat-1';
 			activeChat.set({ id: chatId } as ChatDetail);
 
@@ -86,21 +91,26 @@ describe('Global Stores', () => {
 					swipes: [{ content: 'hello', createdAt: 1000 }],
 					activeSwipeIndex: 0,
 					sortOrder: 'a'
+				} as Message,
+				{
+					id: 'm-gen',
+					chatId,
+					role: 'char',
+					swipes: [{ content: 'world', createdAt: 1001 }],
+					activeSwipeIndex: 0,
+					sortOrder: 'b'
 				} as Message
 			];
 			messageMap.set(new Map(dbMessages.map((m) => [m.id, m])));
 
-			chatTasks.set(
-				new Map<string, ChatTask>([[chatId, { status: 'generating', content: 'world' }]])
-			);
+			chatTasks.set(new Map<string, ChatTask>([[chatId, makeMockTask({ messageId: 'm-gen' })]]));
 
 			const display = get(displayMessages);
 
 			expect(display).toHaveLength(2);
 			expect(display[0].id).toBe('m1');
 			expect(display[0].displayStatus).toBe('completed');
-			expect(display[1].id).toBe('__generating_chat-1');
-			expect(display[1].swipes[0].content).toBe('world');
+			expect(display[1].id).toBe('m-gen');
 			expect(display[1].displayStatus).toBe('generating');
 		});
 
@@ -115,6 +125,34 @@ describe('Global Stores', () => {
 			const display = get(displayMessages);
 			expect(display).toHaveLength(1);
 			expect(display[0].id).toBe('m1');
+			expect(display[0].displayStatus).toBe('completed');
+		});
+
+		it('should mark message with error status', () => {
+			const chatId = 'chat-1';
+			activeChat.set({ id: chatId } as ChatDetail);
+
+			const dbMessages: Message[] = [
+				{
+					id: 'm-gen',
+					chatId,
+					role: 'char',
+					swipes: [{ content: '', createdAt: 1000 }],
+					activeSwipeIndex: 0,
+					sortOrder: 'a'
+				} as Message
+			];
+			messageMap.set(new Map(dbMessages.map((m) => [m.id, m])));
+
+			chatTasks.set(
+				new Map<string, ChatTask>([
+					[chatId, makeMockTask({ status: 'error', errorMessage: 'Network fail' })]
+				])
+			);
+
+			const display = get(displayMessages);
+			expect(display[0].displayStatus).toBe('error');
+			expect(display[0].errorMessage).toBe('Network fail');
 		});
 	});
 });

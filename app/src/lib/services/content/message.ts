@@ -14,6 +14,7 @@ export interface MessageSwipe {
 	content: string;
 	thought?: string;
 	toolCalls?: ToolCallAbstract[];
+	variables?: Record<string, string>;
 	createdAt: number;
 }
 

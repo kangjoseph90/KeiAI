@@ -311,15 +311,15 @@ describe('ChatService', () => {
 			} as unknown as BaseRecord;
 
 			vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
-			vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ variables: { old: 'value' } }));
+			vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ defaultVariables: { old: 'value' } }));
 			vi.mocked(encrypt).mockResolvedValue({
 				ciphertext: new Uint8Array([99]),
 				iv: new Uint8Array([88])
 			});
 
-			const result = await ChatService.updateData('chat-1', { variables: { new: 'value' } });
+			const result = await ChatService.updateData('chat-1', { defaultVariables: { new: 'value' } });
 
-			expect(result.variables).toEqual({ new: 'value' });
+			expect(result.defaultVariables).toEqual({ new: 'value' });
 			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 	});

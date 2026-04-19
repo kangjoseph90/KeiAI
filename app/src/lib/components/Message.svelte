@@ -73,10 +73,13 @@
 	// ── State ─────────────────────────────────────────────────────────────────
 
 	let thoughtExpanded = $state(false);
-	let displayContent = $state('');
-	let lastContent = $state('');
-	let renderedHtml = $state('');
 	let copied = $state(false);
+
+	// Render pipeline internals
+	let displayContent = $state('');
+	let lastContent = '';
+	let renderedHtml = $state('');
+	let lastStatus: string | undefined;
 
 	// ── Derived ───────────────────────────────────────────────────────────────
 
@@ -182,8 +185,6 @@
 			}, RENDER_THROTTLE_MS - timeSinceLastRender);
 		}
 	}
-
-	let lastStatus = '';
 
 	$effect(() => {
 		const current = activeSwipe?.content ?? '';

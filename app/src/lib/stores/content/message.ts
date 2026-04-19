@@ -89,7 +89,7 @@ export async function loadNewerMessages(chatId: string, limit = 50): Promise<voi
 export async function createMessage(
 	chatId: string,
 	fields: DeepPartial<MessageFields> = {}
-): Promise<void> {
+): Promise<Message> {
 	const activeSwipe = (fields.swipes ?? [])[fields.activeSwipeIndex ?? 0];
 	const preview = activeSwipe?.content?.substring(0, 50) ?? '';
 
@@ -106,14 +106,17 @@ export async function createMessage(
 	]);
 
 	// Store update — only if still viewing this chat
-	if (get(activeChatId) !== chatId) return;
-	messageMap.update((map) => {
-		const next = new Map(map);
-		next.set(newMessage.id, newMessage);
-		return next;
-	});
-	chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
-	activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
+	if (get(activeChatId) === chatId) {
+		messageMap.update((map) => {
+			const next = new Map(map);
+			next.set(newMessage.id, newMessage);
+			return next;
+		});
+		chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
+		activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
+	}
+
+	return newMessage;
 }
 
 export async function updateMessage(

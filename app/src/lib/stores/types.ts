@@ -11,21 +11,17 @@ import type { Message } from '$lib/services';
 // ─── Chat Task ────────────────────────────────────────────────────────────────
 export type TaskStatus = 'generating' | 'error';
 
-import { type ToolCallAbstract, type ToolCallRequest } from '$lib/services/content/tool';
-
 /**
- * Ephemeral in-flight chat task. Keyed by chatId.
- * Never persisted to DB as a "Task", but finalized into a "Message".
- * id is generated after the task is completed.
+ * Thin generation state tracker. Keyed by chatId.
+ * The message/swipe already exists in DB — this just tracks which one is being generated.
  */
 export interface ChatTask {
 	status: TaskStatus;
 	errorMessage?: string;
-	content: string;
-	thought?: string;
-	toolCalls?: ToolCallRequest[];
-	/** If set, this task is a reroll of an existing message (not a new message). */
-	targetMessageId?: string;
+	/** The message being generated (already persisted to DB). */
+	messageId: string;
+	/** AbortController for cancelling the in-flight generation. */
+	controller: AbortController;
 }
 
 // ─── Display Message Types ────────────────────────────────────────────────────

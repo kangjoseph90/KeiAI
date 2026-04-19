@@ -104,74 +104,24 @@ export const isChatRunning = derived([chatTasks, activeChat], ([tasks, chat]) =>
 );
 
 /**
- * Single merged array of confirmed DB messages + active generation task.
- *
- * - New generation (task.targetMessageId is undefined):
- *   Appends a virtual message at the end (existing behaviour).
- *
- * - Reroll (task.targetMessageId is set):
- *   Overlays a virtual MessageSwipe onto the target message's swipes array,
- *   pointing activeSwipeIndex at it. The message count stays the same.
- *   On error / dismiss the task is cleared and the message reverts cleanly.
- *
- * UI components iterate this one list — no streaming/normal branching needed.
+ * Messages with display status overlay.
+ * Generating/error messages already exist in DB — this just marks them.
  */
 export const displayMessages = derived(
 	[messages, chatTasks, activeChat],
 	([msgs, tasks, chat]): DisplayMessage[] => {
 		const task = chat ? tasks.get(chat.id) : undefined;
 
-		const base: DisplayMessage[] = msgs.map((msg): DisplayMessage => {
-			// ── Reroll target: overlay a virtual swipe on the existing message ──
-			if (task?.targetMessageId === msg.id) {
-				const streamingSwipe = {
-					content: task.content,
-					thought: task.thought,
-					toolCalls: task.toolCalls?.map((tc, i) => ({
-						id: `__generating_toolcall_${chat!.id}_${i}`,
-						name: tc.name,
-						status: 'pending' as const
-					})),
-					createdAt: Date.now()
-				};
+		return msgs.map((msg): DisplayMessage => {
+			if (task?.messageId === msg.id) {
 				return {
 					...msg,
-					swipes: [...msg.swipes, streamingSwipe],
-					activeSwipeIndex: msg.swipes.length, // points at the new virtual swipe
 					displayStatus: task.status,
 					errorMessage: task.errorMessage
 				};
 			}
-			// ── Normal confirmed message ──
 			return { ...msg, displayStatus: 'completed' as const };
 		});
-
-		// ── New generation (no target): append a virtual message at the end ──
-		if (chat && task && !task.targetMessageId) {
-			base.push({
-				id: `__generating_${chat.id}`,
-				chatId: chat.id,
-				sortOrder: '\uffff',
-				role: 'char',
-				swipes: [
-					{
-						content: task.content,
-						thought: task.thought,
-						toolCalls: task.toolCalls?.map((tc, i) => ({
-							id: `__generating_toolcall_${chat.id}_${i}`,
-							name: tc.name,
-							status: 'pending' as const
-						})),
-						createdAt: Date.now()
-					}
-				],
-				activeSwipeIndex: 0,
-				displayStatus: task.status,
-				errorMessage: task.errorMessage
-			});
-		}
-
-		return base;
 	}
 );
 

@@ -325,18 +325,34 @@ Ten adapter interfaces, each with Web + Tauri implementations dispatched via `is
 
 ## Generation Pipeline
 
-`lib/tasks/chat.ts` orchestrates LLM streaming:
+`lib/tasks/chat.ts` orchestrates LLM streaming. Messages are persisted to DB immediately on creation; the ChatTask is a thin state tracker that holds no content.
 
-1. Snapshot all context at call time (character, preset, lorebooks, scripts, messages) — isolated from UI switches
-2. Build prompt from template order (`llm/prompt/builder.ts` — pure function)
-3. Apply request-placement scripts
-4. Resolve model: `preset.data.chatModel` → `LLMModelConfig` → find `LLMModel` → resolve connection
-5. Create `LLMStreamHandler` via `selectLLMHandler(modelConfig, settings)` (`llm/handler.ts`)
-6. Open ephemeral `ChatTask` in store (streaming bubble in UI)
-7. Stream chunks from `LLMStreamHandler`, apply output scripts per-chunk
-8. On success: `createMessage()` → persist → `clearChatTask()`
-9. On abort: optionally save partial → `clearChatTask()`
-10. On error: `setChatTaskError()` — bubble stays for user to dismiss
+Pipeline steps:
+
+1. Guard: prevent duplicate runs per chatId
+2. `createMessage()` — empty message in DB (unless reroll)
+3. Load context: chat, character, preset, persona, lorebooks, last 2 messages
+4. Setup variables: `deepMerge(chat.data.defaultVariables, previousSwipe.variables)` → new swipe
+5. Register ChatTask (messageId + AbortController)
+6. `buildPrompt()` — pure function (`llm/prompt/builder.ts`)
+7. Apply request-phase pipeline handlers
+8. `selectLLMHandler()` → stream chunks
+9. Per chunk: run output-phase pipeline → `getMessage` → `updateMessage` (encrypted write queue batches these)
+10. Finalize: validate non-empty → `clearChatTask()`
+11. On abort: `clearChatTask()` (content already in DB)
+12. On error: `setChatTaskError()` — error overlay stays for user to dismiss
+
+### ChatTask
+
+Ephemeral UI state keyed by chatId. Fields: `status` (generating | error), `messageId`, `controller` (AbortController), `errorMessage?`.
+
+The `displayMessages` derived store overlays task status onto existing DB messages. No virtual messages or virtual swipes are generated.
+
+### Variable System
+
+Variables are stored per swipe as `Record<string, string>`. A new swipe inherits `deepMerge(chat.data.defaultVariables, previousSwipe.variables)`.
+
+The CharJS sandbox exposes `KeiAPI.getVar(key)` / `KeiAPI.setVar(key, value)`, which read and write from the last message's active swipe via `MessageService`.
 
 ### Provider-Handler Architecture — "같은 인터페이스 = 같은 클래스"
 
