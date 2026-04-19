@@ -31,7 +31,6 @@ Think of it as a privacy-first alternative to existing AI chat frontends — wit
 - **Platform abstraction** — Every I/O operation has Web and Tauri adapters behind a shared interface
 - **E2EE everywhere** — Master key exists only in memory or as a non-extractable CryptoKey
 - **Guest-first** — Works offline with no account; sign up later to enable multi-device sync
-- **Summary/Data split** — List views decrypt lightweight summaries; full data loads on demand
 
 ## Security Model
 

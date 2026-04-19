@@ -5,13 +5,9 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import {
-	PresetService,
-	type PresetSummaryFields,
-	type PresetDataFields
-} from '$lib/services/content/preset';
+import { PresetService, type PresetFields } from '$lib/services/content/preset';
 import { getActiveSession } from '$lib/services/session';
-import { localDB, type PresetSummaryRecord, type PresetDataRecord } from '$lib/adapters/db';
+import { localDB, type PresetRecord } from '$lib/adapters/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 
@@ -30,8 +26,7 @@ vi.mock('$lib/adapters/db', () => ({
 		getAll: vi.fn(),
 		getRecord: vi.fn(),
 		putRecord: vi.fn(),
-		softDeleteRecord: vi.fn(),
-		transaction: vi.fn((_tables: string[], _mode: string, cb: () => Promise<void>) => cb())
+		softDeleteRecord: vi.fn()
 	}
 }));
 
@@ -39,17 +34,25 @@ vi.mock('$lib/utils/id', () => ({
 	generateId: vi.fn(() => 'preset-123')
 }));
 
+vi.mock('$lib/services/content/write_queue', () => ({
+	encryptedWriteQueue: {
+		peek: vi.fn(() => undefined),
+		upsert: vi.fn(),
+		drop: vi.fn(),
+		flushTable: vi.fn()
+	}
+}));
+
+import { encryptedWriteQueue } from '$lib/services/content/write_queue';
+
 describe('PresetService', () => {
 	const mockUserId = 'user-123';
 	const mockMasterKey = {} as CryptoKey;
 	const mockNow = 1710000000000;
 
-	const mockSummaryFields: PresetSummaryFields = {
+	const mockFields: PresetFields = {
 		name: 'Test Preset',
-		description: 'Test Description'
-	};
-
-	const mockDataFields: PresetDataFields = {
+		description: 'Test Description',
 		chatModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: { temperature: 0.9 } },
 		auxModel: { id: '', provider: 'openai', parameters: {} },
 		templateOrder: [],
@@ -57,7 +60,7 @@ describe('PresetService', () => {
 		maxContext: 4096
 	};
 
-	const mockSummaryRecord: PresetSummaryRecord = {
+	const mockRecord: PresetRecord = {
 		id: 'preset-123',
 		userId: mockUserId,
 		createdAt: mockNow,
@@ -65,16 +68,6 @@ describe('PresetService', () => {
 		isDeleted: false,
 		encryptedData: new Uint8Array([1]),
 		encryptedDataIV: new Uint8Array([2])
-	};
-
-	const mockDataRecord: PresetDataRecord = {
-		id: 'preset-123',
-		userId: mockUserId,
-		createdAt: mockNow,
-		updatedAt: mockNow,
-		isDeleted: false,
-		encryptedData: new Uint8Array([3]),
-		encryptedDataIV: new Uint8Array([4])
 	};
 
 	beforeEach(() => {
@@ -94,89 +87,83 @@ describe('PresetService', () => {
 			iv: new Uint8Array([0])
 		});
 
-		vi.mocked(decrypt).mockImplementation((_key, options) => {
-			if (options.ciphertext === mockSummaryRecord.encryptedData) {
-				return Promise.resolve(JSON.stringify(mockSummaryFields));
-			}
-			return Promise.resolve(JSON.stringify(mockDataFields));
-		});
+		vi.mocked(decrypt).mockResolvedValue(JSON.stringify(mockFields));
+
+		vi.mocked(encryptedWriteQueue.peek).mockReturnValue(undefined);
+		vi.mocked(encryptedWriteQueue.flushTable).mockResolvedValue(undefined);
 	});
 
 	describe('list', () => {
-		it('should list all preset summaries', async () => {
-			vi.mocked(localDB.getAll).mockResolvedValue([mockSummaryRecord]);
+		it('should list all presets', async () => {
+			vi.mocked(localDB.getAll).mockResolvedValue([mockRecord]);
 
 			const result = await PresetService.list();
 
 			expect(result).toHaveLength(1);
-			expect(result[0].name).toBe(mockSummaryFields.name);
-			expect(localDB.getAll).toHaveBeenCalledWith('presetSummaries', mockUserId);
+			expect(result[0].name).toBe(mockFields.name);
+			expect(localDB.getAll).toHaveBeenCalledWith('presets', mockUserId);
 		});
 	});
 
-	describe('getDetail', () => {
-		it('should return full preset detail', async () => {
-			vi.mocked(localDB.getRecord).mockImplementation((table, _id) => {
-				if (table === 'presetSummaries') return Promise.resolve(mockSummaryRecord);
-				if (table === 'presetData') return Promise.resolve(mockDataRecord);
-				return Promise.resolve(undefined);
-			});
+	describe('get', () => {
+		it('should return full preset', async () => {
+			vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
 
-			const result = await PresetService.getDetail('preset-123');
+			const result = await PresetService.get('preset-123');
 
 			expect(result).not.toBeNull();
 			expect(result?.id).toBe('preset-123');
-			expect(result?.name).toBe(mockSummaryFields.name);
-			expect(result?.data.chatModel.id).toBe(mockDataFields.chatModel.id);
+			expect(result?.name).toBe(mockFields.name);
+			expect(result?.chatModel.id).toBe(mockFields.chatModel.id);
 		});
 
-		it('should return null if either record is missing', async () => {
+		it('should return null if record is missing', async () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
-			expect(await PresetService.getDetail('none')).toBeNull();
+			expect(await PresetService.get('none')).toBeNull();
 		});
 	});
 
 	describe('create', () => {
-		it('should create summary and data records', async () => {
-			const result = await PresetService.create(mockSummaryFields, mockDataFields);
+		it('should create a preset record', async () => {
+			const result = await PresetService.create(mockFields);
 
 			expect(result.id).toBe('preset-123');
-			expect(localDB.transaction).toHaveBeenCalled();
-			expect(localDB.putRecord).toHaveBeenCalledTimes(2);
+			expect(localDB.putRecord).toHaveBeenCalledTimes(1);
+			expect(localDB.putRecord).toHaveBeenCalledWith(
+				'presets',
+				expect.objectContaining({
+					id: 'preset-123',
+					userId: mockUserId
+				})
+			);
 		});
 	});
 
 	describe('update', () => {
-		it('should update both summary and data correctly', async () => {
-			vi.mocked(localDB.getRecord).mockImplementation((table, _id) => {
-				if (table === 'presetSummaries') return Promise.resolve(mockSummaryRecord);
-				if (table === 'presetData') return Promise.resolve(mockDataRecord);
-				return Promise.resolve(undefined);
+		it('should update preset correctly', async () => {
+			vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+
+			const result = await PresetService.update('preset-123', {
+				name: 'New Name',
+				maxResponse: 800
 			});
 
-			const result = await PresetService.update(
-				'preset-123',
-				{ name: 'New Name' },
-				{ maxResponse: 800 }
-			);
-
 			expect(result.name).toBe('New Name');
-			expect(result.data.maxResponse).toBe(800);
+			expect(result.maxResponse).toBe(800);
 
-			await vi.runAllTimersAsync();
-			expect(localDB.putRecord).toHaveBeenCalledTimes(2);
+			expect(encryptedWriteQueue.upsert).toHaveBeenCalled();
 		});
 
-		it('should throw if records not found', async () => {
+		it('should throw if record not found', async () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
-			await expect(PresetService.update('none')).rejects.toThrow(AppError);
+			await expect(PresetService.update('none', {})).rejects.toThrow(AppError);
 		});
 	});
 
 	describe('delete', () => {
-		it('should soft delete both records', async () => {
+		it('should soft delete the record', async () => {
 			await PresetService.delete('preset-123');
-			expect(localDB.softDeleteRecord).toHaveBeenCalledTimes(2);
+			expect(localDB.softDeleteRecord).toHaveBeenCalledWith('presets', 'preset-123');
 		});
 	});
 });

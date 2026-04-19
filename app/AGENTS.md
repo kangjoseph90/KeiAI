@@ -92,13 +92,13 @@ Write: JSON.stringify(full) → encrypt(M, json) → DB record → fire-and-forg
 - Realtime subscriptions + 300s fallback poll + online/visibility listeners
 - LWW (Last Write Wins) by `updatedAt` timestamp
 
-### Summary/Data Split
+### Single-Table Pattern
 
-Most entities have two tables: `*Summaries` (list view fields) and `*Data` (full detail).
+Each entity type uses one table with one encrypted blob. The blob contains both user-editable content (`XxxContent`) and structural references (`XxxRefs`), combined via `XxxFields extends XxxContent, XxxRefs`.
 
-- List operations decrypt only summaries (fast)
-- Detail view decrypts data on demand
-- Atomic writes when both change: `localDB.transaction([summaryTable, dataTable], 'readwrite', ...)`
+- Every entity is stored in a single table (e.g., `characters`, `chats`, `presets`)
+- No split between summary and data tables — one record, one encrypted blob
+- `XxxContent` holds user-editable fields; `XxxRefs` holds structural references
 
 ### Relationship Model
 
@@ -148,7 +148,7 @@ Every service file follows this order:
 // 1. Imports
 
 // ─── Domain Types ────────────────────────────────────────────────────
-// Interfaces: *SummaryFields, *DataFields, *Detail
+// Interfaces: *Content, *Refs, *Fields, *
 
 // ─── Defaults ─────────────────────────────────────────────────────────
 // const default*Fields = { ... }  — base for deepMerge
@@ -203,9 +203,9 @@ All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
 
 | Kind                  | Pattern                                              | Example                                         |
 | --------------------- | ---------------------------------------------------- | ----------------------------------------------- |
-| DB record type        | `*Record`                                            | `CharacterSummaryRecord`, `MessageRecord`       |
-| Domain fields type    | `*SummaryFields` / `*DataFields`                     | `ChatSummaryFields`                             |
-| Combined detail type  | `*Detail`                                            | `CharacterDetail`, `PresetDetail`               |
+| DB record type        | `*Record`                                            | `CharacterRecord`, `MessageRecord`              |
+| Domain fields type    | `*Fields`                                            | `ChatFields`, `CharacterFields`                 |
+| Combined domain type  | `*`                                                  | `Character`, `Preset`                           |
 | Service class         | `*Service` (static)                                  | `CharacterService.list()`                       |
 | Store action function | `verbNoun()`                                         | `loadCharacters()`, `selectChat()`              |
 | Guard function        | `assert*()`                                          | `assertChatOwnedByCharacter()`                  |
@@ -230,7 +230,7 @@ All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
 
 ```typescript
 // ✅ Barrel imports from directory
-import { CharacterService, type CharacterDetail } from '$lib/services';
+import { CharacterService, type Character } from '$lib/services';
 import { activeCharacter, loadCharacters } from '$lib/stores';
 
 // ✅ Cross-cutting modules by path
@@ -264,7 +264,7 @@ Every layer has an `index.ts` barrel. Import from the barrel, not individual fil
 
 ```typescript
 // Data shapes → interface
-export interface CharacterSummaryFields { name: string; shortDescription: string; }
+export interface CharacterContent { name: string; shortDescription: string; }
 
 // Unions, aliases → type
 export type ErrorCode = 'NOT_FOUND' | 'ENCRYPTION_FAILED';
@@ -401,7 +401,7 @@ ID convention: `provider::modelId` for built-in (e.g. `openai::gpt-5.4`), `custo
 
 ## Adding a New Entity Type
 
-Follow the existing Summary/Data split pattern:
+Follow the existing single-table pattern:
 
 1. **Schema**: Add PocketBase collection in `pocketbase/pb_migrations/` (encrypted table with `userId` FK + `cascadeDelete`)
 2. **Adapter**: Add record types in `adapters/db/types.ts`, add table to Dexie schema in `db/web.ts`

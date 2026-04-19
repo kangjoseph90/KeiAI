@@ -47,10 +47,10 @@
 
 			// Try to open the last active chat
 			const charData = $activeCharacter;
-			if (charData?.data?.lastActiveChatId) {
+			if (charData?.lastActiveChatId) {
 				try {
-					await selectChat(charData.data.lastActiveChatId, charId);
-					navigate({ view: 'chat', charId, chatId: charData.data.lastActiveChatId });
+					await selectChat(charData.lastActiveChatId, charId);
+					navigate({ view: 'chat', charId, chatId: charData.lastActiveChatId });
 					return;
 				} catch {
 					// lastActiveChatId may be stale, fall through
@@ -68,8 +68,7 @@
 
 			// No chats exist — create one
 			const newChat = await createChat(charId, {
-				title: `Chat`,
-				lastMessagePreview: ''
+				title: `Chat`
 			});
 			await selectChat(newChat.id, charId);
 			navigate({ view: 'chat', charId, chatId: newChat.id });

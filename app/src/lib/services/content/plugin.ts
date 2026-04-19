@@ -73,6 +73,8 @@ export class PluginService {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<PluginFields>('plugins', id);
 		if (queued) {
+			const record = await localDB.getRecord<PluginRecord>('plugins', id);
+			if (!record || record.isDeleted) return null;
 			return {
 				id,
 				...deepMerge(defaultPluginFields, queued as unknown as Record<string, unknown>)

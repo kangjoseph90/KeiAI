@@ -45,10 +45,8 @@ interface MockRecord {
 }
 
 const syncTables = {
-	characterSummaries: new Map<string, MockRecord>(),
-	characterData: new Map<string, MockRecord>(),
-	chatSummaries: new Map<string, MockRecord>(),
-	chatData: new Map<string, MockRecord>(),
+	characters: new Map<string, MockRecord>(),
+	chats: new Map<string, MockRecord>(),
 	messages: new Map<string, MockRecord>(),
 	settings: new Map<string, MockRecord>(),
 	personas: new Map<string, MockRecord>(),
@@ -56,8 +54,7 @@ const syncTables = {
 	scripts: new Map<string, MockRecord>(),
 	modules: new Map<string, MockRecord>(),
 	plugins: new Map<string, MockRecord>(),
-	presetSummaries: new Map<string, MockRecord>(),
-	presetData: new Map<string, MockRecord>(),
+	presets: new Map<string, MockRecord>(),
 	assets: new Map<string, MockRecord>()
 };
 

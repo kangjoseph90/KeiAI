@@ -136,12 +136,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 		}
 
 		// FK indices for 1:N parent→child queries
-		await db.execute(
-			`CREATE INDEX IF NOT EXISTS idx_chatSummaries_characterId ON chatSummaries (characterId)`
-		);
-		await db.execute(
-			`CREATE INDEX IF NOT EXISTS idx_chatData_characterId ON chatData (characterId)`
-		);
+		await db.execute(`CREATE INDEX IF NOT EXISTS idx_chats_characterId ON chats (characterId)`);
 		await db.execute(`CREATE INDEX IF NOT EXISTS idx_lorebooks_ownerId ON lorebooks (ownerId)`);
 		await db.execute(`CREATE INDEX IF NOT EXISTS idx_scripts_ownerId ON scripts (ownerId)`);
 		await db.execute(`CREATE INDEX IF NOT EXISTS idx_charjs_ownerId ON charjs (ownerId)`);

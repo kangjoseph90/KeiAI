@@ -12,10 +12,9 @@
 		activePreset,
 		createPreset,
 		selectPreset,
-		updatePresetSummary,
-		updatePresetData,
+		updatePreset,
 		deletePreset,
-		getPresetDetail
+		getPreset
 	} from '$lib/stores';
 	import type { LLMModelConfig } from '$lib/types/models/llm';
 
@@ -40,13 +39,13 @@
 	}
 
 	async function openEditor(id: string) {
-		const detail = await getPresetDetail(id);
+		const detail = await getPreset(id);
 		editingId = id;
 		editName = detail.name;
 		editDescription = detail.description;
-		editChatModel = { ...detail.data.chatModel };
-		editMaxResponse = detail.data.maxResponse;
-		editMaxContext = detail.data.maxContext;
+		editChatModel = { ...detail.chatModel };
+		editMaxResponse = detail.maxResponse;
+		editMaxContext = detail.maxContext;
 	}
 
 	function closeEditor() {
@@ -55,12 +54,12 @@
 
 	function handleSummaryChange() {
 		if (!editingId) return;
-		updatePresetSummary(editingId, { name: editName, description: editDescription });
+		updatePreset(editingId, { name: editName, description: editDescription });
 	}
 
 	function handleDataChange() {
 		if (!editingId) return;
-		updatePresetData(editingId, {
+		updatePreset(editingId, {
 			chatModel: editChatModel,
 			maxResponse: editMaxResponse,
 			maxContext: editMaxContext

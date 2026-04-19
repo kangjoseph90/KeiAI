@@ -15,7 +15,7 @@ import {
 	ChatService,
 	type MessageFields,
 	type Message,
-	type ChatSummaryFields
+	type ChatFields
 } from '$lib/services';
 import { messages, messageMap, chats, activeChat, activeChatId } from '../state';
 import { AppError } from '$lib/types/errors';
@@ -26,7 +26,7 @@ import type { DeepPartial } from '$lib/utils/defaults';
 /**
  * Returns a message from the active store (O(1) Map lookup) first,
  * then falls back to IDB if not cached.
- * Follows the same pattern as getModule(), getChatDetail(), etc.
+ * Follows the same pattern as getModule(), getChat(), etc.
  */
 export async function getMessage(messageId: string): Promise<Message> {
 	const cached = get(messageMap).get(messageId);
@@ -90,17 +90,13 @@ export async function createMessage(
 	chatId: string,
 	fields: DeepPartial<MessageFields> = {}
 ): Promise<Message> {
-	const activeSwipe = (fields.swipes ?? {})[fields.activeSwipeId ?? ''];
-	const preview = activeSwipe?.content?.substring(0, 50) ?? '';
-
 	// DB writes — always happen with explicit chatId
 	const currentChat = get(activeChat);
 	const newCount = (currentChat?.messageCount ?? 0) + 1;
 
 	const [newMessage, updatedChat] = await Promise.all([
 		MessageService.create(chatId, fields),
-		ChatService.updateSummary(chatId, {
-			lastMessagePreview: preview,
+		ChatService.update(chatId, {
 			messageCount: newCount
 		})
 	]);
@@ -134,20 +130,6 @@ export async function updateMessage(
 		next.set(msgId, updated);
 		return next;
 	});
-
-	// Only update chat preview if the edited message is the last one
-	const currentMessages = get(messages);
-	const isLastMessage =
-		currentMessages.length > 0 && currentMessages[currentMessages.length - 1].id === msgId;
-	if (isLastMessage) {
-		const activeSwipe = updated.swipes[updated.activeSwipeId];
-		const preview = activeSwipe?.content?.substring(0, 50) ?? '';
-		const updatedChat = await ChatService.updateSummary(updated.chatId, {
-			lastMessagePreview: preview
-		});
-		chats.update((list) => list.map((c) => (c.id === updated.chatId ? updatedChat : c)));
-		activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
-	}
 }
 
 export async function deleteMessage(chatId: string, msgId: string): Promise<void> {
@@ -169,17 +151,9 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
 
 	const currentChat = get(activeChat);
 	const newCount = Math.max(0, (currentChat?.messageCount ?? 1) - 1);
-	const summaryChanges: DeepPartial<ChatSummaryFields> = { messageCount: newCount };
+	const chatChanges: DeepPartial<ChatFields> = { messageCount: newCount };
 
-	if (isLastMessage) {
-		const remainingMessages = get(messages);
-		const lastMsg = remainingMessages[remainingMessages.length - 1];
-		summaryChanges.lastMessagePreview = lastMsg
-			? (lastMsg.swipes[lastMsg.activeSwipeId]?.content?.substring(0, 50) ?? '')
-			: '';
-	}
-
-	const updatedChat = await ChatService.updateSummary(chatId, summaryChanges);
+	const updatedChat = await ChatService.update(chatId, chatChanges);
 	chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
 	activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
 }

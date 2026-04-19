@@ -37,8 +37,7 @@
 4. 데이터 저장 메커니즘 (Data at Rest)
 
 - 점진적 동기화 & 지연 로딩 (Progressive Sync / Lazy Load):
-  - 무거운 복호화 및 DB 트래픽을 피하기 위해 모든 엔티티(캐릭터, 채팅)는 `Summary(요약)` 필드와 `Data(본문)` 필드로 쪼개어 각각 암호화.
-  - 메인 화면에선 가벼운 Summary만 복호화해 렌더링. 특정 방에 진입할 때만 깊은 Data와 수백 개의 Messages를 복호화해 인메모리에 올림.
+  - 모든 엔티티는 단일 테이블에 하나의 암호화 Blob으로 저장된다. 목록 화면에서는 엔티티 전체를 복호화해 렌더링하고, 채팅방 진입 시에만 수백 개의 Messages를 추가로 복호화해 인메모리에 올림.
 - 유저의 API 키 (BYOK):
   - 클라이언트가 마스터 키 M으로 암호화하여 DB에 전송. 개발자 서버 탈취 시에도 API 키는 안전함.
 - 채팅 메시지 등 기타 데이터:
@@ -91,16 +90,14 @@
 
 8. 데이터 스키마 설계 철학 (Schema Design Philosophy)
 
-- 핵심 원칙: 평문에는 "찾기 위한 최소한의 키(FK)"만 노출하고, "무엇을 어떻게 쓰는지"는 전부 암호화된 Data Blob 안에 숨긴다. 메모리에는 관련된 것을 전부 올려두되, 실행은 활성화된 것만 한다.
-- Summary / Data 분리:
-  - 모든 엔티티의 암호화 Blob은 두 테이블로 나뉠 수 있음: Summary(목록용 최소 정보)와 Data(무거운 본문).
-  - 두 테이블은 같은 id를 공유. Summary는 목록 화면 진입 시 일괄 로드, Data는 해당 엔티티를 열었을 때만 로드.
-  - 분리 기준: "주요 네비게이션 목록이 있고 + Data가 무거운" 경우에만 적용. 나머지는 단일 EncryptedRecord로 간결하게.
-  - 분리 적용 대상: 캐릭터, 채팅, 프롬프트 프리셋. (목록 네비게이션 중심)
-  - 단일 테이블 대상: 페르소나, 로어북, 스크립트, 모듈, 플러그인, 설정.
+- 핵심 원칙: 평문에는 "찾기 위한 최소한의 키(FK)"만 노출하고, "무엇을 어떻게 쓰는지"는 전부 암호화된 Blob 안에 숨긴다. 메모리에는 관련된 것을 전부 올려두되, 실행은 활성화된 것만 한다.
+- 단일 테이블 구조:
+  - 모든 엔티티는 단일 테이블에 하나의 암호화 Blob으로 저장됨.
+  - Blob 내부에는 Content(사용자 편집 가능)와 Refs(구조적 참조)가 함께 포함됨.
+  - 단일 테이블 대상: 캐릭터, 채팅, 페르소나, 로어북, 스크립트, 모듈, 플러그인, 프롬프트 프리셋, 설정.
 - 부모-자식 관계에서의 원칙:
   - 부모 엔티티가 자식의 미리보기 데이터를 복사해서 들고 있으면 안 된다 (데이터 중복 방지).
-  - 미리보기가 필요하면 항상 자식의 Summary 테이블을 쿼리.
+  - 미리보기가 필요하면 항상 자식의 테이블을 쿼리.
 
 9. 관계 패턴 (Relationship Patterns)
 
@@ -122,16 +119,16 @@
     - 페르소나 → (추가 자원 소유 없음, 자체 설정과 에셋만 존재)
   - FK 및 정렬 예외 사항 (messages):
     - messages.chatId — 고볼륨 트래픽으로 인해 [chatId+sortOrder] 조합의 인덱스 추가 사용 (O(1) 쓰기 및 빠른 페이지네이션)
-    - chatSummaries/Data.characterId — 캐릭터 삭제 시 종속된 채팅을 일괄 정리하기 위한 보조 장치
+    - chats.characterId — 캐릭터 삭제 시 종속된 채팅을 일괄 정리하기 위한 보조 장치
 - 참조 관계 (N:M, Shared Reference):
   - 소비자의 암호화 Blob에 ResourceRef[]로 참조만 보유. 삭제 영향 없음.
   - enabled 플래그: 동일 자원이라도 컨텍스트마다 개별 ON/OFF.
   - 대상: 모듈, 플러그인 (프리셋과 페르소나는 직접 string ID 지정).
-  - 예: characterData.moduleRefs (참조), characterData.lorebookRefs (소유).
+  - 예: characters.moduleRefs (참조), characters.lorebookRefs (소유).
 - 폴더 관리:
   - 자식의 소속 폴더: refs[].folderId로 표현.
   - 폴더 정의: 부모의 Blob에 FolderDef[] 배열 (이름, 색, 중첩 등). 매우 소량.
-  - 예: settings.folders.characters, characterData.chatFolders.
+  - 예: settings.folders.characters, characters.chatFolders.
 - 참조 무결성: Loose Coupling.
   - E2EE 환경에서는 FOREIGN KEY ON DELETE CASCADE 불가능.
   - 참조 자원 삭제 시 참조자의 Blob 일괄 수정 불필요 → Graceful Degradation + Self-Healing.
@@ -156,10 +153,9 @@
 11. 프롬프트 프리셋 (Prompt Presets)
 
 - 정의: 프롬프트 조립 순서(Template), Jailbreak, Authors Note, 샘플링 파라미터 등을 묶은 설정 프리셋. RisuAI의 botPresets에 대응.
-- DB 스키마: Summary + Data 분리 (presetSummaries / presetData).
-  - 유저가 수십 개의 프리셋을 만들어 고를 수 있으므로 목록 네비게이션이 중요.
-- 참조 방식: N:M 공유 자원. 소비자의 Data Blob에 presetId: string으로 참조.
-- PresetDataFields 주요 내용:
+- DB 스키마: 단일 테이블 (presets).
+- 참조 방식: N:M 공유 자원. 소비자의 Blob에 presetId: string으로 참조.
+- PresetFields 주요 내용:
   - templateOrder: 프롬프트 조립 순서 (system, jailbreak, description, lorebook, chat, memory 등).
   - authorsNote, jailbreakPrompt.
   - temperature, topP, topK, frequencyPenalty, presencePenalty, maxTokens.
@@ -298,11 +294,11 @@
 
 - 암호화 테이블 (EncryptedRecord 기반, blind sync 대상):
   - users — 특수 (인증 및 E2EE 전용 필드 보관: salt, encryptedMasterKey, recoveryAuthTokenHash 등). 사용자 계정 폭파 시 하위 테이블들 자동 삭제 되도록 `cascadeDelete` 적용 처리됨.
-  - characterSummaries / characterData — Summary + Data 분리 (소유: chatRefs, lorebookRefs, scriptRefs. 참조: moduleRefs. 에셋: assets)
-  - chatSummaries / chatData — Summary + Data 분리 (characterId 평문 FK 보유. 소유: lorebookRefs)
+  - characters — 단일 (소유: chatRefs, lorebookRefs, scriptRefs. 참조: moduleRefs. 에셋: assets)
+  - chats — 단일 (characterId 평문 FK 보유. 소유: lorebookRefs)
   - messages — 단일, 평문 FK: chatId ([chatId+sortOrder] 복합 인덱스, softDeleteByIndex 벌크 삭제)
   - personas — 단일 (독립된 데이터 + 에셋 보유)
-  - presetSummaries / presetData — Summary + Data 분리
+  - presets — 단일
   - modules — 단일 (소유: lorebookRefs, scriptRefs. 폴더 지원)
   - plugins — 단일 (내장 hooks 및 샌드박스 설정)
   - lorebooks — 단일 (부모 소유, Deep Copy)

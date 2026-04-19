@@ -113,14 +113,12 @@ migrate(
     }
 
     // ─── Standard Encrypted Tables ───────────────────────────────────
-    createEncryptedTable("characterSummaries");
-    createEncryptedTable("characterData");
+    createEncryptedTable("characters");
     createEncryptedTable("settings");
     createEncryptedTable("personas");
     createEncryptedTable("modules");
     createEncryptedTable("plugins");
-    createEncryptedTable("presetSummaries");
-    createEncryptedTable("presetData");
+    createEncryptedTable("presets");
     createEncryptedTable("assets");
 
     createEncryptedTable("lorebooks", [
@@ -134,10 +132,7 @@ migrate(
     ]);
 
     // ─── Chat Relations ───────────────────────────────────────────────
-    createEncryptedTable("chatSummaries", [
-      { name: "characterId", type: "text", required: true },
-    ]);
-    createEncryptedTable("chatData", [
+    createEncryptedTable("chats", [
       { name: "characterId", type: "text", required: true },
     ]);
 
@@ -220,20 +215,17 @@ migrate(
     // 1. Remove all created tables
     const tables = [
       "messages",
-      "chatData",
-      "chatSummaries",
+      "chats",
       "scripts",
       "charjs",
       "lorebooks",
       "assets",
-      "presetData",
-      "presetSummaries",
+      "presets",
       "plugins",
       "modules",
       "personas",
       "settings",
-      "characterData",
-      "characterSummaries",
+      "characters",
       "assetCatalog",
     ];
 

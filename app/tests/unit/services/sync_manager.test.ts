@@ -54,8 +54,8 @@ vi.mock('$lib/services/sync/data', () => {
 });
 
 vi.mock('$lib/adapters/db', () => ({
-	SYNC_TABLES: ['characterSummaries', 'chatSummaries'],
-	TABLES: ['characterSummaries', 'chatSummaries'],
+	SYNC_TABLES: ['characters', 'chats'],
+	TABLES: ['characters', 'chats'],
 	localDB: {
 		subscribeWriteEvents: vi.fn((listener: DatabaseWriteEventListener) => {
 			dbWriteListener = listener;
@@ -295,7 +295,7 @@ describe('SyncManager', () => {
 
 			dbWriteListener?.([
 				{
-					tableName: 'characterSummaries',
+					tableName: 'characters',
 					ids: ['c1'],
 					origin: 'local',
 					operation: 'put'
@@ -321,7 +321,7 @@ describe('SyncManager', () => {
 			await Promise.resolve();
 
 			expect(DataSyncService.handleLocalWrite).toHaveBeenCalledWith(
-				expect.objectContaining({ tableName: 'characterSummaries', ids: ['c1'] })
+				expect.objectContaining({ tableName: 'characters', ids: ['c1'] })
 			);
 			// assets writes go to AssetSyncEngine.pushById, not DataSyncService
 			expect(AssetSyncService.pushById).toHaveBeenCalledWith('a1');

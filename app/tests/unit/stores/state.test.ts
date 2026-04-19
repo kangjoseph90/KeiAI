@@ -16,7 +16,7 @@ import {
 	displayMessages,
 	isChatRunning
 } from '$lib/stores/state';
-import type { AppSettings, Profile, ChatDetail, Message } from '$lib/services';
+import type { AppSettings, Profile, Chat, Message } from '$lib/services';
 import type { ChatTask } from '$lib/stores/types';
 
 function makeMockTask(overrides: Partial<ChatTask> = {}): ChatTask {
@@ -62,7 +62,7 @@ describe('Global Stores', () => {
 	describe('Generation State (Derived)', () => {
 		it('should indicate generation is running for active chat', () => {
 			const chatId = 'chat-1';
-			activeChat.set({ id: chatId } as ChatDetail);
+			activeChat.set({ id: chatId } as Chat);
 
 			chatTasks.set(new Map<string, ChatTask>([[chatId, makeMockTask()]]));
 
@@ -70,7 +70,7 @@ describe('Global Stores', () => {
 		});
 
 		it('should not indicate generation for different chat', () => {
-			activeChat.set({ id: 'chat-1' } as ChatDetail);
+			activeChat.set({ id: 'chat-1' } as Chat);
 
 			chatTasks.set(new Map<string, ChatTask>([['chat-2', makeMockTask()]]));
 
@@ -81,7 +81,7 @@ describe('Global Stores', () => {
 	describe('Display Messages (Derived)', () => {
 		it('should mark generating message from DB with displayStatus', () => {
 			const chatId = 'chat-1';
-			activeChat.set({ id: chatId } as ChatDetail);
+			activeChat.set({ id: chatId } as Chat);
 
 			const dbMessages: Message[] = [
 				{
@@ -116,7 +116,7 @@ describe('Global Stores', () => {
 
 		it('should only show DB messages if no generation task', () => {
 			const chatId = 'chat-1';
-			activeChat.set({ id: chatId } as ChatDetail);
+			activeChat.set({ id: chatId } as Chat);
 			messageMap.set(
 				new Map([['m1', { id: 'm1', swipes: {}, activeSwipeId: '' } as unknown as Message]])
 			);
@@ -130,7 +130,7 @@ describe('Global Stores', () => {
 
 		it('should mark message with error status', () => {
 			const chatId = 'chat-1';
-			activeChat.set({ id: chatId } as ChatDetail);
+			activeChat.set({ id: chatId } as Chat);
 
 			const dbMessages: Message[] = [
 				{

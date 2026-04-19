@@ -1,13 +1,6 @@
-import {
-	LorebookService,
-	ScriptService,
-	type Lorebook,
-	type Script,
-	type Module
-} from '$lib/services';
-import { sortByRefs } from '$lib/utils/ordering';
-import { getChatDetail } from './chat';
-import { getCharacterDetail } from './character';
+import { LorebookService, ScriptService, type Lorebook, type Script } from '$lib/services';
+import { getChat } from './chat';
+import { getCharacter } from './character';
 import { getAppSettings } from './settings';
 import { getModule } from './module';
 
@@ -16,13 +9,13 @@ import { getModule } from './module';
  * Combines globally enabled modules and character-specific modules.
  */
 export async function getActiveModuleIds(characterId: string): Promise<Set<string>> {
-	const [settings, char] = await Promise.all([getAppSettings(), getCharacterDetail(characterId)]);
+	const [settings, char] = await Promise.all([getAppSettings(), getCharacter(characterId)]);
 
 	const ids = new Set<string>();
 	for (const r of settings.moduleRefs ?? []) {
 		if (r.enabled) ids.add(r.id);
 	}
-	for (const r of char.data.moduleRefs ?? []) {
+	for (const r of char.moduleRefs ?? []) {
 		ids.add(r.id);
 	}
 	return ids;
@@ -33,7 +26,7 @@ export async function getActiveModuleIds(characterId: string): Promise<Set<strin
  * Fetches from DB and combines in priority order.
  */
 export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
-	const chat = await getChatDetail(chatId);
+	const chat = await getChat(chatId);
 	const activeModuleIds = await getActiveModuleIds(chat.characterId);
 
 	const [chatLB, charLB, modules] = await Promise.all([
@@ -58,7 +51,7 @@ export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
  * Fetches from DB and combines in priority order.
  */
 export async function getMergedScripts(chatId: string): Promise<Script[]> {
-	const chat = await getChatDetail(chatId);
+	const chat = await getChat(chatId);
 	const activeModuleIds = await getActiveModuleIds(chat.characterId);
 
 	const [charSC, modules] = await Promise.all([

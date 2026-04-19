@@ -13,11 +13,11 @@ import {
 	clearChatTask
 } from '$lib/stores/tasks/chat';
 import {
-	getChatDetail,
-	getCharacterDetail,
+	getChat,
+	getCharacter,
 	getAppSettings,
 	getPersona,
-	getPresetDetail,
+	getPreset,
 	getMergedLorebooks
 } from '$lib/stores';
 import type { LLMStreamHandler } from '$lib/llm/types';
@@ -68,7 +68,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
 		// ── 1. Load all context ──────────────────────────────────────────
 		const [chat, settings, lorebooks] = await Promise.all([
-			getChatDetail(chatId),
+			getChat(chatId),
 			getAppSettings(),
 			getMergedLorebooks(chatId)
 		]);
@@ -77,8 +77,8 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		if (!settings.personaId) throw new AppError('INVALID_INPUT', 'No persona selected');
 
 		const [character, preset, persona] = await Promise.all([
-			getCharacterDetail(chat.characterId),
-			getPresetDetail(settings.presetId),
+			getCharacter(chat.characterId),
+			getPreset(settings.presetId),
 			getPersona(settings.personaId)
 		]);
 
@@ -100,7 +100,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		targetMessage.swipes[targetSwipeId] = {
 			id: targetSwipeId,
 			content: '',
-			variables: deepMerge(chat.data.defaultVariables, variables),
+			variables: deepMerge(chat.defaultVariables, variables),
 			createdAt: Date.now()
 		};
 		targetMessage.activeSwipeId = targetSwipeId;
@@ -132,7 +132,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		);
 
 		// ── 7. Select Handler ──────────────────────────────────────
-		const handler = opts.handlerOverride ?? selectLLMHandler(preset.data.chatModel, settings);
+		const handler = opts.handlerOverride ?? selectLLMHandler(preset.chatModel, settings);
 		if (!handler) {
 			throw new AppError('INVALID_INPUT', 'Failed to create LLM handler. Check API key.');
 		}

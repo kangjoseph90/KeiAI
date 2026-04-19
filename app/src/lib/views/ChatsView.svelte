@@ -27,7 +27,7 @@
 
 	async function handleCreateChat() {
 		if (!newNameInput.trim()) return;
-		const chat = await createChat(charId, { title: newNameInput, lastMessagePreview: '' });
+		const chat = await createChat(charId, { title: newNameInput });
 		newNameInput = '';
 		onNavigate({ view: 'chat', charId, chatId: chat.id });
 	}
@@ -103,7 +103,9 @@
 									<div>
 										<p class="font-medium">{chat.title}</p>
 										<p class="text-xs text-muted-foreground">
-											{chat.lastMessagePreview || 'No messages yet...'}
+											{chat.messageCount > 0
+												? chat.messageCount + ' messages'
+												: 'No messages yet...'}
 										</p>
 									</div>
 								</div>

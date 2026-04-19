@@ -472,3 +472,24 @@
     - 부분 업데이트 코드가 간결해짐: `updateMessage(id, { swipes: { [swipeId]: { content: 'hello' } } })`
 - 원칙: 앞으로 새로운 중첩 데이터 구조를 설계할 때, 항목 단위 부분 업데이트가 필요한 경우 배열이 아닌 Record를 사용해야 한다. 배열은 항목 전체를 항상 교체하는 경우(예: 레퍼런스 목록, 폴더 정의 등)에만 사용.
 - 참고: ADR 015 (EncryptedWriteQueue), ADR 026 (즉시 영속 메시지)
+
+---
+
+## 028: Summary/Data 분리 패턴 폐기 — 단일 테이블 통합
+
+- 상태: 채택
+- 맥락: Character, Chat, Preset 세 엔티티가 Summary/Data 두 테이블로 분리되어 있었다. 목록 화면에서 가벼운 Summary만 복호화하고, 상세 화면에서 무거운 Data를 별도 로드하는 최적화 의도였다.
+- 문제:
+    - 실제 데이터 크기가 작다 (캐릭터당 ~20KB). AES-GCM 복호화 속도 ~500MB/s 기준 50개 캐릭터 전체 복호화에 ~2ms로, 분리의 성능 이득이 무의미.
+    - 테이블 6개가 추가되고, 서비스마다 `updateSummary`/`updateData`/`update` 세 메서드가 필요하며, writeQueue 엔트리가 2배로 늘어남.
+    - LorebookService, ModuleService가 이미 단일 테이블 패턴으로 잘 동작 중.
+- 대안 검토:
+    - 분리 유지 → 복잡도 비용만 지속, 실익 없음
+    - 단일 테이블 통합 → LorebookService 패턴과 일관성 확보, 코드 대폭 감소
+- 결정: 단일 테이블로 통합. `characterSummaries`/`characterData` → `characters`, `chatSummaries`/`chatData` → `chats`, `presetSummaries`/`presetData` → `presets`. Content/Refs 인터페이스 분리(`XxxContent` + `XxxRefs` → `XxxFields`)는 유지하여 `updateContent()` 안전 진입점 제공.
+- 결과:
+    - 테이블 6개 → 3개, 서비스 메서드 3배 → 1배 감소
+    - `.data.` 프로퍼티 접근 전부 제거, 모든 필드 최상위 직접 접근
+    - `getDetail()` → `get()`, `updateSummary()`/`updateData()` → 단일 `update()`로 통합
+    - `lastMessagePreview` 필드 제거 (메시지 편집 시마다 chat 레코드를 불필요하게 갱신하던 오버헤드 해소)
+- 참고: ADR 005 (Refs/Content 분리)

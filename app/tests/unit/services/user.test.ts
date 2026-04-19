@@ -24,7 +24,7 @@ vi.mock('$lib/adapters/db', () => ({
 	localDB: {
 		deleteByIndex: vi.fn()
 	},
-	TABLES: ['messages', 'chatSummaries'],
+	TABLES: ['messages', 'chats'],
 	SYNC_TABLES: ['messages']
 }));
 
@@ -355,9 +355,9 @@ describe('UserService', () => {
 				{ origin: 'sync' }
 			);
 
-			// Tables cleanup (from mocked TABLES: ['messages', 'chatSummaries'])
+			// Tables cleanup (from mocked TABLES: ['messages', 'chats'])
 			expect(localDB.deleteByIndex).toHaveBeenCalledWith('messages', 'userId', 'delete-me');
-			expect(localDB.deleteByIndex).toHaveBeenCalledWith('chatSummaries', 'userId', 'delete-me');
+			expect(localDB.deleteByIndex).toHaveBeenCalledWith('chats', 'userId', 'delete-me');
 
 			// Sync tracking cleanup (from mocked SYNC_TABLES: ['messages'])
 			expect(appKV.remove).toHaveBeenCalledWith('lastSync_messages_delete-me');

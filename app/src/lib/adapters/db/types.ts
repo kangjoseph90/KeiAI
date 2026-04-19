@@ -7,7 +7,6 @@
  *   N:M — Consumer's encrypted blob holds ResourceRef[] with per-context state.
  *
  * Every table stores AES-GCM encrypted JSON blobs.
- * Entities needing list previews are split into Summary + Data tables.
  */
 
 type Bytes = Uint8Array<ArrayBuffer>;
@@ -15,10 +14,9 @@ type Bytes = Uint8Array<ArrayBuffer>;
 // ─── Table Registry ──────────────────────────────────────────────────
 
 export type TableName =
-	| 'characterSummaries'
-	| 'characterData'
-	| 'chatSummaries'
-	| 'chatData'
+	| 'characters'
+	| 'chats'
+	| 'presets'
 	| 'messages'
 	| 'settings'
 	| 'personas'
@@ -26,16 +24,13 @@ export type TableName =
 	| 'scripts'
 	| 'modules'
 	| 'plugins'
-	| 'presetSummaries'
-	| 'presetData'
 	| 'toolCalls'
 	| 'charjs';
 
 export const SYNC_TABLES: TableName[] = [
-	'characterSummaries',
-	'characterData',
-	'chatSummaries',
-	'chatData',
+	'characters',
+	'chats',
+	'presets',
 	'messages',
 	'settings',
 	'personas',
@@ -43,8 +38,6 @@ export const SYNC_TABLES: TableName[] = [
 	'scripts',
 	'modules',
 	'plugins',
-	'presetSummaries',
-	'presetData',
 	'charjs'
 ];
 
@@ -91,17 +84,13 @@ export interface EncryptedRecord extends BaseRecord {
 	encryptedDataIV: Bytes; // Random 12-byte nonce
 }
 
-// ─── Characters (Summary + Data) ─────────────────────────────────────
+// ─── Characters ──────────────────────────────────────────────────────
 
-export type CharacterSummaryRecord = EncryptedRecord;
-export type CharacterDataRecord = EncryptedRecord;
+export type CharacterRecord = EncryptedRecord;
 
-// ─── Chats (Summary + Data) ───
+// ─── Chats ───────────────────────────────────────────────────────────
 
-export interface ChatSummaryRecord extends EncryptedRecord {
-	characterId: string;
-}
-export interface ChatDataRecord extends EncryptedRecord {
+export interface ChatRecord extends EncryptedRecord {
 	characterId: string;
 }
 
@@ -138,12 +127,11 @@ export interface CharJSRecord extends EncryptedRecord {
 export type ModuleRecord = EncryptedRecord;
 export type PluginRecord = EncryptedRecord;
 
-// ─── Presets (Summary + Data) ────────────────────────────────────────
+// ─── Presets ─────────────────────────────────────────────────────────
 
-export type PresetSummaryRecord = EncryptedRecord;
-export type PresetDataRecord = EncryptedRecord;
+export type PresetRecord = EncryptedRecord;
 
-// ─── Tool Calls ────────────────────────────────────────────────────────
+// ─── Tool Calls ──────────────────────────────────────────────────────
 
 export interface ToolCallRecord extends EncryptedRecord {
 	chatId: string;

@@ -2,17 +2,12 @@
  * Chat Service Tests
  *
  * Tests the ChatService which handles chat CRUD operations
- * with encryption and database transactions.
+ * with encryption and database writes.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChatService } from '$lib/services/content/chat';
-import type {
-	Chat,
-	ChatDetail,
-	ChatSummaryFields,
-	ChatDataFields
-} from '$lib/services/content/chat';
+import type { Chat, ChatFields } from '$lib/services/content/chat';
 import type { BaseRecord } from '$lib/adapters/db/types';
 
 // Mock all dependencies
@@ -54,11 +49,21 @@ vi.mock('$lib/utils/defaults', () => ({
 	})
 }));
 
+vi.mock('$lib/services/content/write_queue', () => ({
+	encryptedWriteQueue: {
+		peek: vi.fn(() => undefined),
+		upsert: vi.fn(),
+		drop: vi.fn(),
+		flushTable: vi.fn()
+	}
+}));
+
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';
+import { encryptedWriteQueue } from '$lib/services/content/write_queue';
 
 describe('ChatService', () => {
 	const mockMasterKey = {} as CryptoKey;
@@ -84,9 +89,7 @@ describe('ChatService', () => {
 		});
 
 		// Default decrypt mock
-		vi.mocked(decrypt).mockResolvedValue(
-			JSON.stringify({ title: 'Test Chat', lastMessagePreview: 'Hello', messageCount: 0 })
-		);
+		vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ title: 'Test Chat', messageCount: 0 }));
 
 		// Default deepMerge mock
 		vi.mocked(deepMerge).mockImplementation((target: unknown, source: unknown) => ({
@@ -96,6 +99,10 @@ describe('ChatService', () => {
 
 		// Default generateId mock
 		vi.mocked(generateId).mockReturnValue('test-chat-id');
+
+		// Default write queue mock
+		vi.mocked(encryptedWriteQueue.peek).mockReturnValue(undefined);
+		vi.mocked(encryptedWriteQueue.flushTable).mockResolvedValue(undefined);
 	});
 
 	describe('listByCharacter', () => {
@@ -125,12 +132,8 @@ describe('ChatService', () => {
 
 			vi.mocked(localDB.getByIndex).mockResolvedValue(mockRecords);
 			vi.mocked(decrypt)
-				.mockResolvedValueOnce(
-					JSON.stringify({ title: 'Chat 1', lastMessagePreview: 'Msg 1', messageCount: 0 })
-				)
-				.mockResolvedValueOnce(
-					JSON.stringify({ title: 'Chat 2', lastMessagePreview: 'Msg 2', messageCount: 0 })
-				);
+				.mockResolvedValueOnce(JSON.stringify({ title: 'Chat 1', messageCount: 0 }))
+				.mockResolvedValueOnce(JSON.stringify({ title: 'Chat 2', messageCount: 0 }));
 
 			const result = await ChatService.listByCharacter('char-1');
 
@@ -156,7 +159,7 @@ describe('ChatService', () => {
 			await ChatService.listByCharacter('char-123');
 
 			expect(localDB.getByIndex).toHaveBeenCalledWith(
-				'chatSummaries',
+				'chats',
 				'characterId',
 				'char-123',
 				Number.MAX_SAFE_INTEGER
@@ -164,9 +167,9 @@ describe('ChatService', () => {
 		});
 	});
 
-	describe('getDetail', () => {
-		it('should return full chat detail when both records exist', async () => {
-			const mockSummary = {
+	describe('get', () => {
+		it('should return chat when record exists', async () => {
+			const mockRecord = {
 				id: 'chat-1',
 				characterId: 'char-1',
 				userId: mockUserId,
@@ -176,44 +179,29 @@ describe('ChatService', () => {
 				encryptedData: new Uint8Array([1]),
 				encryptedDataIV: new Uint8Array([2])
 			} as unknown as BaseRecord;
-			const mockData = {
-				id: 'chat-1',
-				characterId: 'char-1',
-				userId: mockUserId,
-				createdAt: 1000,
-				updatedAt: 1000,
-				isDeleted: false,
-				encryptedData: new Uint8Array([3]),
-				encryptedDataIV: new Uint8Array([4])
-			} as unknown as BaseRecord;
 
-			vi.mocked(localDB.getRecord)
-				.mockResolvedValueOnce(mockSummary)
-				.mockResolvedValueOnce(mockData);
+			vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+			vi.mocked(decrypt).mockResolvedValue(
+				JSON.stringify({ title: 'Test Chat', messageCount: 0, systemPromptOverride: 'Override' })
+			);
 
-			vi.mocked(decrypt)
-				.mockResolvedValueOnce(
-					JSON.stringify({ title: 'Test Chat', lastMessagePreview: 'Hi', messageCount: 0 })
-				)
-				.mockResolvedValueOnce(JSON.stringify({ systemPromptOverride: 'Override' }));
-
-			const result = await ChatService.getDetail('chat-1');
+			const result = await ChatService.get('chat-1');
 
 			expect(result).not.toBeNull();
 			expect(result?.id).toBe('chat-1');
 			expect(result?.title).toBe('Test Chat');
-			expect(result?.data.systemPromptOverride).toBe('Override');
+			expect(result?.systemPromptOverride).toBe('Override');
 		});
 
-		it('should return null when summary record does not exist', async () => {
+		it('should return null when record does not exist', async () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
 
-			const result = await ChatService.getDetail('non-existent');
+			const result = await ChatService.get('non-existent');
 
 			expect(result).toBeNull();
 		});
 
-		it('should return null when summary record is deleted', async () => {
+		it('should return null when record is deleted', async () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue({
 				id: 'chat-1',
 				userId: mockUserId,
@@ -224,7 +212,7 @@ describe('ChatService', () => {
 				encryptedDataIV: new Uint8Array([2])
 			} as unknown as BaseRecord);
 
-			const result = await ChatService.getDetail('chat-1');
+			const result = await ChatService.get('chat-1');
 
 			expect(result).toBeNull();
 		});
@@ -232,20 +220,19 @@ describe('ChatService', () => {
 
 	describe('create', () => {
 		it('should create a new chat for a character', async () => {
-			vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
-				await callback();
-			});
-
 			const result = await ChatService.create('char-1', { title: 'New Chat' });
 
 			expect(result.id).toBe('test-chat-id');
 			expect(result.characterId).toBe('char-1');
 			expect(result.title).toBe('New Chat');
 
-			expect(localDB.transaction).toHaveBeenCalledWith(
-				['chatSummaries', 'chatData'],
-				'rw',
-				expect.any(Function)
+			expect(localDB.putRecord).toHaveBeenCalledWith(
+				'chats',
+				expect.objectContaining({
+					id: 'test-chat-id',
+					userId: mockUserId,
+					characterId: 'char-1'
+				})
 			);
 		});
 
@@ -258,12 +245,11 @@ describe('ChatService', () => {
 			const result = await ChatService.create('char-1');
 
 			expect(result.title).toBe('New Chat');
-			expect(result.data).toEqual({});
 		});
 	});
 
-	describe('updateSummary', () => {
-		it('should update chat summary fields', async () => {
+	describe('update', () => {
+		it('should update chat fields', async () => {
 			const existingRecord = {
 				id: 'chat-1',
 				characterId: 'char-1',
@@ -276,107 +262,22 @@ describe('ChatService', () => {
 			} as unknown as BaseRecord;
 
 			vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
-			vi.mocked(decrypt).mockResolvedValue(
-				JSON.stringify({ title: 'Old Title', lastMessagePreview: 'Old', messageCount: 5 })
-			);
+			vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ title: 'Old Title', messageCount: 5 }));
 			vi.mocked(encrypt).mockResolvedValue({
 				ciphertext: new Uint8Array([99]),
 				iv: new Uint8Array([88])
 			});
 
-			const result = await ChatService.updateSummary('chat-1', { title: 'New Title' });
+			const result = await ChatService.update('chat-1', { title: 'New Title' });
 
 			expect(result.title).toBe('New Title');
-			expect(localDB.putRecord).not.toHaveBeenCalled();
+			expect(encryptedWriteQueue.upsert).toHaveBeenCalled();
 		});
 
 		it('should throw NOT_FOUND when chat does not exist', async () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
 
-			await expect(ChatService.updateSummary('non-existent', { title: 'New' })).rejects.toThrow();
-		});
-	});
-
-	describe('updateData', () => {
-		it('should update chat data fields', async () => {
-			const existingRecord = {
-				id: 'chat-1',
-				characterId: 'char-1',
-				userId: mockUserId,
-				createdAt: 1000,
-				updatedAt: 1000,
-				isDeleted: false,
-				encryptedData: new Uint8Array([1]),
-				encryptedDataIV: new Uint8Array([2])
-			} as unknown as BaseRecord;
-
-			vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
-			vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ defaultVariables: { old: 'value' } }));
-			vi.mocked(encrypt).mockResolvedValue({
-				ciphertext: new Uint8Array([99]),
-				iv: new Uint8Array([88])
-			});
-
-			const result = await ChatService.updateData('chat-1', { defaultVariables: { new: 'value' } });
-
-			expect(result.defaultVariables).toEqual({ new: 'value' });
-			expect(localDB.putRecord).not.toHaveBeenCalled();
-		});
-	});
-
-	describe('update (combined)', () => {
-		it('should update both summary and data in a transaction', async () => {
-			const mockSummary = {
-				id: 'chat-1',
-				characterId: 'char-1',
-				userId: mockUserId,
-				createdAt: 1000,
-				updatedAt: 1000,
-				isDeleted: false,
-				encryptedData: new Uint8Array([1]),
-				encryptedDataIV: new Uint8Array([2])
-			} as unknown as BaseRecord;
-			const mockData = {
-				id: 'chat-1',
-				characterId: 'char-1',
-				userId: mockUserId,
-				createdAt: 1000,
-				updatedAt: 1000,
-				isDeleted: false,
-				encryptedData: new Uint8Array([3]),
-				encryptedDataIV: new Uint8Array([4])
-			} as unknown as BaseRecord;
-
-			vi.mocked(localDB.getRecord).mockImplementation(async (table, id) => {
-				if (table === 'chatSummaries') return mockSummary;
-				return mockData;
-			});
-
-			vi.mocked(decrypt)
-				.mockResolvedValue(JSON.stringify({ title: 'Old', lastMessagePreview: '' }))
-				.mockResolvedValue(JSON.stringify({ title: 'Old', lastMessagePreview: '' }))
-				.mockResolvedValue(JSON.stringify({ systemPromptOverride: 'Old' }))
-				.mockResolvedValue(JSON.stringify({ systemPromptOverride: 'Old' }));
-
-			vi.mocked(encrypt).mockResolvedValue({
-				ciphertext: new Uint8Array([99]),
-				iv: new Uint8Array([88])
-			});
-
-			vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
-				await callback();
-			});
-
-			const result = await ChatService.update(
-				'chat-1',
-				{ title: 'New' },
-				{
-					systemPromptOverride: 'New Override'
-				}
-			);
-
-			expect(result.title).toBe('New');
-			expect(result.data.systemPromptOverride).toBe('New Override');
+			await expect(ChatService.update('non-existent', { title: 'New' })).rejects.toThrow();
 		});
 	});
 
@@ -389,7 +290,7 @@ describe('ChatService', () => {
 			await ChatService.delete('chat-1');
 
 			expect(localDB.transaction).toHaveBeenCalledWith(
-				['lorebooks', 'scripts', 'messages', 'chatSummaries', 'chatData', 'toolCalls'],
+				['lorebooks', 'scripts', 'messages', 'chats', 'toolCalls'],
 				'rw',
 				expect.any(Function)
 			);

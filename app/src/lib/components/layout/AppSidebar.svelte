@@ -13,7 +13,7 @@
 		activeUser,
 		userEmail,
 		createCharacter,
-		updateCharacterSummary,
+		updateCharacter,
 		deleteCharacter
 	} from '$lib/stores';
 	import type { RouteState } from '$lib/router';
@@ -61,7 +61,7 @@
 
 	async function handleRename(id: string) {
 		if (!editingName.trim()) return;
-		await updateCharacterSummary(id, { name: editingName });
+		await updateCharacter(id, { name: editingName });
 		editingId = null;
 	}
 

@@ -77,6 +77,8 @@ export class ModuleService {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<ModuleFields>('modules', id);
 		if (queued) {
+			const record = await localDB.getRecord<ModuleRecord>('modules', id);
+			if (!record || record.isDeleted) return null;
 			return {
 				id,
 				...deepMerge(defaultModuleFields, queued as unknown as Record<string, unknown>)

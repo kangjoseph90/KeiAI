@@ -10,13 +10,10 @@ import type {
 	AppSettings,
 	Profile,
 	Character,
-	CharacterDetail,
 	Chat,
-	ChatDetail,
 	Message,
 	Persona,
 	Preset,
-	PresetDetail,
 	Module,
 	Plugin,
 	Lorebook,
@@ -64,7 +61,7 @@ export const moduleResources = writable(
 );
 
 // ─── Level 2 (Character Context) ────────────────────────────────────
-export const activeCharacter = writable<CharacterDetail | null>(null);
+export const activeCharacter = writable<Character | null>(null);
 export const characterLorebooks = writable<Lorebook[]>([]);
 export const characterScripts = writable<Script[]>([]);
 export const characterCharJS = writable<CharJS[]>([]);
@@ -72,7 +69,7 @@ export const characterModules = writable<Module[]>([]);
 export const chats = writable<Chat[]>([]);
 
 // ─── Level 3 (Chat Context) ─────────────────────────────────────────
-export const activeChat = writable<ChatDetail | null>(null);
+export const activeChat = writable<Chat | null>(null);
 export const chatLorebooks = writable<Lorebook[]>([]);
 export const chatScripts = writable<Script[]>([]);
 
@@ -127,7 +124,7 @@ export const displayMessages = derived(
 
 // ─── Context Resources ─────────────────────────────────────────────────
 // Active preset from app settings. Managed by preset store logic.
-export const activePreset = writable<PresetDetail | null>(null);
+export const activePreset = writable<Preset | null>(null);
 export const activePersona = writable<Persona | null>(null);
 
 // ─── Derived Resources ─────────────────────────────────────────────────

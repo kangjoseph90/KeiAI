@@ -1,7 +1,7 @@
 import { getOrCreateInstance } from './engine';
 import type { CharJSInstance, ModeKind } from './types';
-import { getChatDetail } from '$lib/stores/content/chat';
-import { getCharacterDetail } from '$lib/stores/content/character';
+import { getChat } from '$lib/stores/content/chat';
+import { getCharacter } from '$lib/stores/content/character';
 import { getActiveModuleIds } from '$lib/stores/content/merged';
 import { getModule } from '$lib/stores/content/module';
 
@@ -17,17 +17,15 @@ export async function collectCharJSInstances(
 	kind: ModeKind,
 	mode: string
 ): Promise<CharJSInstance[]> {
-	const chat = await getChatDetail(chatId);
-	const character = await getCharacterDetail(chat.characterId);
+	const chat = await getChat(chatId);
+	const character = await getCharacter(chat.characterId);
 	const activeModuleIds = await getActiveModuleIds(chat.characterId);
 
 	const charjsRequests: Array<{ id: string; allowLowLevel: boolean }> = [];
 
-	if (character.data.charjsRefs) {
-		const allow = character.data.allowLowLevel;
-		charjsRequests.push(
-			...character.data.charjsRefs.map((r) => ({ id: r.id, allowLowLevel: allow }))
-		);
+	if (character.charjsRefs) {
+		const allow = character.allowLowLevel;
+		charjsRequests.push(...character.charjsRefs.map((r) => ({ id: r.id, allowLowLevel: allow })));
 	}
 
 	const modules = await Promise.all([...activeModuleIds].map((id) => getModule(id)));

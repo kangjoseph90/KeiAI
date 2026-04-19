@@ -12,11 +12,9 @@ import type {
 	BaseRecord,
 	EncryptedRecord,
 	TableName,
-	ChatSummaryRecord,
-	ChatDataRecord,
+	ChatRecord,
 	MessageRecord,
-	CharacterSummaryRecord,
-	CharacterDataRecord,
+	CharacterRecord,
 	SettingsRecord
 } from '$lib/adapters/db';
 
@@ -247,14 +245,9 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 				createTestRecord({ id: 'idx-3', characterId: 'char-xyz' })
 			];
 
-			await localDB.putRecords('chatSummaries', records as ChatSummaryRecord[]);
+			await localDB.putRecords('chats', records as ChatRecord[]);
 
-			const results = await localDB.getByIndex<ChatSummaryRecord>(
-				'chatSummaries',
-				'characterId',
-				'char-abc',
-				10
-			);
+			const results = await localDB.getByIndex<ChatRecord>('chats', 'characterId', 'char-abc', 10);
 
 			expect(results).toHaveLength(2);
 			expect(results[0].id).toBe('idx-1');
@@ -267,13 +260,9 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 				createTestRecord({ id: 'idx-deleted', characterId: 'char-123', isDeleted: true })
 			];
 
-			await localDB.putRecords('chatSummaries', records as ChatSummaryRecord[]);
+			await localDB.putRecords('chats', records as ChatRecord[]);
 
-			const results = await localDB.getByIndex<ChatSummaryRecord>(
-				'chatSummaries',
-				'characterId',
-				'char-123'
-			);
+			const results = await localDB.getByIndex<ChatRecord>('chats', 'characterId', 'char-123');
 
 			expect(results).toHaveLength(1);
 			expect(results[0].id).toBe('idx-active');
@@ -482,13 +471,13 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 			const charRecord = createTestRecord({ id: 'txn-char-1' });
 			const chatRecord = createTestRecord({ id: 'txn-chat-1', characterId: 'txn-char-1' });
 
-			await localDB.transaction(['characterSummaries', 'chatSummaries'], 'rw', async () => {
-				await localDB.putRecord('characterSummaries', charRecord);
-				await localDB.putRecord('chatSummaries', chatRecord as unknown as ChatSummaryRecord);
+			await localDB.transaction(['characters', 'chats'], 'rw', async () => {
+				await localDB.putRecord('characters', charRecord);
+				await localDB.putRecord('chats', chatRecord as unknown as ChatRecord);
 			});
 
-			const char = await localDB.getRecord<BaseRecord>('characterSummaries', 'txn-char-1');
-			const chat = await localDB.getRecord<BaseRecord>('chatSummaries', 'txn-chat-1');
+			const char = await localDB.getRecord<BaseRecord>('characters', 'txn-char-1');
+			const chat = await localDB.getRecord<BaseRecord>('chats', 'txn-chat-1');
 
 			expect(char).toBeDefined();
 			expect(chat).toBeDefined();
@@ -516,39 +505,27 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 		});
 	});
 
-	describe('character tables', () => {
-		it('should store character summaries separately from data', async () => {
-			const summary = createTestRecord({ id: 'char-1' });
-			const data = createTestRecord({ id: 'char-1' });
+	describe('character table', () => {
+		it('should store and retrieve character records', async () => {
+			const record = createTestRecord({ id: 'char-1' });
 
-			await localDB.transaction(['characterSummaries', 'characterData'], 'rw', async () => {
-				await localDB.putRecord('characterSummaries', summary);
-				await localDB.putRecord('characterData', data);
-			});
+			await localDB.putRecord('characters', record);
 
-			const summaryResult = await localDB.getRecord('characterSummaries', 'char-1');
-			const dataResult = await localDB.getRecord('characterData', 'char-1');
+			const result = await localDB.getRecord('characters', 'char-1');
 
-			expect(summaryResult).toBeDefined();
-			expect(dataResult).toBeDefined();
+			expect(result).toBeDefined();
 		});
 	});
 
-	describe('chat tables', () => {
-		it('should store chat summaries separately from data', async () => {
-			const summary = createTestRecord({ id: 'chat-1', characterId: 'char-1' });
-			const data = createTestRecord({ id: 'chat-1', characterId: 'char-1' });
+	describe('chat table', () => {
+		it('should store and retrieve chat records with characterId', async () => {
+			const record = createTestRecord({ id: 'chat-1', characterId: 'char-1' });
 
-			await localDB.transaction(['chatSummaries', 'chatData'], 'rw', async () => {
-				await localDB.putRecord('chatSummaries', summary as unknown as ChatSummaryRecord);
-				await localDB.putRecord('chatData', data as unknown as ChatDataRecord);
-			});
+			await localDB.putRecord('chats', record as unknown as ChatRecord);
 
-			const summaryResult = await localDB.getRecord('chatSummaries', 'chat-1');
-			const dataResult = await localDB.getRecord('chatData', 'chat-1');
+			const result = await localDB.getRecord('chats', 'chat-1');
 
-			expect(summaryResult).toBeDefined();
-			expect(dataResult).toBeDefined();
+			expect(result).toBeDefined();
 		});
 	});
 

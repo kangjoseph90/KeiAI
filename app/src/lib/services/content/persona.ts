@@ -69,6 +69,8 @@ export class PersonaService {
 		const { masterKey } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<PersonaFields>('personas', id);
 		if (queued) {
+			const record = await localDB.getRecord<PersonaRecord>('personas', id);
+			if (!record || record.isDeleted) return null;
 			return {
 				id,
 				...deepMerge(defaultPersonaFields, queued as unknown as Record<string, unknown>)

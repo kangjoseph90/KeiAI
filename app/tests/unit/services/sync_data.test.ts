@@ -38,8 +38,8 @@ vi.mock('$lib/adapters/pb', () => ({
 }));
 
 vi.mock('$lib/adapters/db', () => ({
-	SYNC_TABLES: ['characterSummaries', 'chatSummaries'],
-	TABLES: ['characterSummaries', 'chatSummaries'],
+	SYNC_TABLES: ['characters', 'chats'],
+	TABLES: ['characters', 'chats'],
 	localDB: {
 		getRecord: vi.fn(),
 		putRecord: vi.fn(),
@@ -96,7 +96,7 @@ describe('DataSyncService', () => {
 
 	describe('Pull Logic (syncAll)', () => {
 		it('should pull changes and handle LWW conflict', async () => {
-			const tableName = 'characterSummaries';
+			const tableName = 'characters';
 			vi.mocked(appKV.get).mockResolvedValue('1000');
 
 			const serverRecord = {
@@ -131,7 +131,7 @@ describe('DataSyncService', () => {
 		});
 
 		it('should push correction if local is newer', async () => {
-			const tableName = 'characterSummaries' as const;
+			const tableName = 'characters' as const;
 			vi.mocked(appKV.get).mockResolvedValue('1000');
 			const serverRecord = { id: 'rec-1', updatedAt: 1100, updated: '2023-01-01' };
 			const localRecord = { id: 'rec-1', updatedAt: 1200, userId: mockUserId };
@@ -155,7 +155,7 @@ describe('DataSyncService', () => {
 	describe('Push Logic', () => {
 		it('pushRecord should use create if isNew is true', async () => {
 			const record = { id: 'new-1', userId: mockUserId } as BaseRecord;
-			await DataSyncService.pushRecord('characterSummaries', record, true);
+			await DataSyncService.pushRecord('characters', record, true);
 			expect(mockBatchCollection.create).toHaveBeenCalled();
 			expect(mockBatch.send).toHaveBeenCalled();
 		});
@@ -163,7 +163,7 @@ describe('DataSyncService', () => {
 		it('pushRecord should use upsert if isNew is false', async () => {
 			const record = { id: 'existing-1', userId: mockUserId } as BaseRecord;
 
-			await DataSyncService.pushRecord('characterSummaries', record);
+			await DataSyncService.pushRecord('characters', record);
 
 			expect(mockBatchCollection.upsert).toHaveBeenCalled();
 			expect(mockBatch.send).toHaveBeenCalled();

@@ -54,10 +54,8 @@ Plus optional extra FK fields for indexing (never encrypted content):
 
 | Table                | Extra Fields     | Notes                          |
 | -------------------- | --------------- | ------------------------------ |
-| `characterSummaries` | —               | List view data                 |
-| `characterData`      | —               | Full detail, same ID as summary|
-| `chatSummaries`      | `characterId`   | FK for per-character queries   |
-| `chatData`           | `characterId`   | Same ID as chatSummaries       |
+| `characters`         | —               | Character data + refs          |
+| `chats`              | `characterId`   | FK for per-character queries   |
 | `messages`           | `chatId`, `sortOrder` | Compound index for pagination |
 | `lorebooks`          | `ownerId`       | Owner = character, chat, or module |
 | `scripts`            | `ownerId`       | Same ownership model           |
@@ -65,15 +63,14 @@ Plus optional extra FK fields for indexing (never encrypted content):
 | `personas`           | —               |                                |
 | `modules`            | —               |                                |
 | `plugins`            | —               |                                |
-| `presetSummaries`    | —               |                                |
-| `presetData`         | —               |                                |
+| `presets`            | —               | Prompt preset data             |
 | `assets`             | —               | Asset metadata                 |
 
 Every table has a composite index on `(userId, updatedAt)` for sync queries.
 
 ### Schema Philosophy
 
-- **Summary/Data split**: List views decrypt only summaries (fast); detail views load data on demand
+- **Single-table entities**: Each entity type uses one table with one encrypted blob
 - **FK fields are plaintext** but carry no user content — they exist only for server-side indexing
 - **No ON DELETE CASCADE at the encrypted-table level** — soft deletes + client-side self-healing
 - **User deletion cascades**: `userId` is a PocketBase `relation` with `cascadeDelete: true` — deleting a user wipes all their encrypted data

@@ -1,10 +1,5 @@
 import { get } from 'svelte/store';
-import {
-	PresetService,
-	type PresetSummaryFields,
-	type PresetDataFields,
-	type PresetDetail
-} from '$lib/services/content/preset';
+import { PresetService, type PresetFields, type Preset } from '$lib/services/content/preset';
 import { SettingsService } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
@@ -13,13 +8,13 @@ import { getAppSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
 /**
- * Returns preset detail from store cache first, then from DB if needed.
+ * Returns preset from store cache first, then from DB if needed.
  * Explicitly throws error if not found
  */
-export async function getPresetDetail(presetId: string): Promise<PresetDetail> {
+export async function getPreset(presetId: string): Promise<Preset> {
 	const active = get(activePreset);
 	if (active?.id === presetId) return active;
-	const db = await PresetService.getDetail(presetId);
+	const db = await PresetService.get(presetId);
 	if (!db) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
 	return db;
 }
@@ -39,67 +34,46 @@ export async function loadPresets(): Promise<void> {
 }
 
 export async function selectPreset(presetId: string): Promise<void> {
-	const detail = await getPresetDetail(presetId);
-	activePreset.set(detail);
+	const preset = await getPreset(presetId);
+	activePreset.set(preset);
 	appSettings.update((s) => (s ? { ...s, presetId: presetId } : s));
 	await SettingsService.update({ presetId: presetId });
 }
 
-export async function createPreset(
-	summary: DeepPartial<PresetSummaryFields> = {},
-	data: DeepPartial<PresetDataFields> = {}
-): Promise<PresetDetail> {
+export async function createPreset(fields: DeepPartial<PresetFields> = {}): Promise<Preset> {
 	const settings = await getAppSettings();
 
 	// Create Record in DB
-	const detail = await PresetService.create(summary, data);
+	const preset = await PresetService.create(fields);
 
 	// Add to parent's refs
 	const existingRefs = settings.presetRefs || [];
 	const presetRefs = [
 		...existingRefs,
-		{ id: detail.id, sortOrder: generateSortOrder(existingRefs) }
+		{ id: preset.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
 		await SettingsService.update({ presetRefs });
 	} catch (error) {
 		// If parent's refs update fails, roll back DB
-		await PresetService.delete(detail.id);
+		await PresetService.delete(preset.id);
 		throw error;
 	}
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, presetRefs } : s));
-	presets.update((list) => [...list, detail]);
+	presets.update((list) => [...list, preset]);
 
-	return detail;
+	return preset;
 }
 
-export async function updatePresetSummary(
+export async function updatePreset(
 	presetId: string,
-	changes: DeepPartial<PresetSummaryFields>
+	changes: DeepPartial<PresetFields>
 ): Promise<void> {
-	const updated = await PresetService.updateSummary(presetId, changes);
+	const updated = await PresetService.update(presetId, changes);
 	presets.update((list) => list.map((p) => (p.id === presetId ? updated : p)));
-	activePreset.update((p) => (p && p.id === presetId ? { ...p, ...updated } : p));
-}
-
-export async function updatePresetData(
-	presetId: string,
-	changes: DeepPartial<PresetDataFields>
-): Promise<void> {
-	const data = await PresetService.updateData(presetId, changes);
-	activePreset.update((p) => (p && p.id === presetId ? { ...p, data } : p));
-}
-
-export async function updatePresetFull(
-	presetId: string,
-	summaryChanges: DeepPartial<PresetSummaryFields>,
-	dataChanges: DeepPartial<PresetDataFields>
-): Promise<void> {
-	const result = await PresetService.update(presetId, summaryChanges, dataChanges);
-	presets.update((list) => list.map((p) => (p.id === presetId ? result : p)));
-	activePreset.update((p) => (p && p.id === presetId ? result : p));
+	activePreset.update((p) => (p && p.id === presetId ? updated : p));
 }
 
 export async function deletePreset(presetId: string): Promise<void> {

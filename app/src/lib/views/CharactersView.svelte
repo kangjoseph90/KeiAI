@@ -3,12 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Card, CardContent } from '$lib/components/ui/card';
-	import {
-		characters,
-		createCharacter,
-		updateCharacterSummary,
-		deleteCharacter
-	} from '$lib/stores';
+	import { characters, createCharacter, updateCharacter, deleteCharacter } from '$lib/stores';
 	import type { RouteState } from '$lib/router';
 
 	let { onNavigate }: { onNavigate: (r: RouteState) => void } = $props();
@@ -25,7 +20,7 @@
 
 	async function handleUpdate(id: string) {
 		if (!editNameInput.trim()) return;
-		await updateCharacterSummary(id, { name: editNameInput });
+		await updateCharacter(id, { name: editNameInput });
 		editModeId = null;
 	}
 

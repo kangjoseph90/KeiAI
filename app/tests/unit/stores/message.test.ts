@@ -10,13 +10,7 @@ import {
 	getMessage
 } from '$lib/stores/content/message';
 import { messages, messageMap, chats, activeChat } from '$lib/stores/state';
-import {
-	MessageService,
-	ChatService,
-	type Message,
-	type Chat,
-	type ChatDetail
-} from '$lib/services';
+import { MessageService, ChatService, type Message, type Chat } from '$lib/services';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
@@ -29,7 +23,7 @@ vi.mock('$lib/services', () => ({
 		get: vi.fn()
 	},
 	ChatService: {
-		updateSummary: vi.fn()
+		update: vi.fn()
 	}
 }));
 
@@ -49,7 +43,7 @@ describe('Message Store', () => {
 		// Reset via messageMap (the writable source)
 		messageMap.set(new Map());
 		chats.set([]);
-		activeChat.set({ id: mockChatId, messageCount: 0 } as ChatDetail);
+		activeChat.set({ id: mockChatId, characterId: 'char-1', messageCount: 0 } as Chat);
 	});
 
 	describe('loadInitialMessages', () => {
@@ -64,7 +58,7 @@ describe('Message Store', () => {
 		});
 
 		it('should not update store if activeChatId has changed', async () => {
-			activeChat.set({ id: 'other-chat' } as ChatDetail);
+			activeChat.set({ id: 'other-chat', characterId: 'char-1' } as Chat);
 			vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([mockMessage]);
 
 			await loadInitialMessages(mockChatId);
@@ -129,11 +123,11 @@ describe('Message Store', () => {
 	describe('createMessage', () => {
 		it('should create message and update chat preview', async () => {
 			const newMessage = { ...mockMessage, id: 'new-id' };
-			const updatedChat = { id: mockChatId, lastMessagePreview: 'New...' } as Chat;
+			const updatedChat = { id: mockChatId, characterId: 'char-1' } as Chat;
 
 			vi.mocked(MessageService.create).mockResolvedValue(newMessage);
-			vi.mocked(ChatService.updateSummary).mockResolvedValue(updatedChat);
-			chats.set([{ id: mockChatId } as Chat]);
+			vi.mocked(ChatService.update).mockResolvedValue(updatedChat);
+			chats.set([{ id: mockChatId, characterId: 'char-1' } as Chat]);
 
 			await createMessage(mockChatId, {
 				swipes: { s1: { id: 's1', content: 'New message content', createdAt: Date.now() } },
@@ -141,11 +135,10 @@ describe('Message Store', () => {
 			});
 
 			expect(get(messages)).toContainEqual(newMessage);
-			expect(ChatService.updateSummary).toHaveBeenCalledWith(mockChatId, {
-				lastMessagePreview: 'New message content',
+			expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
 				messageCount: 1
 			});
-			expect(get(activeChat)).toMatchObject({ lastMessagePreview: 'New...' });
+			expect(get(activeChat)).toMatchObject({});
 		});
 	});
 
@@ -166,35 +159,22 @@ describe('Message Store', () => {
 			// O(1) lookup: verify Map contains updated value
 			expect(get(messageMap).get('msg-1')?.swipes['s1'].content).toBe('Updated');
 		});
-
-		it('should update chat preview if it is the last message', async () => {
-			messageMap.set(new Map([['msg-1', mockMessage]]));
-			const updatedMsg: Message = {
-				...mockMessage,
-				swipes: { s1: { id: 's1', content: 'Last updated', createdAt: 2000 } }
-			};
-			vi.mocked(MessageService.update).mockResolvedValue(updatedMsg);
-			vi.mocked(ChatService.updateSummary).mockResolvedValue({ id: mockChatId } as Chat);
-
-			await updateMessage('msg-1', {
-				swipes: { s1: { id: 's1', content: 'Last updated', createdAt: 2000 } }
-			});
-
-			expect(ChatService.updateSummary).toHaveBeenCalled();
-		});
 	});
 
 	describe('deleteMessage', () => {
 		it('should remove message from messageMap', async () => {
 			messageMap.set(new Map([['msg-1', mockMessage]]));
 			vi.mocked(MessageService.delete).mockResolvedValue(undefined);
+			vi.mocked(ChatService.update).mockResolvedValue({
+				id: mockChatId,
+				characterId: 'char-1'
+			} as Chat);
 
 			await deleteMessage(mockChatId, 'msg-1');
 
 			expect(get(messages)).toHaveLength(0);
 			expect(get(messageMap).has('msg-1')).toBe(false);
-			expect(ChatService.updateSummary).toHaveBeenCalledWith(mockChatId, {
-				lastMessagePreview: '',
+			expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
 				messageCount: 0
 			});
 		});

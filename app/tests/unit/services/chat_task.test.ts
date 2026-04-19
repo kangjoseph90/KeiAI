@@ -48,10 +48,8 @@ vi.mock('$lib/services/content/message', () => {
 });
 
 vi.mock('$lib/stores', () => ({
-	getChatDetail: vi
-		.fn()
-		.mockResolvedValue({ id: 'chat-1', characterId: 'char-1', data: { defaultVariables: {} } }),
-	getCharacterDetail: vi.fn().mockResolvedValue({ id: 'char-1', data: { systemPrompt: '' } }),
+	getChat: vi.fn().mockResolvedValue({ id: 'chat-1', characterId: 'char-1', defaultVariables: {} }),
+	getCharacter: vi.fn().mockResolvedValue({ id: 'char-1', systemPrompt: '' }),
 	getAppSettings: vi.fn().mockResolvedValue({
 		personaId: 'persona-1',
 		presetId: 'preset-1',
@@ -59,24 +57,22 @@ vi.mock('$lib/stores', () => ({
 		chat: { saveMessagesOnSwipe: true }
 	}),
 	getPersona: vi.fn().mockResolvedValue({ id: 'persona-1', name: '', description: '' }),
-	getPresetDetail: vi.fn().mockResolvedValue({
+	getPreset: vi.fn().mockResolvedValue({
 		id: 'preset-1',
-		data: { chatModel: { id: '', provider: 'openai', parameters: {} } }
+		chatModel: { id: '', provider: 'openai', parameters: {} }
 	}),
 	getMergedLorebooks: vi.fn().mockResolvedValue([]),
 	getMergedScripts: vi.fn().mockResolvedValue([])
 }));
 
 vi.mock('$lib/stores/content/chat', () => ({
-	getChatDetail: vi
-		.fn()
-		.mockResolvedValue({ id: 'chat-1', characterId: 'char-1', data: { defaultVariables: {} } })
+	getChat: vi.fn().mockResolvedValue({ id: 'chat-1', characterId: 'char-1', defaultVariables: {} })
 }));
 
 vi.mock('$lib/stores/content/character', () => ({
-	getCharacterDetail: vi.fn().mockResolvedValue({
+	getCharacter: vi.fn().mockResolvedValue({
 		id: 'char-1',
-		data: { systemPrompt: '', charjs: { code: '', allowLowLevel: false } }
+		systemPrompt: ''
 	})
 }));
 

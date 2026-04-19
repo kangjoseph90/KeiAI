@@ -4,18 +4,13 @@
 
 ---
 
-## 1. 저장소 구조: Summary / Data 분리
+## 1. 저장소 구조: 단일 테이블 구조
 
-모든 엔티티는 **두 개의 테이블**로 나뉜다.
+모든 엔티티는 **하나의 테이블**에 저장된다. 각 테이블은 하나의 암호화된 JSON Blob(`encryptedData` + `encryptedDataIV`)을 보관한다.
 
-| 테이블 | 용도 | 로딩 시점 |
-|---|---|---|
-| `*Summary` | 목록 UI에 필요한 최소 정보 (제목, 설명 등) | 목록 화면 진입 시 **일괄 로드** |
-| `*Data` | 실제 무거운 데이터 (로어북 항목, 스크립트 코드 등) | 해당 엔티티를 **열었을 때만** 로드 |
-
-- 두 테이블은 **같은 `id`** 를 공유한다.
-- 둘 다 AES-GCM으로 암호화된 JSON Blob(`encryptedData` + `encryptedDataIV`)으로 저장된다.
-- 부모 엔티티가 자식의 미리보기 데이터를 복사해서 들고 있으면 **안 된다**. 미리보기가 필요하면 항상 자식의 Summary 테이블을 쿼리한다.
+- 엔티티의 모든 데이터(목록용 메타데이터 + 상세 본문)가 단일 암호화 Blob에 포함된다.
+- AES-GCM으로 암호화된 JSON Blob으로 저장된다.
+- 부모 엔티티가 자식의 미리보기 데이터를 복사해서 들고 있으면 **안 된다**. 미리보기가 필요하면 항상 자식의 테이블을 쿼리한다.
 
 ---
 
@@ -26,8 +21,8 @@
 **자식 테이블의 평문 FK 컬럼**으로 표현한다.
 
 ```
-ChatSummaryRecord { ..., characterId: string }   ← 평문 (인덱싱 가능)
-MessageRecord     { ..., chatId: string }         ← 평문 (인덱싱 가능)
+ChatRecord     { ..., characterId: string }   ← 평문 (인덱싱 가능)
+MessageRecord  { ..., chatId: string }         ← 평문 (인덱싱 가능)
 ```
 
 - **이유:** "이 캐릭터의 채팅 목록", "이 채팅방의 메시지 목록"처럼 **부모 기준으로 자식을 빠르게 쿼리**해야 하므로 DB 인덱스가 필수적이다.
@@ -35,10 +30,10 @@ MessageRecord     { ..., chatId: string }         ← 평문 (인덱싱 가능)
 
 ### 2-2. N:M (공유 자원 참조)
 
-**소비자(부모)의 암호화된 Data Blob 내부**에 `Array<{ id, enabled }>` 형태로 저장한다.
+**소비자(부모)의 암호화된 Blob 내부**에 `Array<{ id, enabled }>` 형태로 저장한다.
 
 ```typescript
-// ChatDataFields (암호화된 JSON 내부)
+// ChatFields (암호화된 JSON 내부)
 {
   lorebookRefs: [
     { id: "lb_harrypotter", enabled: true },
@@ -60,7 +55,7 @@ MessageRecord     { ..., chatId: string }         ← 평문 (인덱싱 가능)
 E2EE 환경에서는 RDB의 `FOREIGN KEY ... ON DELETE CASCADE`를 사용할 수 없다. 대신 **Graceful Degradation (관대한 실패 처리)** 전략을 따른다.
 
 ### 원칙
-- 공유 자원(로어북, 스크립트)이 삭제되어도, 이를 참조하는 엔티티들의 Data Blob을 일괄 수정하지 **않는다**.
+- 공유 자원(로어북, 스크립트)이 삭제되어도, 이를 참조하는 엔티티들의 Blob을 일괄 수정하지 **않는다**.
 - 삭제된 참조를 만나면 **조용히 무시(Skip)**하고, 기회가 될 때(예: 설정 화면을 열었을 때) 슬쩍 정리한다 **(Self-Healing)**.
 
 ### 이유
@@ -96,7 +91,7 @@ const activeResources = new Map<string, ActiveResourceEntry<any>>();
 
 | 이벤트 | 동작 |
 |---|---|
-| **캐릭터/챗/페르소나 로드** | Data Blob에서 참조된 자원 ID들을 추출 → Map에 없으면 DB에서 복호화하여 적재, 있으면 `refs.add(sourceId)` |
+| **캐릭터/챗/페르소나 로드** | Blob에서 참조된 자원 ID들을 추출 → Map에 없으면 DB에서 복호화하여 적재, 있으면 `refs.add(sourceId)` |
 | **토글 (켜기/끄기)** | `entry.enabled = true/false` (메모리 내 불리언 플립, DB 저장은 비동기) |
 | **캐릭터/챗/페르소나 언로드** | `refs.delete(sourceId)` → `refs.size === 0`이면 Map에서 완전 삭제 |
 
@@ -111,16 +106,16 @@ const activeResources = new Map<string, ActiveResourceEntry<any>>();
 
 ## 5. 엔티티 목록 (현재 + 확장 예정)
 
-| 엔티티 | 테이블 | 평문 FK | Data Blob 내 참조 |
+| 엔티티 | 테이블 | 평문 FK | Blob 내 참조 |
 |---|---|---|---|
 | **User** | `users` | — | — |
-| **Character** | `characterSummaries` / `characterData` | — | `lorebookRefs`, `scriptRefs` |
-| **Chat** | `chatSummaries` / `chatData` | `characterId` | `lorebookRefs`, `scriptRefs`, `activePersonaId`, `promptPresetId` |
+| **Character** | `characters` | — | `lorebookRefs`, `scriptRefs` |
+| **Chat** | `chats` | `characterId` | `lorebookRefs`, `scriptRefs`, `activePersonaId`, `promptPresetId` |
 | **Message** | `messages` | `chatId` | (Blob 내부에 `swipes[]`, `activeSwipeIndex` 등) |
-| **Persona** | `personaSummaries` / `personaData` | — | `lorebookRefs` |
-| **Lorebook** | `lorebookSummaries` / `lorebookData` | — | (Blob 내부에 `entries[]`) |
-| **Script** | `scriptSummaries` / `scriptData` | — | (Blob 내부에 `rules[]`) |
-| **Prompt Preset** | `promptPresetSummaries` / `promptPresetData` | — | (Blob 내부에 프롬프트 조립 순서 등) |
+| **Persona** | `personas` | — | `lorebookRefs` |
+| **Lorebook** | `lorebooks` | — | (Blob 내부에 `entries[]`) |
+| **Script** | `scripts` | — | (Blob 내부에 `rules[]`) |
+| **Prompt Preset** | `presets` | — | (Blob 내부에 프롬프트 조립 순서 등) |
 | **Settings** | `settings` | — | (Blob 내부에 전역 설정) |
 
 ---
@@ -129,6 +124,6 @@ const activeResources = new Map<string, ActiveResourceEntry<any>>();
 
 ```
 평문에는 "찾기 위한 최소한의 키(FK)"만 노출하고,
-"무엇을 어떻게 쓰는지"는 전부 암호화된 Data Blob 안에 숨긴다.
+"무엇을 어떻게 쓰는지"는 전부 암호화된 Blob 안에 숨긴다.
 메모리에는 관련된 것을 전부 올려두되, 실행은 활성화된 것만 한다.
 ```

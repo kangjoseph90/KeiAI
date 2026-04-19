@@ -6,10 +6,9 @@ import {
 	ScriptService,
 	CharJSService,
 	SettingsService,
-	type CharacterSummaryFields,
-	type CharacterDataFields,
-	type CharacterDataContent,
-	type CharacterDetail,
+	type CharacterFields,
+	type CharacterContent,
+	type Character,
 	type LorebookFields,
 	type ScriptFields,
 	type CharJSFields,
@@ -38,13 +37,13 @@ import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
- * Returns character detail from store cache first, then from DB if needed.
+ * Returns character from store cache first, then from DB if needed.
  * Explicitly throws error if not found
  */
-export async function getCharacterDetail(characterId: string): Promise<CharacterDetail> {
+export async function getCharacter(characterId: string): Promise<Character> {
 	const active = get(activeCharacter);
 	if (active?.id === characterId) return active;
-	const db = await CharacterService.getDetail(characterId);
+	const db = await CharacterService.get(characterId);
 	if (!db) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 	return db;
 }
@@ -64,15 +63,15 @@ export async function loadCharacters(): Promise<void> {
 }
 
 export async function selectCharacter(characterId: string): Promise<void> {
-	const detail = await getCharacterDetail(characterId);
+	const character = await getCharacter(characterId);
 
-	activeCharacter.set(detail);
+	activeCharacter.set(character);
 
 	clearActiveChat();
 	const chatList = await ChatService.listByCharacter(characterId);
-	chats.set(sortByRefs(chatList, detail.data.chatRefs ?? []));
+	chats.set(sortByRefs(chatList, character.chatRefs ?? []));
 
-	const moduleIds = detail.data.moduleRefs?.map((r) => r.id) ?? [];
+	const moduleIds = character.moduleRefs?.map((r) => r.id) ?? [];
 	characterModules.set(get(modules).filter((m) => moduleIds.includes(m.id)));
 
 	const [lorebooks, scripts, charjs] = await Promise.all([
@@ -81,9 +80,9 @@ export async function selectCharacter(characterId: string): Promise<void> {
 		CharJSService.listByOwner(characterId)
 	]);
 
-	characterLorebooks.set(sortByRefs(lorebooks, detail.data.lorebookRefs ?? []));
-	characterScripts.set(sortByRefs(scripts, detail.data.scriptRefs ?? []));
-	characterCharJS.set(sortByRefs(charjs, detail.data.charjsRefs ?? []));
+	characterLorebooks.set(sortByRefs(lorebooks, character.lorebookRefs ?? []));
+	characterScripts.set(sortByRefs(scripts, character.scriptRefs ?? []));
+	characterCharJS.set(sortByRefs(charjs, character.charjsRefs ?? []));
 }
 
 export function clearActiveCharacter(): void {
@@ -96,66 +95,54 @@ export function clearActiveCharacter(): void {
 	clearActiveChat();
 }
 
-export async function updateCharacterSummary(
+export async function updateCharacter(
 	characterId: string,
-	changes: DeepPartial<CharacterSummaryFields>
+	changes: DeepPartial<CharacterFields>
 ): Promise<void> {
-	const updated = await CharacterService.updateSummary(characterId, changes);
+	const updated = await CharacterService.update(characterId, changes);
 	characters.update((list) => list.map((c) => (c.id === characterId ? updated : c)));
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, ...updated } : c));
+		activeCharacter.set(updated);
 	}
 }
 
-export async function updateCharacterData(
+export async function updateCharacterContent(
 	characterId: string,
-	changes: DeepPartial<CharacterDataContent>
+	changes: DeepPartial<CharacterContent>
 ): Promise<void> {
-	const data = await CharacterService.updateData(characterId, changes);
+	const updated = await CharacterService.updateContent(characterId, changes);
+	characters.update((list) => list.map((c) => (c.id === characterId ? updated : c)));
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, data } : c));
-	}
-}
-
-export async function updateCharacterFull(
-	characterId: string,
-	summaryChanges: DeepPartial<CharacterSummaryFields>,
-	dataChanges: DeepPartial<CharacterDataContent>
-): Promise<void> {
-	const result = await CharacterService.update(characterId, summaryChanges, dataChanges);
-	characters.update((list) => list.map((c) => (c.id === characterId ? result : c)));
-	if (characterId === get(activeCharacterId)) {
-		activeCharacter.set(result);
+		activeCharacter.set(updated);
 	}
 }
 
 export async function createCharacter(
-	summary: DeepPartial<CharacterSummaryFields> = {},
-	data: DeepPartial<CharacterDataFields> = {}
-): Promise<CharacterDetail> {
+	fields: DeepPartial<CharacterFields> = {}
+): Promise<Character> {
 	const settings = await getAppSettings();
 
 	// Create record in DB
-	const detail = await CharacterService.create(summary, data);
+	const character = await CharacterService.create(fields);
 
 	// Add to parent's refs
 	const existingRefs = settings.characterRefs || [];
 	const characterRefs = [
 		...existingRefs,
-		{ id: detail.id, sortOrder: generateSortOrder(existingRefs) }
+		{ id: character.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
 		await SettingsService.update({ characterRefs });
 	} catch (error) {
 		// If parent's refs update fails, roll back DB
-		await CharacterService.delete(detail.id);
+		await CharacterService.delete(character.id);
 		throw error;
 	}
 
 	// Update store
 	appSettings.update((s) => (s ? { ...s, characterRefs } : s));
-	characters.update((list) => [...list, detail]);
-	return detail;
+	characters.update((list) => [...list, character]);
+	return character;
 }
 
 export async function deleteCharacter(characterId: string): Promise<void> {
@@ -189,29 +176,24 @@ export async function createCharacterLorebook(
 	characterId: string,
 	fields: DeepPartial<LorebookFields>
 ): Promise<Lorebook> {
-	// Use cached active character if possible
-	const char = await getCharacterDetail(characterId);
+	const char = await getCharacter(characterId);
 
-	// Create Record in DB
 	const lb = await LorebookService.create(characterId, fields);
 
-	// Update parent's refs
-	const existingRefs = char.data.lorebookRefs || [];
+	const existingRefs = char.lorebookRefs || [];
 	const lorebookRefs: OrderedRef[] = [
 		...existingRefs,
 		{ id: lb.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await CharacterService.updateData(characterId, { lorebookRefs });
+		await CharacterService.update(characterId, { lorebookRefs });
 	} catch (error) {
-		// If parent's refs update fails, roll back DB
 		await LorebookService.delete(lb.id);
 		throw error;
 	}
 
-	// Update Store
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs } } : c));
+		activeCharacter.update((c) => (c ? { ...c, lorebookRefs } : c));
 		characterLorebooks.update((list) => [...list, lb]);
 	}
 
@@ -222,25 +204,21 @@ export async function deleteCharacterLorebook(
 	characterId: string,
 	lorebookId: string
 ): Promise<void> {
-	// Use cached active character if possible
-	const char = await getCharacterDetail(characterId);
+	const char = await getCharacter(characterId);
 
-	// Remove from parent's refs
-	const existingRefs = char.data.lorebookRefs || [];
+	const existingRefs = char.lorebookRefs || [];
 	const lorebookRefs = existingRefs.filter((r) => r.id !== lorebookId);
-	await CharacterService.updateData(characterId, { lorebookRefs });
+	await CharacterService.update(characterId, { lorebookRefs });
 
 	try {
 		await LorebookService.delete(lorebookId);
 	} catch (error) {
-		// If DB delete fails, roll back parent's refs
-		await CharacterService.updateData(characterId, { lorebookRefs: existingRefs });
+		await CharacterService.update(characterId, { lorebookRefs: existingRefs });
 		throw error;
 	}
 
-	// Update Store
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, lorebookRefs } } : c));
+		activeCharacter.update((c) => (c ? { ...c, lorebookRefs } : c));
 		characterLorebooks.update((list) => list.filter((lb) => lb.id !== lorebookId));
 	}
 }
@@ -251,29 +229,24 @@ export async function createCharacterScript(
 	characterId: string,
 	fields: DeepPartial<ScriptFields>
 ): Promise<Script> {
-	// Use cached active character if possible
-	const char = await getCharacterDetail(characterId);
+	const char = await getCharacter(characterId);
 
-	// Create Record in DB
 	const sc = await ScriptService.create(characterId, fields);
 
-	// Update parent's refs
-	const existingRefs = char.data.scriptRefs || [];
+	const existingRefs = char.scriptRefs || [];
 	const scriptRefs: OrderedRef[] = [
 		...existingRefs,
 		{ id: sc.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await CharacterService.updateData(characterId, { scriptRefs });
+		await CharacterService.update(characterId, { scriptRefs });
 	} catch (error) {
-		// If parent's refs update fails, roll back DB
 		await ScriptService.delete(sc.id);
 		throw error;
 	}
 
-	// Update Store
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, scriptRefs } } : c));
+		activeCharacter.update((c) => (c ? { ...c, scriptRefs } : c));
 		characterScripts.update((list) => [...list, sc]);
 	}
 
@@ -281,25 +254,21 @@ export async function createCharacterScript(
 }
 
 export async function deleteCharacterScript(characterId: string, scriptId: string): Promise<void> {
-	// Use cached active character if possible
-	const char = await getCharacterDetail(characterId);
+	const char = await getCharacter(characterId);
 
-	// Remove from parent's refs
-	const existingRefs = char.data.scriptRefs || [];
+	const existingRefs = char.scriptRefs || [];
 	const scriptRefs = existingRefs.filter((r) => r.id !== scriptId);
-	await CharacterService.updateData(characterId, { scriptRefs });
+	await CharacterService.update(characterId, { scriptRefs });
 
 	try {
 		await ScriptService.delete(scriptId);
 	} catch (error) {
-		// If DB delete fails, roll back parent's refs
-		await CharacterService.updateData(characterId, { scriptRefs: existingRefs });
+		await CharacterService.update(characterId, { scriptRefs: existingRefs });
 		throw error;
 	}
 
-	// Update Store
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, scriptRefs } } : c));
+		activeCharacter.update((c) => (c ? { ...c, scriptRefs } : c));
 		characterScripts.update((list) => list.filter((sc) => sc.id !== scriptId));
 	}
 }
@@ -310,23 +279,23 @@ export async function createCharacterCharJS(
 	characterId: string,
 	fields: DeepPartial<CharJSFields>
 ): Promise<CharJS> {
-	const char = await getCharacterDetail(characterId);
+	const char = await getCharacter(characterId);
 	const cjs = await CharJSService.create(characterId, fields);
 
-	const existingRefs = char.data.charjsRefs || [];
+	const existingRefs = char.charjsRefs || [];
 	const charjsRefs: OrderedRef[] = [
 		...existingRefs,
 		{ id: cjs.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await CharacterService.updateData(characterId, { charjsRefs });
+		await CharacterService.update(characterId, { charjsRefs });
 	} catch (error) {
 		await CharJSService.delete(cjs.id);
 		throw error;
 	}
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, charjsRefs } } : c));
+		activeCharacter.update((c) => (c ? { ...c, charjsRefs } : c));
 		characterCharJS.update((list) => [...list, cjs]);
 	}
 
@@ -334,21 +303,21 @@ export async function createCharacterCharJS(
 }
 
 export async function deleteCharacterCharJS(characterId: string, charjsId: string): Promise<void> {
-	const char = await getCharacterDetail(characterId);
+	const char = await getCharacter(characterId);
 
-	const existingRefs = char.data.charjsRefs || [];
+	const existingRefs = char.charjsRefs || [];
 	const charjsRefs = existingRefs.filter((r) => r.id !== charjsId);
-	await CharacterService.updateData(characterId, { charjsRefs });
+	await CharacterService.update(characterId, { charjsRefs });
 
 	try {
 		await CharJSService.delete(charjsId);
 	} catch (error) {
-		await CharacterService.updateData(characterId, { charjsRefs: existingRefs });
+		await CharacterService.update(characterId, { charjsRefs: existingRefs });
 		throw error;
 	}
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, charjsRefs } } : c));
+		activeCharacter.update((c) => (c ? { ...c, charjsRefs } : c));
 		characterCharJS.update((list) => list.filter((cjs) => cjs.id !== charjsId));
 	}
 }
@@ -363,10 +332,9 @@ export async function createCharacterFolder(
 	name: string,
 	parentId?: string
 ): Promise<FolderDef> {
-	// Use cached active character if possible
-	const char = await getCharacterDetail(characterId);
+	const char = await getCharacter(characterId);
 
-	const folders = char.data.folders ?? {};
+	const folders = char.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
 
 	const newFolder = {
@@ -381,10 +349,10 @@ export async function createCharacterFolder(
 		[folderType]: [...typeFolders, newFolder]
 	};
 
-	await CharacterService.updateData(characterId, { folders: updatedFolders });
+	await CharacterService.update(characterId, { folders: updatedFolders });
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c));
+		activeCharacter.update((c) => (c ? { ...c, folders: updatedFolders } : c));
 	}
 
 	return newFolder;
@@ -396,20 +364,19 @@ export async function updateCharacterFolder(
 	folderId: string,
 	changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
-	// Use cached active character if possible
-	const char = await getCharacterDetail(characterId);
+	const char = await getCharacter(characterId);
 
-	const folders = char.data.folders ?? {};
+	const folders = char.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
 
 	const updatedTypeFolders = typeFolders.map((f) => (f.id === folderId ? { ...f, ...changes } : f));
 
 	const updatedFolders = { ...folders, [folderType]: updatedTypeFolders };
 
-	await CharacterService.updateData(characterId, { folders: updatedFolders });
+	await CharacterService.update(characterId, { folders: updatedFolders });
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c));
+		activeCharacter.update((c) => (c ? { ...c, folders: updatedFolders } : c));
 	}
 }
 
@@ -418,18 +385,17 @@ export async function deleteCharacterFolder(
 	folderType: CharacterFolderType,
 	folderId: string
 ): Promise<void> {
-	// Use cached active character if possible
-	const char = await getCharacterDetail(characterId);
+	const char = await getCharacter(characterId);
 
-	const folders = char.data.folders ?? {};
+	const folders = char.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
 
 	const updatedFolders = { ...folders, [folderType]: typeFolders.filter((f) => f.id !== folderId) };
 
-	await CharacterService.updateData(characterId, { folders: updatedFolders });
+	await CharacterService.update(characterId, { folders: updatedFolders });
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, folders: updatedFolders } } : c));
+		activeCharacter.update((c) => (c ? { ...c, folders: updatedFolders } : c));
 	}
 }
 
@@ -440,10 +406,9 @@ export async function moveCharacterItem(
 	newFolderId?: string,
 	newSortOrder?: string
 ): Promise<void> {
-	// Use cached active character if possible
-	const char = await getCharacterDetail(characterId);
+	const char = await getCharacter(characterId);
 
-	let refKey: keyof typeof char.data;
+	let refKey: keyof typeof char;
 	switch (folderType) {
 		case 'chats':
 			refKey = 'chatRefs';
@@ -464,19 +429,19 @@ export async function moveCharacterItem(
 			return;
 	}
 
-	const refs = (char.data[refKey] as OrderedRef[]) ?? [];
+	const refs = (char[refKey] as OrderedRef[]) ?? [];
 	const updatedRefs = refs.map((ref) => {
 		if (ref.id !== itemId) return ref;
 		return {
 			...ref,
 			folderId: newFolderId,
-			sortOrder: newSortOrder ?? ref.sortOrder // Only update sortOrder if explicitly provided
+			sortOrder: newSortOrder ?? ref.sortOrder
 		};
 	});
 
-	await CharacterService.updateData(characterId, { [refKey]: updatedRefs });
+	await CharacterService.update(characterId, { [refKey]: updatedRefs });
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, data: { ...c.data, [refKey]: updatedRefs } } : c));
+		activeCharacter.update((c) => (c ? { ...c, [refKey]: updatedRefs } : c));
 	}
 }

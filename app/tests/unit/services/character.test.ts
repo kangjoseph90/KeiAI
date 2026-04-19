@@ -2,17 +2,12 @@
  * Character Service Tests
  *
  * Tests the CharacterService which handles character CRUD operations
- * with encryption and database transactions.
+ * with encryption and database writes.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CharacterService } from '$lib/services/content/character';
-import type {
-	Character,
-	CharacterDetail,
-	CharacterSummaryFields,
-	CharacterDataFields
-} from '$lib/services/content/character';
+import type { Character, CharacterFields } from '$lib/services/content/character';
 import type { AppError } from '$lib/types/errors';
 import type { BaseRecord } from '$lib/adapters/db/types';
 
@@ -58,11 +53,21 @@ vi.mock('$lib/utils/defaults', () => ({
 	})
 }));
 
+vi.mock('$lib/services/content/write_queue', () => ({
+	encryptedWriteQueue: {
+		peek: vi.fn(() => undefined),
+		upsert: vi.fn(),
+		drop: vi.fn(),
+		flushTable: vi.fn()
+	}
+}));
+
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';
+import { encryptedWriteQueue } from '$lib/services/content/write_queue';
 
 describe('CharacterService', () => {
 	const mockMasterKey = {} as CryptoKey;
@@ -103,6 +108,10 @@ describe('CharacterService', () => {
 
 		// Default generateId mock
 		vi.mocked(generateId).mockReturnValue('test-id-123');
+
+		// Default write queue mock
+		vi.mocked(encryptedWriteQueue.peek).mockReturnValue(undefined);
+		vi.mocked(encryptedWriteQueue.flushTable).mockResolvedValue(undefined);
 	});
 
 	describe('list', () => {
@@ -156,13 +165,13 @@ describe('CharacterService', () => {
 
 			await CharacterService.list();
 
-			expect(localDB.getAll).toHaveBeenCalledWith('characterSummaries', mockUserId);
+			expect(localDB.getAll).toHaveBeenCalledWith('characters', mockUserId);
 		});
 	});
 
-	describe('getDetail', () => {
-		it('should return full character detail when both records exist', async () => {
-			const mockSummary = {
+	describe('get', () => {
+		it('should return character when record exists', async () => {
+			const mockRecord = {
 				id: 'char-1',
 				userId: mockUserId,
 				createdAt: 1000,
@@ -171,41 +180,34 @@ describe('CharacterService', () => {
 				encryptedData: new Uint8Array([1]),
 				encryptedDataIV: new Uint8Array([2])
 			};
-			const mockData = {
-				id: 'char-1',
-				userId: mockUserId,
-				createdAt: 1000,
-				updatedAt: 1000,
-				isDeleted: false,
-				encryptedData: new Uint8Array([3]),
-				encryptedDataIV: new Uint8Array([4])
-			};
 
-			vi.mocked(localDB.getRecord)
-				.mockResolvedValueOnce(mockSummary)
-				.mockResolvedValueOnce(mockData);
+			vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+			vi.mocked(decrypt).mockResolvedValue(
+				JSON.stringify({
+					name: 'Test Char',
+					shortDescription: 'Test',
+					systemPrompt: 'Hello',
+					greetingMessage: 'Hi'
+				})
+			);
 
-			vi.mocked(decrypt)
-				.mockResolvedValueOnce(JSON.stringify({ name: 'Test Char', shortDescription: 'Test' }))
-				.mockResolvedValueOnce(JSON.stringify({ systemPrompt: 'Hello', greetingMessage: 'Hi' }));
-
-			const result = await CharacterService.getDetail('char-1');
+			const result = await CharacterService.get('char-1');
 
 			expect(result).not.toBeNull();
 			expect(result?.id).toBe('char-1');
 			expect(result?.name).toBe('Test Char');
-			expect(result?.data.systemPrompt).toBe('Hello');
+			expect(result?.systemPrompt).toBe('Hello');
 		});
 
-		it('should return null when summary record does not exist', async () => {
+		it('should return null when record does not exist', async () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
 
-			const result = await CharacterService.getDetail('non-existent');
+			const result = await CharacterService.get('non-existent');
 
 			expect(result).toBeNull();
 		});
 
-		it('should return null when summary record is deleted', async () => {
+		it('should return null when record is deleted', async () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue({
 				id: 'char-1',
 				userId: mockUserId,
@@ -216,25 +218,7 @@ describe('CharacterService', () => {
 				encryptedDataIV: new Uint8Array([2])
 			} as unknown as BaseRecord);
 
-			const result = await CharacterService.getDetail('char-1');
-
-			expect(result).toBeNull();
-		});
-
-		it('should return null when data record does not exist', async () => {
-			vi.mocked(localDB.getRecord)
-				.mockResolvedValueOnce({
-					id: 'char-1',
-					userId: mockUserId,
-					createdAt: 1000,
-					updatedAt: 1000,
-					isDeleted: false,
-					encryptedData: new Uint8Array([1]),
-					encryptedDataIV: new Uint8Array([2])
-				} as unknown as BaseRecord)
-				.mockResolvedValueOnce(undefined as unknown as BaseRecord);
-
-			const result = await CharacterService.getDetail('char-1');
+			const result = await CharacterService.get('char-1');
 
 			expect(result).toBeNull();
 		});
@@ -242,30 +226,26 @@ describe('CharacterService', () => {
 
 	describe('create', () => {
 		it('should create a new character with encrypted data', async () => {
-			vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
-				await callback();
+			const result = await CharacterService.create({
+				name: 'New Character',
+				shortDescription: 'A test character',
+				systemPrompt: 'You are helpful',
+				greetingMessage: 'Hello!'
 			});
-
-			const result = await CharacterService.create(
-				{ name: 'New Character', shortDescription: 'A test character' },
-				{ systemPrompt: 'You are helpful', greetingMessage: 'Hello!' }
-			);
 
 			expect(result.id).toBe('test-id-123');
 			expect(result.name).toBe('New Character');
-			expect(result.data.systemPrompt).toBe('You are helpful');
-			expect(localDB.transaction).toHaveBeenCalledWith(
-				['characterSummaries', 'characterData'],
-				'rw',
-				expect.any(Function)
+			expect(result.systemPrompt).toBe('You are helpful');
+			expect(localDB.putRecord).toHaveBeenCalledWith(
+				'characters',
+				expect.objectContaining({
+					id: 'test-id-123',
+					userId: mockUserId
+				})
 			);
 		});
 
 		it('should use default values when not provided', async () => {
-			vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
-				await callback();
-			});
-
 			vi.mocked(deepMerge).mockImplementation((target: unknown, source: unknown) => ({
 				...(target as Record<string, unknown>),
 				...(source as Record<string, unknown>)
@@ -274,14 +254,10 @@ describe('CharacterService', () => {
 			const result = await CharacterService.create();
 
 			expect(result.name).toBe('New Character');
-			expect(result.data.systemPrompt).toBe('');
+			expect(result.systemPrompt).toBe('');
 		});
 
 		it('should generate unique ID for each character', async () => {
-			vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
-				await callback();
-			});
-
 			vi.mocked(generateId).mockReturnValueOnce('id-1').mockReturnValueOnce('id-2');
 
 			const char1 = await CharacterService.create({ name: 'Char 1' });
@@ -292,8 +268,8 @@ describe('CharacterService', () => {
 		});
 	});
 
-	describe('updateSummary', () => {
-		it('should update character summary fields', async () => {
+	describe('update', () => {
+		it('should update character fields', async () => {
 			const existingRecord = {
 				id: 'char-1',
 				userId: mockUserId,
@@ -306,28 +282,25 @@ describe('CharacterService', () => {
 
 			vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
 			vi.mocked(decrypt).mockResolvedValue(
-				JSON.stringify({ name: 'Old Name', shortDescription: 'Old' })
+				JSON.stringify({ name: 'Old Name', shortDescription: 'Old', systemPrompt: '' })
 			);
 			vi.mocked(encrypt).mockResolvedValue({
 				ciphertext: new Uint8Array([99]),
 				iv: new Uint8Array([88])
 			});
 
-			const result = await CharacterService.updateSummary('char-1', {
+			const result = await CharacterService.update('char-1', {
 				name: 'New Name'
 			});
 
 			expect(result.name).toBe('New Name');
-			await vi.runAllTimersAsync();
-			expect(localDB.putRecord).toHaveBeenCalled();
+			expect(encryptedWriteQueue.upsert).toHaveBeenCalled();
 		});
 
 		it('should throw NOT_FOUND when character does not exist', async () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
 
-			await expect(
-				CharacterService.updateSummary('non-existent', { name: 'New' })
-			).rejects.toThrow();
+			await expect(CharacterService.update('non-existent', { name: 'New' })).rejects.toThrow();
 		});
 
 		it('should throw NOT_FOUND when character is deleted', async () => {
@@ -341,89 +314,7 @@ describe('CharacterService', () => {
 				encryptedDataIV: new Uint8Array([2])
 			} as unknown as BaseRecord);
 
-			await expect(CharacterService.updateSummary('char-1', { name: 'New' })).rejects.toThrow();
-		});
-	});
-
-	describe('updateData', () => {
-		it('should update character data fields', async () => {
-			const existingRecord = {
-				id: 'char-1',
-				userId: mockUserId,
-				createdAt: 1000,
-				updatedAt: 1000,
-				isDeleted: false,
-				encryptedData: new Uint8Array([1]),
-				encryptedDataIV: new Uint8Array([2])
-			};
-
-			vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
-			vi.mocked(decrypt).mockResolvedValue(
-				JSON.stringify({ systemPrompt: 'Old prompt', greetingMessage: 'Hi' })
-			);
-			vi.mocked(encrypt).mockResolvedValue({
-				ciphertext: new Uint8Array([99]),
-				iv: new Uint8Array([88])
-			});
-
-			const result = await CharacterService.updateData('char-1', {
-				systemPrompt: 'New prompt'
-			});
-
-			expect(result.systemPrompt).toBe('New prompt');
-			await vi.runAllTimersAsync();
-			expect(localDB.putRecord).toHaveBeenCalled();
-		});
-	});
-
-	describe('update (combined)', () => {
-		it('should update both summary and data in a transaction', async () => {
-			const mockSummary = {
-				id: 'char-1',
-				userId: mockUserId,
-				createdAt: 1000,
-				updatedAt: 1000,
-				isDeleted: false,
-				encryptedData: new Uint8Array([1]),
-				encryptedDataIV: new Uint8Array([2])
-			};
-			const mockData = {
-				id: 'char-1',
-				userId: mockUserId,
-				createdAt: 1000,
-				updatedAt: 1000,
-				isDeleted: false,
-				encryptedData: new Uint8Array([3]),
-				encryptedDataIV: new Uint8Array([4])
-			};
-
-			vi.mocked(localDB.getRecord).mockImplementation(async (table, id) => {
-				if (table === 'characterSummaries') return mockSummary;
-				return mockData;
-			});
-
-			vi.mocked(decrypt)
-				.mockResolvedValueOnce(JSON.stringify({ name: 'Old Name', shortDescription: 'Old' }))
-				.mockResolvedValueOnce(JSON.stringify({ name: 'Old Name', shortDescription: 'Old' }))
-				.mockResolvedValueOnce(JSON.stringify({ systemPrompt: 'Old prompt' }))
-				.mockResolvedValueOnce(JSON.stringify({ systemPrompt: 'Old prompt' }));
-
-			vi.mocked(encrypt).mockResolvedValue({
-				ciphertext: new Uint8Array([99]),
-				iv: new Uint8Array([88])
-			});
-
-			const result = await CharacterService.update(
-				'char-1',
-				{ name: 'New Name' },
-				{ systemPrompt: 'New prompt' }
-			);
-
-			expect(result.name).toBe('New Name');
-			expect(result.data.systemPrompt).toBe('New prompt');
-
-			await vi.runAllTimersAsync();
-			expect(localDB.putRecord).toHaveBeenCalledTimes(2);
+			await expect(CharacterService.update('char-1', { name: 'New' })).rejects.toThrow();
 		});
 	});
 
@@ -437,17 +328,7 @@ describe('CharacterService', () => {
 			await CharacterService.delete('char-1');
 
 			expect(localDB.transaction).toHaveBeenCalledWith(
-				[
-					'chatSummaries',
-					'chatData',
-					'lorebooks',
-					'scripts',
-					'messages',
-					'toolCalls',
-					'characterSummaries',
-					'characterData',
-					'charjs'
-				],
+				['chats', 'lorebooks', 'scripts', 'messages', 'toolCalls', 'characters', 'charjs'],
 				'rw',
 				expect.any(Function)
 			);

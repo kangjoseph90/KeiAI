@@ -30,6 +30,15 @@ vi.mock('$lib/services/sync', () => ({
 	}
 }));
 
+vi.mock('$lib/services/content/write_queue', () => ({
+	encryptedWriteQueue: {
+		peek: vi.fn(() => undefined),
+		upsert: vi.fn(),
+		drop: vi.fn(),
+		flushTable: vi.fn()
+	}
+}));
+
 describe('Character Flow Integration', () => {
 	const mockMasterKey = {} as CryptoKey;
 
@@ -60,10 +69,10 @@ describe('Character Flow Integration', () => {
 
 	it('should create a character and associate it with a lorebook', async () => {
 		// 1. Create a character
-		const character = await CharacterService.create(
-			{ name: 'Integration Hero' },
-			{ systemPrompt: 'You are a hero.' }
-		);
+		const character = await CharacterService.create({
+			name: 'Integration Hero',
+			systemPrompt: 'You are a hero.'
+		});
 
 		expect(character.id).toBeDefined();
 		expect(character.name).toBe('Integration Hero');
@@ -87,7 +96,7 @@ describe('Character Flow Integration', () => {
 		await CharacterService.delete(character.id);
 
 		// 5. Verify character is gone
-		const deletedChar = await CharacterService.getDetail(character.id);
+		const deletedChar = await CharacterService.get(character.id);
 		expect(deletedChar).toBeNull();
 
 		// 6. Verify lorebook is also soft-deleted (listByOwner should be empty)

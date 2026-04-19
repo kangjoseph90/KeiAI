@@ -11,10 +11,8 @@ import type {
 	BaseRecord,
 	DatabaseWriteEventListener,
 	DatabaseWriteOptions,
-	CharacterSummaryRecord,
-	CharacterDataRecord,
-	ChatSummaryRecord,
-	ChatDataRecord,
+	CharacterRecord,
+	ChatRecord,
 	MessageRecord,
 	SettingsRecord,
 	PersonaRecord,
@@ -22,18 +20,16 @@ import type {
 	ScriptRecord,
 	ModuleRecord,
 	PluginRecord,
-	PresetSummaryRecord,
-	PresetDataRecord,
+	PresetRecord,
 	ToolCallRecord,
 	CharJSRecord
 } from './types';
 import { DatabaseWriteEventEmitter } from './events';
 
 class DexieStore extends Dexie {
-	characterSummaries!: Table<CharacterSummaryRecord, string>;
-	characterData!: Table<CharacterDataRecord, string>;
-	chatSummaries!: Table<ChatSummaryRecord, string>;
-	chatData!: Table<ChatDataRecord, string>;
+	characters!: Table<CharacterRecord, string>;
+	chats!: Table<ChatRecord, string>;
+	presets!: Table<PresetRecord, string>;
 	messages!: Table<MessageRecord, string>;
 	settings!: Table<SettingsRecord, string>;
 	personas!: Table<PersonaRecord, string>;
@@ -41,20 +37,16 @@ class DexieStore extends Dexie {
 	scripts!: Table<ScriptRecord, string>;
 	modules!: Table<ModuleRecord, string>;
 	plugins!: Table<PluginRecord, string>;
-	presetSummaries!: Table<PresetSummaryRecord, string>;
-	presetData!: Table<PresetDataRecord, string>;
 	toolCalls!: Table<ToolCallRecord, string>;
 	charjs!: Table<CharJSRecord, string>;
 
 	constructor() {
 		super('KeiLocalDB');
 
-		this.version(6).stores({
-			// Encrypted tables (Blind Sync targets)
-			characterSummaries: 'id, userId, updatedAt, isDeleted',
-			characterData: 'id, userId, updatedAt, isDeleted',
-			chatSummaries: 'id, userId, characterId, updatedAt, isDeleted',
-			chatData: 'id, userId, characterId, updatedAt, isDeleted',
+		this.version(1).stores({
+			characters: 'id, userId, updatedAt, isDeleted',
+			chats: 'id, userId, characterId, updatedAt, isDeleted',
+			presets: 'id, userId, updatedAt, isDeleted',
 			messages: 'id, userId, chatId, [chatId+sortOrder], updatedAt, isDeleted',
 			settings: 'id, userId, updatedAt, isDeleted',
 			personas: 'id, userId, updatedAt, isDeleted',
@@ -62,8 +54,6 @@ class DexieStore extends Dexie {
 			scripts: 'id, userId, ownerId, updatedAt, isDeleted',
 			modules: 'id, userId, updatedAt, isDeleted',
 			plugins: 'id, userId, updatedAt, isDeleted',
-			presetSummaries: 'id, userId, updatedAt, isDeleted',
-			presetData: 'id, userId, updatedAt, isDeleted',
 			toolCalls: 'id, userId, chatId, updatedAt, isDeleted',
 			charjs: 'id, userId, ownerId, updatedAt, isDeleted'
 		});

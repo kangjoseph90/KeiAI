@@ -6,15 +6,15 @@
  */
 
 import type { PromptTemplateEntry } from '$lib/services/content/preset';
-import { defaultPresetData } from '$lib/services/content/preset';
-import type { CharacterDetail, PresetDetail, Persona, Lorebook, Message } from '$lib/services';
+import { defaultPresetFields } from '$lib/services/content/preset';
+import type { Character, Preset, Persona, Lorebook, Message } from '$lib/services';
 import type { OpenAIChat } from '../types';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
 export interface PromptInput {
-	character: CharacterDetail;
-	preset: PresetDetail | null;
+	character: Character;
+	preset: Preset | null;
 	persona: Persona | null;
 	lorebooks: Lorebook[];
 	messages: Message[];
@@ -23,7 +23,7 @@ export interface PromptInput {
 // ─── Builder ──────────────────────────────────────────────────────────────────
 
 export function buildPrompt(input: PromptInput): OpenAIChat[] {
-	const templateOrder = input.preset?.data.templateOrder ?? defaultPresetData.templateOrder;
+	const templateOrder = input.preset?.templateOrder ?? defaultPresetFields.templateOrder;
 	const result: OpenAIChat[] = [];
 
 	for (const entry of templateOrder) {
@@ -43,7 +43,7 @@ function processEntry(entry: PromptTemplateEntry, input: PromptInput, result: Op
 			}
 			break;
 		case 'description': {
-			const desc = input.character.data.systemPrompt;
+			const desc = input.character.systemPrompt;
 			if (desc) {
 				result.push({ role: 'system', content: desc });
 			}
