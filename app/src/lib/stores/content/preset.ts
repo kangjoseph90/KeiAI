@@ -14,6 +14,8 @@ import { AppError } from '$lib/types/errors';
 export async function getPreset(presetId: string): Promise<Preset> {
 	const active = get(activePreset);
 	if (active?.id === presetId) return active;
+	const cached = presets.get(presetId);
+	if (cached) return cached;
 	const db = await PresetService.get(presetId);
 	if (!db) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
 	return db;
@@ -27,9 +29,9 @@ export async function loadPresets(): Promise<void> {
 	const settings = await getAppSettings();
 	const list = await PresetService.list();
 	if (settings?.presetRefs) {
-		presets.set(sortByRefs(list, settings.presetRefs));
+		presets.setAll(sortByRefs(list, settings.presetRefs));
 	} else {
-		presets.set(list);
+		presets.setAll(list);
 	}
 }
 
@@ -62,7 +64,7 @@ export async function createPreset(fields: DeepPartial<PresetFields> = {}): Prom
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, presetRefs } : s));
-	presets.update((list) => [...list, preset]);
+	presets.set(preset.id, preset);
 
 	return preset;
 }
@@ -72,13 +74,12 @@ export async function updatePreset(
 	changes: DeepPartial<PresetFields>
 ): Promise<void> {
 	const updated = await PresetService.update(presetId, changes);
-	presets.update((list) => list.map((p) => (p.id === presetId ? updated : p)));
+	presets.set(presetId, updated);
 	activePreset.update((p) => (p && p.id === presetId ? updated : p));
 }
 
 export async function deletePreset(presetId: string): Promise<void> {
-	const currentList = get(presets);
-	if (currentList.length <= 1) {
+	if (presets.size <= 1) {
 		throw new AppError('DELETE_LAST_ITEM', 'Cannot delete the last preset.');
 	}
 
@@ -90,7 +91,7 @@ export async function deletePreset(presetId: string): Promise<void> {
 
 	// If deleting the active preset, select a fallback first
 	const isActivePreset = get(activePreset)?.id === presetId;
-	const fallback = isActivePreset ? currentList.find((p) => p.id !== presetId) : undefined;
+	const fallback = isActivePreset ? get(presets).find((p) => p.id !== presetId) : undefined;
 
 	await SettingsService.update({ presetRefs });
 
@@ -105,7 +106,7 @@ export async function deletePreset(presetId: string): Promise<void> {
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, presetRefs } : s));
-	presets.update((list) => list.filter((p) => p.id !== presetId));
+	presets.delete(presetId);
 
 	// Select fallback if the deleted preset was active
 	if (fallback) {

@@ -9,7 +9,6 @@ import {
 	activeUser,
 	pbConnected,
 	isLoggedIn,
-	messageMap,
 	messages,
 	chatTasks,
 	activeChat,
@@ -34,7 +33,7 @@ describe('Global Stores', () => {
 		appSettings.set(null);
 		activeUser.set(null);
 		pbConnected.set(false);
-		messageMap.set(new Map());
+		messages.clear();
 		chatTasks.set(new Map());
 		activeChat.set(null);
 	});
@@ -101,7 +100,7 @@ describe('Global Stores', () => {
 					sortOrder: 'b'
 				} as Message
 			];
-			messageMap.set(new Map(dbMessages.map((m) => [m.id, m])));
+			messages.setAll(dbMessages);
 
 			chatTasks.set(new Map<string, ChatTask>([[chatId, makeMockTask({ messageId: 'm-gen' })]]));
 
@@ -117,9 +116,7 @@ describe('Global Stores', () => {
 		it('should only show DB messages if no generation task', () => {
 			const chatId = 'chat-1';
 			activeChat.set({ id: chatId } as Chat);
-			messageMap.set(
-				new Map([['m1', { id: 'm1', swipes: {}, activeSwipeId: '' } as unknown as Message]])
-			);
+			messages.setAll([{ id: 'm1', swipes: {}, activeSwipeId: '' } as unknown as Message]);
 			chatTasks.set(new Map());
 
 			const display = get(displayMessages);
@@ -142,7 +139,7 @@ describe('Global Stores', () => {
 					sortOrder: 'a'
 				} as Message
 			];
-			messageMap.set(new Map(dbMessages.map((m) => [m.id, m])));
+			messages.setAll(dbMessages);
 
 			chatTasks.set(
 				new Map<string, ChatTask>([

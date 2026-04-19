@@ -1,4 +1,3 @@
-import { get } from 'svelte/store';
 import { PluginService, SettingsService, type PluginFields, type Plugin } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { plugins, appSettings } from '../state';
@@ -11,8 +10,8 @@ import type { DeepPartial } from '$lib/utils/defaults';
  * Explicitly throws error if not found
  */
 export async function getPlugin(pluginId: string): Promise<Plugin> {
-	const active = get(plugins).find((p) => p.id === pluginId);
-	if (active) return active;
+	const cached = plugins.get(pluginId);
+	if (cached) return cached;
 	const db = await PluginService.get(pluginId);
 	if (!db) throw new AppError('NOT_FOUND', `Plugin not found: ${pluginId}`);
 	return db;
@@ -22,9 +21,9 @@ export async function loadPlugins(): Promise<void> {
 	const settings = await getAppSettings();
 	const list = await PluginService.list();
 	if (settings?.pluginRefs) {
-		plugins.set(sortByRefs(list, settings.pluginRefs));
+		plugins.setAll(sortByRefs(list, settings.pluginRefs));
 	} else {
-		plugins.set(list);
+		plugins.setAll(list);
 	}
 }
 
@@ -50,7 +49,7 @@ export async function createPlugin(fields: DeepPartial<PluginFields> = {}): Prom
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, pluginRefs } : s));
-	plugins.update((list) => [...list, plugin]);
+	plugins.set(plugin.id, plugin);
 
 	return plugin;
 }
@@ -60,7 +59,7 @@ export async function updatePlugin(
 	changes: DeepPartial<PluginFields>
 ): Promise<void> {
 	const updated = await PluginService.update(pluginId, changes);
-	plugins.update((list) => list.map((p) => (p.id === pluginId ? updated : p)));
+	plugins.set(pluginId, updated);
 }
 
 export async function deletePlugin(pluginId: string): Promise<void> {
@@ -82,5 +81,5 @@ export async function deletePlugin(pluginId: string): Promise<void> {
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, pluginRefs } : s));
-	plugins.update((list) => list.filter((p) => p.id !== pluginId));
+	plugins.delete(pluginId);
 }

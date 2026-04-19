@@ -6,7 +6,7 @@ import {
 	profileSyncStatus,
 	activeCharacterId,
 	activeChatId,
-	messageMap,
+	messages,
 	chats,
 	activeChat,
 	activeCharacter,
@@ -129,7 +129,7 @@ function startDataSyncListener(): () => void {
 							const chatList = await ChatService.listByCharacter(currentCharId);
 
 							if (get(activeCharacterId) === currentCharId) {
-								chats.set(sortByRefs(chatList, char.chatRefs ?? []));
+								chats.setAll(sortByRefs(chatList, char.chatRefs ?? []));
 
 								const chatId = get(activeChatId);
 								if (chatId && ids.includes(chatId)) {
@@ -147,21 +147,17 @@ function startDataSyncListener(): () => void {
 						if (currentChatId) {
 							const msgs = await Promise.all(ids.map((id) => MessageService.get(id)));
 
-							if (get(activeChatId) === currentChatId) {
-								messageMap.update((map) => {
-									const next = new Map(map);
-									for (let i = 0; i < ids.length; i++) {
-										const id = ids[i];
-										const msg = msgs[i];
-										if (!msg || msg.chatId !== currentChatId) {
-											next.delete(id);
-										} else {
-											next.set(id, msg);
-										}
+							messages.batch(() => {
+								for (let i = 0; i < ids.length; i++) {
+									const id = ids[i];
+									const msg = msgs[i];
+									if (!msg || msg.chatId !== currentChatId) {
+										messages.delete(id);
+									} else {
+										messages.set(id, msg);
 									}
-									return next;
-								});
-							}
+								}
+							});
 						}
 						break;
 					}
@@ -173,12 +169,12 @@ function startDataSyncListener(): () => void {
 							if (tableName === 'lorebooks') {
 								const list = await LorebookService.listByOwner(currentCharId);
 								if (get(activeCharacterId) === currentCharId) {
-									characterLorebooks.set(sortByRefs(list, char.lorebookRefs ?? []));
+									characterLorebooks.setAll(sortByRefs(list, char.lorebookRefs ?? []));
 								}
 							} else {
 								const list = await ScriptService.listByOwner(currentCharId);
 								if (get(activeCharacterId) === currentCharId) {
-									characterScripts.set(sortByRefs(list, char.scriptRefs ?? []));
+									characterScripts.setAll(sortByRefs(list, char.scriptRefs ?? []));
 								}
 							}
 						}
@@ -188,7 +184,7 @@ function startDataSyncListener(): () => void {
 							const chat = await getChat(currentChatId);
 							const list = await LorebookService.listByOwner(currentChatId);
 							if (get(activeChatId) === currentChatId) {
-								chatLorebooks.set(sortByRefs(list, chat.lorebookRefs ?? []));
+								chatLorebooks.setAll(sortByRefs(list, chat.lorebookRefs ?? []));
 							}
 						}
 						break;

@@ -1,7 +1,7 @@
 /**
  * Message Store — Chat-owned Message CRUD
  *
- * Internal state: messageMap (Map<id, Message>) — O(1) lookup by id.
+ * Internal state: messages (EntityStore<Message>) — O(1) lookup by id.
  * UI reads the `messages` derived store (sorted by sortOrder).
  *
  * Messages belong to a chat (1:N via chatId FK).
@@ -17,19 +17,19 @@ import {
 	type Message,
 	type ChatFields
 } from '$lib/services';
-import { messages, messageMap, chats, activeChat, activeChatId } from '../state';
+import { messages, chats, activeChat, activeChatId } from '../state';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
 
 // ─── Getter ────────────────────────────────────────────────────────────
 
 /**
- * Returns a message from the active store (O(1) Map lookup) first,
+ * Returns a message from the active store (O(1) lookup) first,
  * then falls back to IDB if not cached.
  * Follows the same pattern as getModule(), getChat(), etc.
  */
 export async function getMessage(messageId: string): Promise<Message> {
-	const cached = get(messageMap).get(messageId);
+	const cached = messages.get(messageId);
 	if (cached) return cached;
 
 	const db = await MessageService.get(messageId);
@@ -46,7 +46,7 @@ export async function getMessage(messageId: string): Promise<Message> {
 export async function loadInitialMessages(chatId: string, limit = 50): Promise<void> {
 	const initialMsgs = await MessageService.getMessagesBefore(chatId, '\uffff', limit);
 	if (get(activeChatId) === chatId) {
-		messageMap.set(new Map(initialMsgs.map((m) => [m.id, m])));
+		messages.setAll(initialMsgs);
 	}
 }
 
@@ -59,10 +59,8 @@ export async function loadOlderMessages(chatId: string, limit = 50): Promise<voi
 
 	// Store update — only if still viewing this chat
 	if (olderMsgs.length > 0 && get(activeChatId) === chatId) {
-		messageMap.update((map) => {
-			const next = new Map(map);
-			for (const msg of olderMsgs) next.set(msg.id, msg);
-			return next;
+		messages.batch(() => {
+			for (const msg of olderMsgs) messages.set(msg.id, msg);
 		});
 	}
 }
@@ -76,10 +74,8 @@ export async function loadNewerMessages(chatId: string, limit = 50): Promise<voi
 
 	// Store update — only if still viewing this chat
 	if (newerMsgs.length > 0 && get(activeChatId) === chatId) {
-		messageMap.update((map) => {
-			const next = new Map(map);
-			for (const msg of newerMsgs) next.set(msg.id, msg);
-			return next;
+		messages.batch(() => {
+			for (const msg of newerMsgs) messages.set(msg.id, msg);
 		});
 	}
 }
@@ -103,12 +99,8 @@ export async function createMessage(
 
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) === chatId) {
-		messageMap.update((map) => {
-			const next = new Map(map);
-			next.set(newMessage.id, newMessage);
-			return next;
-		});
-		chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
+		messages.set(newMessage.id, newMessage);
+		chats.set(chatId, updatedChat);
 		activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
 	}
 
@@ -125,35 +117,23 @@ export async function updateMessage(
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) !== updated.chatId) return;
 
-	messageMap.update((map) => {
-		const next = new Map(map);
-		next.set(msgId, updated);
-		return next;
-	});
+	messages.set(msgId, updated);
 }
 
 export async function deleteMessage(chatId: string, msgId: string): Promise<void> {
-	const currentMessages = get(messages);
-	const isLastMessage =
-		currentMessages.length > 0 && currentMessages[currentMessages.length - 1].id === msgId;
-
 	// DB write — always happens
 	await MessageService.delete(msgId);
 
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) !== chatId) return;
 
-	messageMap.update((map) => {
-		const next = new Map(map);
-		next.delete(msgId);
-		return next;
-	});
+	messages.delete(msgId);
 
 	const currentChat = get(activeChat);
 	const newCount = Math.max(0, (currentChat?.messageCount ?? 1) - 1);
 	const chatChanges: DeepPartial<ChatFields> = { messageCount: newCount };
 
 	const updatedChat = await ChatService.update(chatId, chatChanges);
-	chats.update((list) => list.map((c) => (c.id === chatId ? updatedChat : c)));
+	chats.set(chatId, updatedChat);
 	activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
 }

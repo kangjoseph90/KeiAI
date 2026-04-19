@@ -14,7 +14,7 @@ import {
 	moveChatItem,
 	forkChat
 } from '$lib/stores/content/chat';
-import { chats, activeChat, activeCharacter, messageMap, chatLorebooks } from '$lib/stores/state';
+import { chats, activeChat, activeCharacter, messages, chatLorebooks } from '$lib/stores/state';
 import { ChatService, LorebookService, CharacterService, MessageService } from '$lib/services';
 import { loadInitialMessages } from '$lib/stores/content/message';
 import { AppError } from '$lib/types/errors';
@@ -83,11 +83,11 @@ describe('Chat Store', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		chats.set([]);
+		chats.clear();
 		activeChat.set(null);
 		activeCharacter.set(mockCharacter);
-		messageMap.set(new Map());
-		chatLorebooks.set([]);
+		messages.clear();
+		chatLorebooks.clear();
 	});
 
 	describe('selectChat', () => {
@@ -148,7 +148,7 @@ describe('Chat Store', () => {
 				chatRefs: [{ id: 'chat-1', sortOrder: 'a' }]
 			};
 			activeCharacter.set(charWithRefs);
-			chats.set([mockChat]);
+			chats.setAll([mockChat]);
 			vi.mocked(CharacterService.update).mockResolvedValue({
 				...mockCharacter,
 				chatRefs: []

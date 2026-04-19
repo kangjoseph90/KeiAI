@@ -43,6 +43,8 @@ import type { DeepPartial } from '$lib/utils/defaults';
 export async function getCharacter(characterId: string): Promise<Character> {
 	const active = get(activeCharacter);
 	if (active?.id === characterId) return active;
+	const cached = characters.get(characterId);
+	if (cached) return cached;
 	const db = await CharacterService.get(characterId);
 	if (!db) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 	return db;
@@ -56,9 +58,9 @@ export async function loadCharacters(): Promise<void> {
 	const settings = await getAppSettings();
 	const list = await CharacterService.list();
 	if (settings?.characterRefs) {
-		characters.set(sortByRefs(list, settings.characterRefs));
+		characters.setAll(sortByRefs(list, settings.characterRefs));
 	} else {
-		characters.set(list);
+		characters.setAll(list);
 	}
 }
 
@@ -69,10 +71,10 @@ export async function selectCharacter(characterId: string): Promise<void> {
 
 	clearActiveChat();
 	const chatList = await ChatService.listByCharacter(characterId);
-	chats.set(sortByRefs(chatList, character.chatRefs ?? []));
+	chats.setAll(sortByRefs(chatList, character.chatRefs ?? []));
 
 	const moduleIds = character.moduleRefs?.map((r) => r.id) ?? [];
-	characterModules.set(get(modules).filter((m) => moduleIds.includes(m.id)));
+	characterModules.setAll(get(modules).filter((m) => moduleIds.includes(m.id)));
 
 	const [lorebooks, scripts, charjs] = await Promise.all([
 		LorebookService.listByOwner(characterId),
@@ -80,18 +82,18 @@ export async function selectCharacter(characterId: string): Promise<void> {
 		CharJSService.listByOwner(characterId)
 	]);
 
-	characterLorebooks.set(sortByRefs(lorebooks, character.lorebookRefs ?? []));
-	characterScripts.set(sortByRefs(scripts, character.scriptRefs ?? []));
-	characterCharJS.set(sortByRefs(charjs, character.charjsRefs ?? []));
+	characterLorebooks.setAll(sortByRefs(lorebooks, character.lorebookRefs ?? []));
+	characterScripts.setAll(sortByRefs(scripts, character.scriptRefs ?? []));
+	characterCharJS.setAll(sortByRefs(charjs, character.charjsRefs ?? []));
 }
 
 export function clearActiveCharacter(): void {
 	activeCharacter.set(null);
-	chats.set([]);
-	characterLorebooks.set([]);
-	characterScripts.set([]);
-	characterCharJS.set([]);
-	characterModules.set([]);
+	chats.clear();
+	characterLorebooks.clear();
+	characterScripts.clear();
+	characterCharJS.clear();
+	characterModules.clear();
 	clearActiveChat();
 }
 
@@ -100,7 +102,7 @@ export async function updateCharacter(
 	changes: DeepPartial<CharacterFields>
 ): Promise<void> {
 	const updated = await CharacterService.update(characterId, changes);
-	characters.update((list) => list.map((c) => (c.id === characterId ? updated : c)));
+	characters.set(characterId, updated);
 	if (characterId === get(activeCharacterId)) {
 		activeCharacter.set(updated);
 	}
@@ -111,7 +113,7 @@ export async function updateCharacterContent(
 	changes: DeepPartial<CharacterContent>
 ): Promise<void> {
 	const updated = await CharacterService.updateContent(characterId, changes);
-	characters.update((list) => list.map((c) => (c.id === characterId ? updated : c)));
+	characters.set(characterId, updated);
 	if (characterId === get(activeCharacterId)) {
 		activeCharacter.set(updated);
 	}
@@ -141,7 +143,7 @@ export async function createCharacter(
 
 	// Update store
 	appSettings.update((s) => (s ? { ...s, characterRefs } : s));
-	characters.update((list) => [...list, character]);
+	characters.set(character.id, character);
 	return character;
 }
 
@@ -164,7 +166,7 @@ export async function deleteCharacter(characterId: string): Promise<void> {
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, characterRefs } : s));
-	characters.update((list) => list.filter((c) => c.id !== characterId));
+	characters.delete(characterId);
 	if (get(activeCharacter)?.id === characterId) {
 		clearActiveCharacter();
 	}
@@ -194,7 +196,7 @@ export async function createCharacterLorebook(
 
 	if (characterId === get(activeCharacterId)) {
 		activeCharacter.update((c) => (c ? { ...c, lorebookRefs } : c));
-		characterLorebooks.update((list) => [...list, lb]);
+		characterLorebooks.set(lb.id, lb);
 	}
 
 	return lb;
@@ -219,7 +221,7 @@ export async function deleteCharacterLorebook(
 
 	if (characterId === get(activeCharacterId)) {
 		activeCharacter.update((c) => (c ? { ...c, lorebookRefs } : c));
-		characterLorebooks.update((list) => list.filter((lb) => lb.id !== lorebookId));
+		characterLorebooks.delete(lorebookId);
 	}
 }
 
@@ -247,7 +249,7 @@ export async function createCharacterScript(
 
 	if (characterId === get(activeCharacterId)) {
 		activeCharacter.update((c) => (c ? { ...c, scriptRefs } : c));
-		characterScripts.update((list) => [...list, sc]);
+		characterScripts.set(sc.id, sc);
 	}
 
 	return sc;
@@ -269,7 +271,7 @@ export async function deleteCharacterScript(characterId: string, scriptId: strin
 
 	if (characterId === get(activeCharacterId)) {
 		activeCharacter.update((c) => (c ? { ...c, scriptRefs } : c));
-		characterScripts.update((list) => list.filter((sc) => sc.id !== scriptId));
+		characterScripts.delete(scriptId);
 	}
 }
 
@@ -296,7 +298,7 @@ export async function createCharacterCharJS(
 
 	if (characterId === get(activeCharacterId)) {
 		activeCharacter.update((c) => (c ? { ...c, charjsRefs } : c));
-		characterCharJS.update((list) => [...list, cjs]);
+		characterCharJS.set(cjs.id, cjs);
 	}
 
 	return cjs;
@@ -318,7 +320,7 @@ export async function deleteCharacterCharJS(characterId: string, charjsId: strin
 
 	if (characterId === get(activeCharacterId)) {
 		activeCharacter.update((c) => (c ? { ...c, charjsRefs } : c));
-		characterCharJS.update((list) => list.filter((cjs) => cjs.id !== charjsId));
+		characterCharJS.delete(charjsId);
 	}
 }
 

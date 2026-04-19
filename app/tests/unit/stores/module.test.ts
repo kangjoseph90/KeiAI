@@ -83,7 +83,7 @@ describe('Module Store', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		modules.set([]);
+		modules.clear();
 		appSettings.set(makeSettings({ theme: 'dark', moduleRefs: [] }));
 		moduleResources.set(new Map());
 	});
@@ -128,7 +128,7 @@ describe('Module Store', () => {
 
 	describe('updateModule', () => {
 		it('should update module content in store', async () => {
-			modules.set([mockModule]);
+			modules.setAll([mockModule]);
 			const updated = { ...mockModule, name: 'Updated' };
 			vi.mocked(ModuleService.updateContent).mockResolvedValue(updated);
 
@@ -140,7 +140,7 @@ describe('Module Store', () => {
 
 	describe('deleteModule', () => {
 		it('should delete module and remove from stores', async () => {
-			modules.set([mockModule]);
+			modules.setAll([mockModule]);
 			appSettings.set(
 				makeSettings({
 					moduleRefs: [{ id: 'mod-1', sortOrder: 'a', enabled: true }]
@@ -158,7 +158,7 @@ describe('Module Store', () => {
 
 	describe('Nested Resource Management', () => {
 		it('should create module lorebook', async () => {
-			modules.set([mockModule]);
+			modules.setAll([mockModule]);
 			const mockLb: Lorebook = {
 				id: 'lb-1',
 				name: 'LB',
@@ -180,7 +180,7 @@ describe('Module Store', () => {
 
 		it('should delete module lorebook', async () => {
 			const modWithRef = { ...mockModule, lorebookRefs: [{ id: 'lb-1', sortOrder: 'a' }] };
-			modules.set([modWithRef]);
+			modules.setAll([modWithRef]);
 			vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
 
 			await deleteModuleLorebook('mod-1', 'lb-1');
@@ -192,7 +192,7 @@ describe('Module Store', () => {
 		});
 
 		it('should create module charjs', async () => {
-			modules.set([mockModule]);
+			modules.setAll([mockModule]);
 			const mockCjs: CharJS = {
 				id: 'cjs-1',
 				name: 'New Script',
@@ -212,7 +212,7 @@ describe('Module Store', () => {
 
 		it('should delete module charjs', async () => {
 			const modWithRef = { ...mockModule, charjsRefs: [{ id: 'cjs-1', sortOrder: 'a' }] };
-			modules.set([modWithRef]);
+			modules.setAll([modWithRef]);
 			vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
 
 			await deleteModuleCharJS('mod-1', 'cjs-1');
@@ -226,7 +226,7 @@ describe('Module Store', () => {
 
 	describe('Folder Management', () => {
 		it('should create module folder', async () => {
-			modules.set([mockModule]);
+			modules.setAll([mockModule]);
 			vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
 
 			const folder = await createModuleFolder('mod-1', 'lorebooks', 'New Folder');

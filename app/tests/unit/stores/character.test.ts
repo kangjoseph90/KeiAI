@@ -119,14 +119,14 @@ describe('Character Store', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		characters.set([]);
+		characters.clear();
 		activeCharacter.set(null);
-		characterLorebooks.set([]);
-		characterScripts.set([]);
-		characterCharJS.set([]);
-		characterModules.set([]);
-		chats.set([]);
-		modules.set([]);
+		characterLorebooks.clear();
+		characterScripts.clear();
+		characterCharJS.clear();
+		characterModules.clear();
+		chats.clear();
+		modules.clear();
 		appSettings.set(
 			makeSettings({
 				theme: 'dark',
@@ -194,7 +194,7 @@ describe('Character Store', () => {
 	describe('clearActiveCharacter', () => {
 		it('should clear all character-related stores', () => {
 			activeCharacter.set(mockCharacter);
-			chats.set([{ id: 'chat-1' } as Chat]);
+			chats.setAll([{ id: 'chat-1' } as Chat]);
 
 			clearActiveCharacter();
 
@@ -207,7 +207,7 @@ describe('Character Store', () => {
 
 	describe('updateCharacter', () => {
 		it('should update character in characters list', async () => {
-			characters.set([mockCharacter]);
+			characters.setAll([mockCharacter]);
 			const updated = { ...mockCharacter, name: 'Updated Name' };
 			vi.mocked(CharacterService.update).mockResolvedValue(updated);
 
@@ -257,7 +257,7 @@ describe('Character Store', () => {
 
 	describe('deleteCharacter', () => {
 		it('should delete character and remove from stores', async () => {
-			characters.set([mockCharacter]);
+			characters.setAll([mockCharacter]);
 			appSettings.set(
 				makeSettings({
 					theme: 'dark',
@@ -312,7 +312,7 @@ describe('Character Store', () => {
 				charjsRefs: [{ id: 'cjs-1', sortOrder: 'a' }]
 			};
 			activeCharacter.set(charWithRefs);
-			characterCharJS.set([{ id: 'cjs-1' } as CharJS]);
+			characterCharJS.setAll([{ id: 'cjs-1' } as CharJS]);
 			vi.mocked(CharacterService.update).mockResolvedValue({
 				...mockCharacter,
 				charjsRefs: []

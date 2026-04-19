@@ -38,13 +38,12 @@ export const moduleResources = readonly(StoreState.moduleResources);
 export const activeCharacter = readonly(StoreState.activeCharacter);
 export const characterLorebooks = readonly(StoreState.characterLorebooks);
 export const characterScripts = readonly(StoreState.characterScripts);
+export const characterCharJS = readonly(StoreState.characterCharJS);
 export const characterModules = readonly(StoreState.characterModules);
 export const chats = readonly(StoreState.chats);
 export const activeChat = readonly(StoreState.activeChat);
 export const chatLorebooks = readonly(StoreState.chatLorebooks);
-export const messageMap = readonly(StoreState.messageMap);
-// `messages` is already a Readable<Message[]> (derived) — no readonly wrapper needed
-export { messages } from './state';
+export const messages = readonly(StoreState.messages);
 export const chatTasks = readonly(StoreState.chatTasks);
 export const activePreset = readonly(StoreState.activePreset);
 // ─── Re-export derived stores directly (already read-only) ──────────

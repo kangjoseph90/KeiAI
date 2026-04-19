@@ -12,8 +12,8 @@ import { AppError } from '$lib/types/errors';
  * Explicitly throws error if not found
  */
 export async function getPersona(personaId: string): Promise<Persona> {
-	const active = get(personas).find((p) => p.id === personaId);
-	if (active) return active;
+	const cached = personas.get(personaId);
+	if (cached) return cached;
 	const db = await PersonaService.get(personaId);
 	if (!db) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
 	return db;
@@ -27,9 +27,9 @@ export async function loadPersonas(): Promise<void> {
 	const settings = await getAppSettings();
 	const list = await PersonaService.list();
 	if (settings?.personaRefs) {
-		personas.set(sortByRefs(list, settings.personaRefs));
+		personas.setAll(sortByRefs(list, settings.personaRefs));
 	} else {
-		personas.set(list);
+		personas.setAll(list);
 	}
 }
 
@@ -62,7 +62,7 @@ export async function createPersona(fields: DeepPartial<PersonaFields> = {}): Pr
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, personaRefs } : s));
-	personas.update((list) => [...list, persona]);
+	personas.set(persona.id, persona);
 
 	return persona;
 }
@@ -72,12 +72,12 @@ export async function updatePersona(
 	changes: DeepPartial<PersonaFields>
 ): Promise<void> {
 	const updated = await PersonaService.update(personaId, changes);
-	personas.update((list) => list.map((p) => (p.id === personaId ? updated : p)));
+	personas.set(personaId, updated);
 }
 
 export async function deletePersona(personaId: string): Promise<void> {
 	const currentList = get(personas);
-	if (currentList.length <= 1) {
+	if (personas.size <= 1) {
 		throw new AppError('DELETE_LAST_ITEM', 'Cannot delete the last persona.');
 	}
 
@@ -106,5 +106,5 @@ export async function deletePersona(personaId: string): Promise<void> {
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, ...settingsChanges } : s));
-	personas.update((list) => list.filter((p) => p.id !== personaId));
+	personas.delete(personaId);
 }

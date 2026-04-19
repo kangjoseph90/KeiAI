@@ -15,7 +15,7 @@ import {
 	chats,
 	activeChat,
 	activeCharacter,
-	messageMap,
+	messages,
 	chatLorebooks,
 	activeCharacterId,
 	activeChatId
@@ -33,6 +33,8 @@ import type { DeepPartial } from '$lib/utils/defaults';
 export async function getChat(chatId: string): Promise<import('$lib/services').Chat> {
 	const active = get(activeChat);
 	if (active?.id === chatId) return active;
+	const cached = chats.get(chatId);
+	if (cached) return cached;
 	const db = await ChatService.get(chatId);
 	if (!db) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 	return db;
@@ -46,7 +48,7 @@ export async function selectChat(chatId: string, characterId: string): Promise<v
 	await loadInitialMessages(chatId, 50);
 
 	const lorebooks = await LorebookService.listByOwner(chatId);
-	chatLorebooks.set(sortByRefs(lorebooks, chat.lorebookRefs ?? []));
+	chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebookRefs ?? []));
 
 	const updated = await CharacterService.update(characterId, { lastActiveChatId: chatId });
 	if (characterId === get(activeCharacterId)) {
@@ -56,8 +58,8 @@ export async function selectChat(chatId: string, characterId: string): Promise<v
 
 export function clearActiveChat(): void {
 	activeChat.set(null);
-	chatLorebooks.set([]);
-	messageMap.set(new Map());
+	chatLorebooks.clear();
+	messages.clear();
 }
 
 export async function createChat(
@@ -82,7 +84,7 @@ export async function createChat(
 
 	if (characterId === get(activeCharacterId)) {
 		activeCharacter.update((c) => (c ? { ...c, chatRefs } : c));
-		chats.update((list) => [...list, chat]);
+		chats.set(chat.id, chat);
 	}
 
 	return chat;
@@ -90,7 +92,7 @@ export async function createChat(
 
 export async function updateChat(chatId: string, changes: DeepPartial<ChatFields>): Promise<void> {
 	const updated = await ChatService.update(chatId, changes);
-	chats.update((list) => list.map((c) => (c.id === chatId ? updated : c)));
+	chats.set(chatId, updated);
 	if (chatId === get(activeChatId)) {
 		activeChat.set(updated);
 	}
@@ -101,7 +103,7 @@ export async function updateChatContent(
 	changes: DeepPartial<ChatContent>
 ): Promise<void> {
 	const updated = await ChatService.update(chatId, changes);
-	chats.update((list) => list.map((c) => (c.id === chatId ? updated : c)));
+	chats.set(chatId, updated);
 	if (chatId === get(activeChatId)) {
 		activeChat.update((c) => (c ? { ...c, ...updated } : c));
 	}
@@ -123,7 +125,7 @@ export async function deleteChat(chatId: string, characterId: string): Promise<v
 
 	if (characterId === get(activeCharacterId)) {
 		activeCharacter.update((c) => (c ? { ...c, chatRefs } : c));
-		chats.update((list) => list.filter((c) => c.id !== chatId));
+		chats.delete(chatId);
 	}
 
 	if (chatId === get(activeChatId)) {
@@ -209,7 +211,7 @@ export async function forkChat(messageId: string): Promise<string> {
 
 	if (characterId === get(activeCharacterId)) {
 		activeCharacter.update((c) => (c ? { ...c, chatRefs } : c));
-		chats.update((list) => [...list, newChat]);
+		chats.set(newChat.id, newChat);
 	}
 
 	return newChat.id;
@@ -239,7 +241,7 @@ export async function createChatLorebook(
 
 	if (chatId === get(activeChatId)) {
 		activeChat.update((c) => (c ? { ...c, lorebookRefs } : c));
-		chatLorebooks.update((list) => [...list, lb]);
+		chatLorebooks.set(lb.id, lb);
 	}
 
 	return lb;
@@ -261,7 +263,7 @@ export async function deleteChatLorebook(chatId: string, lorebookId: string): Pr
 
 	if (chatId === get(activeChatId)) {
 		activeChat.update((c) => (c ? { ...c, lorebookRefs } : c));
-		chatLorebooks.update((list) => list.filter((lb) => lb.id !== lorebookId));
+		chatLorebooks.delete(lorebookId);
 	}
 }
 

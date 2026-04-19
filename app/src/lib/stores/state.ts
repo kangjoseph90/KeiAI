@@ -22,6 +22,7 @@ import type {
 } from '$lib/services';
 import type { AssetSyncStatus, SyncStatus } from '$lib/services';
 import type { DisplayMessage, ChatTask } from './types';
+import { EntityStore } from './entity_store';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
@@ -43,50 +44,36 @@ export const userId = derived(activeUser, (u) => u?.id ?? null);
 export const isGuest = derived(activeUser, (u) => u?.isGuest ?? true);
 
 // ─── Level 1 (Global Lists) ─────────────────────────────────────────
-export const characters = writable<Character[]>([]);
-export const personas = writable<Persona[]>([]);
-export const presets = writable<Preset[]>([]);
-export const modules = writable<Module[]>([]);
-export const plugins = writable<Plugin[]>([]);
+export const characters = new EntityStore<Character>();
+export const personas = new EntityStore<Persona>();
+export const presets = new EntityStore<Preset>();
+export const modules = new EntityStore<Module>();
+export const plugins = new EntityStore<Plugin>();
 
-export const moduleResources = writable(
-	new Map<
-		string,
-		{
-			lorebooks: Lorebook[];
-			scripts: Script[];
-			charjs: CharJS[];
-		}
-	>()
-);
+export interface ModuleResourceEntry {
+	lorebooks: EntityStore<Lorebook>;
+	scripts: EntityStore<Script>;
+	charjs: EntityStore<CharJS>;
+}
+
+export const moduleResources = writable(new Map<string, ModuleResourceEntry>());
 
 // ─── Level 2 (Character Context) ────────────────────────────────────
 export const activeCharacter = writable<Character | null>(null);
-export const characterLorebooks = writable<Lorebook[]>([]);
-export const characterScripts = writable<Script[]>([]);
-export const characterCharJS = writable<CharJS[]>([]);
-export const characterModules = writable<Module[]>([]);
-export const chats = writable<Chat[]>([]);
+export const characterLorebooks = new EntityStore<Lorebook>();
+export const characterScripts = new EntityStore<Script>();
+export const characterCharJS = new EntityStore<CharJS>();
+export const characterModules = new EntityStore<Module>();
+export const chats = new EntityStore<Chat>();
 
 // ─── Level 3 (Chat Context) ─────────────────────────────────────────
 export const activeChat = writable<Chat | null>(null);
-export const chatLorebooks = writable<Lorebook[]>([]);
-export const chatScripts = writable<Script[]>([]);
+export const chatLorebooks = new EntityStore<Lorebook>();
+export const chatScripts = new EntityStore<Script>();
 
-/**
- * Normalized message cache for the active chat.
- * Keyed by message id — O(1) lookup.
- * Use the `messages` derived store for UI rendering (sorted by sortOrder).
- */
-export const messageMap = writable<Map<string, Message>>(new Map());
-
-/**
- * Sorted-by-sortOrder view of messageMap. Read-only for UI consumption.
- * Recomputed only when messageMap changes.
- */
-export const messages: Readable<Message[]> = derived(messageMap, ($map) =>
-	Array.from($map.values()).sort((a, b) => a.sortOrder.localeCompare(b.sortOrder))
-);
+export const messages = new EntityStore<Message>({
+	sortFn: (a, b) => a.sortOrder.localeCompare(b.sortOrder)
+});
 
 // ─── Runtime States (Ephemeral — not persisted to DB) ─────────────────
 /**

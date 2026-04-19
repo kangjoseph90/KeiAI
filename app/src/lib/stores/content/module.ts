@@ -1,4 +1,3 @@
-import { get } from 'svelte/store';
 import {
 	ModuleService,
 	LorebookService,
@@ -18,7 +17,9 @@ import {
 import type { OrderedRef, FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { modules, appSettings, moduleResources } from '../state';
+import { EntityStore } from '../entity_store';
 import { getAppSettings } from './settings';
+import { get } from 'svelte/store';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
@@ -28,8 +29,8 @@ import type { DeepPartial } from '$lib/utils/defaults';
  * Explicitly throws error if not found
  */
 export async function getModule(moduleId: string): Promise<Module> {
-	const active = get(modules).find((m) => m.id === moduleId);
-	if (active) return active;
+	const cached = modules.get(moduleId);
+	if (cached) return cached;
 	const db = await ModuleService.get(moduleId);
 	if (!db) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
 	return db;
@@ -44,9 +45,9 @@ export async function loadModules(): Promise<void> {
 	const mods = await ModuleService.list();
 
 	if (settings?.moduleRefs) {
-		modules.set(sortByRefs(mods, settings.moduleRefs));
+		modules.setAll(sortByRefs(mods, settings.moduleRefs));
 	} else {
-		modules.set(mods);
+		modules.setAll(mods);
 	}
 
 	const entries = await Promise.all(
@@ -56,14 +57,16 @@ export async function loadModules(): Promise<void> {
 				ScriptService.listByOwner(mod.id),
 				CharJSService.listByOwner(mod.id)
 			]);
+			const lorebooksStore = new EntityStore<Lorebook>();
+			lorebooksStore.setAll(sortByRefs(lorebooks, mod.lorebookRefs ?? []));
+			const scriptsStore = new EntityStore<Script>();
+			scriptsStore.setAll(sortByRefs(scripts, mod.scriptRefs ?? []));
+			const charjsStore = new EntityStore<CharJS>();
+			charjsStore.setAll(sortByRefs(charjs, mod.charjsRefs ?? []));
 			return [
 				mod.id,
-				{
-					lorebooks: sortByRefs(lorebooks, mod.lorebookRefs ?? []),
-					scripts: sortByRefs(scripts, mod.scriptRefs ?? []),
-					charjs: sortByRefs(charjs, mod.charjsRefs ?? [])
-				}
-			] as [string, { lorebooks: Lorebook[]; scripts: Script[]; charjs: CharJS[] }];
+				{ lorebooks: lorebooksStore, scripts: scriptsStore, charjs: charjsStore }
+			] as const;
 		})
 	);
 
@@ -92,10 +95,14 @@ export async function createModule(fields: DeepPartial<ModuleFields> = {}): Prom
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, moduleRefs } : s));
-	modules.update((list) => [...list, mod]);
+	modules.set(mod.id, mod);
 	moduleResources.update((map) => {
 		const m = new Map(map);
-		m.set(mod.id, { lorebooks: [], scripts: [], charjs: [] });
+		m.set(mod.id, {
+			lorebooks: new EntityStore<Lorebook>(),
+			scripts: new EntityStore<Script>(),
+			charjs: new EntityStore<CharJS>()
+		});
 		return m;
 	});
 
@@ -107,7 +114,7 @@ export async function updateModule(
 	changes: DeepPartial<ModuleContent>
 ): Promise<void> {
 	const updated = await ModuleService.updateContent(moduleId, changes);
-	modules.update((list) => list.map((m) => (m.id === moduleId ? updated : m)));
+	modules.set(moduleId, updated);
 }
 
 export async function deleteModule(moduleId: string): Promise<void> {
@@ -129,7 +136,7 @@ export async function deleteModule(moduleId: string): Promise<void> {
 
 	// Update Store
 	appSettings.update((s) => (s ? { ...s, moduleRefs } : s));
-	modules.update((list) => list.filter((m) => m.id !== moduleId));
+	modules.delete(moduleId);
 	moduleResources.update((map) => {
 		const m = new Map(map);
 		m.delete(moduleId);
@@ -163,13 +170,8 @@ export async function createModuleLorebook(
 	}
 
 	// Update Store
-	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, lorebookRefs } : m)));
-	moduleResources.update((map) => {
-		const m = new Map(map);
-		const entry = m.get(moduleId) ?? { lorebooks: [], scripts: [], charjs: [] };
-		m.set(moduleId, { ...entry, lorebooks: [...entry.lorebooks, lb] });
-		return m;
-	});
+	modules.set(moduleId, { ...modules.get(moduleId)!, lorebookRefs });
+	get(moduleResources).get(moduleId)?.lorebooks.set(lb.id, lb);
 
 	return lb;
 }
@@ -191,17 +193,8 @@ export async function deleteModuleLorebook(moduleId: string, lorebookId: string)
 	}
 
 	// Update Store
-	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, lorebookRefs } : m)));
-	moduleResources.update((map) => {
-		const m = new Map(map);
-		const entry = m.get(moduleId);
-		if (entry)
-			m.set(moduleId, {
-				...entry,
-				lorebooks: entry.lorebooks.filter((lb) => lb.id !== lorebookId)
-			});
-		return m;
-	});
+	modules.set(moduleId, { ...modules.get(moduleId)!, lorebookRefs });
+	get(moduleResources).get(moduleId)?.lorebooks.delete(lorebookId);
 }
 
 // ─── Module-owned Script CRUD ───────────────────────────────────────
@@ -230,13 +223,8 @@ export async function createModuleScript(
 	}
 
 	// Update Store
-	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, scriptRefs } : m)));
-	moduleResources.update((map) => {
-		const m = new Map(map);
-		const entry = m.get(moduleId) ?? { lorebooks: [], scripts: [], charjs: [] };
-		m.set(moduleId, { ...entry, scripts: [...entry.scripts, sc] });
-		return m;
-	});
+	modules.set(moduleId, { ...modules.get(moduleId)!, scriptRefs });
+	get(moduleResources).get(moduleId)?.scripts.set(sc.id, sc);
 
 	return sc;
 }
@@ -258,14 +246,8 @@ export async function deleteModuleScript(moduleId: string, scriptId: string): Pr
 	}
 
 	// Update Store
-	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, scriptRefs } : m)));
-	moduleResources.update((map) => {
-		const m = new Map(map);
-		const entry = m.get(moduleId);
-		if (entry)
-			m.set(moduleId, { ...entry, scripts: entry.scripts.filter((s) => s.id !== scriptId) });
-		return m;
-	});
+	modules.set(moduleId, { ...modules.get(moduleId)!, scriptRefs });
+	get(moduleResources).get(moduleId)?.scripts.delete(scriptId);
 }
 
 // ─── Module-owned CharJS CRUD ───────────────────────────────────────
@@ -290,13 +272,8 @@ export async function createModuleCharJS(
 		throw error;
 	}
 
-	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, charjsRefs } : m)));
-	moduleResources.update((map) => {
-		const m = new Map(map);
-		const entry = m.get(moduleId) ?? { lorebooks: [], scripts: [], charjs: [] };
-		m.set(moduleId, { ...entry, charjs: [...entry.charjs, cjs] });
-		return m;
-	});
+	modules.set(moduleId, { ...modules.get(moduleId)!, charjsRefs });
+	get(moduleResources).get(moduleId)?.charjs.set(cjs.id, cjs);
 
 	return cjs;
 }
@@ -315,13 +292,8 @@ export async function deleteModuleCharJS(moduleId: string, charjsId: string): Pr
 		throw error;
 	}
 
-	modules.update((list) => list.map((m) => (m.id === moduleId ? { ...m, charjsRefs } : m)));
-	moduleResources.update((map) => {
-		const m = new Map(map);
-		const entry = m.get(moduleId);
-		if (entry) m.set(moduleId, { ...entry, charjs: entry.charjs.filter((s) => s.id !== charjsId) });
-		return m;
-	});
+	modules.set(moduleId, { ...modules.get(moduleId)!, charjsRefs });
+	get(moduleResources).get(moduleId)?.charjs.delete(charjsId);
 }
 
 // ─── Module-owned Folder & Item Management ──────────────────────
@@ -350,9 +322,7 @@ export async function createModuleFolder(
 
 	await ModuleService.update(moduleId, { folders: updatedFolders });
 
-	modules.update((list) =>
-		list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders } : m))
-	);
+	modules.set(moduleId, { ...modules.get(moduleId)!, folders: updatedFolders });
 
 	return newFolder;
 }
@@ -379,9 +349,7 @@ export async function updateModuleFolder(
 
 	await ModuleService.update(moduleId, { folders: updatedFolders });
 
-	modules.update((list) =>
-		list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders } : m))
-	);
+	modules.set(moduleId, { ...modules.get(moduleId)!, folders: updatedFolders });
 }
 
 export async function deleteModuleFolder(
@@ -403,9 +371,7 @@ export async function deleteModuleFolder(
 
 	await ModuleService.update(moduleId, { folders: updatedFolders });
 
-	modules.update((list) =>
-		list.map((m) => (m.id === moduleId ? { ...m, folders: updatedFolders } : m))
-	);
+	modules.set(moduleId, { ...modules.get(moduleId)!, folders: updatedFolders });
 }
 
 export async function moveModuleItem(
@@ -444,7 +410,5 @@ export async function moveModuleItem(
 
 	await ModuleService.update(moduleId, { [refKey]: updatedRefs });
 
-	modules.update((list) =>
-		list.map((m) => (m.id === moduleId ? { ...m, [refKey]: updatedRefs } : m))
-	);
+	modules.set(moduleId, { ...modules.get(moduleId)!, [refKey]: updatedRefs });
 }
