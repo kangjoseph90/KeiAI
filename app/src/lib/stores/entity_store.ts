@@ -10,6 +10,9 @@ export class EntityStore<T extends { id: string }> implements Readable<T[]> {
 	#sortFn: ((a: T, b: T) => number) | undefined;
 	#batchDepth = 0;
 	#dirty = false;
+	#structChanged = true;
+	#cachedArray: T[] | null = null;
+	#sortedIds: string[] = [];
 
 	constructor(options?: EntityStoreOptions<T>) {
 		this.#sortFn = options?.sortFn;
@@ -19,7 +22,7 @@ export class EntityStore<T extends { id: string }> implements Readable<T[]> {
 
 	subscribe = (run: Subscriber<T[]>): Unsubscriber => {
 		this.#subscribers.add(run);
-		run(this.#toArray());
+		run(this.#resolveArray());
 		return () => {
 			this.#subscribers.delete(run);
 		};
@@ -46,16 +49,22 @@ export class EntityStore<T extends { id: string }> implements Readable<T[]> {
 		for (const item of items) {
 			this.#map.set(item.id, item);
 		}
+		this.#structChanged = true;
+		this.#cachedArray = null;
 		this.#flush();
 	}
 
 	set(id: string, item: T): void {
+		if (!this.#map.has(id)) this.#structChanged = true;
 		this.#map.set(id, item);
+		this.#cachedArray = null;
 		this.#flush();
 	}
 
 	delete(id: string): boolean {
 		if (this.#map.delete(id)) {
+			this.#structChanged = true;
+			this.#cachedArray = null;
 			this.#flush();
 			return true;
 		}
@@ -65,6 +74,8 @@ export class EntityStore<T extends { id: string }> implements Readable<T[]> {
 	clear(): void {
 		if (this.#map.size > 0) {
 			this.#map.clear();
+			this.#structChanged = true;
+			this.#cachedArray = null;
 			this.#flush();
 		}
 	}
@@ -95,17 +106,40 @@ export class EntityStore<T extends { id: string }> implements Readable<T[]> {
 	}
 
 	#notify(): void {
-		const array = this.#toArray();
+		const array = this.#resolveArray();
 		for (const sub of this.#subscribers) {
 			sub(array);
 		}
 	}
 
-	#toArray(): T[] {
+	/**
+	 * Resolves the sorted array view. Caches the result until the next mutation.
+	 * Sort is only re-run when structural changes (insert/delete) occurred;
+	 * value-only updates reuse the previous order.
+	 */
+	#resolveArray(): T[] {
+		if (this.#cachedArray) return this.#cachedArray;
+
+		// 1. Value-only update: reuse previous order by re-inserting in sorted key order (O(N))
+		if (this.#sortFn && !this.#structChanged && this.#map.size > 0) {
+			const result: T[] = [];
+			for (const id of this.#sortedIds) {
+				const item = this.#map.get(id);
+				if (item) result.push(item);
+			}
+			this.#cachedArray = result;
+			return result;
+		}
+
+		// 2. Structural change (insert/delete) or no sort: compute from scratch
 		const arr = Array.from(this.#map.values());
 		if (this.#sortFn) {
 			arr.sort(this.#sortFn);
 		}
+
+		this.#sortedIds = arr.map((item) => item.id);
+		this.#structChanged = false;
+		this.#cachedArray = arr;
 		return arr;
 	}
 }
