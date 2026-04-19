@@ -88,16 +88,16 @@ describe('Global Stores', () => {
 					id: 'm1',
 					chatId,
 					role: 'user',
-					swipes: [{ content: 'hello', createdAt: 1000 }],
-					activeSwipeIndex: 0,
+					swipes: { s1: { id: 's1', content: 'hello', createdAt: 1000 } },
+					activeSwipeId: 's1',
 					sortOrder: 'a'
 				} as Message,
 				{
 					id: 'm-gen',
 					chatId,
 					role: 'char',
-					swipes: [{ content: 'world', createdAt: 1001 }],
-					activeSwipeIndex: 0,
+					swipes: { s1: { id: 's1', content: 'world', createdAt: 1001 } },
+					activeSwipeId: 's1',
 					sortOrder: 'b'
 				} as Message
 			];
@@ -118,7 +118,7 @@ describe('Global Stores', () => {
 			const chatId = 'chat-1';
 			activeChat.set({ id: chatId } as ChatDetail);
 			messageMap.set(
-				new Map([['m1', { id: 'm1', swipes: [], activeSwipeIndex: 0 } as unknown as Message]])
+				new Map([['m1', { id: 'm1', swipes: {}, activeSwipeId: '' } as unknown as Message]])
 			);
 			chatTasks.set(new Map());
 
@@ -137,8 +137,8 @@ describe('Global Stores', () => {
 					id: 'm-gen',
 					chatId,
 					role: 'char',
-					swipes: [{ content: '', createdAt: 1000 }],
-					activeSwipeIndex: 0,
+					swipes: { s1: { id: 's1', content: '', createdAt: 1000 } },
+					activeSwipeId: 's1',
 					sortOrder: 'a'
 				} as Message
 			];

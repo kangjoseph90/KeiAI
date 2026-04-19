@@ -11,17 +11,18 @@ import { encryptedWriteQueue } from './write_queue';
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface MessageSwipe {
+	id: string;
 	content: string;
 	thought?: string;
-	toolCalls?: ToolCallAbstract[];
+	toolCalls?: Record<string, ToolCallAbstract>;
 	variables?: Record<string, string>;
 	createdAt: number;
 }
 
 export interface MessageFields {
 	role: 'user' | 'char' | 'system';
-	swipes: MessageSwipe[];
-	activeSwipeIndex: number;
+	swipes: Record<string, MessageSwipe>;
+	activeSwipeId: string;
 }
 
 export interface Message extends MessageFields {
@@ -34,8 +35,8 @@ export interface Message extends MessageFields {
 
 const defaultMessageFields: MessageFields = {
 	role: 'user',
-	swipes: [],
-	activeSwipeIndex: 0
+	swipes: {},
+	activeSwipeId: ''
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────

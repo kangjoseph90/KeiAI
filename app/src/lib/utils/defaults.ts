@@ -46,5 +46,9 @@ export function deepMerge<T>(base: T, overlay?: Record<string, unknown> | null):
  * the entire provider config shape. The read-side types stay strict.
  */
 export type DeepPartial<T> = {
-	[K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
+	[K in keyof T]?: NonNullable<T[K]> extends unknown[]
+		? T[K]
+		: NonNullable<T[K]> extends object
+			? DeepPartial<NonNullable<T[K]>>
+			: T[K];
 };

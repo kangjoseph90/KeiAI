@@ -37,6 +37,7 @@
 	import { ToolCallService } from '$lib/services/content/tool';
 	import { runPipeline } from '$lib/pipeline';
 	import { navigate } from '$lib/router';
+	import { generateId } from '$lib/utils/id';
 	import { tick } from 'svelte';
 
 	let { chatId }: { chatId: string } = $props();
@@ -52,10 +53,11 @@
 		if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
 		const processedText = await runPipeline(chatId, 'input', newMessageText);
 		newMessageText = '';
+		const swipeId = generateId();
 		await createMessage(chatId, {
 			role: 'user',
-			swipes: [{ content: processedText, createdAt: Date.now() }],
-			activeSwipeIndex: 0
+			swipes: { [swipeId]: { id: swipeId, content: processedText, createdAt: Date.now() } },
+			activeSwipeId: swipeId
 		});
 		runChat(chatId);
 	}
@@ -65,10 +67,10 @@
 		// Find the message to update the content in the active swipe
 		const msg = $displayMessages.find((m) => m.id === id);
 		if (!msg) return;
-		const updatedSwipes = msg.swipes.map((s, i) =>
-			i === msg.activeSwipeIndex ? { ...s, content: editMessageText } : s
-		);
-		await updateMessage(id, { swipes: updatedSwipes });
+
+		await updateMessage(id, {
+			swipes: { [msg.activeSwipeId]: { content: editMessageText } }
+		});
 		editModeId = null;
 	}
 
@@ -78,8 +80,8 @@
 		runChat(chatId, { reroll: true });
 	}
 
-	async function handleSwipe(messageId: string, newIndex: number) {
-		await updateMessage(messageId, { activeSwipeIndex: newIndex });
+	async function handleSwipe(messageId: string, newSwipeId: string) {
+		await updateMessage(messageId, { activeSwipeId: newSwipeId });
 	}
 
 	/** Fork the chat at a given message — copies all history up to that point into a new chat. */
@@ -194,7 +196,7 @@
 								onEdit={() => {
 									editModeId = msg.id;
 									// Initialize edit text from the active swipe
-									const activeSwipe = msg.swipes[msg.activeSwipeIndex];
+									const activeSwipe = msg.swipes[msg.activeSwipeId];
 									editMessageText = activeSwipe?.content ?? '';
 								}}
 								onSave={() => handleUpdateMessage(msg.id)}
@@ -205,7 +207,7 @@
 									resolveToolCall(chatId, msg.id, toolCallId, decision)}
 								onLoadDetail={(toolCallId) => ToolCallService.get(toolCallId)}
 								onRegenerate={() => handleRegenerate()}
-								onSwipe={(newIndex) => handleSwipe(msg.id, newIndex)}
+								onSwipe={(newSwipeId) => handleSwipe(msg.id, newSwipeId)}
 								onFork={() => handleFork(msg.id)}
 								isLastMessage={msg.id === $displayMessages[$displayMessages.length - 1]?.id}
 							/>

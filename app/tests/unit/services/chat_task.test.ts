@@ -33,6 +33,10 @@ vi.mock('$lib/services/content/tool', () => ({
 	}
 }));
 
+vi.mock('$lib/utils/id', () => ({
+	generateId: vi.fn(() => 'swipe-new')
+}));
+
 vi.mock('$lib/services/content/message', () => {
 	return {
 		MessageService: {
@@ -125,8 +129,8 @@ const mockNewMessage = {
 	id: 'msg-new',
 	chatId: 'chat-1',
 	role: 'char',
-	swipes: [],
-	activeSwipeIndex: 0,
+	swipes: {},
+	activeSwipeId: '',
 	sortOrder: 'a0'
 };
 
@@ -161,7 +165,15 @@ describe('Chat Pipeline', () => {
 		// Default: getMessage returns message with content
 		vi.mocked(getMessage).mockResolvedValue({
 			...mockNewMessage,
-			swipes: [{ content: 'Hello world', createdAt: Date.now(), variables: {} }]
+			swipes: {
+				'swipe-new': {
+					id: 'swipe-new',
+					content: 'Hello world',
+					createdAt: Date.now(),
+					variables: {}
+				}
+			},
+			activeSwipeId: 'swipe-new'
 		} as unknown as import('$lib/services').Message);
 
 		// Default: getMessagesBefore returns history
@@ -232,7 +244,8 @@ describe('Chat Pipeline', () => {
 		// getMessage returns swipe with empty content for empty check
 		vi.mocked(getMessage).mockResolvedValue({
 			...mockNewMessage,
-			swipes: [{ content: '', createdAt: Date.now() }]
+			swipes: { 'swipe-new': { id: 'swipe-new', content: '', createdAt: Date.now() } },
+			activeSwipeId: 'swipe-new'
 		} as unknown as import('$lib/services').Message);
 
 		await runChat(mockChatId, { handlerOverride: mockHandler });
@@ -301,8 +314,16 @@ describe('Chat Pipeline', () => {
 			id: targetMessageId,
 			chatId: mockChatId,
 			role: 'char',
-			swipes: [{ content: 'Old content', createdAt: 1000, thought: '', toolCalls: [] }],
-			activeSwipeIndex: 0,
+			swipes: {
+				'swipe-new': {
+					id: 'swipe-new',
+					content: 'Old content',
+					createdAt: 1000,
+					thought: '',
+					toolCalls: {}
+				}
+			},
+			activeSwipeId: 'swipe-new',
 			sortOrder: 'a0'
 		};
 
@@ -323,11 +344,11 @@ describe('Chat Pipeline', () => {
 				.mockResolvedValueOnce(mockExistingMessage as unknown as import('$lib/services').Message) // swipe creation
 				.mockResolvedValue({
 					...mockExistingMessage,
-					swipes: [
+					swipes: {
 						...mockExistingMessage.swipes,
-						{ content: 'New content', createdAt: Date.now() }
-					],
-					activeSwipeIndex: 1
+						'swipe-new': { id: 'swipe-new', content: 'New content', createdAt: Date.now() }
+					},
+					activeSwipeId: 'swipe-new'
 				} as unknown as import('$lib/services').Message);
 
 			await runChat(mockChatId, { handlerOverride: mockHandler, reroll: true });
@@ -336,8 +357,10 @@ describe('Chat Pipeline', () => {
 			expect(updateMessage).toHaveBeenCalledWith(
 				targetMessageId,
 				expect.objectContaining({
-					activeSwipeIndex: 1,
-					swipes: expect.arrayContaining([expect.objectContaining({ content: 'Old content' })])
+					activeSwipeId: 'swipe-new',
+					swipes: expect.objectContaining({
+						'swipe-new': expect.objectContaining({ content: expect.any(String) })
+					})
 				})
 			);
 			expect(createMessage).not.toHaveBeenCalled();

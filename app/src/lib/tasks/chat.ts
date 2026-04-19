@@ -30,6 +30,7 @@ import { runPipeline } from '../pipeline';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
 import { deepMerge } from '$lib/utils/defaults';
+import { generateId } from '$lib/utils/id';
 
 export interface RunChatOptions {
 	/** Optional handler override for testing */
@@ -91,17 +92,18 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		const targetSortOrder = targetMessage.sortOrder;
 
 		// setup variables
-		const variables = lastMessage?.swipes[lastMessage.activeSwipeIndex]?.variables ?? {};
-		const swipeIndex = settings.chat.saveMessagesOnSwipe
-			? targetMessage.swipes.length
-			: Math.max(targetMessage.swipes.length - 1, 0);
+		const variables = lastMessage?.swipes[lastMessage.activeSwipeId]?.variables ?? {};
+		const targetSwipeId = settings.chat.saveMessagesOnSwipe
+			? generateId()
+			: targetMessage.activeSwipeId;
 
-		targetMessage.swipes[swipeIndex] = {
+		targetMessage.swipes[targetSwipeId] = {
+			id: targetSwipeId,
 			content: '',
 			variables: deepMerge(chat.data.defaultVariables, variables),
 			createdAt: Date.now()
 		};
-		targetMessage.activeSwipeIndex = swipeIndex;
+		targetMessage.activeSwipeId = targetSwipeId;
 
 		await updateMessage(targetMessage.id, targetMessage);
 
@@ -139,18 +141,18 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		for await (const state of handler.stream(processedMessages, controller.signal)) {
 			const processedContent = await runPipeline(chatId, 'output', state.content);
 
-			const msg = await getMessage(targetMessageId);
-			const updatedSwipes = msg.swipes.map((s, i) =>
-				i === swipeIndex
-					? { ...s, content: processedContent, thought: state.thought ?? s.thought }
-					: s
-			);
-			await updateMessage(targetMessageId, { swipes: updatedSwipes });
+			const swipeUpdate: Record<string, Partial<MessageSwipe>> = {
+				[targetSwipeId]: { content: processedContent }
+			};
+			if (state.thought !== undefined) {
+				swipeUpdate[targetSwipeId].thought = state.thought;
+			}
+			await updateMessage(targetMessageId, { swipes: swipeUpdate });
 		}
 
 		// ── 9. Finalize ─────────────────────────────────────────────
 		const finalMsg = await getMessage(targetMessageId);
-		const finalSwipe = finalMsg.swipes[swipeIndex];
+		const finalSwipe = finalMsg.swipes[targetSwipeId];
 		if (!finalSwipe || finalSwipe.content.length === 0) {
 			setChatTaskError(chatId, 'Empty response from model');
 			return;
@@ -200,23 +202,20 @@ export async function resolveToolCall(
 	const message = await getMessage(messageId);
 	if (!message) return;
 
-	const activeSwipe = message.swipes[message.activeSwipeIndex];
-	if (!activeSwipe?.toolCalls) return;
+	const activeSwipe = message.swipes[message.activeSwipeId];
+	if (!activeSwipe?.toolCalls?.[toolCallId]) return;
 
-	const updatedToolCalls = activeSwipe.toolCalls.map((tc) =>
-		tc.id === toolCallId
-			? { ...tc, status: isApprove ? ('success' as const) : ('rejected' as const) }
-			: tc
+	const updatedStatus = isApprove ? ('success' as const) : ('rejected' as const);
+	const hasOtherPending = Object.entries(activeSwipe.toolCalls).some(
+		([id, tc]) => id !== toolCallId && tc.status === 'pending'
 	);
 
-	const updatedSwipes = message.swipes.map((s, i) =>
-		i === message.activeSwipeIndex ? { ...s, toolCalls: updatedToolCalls } : s
-	);
-	await updateMessage(messageId, { swipes: updatedSwipes });
+	await updateMessage(messageId, {
+		swipes: { [message.activeSwipeId]: { toolCalls: { [toolCallId]: { status: updatedStatus } } } }
+	});
 
 	// 3. If all tool calls are settled, resume the pipeline
-	const hasPending = updatedToolCalls.some((tc) => tc.status === 'pending');
-	if (hasPending) return;
+	if (hasOtherPending) return;
 
 	// Resume with tool execution result
 	await runChat(chatId);

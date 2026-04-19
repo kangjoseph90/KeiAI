@@ -13,7 +13,7 @@
 		onApprove = () => {},
 		onReject = () => {}
 	}: {
-		toolCalls: ToolCallAbstract[];
+		toolCalls: Record<string, ToolCallAbstract>;
 		onLoadDetail?: (id: string) => Promise<ToolCall | null>;
 		onApprove?: (id: string) => void;
 		onReject?: (id: string) => void;
@@ -21,7 +21,7 @@
 </script>
 
 <div class="mt-3 flex w-full flex-col gap-1">
-	{#each toolCalls as tc (tc.id)}
+	{#each Object.values(toolCalls) as tc (tc.id)}
 		<ToolCallItem
 			id={tc.id}
 			name={tc.name}

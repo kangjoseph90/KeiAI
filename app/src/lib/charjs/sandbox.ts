@@ -85,7 +85,7 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
 		MessageService.getMessagesBefore(instance.chatId, '\uffff', 1)
 			.then((msgs) => {
 				const last = msgs[0];
-				const vars = last?.swipes[last.activeSwipeIndex]?.variables ?? {};
+				const vars = last?.swipes[last.activeSwipeId]?.variables ?? {};
 				const val = vars[key];
 				promise.resolve(val !== undefined ? ctx.newString(val) : ctx.null);
 			})
@@ -106,14 +106,13 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
 				const last = msgs[0];
 				if (!last) return promise.resolve(ctx.undefined);
 
-				const swipe = last.swipes[last.activeSwipeIndex];
-				const nextVars = { ...(swipe.variables ?? {}), [key]: value };
+				const swipe = last.swipes[last.activeSwipeId];
+				const nextVars = { ...(swipe?.variables ?? {}), [key]: value };
 
-				const nextSwipes = last.swipes.map((s, i) =>
-					i === last.activeSwipeIndex ? { ...s, variables: nextVars } : s
-				);
+				await updateMessage(last.id, {
+					swipes: { [last.activeSwipeId]: { variables: nextVars } }
+				});
 
-				await updateMessage(last.id, { swipes: nextSwipes });
 				promise.resolve(ctx.undefined);
 			})
 			.catch(() => promise.resolve(ctx.undefined));

@@ -90,7 +90,7 @@ export async function createMessage(
 	chatId: string,
 	fields: DeepPartial<MessageFields> = {}
 ): Promise<Message> {
-	const activeSwipe = (fields.swipes ?? [])[fields.activeSwipeIndex ?? 0];
+	const activeSwipe = (fields.swipes ?? {})[fields.activeSwipeId ?? ''];
 	const preview = activeSwipe?.content?.substring(0, 50) ?? '';
 
 	// DB writes — always happen with explicit chatId
@@ -140,7 +140,7 @@ export async function updateMessage(
 	const isLastMessage =
 		currentMessages.length > 0 && currentMessages[currentMessages.length - 1].id === msgId;
 	if (isLastMessage) {
-		const activeSwipe = updated.swipes[updated.activeSwipeIndex];
+		const activeSwipe = updated.swipes[updated.activeSwipeId];
 		const preview = activeSwipe?.content?.substring(0, 50) ?? '';
 		const updatedChat = await ChatService.updateSummary(updated.chatId, {
 			lastMessagePreview: preview
@@ -175,7 +175,7 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
 		const remainingMessages = get(messages);
 		const lastMsg = remainingMessages[remainingMessages.length - 1];
 		summaryChanges.lastMessagePreview = lastMsg
-			? (lastMsg.swipes[lastMsg.activeSwipeIndex]?.content?.substring(0, 50) ?? '')
+			? (lastMsg.swipes[lastMsg.activeSwipeId]?.content?.substring(0, 50) ?? '')
 			: '';
 	}
 

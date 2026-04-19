@@ -214,6 +214,7 @@
 - 결과:
     - 연속 수정 시 발생하던 수십 건의 암호화 + 디스크 쓰기가 **단 1건으로 통합**되어 성능 대폭 상승.
     - 어댑터 레이어는 암호화 관심사 없이 순수 저장소 인터페이스로 유지되어 계층 책임이 깔끔하게 분리됨.
+    - 한계: `deepMerge`는 배열을 재귀 병합하지 않고 통째로 덮어쓴다. 따라서 배열 필드에 대해 연속된 부분 업데이트가 발생하면 write queue의 자동 병합이 의도대로 동작하지 않는다. 이 문제의 해결은 ADR 027을 참조.
 
 ---
 
@@ -447,3 +448,27 @@
     - displayMessages 로직이 대폭 단순화됨.
     - Variable이 swipe 단위로 영속되어 채팅 세션 간에 유지됨.
 - 참고: ADR 008 (폐기), ADR 014 (폐기), ADR 015 (EncryptedWriteQueue), ADR 016 (한 태스크 = 한 네트워크 요청)
+
+---
+
+## 027: deepMerge 한계 극복을 위한 Record 기반 중첩 구조
+
+- 상태: 채택
+- 맥락: ADR 015에서 EncryptedWriteQueue를 도입했다. write queue는 `deepMerge`로 연속된 부분 업데이트를 평문 상태에서 병합한 뒤 flush 시 한 번만 암호화한다. 이는 객체 필드에는 완벽하게 동작한다.
+- 문제:
+    - `deepMerge`의 병합 규칙: 객체는 재귀 병합, 배열은 통째로 덮어쓰기.
+    - swipes가 `MessageSwipe[]` 배열이었을 때, 스트리밍 루프의 content 업데이트와 CharJS 핸들러의 setVar가 같은 swipe를 동시에 수정하면, 나중에 온 업데이트가 전체 swipes 배열을 덮어써서 이전 변경사항이 유실되는 레이스 컨디션이 발생했다.
+    - 이 문제를 피하기 위해 스트리밍 루프에서 매 청크마다 `getMessage`로 최신 상태를 읽어와야 했고, 이는 DB 읽기 + AES-256-GCM 복호화 비용을 매 청크마다 발생시켰다.
+    - toolCalls 역시 `ToolCallAbstract[]` 배열이어서, 자동 승인 등 여러 toolCall이 동시에 resolve되는 시나리오에서 동일한 문제가 예상되었다.
+- 결정:
+    - 배열을 `Record<string, T>`로 변환하여 deepMerge가 항목 단위로 재귀 병합하도록 변경.
+    - `swipes: MessageSwipe[]` → `swipes: Record<string, MessageSwipe>`, `activeSwipeIndex` → `activeSwipeId`
+    - `toolCalls: ToolCallAbstract[]` → `toolCalls: Record<string, ToolCallAbstract>`
+    - 각 항목에 `id: string` 필드 추가로 Record 키와 동기화.
+    - UI에서 순서가 필요한 경우 `Object.values(obj).sort((a, b) => a.createdAt - b.createdAt)`로 정렬.
+- 결과:
+    - 스트리밍 루프에서 `getMessage` 호출 제거. write queue가 부분 업데이트를 자동 병합하므로 읽기-수정-쓰기 사이클이 불필요.
+    - setVar/스트리밍/resolveToolCall 등 서로 다른 출처의 동시 업데이트가 write queue에서 안전하게 병합됨.
+    - 부분 업데이트 코드가 간결해짐: `updateMessage(id, { swipes: { [swipeId]: { content: 'hello' } } })`
+- 원칙: 앞으로 새로운 중첩 데이터 구조를 설계할 때, 항목 단위 부분 업데이트가 필요한 경우 배열이 아닌 Record를 사용해야 한다. 배열은 항목 전체를 항상 교체하는 경우(예: 레퍼런스 목록, 폴더 정의 등)에만 사용.
+- 참고: ADR 015 (EncryptedWriteQueue), ADR 026 (즉시 영속 메시지)

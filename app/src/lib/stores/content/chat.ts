@@ -189,8 +189,7 @@ export async function forkChat(messageId: string): Promise<string> {
 
 	const { lorebookRefs: _, ...dataCopy } = originalChat.data;
 	const lastMsg = allMessages[allMessages.length - 1];
-	const lastMessagePreview =
-		lastMsg.swipes[lastMsg.activeSwipeIndex]?.content?.substring(0, 50) ?? '';
+	const lastMessagePreview = lastMsg.swipes[lastMsg.activeSwipeId]?.content?.substring(0, 50) ?? '';
 
 	const newChat = await ChatService.create(
 		characterId,
@@ -210,7 +209,7 @@ export async function forkChat(messageId: string): Promise<string> {
 				{
 					role: msg.role,
 					swipes: msg.swipes,
-					activeSwipeIndex: msg.activeSwipeIndex
+					activeSwipeId: msg.activeSwipeId
 				},
 				msg.sortOrder
 			)

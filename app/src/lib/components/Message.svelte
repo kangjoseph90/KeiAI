@@ -48,7 +48,7 @@
 		onResolveTool = () => {},
 		onLoadDetail = async (_id: string) => null,
 		onRegenerate = () => {},
-		onSwipe = (_index: number) => {},
+		onSwipe = (_id: string) => {},
 		onFork = () => {},
 		onCopy = () => {}
 	}: {
@@ -65,7 +65,7 @@
 		onResolveTool?: (id: string, decision: 'approve' | 'reject') => void;
 		onLoadDetail?: (id: string) => Promise<ToolCall | null>;
 		onRegenerate?: () => void;
-		onSwipe?: (index: number) => void;
+		onSwipe?: (id: string) => void;
 		onFork?: () => void;
 		onCopy?: () => void;
 	} = $props();
@@ -86,7 +86,15 @@
 	let isUser = $derived(message.role === 'user');
 
 	/** The swipe that is currently active for this message. */
-	let activeSwipe = $derived(message.swipes[message.activeSwipeIndex]);
+	let activeSwipe = $derived(message.swipes[message.activeSwipeId]);
+
+	/** Swipes sorted by creation time for consistent navigation. */
+	let sortedSwipes = $derived(
+		Object.values(message.swipes).sort((a, b) => a.createdAt - b.createdAt)
+	);
+
+	/** The position of the active swipe in the sorted list. */
+	let swipePos = $derived(sortedSwipes.findIndex((s) => s.id === message.activeSwipeId));
 
 	// ── Actions ───────────────────────────────────────────────────────────────
 
@@ -313,7 +321,7 @@
 			</div>
 
 			<!-- Tool Calls (Character only) -->
-			{#if !isUser && activeSwipe?.toolCalls && activeSwipe.toolCalls.length > 0 && message.displayStatus !== 'generating'}
+			{#if !isUser && activeSwipe?.toolCalls && Object.keys(activeSwipe.toolCalls).length > 0 && message.displayStatus !== 'generating'}
 				<ToolCallGroup
 					toolCalls={activeSwipe.toolCalls}
 					{onLoadDetail}
@@ -330,22 +338,20 @@
 						: 'flex-row'}"
 				>
 					<!-- Swipe Navigator (Character only, multiple swipes) -->
-					{#if !isUser && message.swipes.length > 1}
+					{#if !isUser && sortedSwipes.length > 1}
 						<div class="flex items-center gap-0.5 text-xs text-muted-foreground mr-1">
 							<button
 								class="rounded p-0.5 hover:bg-muted disabled:opacity-30"
-								disabled={message.activeSwipeIndex === 0}
-								onclick={() => onSwipe(message.activeSwipeIndex - 1)}
+								disabled={swipePos <= 0}
+								onclick={() => onSwipe(sortedSwipes[swipePos - 1].id)}
 							>
 								<ChevronLeft class="size-3.5" />
 							</button>
-							<span class="tabular-nums font-medium"
-								>{message.activeSwipeIndex + 1} / {message.swipes.length}</span
-							>
+							<span class="tabular-nums font-medium">{swipePos + 1} / {sortedSwipes.length}</span>
 							<button
 								class="rounded p-0.5 hover:bg-muted disabled:opacity-30"
-								disabled={message.activeSwipeIndex === message.swipes.length - 1}
-								onclick={() => onSwipe(message.activeSwipeIndex + 1)}
+								disabled={swipePos >= sortedSwipes.length - 1}
+								onclick={() => onSwipe(sortedSwipes[swipePos + 1].id)}
 							>
 								<ChevronRight class="size-3.5" />
 							</button>

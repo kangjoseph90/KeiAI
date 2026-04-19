@@ -63,8 +63,10 @@ import { generateKeyBetween } from 'fractional-indexing';
 function makeFields(content: string, role: MessageFields['role'] = 'user'): MessageFields {
 	return {
 		role,
-		swipes: [{ content, createdAt: 1000 }],
-		activeSwipeIndex: 0
+		swipes: {
+			s1: { id: 's1', content, createdAt: 1000 }
+		},
+		activeSwipeId: 's1'
 	};
 }
 
@@ -242,7 +244,7 @@ describe('MessageService', () => {
 			expect(result).not.toBeNull();
 			expect(result?.id).toBe('msg-1');
 			expect(result?.role).toBe('user');
-			expect(result?.swipes[result.activeSwipeIndex].content).toBe('Hello');
+			expect(result!.swipes[result!.activeSwipeId].content).toBe('Hello');
 		});
 
 		it('should return null when message does not exist', async () => {
@@ -282,7 +284,7 @@ describe('MessageService', () => {
 			expect(result.id).toBe('test-msg-id');
 			expect(result.chatId).toBe('chat-1');
 			expect(result.role).toBe('user');
-			expect(result.swipes[result.activeSwipeIndex].content).toBe('Hi');
+			expect(result.swipes[result.activeSwipeId].content).toBe('Hi');
 			expect(result.sortOrder).toBe('a0');
 
 			expect(generateKeyBetween).toHaveBeenCalledWith(null, null);
@@ -344,13 +346,11 @@ describe('MessageService', () => {
 				iv: new Uint8Array([88])
 			});
 
-			const updatedSwipes = [{ content: 'New content', createdAt: 2000 }];
 			const result = await MessageService.update('msg-1', {
-				swipes: updatedSwipes,
-				activeSwipeIndex: 0
+				swipes: { s1: { id: 's1', content: 'New content', createdAt: 2000 } }
 			});
 
-			expect(result.swipes[result.activeSwipeIndex].content).toBe('New content');
+			expect(result.swipes[result.activeSwipeId].content).toBe('New content');
 			expect(localDB.putRecord).not.toHaveBeenCalled();
 		});
 
@@ -358,7 +358,9 @@ describe('MessageService', () => {
 			vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
 
 			await expect(
-				MessageService.update('non-existent', { swipes: [{ content: 'New', createdAt: 0 }] })
+				MessageService.update('non-existent', {
+					swipes: { s1: { id: 's1', content: 'New', createdAt: 0 } }
+				})
 			).rejects.toThrow();
 		});
 	});
