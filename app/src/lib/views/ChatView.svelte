@@ -51,7 +51,9 @@
 
 	async function handleSendMessage() {
 		if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
-		const processedText = await runPipeline(chatId, 'input', newMessageText);
+		const processedText = await runPipeline(chatId, 'input', newMessageText, {
+			role: 'user'
+		});
 		newMessageText = '';
 		const swipeId = generateId();
 		await createMessage(chatId, {

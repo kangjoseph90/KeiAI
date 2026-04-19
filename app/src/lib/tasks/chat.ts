@@ -125,9 +125,11 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
 		// ── 6. Apply Request Scripts ─────────────────────────────────
 		const processedMessages = await Promise.all(
-			prompt.map(async (msg) => ({
+			prompt.map(async (msg, index) => ({
 				...msg,
-				content: await runPipeline(chatId, 'request', msg.content)
+				content: await runPipeline(chatId, 'request', msg.content, {
+					role: msg.role
+				})
 			}))
 		);
 
@@ -139,7 +141,9 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
 		// ── 8. Stream chunks → update swipe in DB ─────────────────────
 		for await (const state of handler.stream(processedMessages, controller.signal)) {
-			const processedContent = await runPipeline(chatId, 'output', state.content);
+			const processedContent = await runPipeline(chatId, 'output', state.content, {
+				messageId: targetMessageId
+			});
 
 			const swipeUpdate: Record<string, Partial<MessageSwipe>> = {
 				[targetSwipeId]: { content: processedContent }

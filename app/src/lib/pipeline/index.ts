@@ -12,25 +12,37 @@
  */
 
 import { collectPipelineHandlers } from './handler';
-import type { PhaseType, Phase } from './types';
+import type {
+	PipelinePhaseType,
+	PipelinePhase,
+	PipelineContext,
+	PipelineContextType
+} from './types';
 import { isSafeMode } from '$lib/config';
 
-export async function runPipeline<K extends keyof PhaseType>(
+export async function runPipeline<K extends keyof PipelinePhaseType>(
 	chatId: string,
 	phase: K,
-	data: PhaseType[K]
-): Promise<PhaseType[K]>;
+	data: PipelinePhaseType[K],
+	context: PipelineContextType[K]
+): Promise<PipelinePhaseType[K]>;
 export async function runPipeline<P extends string, T>(
 	chatId: string,
-	phase: Phase<P>,
-	data: T
+	phase: PipelinePhase<P>,
+	data: T,
+	context?: PipelineContext<P>
 ): Promise<T>;
-export async function runPipeline(chatId: string, phase: string, data: unknown): Promise<unknown> {
+export async function runPipeline(
+	chatId: string,
+	phase: string,
+	data: unknown,
+	context: PipelineContext = {}
+): Promise<unknown> {
 	if (isSafeMode()) return data;
 	const handlers = await collectPipelineHandlers(chatId, phase);
 	let result = data;
 	for (const handler of handlers) {
-		const next = await handler.run(result);
+		const next = await handler.run(result, context);
 		if (next !== undefined) {
 			result = next;
 		}

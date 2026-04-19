@@ -1,16 +1,16 @@
 import { applyRegexScript } from '$lib/scripts/regex';
 import { getMergedScripts } from '$lib/stores';
 import { collectCharJSInstances, invokeHandler } from '$lib/charjs';
-import type { Phase, PhaseType, PipelineHandler } from './types';
+import type { PipelinePhase, PipelinePhaseType, PipelineContext, PipelineHandler } from './types';
 
-export async function collectPipelineHandlers<K extends keyof PhaseType>(
+export async function collectPipelineHandlers<K extends keyof PipelinePhaseType>(
 	chatId: string,
 	phase: K
-): Promise<PipelineHandler<PhaseType[K]>[]>;
+): Promise<PipelineHandler<PipelinePhaseType[K], K>[]>;
 export async function collectPipelineHandlers<P extends string, T>(
 	chatId: string,
-	phase: Phase<P>
-): Promise<PipelineHandler<T>[]>;
+	phase: PipelinePhase<P>
+): Promise<PipelineHandler<T, P>[]>;
 export async function collectPipelineHandlers(
 	chatId: string,
 	phase: string
@@ -36,7 +36,7 @@ async function collectRegexHandlers(
 			id: s.id,
 			phase: s.phase,
 			order: s.advanced ? s.order : 100,
-			run: async (data: unknown) => {
+			run: async (data: unknown, _context: PipelineContext) => {
 				// Regex handlers only execute safely when data is a string
 				if (typeof data === 'string') {
 					return await applyRegexScript(s, data);
@@ -62,8 +62,8 @@ async function collectCharJSHandlers(
 				id: `charjs:${instance.charjs.id}:${phase}`,
 				phase,
 				order: h.order,
-				run: async (data: unknown) => {
-					const result = await invokeHandler(instance, h.fnHandle, data);
+				run: async (data: unknown, context: PipelineContext) => {
+					const result = await invokeHandler(instance, h.fnHandle, data, context);
 					return result !== undefined ? result : data;
 				}
 			});

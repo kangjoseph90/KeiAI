@@ -226,7 +226,8 @@ export async function getOrCreateInstance(
 export async function invokeHandler(
 	instance: CharJSInstance,
 	fnHandle: ReturnType<CharJSInstance['ctx']['newFunction']>,
-	data: unknown
+	data: unknown,
+	context?: unknown
 ): Promise<unknown | undefined> {
 	return instance.mutex.runExclusive(async () => {
 		const ctx = instance.ctx;
@@ -242,9 +243,23 @@ export async function invokeHandler(
 			return undefined;
 		}
 
+		const args: QuickJSHandle[] = [argHandle];
+
+		// Optionally marshal context
+		if (context !== undefined) {
+			const contextHandle = jsonToHandle(ctx, context);
+			if (contextHandle) {
+				args.push(contextHandle);
+			}
+		}
+
 		// Call the handler
-		const result = await ctx.callFunction(fnHandle, ctx.global, argHandle);
-		argHandle.dispose();
+		const result = await ctx.callFunction(fnHandle, ctx.global, ...args);
+
+		// Dispose handles
+		for (const h of args) {
+			h.dispose();
+		}
 
 		// Reset interrupt handler
 		ctx.runtime.setInterruptHandler(() => false);

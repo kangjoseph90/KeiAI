@@ -146,7 +146,10 @@
 		pendingRefresh = true;
 
 		try {
-			const processed = await runPipeline(message.chatId, 'display', contentToRender);
+			const processed = await runPipeline(message.chatId, 'display', contentToRender, {
+				messageId: message.id,
+				role: message.role
+			});
 			const rawHtml = await parseMarkdownAsync(processed);
 			const sanitized = DOMPurify.sanitize(rawHtml as string);
 
