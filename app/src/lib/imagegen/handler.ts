@@ -13,32 +13,32 @@ import { StabilityImageGenHandler } from './handlers/stability';
 import { GoogleImageGenHandler } from './handlers/google';
 
 export function selectImageGenHandler(
-	provider: ImageGenProvider,
-	settings: AppSettings
+    provider: ImageGenProvider,
+    settings: AppSettings
 ): ImageGenHandlerType | null {
-	switch (provider) {
-		case 'openai': {
-			return new OpenAIImageGenHandler({
-				apiKey: settings.openai.apiKey,
-				baseUrl: 'https://api.openai.com/v1',
-				modelId: settings.openai.imagegen.modelId
-			});
-		}
+    switch (provider) {
+        case 'openai': {
+            return new OpenAIImageGenHandler({
+                apiKey: settings.openai.apiKey,
+                baseUrl: 'https://api.openai.com/v1',
+                modelId: settings.openai.imagegen.modelId
+            });
+        }
 
-		case 'stability': {
-			return new StabilityImageGenHandler({
-				apiKey: settings.stability.apiKey,
-				baseUrl: 'https://api.stability.ai',
-				modelId: settings.stability.imagegen.modelId
-			});
-		}
+        case 'stability': {
+            return new StabilityImageGenHandler({
+                apiKey: settings.stability.apiKey,
+                baseUrl: 'https://api.stability.ai',
+                modelId: settings.stability.imagegen.modelId
+            });
+        }
 
-		case 'google': {
-			return new GoogleImageGenHandler({
-				apiKey: settings.google.apiKey,
-				baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-				modelId: settings.google.imagegen.modelId
-			});
-		}
-	}
+        case 'google': {
+            return new GoogleImageGenHandler({
+                apiKey: settings.google.apiKey,
+                baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+                modelId: settings.google.imagegen.modelId
+            });
+        }
+    }
 }

@@ -1,35 +1,35 @@
 {
-	"compilerOptions": {
-		"rewriteRelativeImportExtensions": true,
-		"allowJs": true,
-		"checkJs": true,
-		"esModuleInterop": true,
-		"forceConsistentCasingInFileNames": true,
-		"resolveJsonModule": true,
-		"skipLibCheck": true,
-		"sourceMap": true,
-		"strict": true,
-		"moduleResolution": "bundler",
-		"module": "esnext",
-		"target": "esnext",
-		"lib": ["esnext", "DOM", "DOM.Iterable"],
-		"noEmit": true,
-		"verbatimModuleSyntax": true,
-		"isolatedModules": true,
-		"types": ["vitest/globals"],
-		"paths": {
-			"$lib": ["./src/lib"],
-			"$lib/*": ["./src/lib/*"]
-		}
-	},
-	"include": [
-		"vite.config.ts",
-		"src/**/*.js",
-		"src/**/*.ts",
-		"src/**/*.svelte",
-		"tests/**/*.js",
-		"tests/**/*.ts",
-		"tests/**/*.svelte"
-	],
-	"exclude": ["node_modules/**"]
+    "compilerOptions": {
+        "rewriteRelativeImportExtensions": true,
+        "allowJs": true,
+        "checkJs": true,
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "skipLibCheck": true,
+        "sourceMap": true,
+        "strict": true,
+        "moduleResolution": "bundler",
+        "module": "esnext",
+        "target": "esnext",
+        "lib": ["esnext", "DOM", "DOM.Iterable"],
+        "noEmit": true,
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+        "types": ["vitest/globals"],
+        "paths": {
+            "$lib": ["./src/lib"],
+            "$lib/*": ["./src/lib/*"]
+        }
+    },
+    "include": [
+        "vite.config.ts",
+        "src/**/*.js",
+        "src/**/*.ts",
+        "src/**/*.svelte",
+        "tests/**/*.js",
+        "tests/**/*.ts",
+        "tests/**/*.svelte"
+    ],
+    "exclude": ["node_modules/**"]
 }

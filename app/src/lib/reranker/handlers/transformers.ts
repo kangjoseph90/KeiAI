@@ -12,34 +12,43 @@ import type { RerankerResult, RerankerItem, RerankerHandler } from '../types';
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 export interface TransformersRerankerConfig {
-	modelId: string;
+    modelId: string;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export class TransformersRerankerHandler implements RerankerHandler {
-	private readonly config: TransformersRerankerConfig;
+    private readonly config: TransformersRerankerConfig;
 
-	constructor(config: TransformersRerankerConfig) {
-		this.config = config;
-	}
+    constructor(config: TransformersRerankerConfig) {
+        this.config = config;
+    }
 
-	async rerank(query: string, documents: string[], _signal?: AbortSignal): Promise<RerankerResult> {
-		if (documents.length === 0) return { results: [] };
+    async rerank(
+        query: string,
+        documents: string[],
+        _signal?: AbortSignal
+    ): Promise<RerankerResult> {
+        if (documents.length === 0) return { results: [] };
 
-		// Delegate to appInference which uses the 'text-classification' cross-encoder pipeline
-		const scores = await appInference.rerank({ modelId: this.config.modelId }, query, documents, {
-			device: 'wasm'
-		});
+        // Delegate to appInference which uses the 'text-classification' cross-encoder pipeline
+        const scores = await appInference.rerank(
+            { modelId: this.config.modelId },
+            query,
+            documents,
+            {
+                device: 'wasm'
+            }
+        );
 
-		const results: RerankerItem[] = scores.map((score, index) => ({
-			index,
-			score
-		}));
+        const results: RerankerItem[] = scores.map((score, index) => ({
+            index,
+            score
+        }));
 
-		// Sort by score descending
-		results.sort((a, b) => b.score - a.score);
+        // Sort by score descending
+        results.sort((a, b) => b.score - a.score);
 
-		return { results };
-	}
+        return { results };
+    }
 }

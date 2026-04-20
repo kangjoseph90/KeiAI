@@ -1,18 +1,18 @@
 import {
-	ModuleService,
-	LorebookService,
-	ScriptService,
-	CharJSService,
-	SettingsService,
-	type ModuleFields,
-	type ModuleContent,
-	type Module,
-	type LorebookFields,
-	type Lorebook,
-	type ScriptFields,
-	type Script,
-	type CharJSFields,
-	type CharJS
+    ModuleService,
+    LorebookService,
+    ScriptService,
+    CharJSService,
+    SettingsService,
+    type ModuleFields,
+    type ModuleContent,
+    type Module,
+    type LorebookFields,
+    type Lorebook,
+    type ScriptFields,
+    type Script,
+    type CharJSFields,
+    type CharJS
 } from '$lib/services';
 import type { OrderedRef, FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
@@ -29,11 +29,11 @@ import type { DeepPartial } from '$lib/utils/defaults';
  * Explicitly throws error if not found
  */
 export async function getModule(moduleId: string): Promise<Module> {
-	const cached = modules.get(moduleId);
-	if (cached) return cached;
-	const db = await ModuleService.get(moduleId);
-	if (!db) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
-	return db;
+    const cached = modules.get(moduleId);
+    if (cached) return cached;
+    const db = await ModuleService.get(moduleId);
+    if (!db) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
+    return db;
 }
 
 /**
@@ -41,260 +41,260 @@ export async function getModule(moduleId: string): Promise<Module> {
  * Callers (e.g. route load functions) are responsible for error boundaries.
  */
 export async function loadModules(): Promise<void> {
-	const settings = await getAppSettings();
-	const mods = await ModuleService.list();
+    const settings = await getAppSettings();
+    const mods = await ModuleService.list();
 
-	if (settings?.moduleRefs) {
-		modules.setAll(sortByRefs(mods, settings.moduleRefs));
-	} else {
-		modules.setAll(mods);
-	}
+    if (settings?.moduleRefs) {
+        modules.setAll(sortByRefs(mods, settings.moduleRefs));
+    } else {
+        modules.setAll(mods);
+    }
 
-	const entries = await Promise.all(
-		mods.map(async (mod) => {
-			const [lorebooks, scripts, charjs] = await Promise.all([
-				LorebookService.listByOwner(mod.id),
-				ScriptService.listByOwner(mod.id),
-				CharJSService.listByOwner(mod.id)
-			]);
-			const lorebooksStore = new EntityStore<Lorebook>();
-			lorebooksStore.setAll(sortByRefs(lorebooks, mod.lorebookRefs ?? []));
-			const scriptsStore = new EntityStore<Script>();
-			scriptsStore.setAll(sortByRefs(scripts, mod.scriptRefs ?? []));
-			const charjsStore = new EntityStore<CharJS>();
-			charjsStore.setAll(sortByRefs(charjs, mod.charjsRefs ?? []));
-			return [
-				mod.id,
-				{ lorebooks: lorebooksStore, scripts: scriptsStore, charjs: charjsStore }
-			] as const;
-		})
-	);
+    const entries = await Promise.all(
+        mods.map(async (mod) => {
+            const [lorebooks, scripts, charjs] = await Promise.all([
+                LorebookService.listByOwner(mod.id),
+                ScriptService.listByOwner(mod.id),
+                CharJSService.listByOwner(mod.id)
+            ]);
+            const lorebooksStore = new EntityStore<Lorebook>();
+            lorebooksStore.setAll(sortByRefs(lorebooks, mod.lorebookRefs ?? []));
+            const scriptsStore = new EntityStore<Script>();
+            scriptsStore.setAll(sortByRefs(scripts, mod.scriptRefs ?? []));
+            const charjsStore = new EntityStore<CharJS>();
+            charjsStore.setAll(sortByRefs(charjs, mod.charjsRefs ?? []));
+            return [
+                mod.id,
+                { lorebooks: lorebooksStore, scripts: scriptsStore, charjs: charjsStore }
+            ] as const;
+        })
+    );
 
-	moduleResources.set(new Map(entries));
+    moduleResources.set(new Map(entries));
 }
 
 export async function createModule(fields: DeepPartial<ModuleFields> = {}): Promise<Module> {
-	const settings = await getAppSettings();
+    const settings = await getAppSettings();
 
-	// Create Record in DB
-	const mod = await ModuleService.create(fields);
+    // Create Record in DB
+    const mod = await ModuleService.create(fields);
 
-	// Add to parent's refs
-	const existingRefs = settings.moduleRefs || [];
-	const moduleRefs = [
-		...existingRefs,
-		{ id: mod.id, sortOrder: generateSortOrder(existingRefs), enabled: true }
-	];
-	try {
-		await updateSettings({ moduleRefs });
-	} catch (error) {
-		// If parent's refs update fails, roll back DB
-		await ModuleService.delete(mod.id);
-		throw error;
-	}
+    // Add to parent's refs
+    const existingRefs = settings.moduleRefs || [];
+    const moduleRefs = [
+        ...existingRefs,
+        { id: mod.id, sortOrder: generateSortOrder(existingRefs), enabled: true }
+    ];
+    try {
+        await updateSettings({ moduleRefs });
+    } catch (error) {
+        // If parent's refs update fails, roll back DB
+        await ModuleService.delete(mod.id);
+        throw error;
+    }
 
-	// Update Store
-	modules.set(mod.id, mod);
-	moduleResources.update((map) => {
-		const m = new Map(map);
-		m.set(mod.id, {
-			lorebooks: new EntityStore<Lorebook>(),
-			scripts: new EntityStore<Script>(),
-			charjs: new EntityStore<CharJS>()
-		});
-		return m;
-	});
+    // Update Store
+    modules.set(mod.id, mod);
+    moduleResources.update((map) => {
+        const m = new Map(map);
+        m.set(mod.id, {
+            lorebooks: new EntityStore<Lorebook>(),
+            scripts: new EntityStore<Script>(),
+            charjs: new EntityStore<CharJS>()
+        });
+        return m;
+    });
 
-	return mod;
+    return mod;
 }
 
 export async function updateModule(
-	moduleId: string,
-	changes: DeepPartial<ModuleFields>
+    moduleId: string,
+    changes: DeepPartial<ModuleFields>
 ): Promise<void> {
-	const updated = await ModuleService.update(moduleId, changes);
-	modules.set(moduleId, updated);
+    const updated = await ModuleService.update(moduleId, changes);
+    modules.set(moduleId, updated);
 }
 
 export async function updateModuleContent(
-	moduleId: string,
-	changes: DeepPartial<ModuleContent>
+    moduleId: string,
+    changes: DeepPartial<ModuleContent>
 ): Promise<void> {
-	const updated = await ModuleService.update(moduleId, changes);
-	modules.set(moduleId, updated);
+    const updated = await ModuleService.update(moduleId, changes);
+    modules.set(moduleId, updated);
 }
 
 export async function deleteModule(moduleId: string): Promise<void> {
-	const settings = await getAppSettings();
+    const settings = await getAppSettings();
 
-	// Remove from parent's refs
-	const existingRefs = settings.moduleRefs || [];
-	const moduleRefs = existingRefs.filter((r) => r.id !== moduleId);
-	await updateSettings({ moduleRefs });
+    // Remove from parent's refs
+    const existingRefs = settings.moduleRefs || [];
+    const moduleRefs = existingRefs.filter((r) => r.id !== moduleId);
+    await updateSettings({ moduleRefs });
 
-	// Remove record from DB
-	try {
-		await ModuleService.delete(moduleId);
-	} catch (error) {
-		// If DB delete fails, roll back parent's refs
-		await updateSettings({ moduleRefs: existingRefs });
-		throw error;
-	}
+    // Remove record from DB
+    try {
+        await ModuleService.delete(moduleId);
+    } catch (error) {
+        // If DB delete fails, roll back parent's refs
+        await updateSettings({ moduleRefs: existingRefs });
+        throw error;
+    }
 
-	// Update Store
-	modules.delete(moduleId);
-	moduleResources.update((map) => {
-		const m = new Map(map);
-		m.delete(moduleId);
-		return m;
-	});
+    // Update Store
+    modules.delete(moduleId);
+    moduleResources.update((map) => {
+        const m = new Map(map);
+        m.delete(moduleId);
+        return m;
+    });
 }
 
 // ─── Module-owned Lorebook CRUD ─────────────────────────────────────
 
 export async function createModuleLorebook(
-	moduleId: string,
-	fields: DeepPartial<LorebookFields>
+    moduleId: string,
+    fields: DeepPartial<LorebookFields>
 ): Promise<Lorebook> {
-	const mod = await getModule(moduleId);
+    const mod = await getModule(moduleId);
 
-	// Create Record in DB
-	const lb = await LorebookService.create(moduleId, fields);
+    // Create Record in DB
+    const lb = await LorebookService.create(moduleId, fields);
 
-	// Update parent's refs
-	const existingRefs = mod.lorebookRefs || [];
-	const lorebookRefs: OrderedRef[] = [
-		...existingRefs,
-		{ id: lb.id, sortOrder: generateSortOrder(existingRefs) }
-	];
-	try {
-		await updateModule(moduleId, { lorebookRefs });
-	} catch (error) {
-		// If parent's refs update fails, roll back DB
-		await LorebookService.delete(lb.id);
-		throw error;
-	}
+    // Update parent's refs
+    const existingRefs = mod.lorebookRefs || [];
+    const lorebookRefs: OrderedRef[] = [
+        ...existingRefs,
+        { id: lb.id, sortOrder: generateSortOrder(existingRefs) }
+    ];
+    try {
+        await updateModule(moduleId, { lorebookRefs });
+    } catch (error) {
+        // If parent's refs update fails, roll back DB
+        await LorebookService.delete(lb.id);
+        throw error;
+    }
 
-	// Update Store
-	get(moduleResources).get(moduleId)?.lorebooks.set(lb.id, lb);
+    // Update Store
+    get(moduleResources).get(moduleId)?.lorebooks.set(lb.id, lb);
 
-	return lb;
+    return lb;
 }
 
 export async function deleteModuleLorebook(moduleId: string, lorebookId: string): Promise<void> {
-	const mod = await getModule(moduleId);
+    const mod = await getModule(moduleId);
 
-	// Remove from parent's refs
-	const existingRefs = mod.lorebookRefs || [];
-	const lorebookRefs = existingRefs.filter((r) => r.id !== lorebookId);
-	await updateModule(moduleId, { lorebookRefs });
+    // Remove from parent's refs
+    const existingRefs = mod.lorebookRefs || [];
+    const lorebookRefs = existingRefs.filter((r) => r.id !== lorebookId);
+    await updateModule(moduleId, { lorebookRefs });
 
-	try {
-		await LorebookService.delete(lorebookId);
-	} catch (error) {
-		// If DB delete fails, roll back parent's refs
-		await updateModule(moduleId, { lorebookRefs: existingRefs });
-		throw error;
-	}
+    try {
+        await LorebookService.delete(lorebookId);
+    } catch (error) {
+        // If DB delete fails, roll back parent's refs
+        await updateModule(moduleId, { lorebookRefs: existingRefs });
+        throw error;
+    }
 
-	// Update Store
-	get(moduleResources).get(moduleId)?.lorebooks.delete(lorebookId);
+    // Update Store
+    get(moduleResources).get(moduleId)?.lorebooks.delete(lorebookId);
 }
 
 // ─── Module-owned Script CRUD ───────────────────────────────────────
 
 export async function createModuleScript(
-	moduleId: string,
-	fields: DeepPartial<ScriptFields>
+    moduleId: string,
+    fields: DeepPartial<ScriptFields>
 ): Promise<Script> {
-	const mod = await getModule(moduleId);
+    const mod = await getModule(moduleId);
 
-	// Create Record in DB
-	const sc = await ScriptService.create(moduleId, fields);
+    // Create Record in DB
+    const sc = await ScriptService.create(moduleId, fields);
 
-	// Update parent's refs
-	const existingRefs = mod.scriptRefs || [];
-	const scriptRefs: OrderedRef[] = [
-		...existingRefs,
-		{ id: sc.id, sortOrder: generateSortOrder(existingRefs) }
-	];
-	try {
-		await updateModule(moduleId, { scriptRefs });
-	} catch (error) {
-		// If parent's refs update fails, roll back DB
-		await ScriptService.delete(sc.id);
-		throw error;
-	}
+    // Update parent's refs
+    const existingRefs = mod.scriptRefs || [];
+    const scriptRefs: OrderedRef[] = [
+        ...existingRefs,
+        { id: sc.id, sortOrder: generateSortOrder(existingRefs) }
+    ];
+    try {
+        await updateModule(moduleId, { scriptRefs });
+    } catch (error) {
+        // If parent's refs update fails, roll back DB
+        await ScriptService.delete(sc.id);
+        throw error;
+    }
 
-	// Update Store
-	get(moduleResources).get(moduleId)?.scripts.set(sc.id, sc);
+    // Update Store
+    get(moduleResources).get(moduleId)?.scripts.set(sc.id, sc);
 
-	return sc;
+    return sc;
 }
 
 export async function deleteModuleScript(moduleId: string, scriptId: string): Promise<void> {
-	const mod = await getModule(moduleId);
+    const mod = await getModule(moduleId);
 
-	// Remove from parent's refs
-	const existingRefs = mod.scriptRefs || [];
-	const scriptRefs = existingRefs.filter((r) => r.id !== scriptId);
-	await updateModule(moduleId, { scriptRefs });
+    // Remove from parent's refs
+    const existingRefs = mod.scriptRefs || [];
+    const scriptRefs = existingRefs.filter((r) => r.id !== scriptId);
+    await updateModule(moduleId, { scriptRefs });
 
-	try {
-		await ScriptService.delete(scriptId);
-	} catch (error) {
-		// If DB delete fails, roll back parent's refs
-		await updateModule(moduleId, { scriptRefs: existingRefs });
-		throw error;
-	}
+    try {
+        await ScriptService.delete(scriptId);
+    } catch (error) {
+        // If DB delete fails, roll back parent's refs
+        await updateModule(moduleId, { scriptRefs: existingRefs });
+        throw error;
+    }
 
-	// Update Store
-	get(moduleResources).get(moduleId)?.scripts.delete(scriptId);
+    // Update Store
+    get(moduleResources).get(moduleId)?.scripts.delete(scriptId);
 }
 
 // ─── Module-owned CharJS CRUD ───────────────────────────────────────
 
 export async function createModuleCharJS(
-	moduleId: string,
-	fields: DeepPartial<CharJSFields>
+    moduleId: string,
+    fields: DeepPartial<CharJSFields>
 ): Promise<CharJS> {
-	const mod = await getModule(moduleId);
+    const mod = await getModule(moduleId);
 
-	const cjs = await CharJSService.create(moduleId, fields);
+    const cjs = await CharJSService.create(moduleId, fields);
 
-	const existingRefs = mod.charjsRefs || [];
-	const charjsRefs: OrderedRef[] = [
-		...existingRefs,
-		{ id: cjs.id, sortOrder: generateSortOrder(existingRefs) }
-	];
-	try {
-		await updateModule(moduleId, { charjsRefs });
-	} catch (error) {
-		await CharJSService.delete(cjs.id);
-		throw error;
-	}
+    const existingRefs = mod.charjsRefs || [];
+    const charjsRefs: OrderedRef[] = [
+        ...existingRefs,
+        { id: cjs.id, sortOrder: generateSortOrder(existingRefs) }
+    ];
+    try {
+        await updateModule(moduleId, { charjsRefs });
+    } catch (error) {
+        await CharJSService.delete(cjs.id);
+        throw error;
+    }
 
-	// Update Store
-	get(moduleResources).get(moduleId)?.charjs.set(cjs.id, cjs);
+    // Update Store
+    get(moduleResources).get(moduleId)?.charjs.set(cjs.id, cjs);
 
-	return cjs;
+    return cjs;
 }
 
 export async function deleteModuleCharJS(moduleId: string, charjsId: string): Promise<void> {
-	const mod = await getModule(moduleId);
+    const mod = await getModule(moduleId);
 
-	const existingRefs = mod.charjsRefs || [];
-	const charjsRefs = existingRefs.filter((r) => r.id !== charjsId);
-	await updateModule(moduleId, { charjsRefs });
+    const existingRefs = mod.charjsRefs || [];
+    const charjsRefs = existingRefs.filter((r) => r.id !== charjsId);
+    await updateModule(moduleId, { charjsRefs });
 
-	try {
-		await CharJSService.delete(charjsId);
-	} catch (error) {
-		await updateModule(moduleId, { charjsRefs: existingRefs });
-		throw error;
-	}
+    try {
+        await CharJSService.delete(charjsId);
+    } catch (error) {
+        await updateModule(moduleId, { charjsRefs: existingRefs });
+        throw error;
+    }
 
-	get(moduleResources).get(moduleId)?.charjs.delete(charjsId);
+    get(moduleResources).get(moduleId)?.charjs.delete(charjsId);
 }
 
 // ─── Module-owned Folder & Item Management ──────────────────────
@@ -302,106 +302,106 @@ export async function deleteModuleCharJS(moduleId: string, charjsId: string): Pr
 export type ModuleFolderType = 'lorebooks' | 'scripts' | 'charjs';
 
 export async function createModuleFolder(
-	moduleId: string,
-	folderType: ModuleFolderType,
-	name: string,
-	parentId?: string
+    moduleId: string,
+    folderType: ModuleFolderType,
+    name: string,
+    parentId?: string
 ): Promise<FolderDef> {
-	const mod = await getModule(moduleId);
+    const mod = await getModule(moduleId);
 
-	const folders = mod.folders ?? {};
-	const typeFolders = folders[folderType] ?? [];
+    const folders = mod.folders ?? {};
+    const typeFolders = folders[folderType] ?? [];
 
-	const newFolder = {
-		id: generateId(),
-		name,
-		sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
-		parentId
-	};
+    const newFolder = {
+        id: generateId(),
+        name,
+        sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
+        parentId
+    };
 
-	const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
+    const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
 
-	await updateModule(moduleId, { folders: updatedFolders });
+    await updateModule(moduleId, { folders: updatedFolders });
 
-	return newFolder;
+    return newFolder;
 }
 
 export async function updateModuleFolder(
-	moduleId: string,
-	folderType: ModuleFolderType,
-	folderId: string,
-	changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
+    moduleId: string,
+    folderType: ModuleFolderType,
+    folderId: string,
+    changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
-	const mod = await getModule(moduleId);
+    const mod = await getModule(moduleId);
 
-	const folders = mod.folders ?? {};
-	const typeFolders = folders[folderType] ?? [];
+    const folders = mod.folders ?? {};
+    const typeFolders = folders[folderType] ?? [];
 
-	const updatedTypeFolders = typeFolders.map((f: FolderDef) =>
-		f.id === folderId ? { ...f, ...changes } : f
-	);
+    const updatedTypeFolders = typeFolders.map((f: FolderDef) =>
+        f.id === folderId ? { ...f, ...changes } : f
+    );
 
-	const updatedFolders = {
-		...folders,
-		[folderType]: updatedTypeFolders
-	};
+    const updatedFolders = {
+        ...folders,
+        [folderType]: updatedTypeFolders
+    };
 
-	await updateModule(moduleId, { folders: updatedFolders });
+    await updateModule(moduleId, { folders: updatedFolders });
 }
 
 export async function deleteModuleFolder(
-	moduleId: string,
-	folderType: ModuleFolderType,
-	folderId: string
+    moduleId: string,
+    folderType: ModuleFolderType,
+    folderId: string
 ): Promise<void> {
-	const mod = await getModule(moduleId);
+    const mod = await getModule(moduleId);
 
-	const folders = mod.folders ?? {};
-	const typeFolders = folders[folderType] ?? [];
+    const folders = mod.folders ?? {};
+    const typeFolders = folders[folderType] ?? [];
 
-	const updatedTypeFolders = typeFolders.filter((f: FolderDef) => f.id !== folderId);
+    const updatedTypeFolders = typeFolders.filter((f: FolderDef) => f.id !== folderId);
 
-	const updatedFolders = {
-		...folders,
-		[folderType]: updatedTypeFolders
-	};
+    const updatedFolders = {
+        ...folders,
+        [folderType]: updatedTypeFolders
+    };
 
-	await updateModule(moduleId, { folders: updatedFolders });
+    await updateModule(moduleId, { folders: updatedFolders });
 }
 
 export async function moveModuleItem(
-	moduleId: string,
-	folderType: ModuleFolderType,
-	itemId: string,
-	newFolderId?: string,
-	newSortOrder?: string
+    moduleId: string,
+    folderType: ModuleFolderType,
+    itemId: string,
+    newFolderId?: string,
+    newSortOrder?: string
 ): Promise<void> {
-	const mod = await getModule(moduleId);
+    const mod = await getModule(moduleId);
 
-	let refKey: keyof typeof mod;
-	switch (folderType) {
-		case 'lorebooks':
-			refKey = 'lorebookRefs';
-			break;
-		case 'scripts':
-			refKey = 'scriptRefs';
-			break;
-		case 'charjs':
-			refKey = 'charjsRefs';
-			break;
-		default:
-			return;
-	}
+    let refKey: keyof typeof mod;
+    switch (folderType) {
+        case 'lorebooks':
+            refKey = 'lorebookRefs';
+            break;
+        case 'scripts':
+            refKey = 'scriptRefs';
+            break;
+        case 'charjs':
+            refKey = 'charjsRefs';
+            break;
+        default:
+            return;
+    }
 
-	const refs = (mod[refKey] as OrderedRef[]) ?? [];
-	const updatedRefs = refs.map((ref) => {
-		if (ref.id !== itemId) return ref;
-		return {
-			...ref,
-			folderId: newFolderId,
-			sortOrder: newSortOrder ?? ref.sortOrder
-		};
-	});
+    const refs = (mod[refKey] as OrderedRef[]) ?? [];
+    const updatedRefs = refs.map((ref) => {
+        if (ref.id !== itemId) return ref;
+        return {
+            ...ref,
+            folderId: newFolderId,
+            sortOrder: newSortOrder ?? ref.sortOrder
+        };
+    });
 
-	await updateModule(moduleId, { [refKey]: updatedRefs });
+    await updateModule(moduleId, { [refKey]: updatedRefs });
 }

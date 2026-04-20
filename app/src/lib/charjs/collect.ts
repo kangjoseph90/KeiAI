@@ -13,32 +13,36 @@ import { getModule } from '$lib/stores/content/module';
  * @param mode - the specific phase or event name (e.g. 'output', 'message:sent')
  */
 export async function collectCharJSInstances(
-	chatId: string,
-	kind: ModeKind,
-	mode: string
+    chatId: string,
+    kind: ModeKind,
+    mode: string
 ): Promise<CharJSInstance[]> {
-	const chat = await getChat(chatId);
-	const character = await getCharacter(chat.characterId);
-	const activeModuleIds = await getActiveModuleIds(chat.characterId);
+    const chat = await getChat(chatId);
+    const character = await getCharacter(chat.characterId);
+    const activeModuleIds = await getActiveModuleIds(chat.characterId);
 
-	const charjsRequests: Array<{ id: string; allowLowLevel: boolean }> = [];
+    const charjsRequests: Array<{ id: string; allowLowLevel: boolean }> = [];
 
-	if (character.charjsRefs) {
-		const allow = character.allowLowLevel;
-		charjsRequests.push(...character.charjsRefs.map((r) => ({ id: r.id, allowLowLevel: allow })));
-	}
+    if (character.charjsRefs) {
+        const allow = character.allowLowLevel;
+        charjsRequests.push(
+            ...character.charjsRefs.map((r) => ({ id: r.id, allowLowLevel: allow }))
+        );
+    }
 
-	const modules = await Promise.all([...activeModuleIds].map((id) => getModule(id)));
-	for (const mod of modules) {
-		if (mod.charjsRefs) {
-			const allow = mod.allowLowLevel;
-			charjsRequests.push(...mod.charjsRefs.map((r) => ({ id: r.id, allowLowLevel: allow })));
-		}
-	}
+    const modules = await Promise.all([...activeModuleIds].map((id) => getModule(id)));
+    for (const mod of modules) {
+        if (mod.charjsRefs) {
+            const allow = mod.allowLowLevel;
+            charjsRequests.push(...mod.charjsRefs.map((r) => ({ id: r.id, allowLowLevel: allow })));
+        }
+    }
 
-	const instances = await Promise.all(
-		charjsRequests.map((req) => getOrCreateInstance(chatId, req.id, kind, mode, req.allowLowLevel))
-	);
+    const instances = await Promise.all(
+        charjsRequests.map((req) =>
+            getOrCreateInstance(chatId, req.id, kind, mode, req.allowLowLevel)
+        )
+    );
 
-	return instances.filter((i): i is CharJSInstance => i !== null);
+    return instances.filter((i): i is CharJSInstance => i !== null);
 }

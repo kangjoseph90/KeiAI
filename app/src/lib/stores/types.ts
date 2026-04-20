@@ -16,12 +16,12 @@ export type TaskStatus = 'generating' | 'error';
  * The message/swipe already exists in DB — this just tracks which one is being generated.
  */
 export interface ChatTask {
-	status: TaskStatus;
-	errorMessage?: string;
-	/** The message being generated (already persisted to DB). */
-	messageId: string;
-	/** AbortController for cancelling the in-flight generation. */
-	controller: AbortController;
+    status: TaskStatus;
+    errorMessage?: string;
+    /** The message being generated (already persisted to DB). */
+    messageId: string;
+    /** AbortController for cancelling the in-flight generation. */
+    controller: AbortController;
 }
 
 // ─── Display Message Types ────────────────────────────────────────────────────
@@ -29,6 +29,6 @@ export interface ChatTask {
 export type DisplayMessageStatus = 'completed' | 'generating' | 'error';
 
 export interface DisplayMessage extends Message {
-	displayStatus: DisplayMessageStatus;
-	errorMessage?: string;
+    displayStatus: DisplayMessageStatus;
+    errorMessage?: string;
 }

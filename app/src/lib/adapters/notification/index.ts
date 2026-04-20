@@ -5,5 +5,5 @@ import { WebNotificationAdapter } from './web';
 import { TauriNotificationAdapter } from './tauri';
 
 export const appNotification = isTauri()
-	? new TauriNotificationAdapter()
-	: new WebNotificationAdapter();
+    ? new TauriNotificationAdapter()
+    : new WebNotificationAdapter();

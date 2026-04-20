@@ -10,12 +10,12 @@ export type RerankerProvider = 'cohere' | 'jina' | 'voyageai' | 'transformers';
 // ─── Display Helpers ────────────────────────────────────────────────────────
 
 const providerNames: Record<RerankerProvider, string> = {
-	cohere: 'Cohere',
-	jina: 'Jina AI',
-	voyageai: 'VoyageAI',
-	transformers: 'Transformers'
+    cohere: 'Cohere',
+    jina: 'Jina AI',
+    voyageai: 'VoyageAI',
+    transformers: 'Transformers'
 };
 
 export function getRerankerProviderName(provider: RerankerProvider): string {
-	return providerNames[provider] || provider;
+    return providerNames[provider] || provider;
 }

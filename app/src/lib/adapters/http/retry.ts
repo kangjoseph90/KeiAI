@@ -14,57 +14,57 @@ const DEFAULT_RETRYABLE_STATUSES = [408, 429, 500, 502, 503, 504];
  * - Jittered delay: `baseDelay * 2^attempt * random(0.75–1.25)`, capped at `maxDelayMs`.
  */
 export async function fetchWithRetry(
-	fn: () => Promise<Response>,
-	options?: RetryOptions
+    fn: () => Promise<Response>,
+    options?: RetryOptions
 ): Promise<Response> {
-	const {
-		maxRetries = 0,
-		baseDelayMs = 1000,
-		maxDelayMs = 30_000,
-		retryableStatuses = DEFAULT_RETRYABLE_STATUSES
-	} = options ?? {};
+    const {
+        maxRetries = 0,
+        baseDelayMs = 1000,
+        maxDelayMs = 30_000,
+        retryableStatuses = DEFAULT_RETRYABLE_STATUSES
+    } = options ?? {};
 
-	let lastError: unknown;
+    let lastError: unknown;
 
-	for (let attempt = 0; attempt <= maxRetries; attempt++) {
-		try {
-			const response = await fn();
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await fn();
 
-			// Non-retryable status or success → return immediately
-			if (response.ok || !retryableStatuses.includes(response.status)) {
-				return response;
-			}
+            // Non-retryable status or success → return immediately
+            if (response.ok || !retryableStatuses.includes(response.status)) {
+                return response;
+            }
 
-			// Retryable HTTP status — treat as error for retry loop
-			// Match native fetch behavior: if we're out of retries, just return the Response.
-			if (attempt === maxRetries) {
-				return response;
-			}
+            // Retryable HTTP status — treat as error for retry loop
+            // Match native fetch behavior: if we're out of retries, just return the Response.
+            if (attempt === maxRetries) {
+                return response;
+            }
 
-			// Consume body to free up resources before retrying
-			try {
-				await response.text();
-			} catch {
-				// Ignore
-			}
-		} catch (error) {
-			// Never retry user-initiated aborts.
-			// We DO want to retry 'TimeoutError' as network delays are transient.
-			// Use loose Error check for cross-platform (Tauri/Web) compatibility
-			if (error instanceof Error && error.name === 'AbortError') {
-				throw error;
-			}
-			lastError = error;
-		}
+            // Consume body to free up resources before retrying
+            try {
+                await response.text();
+            } catch {
+                // Ignore
+            }
+        } catch (error) {
+            // Never retry user-initiated aborts.
+            // We DO want to retry 'TimeoutError' as network delays are transient.
+            // Use loose Error check for cross-platform (Tauri/Web) compatibility
+            if (error instanceof Error && error.name === 'AbortError') {
+                throw error;
+            }
+            lastError = error;
+        }
 
-		// Wait before next attempt (skip wait on last attempt)
-		if (attempt < maxRetries) {
-			const jitter = Math.random() * 0.5 + 0.75; // 0.75 – 1.25
-			const delay = Math.min(baseDelayMs * 2 ** attempt * jitter, maxDelayMs);
-			await new Promise((r) => setTimeout(r, delay));
-		}
-	}
+        // Wait before next attempt (skip wait on last attempt)
+        if (attempt < maxRetries) {
+            const jitter = Math.random() * 0.5 + 0.75; // 0.75 – 1.25
+            const delay = Math.min(baseDelayMs * 2 ** attempt * jitter, maxDelayMs);
+            await new Promise((r) => setTimeout(r, delay));
+        }
+    }
 
-	// All retries exhausted — throw last error
-	throw lastError;
+    // All retries exhausted — throw last error
+    throw lastError;
 }

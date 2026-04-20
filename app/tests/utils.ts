@@ -18,5 +18,8 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
  *   appSettings.set(makeSettings({ theme: 'dark', moduleRefs: [] }));
  */
 export function makeSettings(overrides: DeepPartial<AppSettings> = {}): AppSettings {
-	return deepMerge(defaultSettings as AppSettings, overrides as unknown as Record<string, unknown>);
+    return deepMerge(
+        defaultSettings as AppSettings,
+        overrides as unknown as Record<string, unknown>
+    );
 }

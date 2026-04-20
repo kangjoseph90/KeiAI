@@ -12,17 +12,17 @@ import { invoke } from '@tauri-apps/api/core';
 import { AppError } from '$lib/types/errors';
 
 export class TauriTokenizerAdapter implements ITokenizerAdapter {
-	async count(text: string, encoding: LLMTokenizer): Promise<number> {
-		try {
-			return await invoke<number>('count_tokens', { text, encoding });
-		} catch (error) {
-			throw new AppError(
-				'TOKENIZER_ERROR',
-				`Native tokenizer failed: ${error instanceof Error ? error.message : String(error)}`,
-				error
-			);
-		}
-	}
+    async count(text: string, encoding: LLMTokenizer): Promise<number> {
+        try {
+            return await invoke<number>('count_tokens', { text, encoding });
+        } catch (error) {
+            throw new AppError(
+                'TOKENIZER_ERROR',
+                `Native tokenizer failed: ${error instanceof Error ? error.message : String(error)}`,
+                error
+            );
+        }
+    }
 }
 
 export const tauriTokenizer = new TauriTokenizerAdapter();

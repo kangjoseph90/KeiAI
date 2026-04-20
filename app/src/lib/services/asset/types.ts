@@ -11,11 +11,11 @@ export type { AssetFields, AssetKindPlain as AssetKind } from '$lib/adapters/ass
 // ─── Compression Result ─────────────────────────────────────────────────────
 
 export interface CompressAndHashResult {
-	blob: Blob; // Compressed WebP blob
-	hash: string; // SHA256 of compressed bytes
-	encKey: string; // SHA256(compressed + FIXED_SALT)
-	width: number;
-	height: number;
+    blob: Blob; // Compressed WebP blob
+    hash: string; // SHA256 of compressed bytes
+    encKey: string; // SHA256(compressed + FIXED_SALT)
+    width: number;
+    height: number;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────

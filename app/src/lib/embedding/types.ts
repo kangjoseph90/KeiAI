@@ -6,10 +6,10 @@
  */
 
 export interface EmbeddingResult {
-	/** One embedding vector per input text */
-	vectors: number[][];
+    /** One embedding vector per input text */
+    vectors: number[][];
 }
 
 export interface EmbeddingHandler {
-	embed(texts: string[], signal?: AbortSignal): Promise<EmbeddingResult>;
+    embed(texts: string[], signal?: AbortSignal): Promise<EmbeddingResult>;
 }

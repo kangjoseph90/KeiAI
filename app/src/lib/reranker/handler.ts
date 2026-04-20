@@ -14,38 +14,38 @@ import { VoyageAIRerankerHandler } from './handlers/voyageai';
 import { TransformersRerankerHandler } from './handlers/transformers';
 
 export function selectRerankerHandler(
-	provider: RerankerProvider,
-	settings: AppSettings
+    provider: RerankerProvider,
+    settings: AppSettings
 ): RerankerHandlerType | null {
-	switch (provider) {
-		case 'cohere': {
-			return new CohereRerankerHandler({
-				apiKey: settings.cohere.apiKey,
-				baseUrl: 'https://api.cohere.ai',
-				modelId: settings.cohere.reranker.modelId
-			});
-		}
+    switch (provider) {
+        case 'cohere': {
+            return new CohereRerankerHandler({
+                apiKey: settings.cohere.apiKey,
+                baseUrl: 'https://api.cohere.ai',
+                modelId: settings.cohere.reranker.modelId
+            });
+        }
 
-		case 'jina': {
-			return new JinaRerankerHandler({
-				apiKey: settings.jina.apiKey,
-				baseUrl: 'https://api.jina.ai',
-				modelId: settings.jina.reranker.modelId
-			});
-		}
+        case 'jina': {
+            return new JinaRerankerHandler({
+                apiKey: settings.jina.apiKey,
+                baseUrl: 'https://api.jina.ai',
+                modelId: settings.jina.reranker.modelId
+            });
+        }
 
-		case 'voyageai': {
-			return new VoyageAIRerankerHandler({
-				apiKey: settings.voyageai.apiKey,
-				baseUrl: 'https://api.voyageai.com',
-				modelId: settings.voyageai.reranker.modelId
-			});
-		}
+        case 'voyageai': {
+            return new VoyageAIRerankerHandler({
+                apiKey: settings.voyageai.apiKey,
+                baseUrl: 'https://api.voyageai.com',
+                modelId: settings.voyageai.reranker.modelId
+            });
+        }
 
-		case 'transformers': {
-			return new TransformersRerankerHandler({
-				modelId: settings.transformers.reranker.modelId
-			});
-		}
-	}
+        case 'transformers': {
+            return new TransformersRerankerHandler({
+                modelId: settings.transformers.reranker.modelId
+            });
+        }
+    }
 }

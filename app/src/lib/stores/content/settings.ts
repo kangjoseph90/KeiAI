@@ -12,11 +12,11 @@ import type { DeepPartial } from '$lib/utils/defaults';
  * Explicitly throws error if not found
  */
 export async function getAppSettings(): Promise<AppSettings> {
-	const active = get(appSettings);
-	if (active) return active;
-	const db = await SettingsService.get();
-	if (!db) throw new AppError('NOT_FOUND', 'Settings not found');
-	return db;
+    const active = get(appSettings);
+    if (active) return active;
+    const db = await SettingsService.get();
+    if (!db) throw new AppError('NOT_FOUND', 'Settings not found');
+    return db;
 }
 
 /**
@@ -24,12 +24,12 @@ export async function getAppSettings(): Promise<AppSettings> {
  * Callers (e.g. route load functions) are responsible for error boundaries.
  */
 export async function loadSettings(): Promise<void> {
-	appSettings.set(await SettingsService.get());
+    appSettings.set(await SettingsService.get());
 }
 
 export async function updateSettings(changes: DeepPartial<AppSettings>): Promise<void> {
-	const updated = await SettingsService.update(changes);
-	appSettings.set(updated);
+    const updated = await SettingsService.update(changes);
+    appSettings.set(updated);
 }
 
 // ─── Global Folder & Item Management ──────────────────────
@@ -37,97 +37,102 @@ export async function updateSettings(changes: DeepPartial<AppSettings>): Promise
 export type GlobalFolderType = 'characters' | 'personas' | 'presets' | 'modules' | 'plugins';
 
 export async function createGlobalFolder(
-	folderType: GlobalFolderType,
-	name: string,
-	parentId?: string
+    folderType: GlobalFolderType,
+    name: string,
+    parentId?: string
 ): Promise<FolderDef> {
-	const settings = await getAppSettings();
+    const settings = await getAppSettings();
 
-	const folders = settings.folders ?? {};
-	const typeFolders = folders[folderType] ?? [];
+    const folders = settings.folders ?? {};
+    const typeFolders = folders[folderType] ?? [];
 
-	const newFolder: FolderDef = {
-		id: generateId(),
-		name,
-		sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
-		parentId
-	};
+    const newFolder: FolderDef = {
+        id: generateId(),
+        name,
+        sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
+        parentId
+    };
 
-	const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
+    const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
 
-	await updateSettings({ folders: updatedFolders });
-	return newFolder;
+    await updateSettings({ folders: updatedFolders });
+    return newFolder;
 }
 
 export async function updateGlobalFolder(
-	folderType: GlobalFolderType,
-	folderId: string,
-	changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
+    folderType: GlobalFolderType,
+    folderId: string,
+    changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
-	const settings = await getAppSettings();
+    const settings = await getAppSettings();
 
-	const folders = settings.folders ?? {};
-	const typeFolders = folders[folderType] ?? [];
+    const folders = settings.folders ?? {};
+    const typeFolders = folders[folderType] ?? [];
 
-	const updatedTypeFolders = typeFolders.map((f) => (f.id === folderId ? { ...f, ...changes } : f));
+    const updatedTypeFolders = typeFolders.map((f) =>
+        f.id === folderId ? { ...f, ...changes } : f
+    );
 
-	const updatedFolders = { ...folders, [folderType]: updatedTypeFolders };
+    const updatedFolders = { ...folders, [folderType]: updatedTypeFolders };
 
-	await updateSettings({ folders: updatedFolders });
+    await updateSettings({ folders: updatedFolders });
 }
 
 export async function deleteGlobalFolder(
-	folderType: GlobalFolderType,
-	folderId: string
+    folderType: GlobalFolderType,
+    folderId: string
 ): Promise<void> {
-	const settings = await getAppSettings();
+    const settings = await getAppSettings();
 
-	const folders = settings.folders ?? {};
-	const typeFolders = folders[folderType] ?? [];
+    const folders = settings.folders ?? {};
+    const typeFolders = folders[folderType] ?? [];
 
-	const updatedFolders = { ...folders, [folderType]: typeFolders.filter((f) => f.id !== folderId) };
+    const updatedFolders = {
+        ...folders,
+        [folderType]: typeFolders.filter((f) => f.id !== folderId)
+    };
 
-	await updateSettings({ folders: updatedFolders });
+    await updateSettings({ folders: updatedFolders });
 }
 
 export async function moveGlobalItem(
-	folderType: GlobalFolderType,
-	itemId: string,
-	newFolderId?: string,
-	newSortOrder?: string
+    folderType: GlobalFolderType,
+    itemId: string,
+    newFolderId?: string,
+    newSortOrder?: string
 ): Promise<void> {
-	const settings = await getAppSettings();
+    const settings = await getAppSettings();
 
-	let refKey: keyof AppSettings;
-	switch (folderType) {
-		case 'characters':
-			refKey = 'characterRefs';
-			break;
-		case 'personas':
-			refKey = 'personaRefs';
-			break;
-		case 'presets':
-			refKey = 'presetRefs';
-			break;
-		case 'modules':
-			refKey = 'moduleRefs';
-			break;
-		case 'plugins':
-			refKey = 'pluginRefs';
-			break;
-		default:
-			return;
-	}
+    let refKey: keyof AppSettings;
+    switch (folderType) {
+        case 'characters':
+            refKey = 'characterRefs';
+            break;
+        case 'personas':
+            refKey = 'personaRefs';
+            break;
+        case 'presets':
+            refKey = 'presetRefs';
+            break;
+        case 'modules':
+            refKey = 'moduleRefs';
+            break;
+        case 'plugins':
+            refKey = 'pluginRefs';
+            break;
+        default:
+            return;
+    }
 
-	const refs = (settings[refKey] as OrderedRef[]) ?? [];
-	const updatedRefs = refs.map((ref) => {
-		if (ref.id !== itemId) return ref;
-		return {
-			...ref,
-			folderId: newFolderId,
-			sortOrder: newSortOrder ?? ref.sortOrder
-		};
-	});
+    const refs = (settings[refKey] as OrderedRef[]) ?? [];
+    const updatedRefs = refs.map((ref) => {
+        if (ref.id !== itemId) return ref;
+        return {
+            ...ref,
+            folderId: newFolderId,
+            sortOrder: newSortOrder ?? ref.sortOrder
+        };
+    });
 
-	await updateSettings({ [refKey]: updatedRefs });
+    await updateSettings({ [refKey]: updatedRefs });
 }

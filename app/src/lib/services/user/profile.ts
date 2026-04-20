@@ -16,81 +16,81 @@ import type { DeepPartial } from '$lib/utils/defaults';
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ProfileFields {
-	name: string;
-	avatar: string;
+    name: string;
+    avatar: string;
 }
 
 export interface Profile extends ProfileFields {
-	id: string;
-	email?: string;
-	isGuest: boolean;
+    id: string;
+    email?: string;
+    isGuest: boolean;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
 
 export class ProfileService {
-	/** Get the current user's profile. */
-	static async get(): Promise<Profile> {
-		const { userId } = getActiveSession();
-		const user = await appUser.getUser(userId);
-		if (!user) {
-			throw new AppError('NOT_FOUND', `User not found: ${userId}`);
-		}
-		return this.toProfile(user);
-	}
+    /** Get the current user's profile. */
+    static async get(): Promise<Profile> {
+        const { userId } = getActiveSession();
+        const user = await appUser.getUser(userId);
+        if (!user) {
+            throw new AppError('NOT_FOUND', `User not found: ${userId}`);
+        }
+        return this.toProfile(user);
+    }
 
-	/** Update the current user's profile fields. */
-	static async update(changes: DeepPartial<ProfileFields>): Promise<Profile> {
-		const { userId } = getActiveSession();
-		const user = await appUser.getUser(userId);
-		if (!user) {
-			throw new AppError('NOT_FOUND', `User not found: ${userId}`);
-		}
+    /** Update the current user's profile fields. */
+    static async update(changes: DeepPartial<ProfileFields>): Promise<Profile> {
+        const { userId } = getActiveSession();
+        const user = await appUser.getUser(userId);
+        if (!user) {
+            throw new AppError('NOT_FOUND', `User not found: ${userId}`);
+        }
 
-		if (changes.name !== undefined) user.name = changes.name;
-		if (changes.avatar !== undefined) user.avatar = changes.avatar;
-		user.updatedAt = Date.now();
+        if (changes.name !== undefined) user.name = changes.name;
+        if (changes.avatar !== undefined) user.avatar = changes.avatar;
+        user.updatedAt = Date.now();
 
-		await appUser.saveUser(user);
+        await appUser.saveUser(user);
 
-		return this.toProfile(user);
-	}
+        return this.toProfile(user);
+    }
 
-	/**
-	 * Apply a server-sourced profile update to the local record.
-	 * Used by ProfileSyncService when a Realtime event arrives.
-	 * Only applies if the server timestamp is newer (LWW).
-	 */
-	static async applyRemoteUpdate(
-		userId: string,
-		remoteName: string,
-		remoteAvatar: string,
-		remoteUpdatedAt: number
-	): Promise<Profile | null> {
-		const user = await appUser.getUser(userId);
-		if (!user) return null;
+    /**
+     * Apply a server-sourced profile update to the local record.
+     * Used by ProfileSyncService when a Realtime event arrives.
+     * Only applies if the server timestamp is newer (LWW).
+     */
+    static async applyRemoteUpdate(
+        userId: string,
+        remoteName: string,
+        remoteAvatar: string,
+        remoteUpdatedAt: number
+    ): Promise<Profile | null> {
+        const user = await appUser.getUser(userId);
+        if (!user) return null;
 
-		// LWW - only apply if remote is strictly newer
-		if (remoteUpdatedAt <= user.updatedAt) return null;
+        // LWW - only apply if remote is strictly newer
+        if (remoteUpdatedAt <= user.updatedAt) return null;
 
-		user.name = remoteName;
-		user.avatar = remoteAvatar;
-		user.updatedAt = remoteUpdatedAt;
-		user.updatedAt = remoteUpdatedAt;
-		await appUser.saveUser(user, { origin: 'sync' });
+        user.name = remoteName;
+        user.avatar = remoteAvatar;
+        user.updatedAt = remoteUpdatedAt;
+        user.updatedAt = remoteUpdatedAt;
+        await appUser.saveUser(user, { origin: 'sync' });
 
-		return this.toProfile(user);
-	}
+        return this.toProfile(user);
+    }
 
-	// ─── Helpers ──────────────────────────────────────────────────────────
+    // ─── Helpers ──────────────────────────────────────────────────────────
 
-	private static toProfile(user: UserRecord): Profile {
-		return {
-			id: user.id,
-			name: user.name,
-			avatar: user.avatar,
-			email: user.email,
-			isGuest: user.isGuest
-		};
-	}
+    private static toProfile(user: UserRecord): Profile {
+        return {
+            id: user.id,
+            name: user.name,
+            avatar: user.avatar,
+            email: user.email,
+            isGuest: user.isGuest
+        };
+    }
 }

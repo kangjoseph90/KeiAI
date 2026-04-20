@@ -48,17 +48,17 @@ export const chatTasks = readonly(StoreState.chatTasks);
 export const activePreset = readonly(StoreState.activePreset);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
-	activeCharacterId,
-	hasActiveCharacter,
-	activeChatId,
-	hasActiveChat,
-	activePersona,
-	isChatRunning,
-	displayMessages,
-	isLoggedIn,
-	userEmail,
-	userId,
-	isGuest
+    activeCharacterId,
+    hasActiveCharacter,
+    activeChatId,
+    hasActiveChat,
+    activePersona,
+    isChatRunning,
+    displayMessages,
+    isLoggedIn,
+    userEmail,
+    userId,
+    isGuest
 } from './state';
 
 export type { DisplayMessage, DisplayMessageStatus, TaskStatus } from './types';

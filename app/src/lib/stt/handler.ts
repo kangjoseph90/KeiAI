@@ -13,38 +13,38 @@ import { GoogleSTTHandler } from './handlers/google';
 import { TransformersSTTHandler } from './handlers/transformers';
 
 export function selectSTTHandler(
-	provider: STTProvider,
-	settings: AppSettings
+    provider: STTProvider,
+    settings: AppSettings
 ): STTHandlerType | null {
-	switch (provider) {
-		case 'openai': {
-			return new OpenAISTTHandler({
-				apiKey: settings.openai.apiKey,
-				baseUrl: 'https://api.openai.com/v1',
-				modelId: settings.openai.stt.modelId
-			});
-		}
+    switch (provider) {
+        case 'openai': {
+            return new OpenAISTTHandler({
+                apiKey: settings.openai.apiKey,
+                baseUrl: 'https://api.openai.com/v1',
+                modelId: settings.openai.stt.modelId
+            });
+        }
 
-		case 'groq': {
-			return new OpenAISTTHandler({
-				apiKey: settings.groq.apiKey,
-				baseUrl: 'https://api.groq.com/openai/v1',
-				modelId: settings.groq.stt.modelId
-			});
-		}
+        case 'groq': {
+            return new OpenAISTTHandler({
+                apiKey: settings.groq.apiKey,
+                baseUrl: 'https://api.groq.com/openai/v1',
+                modelId: settings.groq.stt.modelId
+            });
+        }
 
-		case 'google': {
-			return new GoogleSTTHandler({
-				apiKey: settings.google.apiKey,
-				baseUrl: 'https://speech.googleapis.com',
-				modelId: settings.google.stt.modelId
-			});
-		}
+        case 'google': {
+            return new GoogleSTTHandler({
+                apiKey: settings.google.apiKey,
+                baseUrl: 'https://speech.googleapis.com',
+                modelId: settings.google.stt.modelId
+            });
+        }
 
-		case 'transformers': {
-			return new TransformersSTTHandler({
-				modelId: settings.transformers.stt.modelId
-			});
-		}
-	}
+        case 'transformers': {
+            return new TransformersSTTHandler({
+                modelId: settings.transformers.stt.modelId
+            });
+        }
+    }
 }

@@ -10,209 +10,214 @@ import { encryptedWriteQueue } from './write_queue';
 // ─── Domain Types ────────────────────────────────────────────────────
 
 export interface CharacterContent {
-	name: string;
-	shortDescription: string;
-	systemPrompt: string;
-	greetingMessage: string;
-	allowLowLevel: boolean;
+    name: string;
+    shortDescription: string;
+    systemPrompt: string;
+    greetingMessage: string;
+    allowLowLevel: boolean;
 }
 
 export interface CharacterRefs {
-	lastActiveChatId?: string;
-	avatarAssetId?: string;
-	chatRefs?: OrderedRef[];
-	moduleRefs?: OrderedRef[];
-	lorebookRefs?: OrderedRef[];
-	scriptRefs?: OrderedRef[];
-	charjsRefs?: OrderedRef[];
-	folders?: {
-		chats?: FolderDef[];
-		modules?: FolderDef[];
-		lorebooks?: FolderDef[];
-		scripts?: FolderDef[];
-		charjs?: FolderDef[];
-	};
-	assets?: AssetRef[];
+    lastActiveChatId?: string;
+    avatarAssetId?: string;
+    chatRefs?: OrderedRef[];
+    moduleRefs?: OrderedRef[];
+    lorebookRefs?: OrderedRef[];
+    scriptRefs?: OrderedRef[];
+    charjsRefs?: OrderedRef[];
+    folders?: {
+        chats?: FolderDef[];
+        modules?: FolderDef[];
+        lorebooks?: FolderDef[];
+        scripts?: FolderDef[];
+        charjs?: FolderDef[];
+    };
+    assets?: AssetRef[];
 }
 
 export interface CharacterFields extends CharacterContent, CharacterRefs {}
 
 export interface Character extends CharacterFields {
-	id: string;
+    id: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultFields: CharacterFields = {
-	name: 'New Character',
-	shortDescription: '',
-	systemPrompt: '',
-	greetingMessage: '',
-	allowLowLevel: false
+    name: 'New Character',
+    shortDescription: '',
+    systemPrompt: '',
+    greetingMessage: '',
+    allowLowLevel: false
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function decryptFields(masterKey: CryptoKey, record: CharacterRecord): Promise<CharacterFields> {
-	return decrypt(masterKey, {
-		ciphertext: record.encryptedData,
-		iv: record.encryptedDataIV
-	})
-		.then((dec) => deepMerge(defaultFields, JSON.parse(dec)))
-		.catch((error) => {
-			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt character', error);
-		});
+    return decrypt(masterKey, {
+        ciphertext: record.encryptedData,
+        iv: record.encryptedDataIV
+    })
+        .then((dec) => deepMerge(defaultFields, JSON.parse(dec)))
+        .catch((error) => {
+            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt character', error);
+        });
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class CharacterService {
-	static async list(): Promise<Character[]> {
-		await encryptedWriteQueue.flushTable('characters');
-		const { masterKey, userId } = getActiveSession();
-		const records = await localDB.getAll<CharacterRecord>('characters', userId);
-		return Promise.all(
-			records.map(async (record) => {
-				const fields = await decryptFields(masterKey, record);
-				return { id: record.id, ...fields };
-			})
-		);
-	}
+    static async list(): Promise<Character[]> {
+        await encryptedWriteQueue.flushTable('characters');
+        const { masterKey, userId } = getActiveSession();
+        const records = await localDB.getAll<CharacterRecord>('characters', userId);
+        return Promise.all(
+            records.map(async (record) => {
+                const fields = await decryptFields(masterKey, record);
+                return { id: record.id, ...fields };
+            })
+        );
+    }
 
-	static async get(id: string): Promise<Character | null> {
-		const { masterKey } = getActiveSession();
-		const queued = encryptedWriteQueue.peek<CharacterFields>('characters', id);
-		if (queued) {
-			const record = await localDB.getRecord<CharacterRecord>('characters', id);
-			if (!record || record.isDeleted) return null;
-			return { id, ...deepMerge(defaultFields, queued) };
-		}
+    static async get(id: string): Promise<Character | null> {
+        const { masterKey } = getActiveSession();
+        const queued = encryptedWriteQueue.peek<CharacterFields>('characters', id);
+        if (queued) {
+            const record = await localDB.getRecord<CharacterRecord>('characters', id);
+            if (!record || record.isDeleted) return null;
+            return { id, ...deepMerge(defaultFields, queued) };
+        }
 
-		const record = await localDB.getRecord<CharacterRecord>('characters', id);
-		if (!record || record.isDeleted) return null;
+        const record = await localDB.getRecord<CharacterRecord>('characters', id);
+        if (!record || record.isDeleted) return null;
 
-		const fields = await decryptFields(masterKey, record);
-		return { id: record.id, ...fields };
-	}
+        const fields = await decryptFields(masterKey, record);
+        return { id: record.id, ...fields };
+    }
 
-	static async create(fields: DeepPartial<CharacterFields> = {}): Promise<Character> {
-		const resolved: CharacterFields = deepMerge(defaultFields, fields);
+    static async create(fields: DeepPartial<CharacterFields> = {}): Promise<Character> {
+        const resolved: CharacterFields = deepMerge(defaultFields, fields);
 
-		const { masterKey, userId } = getActiveSession();
-		const id = generateId();
-		const now = Date.now();
+        const { masterKey, userId } = getActiveSession();
+        const id = generateId();
+        const now = Date.now();
 
-		try {
-			const enc = await encrypt(masterKey, JSON.stringify(resolved));
-			const record: CharacterRecord = {
-				id,
-				userId,
-				createdAt: now,
-				updatedAt: now,
-				isDeleted: false,
-				encryptedData: enc.ciphertext,
-				encryptedDataIV: enc.iv
-			};
-			await localDB.putRecord<CharacterRecord>('characters', record);
-		} catch (error) {
-			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to create character', error);
-		}
+        try {
+            const enc = await encrypt(masterKey, JSON.stringify(resolved));
+            const record: CharacterRecord = {
+                id,
+                userId,
+                createdAt: now,
+                updatedAt: now,
+                isDeleted: false,
+                encryptedData: enc.ciphertext,
+                encryptedDataIV: enc.iv
+            };
+            await localDB.putRecord<CharacterRecord>('characters', record);
+        } catch (error) {
+            if (error instanceof AppError) throw error;
+            throw new AppError('DB_WRITE_FAILED', 'Failed to create character', error);
+        }
 
-		return { id, ...resolved };
-	}
+        return { id, ...resolved };
+    }
 
-	static async update(id: string, changes: DeepPartial<CharacterFields>): Promise<Character> {
-		const { masterKey } = getActiveSession();
-		const queued = encryptedWriteQueue.peek<CharacterFields>('characters', id);
-		const record = await localDB.getRecord<CharacterRecord>('characters', id);
-		if (!record || record.isDeleted) {
-			throw new AppError('NOT_FOUND', 'Character not found');
-		}
+    static async update(id: string, changes: DeepPartial<CharacterFields>): Promise<Character> {
+        const { masterKey } = getActiveSession();
+        const queued = encryptedWriteQueue.peek<CharacterFields>('characters', id);
+        const record = await localDB.getRecord<CharacterRecord>('characters', id);
+        if (!record || record.isDeleted) {
+            throw new AppError('NOT_FOUND', 'Character not found');
+        }
 
-		try {
-			const current = queued
-				? deepMerge(defaultFields, queued)
-				: await decryptFields(masterKey, record);
-			const updated: CharacterFields = deepMerge(current, changes);
+        try {
+            const current = queued
+                ? deepMerge(defaultFields, queued)
+                : await decryptFields(masterKey, record);
+            const updated: CharacterFields = deepMerge(current, changes);
 
-			encryptedWriteQueue.upsert<CharacterFields, CharacterRecord>({
-				tableName: 'characters',
-				id,
-				userId: record.userId,
-				createdAt: record.createdAt,
-				nextFields: updated,
-				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-				toRecord: ({
-					id: recordId,
-					userId: recordUserId,
-					createdAt,
-					updatedAt,
-					encryptedData,
-					encryptedDataIV
-				}) => ({
-					id: recordId,
-					userId: recordUserId,
-					createdAt,
-					updatedAt,
-					isDeleted: false,
-					encryptedData,
-					encryptedDataIV
-				})
-			});
+            encryptedWriteQueue.upsert<CharacterFields, CharacterRecord>({
+                tableName: 'characters',
+                id,
+                userId: record.userId,
+                createdAt: record.createdAt,
+                nextFields: updated,
+                mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
+                toRecord: ({
+                    id: recordId,
+                    userId: recordUserId,
+                    createdAt,
+                    updatedAt,
+                    encryptedData,
+                    encryptedDataIV
+                }) => ({
+                    id: recordId,
+                    userId: recordUserId,
+                    createdAt,
+                    updatedAt,
+                    isDeleted: false,
+                    encryptedData,
+                    encryptedDataIV
+                })
+            });
 
-			return { id, ...updated };
-		} catch (error) {
-			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to update character', error);
-		}
-	}
+            return { id, ...updated };
+        } catch (error) {
+            if (error instanceof AppError) throw error;
+            throw new AppError('DB_WRITE_FAILED', 'Failed to update character', error);
+        }
+    }
 
-	/** Update content fields only — safe entry point for store layer */
-	static async updateContent(
-		id: string,
-		changes: DeepPartial<CharacterContent>
-	): Promise<Character> {
-		return this.update(id, changes);
-	}
+    /** Update content fields only — safe entry point for store layer */
+    static async updateContent(
+        id: string,
+        changes: DeepPartial<CharacterContent>
+    ): Promise<Character> {
+        return this.update(id, changes);
+    }
 
-	static async delete(id: string): Promise<void> {
-		try {
-			await Promise.all([
-				encryptedWriteQueue.flushTable('characters'),
-				encryptedWriteQueue.flushTable('chats'),
-				encryptedWriteQueue.flushTable('messages'),
-				encryptedWriteQueue.flushTable('toolCalls'),
-				encryptedWriteQueue.flushTable('lorebooks'),
-				encryptedWriteQueue.flushTable('scripts'),
-				encryptedWriteQueue.flushTable('charjs')
-			]);
+    static async delete(id: string): Promise<void> {
+        try {
+            await Promise.all([
+                encryptedWriteQueue.flushTable('characters'),
+                encryptedWriteQueue.flushTable('chats'),
+                encryptedWriteQueue.flushTable('messages'),
+                encryptedWriteQueue.flushTable('toolCalls'),
+                encryptedWriteQueue.flushTable('lorebooks'),
+                encryptedWriteQueue.flushTable('scripts'),
+                encryptedWriteQueue.flushTable('charjs')
+            ]);
 
-			encryptedWriteQueue.drop('characters', id);
-			await localDB.transaction(
-				['chats', 'lorebooks', 'scripts', 'messages', 'toolCalls', 'characters', 'charjs'],
-				'rw',
-				async () => {
-					const chatIds = (
-						await localDB.getByIndex('chats', 'characterId', id, Number.MAX_SAFE_INTEGER)
-					).map((c) => c.id);
-					for (const chatId of chatIds) {
-						await localDB.softDeleteByIndex('messages', 'chatId', chatId);
-						await localDB.softDeleteByIndex('toolCalls', 'chatId', chatId);
-						await localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId);
-						await localDB.softDeleteByIndex('scripts', 'ownerId', chatId);
-						await localDB.softDeleteByIndex('charjs', 'ownerId', chatId);
-					}
-					await localDB.softDeleteByIndex('chats', 'characterId', id);
-					await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-					await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-					await localDB.softDeleteByIndex('charjs', 'ownerId', id);
-					await localDB.softDeleteRecord('characters', id);
-				}
-			);
-		} catch (error) {
-			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to delete character', error);
-		}
-	}
+            encryptedWriteQueue.drop('characters', id);
+            await localDB.transaction(
+                ['chats', 'lorebooks', 'scripts', 'messages', 'toolCalls', 'characters', 'charjs'],
+                'rw',
+                async () => {
+                    const chatIds = (
+                        await localDB.getByIndex(
+                            'chats',
+                            'characterId',
+                            id,
+                            Number.MAX_SAFE_INTEGER
+                        )
+                    ).map((c) => c.id);
+                    for (const chatId of chatIds) {
+                        await localDB.softDeleteByIndex('messages', 'chatId', chatId);
+                        await localDB.softDeleteByIndex('toolCalls', 'chatId', chatId);
+                        await localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId);
+                        await localDB.softDeleteByIndex('scripts', 'ownerId', chatId);
+                        await localDB.softDeleteByIndex('charjs', 'ownerId', chatId);
+                    }
+                    await localDB.softDeleteByIndex('chats', 'characterId', id);
+                    await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
+                    await localDB.softDeleteByIndex('scripts', 'ownerId', id);
+                    await localDB.softDeleteByIndex('charjs', 'ownerId', id);
+                    await localDB.softDeleteRecord('characters', id);
+                }
+            );
+        } catch (error) {
+            if (error instanceof AppError) throw error;
+            throw new AppError('DB_WRITE_FAILED', 'Failed to delete character', error);
+        }
+    }
 }

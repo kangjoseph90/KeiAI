@@ -20,22 +20,22 @@ import type { StreamDebounceConfig } from '$lib/utils/stream';
  * instead of individual chunks.
  */
 export type LLMStreamContent = {
-	content: string;
-	thought?: string;
-	toolCalls?: ToolCallRequest[];
+    content: string;
+    thought?: string;
+    toolCalls?: ToolCallRequest[];
 };
 
 export interface LLMStreamHandler {
-	stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent>;
+    stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent>;
 }
 
 // ─── Chat Message ────────────────────────────────────────────────────────────
 
 /** OpenAI-compatible chat message type */
 export interface OpenAIChat {
-	role: 'system' | 'user' | 'assistant';
-	content: string;
-	thought?: string;
+    role: 'system' | 'user' | 'assistant';
+    content: string;
+    thought?: string;
 }
 
 /**
@@ -43,10 +43,10 @@ export interface OpenAIChat {
  * Contains only generation-related concerns.
  */
 export interface LLMStreamHandlerConfig {
-	modelId: string;
-	flags?: LLMFlags[];
-	parameters?: Partial<Record<LLMParameter, number | string | boolean>>;
-	debounce?: StreamDebounceConfig;
+    modelId: string;
+    flags?: LLMFlags[];
+    parameters?: Partial<Record<LLMParameter, number | string | boolean>>;
+    debounce?: StreamDebounceConfig;
 }
 
 /**
@@ -54,9 +54,9 @@ export interface LLMStreamHandlerConfig {
  * Adds transport fields on top of the base generation config.
  */
 export interface RemoteLLMHandlerConfig extends LLMStreamHandlerConfig {
-	baseUrl: string;
-	apiKey?: string;
-	useProxy?: boolean;
-	retry?: RetryOptions;
-	timeout?: number;
+    baseUrl: string;
+    apiKey?: string;
+    useProxy?: boolean;
+    retry?: RetryOptions;
+    timeout?: number;
 }

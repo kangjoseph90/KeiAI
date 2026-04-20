@@ -8,14 +8,14 @@ import { createPersona } from './content/persona';
 import { createPreset } from './content/preset';
 
 export async function loadGlobalState() {
-	await loadSettings();
-	await Promise.all([
-		loadModules(),
-		loadPlugins(),
-		loadPersonas(),
-		loadPresets(),
-		loadCharacters()
-	]);
+    await loadSettings();
+    await Promise.all([
+        loadModules(),
+        loadPlugins(),
+        loadPersonas(),
+        loadPresets(),
+        loadCharacters()
+    ]);
 }
 
 /**
@@ -24,6 +24,10 @@ export async function loadGlobalState() {
  * Also selects the newly created persona and preset as defaults.
  */
 export async function initDefaultContents(): Promise<void> {
-	const [persona, preset] = await Promise.all([createPersona(), createPreset(), createCharacter()]);
-	await Promise.all([selectPersona(persona.id), selectPreset(preset.id)]);
+    const [persona, preset] = await Promise.all([
+        createPersona(),
+        createPreset(),
+        createCharacter()
+    ]);
+    await Promise.all([selectPersona(persona.id), selectPreset(preset.id)]);
 }

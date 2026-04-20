@@ -1,10 +1,10 @@
 /** Built-in event types and their data shapes */
 export interface EventType {
-	'message:sent': { content: string };
-	'message:received': { content: string };
-	'chat:started': Record<string, never>;
-	'chat:switched': Record<string, never>;
-	'chat:deleted': Record<string, never>;
+    'message:sent': { content: string };
+    'message:received': { content: string };
+    'chat:started': Record<string, never>;
+    'chat:switched': Record<string, never>;
+    'chat:deleted': Record<string, never>;
 }
 
 /**

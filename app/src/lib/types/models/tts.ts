@@ -6,22 +6,22 @@
  */
 
 export type TTSProvider =
-	| 'openai'
-	| 'elevenlabs'
-	| 'google'
-	| 'novelai'
-	| 'kokoro'
-	| 'transformers';
+    | 'openai'
+    | 'elevenlabs'
+    | 'google'
+    | 'novelai'
+    | 'kokoro'
+    | 'transformers';
 
 const providerNames: Record<TTSProvider, string> = {
-	openai: 'OpenAI',
-	elevenlabs: 'ElevenLabs',
-	google: 'Google',
-	novelai: 'NovelAI',
-	kokoro: 'Kokoro',
-	transformers: 'Transformers'
+    openai: 'OpenAI',
+    elevenlabs: 'ElevenLabs',
+    google: 'Google',
+    novelai: 'NovelAI',
+    kokoro: 'Kokoro',
+    transformers: 'Transformers'
 };
 
 export function getTTSProviderName(provider: TTSProvider): string {
-	return providerNames[provider] || provider;
+    return providerNames[provider] || provider;
 }

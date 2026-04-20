@@ -13,39 +13,39 @@
 
 import { collectPipelineHandlers } from './handler';
 import type {
-	PipelinePhaseType,
-	PipelinePhase,
-	PipelineContext,
-	PipelineContextType
+    PipelinePhaseType,
+    PipelinePhase,
+    PipelineContext,
+    PipelineContextType
 } from './types';
 import { isSafeMode } from '$lib/config';
 
 export async function runPipeline<K extends keyof PipelinePhaseType>(
-	chatId: string,
-	phase: K,
-	data: PipelinePhaseType[K],
-	context: PipelineContextType[K]
+    chatId: string,
+    phase: K,
+    data: PipelinePhaseType[K],
+    context: PipelineContextType[K]
 ): Promise<PipelinePhaseType[K]>;
 export async function runPipeline<P extends string, T>(
-	chatId: string,
-	phase: PipelinePhase<P>,
-	data: T,
-	context?: PipelineContext<P>
+    chatId: string,
+    phase: PipelinePhase<P>,
+    data: T,
+    context?: PipelineContext<P>
 ): Promise<T>;
 export async function runPipeline(
-	chatId: string,
-	phase: string,
-	data: unknown,
-	context: PipelineContext = {}
+    chatId: string,
+    phase: string,
+    data: unknown,
+    context: PipelineContext = {}
 ): Promise<unknown> {
-	if (isSafeMode()) return data;
-	const handlers = await collectPipelineHandlers(chatId, phase);
-	let result = data;
-	for (const handler of handlers) {
-		const next = await handler.run(result, context);
-		if (next !== undefined) {
-			result = next;
-		}
-	}
-	return result;
+    if (isSafeMode()) return data;
+    const handlers = await collectPipelineHandlers(chatId, phase);
+    let result = data;
+    for (const handler of handlers) {
+        const next = await handler.run(result, context);
+        if (next !== undefined) {
+            result = next;
+        }
+    }
+    return result;
 }

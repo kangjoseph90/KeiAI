@@ -10,12 +10,12 @@ export type STTProvider = 'openai' | 'google' | 'groq' | 'transformers';
 // ─── Display Helpers ────────────────────────────────────────────────────────
 
 const providerNames: Record<STTProvider, string> = {
-	openai: 'OpenAI',
-	google: 'Google',
-	groq: 'Groq',
-	transformers: 'Transformers'
+    openai: 'OpenAI',
+    google: 'Google',
+    groq: 'Groq',
+    transformers: 'Transformers'
 };
 
 export function getSTTProviderName(provider: STTProvider): string {
-	return providerNames[provider] || provider;
+    return providerNames[provider] || provider;
 }

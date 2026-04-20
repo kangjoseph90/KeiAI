@@ -7,27 +7,27 @@
 
 /** Ordered reference for 1:N parent→child lists */
 export interface OrderedRef {
-	id: string;
-	sortOrder: string; // Fractional index for ordering
-	folderId?: string;
+    id: string;
+    sortOrder: string; // Fractional index for ordering
+    folderId?: string;
 }
 
 /** Reference with per-context state for N:M relationships */
 export interface ResourceRef extends OrderedRef {
-	enabled: boolean;
+    enabled: boolean;
 }
 
 /** Folder definition (stored in parent's blob) */
 export interface FolderDef {
-	id: string;
-	name: string;
-	sortOrder: string;
-	color?: string;
-	parentId?: string; // Nested folders
+    id: string;
+    name: string;
+    sortOrder: string;
+    color?: string;
+    parentId?: string; // Nested folders
 }
 
 /** Name-based asset reference for dynamic resolution (e.g., manifest system, AI scripts) */
 export interface AssetRef {
-	name: string; // Logical name (e.g., 'avatar', 'happy', 'background_night')
-	assetId: string; // The UUID of the asset
+    name: string; // Logical name (e.g., 'avatar', 'happy', 'background_night')
+    assetId: string; // The UUID of the asset
 }

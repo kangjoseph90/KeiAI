@@ -18,51 +18,51 @@ import { createLogger } from '$lib/adapters/logger';
 const logger = createLogger('tts:handler');
 
 export function selectTTSHandler(
-	provider: TTSProvider,
-	settings: AppSettings
+    provider: TTSProvider,
+    settings: AppSettings
 ): TTSStreamHandler | null {
-	switch (provider) {
-		case 'openai': {
-			return new OpenAITTSStreamHandler({
-				apiKey: settings.openai?.apiKey,
-				baseUrl: 'https://api.openai.com/v1',
-				modelId: settings.openai.tts.modelId,
-				voiceId: settings.openai.tts.voiceId
-			});
-		}
+    switch (provider) {
+        case 'openai': {
+            return new OpenAITTSStreamHandler({
+                apiKey: settings.openai?.apiKey,
+                baseUrl: 'https://api.openai.com/v1',
+                modelId: settings.openai.tts.modelId,
+                voiceId: settings.openai.tts.voiceId
+            });
+        }
 
-		case 'elevenlabs': {
-			return new ElevenLabsTTSStreamHandler({
-				apiKey: settings.elevenlabs?.apiKey,
-				baseUrl: 'https://api.elevenlabs.io/v1',
-				voiceId: settings.elevenlabs.tts.voiceId
-			});
-		}
+        case 'elevenlabs': {
+            return new ElevenLabsTTSStreamHandler({
+                apiKey: settings.elevenlabs?.apiKey,
+                baseUrl: 'https://api.elevenlabs.io/v1',
+                voiceId: settings.elevenlabs.tts.voiceId
+            });
+        }
 
-		case 'google': {
-			return new GoogleTTSStreamHandler({
-				apiKey: settings.google?.apiKey,
-				baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-				modelId: settings.google.tts.modelId,
-				voiceId: settings.google.tts.voiceId
-			});
-		}
+        case 'google': {
+            return new GoogleTTSStreamHandler({
+                apiKey: settings.google?.apiKey,
+                baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+                modelId: settings.google.tts.modelId,
+                voiceId: settings.google.tts.voiceId
+            });
+        }
 
-		case 'novelai': {
-			return new NovelAITTSStreamHandler({
-				apiKey: settings.novelai?.apiKey,
-				baseUrl: 'https://api.novelai.net',
-				voiceId: settings.novelai.tts.voiceId,
-				version: settings.novelai.tts.version
-			});
-		}
+        case 'novelai': {
+            return new NovelAITTSStreamHandler({
+                apiKey: settings.novelai?.apiKey,
+                baseUrl: 'https://api.novelai.net',
+                voiceId: settings.novelai.tts.voiceId,
+                version: settings.novelai.tts.version
+            });
+        }
 
-		case 'kokoro':
-		case 'transformers': {
-			return new TransformersTTSStreamHandler({
-				modelId: settings.transformers.tts.modelId,
-				voiceId: settings.transformers.tts.voiceId
-			});
-		}
-	}
+        case 'kokoro':
+        case 'transformers': {
+            return new TransformersTTSStreamHandler({
+                modelId: settings.transformers.tts.modelId,
+                voiceId: settings.transformers.tts.voiceId
+            });
+        }
+    }
 }

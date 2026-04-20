@@ -29,10 +29,10 @@ import { localDB, TABLES } from '$lib/adapters/db';
 
 type SyncTriggerCleanup = () => void;
 export type SyncTriggerContext = {
-	data: typeof DataSyncService;
-	profile: typeof ProfileSyncService;
-	asset: typeof AssetSyncService;
-	resubscribeAndPull: () => Promise<void>;
+    data: typeof DataSyncService;
+    profile: typeof ProfileSyncService;
+    asset: typeof AssetSyncService;
+    resubscribeAndPull: () => Promise<void>;
 };
 
 type SyncTriggerRegistration = (context: SyncTriggerContext) => void | SyncTriggerCleanup;
@@ -42,207 +42,209 @@ type SyncTriggerRegistration = (context: SyncTriggerContext) => void | SyncTrigg
  * UI code (e.g. +page.svelte) only needs to call SyncManager methods.
  */
 export class SyncManager {
-	private static started = false;
-	private static readonly triggerRegistrations = new Set<SyncTriggerRegistration>();
-	private static readonly activeTriggerCleanups = new Map<
-		SyncTriggerRegistration,
-		SyncTriggerCleanup
-	>();
+    private static started = false;
+    private static readonly triggerRegistrations = new Set<SyncTriggerRegistration>();
+    private static readonly activeTriggerCleanups = new Map<
+        SyncTriggerRegistration,
+        SyncTriggerCleanup
+    >();
 
-	private static readonly FALLBACK_POLL_INTERVAL_MS = 300_000;
+    private static readonly FALLBACK_POLL_INTERVAL_MS = 300_000;
 
-	private static readonly fallbackPollTrigger: SyncTriggerRegistration = ({ data, asset }) => {
-		const timer = setInterval(() => {
-			void data.syncAll();
-			void asset.start();
-		}, this.FALLBACK_POLL_INTERVAL_MS);
+    private static readonly fallbackPollTrigger: SyncTriggerRegistration = ({ data, asset }) => {
+        const timer = setInterval(() => {
+            void data.syncAll();
+            void asset.start();
+        }, this.FALLBACK_POLL_INTERVAL_MS);
 
-		return () => clearInterval(timer);
-	};
+        return () => clearInterval(timer);
+    };
 
-	private static readonly onlineTrigger: SyncTriggerRegistration = ({ resubscribeAndPull }) => {
-		const listener = () => {
-			void resubscribeAndPull();
-		};
+    private static readonly onlineTrigger: SyncTriggerRegistration = ({ resubscribeAndPull }) => {
+        const listener = () => {
+            void resubscribeAndPull();
+        };
 
-		window.addEventListener('online', listener);
-		return () => window.removeEventListener('online', listener);
-	};
+        window.addEventListener('online', listener);
+        return () => window.removeEventListener('online', listener);
+    };
 
-	private static readonly visibilityTrigger: SyncTriggerRegistration = ({ resubscribeAndPull }) => {
-		const listener = () => {
-			if (document.visibilityState === 'visible') {
-				void resubscribeAndPull();
-			}
-		};
+    private static readonly visibilityTrigger: SyncTriggerRegistration = ({
+        resubscribeAndPull
+    }) => {
+        const listener = () => {
+            if (document.visibilityState === 'visible') {
+                void resubscribeAndPull();
+            }
+        };
 
-		document.addEventListener('visibilitychange', listener);
-		return () => document.removeEventListener('visibilitychange', listener);
-	};
+        document.addEventListener('visibilitychange', listener);
+        return () => document.removeEventListener('visibilitychange', listener);
+    };
 
-	private static readonly localUserTrigger: SyncTriggerRegistration = ({ profile }) => {
-		return appUser.subscribeWriteEvents((events) => {
-			for (const event of events) {
-				if (event.origin !== 'local') continue;
-				void profile.pushProfile();
-			}
-		});
-	};
+    private static readonly localUserTrigger: SyncTriggerRegistration = ({ profile }) => {
+        return appUser.subscribeWriteEvents((events) => {
+            for (const event of events) {
+                if (event.origin !== 'local') continue;
+                void profile.pushProfile();
+            }
+        });
+    };
 
-	private static readonly localDbTrigger: SyncTriggerRegistration = ({ data, asset }) => {
-		const unsubscribeDb = localDB.subscribeWriteEvents((events) => {
-			for (const event of events) {
-				if (event.origin !== 'local') continue;
+    private static readonly localDbTrigger: SyncTriggerRegistration = ({ data, asset }) => {
+        const unsubscribeDb = localDB.subscribeWriteEvents((events) => {
+            for (const event of events) {
+                if (event.origin !== 'local') continue;
 
-				if (TABLES.includes(event.tableName)) {
-					void data.handleLocalWrite(event);
-				}
-			}
-		});
+                if (TABLES.includes(event.tableName)) {
+                    void data.handleLocalWrite(event);
+                }
+            }
+        });
 
-		const unsubscribeAsset = appAsset.subscribeWriteEvents((events) => {
-			for (const event of events) {
-				if (event.origin !== 'local') continue;
+        const unsubscribeAsset = appAsset.subscribeWriteEvents((events) => {
+            for (const event of events) {
+                if (event.origin !== 'local') continue;
 
-				if (event.tableName === 'assets') {
-					for (const id of event.ids) {
-						void asset.pushById(id);
-					}
-					continue;
-				}
+                if (event.tableName === 'assets') {
+                    for (const id of event.ids) {
+                        void asset.pushById(id);
+                    }
+                    continue;
+                }
 
-				if (event.tableName === 'assetRegistry') {
-					void asset.start();
-				}
-			}
-		});
+                if (event.tableName === 'assetRegistry') {
+                    void asset.start();
+                }
+            }
+        });
 
-		return () => {
-			unsubscribeDb();
-			unsubscribeAsset();
-		};
-	};
+        return () => {
+            unsubscribeDb();
+            unsubscribeAsset();
+        };
+    };
 
-	private static initializedBuiltInTriggers = false;
+    private static initializedBuiltInTriggers = false;
 
-	// ─── Lifecycle ────────────────────────────────────────────────────
+    // ─── Lifecycle ────────────────────────────────────────────────────
 
-	/**
-	 * Start all sync subscriptions and the fallback poll timer.
-	 *
-	 * @param options.onProfileUpdate - Callback invoked when a remote profile
-	 *        update is applied locally. Injected here so the sync layer never
-	 *        imports from the store layer directly.
-	 */
-	static startAutoSync(options?: { onProfileUpdate?: () => void }): void {
-		if (typeof window === 'undefined' || this.started) return;
+    /**
+     * Start all sync subscriptions and the fallback poll timer.
+     *
+     * @param options.onProfileUpdate - Callback invoked when a remote profile
+     *        update is applied locally. Injected here so the sync layer never
+     *        imports from the store layer directly.
+     */
+    static startAutoSync(options?: { onProfileUpdate?: () => void }): void {
+        if (typeof window === 'undefined' || this.started) return;
 
-		this.ensureBuiltInTriggersRegistered();
-		this.started = true;
+        this.ensureBuiltInTriggersRegistered();
+        this.started = true;
 
-		ProfileSyncService.setOnRemoteUpdate(options?.onProfileUpdate ?? null);
+        ProfileSyncService.setOnRemoteUpdate(options?.onProfileUpdate ?? null);
 
-		// Data sync Realtime subscriptions
-		void DataSyncService.subscribeRealtime();
+        // Data sync Realtime subscriptions
+        void DataSyncService.subscribeRealtime();
 
-		// Asset sync Realtime subscription + catch-up pull + upload queue
-		void AssetSyncService.subscribeRealtime();
-		void AssetSyncService.start();
+        // Asset sync Realtime subscription + catch-up pull + upload queue
+        void AssetSyncService.subscribeRealtime();
+        void AssetSyncService.start();
 
-		// Profile sync Realtime subscription
-		void ProfileSyncService.subscribeRealtime();
-		this.installTriggerSources();
-	}
+        // Profile sync Realtime subscription
+        void ProfileSyncService.subscribeRealtime();
+        this.installTriggerSources();
+    }
 
-	static stopAutoSync(): void {
-		void DataSyncService.unsubscribeRealtime();
-		void AssetSyncService.unsubscribeRealtime();
-		void ProfileSyncService.unsubscribeRealtime();
-		ProfileSyncService.setOnRemoteUpdate(null);
-		AssetSyncService.stop();
-		this.clearTriggerSources();
-		this.started = false;
-	}
+    static stopAutoSync(): void {
+        void DataSyncService.unsubscribeRealtime();
+        void AssetSyncService.unsubscribeRealtime();
+        void ProfileSyncService.unsubscribeRealtime();
+        ProfileSyncService.setOnRemoteUpdate(null);
+        AssetSyncService.stop();
+        this.clearTriggerSources();
+        this.started = false;
+    }
 
-	/**
-	 * Full data sync. Called on boot and after login.
-	 */
-	static async syncAll(): Promise<void> {
-		await DataSyncService.syncAll();
-		await AssetSyncService.start();
-		await ProfileSyncService.pullProfile();
-	}
+    /**
+     * Full data sync. Called on boot and after login.
+     */
+    static async syncAll(): Promise<void> {
+        await DataSyncService.syncAll();
+        await AssetSyncService.start();
+        await ProfileSyncService.pullProfile();
+    }
 
-	static registerTriggerSource(register: SyncTriggerRegistration): () => void {
-		this.triggerRegistrations.add(register);
+    static registerTriggerSource(register: SyncTriggerRegistration): () => void {
+        this.triggerRegistrations.add(register);
 
-		if (this.started && typeof window !== 'undefined') {
-			this.installTriggerSource(register);
-		}
+        if (this.started && typeof window !== 'undefined') {
+            this.installTriggerSource(register);
+        }
 
-		return () => {
-			const cleanup = this.activeTriggerCleanups.get(register);
-			if (cleanup) {
-				cleanup();
-				this.activeTriggerCleanups.delete(register);
-			}
-			this.triggerRegistrations.delete(register);
-		};
-	}
+        return () => {
+            const cleanup = this.activeTriggerCleanups.get(register);
+            if (cleanup) {
+                cleanup();
+                this.activeTriggerCleanups.delete(register);
+            }
+            this.triggerRegistrations.delete(register);
+        };
+    }
 
-	// ─── Internal ────────────────────────────────────────────────────
+    // ─── Internal ────────────────────────────────────────────────────
 
-	/** On come-back-online / tab-focus: re-subscribe if needed, then catch-up pull. */
-	private static async resubscribeAndPull(): Promise<void> {
-		if (!DataSyncService.isSubscribed) {
-			await DataSyncService.subscribeRealtime();
-		}
-		if (!AssetSyncService.isSubscribed) {
-			await AssetSyncService.subscribeRealtime();
-		}
-		if (!ProfileSyncService.isSubscribed) {
-			await ProfileSyncService.subscribeRealtime();
-		}
+    /** On come-back-online / tab-focus: re-subscribe if needed, then catch-up pull. */
+    private static async resubscribeAndPull(): Promise<void> {
+        if (!DataSyncService.isSubscribed) {
+            await DataSyncService.subscribeRealtime();
+        }
+        if (!AssetSyncService.isSubscribed) {
+            await AssetSyncService.subscribeRealtime();
+        }
+        if (!ProfileSyncService.isSubscribed) {
+            await ProfileSyncService.subscribeRealtime();
+        }
 
-		await DataSyncService.syncAll();
-		await AssetSyncService.start();
-		await ProfileSyncService.pullProfile();
-	}
+        await DataSyncService.syncAll();
+        await AssetSyncService.start();
+        await ProfileSyncService.pullProfile();
+    }
 
-	private static ensureBuiltInTriggersRegistered(): void {
-		if (this.initializedBuiltInTriggers) return;
+    private static ensureBuiltInTriggersRegistered(): void {
+        if (this.initializedBuiltInTriggers) return;
 
-		this.triggerRegistrations.add(this.fallbackPollTrigger);
-		this.triggerRegistrations.add(this.onlineTrigger);
-		this.triggerRegistrations.add(this.visibilityTrigger);
-		this.triggerRegistrations.add(this.localUserTrigger);
-		this.triggerRegistrations.add(this.localDbTrigger);
-		this.initializedBuiltInTriggers = true;
-	}
+        this.triggerRegistrations.add(this.fallbackPollTrigger);
+        this.triggerRegistrations.add(this.onlineTrigger);
+        this.triggerRegistrations.add(this.visibilityTrigger);
+        this.triggerRegistrations.add(this.localUserTrigger);
+        this.triggerRegistrations.add(this.localDbTrigger);
+        this.initializedBuiltInTriggers = true;
+    }
 
-	private static installTriggerSources(): void {
-		for (const registration of this.triggerRegistrations) {
-			this.installTriggerSource(registration);
-		}
-	}
+    private static installTriggerSources(): void {
+        for (const registration of this.triggerRegistrations) {
+            this.installTriggerSource(registration);
+        }
+    }
 
-	private static installTriggerSource(registration: SyncTriggerRegistration): void {
-		if (this.activeTriggerCleanups.has(registration)) return;
+    private static installTriggerSource(registration: SyncTriggerRegistration): void {
+        if (this.activeTriggerCleanups.has(registration)) return;
 
-		const cleanup = registration({
-			data: DataSyncService,
-			profile: ProfileSyncService,
-			asset: AssetSyncService,
-			resubscribeAndPull: () => this.resubscribeAndPull()
-		});
+        const cleanup = registration({
+            data: DataSyncService,
+            profile: ProfileSyncService,
+            asset: AssetSyncService,
+            resubscribeAndPull: () => this.resubscribeAndPull()
+        });
 
-		this.activeTriggerCleanups.set(registration, cleanup ?? (() => {}));
-	}
+        this.activeTriggerCleanups.set(registration, cleanup ?? (() => {}));
+    }
 
-	private static clearTriggerSources(): void {
-		for (const cleanup of this.activeTriggerCleanups.values()) {
-			cleanup();
-		}
-		this.activeTriggerCleanups.clear();
-	}
+    private static clearTriggerSources(): void {
+        for (const cleanup of this.activeTriggerCleanups.values()) {
+            cleanup();
+        }
+        this.activeTriggerCleanups.clear();
+    }
 }

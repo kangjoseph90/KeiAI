@@ -1,28 +1,28 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 import {
-	loadModules,
-	createModule,
-	updateModule,
-	deleteModule,
-	createModuleLorebook,
-	deleteModuleLorebook,
-	createModuleScript,
-	deleteModuleScript,
-	createModuleFolder,
-	updateModuleFolder,
-	deleteModuleFolder,
-	moveModuleItem,
-	createModuleCharJS,
-	deleteModuleCharJS
+    loadModules,
+    createModule,
+    updateModule,
+    deleteModule,
+    createModuleLorebook,
+    deleteModuleLorebook,
+    createModuleScript,
+    deleteModuleScript,
+    createModuleFolder,
+    updateModuleFolder,
+    deleteModuleFolder,
+    moveModuleItem,
+    createModuleCharJS,
+    deleteModuleCharJS
 } from '$lib/stores/content/module';
 import { modules, appSettings, moduleResources } from '$lib/stores/state';
 import {
-	ModuleService,
-	LorebookService,
-	ScriptService,
-	CharJSService,
-	SettingsService
+    ModuleService,
+    LorebookService,
+    ScriptService,
+    CharJSService,
+    SettingsService
 } from '$lib/services';
 import { AppError } from '$lib/types/errors';
 import type { Module, ModuleContent, Lorebook, Script, CharJS, AppSettings } from '$lib/services';
@@ -32,220 +32,220 @@ import { deepMerge } from '$lib/utils/defaults';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
-	ModuleService: {
-		list: vi.fn(),
-		get: vi.fn(),
-		create: vi.fn(),
-		update: vi.fn(),
-		updateContent: vi.fn(),
-		delete: vi.fn()
-	},
-	LorebookService: {
-		listByOwner: vi.fn(),
-		create: vi.fn(),
-		delete: vi.fn()
-	},
-	ScriptService: {
-		listByOwner: vi.fn(),
-		create: vi.fn(),
-		delete: vi.fn()
-	},
-	CharJSService: {
-		listByOwner: vi.fn(),
-		create: vi.fn(),
-		delete: vi.fn()
-	},
-	SettingsService: {
-		get: vi.fn(),
-		update: vi.fn()
-	}
+    ModuleService: {
+        list: vi.fn(),
+        get: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        updateContent: vi.fn(),
+        delete: vi.fn()
+    },
+    LorebookService: {
+        listByOwner: vi.fn(),
+        create: vi.fn(),
+        delete: vi.fn()
+    },
+    ScriptService: {
+        listByOwner: vi.fn(),
+        create: vi.fn(),
+        delete: vi.fn()
+    },
+    CharJSService: {
+        listByOwner: vi.fn(),
+        create: vi.fn(),
+        delete: vi.fn()
+    },
+    SettingsService: {
+        get: vi.fn(),
+        update: vi.fn()
+    }
 }));
 
 // Mock Shared
 vi.mock('$lib/utils/id', () => ({
-	generateId: vi.fn(() => 'new-id')
+    generateId: vi.fn(() => 'new-id')
 }));
 
 vi.mock('$lib/utils/ordering', () => ({
-	generateSortOrder: vi.fn(() => 'sort-order'),
-	sortByRefs: vi.fn((list) => list)
+    generateSortOrder: vi.fn(() => 'sort-order'),
+    sortByRefs: vi.fn((list) => list)
 }));
 
 // Mock settings store
 vi.mock('$lib/stores/content/settings', () => ({
-	getAppSettings: vi.fn(),
-	updateSettings: vi.fn()
+    getAppSettings: vi.fn(),
+    updateSettings: vi.fn()
 }));
 
 import { getAppSettings, updateSettings } from '$lib/stores/content/settings';
 
 describe('Module Store', () => {
-	const mockModule: Module = {
-		id: 'mod-1',
-		name: 'Test Module',
-		description: 'Description',
-		allowLowLevel: false,
-		lorebookRefs: [],
-		scriptRefs: [],
-		charjsRefs: []
-	};
+    const mockModule: Module = {
+        id: 'mod-1',
+        name: 'Test Module',
+        description: 'Description',
+        allowLowLevel: false,
+        lorebookRefs: [],
+        scriptRefs: [],
+        charjsRefs: []
+    };
 
-	beforeEach(() => {
-		vi.clearAllMocks();
-		modules.clear();
-		appSettings.set(makeSettings({ theme: 'dark', moduleRefs: [] }));
-		moduleResources.set(new Map());
-		vi.mocked(getAppSettings).mockImplementation(async () => get(appSettings)!);
-		vi.mocked(updateSettings).mockImplementation(async (changes) => {
-			appSettings.update((s) => (s ? deepMerge(s, changes) : s));
-		});
-	});
+    beforeEach(() => {
+        vi.clearAllMocks();
+        modules.clear();
+        appSettings.set(makeSettings({ theme: 'dark', moduleRefs: [] }));
+        moduleResources.set(new Map());
+        vi.mocked(getAppSettings).mockImplementation(async () => get(appSettings)!);
+        vi.mocked(updateSettings).mockImplementation(async (changes) => {
+            appSettings.update((s) => (s ? deepMerge(s, changes) : s));
+        });
+    });
 
-	describe('loadModules', () => {
-		it('should load modules and their resources', async () => {
-			vi.mocked(ModuleService.list).mockResolvedValue([mockModule]);
-			vi.mocked(LorebookService.listByOwner).mockResolvedValue([]);
-			vi.mocked(ScriptService.listByOwner).mockResolvedValue([]);
-			vi.mocked(CharJSService.listByOwner).mockResolvedValue([]);
+    describe('loadModules', () => {
+        it('should load modules and their resources', async () => {
+            vi.mocked(ModuleService.list).mockResolvedValue([mockModule]);
+            vi.mocked(LorebookService.listByOwner).mockResolvedValue([]);
+            vi.mocked(ScriptService.listByOwner).mockResolvedValue([]);
+            vi.mocked(CharJSService.listByOwner).mockResolvedValue([]);
 
-			await loadModules();
+            await loadModules();
 
-			expect(get(modules)).toEqual([mockModule]);
-			expect(get(moduleResources).has('mod-1')).toBe(true);
-			expect(ModuleService.list).toHaveBeenCalled();
-		});
-	});
+            expect(get(modules)).toEqual([mockModule]);
+            expect(get(moduleResources).has('mod-1')).toBe(true);
+            expect(ModuleService.list).toHaveBeenCalled();
+        });
+    });
 
-	describe('createModule', () => {
-		it('should create module and update settings', async () => {
-			vi.mocked(ModuleService.create).mockResolvedValue(mockModule);
+    describe('createModule', () => {
+        it('should create module and update settings', async () => {
+            vi.mocked(ModuleService.create).mockResolvedValue(mockModule);
 
-			const result = await createModule({ name: 'New', description: 'desc' });
+            const result = await createModule({ name: 'New', description: 'desc' });
 
-			expect(result).toEqual(mockModule);
-			expect(get(modules)).toContainEqual(mockModule);
-			expect(updateSettings).toHaveBeenCalledWith({
-				moduleRefs: expect.arrayContaining([expect.objectContaining({ id: 'mod-1' })])
-			});
-		});
+            expect(result).toEqual(mockModule);
+            expect(get(modules)).toContainEqual(mockModule);
+            expect(updateSettings).toHaveBeenCalledWith({
+                moduleRefs: expect.arrayContaining([expect.objectContaining({ id: 'mod-1' })])
+            });
+        });
 
-		it('should rollback if settings update fails', async () => {
-			vi.mocked(ModuleService.create).mockResolvedValue(mockModule);
-			vi.mocked(updateSettings).mockRejectedValueOnce(new Error('Fail'));
+        it('should rollback if settings update fails', async () => {
+            vi.mocked(ModuleService.create).mockResolvedValue(mockModule);
+            vi.mocked(updateSettings).mockRejectedValueOnce(new Error('Fail'));
 
-			await expect(createModule({ name: 'New', description: 'desc' })).rejects.toThrow();
-			expect(ModuleService.delete).toHaveBeenCalledWith('mod-1');
-		});
-	});
+            await expect(createModule({ name: 'New', description: 'desc' })).rejects.toThrow();
+            expect(ModuleService.delete).toHaveBeenCalledWith('mod-1');
+        });
+    });
 
-	describe('updateModule', () => {
-		it('should update module content in store', async () => {
-			modules.setAll([mockModule]);
-			const updated = { ...mockModule, name: 'Updated' };
-			vi.mocked(ModuleService.update).mockResolvedValue(updated);
+    describe('updateModule', () => {
+        it('should update module content in store', async () => {
+            modules.setAll([mockModule]);
+            const updated = { ...mockModule, name: 'Updated' };
+            vi.mocked(ModuleService.update).mockResolvedValue(updated);
 
-			await updateModule('mod-1', { name: 'Updated' });
+            await updateModule('mod-1', { name: 'Updated' });
 
-			expect(get(modules)[0].name).toBe('Updated');
-		});
-	});
+            expect(get(modules)[0].name).toBe('Updated');
+        });
+    });
 
-	describe('deleteModule', () => {
-		it('should delete module and remove from stores', async () => {
-			modules.setAll([mockModule]);
-			appSettings.set(
-				makeSettings({
-					moduleRefs: [{ id: 'mod-1', sortOrder: 'a', enabled: true }]
-				})
-			);
-			await deleteModule('mod-1');
+    describe('deleteModule', () => {
+        it('should delete module and remove from stores', async () => {
+            modules.setAll([mockModule]);
+            appSettings.set(
+                makeSettings({
+                    moduleRefs: [{ id: 'mod-1', sortOrder: 'a', enabled: true }]
+                })
+            );
+            await deleteModule('mod-1');
 
-			expect(get(modules)).toHaveLength(0);
-			expect(get(appSettings)?.moduleRefs).toHaveLength(0);
-			expect(get(moduleResources).has('mod-1')).toBe(false);
-		});
-	});
+            expect(get(modules)).toHaveLength(0);
+            expect(get(appSettings)?.moduleRefs).toHaveLength(0);
+            expect(get(moduleResources).has('mod-1')).toBe(false);
+        });
+    });
 
-	describe('Nested Resource Management', () => {
-		it('should create module lorebook', async () => {
-			modules.setAll([mockModule]);
-			const mockLb: Lorebook = {
-				id: 'lb-1',
-				name: 'LB',
-				ownerId: 'mod-1',
-				keys: [],
-				content: '{}',
-				insertionDepth: 0,
-				enabled: true
-			};
-			vi.mocked(LorebookService.create).mockResolvedValue(mockLb);
-			vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
+    describe('Nested Resource Management', () => {
+        it('should create module lorebook', async () => {
+            modules.setAll([mockModule]);
+            const mockLb: Lorebook = {
+                id: 'lb-1',
+                name: 'LB',
+                ownerId: 'mod-1',
+                keys: [],
+                content: '{}',
+                insertionDepth: 0,
+                enabled: true
+            };
+            vi.mocked(LorebookService.create).mockResolvedValue(mockLb);
+            vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
 
-			await createModuleLorebook('mod-1', { name: 'LB' });
+            await createModuleLorebook('mod-1', { name: 'LB' });
 
-			expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
-				lorebookRefs: expect.arrayContaining([{ id: 'lb-1', sortOrder: 'sort-order' }])
-			});
-		});
+            expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
+                lorebookRefs: expect.arrayContaining([{ id: 'lb-1', sortOrder: 'sort-order' }])
+            });
+        });
 
-		it('should delete module lorebook', async () => {
-			const modWithRef = { ...mockModule, lorebookRefs: [{ id: 'lb-1', sortOrder: 'a' }] };
-			modules.setAll([modWithRef]);
-			vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
+        it('should delete module lorebook', async () => {
+            const modWithRef = { ...mockModule, lorebookRefs: [{ id: 'lb-1', sortOrder: 'a' }] };
+            modules.setAll([modWithRef]);
+            vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
 
-			await deleteModuleLorebook('mod-1', 'lb-1');
+            await deleteModuleLorebook('mod-1', 'lb-1');
 
-			expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
-				lorebookRefs: []
-			});
-			expect(LorebookService.delete).toHaveBeenCalledWith('lb-1');
-		});
+            expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
+                lorebookRefs: []
+            });
+            expect(LorebookService.delete).toHaveBeenCalledWith('lb-1');
+        });
 
-		it('should create module charjs', async () => {
-			modules.setAll([mockModule]);
-			const mockCjs: CharJS = {
-				id: 'cjs-1',
-				name: 'New Script',
-				ownerId: 'mod-1',
-				code: '',
-				enabled: true
-			};
-			vi.mocked(CharJSService.create).mockResolvedValue(mockCjs);
-			vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
+        it('should create module charjs', async () => {
+            modules.setAll([mockModule]);
+            const mockCjs: CharJS = {
+                id: 'cjs-1',
+                name: 'New Script',
+                ownerId: 'mod-1',
+                code: '',
+                enabled: true
+            };
+            vi.mocked(CharJSService.create).mockResolvedValue(mockCjs);
+            vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
 
-			await createModuleCharJS('mod-1', { name: 'New Script' });
+            await createModuleCharJS('mod-1', { name: 'New Script' });
 
-			expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
-				charjsRefs: expect.arrayContaining([{ id: 'cjs-1', sortOrder: 'sort-order' }])
-			});
-		});
+            expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
+                charjsRefs: expect.arrayContaining([{ id: 'cjs-1', sortOrder: 'sort-order' }])
+            });
+        });
 
-		it('should delete module charjs', async () => {
-			const modWithRef = { ...mockModule, charjsRefs: [{ id: 'cjs-1', sortOrder: 'a' }] };
-			modules.setAll([modWithRef]);
-			vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
+        it('should delete module charjs', async () => {
+            const modWithRef = { ...mockModule, charjsRefs: [{ id: 'cjs-1', sortOrder: 'a' }] };
+            modules.setAll([modWithRef]);
+            vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
 
-			await deleteModuleCharJS('mod-1', 'cjs-1');
+            await deleteModuleCharJS('mod-1', 'cjs-1');
 
-			expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
-				charjsRefs: []
-			});
-			expect(CharJSService.delete).toHaveBeenCalledWith('cjs-1');
-		});
-	});
+            expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
+                charjsRefs: []
+            });
+            expect(CharJSService.delete).toHaveBeenCalledWith('cjs-1');
+        });
+    });
 
-	describe('Folder Management', () => {
-		it('should create module folder', async () => {
-			modules.setAll([mockModule]);
-			vi.mocked(ModuleService.update).mockImplementation(async (_id, changes) => ({
-				...mockModule,
-				...changes
-			}));
+    describe('Folder Management', () => {
+        it('should create module folder', async () => {
+            modules.setAll([mockModule]);
+            vi.mocked(ModuleService.update).mockImplementation(async (_id, changes) => ({
+                ...mockModule,
+                ...changes
+            }));
 
-			const folder = await createModuleFolder('mod-1', 'lorebooks', 'New Folder');
+            const folder = await createModuleFolder('mod-1', 'lorebooks', 'New Folder');
 
-			expect(folder.name).toBe('New Folder');
-			expect(get(modules)[0].folders?.lorebooks).toContainEqual(folder);
-		});
-	});
+            expect(folder.name).toBe('New Folder');
+            expect(get(modules)[0].folders?.lorebooks).toContainEqual(folder);
+        });
+    });
 });

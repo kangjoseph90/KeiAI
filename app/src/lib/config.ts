@@ -21,21 +21,21 @@ export const PB_URL = import.meta.env.VITE_PB_URL ?? '';
 let safeMode = false;
 export const isSafeMode = () => safeMode;
 export const setSafeMode = (v: boolean) => {
-	safeMode = v;
+    safeMode = v;
 };
 
 // Validation (Fail fast in non-worker context if required vars are missing)
 if (typeof window !== 'undefined') {
-	if (!CDN_BASE_URL) {
-		console.warn('VITE_CDN_BASE_URL is not set. Local static assets will be used.');
-	}
-	if (!FIXED_SALT) {
-		console.error('VITE_FIXED_SALT is not set. E2EE operations will fail.');
-	}
-	if (!PROXY_URL) {
-		console.warn('VITE_PROXY_URL is not set. External API calls may fail due to CORS.');
-	}
-	if (!PB_URL) {
-		console.error('VITE_PB_URL is not set. PocketBase connection will fail.');
-	}
+    if (!CDN_BASE_URL) {
+        console.warn('VITE_CDN_BASE_URL is not set. Local static assets will be used.');
+    }
+    if (!FIXED_SALT) {
+        console.error('VITE_FIXED_SALT is not set. E2EE operations will fail.');
+    }
+    if (!PROXY_URL) {
+        console.warn('VITE_PROXY_URL is not set. External API calls may fail due to CORS.');
+    }
+    if (!PB_URL) {
+        console.error('VITE_PB_URL is not set. PocketBase connection will fail.');
+    }
 }

@@ -10,41 +10,41 @@ const CACHE_NAME = 'kei-cdn-v1';
  * @param path - Resource path (e.g., '/token/claude/tokenizer.json' or '/models/...')
  */
 export async function cdnFetch(path: string): Promise<ArrayBuffer> {
-	// Normalize path (ensure it starts with /)
-	const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-	const url = `${CDN_BASE_URL}${normalizedPath}`;
+    // Normalize path (ensure it starts with /)
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const url = `${CDN_BASE_URL}${normalizedPath}`;
 
-	const cache = await caches.open(CACHE_NAME);
-	const cached = await cache.match(url);
+    const cache = await caches.open(CACHE_NAME);
+    const cached = await cache.match(url);
 
-	if (cached) {
-		return await cached.arrayBuffer();
-	}
+    if (cached) {
+        return await cached.arrayBuffer();
+    }
 
-	const response = await fetch(url);
-	if (!response.ok) {
-		throw new AppError('ASSET_ERROR', `CDN fetch failed: ${response.status} ${url}`);
-	}
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new AppError('ASSET_ERROR', `CDN fetch failed: ${response.status} ${url}`);
+    }
 
-	// Persist response to cache
-	await cache.put(url, response.clone());
+    // Persist response to cache
+    await cache.put(url, response.clone());
 
-	return await response.arrayBuffer();
+    return await response.arrayBuffer();
 }
 
 /**
  * Manually evict a specific resource from the cache.
  */
 export async function cdnEvict(path: string): Promise<boolean> {
-	const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-	const url = `${CDN_BASE_URL}${normalizedPath}`;
-	const cache = await caches.open(CACHE_NAME);
-	return await cache.delete(url);
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const url = `${CDN_BASE_URL}${normalizedPath}`;
+    const cache = await caches.open(CACHE_NAME);
+    return await cache.delete(url);
 }
 
 /**
  * Completely clear the CDN cache.
  */
 export async function cdnClear(): Promise<boolean> {
-	return await caches.delete(CACHE_NAME);
+    return await caches.delete(CACHE_NAME);
 }

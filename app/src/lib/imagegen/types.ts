@@ -6,16 +6,16 @@
  */
 
 export interface ImageGenImage {
-	/** Base64-encoded image data (PNG/JPEG) */
-	base64?: string;
-	/** URL to the generated image */
-	url?: string;
+    /** Base64-encoded image data (PNG/JPEG) */
+    base64?: string;
+    /** URL to the generated image */
+    url?: string;
 }
 
 export interface ImageGenResult {
-	images: ImageGenImage[];
+    images: ImageGenImage[];
 }
 
 export interface ImageGenHandler {
-	generate(prompt: string, signal?: AbortSignal): Promise<ImageGenResult>;
+    generate(prompt: string, signal?: AbortSignal): Promise<ImageGenResult>;
 }

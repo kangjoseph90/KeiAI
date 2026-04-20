@@ -22,18 +22,18 @@ type Bytes = Uint8Array<ArrayBuffer>;
  * @returns ciphertext + IV (both needed for decryption)
  */
 export async function encrypt(masterKey: CryptoKey, plaintext: string): Promise<EncryptedData> {
-	const iv = crypto.getRandomValues(new Uint8Array(AES_IV_BYTES));
-	const encoder = new TextEncoder();
+    const iv = crypto.getRandomValues(new Uint8Array(AES_IV_BYTES));
+    const encoder = new TextEncoder();
 
-	const ciphertext = new Uint8Array(
-		(await crypto.subtle.encrypt(
-			{ name: 'AES-GCM', iv },
-			masterKey,
-			encoder.encode(plaintext)
-		)) as ArrayBuffer
-	);
+    const ciphertext = new Uint8Array(
+        (await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv },
+            masterKey,
+            encoder.encode(plaintext)
+        )) as ArrayBuffer
+    );
 
-	return { ciphertext, iv };
+    return { ciphertext, iv };
 }
 
 /**
@@ -48,37 +48,37 @@ export async function encrypt(masterKey: CryptoKey, plaintext: string): Promise<
  * @throws DOMException if decryption fails (wrong key or tampered data)
  */
 export async function decrypt(masterKey: CryptoKey, data: EncryptedData): Promise<string> {
-	const plainBytes = (await crypto.subtle.decrypt(
-		{ name: 'AES-GCM', iv: data.iv },
-		masterKey,
-		data.ciphertext
-	)) as ArrayBuffer;
+    const plainBytes = (await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: data.iv },
+        masterKey,
+        data.ciphertext
+    )) as ArrayBuffer;
 
-	return new TextDecoder().decode(plainBytes);
+    return new TextDecoder().decode(plainBytes);
 }
 
 /**
  * Encrypt raw bytes (e.g. for wrapping key material that isn't a string).
  */
 export async function encryptBytes(masterKey: CryptoKey, data: Bytes): Promise<EncryptedData> {
-	const iv = crypto.getRandomValues(new Uint8Array(AES_IV_BYTES));
+    const iv = crypto.getRandomValues(new Uint8Array(AES_IV_BYTES));
 
-	const ciphertext = new Uint8Array(
-		(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, masterKey, data)) as ArrayBuffer
-	);
+    const ciphertext = new Uint8Array(
+        (await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, masterKey, data)) as ArrayBuffer
+    );
 
-	return { ciphertext, iv };
+    return { ciphertext, iv };
 }
 
 /**
  * Decrypt back to raw bytes.
  */
 export async function decryptBytes(masterKey: CryptoKey, data: EncryptedData): Promise<Bytes> {
-	return new Uint8Array(
-		(await crypto.subtle.decrypt(
-			{ name: 'AES-GCM', iv: data.iv },
-			masterKey,
-			data.ciphertext
-		)) as ArrayBuffer
-	);
+    return new Uint8Array(
+        (await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: data.iv },
+            masterKey,
+            data.ciphertext
+        )) as ArrayBuffer
+    );
 }

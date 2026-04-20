@@ -17,12 +17,12 @@ import type { DeepPartial } from '$lib/utils/defaults';
  * Safe to call at any time - silently no-ops if the session isn't ready.
  */
 export async function loadProfile(): Promise<void> {
-	try {
-		const profile = await ProfileService.get();
-		activeUser.set(profile);
-	} catch {
-		// Session may not be initialized yet
-	}
+    try {
+        const profile = await ProfileService.get();
+        activeUser.set(profile);
+    } catch {
+        // Session may not be initialized yet
+    }
 }
 
 /**
@@ -30,6 +30,6 @@ export async function loadProfile(): Promise<void> {
  * Writes to local DB + triggers sync push via ProfileService.
  */
 export async function updateProfile(changes: DeepPartial<ProfileFields>): Promise<void> {
-	const updated = await ProfileService.update(changes);
-	activeUser.set(updated);
+    const updated = await ProfileService.update(changes);
+    activeUser.set(updated);
 }

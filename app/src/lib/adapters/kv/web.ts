@@ -7,20 +7,20 @@ import type { IKeyValueAdapter } from './types';
  * Made async to match the Tauri Store plugin signature.
  */
 export class WebKeyValueAdapter implements IKeyValueAdapter {
-	async get(key: string): Promise<string | null> {
-		return localStorage.getItem(key);
-	}
+    async get(key: string): Promise<string | null> {
+        return localStorage.getItem(key);
+    }
 
-	async set(key: string, value: string): Promise<void> {
-		localStorage.setItem(key, value);
-	}
+    async set(key: string, value: string): Promise<void> {
+        localStorage.setItem(key, value);
+    }
 
-	async remove(key: string): Promise<void> {
-		localStorage.removeItem(key);
-	}
+    async remove(key: string): Promise<void> {
+        localStorage.removeItem(key);
+    }
 
-	async init(): Promise<void> {
-		// No initialization needed for localStorage
-		return Promise.resolve();
-	}
+    async init(): Promise<void> {
+        // No initialization needed for localStorage
+        return Promise.resolve();
+    }
 }

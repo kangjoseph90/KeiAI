@@ -13,46 +13,49 @@ const logger = createLogger('adapter:http:web');
  * Subject to CORS restrictions.
  */
 export class WebHttpAdapter extends BaseHttpAdapter {
-	async fetch(url: string, init?: RequestInit, options?: HttpOptions): Promise<Response> {
-		let finalUrl = url;
-		let baseInit = { ...init };
+    async fetch(url: string, init?: RequestInit, options?: HttpOptions): Promise<Response> {
+        let finalUrl = url;
+        let baseInit = { ...init };
 
-		if (options?.proxy) {
-			const proxyUrl = PROXY_URL;
+        if (options?.proxy) {
+            const proxyUrl = PROXY_URL;
 
-			if (!proxyUrl) {
-				logger.warn('VITE_PROXY_URL is not set. Falling back to direct fetch.');
-			} else {
-				const targetHeaders: Record<string, string> = {};
-				const headers = new Headers(baseInit.headers);
-				headers.forEach((value, key) => {
-					targetHeaders[key] = value;
-				});
+            if (!proxyUrl) {
+                logger.warn('VITE_PROXY_URL is not set. Falling back to direct fetch.');
+            } else {
+                const targetHeaders: Record<string, string> = {};
+                const headers = new Headers(baseInit.headers);
+                headers.forEach((value, key) => {
+                    targetHeaders[key] = value;
+                });
 
-				const proxyHeaders = new Headers();
-				proxyHeaders.set('x-target-url', url);
-				proxyHeaders.set('x-target-method', baseInit.method || 'GET');
-				proxyHeaders.set('x-target-headers', encodeURIComponent(JSON.stringify(targetHeaders)));
+                const proxyHeaders = new Headers();
+                proxyHeaders.set('x-target-url', url);
+                proxyHeaders.set('x-target-method', baseInit.method || 'GET');
+                proxyHeaders.set(
+                    'x-target-headers',
+                    encodeURIComponent(JSON.stringify(targetHeaders))
+                );
 
-				finalUrl = proxyUrl;
-				baseInit = {
-					...baseInit,
-					method: 'POST',
-					headers: proxyHeaders
-				};
-			}
-		}
+                finalUrl = proxyUrl;
+                baseInit = {
+                    ...baseInit,
+                    method: 'POST',
+                    headers: proxyHeaders
+                };
+            }
+        }
 
-		return await fetchWithRetry(() => {
-			let signal = baseInit.signal || options?.signal;
-			if (options?.timeout) {
-				const timeoutSignal = AbortSignal.timeout(options.timeout);
-				signal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-			}
+        return await fetchWithRetry(() => {
+            let signal = baseInit.signal || options?.signal;
+            if (options?.timeout) {
+                const timeoutSignal = AbortSignal.timeout(options.timeout);
+                signal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+            }
 
-			return fetch(finalUrl, { ...baseInit, signal });
-		}, options?.retry);
-	}
+            return fetch(finalUrl, { ...baseInit, signal });
+        }, options?.retry);
+    }
 }
 
 export const webHttp = new WebHttpAdapter();

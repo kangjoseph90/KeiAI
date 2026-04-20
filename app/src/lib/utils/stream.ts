@@ -5,10 +5,10 @@
  */
 
 export interface StreamDebounceConfig {
-	/** Minimum ms between yields. 0 = disabled (every chunk). Default: 0 */
-	intervalMs?: number;
-	/** Yield the first chunk immediately. Default: true */
-	leadingEdge?: boolean;
+    /** Minimum ms between yields. 0 = disabled (every chunk). Default: 0 */
+    intervalMs?: number;
+    /** Yield the first chunk immediately. Default: true */
+    leadingEdge?: boolean;
 }
 
 /**
@@ -22,46 +22,46 @@ export interface StreamDebounceConfig {
  *   - intervalMs = 0 → passthrough (no throttle)
  */
 export async function* debounceStream<T>(
-	source: AsyncIterable<T>,
-	config?: StreamDebounceConfig
+    source: AsyncIterable<T>,
+    config?: StreamDebounceConfig
 ): AsyncIterable<T> {
-	const intervalMs = config?.intervalMs ?? 0;
-	const leadingEdge = config?.leadingEdge ?? true;
+    const intervalMs = config?.intervalMs ?? 0;
+    const leadingEdge = config?.leadingEdge ?? true;
 
-	// Passthrough when disabled
-	if (intervalMs <= 0) {
-		yield* source;
-		return;
-	}
+    // Passthrough when disabled
+    if (intervalMs <= 0) {
+        yield* source;
+        return;
+    }
 
-	let lastYieldTime = 0;
-	let pending: T | null = null;
-	let isFirst = true;
+    let lastYieldTime = 0;
+    let pending: T | null = null;
+    let isFirst = true;
 
-	for await (const state of source) {
-		// Leading edge: yield first chunk immediately
-		if (isFirst && leadingEdge) {
-			isFirst = false;
-			lastYieldTime = Date.now();
-			yield state;
-			continue;
-		}
-		isFirst = false;
+    for await (const state of source) {
+        // Leading edge: yield first chunk immediately
+        if (isFirst && leadingEdge) {
+            isFirst = false;
+            lastYieldTime = Date.now();
+            yield state;
+            continue;
+        }
+        isFirst = false;
 
-		const elapsed = Date.now() - lastYieldTime;
+        const elapsed = Date.now() - lastYieldTime;
 
-		if (elapsed >= intervalMs) {
-			lastYieldTime = Date.now();
-			pending = null;
-			yield state;
-		} else {
-			// Too soon — buffer latest, skip yield
-			pending = state;
-		}
-	}
+        if (elapsed >= intervalMs) {
+            lastYieldTime = Date.now();
+            pending = null;
+            yield state;
+        } else {
+            // Too soon — buffer latest, skip yield
+            pending = state;
+        }
+    }
 
-	// Final flush: always yield the last state if pending
-	if (pending !== null) {
-		yield pending;
-	}
+    // Final flush: always yield the last state if pending
+    if (pending !== null) {
+        yield pending;
+    }
 }

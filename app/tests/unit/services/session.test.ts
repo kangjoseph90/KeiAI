@@ -6,230 +6,230 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-	getActiveSession,
-	hasActiveSession,
-	setSession,
-	clearSession
+    getActiveSession,
+    hasActiveSession,
+    setSession,
+    clearSession
 } from '$lib/services/session';
 
 describe('session', () => {
-	// Helper to create a test master key
-	async function createTestMasterKey(extractable = true): Promise<CryptoKey> {
-		return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, extractable, [
-			'encrypt',
-			'decrypt'
-		]);
-	}
+    // Helper to create a test master key
+    async function createTestMasterKey(extractable = true): Promise<CryptoKey> {
+        return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, extractable, [
+            'encrypt',
+            'decrypt'
+        ]);
+    }
 
-	afterEach(() => {
-		// Clear session state after each test
-		clearSession();
-	});
+    afterEach(() => {
+        // Clear session state after each test
+        clearSession();
+    });
 
-	describe('initial state', () => {
-		it('should not have an active session initially', () => {
-			expect(hasActiveSession()).toBe(false);
-		});
+    describe('initial state', () => {
+        it('should not have an active session initially', () => {
+            expect(hasActiveSession()).toBe(false);
+        });
 
-		it('should throw when getting active session without initialization', () => {
-			expect(() => getActiveSession()).toThrow('Session not initialized');
-		});
-	});
+        it('should throw when getting active session without initialization', () => {
+            expect(() => getActiveSession()).toThrow('Session not initialized');
+        });
+    });
 
-	describe('setSession', () => {
-		it('should set session with provided values', async () => {
-			const masterKey = await createTestMasterKey();
-			const userId = 'user-123';
-			const isGuest = true;
+    describe('setSession', () => {
+        it('should set session with provided values', async () => {
+            const masterKey = await createTestMasterKey();
+            const userId = 'user-123';
+            const isGuest = true;
 
-			setSession(userId, masterKey, isGuest, {} as CryptoKeyPair);
+            setSession(userId, masterKey, isGuest, {} as CryptoKeyPair);
 
-			expect(hasActiveSession()).toBe(true);
-		});
+            expect(hasActiveSession()).toBe(true);
+        });
 
-		it('should return correct session values', async () => {
-			const masterKey = await createTestMasterKey();
-			const userId = 'user-456';
-			const isGuest = false;
+        it('should return correct session values', async () => {
+            const masterKey = await createTestMasterKey();
+            const userId = 'user-456';
+            const isGuest = false;
 
-			setSession(userId, masterKey, isGuest, {} as CryptoKeyPair);
-			const session = getActiveSession();
+            setSession(userId, masterKey, isGuest, {} as CryptoKeyPair);
+            const session = getActiveSession();
 
-			expect(session.userId).toBe(userId);
-			expect(session.masterKey).toBe(masterKey);
-			expect(session.isGuest).toBe(isGuest);
-		});
+            expect(session.userId).toBe(userId);
+            expect(session.masterKey).toBe(masterKey);
+            expect(session.isGuest).toBe(isGuest);
+        });
 
-		it('should allow setting registered user session', async () => {
-			const masterKey = await createTestMasterKey(false); // non-extractable
-			const userId = 'registered-user';
-			const isGuest = false;
+        it('should allow setting registered user session', async () => {
+            const masterKey = await createTestMasterKey(false); // non-extractable
+            const userId = 'registered-user';
+            const isGuest = false;
 
-			setSession(userId, masterKey, isGuest, {} as CryptoKeyPair);
-			const session = getActiveSession();
+            setSession(userId, masterKey, isGuest, {} as CryptoKeyPair);
+            const session = getActiveSession();
 
-			expect(session.isGuest).toBe(false);
-			expect(session.masterKey.extractable).toBe(false);
-		});
+            expect(session.isGuest).toBe(false);
+            expect(session.masterKey.extractable).toBe(false);
+        });
 
-		it('should allow setting guest user session', async () => {
-			const masterKey = await createTestMasterKey(true); // extractable
-			const userId = 'guest-user';
-			const isGuest = true;
+        it('should allow setting guest user session', async () => {
+            const masterKey = await createTestMasterKey(true); // extractable
+            const userId = 'guest-user';
+            const isGuest = true;
 
-			setSession(userId, masterKey, isGuest, {} as CryptoKeyPair);
-			const session = getActiveSession();
+            setSession(userId, masterKey, isGuest, {} as CryptoKeyPair);
+            const session = getActiveSession();
 
-			expect(session.isGuest).toBe(true);
-			expect(session.masterKey.extractable).toBe(true);
-		});
+            expect(session.isGuest).toBe(true);
+            expect(session.masterKey.extractable).toBe(true);
+        });
 
-		it('should overwrite existing session', async () => {
-			const key1 = await createTestMasterKey();
-			const key2 = await createTestMasterKey();
+        it('should overwrite existing session', async () => {
+            const key1 = await createTestMasterKey();
+            const key2 = await createTestMasterKey();
 
-			setSession('user-1', key1, true, {} as CryptoKeyPair);
-			expect(getActiveSession().userId).toBe('user-1');
+            setSession('user-1', key1, true, {} as CryptoKeyPair);
+            expect(getActiveSession().userId).toBe('user-1');
 
-			setSession('user-2', key2, false, {} as CryptoKeyPair);
-			expect(getActiveSession().userId).toBe('user-2');
-			expect(getActiveSession().masterKey).toBe(key2);
-			expect(getActiveSession().isGuest).toBe(false);
-		});
-	});
+            setSession('user-2', key2, false, {} as CryptoKeyPair);
+            expect(getActiveSession().userId).toBe('user-2');
+            expect(getActiveSession().masterKey).toBe(key2);
+            expect(getActiveSession().isGuest).toBe(false);
+        });
+    });
 
-	describe('clearSession', () => {
-		it('should clear session and reset to default state', async () => {
-			const masterKey = await createTestMasterKey();
+    describe('clearSession', () => {
+        it('should clear session and reset to default state', async () => {
+            const masterKey = await createTestMasterKey();
 
-			setSession('user-123', masterKey, true, {} as CryptoKeyPair);
-			expect(hasActiveSession()).toBe(true);
+            setSession('user-123', masterKey, true, {} as CryptoKeyPair);
+            expect(hasActiveSession()).toBe(true);
 
-			clearSession();
+            clearSession();
 
-			expect(hasActiveSession()).toBe(false);
-		});
+            expect(hasActiveSession()).toBe(false);
+        });
 
-		it('should reset userId to null', async () => {
-			const masterKey = await createTestMasterKey();
+        it('should reset userId to null', async () => {
+            const masterKey = await createTestMasterKey();
 
-			setSession('user-123', masterKey, true, {} as CryptoKeyPair);
-			clearSession();
+            setSession('user-123', masterKey, true, {} as CryptoKeyPair);
+            clearSession();
 
-			expect(() => getActiveSession()).toThrow('Session not initialized');
-		});
+            expect(() => getActiveSession()).toThrow('Session not initialized');
+        });
 
-		it('should reset masterKey to null', async () => {
-			const masterKey = await createTestMasterKey();
+        it('should reset masterKey to null', async () => {
+            const masterKey = await createTestMasterKey();
 
-			setSession('user-123', masterKey, true, {} as CryptoKeyPair);
-			clearSession();
+            setSession('user-123', masterKey, true, {} as CryptoKeyPair);
+            clearSession();
 
-			// Session is cleared, so we can't directly check masterKey
-			// but hasActiveSession should be false
-			expect(hasActiveSession()).toBe(false);
-		});
+            // Session is cleared, so we can't directly check masterKey
+            // but hasActiveSession should be false
+            expect(hasActiveSession()).toBe(false);
+        });
 
-		it('should reset isGuest to true (default)', async () => {
-			const masterKey = await createTestMasterKey();
+        it('should reset isGuest to true (default)', async () => {
+            const masterKey = await createTestMasterKey();
 
-			setSession('user-123', masterKey, false, {} as CryptoKeyPair);
-			clearSession();
+            setSession('user-123', masterKey, false, {} as CryptoKeyPair);
+            clearSession();
 
-			// After clearing and setting a new guest session
-			setSession('user-456', masterKey, true, {} as CryptoKeyPair);
-			const session = getActiveSession();
+            // After clearing and setting a new guest session
+            setSession('user-456', masterKey, true, {} as CryptoKeyPair);
+            const session = getActiveSession();
 
-			expect(session.isGuest).toBe(true);
-		});
-	});
+            expect(session.isGuest).toBe(true);
+        });
+    });
 
-	describe('hasActiveSession', () => {
-		it('should return false when session is not set', () => {
-			expect(hasActiveSession()).toBe(false);
-		});
+    describe('hasActiveSession', () => {
+        it('should return false when session is not set', () => {
+            expect(hasActiveSession()).toBe(false);
+        });
 
-		it('should return true when both userId and masterKey are set', async () => {
-			const masterKey = await createTestMasterKey();
+        it('should return true when both userId and masterKey are set', async () => {
+            const masterKey = await createTestMasterKey();
 
-			setSession('user-123', masterKey, true, {} as CryptoKeyPair);
-			expect(hasActiveSession()).toBe(true);
-		});
+            setSession('user-123', masterKey, true, {} as CryptoKeyPair);
+            expect(hasActiveSession()).toBe(true);
+        });
 
-		it('should return false when masterKey is null', async () => {
-			setSession('user-123', null as unknown as CryptoKey, true, {} as CryptoKeyPair);
-			expect(hasActiveSession()).toBe(false);
-		});
+        it('should return false when masterKey is null', async () => {
+            setSession('user-123', null as unknown as CryptoKey, true, {} as CryptoKeyPair);
+            expect(hasActiveSession()).toBe(false);
+        });
 
-		it('should return false when userId is null', async () => {
-			const masterKey = await createTestMasterKey();
-			setSession(null as unknown as string, masterKey, true, {} as CryptoKeyPair);
-			expect(hasActiveSession()).toBe(false);
-		});
-	});
+        it('should return false when userId is null', async () => {
+            const masterKey = await createTestMasterKey();
+            setSession(null as unknown as string, masterKey, true, {} as CryptoKeyPair);
+            expect(hasActiveSession()).toBe(false);
+        });
+    });
 
-	describe('getActiveSession', () => {
-		it('should throw error when masterKey is null', async () => {
-			const masterKey = await createTestMasterKey();
+    describe('getActiveSession', () => {
+        it('should throw error when masterKey is null', async () => {
+            const masterKey = await createTestMasterKey();
 
-			setSession('user-123', masterKey, true, {} as CryptoKeyPair);
-			// Manually clear masterKey to test edge case
-			clearSession();
-			setSession('user-123', null as unknown as CryptoKey, true, {} as CryptoKeyPair);
+            setSession('user-123', masterKey, true, {} as CryptoKeyPair);
+            // Manually clear masterKey to test edge case
+            clearSession();
+            setSession('user-123', null as unknown as CryptoKey, true, {} as CryptoKeyPair);
 
-			expect(() => getActiveSession()).toThrow('Session not initialized');
-		});
+            expect(() => getActiveSession()).toThrow('Session not initialized');
+        });
 
-		it('should throw error when userId is null', async () => {
-			const masterKey = await createTestMasterKey();
+        it('should throw error when userId is null', async () => {
+            const masterKey = await createTestMasterKey();
 
-			clearSession();
-			setSession(null as unknown as string, masterKey, true, {} as CryptoKeyPair);
+            clearSession();
+            setSession(null as unknown as string, masterKey, true, {} as CryptoKeyPair);
 
-			expect(() => getActiveSession()).toThrow('Session not initialized');
-		});
+            expect(() => getActiveSession()).toThrow('Session not initialized');
+        });
 
-		it('should return session object with all required properties', async () => {
-			const masterKey = await createTestMasterKey();
-			const userId = 'user-789';
-			const isGuest = true;
+        it('should return session object with all required properties', async () => {
+            const masterKey = await createTestMasterKey();
+            const userId = 'user-789';
+            const isGuest = true;
 
-			setSession(userId, masterKey, isGuest, {} as CryptoKeyPair);
-			const session = getActiveSession();
+            setSession(userId, masterKey, isGuest, {} as CryptoKeyPair);
+            const session = getActiveSession();
 
-			expect(session).toHaveProperty('userId');
-			expect(session).toHaveProperty('masterKey');
-			expect(session).toHaveProperty('isGuest');
-			expect(session).toHaveProperty('identityKeyPair');
-			expect(Object.keys(session)).toHaveLength(4);
-		});
-	});
+            expect(session).toHaveProperty('userId');
+            expect(session).toHaveProperty('masterKey');
+            expect(session).toHaveProperty('isGuest');
+            expect(session).toHaveProperty('identityKeyPair');
+            expect(Object.keys(session)).toHaveLength(4);
+        });
+    });
 
-	describe('session isolation', () => {
-		it('should maintain session state across multiple calls', async () => {
-			const masterKey = await createTestMasterKey();
-			const userId = 'user-999';
+    describe('session isolation', () => {
+        it('should maintain session state across multiple calls', async () => {
+            const masterKey = await createTestMasterKey();
+            const userId = 'user-999';
 
-			setSession(userId, masterKey, false, {} as CryptoKeyPair);
+            setSession(userId, masterKey, false, {} as CryptoKeyPair);
 
-			const session1 = getActiveSession();
-			const session2 = getActiveSession();
+            const session1 = getActiveSession();
+            const session2 = getActiveSession();
 
-			expect(session1.userId).toBe(session2.userId);
-			expect(session1.masterKey).toBe(session2.masterKey);
-			expect(session1.isGuest).toBe(session2.isGuest);
-		});
+            expect(session1.userId).toBe(session2.userId);
+            expect(session1.masterKey).toBe(session2.masterKey);
+            expect(session1.isGuest).toBe(session2.isGuest);
+        });
 
-		it('should allow updating session with new values', async () => {
-			const key1 = await createTestMasterKey();
-			const key2 = await createTestMasterKey();
+        it('should allow updating session with new values', async () => {
+            const key1 = await createTestMasterKey();
+            const key2 = await createTestMasterKey();
 
-			setSession('user-1', key1, true, {} as CryptoKeyPair);
-			expect(getActiveSession().masterKey).toBe(key1);
+            setSession('user-1', key1, true, {} as CryptoKeyPair);
+            expect(getActiveSession().masterKey).toBe(key1);
 
-			setSession('user-2', key2, false, {} as CryptoKeyPair);
-			expect(getActiveSession().masterKey).toBe(key2);
-			expect(getActiveSession().isGuest).toBe(false);
-		});
-	});
+            setSession('user-2', key2, false, {} as CryptoKeyPair);
+            expect(getActiveSession().masterKey).toBe(key2);
+            expect(getActiveSession().isGuest).toBe(false);
+        });
+    });
 });

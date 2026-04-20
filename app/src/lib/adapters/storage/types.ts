@@ -11,21 +11,21 @@
  */
 
 export interface IStorageAdapter {
-	/** Get a renderable URL for the file (Object URL or asset:// protocol) */
-	getRenderUrl(path: string): Promise<string | null>;
+    /** Get a renderable URL for the file (Object URL or asset:// protocol) */
+    getRenderUrl(path: string): Promise<string | null>;
 
-	/** Revoke a previously created render URL (Web only, no-op on Tauri) */
-	revokeRenderUrl(url: string): Promise<void>;
+    /** Revoke a previously created render URL (Web only, no-op on Tauri) */
+    revokeRenderUrl(url: string): Promise<void>;
 
-	/** Write binary data to storage. Creates parent directories if needed. */
-	write(path: string, data: Uint8Array | Blob): Promise<void>;
+    /** Write binary data to storage. Creates parent directories if needed. */
+    write(path: string, data: Uint8Array | Blob): Promise<void>;
 
-	/** Read binary data from storage */
-	read(path: string): Promise<Uint8Array | null>;
+    /** Read binary data from storage */
+    read(path: string): Promise<Uint8Array | null>;
 
-	/** Delete a file from storage */
-	delete(path: string): Promise<void>;
+    /** Delete a file from storage */
+    delete(path: string): Promise<void>;
 
-	/** Check if a file exists in storage */
-	exists(path: string): Promise<boolean>;
+    /** Check if a file exists in storage */
+    exists(path: string): Promise<boolean>;
 }

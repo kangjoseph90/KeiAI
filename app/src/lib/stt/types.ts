@@ -6,16 +6,16 @@
  */
 
 export interface STTSegment {
-	text: string;
-	start: number;
-	end: number;
+    text: string;
+    start: number;
+    end: number;
 }
 
 export interface STTResult {
-	text: string;
-	segments?: STTSegment[];
+    text: string;
+    segments?: STTSegment[];
 }
 
 export interface STTHandler {
-	transcribe(audio: Blob, signal?: AbortSignal): Promise<STTResult>;
+    transcribe(audio: Blob, signal?: AbortSignal): Promise<STTResult>;
 }

@@ -23,7 +23,7 @@ type Bytes = Uint8Array<ArrayBuffer>;
  * After upload and local storage, it will be re-imported as non-extractable.
  */
 export async function generateIdentityKeyPair(): Promise<CryptoKeyPair> {
-	return crypto.subtle.generateKey({ name: 'ECDH', namedCurve: ECDH_CURVE }, true, ['deriveKey']);
+    return crypto.subtle.generateKey({ name: 'ECDH', namedCurve: ECDH_CURVE }, true, ['deriveKey']);
 }
 
 // ─── Public Key Export / Import ──────────────────────────────────────
@@ -34,7 +34,7 @@ export async function generateIdentityKeyPair(): Promise<CryptoKeyPair> {
  * read them to encrypt Room Keys for this user.
  */
 export async function exportPublicKey(publicKey: CryptoKey): Promise<JsonWebKey> {
-	return crypto.subtle.exportKey('jwk', publicKey);
+    return crypto.subtle.exportKey('jwk', publicKey);
 }
 
 /**
@@ -42,7 +42,7 @@ export async function exportPublicKey(publicKey: CryptoKey): Promise<JsonWebKey>
  * Public keys are always extractable.
  */
 export async function importPublicKey(jwk: JsonWebKey): Promise<CryptoKey> {
-	return crypto.subtle.importKey('jwk', jwk, { name: 'ECDH', namedCurve: ECDH_CURVE }, true, []);
+    return crypto.subtle.importKey('jwk', jwk, { name: 'ECDH', namedCurve: ECDH_CURVE }, true, []);
 }
 
 // ─── Private Key Export / Import ─────────────────────────────────────
@@ -52,7 +52,7 @@ export async function importPublicKey(jwk: JsonWebKey): Promise<CryptoKey> {
  * Only call this on extractable keys (e.g. freshly generated).
  */
 export async function exportPrivateKey(privateKey: CryptoKey): Promise<Bytes> {
-	return new Uint8Array((await crypto.subtle.exportKey('pkcs8', privateKey)) as ArrayBuffer);
+    return new Uint8Array((await crypto.subtle.exportKey('pkcs8', privateKey)) as ArrayBuffer);
 }
 
 /**
@@ -62,13 +62,13 @@ export async function exportPrivateKey(privateKey: CryptoKey): Promise<Bytes> {
  * @param extractable - false for registered users (XSS protection), true for guests
  */
 export async function importPrivateKey(raw: Bytes, extractable: boolean): Promise<CryptoKey> {
-	return crypto.subtle.importKey(
-		'pkcs8',
-		raw,
-		{ name: 'ECDH', namedCurve: ECDH_CURVE },
-		extractable,
-		['deriveKey']
-	);
+    return crypto.subtle.importKey(
+        'pkcs8',
+        raw,
+        { name: 'ECDH', namedCurve: ECDH_CURVE },
+        extractable,
+        ['deriveKey']
+    );
 }
 
 // ─── ECDH Key Agreement ───────────────────────────────────────────────
@@ -86,14 +86,14 @@ export async function importPrivateKey(raw: Bytes, extractable: boolean): Promis
  * future multi-room Room Key exchange.
  */
 export async function deriveSharedSecret(
-	myPrivateKey: CryptoKey,
-	theirPublicKey: CryptoKey
+    myPrivateKey: CryptoKey,
+    theirPublicKey: CryptoKey
 ): Promise<CryptoKey> {
-	return crypto.subtle.deriveKey(
-		{ name: 'ECDH', public: theirPublicKey },
-		myPrivateKey,
-		{ name: 'AES-GCM', length: 256 },
-		false, // non-extractable
-		['encrypt', 'decrypt']
-	);
+    return crypto.subtle.deriveKey(
+        { name: 'ECDH', public: theirPublicKey },
+        myPrivateKey,
+        { name: 'AES-GCM', length: 256 },
+        false, // non-extractable
+        ['encrypt', 'decrypt']
+    );
 }

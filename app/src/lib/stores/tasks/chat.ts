@@ -17,19 +17,19 @@ import type { ChatTask } from '../types';
  * The message/swipe must already exist in DB before calling this.
  */
 export function createChatTask(
-	chatId: string,
-	messageId: string,
-	controller: AbortController
+    chatId: string,
+    messageId: string,
+    controller: AbortController
 ): void {
-	chatTasks.update((map) => {
-		const next = new Map(map);
-		next.set(chatId, {
-			status: 'generating',
-			messageId,
-			controller
-		});
-		return next;
-	});
+    chatTasks.update((map) => {
+        const next = new Map(map);
+        next.set(chatId, {
+            status: 'generating',
+            messageId,
+            controller
+        });
+        return next;
+    });
 }
 
 // ─── Status ───────────────────────────────────────────────────────────────────
@@ -38,13 +38,13 @@ export function createChatTask(
  * Mark the task as failed.
  */
 export function setChatTaskError(chatId: string, errorMessage: string): void {
-	chatTasks.update((map) => {
-		const task = map.get(chatId);
-		if (!task) return map;
-		const next = new Map(map);
-		next.set(chatId, { ...task, status: 'error', errorMessage });
-		return next;
-	});
+    chatTasks.update((map) => {
+        const task = map.get(chatId);
+        if (!task) return map;
+        const next = new Map(map);
+        next.set(chatId, { ...task, status: 'error', errorMessage });
+        return next;
+    });
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
@@ -53,12 +53,12 @@ export function setChatTaskError(chatId: string, errorMessage: string): void {
  * Remove the task for a specific chatId.
  */
 export function clearChatTask(chatId: string): void {
-	chatTasks.update((map) => {
-		if (!map.has(chatId)) return map;
-		const next = new Map(map);
-		next.delete(chatId);
-		return next;
-	});
+    chatTasks.update((map) => {
+        if (!map.has(chatId)) return map;
+        const next = new Map(map);
+        next.delete(chatId);
+        return next;
+    });
 }
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
@@ -68,5 +68,5 @@ export function clearChatTask(chatId: string): void {
  * Returns null if no task exists for the given chatId
  */
 export function getChatTask(chatId: string): ChatTask | null {
-	return get(chatTasks).get(chatId) ?? null;
+    return get(chatTasks).get(chatId) ?? null;
 }

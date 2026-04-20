@@ -1,192 +1,192 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 import {
-	loadInitialMessages,
-	loadOlderMessages,
-	loadNewerMessages,
-	createMessage,
-	updateMessage,
-	deleteMessage,
-	getMessage
+    loadInitialMessages,
+    loadOlderMessages,
+    loadNewerMessages,
+    createMessage,
+    updateMessage,
+    deleteMessage,
+    getMessage
 } from '$lib/stores/content/message';
 import { messages, chats, activeChat } from '$lib/stores/state';
 import { MessageService, ChatService, type Message, type Chat } from '$lib/services';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
-	MessageService: {
-		getMessagesBefore: vi.fn(),
-		getMessagesAfter: vi.fn(),
-		create: vi.fn(),
-		update: vi.fn(),
-		delete: vi.fn(),
-		get: vi.fn()
-	},
-	ChatService: {
-		update: vi.fn()
-	}
+    MessageService: {
+        getMessagesBefore: vi.fn(),
+        getMessagesAfter: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        get: vi.fn()
+    },
+    ChatService: {
+        update: vi.fn()
+    }
 }));
 
 describe('Message Store', () => {
-	const mockChatId = 'chat-1';
-	const mockMessage: Message = {
-		id: 'msg-1',
-		chatId: mockChatId,
-		role: 'user',
-		swipes: { s1: { id: 's1', content: 'Hello', createdAt: 1000 } },
-		activeSwipeId: 's1',
-		sortOrder: 'a'
-	};
+    const mockChatId = 'chat-1';
+    const mockMessage: Message = {
+        id: 'msg-1',
+        chatId: mockChatId,
+        role: 'user',
+        swipes: { s1: { id: 's1', content: 'Hello', createdAt: 1000 } },
+        activeSwipeId: 's1',
+        sortOrder: 'a'
+    };
 
-	beforeEach(() => {
-		vi.clearAllMocks();
-		// Reset via messages (the EntityStore)
-		messages.clear();
-		chats.clear();
-		activeChat.set({ id: mockChatId, characterId: 'char-1', messageCount: 0 } as Chat);
-	});
+    beforeEach(() => {
+        vi.clearAllMocks();
+        // Reset via messages (the EntityStore)
+        messages.clear();
+        chats.clear();
+        activeChat.set({ id: mockChatId, characterId: 'char-1', messageCount: 0 } as Chat);
+    });
 
-	describe('loadInitialMessages', () => {
-		it('should load and set messages if activeChatId matches', async () => {
-			const mockMsgs = [mockMessage];
-			vi.mocked(MessageService.getMessagesBefore).mockResolvedValue(mockMsgs);
+    describe('loadInitialMessages', () => {
+        it('should load and set messages if activeChatId matches', async () => {
+            const mockMsgs = [mockMessage];
+            vi.mocked(MessageService.getMessagesBefore).mockResolvedValue(mockMsgs);
 
-			await loadInitialMessages(mockChatId);
+            await loadInitialMessages(mockChatId);
 
-			expect(MessageService.getMessagesBefore).toHaveBeenCalled();
-			expect(get(messages)).toEqual(mockMsgs);
-		});
+            expect(MessageService.getMessagesBefore).toHaveBeenCalled();
+            expect(get(messages)).toEqual(mockMsgs);
+        });
 
-		it('should not update store if activeChatId has changed', async () => {
-			activeChat.set({ id: 'other-chat', characterId: 'char-1' } as Chat);
-			vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([mockMessage]);
+        it('should not update store if activeChatId has changed', async () => {
+            activeChat.set({ id: 'other-chat', characterId: 'char-1' } as Chat);
+            vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([mockMessage]);
 
-			await loadInitialMessages(mockChatId);
+            await loadInitialMessages(mockChatId);
 
-			expect(get(messages)).toEqual([]);
-		});
-	});
+            expect(get(messages)).toEqual([]);
+        });
+    });
 
-	describe('Pagination', () => {
-		it('loadOlderMessages should prepend older messages (sorted via derived)', async () => {
-			// sortOrder 'a' — existing message
-			messages.setAll([mockMessage]);
-			const olderMsg = { ...mockMessage, id: 'msg-old', sortOrder: '0' };
-			vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([olderMsg]);
+    describe('Pagination', () => {
+        it('loadOlderMessages should prepend older messages (sorted via derived)', async () => {
+            // sortOrder 'a' — existing message
+            messages.setAll([mockMessage]);
+            const olderMsg = { ...mockMessage, id: 'msg-old', sortOrder: '0' };
+            vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([olderMsg]);
 
-			await loadOlderMessages(mockChatId);
+            await loadOlderMessages(mockChatId);
 
-			expect(MessageService.getMessagesBefore).toHaveBeenCalledWith(mockChatId, 'a', 50);
-			// derived store sorts by sortOrder: '0' < 'a'
-			expect(get(messages)).toEqual([olderMsg, mockMessage]);
-		});
+            expect(MessageService.getMessagesBefore).toHaveBeenCalledWith(mockChatId, 'a', 50);
+            // derived store sorts by sortOrder: '0' < 'a'
+            expect(get(messages)).toEqual([olderMsg, mockMessage]);
+        });
 
-		it('loadNewerMessages should append newer messages (sorted via derived)', async () => {
-			messages.setAll([mockMessage]);
-			const newerMsg = { ...mockMessage, id: 'msg-new', sortOrder: 'b' };
-			vi.mocked(MessageService.getMessagesAfter).mockResolvedValue([newerMsg]);
+        it('loadNewerMessages should append newer messages (sorted via derived)', async () => {
+            messages.setAll([mockMessage]);
+            const newerMsg = { ...mockMessage, id: 'msg-new', sortOrder: 'b' };
+            vi.mocked(MessageService.getMessagesAfter).mockResolvedValue([newerMsg]);
 
-			await loadNewerMessages(mockChatId);
+            await loadNewerMessages(mockChatId);
 
-			expect(MessageService.getMessagesAfter).toHaveBeenCalledWith(mockChatId, 'a', 50);
-			// derived store sorts by sortOrder: 'a' < 'b'
-			expect(get(messages)).toEqual([mockMessage, newerMsg]);
-		});
-	});
+            expect(MessageService.getMessagesAfter).toHaveBeenCalledWith(mockChatId, 'a', 50);
+            // derived store sorts by sortOrder: 'a' < 'b'
+            expect(get(messages)).toEqual([mockMessage, newerMsg]);
+        });
+    });
 
-	describe('getMessage', () => {
-		it('should return from store cache without hitting IDB', async () => {
-			messages.setAll([mockMessage]);
+    describe('getMessage', () => {
+        it('should return from store cache without hitting IDB', async () => {
+            messages.setAll([mockMessage]);
 
-			const result = await getMessage('msg-1');
+            const result = await getMessage('msg-1');
 
-			expect(result).toEqual(mockMessage);
-			expect(MessageService.get).not.toHaveBeenCalled();
-		});
+            expect(result).toEqual(mockMessage);
+            expect(MessageService.get).not.toHaveBeenCalled();
+        });
 
-		it('should fall back to IDB if not in cache', async () => {
-			vi.mocked(MessageService.get).mockResolvedValue(mockMessage);
+        it('should fall back to IDB if not in cache', async () => {
+            vi.mocked(MessageService.get).mockResolvedValue(mockMessage);
 
-			const result = await getMessage('msg-1');
+            const result = await getMessage('msg-1');
 
-			expect(result).toEqual(mockMessage);
-			expect(MessageService.get).toHaveBeenCalledWith('msg-1');
-		});
+            expect(result).toEqual(mockMessage);
+            expect(MessageService.get).toHaveBeenCalledWith('msg-1');
+        });
 
-		it('should throw NOT_FOUND if not in cache and not in IDB', async () => {
-			vi.mocked(MessageService.get).mockResolvedValue(null);
+        it('should throw NOT_FOUND if not in cache and not in IDB', async () => {
+            vi.mocked(MessageService.get).mockResolvedValue(null);
 
-			await expect(getMessage('missing-id')).rejects.toMatchObject({ code: 'NOT_FOUND' });
-		});
-	});
+            await expect(getMessage('missing-id')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+        });
+    });
 
-	describe('createMessage', () => {
-		it('should create message and update chat preview', async () => {
-			const newMessage = { ...mockMessage, id: 'new-id' };
-			const updatedChat = { id: mockChatId, characterId: 'char-1' } as Chat;
+    describe('createMessage', () => {
+        it('should create message and update chat preview', async () => {
+            const newMessage = { ...mockMessage, id: 'new-id' };
+            const updatedChat = { id: mockChatId, characterId: 'char-1' } as Chat;
 
-			vi.mocked(MessageService.create).mockResolvedValue(newMessage);
-			vi.mocked(ChatService.update).mockResolvedValue(updatedChat);
-			chats.setAll([{ id: mockChatId, characterId: 'char-1' } as Chat]);
+            vi.mocked(MessageService.create).mockResolvedValue(newMessage);
+            vi.mocked(ChatService.update).mockResolvedValue(updatedChat);
+            chats.setAll([{ id: mockChatId, characterId: 'char-1' } as Chat]);
 
-			await createMessage(mockChatId, {
-				swipes: { s1: { id: 's1', content: 'New message content', createdAt: Date.now() } },
-				activeSwipeId: 's1'
-			});
+            await createMessage(mockChatId, {
+                swipes: { s1: { id: 's1', content: 'New message content', createdAt: Date.now() } },
+                activeSwipeId: 's1'
+            });
 
-			expect(get(messages)).toContainEqual(newMessage);
-			expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
-				messageCount: 1,
-				lastMessageId: 'new-id'
-			});
-			expect(get(activeChat)).toMatchObject({});
-		});
-	});
+            expect(get(messages)).toContainEqual(newMessage);
+            expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
+                messageCount: 1,
+                lastMessageId: 'new-id'
+            });
+            expect(get(activeChat)).toMatchObject({});
+        });
+    });
 
-	describe('updateMessage', () => {
-		it('should update message swipes in messages', async () => {
-			messages.setAll([mockMessage]);
-			const updatedMsg: Message = {
-				...mockMessage,
-				swipes: { s1: { id: 's1', content: 'Updated', createdAt: 2000 } }
-			};
-			vi.mocked(MessageService.update).mockResolvedValue(updatedMsg);
+    describe('updateMessage', () => {
+        it('should update message swipes in messages', async () => {
+            messages.setAll([mockMessage]);
+            const updatedMsg: Message = {
+                ...mockMessage,
+                swipes: { s1: { id: 's1', content: 'Updated', createdAt: 2000 } }
+            };
+            vi.mocked(MessageService.update).mockResolvedValue(updatedMsg);
 
-			await updateMessage('msg-1', {
-				swipes: { s1: { id: 's1', content: 'Updated', createdAt: 2000 } }
-			});
+            await updateMessage('msg-1', {
+                swipes: { s1: { id: 's1', content: 'Updated', createdAt: 2000 } }
+            });
 
-			expect(get(messages)[0].swipes['s1'].content).toBe('Updated');
-			// O(1) lookup: verify EntityStore contains updated value
-			expect(messages.get('msg-1')?.swipes['s1'].content).toBe('Updated');
-		});
-	});
+            expect(get(messages)[0].swipes['s1'].content).toBe('Updated');
+            // O(1) lookup: verify EntityStore contains updated value
+            expect(messages.get('msg-1')?.swipes['s1'].content).toBe('Updated');
+        });
+    });
 
-	describe('deleteMessage', () => {
-		it('should remove message from messages', async () => {
-			messages.setAll([mockMessage]);
-			vi.mocked(MessageService.delete).mockResolvedValue(undefined);
-			vi.mocked(ChatService.update).mockResolvedValue({
-				id: mockChatId,
-				characterId: 'char-1'
-			} as Chat);
+    describe('deleteMessage', () => {
+        it('should remove message from messages', async () => {
+            messages.setAll([mockMessage]);
+            vi.mocked(MessageService.delete).mockResolvedValue(undefined);
+            vi.mocked(ChatService.update).mockResolvedValue({
+                id: mockChatId,
+                characterId: 'char-1'
+            } as Chat);
 
-			activeChat.set({
-				id: mockChatId,
-				characterId: 'char-1',
-				messageCount: 1,
-				lastMessageId: 'msg-1'
-			} as Chat);
+            activeChat.set({
+                id: mockChatId,
+                characterId: 'char-1',
+                messageCount: 1,
+                lastMessageId: 'msg-1'
+            } as Chat);
 
-			vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([]);
-			await deleteMessage(mockChatId, 'msg-1');
+            vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([]);
+            await deleteMessage(mockChatId, 'msg-1');
 
-			expect(get(messages)).toHaveLength(0);
-			expect(messages.has('msg-1')).toBe(false);
-			expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
-				messageCount: 0,
-				lastMessageId: undefined
-			});
-		});
-	});
+            expect(get(messages)).toHaveLength(0);
+            expect(messages.has('msg-1')).toBe(false);
+            expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
+                messageCount: 0,
+                lastMessageId: undefined
+            });
+        });
+    });
 });

@@ -21,10 +21,10 @@ type Bytes = Uint8Array<ArrayBuffer>;
  * be non-extractable.
  */
 export async function generateMasterKey(): Promise<CryptoKey> {
-	return crypto.subtle.generateKey({ name: 'AES-GCM', length: AES_KEY_BITS }, true, [
-		'encrypt',
-		'decrypt'
-	]);
+    return crypto.subtle.generateKey({ name: 'AES-GCM', length: AES_KEY_BITS }, true, [
+        'encrypt',
+        'decrypt'
+    ]);
 }
 
 /**
@@ -37,26 +37,30 @@ export async function generateMasterKey(): Promise<CryptoKey> {
  * @returns ciphertext and IV
  */
 export async function wrapMasterKey(
-	masterKey: CryptoKey,
-	wrappingKeyBytes: Bytes
+    masterKey: CryptoKey,
+    wrappingKeyBytes: Bytes
 ): Promise<{ ciphertext: Bytes; iv: Bytes }> {
-	const iv = crypto.getRandomValues(new Uint8Array(AES_IV_BYTES));
-	const wrappingKey = await importWrappingKey(wrappingKeyBytes);
+    const iv = crypto.getRandomValues(new Uint8Array(AES_IV_BYTES));
+    const wrappingKey = await importWrappingKey(wrappingKeyBytes);
 
-	// Export M as raw 32 bytes
-	const rawMaster = new Uint8Array(
-		(await crypto.subtle.exportKey('raw', masterKey)) as ArrayBuffer
-	);
+    // Export M as raw 32 bytes
+    const rawMaster = new Uint8Array(
+        (await crypto.subtle.exportKey('raw', masterKey)) as ArrayBuffer
+    );
 
-	// Encrypt M with wrapping key
-	const ciphertext = new Uint8Array(
-		(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrappingKey, rawMaster)) as ArrayBuffer
-	);
+    // Encrypt M with wrapping key
+    const ciphertext = new Uint8Array(
+        (await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv },
+            wrappingKey,
+            rawMaster
+        )) as ArrayBuffer
+    );
 
-	// Zero out raw master key bytes from memory
-	rawMaster.fill(0);
+    // Zero out raw master key bytes from memory
+    rawMaster.fill(0);
 
-	return { ciphertext, iv };
+    return { ciphertext, iv };
 }
 
 /**
@@ -72,30 +76,34 @@ export async function wrapMasterKey(
  * @returns non-extractable AES-GCM CryptoKey
  */
 export async function unwrapMasterKey(
-	ciphertext: Bytes,
-	iv: Bytes,
-	wrappingKeyBytes: Bytes
+    ciphertext: Bytes,
+    iv: Bytes,
+    wrappingKeyBytes: Bytes
 ): Promise<CryptoKey> {
-	const wrappingKey = await importWrappingKey(wrappingKeyBytes);
+    const wrappingKey = await importWrappingKey(wrappingKeyBytes);
 
-	// Decrypt to get raw M bytes
-	const rawMaster = new Uint8Array(
-		(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, wrappingKey, ciphertext)) as ArrayBuffer
-	);
+    // Decrypt to get raw M bytes
+    const rawMaster = new Uint8Array(
+        (await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv },
+            wrappingKey,
+            ciphertext
+        )) as ArrayBuffer
+    );
 
-	// Import as non-extractable CryptoKey
-	const masterKey = await crypto.subtle.importKey(
-		'raw',
-		rawMaster,
-		{ name: 'AES-GCM' },
-		false, // ← extractable: false — XSS protection
-		['encrypt', 'decrypt']
-	);
+    // Import as non-extractable CryptoKey
+    const masterKey = await crypto.subtle.importKey(
+        'raw',
+        rawMaster,
+        { name: 'AES-GCM' },
+        false, // ← extractable: false — XSS protection
+        ['encrypt', 'decrypt']
+    );
 
-	// Zero out raw bytes
-	rawMaster.fill(0);
+    // Zero out raw bytes
+    rawMaster.fill(0);
 
-	return masterKey;
+    return masterKey;
 }
 
 /**
@@ -103,13 +111,13 @@ export async function unwrapMasterKey(
  * Used by auth flows to re-import master key material.
  */
 export async function importMasterKey(
-	raw: Uint8Array<ArrayBuffer>,
-	extractable: boolean
+    raw: Uint8Array<ArrayBuffer>,
+    extractable: boolean
 ): Promise<CryptoKey> {
-	return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, extractable, [
-		'encrypt',
-		'decrypt'
-	]);
+    return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, extractable, [
+        'encrypt',
+        'decrypt'
+    ]);
 }
 
 /**
@@ -117,14 +125,18 @@ export async function importMasterKey(
  * Used by auth flows that need raw bytes for local DB storage.
  */
 export async function unwrapMasterKeyRaw(
-	ciphertext: Bytes,
-	iv: Bytes,
-	wrappingKeyBytes: Bytes
+    ciphertext: Bytes,
+    iv: Bytes,
+    wrappingKeyBytes: Bytes
 ): Promise<Bytes> {
-	const wrappingKey = await importWrappingKey(wrappingKeyBytes);
-	const rawMaster = new Uint8Array(
-		(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, wrappingKey, ciphertext)) as ArrayBuffer
-	);
-	wrappingKeyBytes.fill(0);
-	return rawMaster;
+    const wrappingKey = await importWrappingKey(wrappingKeyBytes);
+    const rawMaster = new Uint8Array(
+        (await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv },
+            wrappingKey,
+            ciphertext
+        )) as ArrayBuffer
+    );
+    wrappingKeyBytes.fill(0);
+    return rawMaster;
 }

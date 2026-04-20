@@ -28,24 +28,24 @@ let activeIdentityKeyPair: CryptoKeyPair | null = null;
 import { AppError } from '$lib/types/errors';
 
 export function getActiveSession(): {
-	userId: string;
-	masterKey: CryptoKey;
-	isGuest: boolean;
-	identityKeyPair: CryptoKeyPair;
+    userId: string;
+    masterKey: CryptoKey;
+    isGuest: boolean;
+    identityKeyPair: CryptoKeyPair;
 } {
-	if (!activeUserId || !activeMasterKey || !activeIdentityKeyPair) {
-		throw new AppError('SESSION_EXPIRED', 'Session not initialized.');
-	}
-	return {
-		userId: activeUserId,
-		masterKey: activeMasterKey,
-		isGuest: isGuestUser,
-		identityKeyPair: activeIdentityKeyPair
-	};
+    if (!activeUserId || !activeMasterKey || !activeIdentityKeyPair) {
+        throw new AppError('SESSION_EXPIRED', 'Session not initialized.');
+    }
+    return {
+        userId: activeUserId,
+        masterKey: activeMasterKey,
+        isGuest: isGuestUser,
+        identityKeyPair: activeIdentityKeyPair
+    };
 }
 
 export function hasActiveSession(): boolean {
-	return activeMasterKey !== null && activeUserId !== null && activeIdentityKeyPair !== null;
+    return activeMasterKey !== null && activeUserId !== null && activeIdentityKeyPair !== null;
 }
 
 // ─── Mutation ────────────────────────────────────────────────────────
@@ -55,20 +55,20 @@ export function hasActiveSession(): boolean {
  * KV persistence (activeUserId) is managed by UserService, not here.
  */
 export function setSession(
-	userId: string,
-	masterKey: CryptoKey,
-	isGuest: boolean,
-	identityKeyPair: CryptoKeyPair
+    userId: string,
+    masterKey: CryptoKey,
+    isGuest: boolean,
+    identityKeyPair: CryptoKeyPair
 ): void {
-	activeUserId = userId;
-	activeMasterKey = masterKey;
-	isGuestUser = isGuest;
-	activeIdentityKeyPair = identityKeyPair;
+    activeUserId = userId;
+    activeMasterKey = masterKey;
+    isGuestUser = isGuest;
+    activeIdentityKeyPair = identityKeyPair;
 }
 
 export function clearSession(): void {
-	activeMasterKey = null;
-	activeUserId = null;
-	isGuestUser = true;
-	activeIdentityKeyPair = null;
+    activeMasterKey = null;
+    activeUserId = null;
+    isGuestUser = true;
+    activeIdentityKeyPair = null;
 }

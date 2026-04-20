@@ -10,11 +10,11 @@ export type ImageGenProvider = 'openai' | 'stability' | 'google';
 // ─── Display Helpers ────────────────────────────────────────────────────────
 
 const providerNames: Record<ImageGenProvider, string> = {
-	openai: 'OpenAI',
-	stability: 'Stability AI',
-	google: 'Google'
+    openai: 'OpenAI',
+    stability: 'Stability AI',
+    google: 'Google'
 };
 
 export function getImageGenProviderName(provider: ImageGenProvider): string {
-	return providerNames[provider] || provider;
+    return providerNames[provider] || provider;
 }

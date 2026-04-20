@@ -25,7 +25,7 @@ import { loadGlobalState } from '../init';
 pbConnected.set(AuthService.isPbConnected());
 
 AuthService.onPbAuthChange((isValid) => {
-	pbConnected.set(isValid);
+    pbConnected.set(isValid);
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -36,52 +36,52 @@ AuthService.onPbAuthChange((isValid) => {
  * newly authenticated user's data.
  */
 async function refreshAfterLogin(): Promise<void> {
-	void loadProfile();
-	await SyncManager.syncAll();
-	clearActiveCharacter();
-	await loadGlobalState();
+    void loadProfile();
+    await SyncManager.syncAll();
+    clearActiveCharacter();
+    await loadGlobalState();
 }
 
 // ─── Auth Actions ────────────────────────────────────────────────────
 
 export async function performLogin(email: string, password: string): Promise<void> {
-	await AuthService.login(email, password);
-	await refreshAfterLogin();
+    await AuthService.login(email, password);
+    await refreshAfterLogin();
 }
 
 export async function performRegister(email: string, password: string): Promise<string> {
-	const recoveryCode = await AuthService.register(email, password);
-	await refreshAfterLogin();
-	return recoveryCode;
+    const recoveryCode = await AuthService.register(email, password);
+    await refreshAfterLogin();
+    return recoveryCode;
 }
 
 export async function performRecoverPassword(
-	email: string,
-	recoveryCode: string,
-	newPassword: string
+    email: string,
+    recoveryCode: string,
+    newPassword: string
 ): Promise<string> {
-	const newCode = await AuthService.recoverPassword(email, recoveryCode, newPassword);
-	await refreshAfterLogin();
-	return newCode;
+    const newCode = await AuthService.recoverPassword(email, recoveryCode, newPassword);
+    await refreshAfterLogin();
+    return newCode;
 }
 
 export async function performChangePassword(
-	oldPassword: string,
-	newPassword: string
+    oldPassword: string,
+    newPassword: string
 ): Promise<string> {
-	const newCode = await AuthService.changePassword(oldPassword, newPassword);
-	await refreshAfterLogin();
-	return newCode;
+    const newCode = await AuthService.changePassword(oldPassword, newPassword);
+    await refreshAfterLogin();
+    return newCode;
 }
 
 export async function performUnlink(password: string): Promise<void> {
-	await AuthService.unlinkAccount(password);
-	void loadProfile();
+    await AuthService.unlinkAccount(password);
+    void loadProfile();
 }
 
 export async function performLogout(): Promise<void> {
-	await AuthService.logout();
-	void loadProfile();
+    await AuthService.logout();
+    void loadProfile();
 }
 
 /**
@@ -90,7 +90,7 @@ export async function performLogout(): Promise<void> {
  * will be called with clean store state.
  */
 export async function performCreateNewGuest(): Promise<void> {
-	SyncManager.stopAutoSync();
-	AuthService.clearAuth();
-	await UserService.switchUser(''); // Clear activeUserId KV and reload
+    SyncManager.stopAutoSync();
+    AuthService.clearAuth();
+    await UserService.switchUser(''); // Clear activeUserId KV and reload
 }

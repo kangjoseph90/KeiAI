@@ -49,18 +49,18 @@ tests/
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 describe('ModuleName', () => {
-	describe('methodName', () => {
-		it('should describe expected behavior', async () => {
-			// Arrange
-			const input = setupTestData();
+    describe('methodName', () => {
+        it('should describe expected behavior', async () => {
+            // Arrange
+            const input = setupTestData();
 
-			// Act
-			const result = await methodName(input);
+            // Act
+            const result = await methodName(input);
 
-			// Assert
-			expect(result).toBe(expected);
-		});
-	});
+            // Assert
+            expect(result).toBe(expected);
+        });
+    });
 });
 ```
 
@@ -87,10 +87,10 @@ Crypto tests use real Web Crypto API (provided by happy-dom). They test actual e
 
 ```typescript
 async function createTestMasterKey(extractable = true): Promise<CryptoKey> {
-	return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, extractable, [
-		'encrypt',
-		'decrypt'
-	]);
+    return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, extractable, [
+        'encrypt',
+        'decrypt'
+    ]);
 }
 ```
 
@@ -119,28 +119,28 @@ Services are the primary unit-under-test. Mock everything below them:
 
 ```typescript
 vi.mock('$lib/adapters/db', () => ({
-	localDB: {
-		getRecord: vi.fn(),
-		putRecord: vi.fn(),
-		transaction: vi.fn()
-		// ... method stubs as needed
-	}
+    localDB: {
+        getRecord: vi.fn(),
+        putRecord: vi.fn(),
+        transaction: vi.fn()
+        // ... method stubs as needed
+    }
 }));
 
 vi.mock('$lib/crypto', () => ({
-	encrypt: vi.fn(),
-	decrypt: vi.fn()
+    encrypt: vi.fn(),
+    decrypt: vi.fn()
 }));
 
 vi.mock('$lib/services/session', () => ({
-	getActiveSession: vi.fn()
+    getActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/services/sync', () => ({
-	DataSyncService: {
-		pushRecord: vi.fn(),
-		pushRecentWrites: vi.fn()
-	}
+    DataSyncService: {
+        pushRecord: vi.fn(),
+        pushRecentWrites: vi.fn()
+    }
 }));
 ```
 
@@ -151,12 +151,12 @@ const mockMasterKey = {} as CryptoKey;
 const mockUserId = 'user-123';
 
 beforeEach(() => {
-	vi.clearAllMocks();
-	vi.mocked(getActiveSession).mockReturnValue({
-		userId: mockUserId,
-		masterKey: mockMasterKey,
-		isGuest: false
-	});
+    vi.clearAllMocks();
+    vi.mocked(getActiveSession).mockReturnValue({
+        userId: mockUserId,
+        masterKey: mockMasterKey,
+        isGuest: false
+    });
 });
 ```
 
@@ -175,11 +175,11 @@ Store action functions are tested by mocking the service layer:
 
 ```typescript
 vi.mock('$lib/services', () => ({
-	CharacterService: {
-		list: vi.fn(),
-		getDetail: vi.fn(),
-		create: vi.fn()
-	}
+    CharacterService: {
+        list: vi.fn(),
+        getDetail: vi.fn(),
+        create: vi.fn()
+    }
 }));
 ```
 
@@ -191,12 +191,12 @@ Integration tests use real adapter operations against fake-indexeddb, but mock c
 
 ```typescript
 vi.mocked(encrypt).mockImplementation(async (_key, data) => ({
-	ciphertext: new TextEncoder().encode(data),
-	iv: new Uint8Array([1, 2, 3])
+    ciphertext: new TextEncoder().encode(data),
+    iv: new Uint8Array([1, 2, 3])
 }));
 
 vi.mocked(decrypt).mockImplementation(async (_key, enc) => {
-	return new TextDecoder().decode(enc.ciphertext);
+    return new TextDecoder().decode(enc.ciphertext);
 });
 ```
 
@@ -211,12 +211,12 @@ import { render, screen } from '@testing-library/svelte';
 import { userEvent } from '@testing-library/user-event';
 
 it('should handle user click', async () => {
-	const handler = vi.fn();
-	render(Button, { onClick: handler, children: 'Save' });
+    const handler = vi.fn();
+    render(Button, { onClick: handler, children: 'Save' });
 
-	await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-	expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledOnce();
 });
 ```
 
@@ -249,10 +249,10 @@ appSettings.set({ theme: 'dark', ...restOfRequiredFields } as AppSettings);
 
 // YES: clean, type-safe, and future-proof
 appSettings.set(
-	makeSettings({
-		theme: 'dark',
-		openai: { apiKey: 'sk-test' }
-	})
+    makeSettings({
+        theme: 'dark',
+        openai: { apiKey: 'sk-test' }
+    })
 );
 ```
 

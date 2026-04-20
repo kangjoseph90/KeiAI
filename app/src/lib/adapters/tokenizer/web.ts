@@ -15,7 +15,7 @@ import { AppError } from '$lib/types/errors';
 
 /** Interface matching the TokenizerWorker class exposed in worker.ts */
 interface TokenizerWorker {
-	count(text: string, encoding: LLMTokenizer): Promise<number>;
+    count(text: string, encoding: LLMTokenizer): Promise<number>;
 }
 
 // ─── Worker Singleton ───────────────────────────────────────────────────────
@@ -23,39 +23,39 @@ interface TokenizerWorker {
 let workerInstance: Remote<TokenizerWorker> | null = null;
 
 function getWorker(): Remote<TokenizerWorker> {
-	if (workerInstance) {
-		return workerInstance;
-	}
+    if (workerInstance) {
+        return workerInstance;
+    }
 
-	try {
-		const worker = new Worker(new URL('./worker.ts', import.meta.url), {
-			type: 'module'
-		});
+    try {
+        const worker = new Worker(new URL('./worker.ts', import.meta.url), {
+            type: 'module'
+        });
 
-		workerInstance = wrap<TokenizerWorker>(worker);
-		return workerInstance;
-	} catch (error) {
-		throw new AppError('TOKENIZER_ERROR', 'Failed to initialize tokenizer worker', error);
-	}
+        workerInstance = wrap<TokenizerWorker>(worker);
+        return workerInstance;
+    } catch (error) {
+        throw new AppError('TOKENIZER_ERROR', 'Failed to initialize tokenizer worker', error);
+    }
 }
 
 // ─── Web Tokenizer Adapter ──────────────────────────────────────────────────
 
 export class WebTokenizerAdapter implements ITokenizerAdapter {
-	async count(text: string, encoding: LLMTokenizer): Promise<number> {
-		try {
-			const worker = getWorker();
-			return await worker.count(text, encoding);
-		} catch (error) {
-			if (error instanceof AppError) throw error;
+    async count(text: string, encoding: LLMTokenizer): Promise<number> {
+        try {
+            const worker = getWorker();
+            return await worker.count(text, encoding);
+        } catch (error) {
+            if (error instanceof AppError) throw error;
 
-			throw new AppError(
-				'TOKENIZER_ERROR',
-				`Failed to count tokens: ${error instanceof Error ? error.message : String(error)}`,
-				error
-			);
-		}
-	}
+            throw new AppError(
+                'TOKENIZER_ERROR',
+                `Failed to count tokens: ${error instanceof Error ? error.message : String(error)}`,
+                error
+            );
+        }
+    }
 }
 
 export const webTokenizer = new WebTokenizerAdapter();

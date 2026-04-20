@@ -10,3 +10,7 @@ Before working on any task, READ the appropriate AGENTS.md (+ TESTING.md) for yo
 - Frontend App → [KeiAI/app/AGENTS.md], [KeiAI/app/TESTING.md]
 - Backend Pocketbase → [KeiAI/pocketbase/AGENTS.md]
 - Proxy → [KeiAI/proxy/AGENTS.md]
+
+## Formatting Rules
+- Indentation: 4 spaces
+- Line Endings: LF

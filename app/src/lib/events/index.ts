@@ -24,44 +24,44 @@ import { isSafeMode } from '$lib/config';
 // ── Built-in events (fully typed) ──────────────────────────────────
 
 export async function emitEvent<K extends keyof EventType>(
-	chatId: string,
-	event: K,
-	data: EventType[K]
+    chatId: string,
+    event: K,
+    data: EventType[K]
 ): Promise<void>;
 
 // ── Custom events (open extension) ──────────────────────────────────
 
 export async function emitEvent<E extends string>(
-	chatId: string,
-	event: EventName<E>,
-	data?: unknown
+    chatId: string,
+    event: EventName<E>,
+    data?: unknown
 ): Promise<void>;
 
 // ── Implementation ───────────────────────────────────────────────────
 
 export async function emitEvent(chatId: string, event: string, data?: unknown): Promise<void> {
-	if (isSafeMode()) return;
+    if (isSafeMode()) return;
 
-	// TODO: Plugin handlers
+    // TODO: Plugin handlers
 
-	try {
-		const instances = await collectCharJSInstances(chatId, 'event', event);
+    try {
+        const instances = await collectCharJSInstances(chatId, 'event', event);
 
-		for (const instance of instances) {
-			const listeners = instance.eventListeners.get(event) ?? [];
-			for (const listener of listeners) {
-				// Fire and forget to prevent deadlock, and use setTimeout (macro-task) to prevent UI freezing
-				setTimeout(() => {
-					invokeHandler(instance, listener, data ?? null).catch((err) => {
-						console.error(
-							`Event '${event}' handler error for script ${instance.charjs.name}:`,
-							err
-						);
-					});
-				}, 0);
-			}
-		}
-	} catch (error) {
-		console.error(`Error emitting event '${event}' for chat ${chatId}:`, error);
-	}
+        for (const instance of instances) {
+            const listeners = instance.eventListeners.get(event) ?? [];
+            for (const listener of listeners) {
+                // Fire and forget to prevent deadlock, and use setTimeout (macro-task) to prevent UI freezing
+                setTimeout(() => {
+                    invokeHandler(instance, listener, data ?? null).catch((err) => {
+                        console.error(
+                            `Event '${event}' handler error for script ${instance.charjs.name}:`,
+                            err
+                        );
+                    });
+                }, 0);
+            }
+        }
+    } catch (error) {
+        console.error(`Error emitting event '${event}' for chat ${chatId}:`, error);
+    }
 }

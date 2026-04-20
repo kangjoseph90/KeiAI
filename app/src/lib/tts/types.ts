@@ -1,7 +1,7 @@
 export interface TTSStreamChunk {
-	audio: ArrayBuffer;
+    audio: ArrayBuffer;
 }
 
 export interface TTSStreamHandler {
-	synthesize(text: string, signal: AbortSignal): AsyncIterable<TTSStreamChunk>;
+    synthesize(text: string, signal: AbortSignal): AsyncIterable<TTSStreamChunk>;
 }

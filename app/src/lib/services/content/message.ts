@@ -11,252 +11,252 @@ import { encryptedWriteQueue } from './write_queue';
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface MessageSwipe {
-	id: string;
-	content: string;
-	thought?: string;
-	toolCalls?: Record<string, ToolCallAbstract>;
-	variables?: Record<string, string>;
-	createdAt: number;
+    id: string;
+    content: string;
+    thought?: string;
+    toolCalls?: Record<string, ToolCallAbstract>;
+    variables?: Record<string, string>;
+    createdAt: number;
 }
 
 export interface MessageFields {
-	role: 'user' | 'char' | 'system';
-	swipes: Record<string, MessageSwipe>;
-	activeSwipeId: string;
+    role: 'user' | 'char' | 'system';
+    swipes: Record<string, MessageSwipe>;
+    activeSwipeId: string;
 }
 
 export interface Message extends MessageFields {
-	id: string;
-	chatId: string;
-	sortOrder: string;
+    id: string;
+    chatId: string;
+    sortOrder: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultMessageFields: MessageFields = {
-	role: 'user',
-	swipes: {},
-	activeSwipeId: ''
+    role: 'user',
+    swipes: {},
+    activeSwipeId: ''
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function decryptFields(masterKey: CryptoKey, record: MessageRecord): Promise<MessageFields> {
-	return decrypt(masterKey, {
-		ciphertext: record.encryptedData,
-		iv: record.encryptedDataIV
-	})
-		.then((dec) => deepMerge(defaultMessageFields, JSON.parse(dec)))
-		.catch((error) => {
-			throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt message', error);
-		});
+    return decrypt(masterKey, {
+        ciphertext: record.encryptedData,
+        iv: record.encryptedDataIV
+    })
+        .then((dec) => deepMerge(defaultMessageFields, JSON.parse(dec)))
+        .catch((error) => {
+            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt message', error);
+        });
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
 
 export class MessageService {
-	/**
-	 * Cursor-based pagination for UI (loads older messages)
-	 * Returns messages sorted ascending (oldest first) within the batch
-	 */
-	static async getMessagesBefore(
-		chatId: string,
-		cursorSortOrder: string = '\uffff',
-		limit = 50,
-		offset = 0
-	): Promise<Message[]> {
-		await encryptedWriteQueue.flushTable('messages');
-		const { masterKey } = getActiveSession();
-		const records = await localDB.getRecordsBackward<MessageRecord>(
-			'messages',
-			'[chatId+sortOrder]',
-			[chatId, ''],
-			[chatId, cursorSortOrder],
-			limit,
-			offset
-		);
+    /**
+     * Cursor-based pagination for UI (loads older messages)
+     * Returns messages sorted ascending (oldest first) within the batch
+     */
+    static async getMessagesBefore(
+        chatId: string,
+        cursorSortOrder: string = '\uffff',
+        limit = 50,
+        offset = 0
+    ): Promise<Message[]> {
+        await encryptedWriteQueue.flushTable('messages');
+        const { masterKey } = getActiveSession();
+        const records = await localDB.getRecordsBackward<MessageRecord>(
+            'messages',
+            '[chatId+sortOrder]',
+            [chatId, ''],
+            [chatId, cursorSortOrder],
+            limit,
+            offset
+        );
 
-		// The results are in reverse order (newest to oldest), so we need to reverse
-		// them again to get an oldest-to-newest ordering for the UI to prepend.
-		records.reverse();
+        // The results are in reverse order (newest to oldest), so we need to reverse
+        // them again to get an oldest-to-newest ordering for the UI to prepend.
+        records.reverse();
 
-		return Promise.all(
-			records.map(async (record) => {
-				const fields = await decryptFields(masterKey, record);
-				return {
-					id: record.id,
-					chatId: record.chatId,
-					sortOrder: record.sortOrder,
-					...fields
-				};
-			})
-		);
-	}
+        return Promise.all(
+            records.map(async (record) => {
+                const fields = await decryptFields(masterKey, record);
+                return {
+                    id: record.id,
+                    chatId: record.chatId,
+                    sortOrder: record.sortOrder,
+                    ...fields
+                };
+            })
+        );
+    }
 
-	static async getMessagesAfter(
-		chatId: string,
-		cursorSortOrder: string = '',
-		limit = 50,
-		offset = 0
-	): Promise<Message[]> {
-		await encryptedWriteQueue.flushTable('messages');
-		const { masterKey } = getActiveSession();
+    static async getMessagesAfter(
+        chatId: string,
+        cursorSortOrder: string = '',
+        limit = 50,
+        offset = 0
+    ): Promise<Message[]> {
+        await encryptedWriteQueue.flushTable('messages');
+        const { masterKey } = getActiveSession();
 
-		const records = await localDB.getRecordsForward<MessageRecord>(
-			'messages',
-			'[chatId+sortOrder]',
-			[chatId, cursorSortOrder],
-			[chatId, '\uffff'],
-			limit,
-			offset
-		);
+        const records = await localDB.getRecordsForward<MessageRecord>(
+            'messages',
+            '[chatId+sortOrder]',
+            [chatId, cursorSortOrder],
+            [chatId, '\uffff'],
+            limit,
+            offset
+        );
 
-		return Promise.all(
-			records.map(async (record) => {
-				const fields = await decryptFields(masterKey, record);
-				return {
-					id: record.id,
-					chatId: record.chatId,
-					sortOrder: record.sortOrder,
-					...fields
-				};
-			})
-		);
-	}
+        return Promise.all(
+            records.map(async (record) => {
+                const fields = await decryptFields(masterKey, record);
+                return {
+                    id: record.id,
+                    chatId: record.chatId,
+                    sortOrder: record.sortOrder,
+                    ...fields
+                };
+            })
+        );
+    }
 
-	static async get(id: string): Promise<Message | null> {
-		const { masterKey } = getActiveSession();
-		const queued = encryptedWriteQueue.peek<MessageFields>('messages', id);
-		if (queued) {
-			const record = await localDB.getRecord<MessageRecord>('messages', id);
-			if (!record || record.isDeleted) return null;
-			return {
-				id,
-				chatId: record.chatId,
-				sortOrder: record.sortOrder,
-				...deepMerge(defaultMessageFields, queued)
-			};
-		}
+    static async get(id: string): Promise<Message | null> {
+        const { masterKey } = getActiveSession();
+        const queued = encryptedWriteQueue.peek<MessageFields>('messages', id);
+        if (queued) {
+            const record = await localDB.getRecord<MessageRecord>('messages', id);
+            if (!record || record.isDeleted) return null;
+            return {
+                id,
+                chatId: record.chatId,
+                sortOrder: record.sortOrder,
+                ...deepMerge(defaultMessageFields, queued)
+            };
+        }
 
-		const record = await localDB.getRecord<MessageRecord>('messages', id);
-		if (!record || record.isDeleted) return null;
+        const record = await localDB.getRecord<MessageRecord>('messages', id);
+        if (!record || record.isDeleted) return null;
 
-		const fields = await decryptFields(masterKey, record);
-		return {
-			id: record.id,
-			chatId: record.chatId,
-			sortOrder: record.sortOrder,
-			...fields
-		};
-	}
+        const fields = await decryptFields(masterKey, record);
+        return {
+            id: record.id,
+            chatId: record.chatId,
+            sortOrder: record.sortOrder,
+            ...fields
+        };
+    }
 
-	/** Create a message */
-	static async create(
-		chatId: string,
-		fields: DeepPartial<MessageFields> = {},
-		providedSortOrder?: string
-	): Promise<Message> {
-		const resolved: MessageFields = deepMerge(defaultMessageFields, fields);
+    /** Create a message */
+    static async create(
+        chatId: string,
+        fields: DeepPartial<MessageFields> = {},
+        providedSortOrder?: string
+    ): Promise<Message> {
+        const resolved: MessageFields = deepMerge(defaultMessageFields, fields);
 
-		const { masterKey, userId } = getActiveSession();
-		const id = generateId();
-		const now = Date.now();
+        const { masterKey, userId } = getActiveSession();
+        const id = generateId();
+        const now = Date.now();
 
-		let sortOrder = providedSortOrder;
-		if (!sortOrder) {
-			const lastRecords = await localDB.getRecordsBackward<MessageRecord>(
-				'messages',
-				'[chatId+sortOrder]',
-				[chatId, ''],
-				[chatId, '\uffff'],
-				1
-			);
-			if (lastRecords.length > 0) {
-				sortOrder = generateKeyBetween(lastRecords[0].sortOrder, null);
-			} else {
-				sortOrder = generateKeyBetween(null, null);
-			}
-		}
+        let sortOrder = providedSortOrder;
+        if (!sortOrder) {
+            const lastRecords = await localDB.getRecordsBackward<MessageRecord>(
+                'messages',
+                '[chatId+sortOrder]',
+                [chatId, ''],
+                [chatId, '\uffff'],
+                1
+            );
+            if (lastRecords.length > 0) {
+                sortOrder = generateKeyBetween(lastRecords[0].sortOrder, null);
+            } else {
+                sortOrder = generateKeyBetween(null, null);
+            }
+        }
 
-		try {
-			const enc = await encrypt(masterKey, JSON.stringify(resolved));
-			const newRecord: MessageRecord = {
-				id,
-				userId,
-				chatId,
-				sortOrder,
-				createdAt: now,
-				updatedAt: now,
-				isDeleted: false,
-				encryptedData: enc.ciphertext,
-				encryptedDataIV: enc.iv
-			};
-			await localDB.putRecord<MessageRecord>('messages', newRecord);
-		} catch (error) {
-			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to create message', error);
-		}
+        try {
+            const enc = await encrypt(masterKey, JSON.stringify(resolved));
+            const newRecord: MessageRecord = {
+                id,
+                userId,
+                chatId,
+                sortOrder,
+                createdAt: now,
+                updatedAt: now,
+                isDeleted: false,
+                encryptedData: enc.ciphertext,
+                encryptedDataIV: enc.iv
+            };
+            await localDB.putRecord<MessageRecord>('messages', newRecord);
+        } catch (error) {
+            if (error instanceof AppError) throw error;
+            throw new AppError('DB_WRITE_FAILED', 'Failed to create message', error);
+        }
 
-		return { id, chatId, sortOrder, ...resolved };
-	}
+        return { id, chatId, sortOrder, ...resolved };
+    }
 
-	/** Update a message */
-	static async update(id: string, changes: DeepPartial<MessageFields>): Promise<Message> {
-		const { masterKey } = getActiveSession();
-		const queued = encryptedWriteQueue.peek<MessageFields>('messages', id);
-		const record = await localDB.getRecord<MessageRecord>('messages', id);
-		if (!record || record.isDeleted) {
-			throw new AppError('NOT_FOUND', `Message not found: ${id}`);
-		}
+    /** Update a message */
+    static async update(id: string, changes: DeepPartial<MessageFields>): Promise<Message> {
+        const { masterKey } = getActiveSession();
+        const queued = encryptedWriteQueue.peek<MessageFields>('messages', id);
+        const record = await localDB.getRecord<MessageRecord>('messages', id);
+        if (!record || record.isDeleted) {
+            throw new AppError('NOT_FOUND', `Message not found: ${id}`);
+        }
 
-		try {
-			const current = queued
-				? deepMerge(defaultMessageFields, queued)
-				: await decryptFields(masterKey, record);
-			const updated: MessageFields = deepMerge(current, changes);
+        try {
+            const current = queued
+                ? deepMerge(defaultMessageFields, queued)
+                : await decryptFields(masterKey, record);
+            const updated: MessageFields = deepMerge(current, changes);
 
-			encryptedWriteQueue.upsert<MessageFields, MessageRecord>({
-				tableName: 'messages',
-				id,
-				userId: record.userId,
-				createdAt: record.createdAt,
-				nextFields: updated,
-				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-				toRecord: ({
-					id: recordId,
-					userId: recordUserId,
-					createdAt,
-					updatedAt,
-					encryptedData,
-					encryptedDataIV
-				}) => ({
-					id: recordId,
-					userId: recordUserId,
-					chatId: record.chatId,
-					sortOrder: record.sortOrder,
-					createdAt,
-					updatedAt,
-					isDeleted: false,
-					encryptedData,
-					encryptedDataIV
-				})
-			});
+            encryptedWriteQueue.upsert<MessageFields, MessageRecord>({
+                tableName: 'messages',
+                id,
+                userId: record.userId,
+                createdAt: record.createdAt,
+                nextFields: updated,
+                mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
+                toRecord: ({
+                    id: recordId,
+                    userId: recordUserId,
+                    createdAt,
+                    updatedAt,
+                    encryptedData,
+                    encryptedDataIV
+                }) => ({
+                    id: recordId,
+                    userId: recordUserId,
+                    chatId: record.chatId,
+                    sortOrder: record.sortOrder,
+                    createdAt,
+                    updatedAt,
+                    isDeleted: false,
+                    encryptedData,
+                    encryptedDataIV
+                })
+            });
 
-			return { id, chatId: record.chatId, sortOrder: record.sortOrder, ...updated };
-		} catch (error) {
-			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to update message', error);
-		}
-	}
+            return { id, chatId: record.chatId, sortOrder: record.sortOrder, ...updated };
+        } catch (error) {
+            if (error instanceof AppError) throw error;
+            throw new AppError('DB_WRITE_FAILED', 'Failed to update message', error);
+        }
+    }
 
-	/** Soft-delete a message */
-	static async delete(id: string): Promise<void> {
-		try {
-			encryptedWriteQueue.drop('messages', id);
-			await localDB.softDeleteRecord('messages', id);
-		} catch (error) {
-			if (error instanceof AppError) throw error;
-			throw new AppError('DB_WRITE_FAILED', 'Failed to delete message', error);
-		}
-	}
+    /** Soft-delete a message */
+    static async delete(id: string): Promise<void> {
+        try {
+            encryptedWriteQueue.drop('messages', id);
+            await localDB.softDeleteRecord('messages', id);
+        } catch (error) {
+            if (error instanceof AppError) throw error;
+            throw new AppError('DB_WRITE_FAILED', 'Failed to delete message', error);
+        }
+    }
 }

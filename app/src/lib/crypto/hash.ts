@@ -10,35 +10,35 @@ type Bytes = Uint8Array<ArrayBuffer>;
  * Returns the hex representation of the hash.
  */
 export async function sha256(data: Bytes | ArrayBuffer | string): Promise<string> {
-	let buffer: BufferSource;
+    let buffer: BufferSource;
 
-	if (typeof data === 'string') {
-		buffer = new TextEncoder().encode(data);
-	} else if (data instanceof Uint8Array) {
-		buffer = data.buffer as ArrayBuffer;
-	} else {
-		buffer = data;
-	}
+    if (typeof data === 'string') {
+        buffer = new TextEncoder().encode(data);
+    } else if (data instanceof Uint8Array) {
+        buffer = data.buffer as ArrayBuffer;
+    } else {
+        buffer = data;
+    }
 
-	const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-	const hashArray = Array.from(new Uint8Array(hashBuffer));
-	return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
  * Calculate SHA-256 hash and return raw bytes.
  */
 export async function sha256Bytes(data: Bytes | ArrayBuffer | string): Promise<Bytes> {
-	let buffer: BufferSource;
+    let buffer: BufferSource;
 
-	if (typeof data === 'string') {
-		buffer = new TextEncoder().encode(data);
-	} else if (data instanceof Uint8Array) {
-		buffer = data.buffer as ArrayBuffer;
-	} else {
-		buffer = data;
-	}
+    if (typeof data === 'string') {
+        buffer = new TextEncoder().encode(data);
+    } else if (data instanceof Uint8Array) {
+        buffer = data.buffer as ArrayBuffer;
+    } else {
+        buffer = data;
+    }
 
-	const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-	return new Uint8Array(hashBuffer);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    return new Uint8Array(hashBuffer);
 }

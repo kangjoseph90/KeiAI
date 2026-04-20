@@ -7,14 +7,14 @@ export type ModeKind = 'pipe' | 'event';
 
 /** Runtime instance managed by the engine pool */
 export interface CharJSInstance {
-	charjs: CharJS;
-	chatId: string;
-	mode: string;
-	allowLowLevel: boolean;
-	runtime: QuickJSAsyncRuntime;
-	ctx: QuickJSAsyncContext;
-	pipelineHandlers: Map<string, Array<{ order: number; fnHandle: QuickJSHandle }>>;
-	eventListeners: Map<string, QuickJSHandle[]>;
-	lastAccessed: number;
-	mutex: Mutex;
+    charjs: CharJS;
+    chatId: string;
+    mode: string;
+    allowLowLevel: boolean;
+    runtime: QuickJSAsyncRuntime;
+    ctx: QuickJSAsyncContext;
+    pipelineHandlers: Map<string, Array<{ order: number; fnHandle: QuickJSHandle }>>;
+    eventListeners: Map<string, QuickJSHandle[]>;
+    lastAccessed: number;
+    mutex: Mutex;
 }

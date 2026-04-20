@@ -7,18 +7,18 @@
 
 import { derived, writable, type Readable } from 'svelte/store';
 import type {
-	AppSettings,
-	Profile,
-	Character,
-	Chat,
-	Message,
-	Persona,
-	Preset,
-	Module,
-	Plugin,
-	Lorebook,
-	Script,
-	CharJS
+    AppSettings,
+    Profile,
+    Character,
+    Chat,
+    Message,
+    Persona,
+    Preset,
+    Module,
+    Plugin,
+    Lorebook,
+    Script,
+    CharJS
 } from '$lib/services';
 import type { AssetSyncStatus, SyncStatus } from '$lib/services';
 import type { DisplayMessage, ChatTask } from './types';
@@ -36,8 +36,8 @@ export const assetSyncStatus = writable<AssetSyncStatus>({ state: 'idle', pendin
 
 // ─── Derived Auth State ──────────────────────────────────────────────
 export const isLoggedIn = derived(
-	[activeUser, pbConnected],
-	([user, connected]) => user !== null && !user.isGuest && connected
+    [activeUser, pbConnected],
+    ([user, connected]) => user !== null && !user.isGuest && connected
 );
 export const userEmail = derived(activeUser, (u) => u?.email ?? null);
 export const userId = derived(activeUser, (u) => u?.id ?? null);
@@ -51,9 +51,9 @@ export const modules = new EntityStore<Module>();
 export const plugins = new EntityStore<Plugin>();
 
 export interface ModuleResourceEntry {
-	lorebooks: EntityStore<Lorebook>;
-	scripts: EntityStore<Script>;
-	charjs: EntityStore<CharJS>;
+    lorebooks: EntityStore<Lorebook>;
+    scripts: EntityStore<Script>;
+    charjs: EntityStore<CharJS>;
 }
 
 export const moduleResources = writable(new Map<string, ModuleResourceEntry>());
@@ -72,7 +72,7 @@ export const chatLorebooks = new EntityStore<Lorebook>();
 export const chatScripts = new EntityStore<Script>();
 
 export const messages = new EntityStore<Message>({
-	sortFn: (a, b) => a.sortOrder.localeCompare(b.sortOrder)
+    sortFn: (a, b) => a.sortOrder.localeCompare(b.sortOrder)
 });
 
 // ─── Runtime States (Ephemeral — not persisted to DB) ─────────────────
@@ -84,7 +84,7 @@ export const chatTasks = writable<Map<string, ChatTask>>(new Map());
 
 /** True when the currently active chat has an in-flight task. */
 export const isChatRunning = derived([chatTasks, activeChat], ([tasks, chat]) =>
-	chat ? tasks.has(chat.id) : false
+    chat ? tasks.has(chat.id) : false
 );
 
 /**
@@ -92,21 +92,21 @@ export const isChatRunning = derived([chatTasks, activeChat], ([tasks, chat]) =>
  * Generating/error messages already exist in DB — this just marks them.
  */
 export const displayMessages = derived(
-	[messages, chatTasks, activeChat],
-	([msgs, tasks, chat]): DisplayMessage[] => {
-		const task = chat ? tasks.get(chat.id) : undefined;
+    [messages, chatTasks, activeChat],
+    ([msgs, tasks, chat]): DisplayMessage[] => {
+        const task = chat ? tasks.get(chat.id) : undefined;
 
-		return msgs.map((msg): DisplayMessage => {
-			if (task?.messageId === msg.id) {
-				return {
-					...msg,
-					displayStatus: task.status,
-					errorMessage: task.errorMessage
-				};
-			}
-			return { ...msg, displayStatus: 'completed' as const };
-		});
-	}
+        return msgs.map((msg): DisplayMessage => {
+            if (task?.messageId === msg.id) {
+                return {
+                    ...msg,
+                    displayStatus: task.status,
+                    errorMessage: task.errorMessage
+                };
+            }
+            return { ...msg, displayStatus: 'completed' as const };
+        });
+    }
 );
 
 // ─── Context Resources ─────────────────────────────────────────────────

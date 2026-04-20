@@ -17,12 +17,12 @@
  * ends with `endpoint`. If so, returns the base as-is; otherwise appends.
  */
 export function buildUrl(baseUrl: string, endpoint: string): string {
-	const base = baseUrl.replace(/\/+$/, '');
-	const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const base = baseUrl.replace(/\/+$/, '');
+    const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
-	if (base.endsWith(normalizedEndpoint)) {
-		return base;
-	}
+    if (base.endsWith(normalizedEndpoint)) {
+        return base;
+    }
 
-	return `${base}${normalizedEndpoint}`;
+    return `${base}${normalizedEndpoint}`;
 }
