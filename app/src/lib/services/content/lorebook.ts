@@ -80,7 +80,7 @@ export class LorebookService {
 			return {
 				id,
 				ownerId: record.ownerId,
-				...deepMerge(defaultLorebookFields, queued as unknown as Record<string, unknown>)
+				...deepMerge(defaultLorebookFields, queued)
 			};
 		}
 
@@ -99,10 +99,7 @@ export class LorebookService {
 		ownerId: string,
 		fields: DeepPartial<LorebookFields> = {}
 	): Promise<Lorebook> {
-		const resolved: LorebookFields = deepMerge(
-			defaultLorebookFields,
-			fields as Record<string, unknown>
-		);
+		const resolved: LorebookFields = deepMerge(defaultLorebookFields, fields);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -139,9 +136,9 @@ export class LorebookService {
 
 		try {
 			const current = queued
-				? deepMerge(defaultLorebookFields, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultLorebookFields, queued)
 				: await decryptFields(masterKey, record);
-			const updated: LorebookFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: LorebookFields = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<LorebookFields, LorebookRecord>({
 				tableName: 'lorebooks',
@@ -149,8 +146,7 @@ export class LorebookService {
 				userId: record.userId,
 				createdAt: record.createdAt,
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id: recordId,
 					userId: recordUserId,

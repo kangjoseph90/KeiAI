@@ -85,7 +85,7 @@ export class ChatService {
 			return {
 				id,
 				characterId: record.characterId,
-				...deepMerge(defaultFields, queued as unknown as Record<string, unknown>)
+				...deepMerge(defaultFields, queued)
 			};
 		}
 
@@ -101,7 +101,7 @@ export class ChatService {
 	}
 
 	static async create(characterId: string, fields: DeepPartial<ChatFields> = {}): Promise<Chat> {
-		const resolved: ChatFields = deepMerge(defaultFields, fields as Record<string, unknown>);
+		const resolved: ChatFields = deepMerge(defaultFields, fields);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -138,9 +138,9 @@ export class ChatService {
 
 		try {
 			const current = queued
-				? deepMerge(defaultFields, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultFields, queued)
 				: await decryptFields(masterKey, record);
-			const updated: ChatFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: ChatFields = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<ChatFields, ChatRecord>({
 				tableName: 'chats',
@@ -148,8 +148,7 @@ export class ChatService {
 				userId: record.userId,
 				createdAt: record.createdAt,
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id: recordId,
 					userId: recordUserId,

@@ -134,7 +134,7 @@ export class MessageService {
 				id,
 				chatId: record.chatId,
 				sortOrder: record.sortOrder,
-				...deepMerge(defaultMessageFields, queued as unknown as Record<string, unknown>)
+				...deepMerge(defaultMessageFields, queued)
 			};
 		}
 
@@ -156,10 +156,7 @@ export class MessageService {
 		fields: DeepPartial<MessageFields> = {},
 		providedSortOrder?: string
 	): Promise<Message> {
-		const resolved: MessageFields = deepMerge(
-			defaultMessageFields,
-			fields as Record<string, unknown>
-		);
+		const resolved: MessageFields = deepMerge(defaultMessageFields, fields);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -214,9 +211,9 @@ export class MessageService {
 
 		try {
 			const current = queued
-				? deepMerge(defaultMessageFields, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultMessageFields, queued)
 				: await decryptFields(masterKey, record);
-			const updated: MessageFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: MessageFields = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<MessageFields, MessageRecord>({
 				tableName: 'messages',
@@ -224,8 +221,7 @@ export class MessageService {
 				userId: record.userId,
 				createdAt: record.createdAt,
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id: recordId,
 					userId: recordUserId,

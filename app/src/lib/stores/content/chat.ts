@@ -3,7 +3,6 @@ import {
 	ChatService,
 	MessageService,
 	LorebookService,
-	CharacterService,
 	type ChatFields,
 	type ChatContent,
 	type LorebookFields,
@@ -14,14 +13,13 @@ import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
 	chats,
 	activeChat,
-	activeCharacter,
 	messages,
 	chatLorebooks,
 	activeCharacterId,
 	activeChatId
 } from '../state';
 import { loadInitialMessages } from './message';
-import { getCharacter } from './character';
+import { getCharacter, updateCharacter } from './character';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
@@ -50,10 +48,7 @@ export async function selectChat(chatId: string, characterId: string): Promise<v
 	const lorebooks = await LorebookService.listByOwner(chatId);
 	chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebookRefs ?? []));
 
-	const updated = await CharacterService.update(characterId, { lastActiveChatId: chatId });
-	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, lastActiveChatId: chatId } : c));
-	}
+	await updateCharacter(characterId, { lastActiveChatId: chatId });
 }
 
 export function clearActiveChat(): void {
@@ -76,14 +71,13 @@ export async function createChat(
 		{ id: chat.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await CharacterService.update(characterId, { chatRefs });
+		await updateCharacter(characterId, { chatRefs });
 	} catch (error) {
 		await ChatService.delete(chat.id);
 		throw error;
 	}
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, chatRefs } : c));
 		chats.set(chat.id, chat);
 	}
 
@@ -105,7 +99,7 @@ export async function updateChatContent(
 	const updated = await ChatService.update(chatId, changes);
 	chats.set(chatId, updated);
 	if (chatId === get(activeChatId)) {
-		activeChat.update((c) => (c ? { ...c, ...updated } : c));
+		activeChat.set(updated);
 	}
 }
 
@@ -114,17 +108,16 @@ export async function deleteChat(chatId: string, characterId: string): Promise<v
 
 	const existingRefs = char.chatRefs || [];
 	const chatRefs = existingRefs.filter((r) => r.id !== chatId);
-	await CharacterService.update(characterId, { chatRefs });
+	await updateCharacter(characterId, { chatRefs });
 
 	try {
 		await ChatService.delete(chatId);
 	} catch (error) {
-		await CharacterService.update(characterId, { chatRefs: existingRefs });
+		await updateCharacter(characterId, { chatRefs: existingRefs });
 		throw error;
 	}
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, chatRefs } : c));
 		chats.delete(chatId);
 	}
 
@@ -158,7 +151,7 @@ export async function forkChat(messageId: string): Promise<string> {
 
 	const { lorebookRefs: _, ...fieldsCopy } = originalChat;
 
-	const newChat = await ChatService.create(characterId, {
+	const newChat = await createChat(characterId, {
 		...fieldsCopy,
 		title: `${originalChat.title} (Fork)`,
 		messageCount: allMessages.length
@@ -180,7 +173,7 @@ export async function forkChat(messageId: string): Promise<string> {
 
 	const lastMessageId = createdMessages[createdMessages.length - 1]?.id;
 	if (lastMessageId) {
-		await ChatService.update(newChat.id, { lastMessageId });
+		await updateChat(newChat.id, { lastMessageId });
 	}
 
 	const lorebooks = await LorebookService.listByOwner(chatId);
@@ -197,25 +190,12 @@ export async function forkChat(messageId: string): Promise<string> {
 	}
 
 	if (lorebookRefs.length > 0) {
-		await ChatService.update(newChat.id, { lorebookRefs });
+		await updateChat(newChat.id, { lorebookRefs });
 	}
 
-	const char = await getCharacter(characterId);
-	const existingRefs = char.chatRefs || [];
-	const chatRefs: OrderedRef[] = [
-		...existingRefs,
-		{ id: newChat.id, sortOrder: generateSortOrder(existingRefs) }
-	];
-
-	try {
-		await CharacterService.update(characterId, { chatRefs });
-	} catch (error) {
-		await ChatService.delete(newChat.id);
-		throw error;
-	}
+	// Character's chatRefs are already updated by createChat() calling updateCharacter()
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, chatRefs } : c));
 		chats.set(newChat.id, newChat);
 	}
 
@@ -238,14 +218,13 @@ export async function createChatLorebook(
 		{ id: lb.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await ChatService.update(chatId, { lorebookRefs });
+		await updateChat(chatId, { lorebookRefs });
 	} catch (error) {
 		await LorebookService.delete(lb.id);
 		throw error;
 	}
 
 	if (chatId === get(activeChatId)) {
-		activeChat.update((c) => (c ? { ...c, lorebookRefs } : c));
 		chatLorebooks.set(lb.id, lb);
 	}
 
@@ -257,17 +236,16 @@ export async function deleteChatLorebook(chatId: string, lorebookId: string): Pr
 
 	const existingRefs = chat.lorebookRefs || [];
 	const lorebookRefs = existingRefs.filter((r) => r.id !== lorebookId);
-	await ChatService.update(chatId, { lorebookRefs });
+	await updateChat(chatId, { lorebookRefs });
 
 	try {
 		await LorebookService.delete(lorebookId);
 	} catch (error) {
-		await ChatService.update(chatId, { lorebookRefs: existingRefs });
+		await updateChat(chatId, { lorebookRefs: existingRefs });
 		throw error;
 	}
 
 	if (chatId === get(activeChatId)) {
-		activeChat.update((c) => (c ? { ...c, lorebookRefs } : c));
 		chatLorebooks.delete(lorebookId);
 	}
 }
@@ -296,11 +274,7 @@ export async function createChatFolder(
 
 	const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
 
-	await ChatService.update(chatId, { folders: updatedFolders });
-
-	if (chatId === get(activeChatId)) {
-		activeChat.update((c) => (c ? { ...c, folders: updatedFolders } : c));
-	}
+	await updateChat(chatId, { folders: updatedFolders });
 
 	return newFolder;
 }
@@ -323,11 +297,7 @@ export async function updateChatFolder(
 		[folderType]: updatedTypeFolders
 	};
 
-	await ChatService.update(chatId, { folders: updatedFolders });
-
-	if (chatId === get(activeChatId)) {
-		activeChat.update((c) => (c ? { ...c, folders: updatedFolders } : c));
-	}
+	await updateChat(chatId, { folders: updatedFolders });
 }
 
 export async function deleteChatFolder(
@@ -340,18 +310,9 @@ export async function deleteChatFolder(
 	const folders = chat.folders ?? {};
 	const typeFolders = folders[folderType] ?? [];
 
-	const updatedTypeFolders = typeFolders.filter((f) => f.id !== folderId);
+	const updatedFolders = { ...folders, [folderType]: typeFolders.filter((f) => f.id !== folderId) };
 
-	const updatedFolders = {
-		...folders,
-		[folderType]: updatedTypeFolders
-	};
-
-	await ChatService.update(chatId, { folders: updatedFolders });
-
-	if (chatId === get(activeChatId)) {
-		activeChat.update((c) => (c ? { ...c, folders: updatedFolders } : c));
-	}
+	await updateChat(chatId, { folders: updatedFolders });
 }
 
 export async function moveChatItem(
@@ -382,9 +343,5 @@ export async function moveChatItem(
 		};
 	});
 
-	await ChatService.update(chatId, { [refKey]: updatedRefs });
-
-	if (chatId === get(activeChatId)) {
-		activeChat.update((c) => (c ? { ...c, [refKey]: updatedRefs } : c));
-	}
+	await updateChat(chatId, { [refKey]: updatedRefs });
 }

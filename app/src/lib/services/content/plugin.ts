@@ -77,7 +77,7 @@ export class PluginService {
 			if (!record || record.isDeleted) return null;
 			return {
 				id,
-				...deepMerge(defaultPluginFields, queued as unknown as Record<string, unknown>)
+				...deepMerge(defaultPluginFields, queued)
 			};
 		}
 
@@ -92,10 +92,7 @@ export class PluginService {
 	}
 
 	static async create(fields: DeepPartial<PluginFields> = {}): Promise<Plugin> {
-		const resolved: PluginFields = deepMerge(
-			defaultPluginFields,
-			fields as Record<string, unknown>
-		);
+		const resolved: PluginFields = deepMerge(defaultPluginFields, fields);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -131,9 +128,9 @@ export class PluginService {
 
 		try {
 			const current = queued
-				? deepMerge(defaultPluginFields, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultPluginFields, queued)
 				: await decryptFields(masterKey, record);
-			const updated: PluginFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: PluginFields = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<PluginFields, PluginRecord>({
 				tableName: 'plugins',
@@ -141,8 +138,7 @@ export class PluginService {
 				userId: record.userId,
 				createdAt: record.createdAt,
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id: recordId,
 					userId: recordUserId,

@@ -85,7 +85,7 @@ export class CharacterService {
 		if (queued) {
 			const record = await localDB.getRecord<CharacterRecord>('characters', id);
 			if (!record || record.isDeleted) return null;
-			return { id, ...deepMerge(defaultFields, queued as unknown as Record<string, unknown>) };
+			return { id, ...deepMerge(defaultFields, queued) };
 		}
 
 		const record = await localDB.getRecord<CharacterRecord>('characters', id);
@@ -96,7 +96,7 @@ export class CharacterService {
 	}
 
 	static async create(fields: DeepPartial<CharacterFields> = {}): Promise<Character> {
-		const resolved: CharacterFields = deepMerge(defaultFields, fields as Record<string, unknown>);
+		const resolved: CharacterFields = deepMerge(defaultFields, fields);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -132,9 +132,9 @@ export class CharacterService {
 
 		try {
 			const current = queued
-				? deepMerge(defaultFields, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultFields, queued)
 				: await decryptFields(masterKey, record);
-			const updated: CharacterFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: CharacterFields = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<CharacterFields, CharacterRecord>({
 				tableName: 'characters',
@@ -142,8 +142,7 @@ export class CharacterService {
 				userId: record.userId,
 				createdAt: record.createdAt,
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id: recordId,
 					userId: recordUserId,

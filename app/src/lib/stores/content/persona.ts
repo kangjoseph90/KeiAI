@@ -3,8 +3,8 @@ import { PersonaService, type PersonaFields, type Persona } from '$lib/services/
 import { SettingsService } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
-import { personas, appSettings, activePersona } from '../state';
-import { getAppSettings } from './settings';
+import { appSettings, activePersona, personas } from '../state';
+import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
 /**
@@ -36,8 +36,7 @@ export async function loadPersonas(): Promise<void> {
 export async function selectPersona(personaId: string): Promise<void> {
 	const persona = await getPersona(personaId);
 	activePersona.set(persona);
-	appSettings.update((s) => (s ? { ...s, personaId: personaId } : s));
-	await SettingsService.update({ personaId: personaId });
+	await updateSettings({ personaId: personaId });
 }
 
 export async function createPersona(fields: DeepPartial<PersonaFields> = {}): Promise<Persona> {
@@ -53,7 +52,7 @@ export async function createPersona(fields: DeepPartial<PersonaFields> = {}): Pr
 		{ id: persona.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await SettingsService.update({ personaRefs });
+		await updateSettings({ personaRefs });
 	} catch (error) {
 		// If parent's refs update fails, roll back DB
 		await PersonaService.delete(persona.id);
@@ -61,7 +60,6 @@ export async function createPersona(fields: DeepPartial<PersonaFields> = {}): Pr
 	}
 
 	// Update Store
-	appSettings.update((s) => (s ? { ...s, personaRefs } : s));
 	personas.set(persona.id, persona);
 
 	return persona;
@@ -93,18 +91,17 @@ export async function deletePersona(personaId: string): Promise<void> {
 
 	const settingsChanges = fallback ? { personaRefs, personaId: fallback.id } : { personaRefs };
 
-	await SettingsService.update(settingsChanges);
+	await updateSettings(settingsChanges);
 
 	// Remove record from DB
 	try {
 		await PersonaService.delete(personaId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
-		await SettingsService.update({ personaRefs: existingRefs });
+		await updateSettings({ personaRefs: existingRefs });
 		throw error;
 	}
 
 	// Update Store
-	appSettings.update((s) => (s ? { ...s, ...settingsChanges } : s));
 	personas.delete(personaId);
 }

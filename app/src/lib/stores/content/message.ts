@@ -10,14 +10,9 @@
  */
 
 import { get } from 'svelte/store';
-import {
-	MessageService,
-	ChatService,
-	type MessageFields,
-	type Message,
-	type ChatFields
-} from '$lib/services';
-import { messages, chats, activeChat, activeChatId } from '../state';
+import { MessageService, type MessageFields, type Message, type ChatFields } from '$lib/services';
+import { messages, activeChat, activeChatId } from '../state';
+import { updateChat } from './chat';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
 
@@ -93,7 +88,7 @@ export async function createMessage(
 	const currentChat = get(activeChat);
 	const newCount = (currentChat?.messageCount ?? 0) + 1;
 
-	const updatedChat = await ChatService.update(chatId, {
+	await updateChat(chatId, {
 		messageCount: newCount,
 		lastMessageId: newMessage.id
 	});
@@ -101,8 +96,6 @@ export async function createMessage(
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) === chatId) {
 		messages.set(newMessage.id, newMessage);
-		chats.set(chatId, updatedChat);
-		activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
 	}
 
 	return newMessage;
@@ -140,7 +133,5 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
 		chatChanges.lastMessageId = prevLastMsg[0]?.id || undefined;
 	}
 
-	const updatedChat = await ChatService.update(chatId, chatChanges);
-	chats.set(chatId, updatedChat);
-	activeChat.update((c) => (c ? { ...c, ...updatedChat } : c));
+	await updateChat(chatId, chatChanges);
 }

@@ -18,7 +18,7 @@ import type { OrderedRef, FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { modules, appSettings, moduleResources } from '../state';
 import { EntityStore } from '../entity_store';
-import { getAppSettings } from './settings';
+import { getAppSettings, updateSettings } from './settings';
 import { get } from 'svelte/store';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -86,7 +86,7 @@ export async function createModule(fields: DeepPartial<ModuleFields> = {}): Prom
 		{ id: mod.id, sortOrder: generateSortOrder(existingRefs), enabled: true }
 	];
 	try {
-		await SettingsService.update({ moduleRefs });
+		await updateSettings({ moduleRefs });
 	} catch (error) {
 		// If parent's refs update fails, roll back DB
 		await ModuleService.delete(mod.id);
@@ -94,7 +94,6 @@ export async function createModule(fields: DeepPartial<ModuleFields> = {}): Prom
 	}
 
 	// Update Store
-	appSettings.update((s) => (s ? { ...s, moduleRefs } : s));
 	modules.set(mod.id, mod);
 	moduleResources.update((map) => {
 		const m = new Map(map);
@@ -111,9 +110,17 @@ export async function createModule(fields: DeepPartial<ModuleFields> = {}): Prom
 
 export async function updateModule(
 	moduleId: string,
+	changes: DeepPartial<ModuleFields>
+): Promise<void> {
+	const updated = await ModuleService.update(moduleId, changes);
+	modules.set(moduleId, updated);
+}
+
+export async function updateModuleContent(
+	moduleId: string,
 	changes: DeepPartial<ModuleContent>
 ): Promise<void> {
-	const updated = await ModuleService.updateContent(moduleId, changes);
+	const updated = await ModuleService.update(moduleId, changes);
 	modules.set(moduleId, updated);
 }
 
@@ -123,19 +130,18 @@ export async function deleteModule(moduleId: string): Promise<void> {
 	// Remove from parent's refs
 	const existingRefs = settings.moduleRefs || [];
 	const moduleRefs = existingRefs.filter((r) => r.id !== moduleId);
-	await SettingsService.update({ moduleRefs });
+	await updateSettings({ moduleRefs });
 
 	// Remove record from DB
 	try {
 		await ModuleService.delete(moduleId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
-		await SettingsService.update({ moduleRefs: existingRefs });
+		await updateSettings({ moduleRefs: existingRefs });
 		throw error;
 	}
 
 	// Update Store
-	appSettings.update((s) => (s ? { ...s, moduleRefs } : s));
 	modules.delete(moduleId);
 	moduleResources.update((map) => {
 		const m = new Map(map);
@@ -162,7 +168,7 @@ export async function createModuleLorebook(
 		{ id: lb.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await ModuleService.update(moduleId, { lorebookRefs });
+		await updateModule(moduleId, { lorebookRefs });
 	} catch (error) {
 		// If parent's refs update fails, roll back DB
 		await LorebookService.delete(lb.id);
@@ -170,7 +176,6 @@ export async function createModuleLorebook(
 	}
 
 	// Update Store
-	modules.set(moduleId, { ...modules.get(moduleId)!, lorebookRefs });
 	get(moduleResources).get(moduleId)?.lorebooks.set(lb.id, lb);
 
 	return lb;
@@ -182,18 +187,17 @@ export async function deleteModuleLorebook(moduleId: string, lorebookId: string)
 	// Remove from parent's refs
 	const existingRefs = mod.lorebookRefs || [];
 	const lorebookRefs = existingRefs.filter((r) => r.id !== lorebookId);
-	await ModuleService.update(moduleId, { lorebookRefs });
+	await updateModule(moduleId, { lorebookRefs });
 
 	try {
 		await LorebookService.delete(lorebookId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
-		await ModuleService.update(moduleId, { lorebookRefs: existingRefs });
+		await updateModule(moduleId, { lorebookRefs: existingRefs });
 		throw error;
 	}
 
 	// Update Store
-	modules.set(moduleId, { ...modules.get(moduleId)!, lorebookRefs });
 	get(moduleResources).get(moduleId)?.lorebooks.delete(lorebookId);
 }
 
@@ -215,7 +219,7 @@ export async function createModuleScript(
 		{ id: sc.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await ModuleService.update(moduleId, { scriptRefs });
+		await updateModule(moduleId, { scriptRefs });
 	} catch (error) {
 		// If parent's refs update fails, roll back DB
 		await ScriptService.delete(sc.id);
@@ -223,7 +227,6 @@ export async function createModuleScript(
 	}
 
 	// Update Store
-	modules.set(moduleId, { ...modules.get(moduleId)!, scriptRefs });
 	get(moduleResources).get(moduleId)?.scripts.set(sc.id, sc);
 
 	return sc;
@@ -235,18 +238,17 @@ export async function deleteModuleScript(moduleId: string, scriptId: string): Pr
 	// Remove from parent's refs
 	const existingRefs = mod.scriptRefs || [];
 	const scriptRefs = existingRefs.filter((r) => r.id !== scriptId);
-	await ModuleService.update(moduleId, { scriptRefs });
+	await updateModule(moduleId, { scriptRefs });
 
 	try {
 		await ScriptService.delete(scriptId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
-		await ModuleService.update(moduleId, { scriptRefs: existingRefs });
+		await updateModule(moduleId, { scriptRefs: existingRefs });
 		throw error;
 	}
 
 	// Update Store
-	modules.set(moduleId, { ...modules.get(moduleId)!, scriptRefs });
 	get(moduleResources).get(moduleId)?.scripts.delete(scriptId);
 }
 
@@ -266,13 +268,13 @@ export async function createModuleCharJS(
 		{ id: cjs.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await ModuleService.update(moduleId, { charjsRefs });
+		await updateModule(moduleId, { charjsRefs });
 	} catch (error) {
 		await CharJSService.delete(cjs.id);
 		throw error;
 	}
 
-	modules.set(moduleId, { ...modules.get(moduleId)!, charjsRefs });
+	// Update Store
 	get(moduleResources).get(moduleId)?.charjs.set(cjs.id, cjs);
 
 	return cjs;
@@ -283,16 +285,15 @@ export async function deleteModuleCharJS(moduleId: string, charjsId: string): Pr
 
 	const existingRefs = mod.charjsRefs || [];
 	const charjsRefs = existingRefs.filter((r) => r.id !== charjsId);
-	await ModuleService.update(moduleId, { charjsRefs });
+	await updateModule(moduleId, { charjsRefs });
 
 	try {
 		await CharJSService.delete(charjsId);
 	} catch (error) {
-		await ModuleService.update(moduleId, { charjsRefs: existingRefs });
+		await updateModule(moduleId, { charjsRefs: existingRefs });
 		throw error;
 	}
 
-	modules.set(moduleId, { ...modules.get(moduleId)!, charjsRefs });
 	get(moduleResources).get(moduleId)?.charjs.delete(charjsId);
 }
 
@@ -320,9 +321,7 @@ export async function createModuleFolder(
 
 	const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
 
-	await ModuleService.update(moduleId, { folders: updatedFolders });
-
-	modules.set(moduleId, { ...modules.get(moduleId)!, folders: updatedFolders });
+	await updateModule(moduleId, { folders: updatedFolders });
 
 	return newFolder;
 }
@@ -347,9 +346,7 @@ export async function updateModuleFolder(
 		[folderType]: updatedTypeFolders
 	};
 
-	await ModuleService.update(moduleId, { folders: updatedFolders });
-
-	modules.set(moduleId, { ...modules.get(moduleId)!, folders: updatedFolders });
+	await updateModule(moduleId, { folders: updatedFolders });
 }
 
 export async function deleteModuleFolder(
@@ -369,9 +366,7 @@ export async function deleteModuleFolder(
 		[folderType]: updatedTypeFolders
 	};
 
-	await ModuleService.update(moduleId, { folders: updatedFolders });
-
-	modules.set(moduleId, { ...modules.get(moduleId)!, folders: updatedFolders });
+	await updateModule(moduleId, { folders: updatedFolders });
 }
 
 export async function moveModuleItem(
@@ -408,7 +403,5 @@ export async function moveModuleItem(
 		};
 	});
 
-	await ModuleService.update(moduleId, { [refKey]: updatedRefs });
-
-	modules.set(moduleId, { ...modules.get(moduleId)!, [refKey]: updatedRefs });
+	await updateModule(moduleId, { [refKey]: updatedRefs });
 }

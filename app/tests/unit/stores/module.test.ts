@@ -28,6 +28,7 @@ import { AppError } from '$lib/types/errors';
 import type { Module, ModuleContent, Lorebook, Script, CharJS, AppSettings } from '$lib/services';
 import type { FolderDef } from '$lib/types/refs';
 import { makeSettings } from '../../utils';
+import { deepMerge } from '$lib/utils/defaults';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
@@ -70,6 +71,14 @@ vi.mock('$lib/utils/ordering', () => ({
 	sortByRefs: vi.fn((list) => list)
 }));
 
+// Mock settings store
+vi.mock('$lib/stores/content/settings', () => ({
+	getAppSettings: vi.fn(),
+	updateSettings: vi.fn()
+}));
+
+import { getAppSettings, updateSettings } from '$lib/stores/content/settings';
+
 describe('Module Store', () => {
 	const mockModule: Module = {
 		id: 'mod-1',
@@ -86,6 +95,10 @@ describe('Module Store', () => {
 		modules.clear();
 		appSettings.set(makeSettings({ theme: 'dark', moduleRefs: [] }));
 		moduleResources.set(new Map());
+		vi.mocked(getAppSettings).mockImplementation(async () => get(appSettings)!);
+		vi.mocked(updateSettings).mockImplementation(async (changes) => {
+			appSettings.update((s) => (s ? deepMerge(s, changes) : s));
+		});
 	});
 
 	describe('loadModules', () => {
@@ -106,20 +119,19 @@ describe('Module Store', () => {
 	describe('createModule', () => {
 		it('should create module and update settings', async () => {
 			vi.mocked(ModuleService.create).mockResolvedValue(mockModule);
-			vi.mocked(SettingsService.update).mockResolvedValue({} as AppSettings);
 
 			const result = await createModule({ name: 'New', description: 'desc' });
 
 			expect(result).toEqual(mockModule);
 			expect(get(modules)).toContainEqual(mockModule);
-			expect(SettingsService.update).toHaveBeenCalledWith({
+			expect(updateSettings).toHaveBeenCalledWith({
 				moduleRefs: expect.arrayContaining([expect.objectContaining({ id: 'mod-1' })])
 			});
 		});
 
 		it('should rollback if settings update fails', async () => {
 			vi.mocked(ModuleService.create).mockResolvedValue(mockModule);
-			vi.mocked(SettingsService.update).mockRejectedValue(new Error('Fail'));
+			vi.mocked(updateSettings).mockRejectedValueOnce(new Error('Fail'));
 
 			await expect(createModule({ name: 'New', description: 'desc' })).rejects.toThrow();
 			expect(ModuleService.delete).toHaveBeenCalledWith('mod-1');
@@ -130,7 +142,7 @@ describe('Module Store', () => {
 		it('should update module content in store', async () => {
 			modules.setAll([mockModule]);
 			const updated = { ...mockModule, name: 'Updated' };
-			vi.mocked(ModuleService.updateContent).mockResolvedValue(updated);
+			vi.mocked(ModuleService.update).mockResolvedValue(updated);
 
 			await updateModule('mod-1', { name: 'Updated' });
 
@@ -146,8 +158,6 @@ describe('Module Store', () => {
 					moduleRefs: [{ id: 'mod-1', sortOrder: 'a', enabled: true }]
 				})
 			);
-			vi.mocked(SettingsService.update).mockResolvedValue({} as AppSettings);
-
 			await deleteModule('mod-1');
 
 			expect(get(modules)).toHaveLength(0);
@@ -227,7 +237,10 @@ describe('Module Store', () => {
 	describe('Folder Management', () => {
 		it('should create module folder', async () => {
 			modules.setAll([mockModule]);
-			vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
+			vi.mocked(ModuleService.update).mockImplementation(async (_id, changes) => ({
+				...mockModule,
+				...changes
+			}));
 
 			const folder = await createModuleFolder('mod-1', 'lorebooks', 'New Folder');
 

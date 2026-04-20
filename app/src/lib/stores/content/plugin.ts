@@ -1,7 +1,7 @@
 import { PluginService, SettingsService, type PluginFields, type Plugin } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { plugins, appSettings } from '../state';
-import { getAppSettings } from './settings';
+import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
 
@@ -40,7 +40,7 @@ export async function createPlugin(fields: DeepPartial<PluginFields> = {}): Prom
 		{ id: plugin.id, sortOrder: generateSortOrder(existingRefs), enabled: true }
 	];
 	try {
-		await SettingsService.update({ pluginRefs });
+		await updateSettings({ pluginRefs });
 	} catch (error) {
 		// If parent's refs update fails, roll back DB
 		await PluginService.delete(plugin.id);
@@ -48,7 +48,6 @@ export async function createPlugin(fields: DeepPartial<PluginFields> = {}): Prom
 	}
 
 	// Update Store
-	appSettings.update((s) => (s ? { ...s, pluginRefs } : s));
 	plugins.set(plugin.id, plugin);
 
 	return plugin;
@@ -68,18 +67,17 @@ export async function deletePlugin(pluginId: string): Promise<void> {
 	// Remove from parent's refs
 	const existingRefs = settings.pluginRefs || [];
 	const pluginRefs = existingRefs.filter((r) => r.id !== pluginId);
-	await SettingsService.update({ pluginRefs });
+	await updateSettings({ pluginRefs });
 
 	// Remove record from DB
 	try {
 		await PluginService.delete(pluginId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
-		await SettingsService.update({ pluginRefs: existingRefs });
+		await updateSettings({ pluginRefs: existingRefs });
 		throw error;
 	}
 
 	// Update Store
-	appSettings.update((s) => (s ? { ...s, pluginRefs } : s));
 	plugins.delete(pluginId);
 }

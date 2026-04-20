@@ -55,8 +55,7 @@ export async function createGlobalFolder(
 
 	const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
 
-	const updated = await SettingsService.update({ folders: updatedFolders });
-	appSettings.set(updated);
+	await updateSettings({ folders: updatedFolders });
 	return newFolder;
 }
 
@@ -74,8 +73,7 @@ export async function updateGlobalFolder(
 
 	const updatedFolders = { ...folders, [folderType]: updatedTypeFolders };
 
-	const updated = await SettingsService.update({ folders: updatedFolders });
-	appSettings.set(updated);
+	await updateSettings({ folders: updatedFolders });
 }
 
 export async function deleteGlobalFolder(
@@ -89,8 +87,7 @@ export async function deleteGlobalFolder(
 
 	const updatedFolders = { ...folders, [folderType]: typeFolders.filter((f) => f.id !== folderId) };
 
-	const updated = await SettingsService.update({ folders: updatedFolders });
-	appSettings.set(updated);
+	await updateSettings({ folders: updatedFolders });
 }
 
 export async function moveGlobalItem(
@@ -132,6 +129,5 @@ export async function moveGlobalItem(
 		};
 	});
 
-	const updated = await SettingsService.update({ [refKey]: updatedRefs });
-	appSettings.set(updated);
+	await updateSettings({ [refKey]: updatedRefs });
 }

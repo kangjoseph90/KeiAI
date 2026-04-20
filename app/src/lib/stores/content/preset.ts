@@ -4,7 +4,7 @@ import { SettingsService } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import { presets, activePreset, appSettings } from '../state';
-import { getAppSettings } from './settings';
+import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
 /**
@@ -38,8 +38,7 @@ export async function loadPresets(): Promise<void> {
 export async function selectPreset(presetId: string): Promise<void> {
 	const preset = await getPreset(presetId);
 	activePreset.set(preset);
-	appSettings.update((s) => (s ? { ...s, presetId: presetId } : s));
-	await SettingsService.update({ presetId: presetId });
+	await updateSettings({ presetId: presetId });
 }
 
 export async function createPreset(fields: DeepPartial<PresetFields> = {}): Promise<Preset> {
@@ -55,7 +54,7 @@ export async function createPreset(fields: DeepPartial<PresetFields> = {}): Prom
 		{ id: preset.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await SettingsService.update({ presetRefs });
+		await updateSettings({ presetRefs });
 	} catch (error) {
 		// If parent's refs update fails, roll back DB
 		await PresetService.delete(preset.id);
@@ -63,7 +62,6 @@ export async function createPreset(fields: DeepPartial<PresetFields> = {}): Prom
 	}
 
 	// Update Store
-	appSettings.update((s) => (s ? { ...s, presetRefs } : s));
 	presets.set(preset.id, preset);
 
 	return preset;
@@ -93,19 +91,18 @@ export async function deletePreset(presetId: string): Promise<void> {
 	const isActivePreset = get(activePreset)?.id === presetId;
 	const fallback = isActivePreset ? get(presets).find((p) => p.id !== presetId) : undefined;
 
-	await SettingsService.update({ presetRefs });
+	await updateSettings({ presetRefs });
 
 	// Remove record from DB
 	try {
 		await PresetService.delete(presetId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
-		await SettingsService.update({ presetRefs: existingRefs });
+		await updateSettings({ presetRefs: existingRefs });
 		throw error;
 	}
 
 	// Update Store
-	appSettings.update((s) => (s ? { ...s, presetRefs } : s));
 	presets.delete(presetId);
 
 	// Select fallback if the deleted preset was active

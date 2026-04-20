@@ -75,7 +75,7 @@ export class CharJSService {
 			return {
 				id,
 				ownerId: record.ownerId,
-				...deepMerge(defaultCharJSFields, queued as unknown as Record<string, unknown>)
+				...deepMerge(defaultCharJSFields, queued)
 			};
 		}
 
@@ -91,10 +91,7 @@ export class CharJSService {
 	}
 
 	static async create(ownerId: string, fields: DeepPartial<CharJSFields> = {}): Promise<CharJS> {
-		const resolved: CharJSFields = deepMerge(
-			defaultCharJSFields,
-			fields as Record<string, unknown>
-		);
+		const resolved: CharJSFields = deepMerge(defaultCharJSFields, fields);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -131,9 +128,9 @@ export class CharJSService {
 
 		try {
 			const current = queued
-				? deepMerge(defaultCharJSFields, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultCharJSFields, queued)
 				: await decryptFields(masterKey, record);
-			const updated: CharJSFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: CharJSFields = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<CharJSFields, CharJSRecord>({
 				tableName: 'charjs',
@@ -141,8 +138,7 @@ export class CharJSService {
 				userId: record.userId,
 				createdAt: record.createdAt,
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id: recordId,
 					userId: recordUserId,

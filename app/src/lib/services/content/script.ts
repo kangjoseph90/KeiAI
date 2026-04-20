@@ -89,7 +89,7 @@ export class ScriptService {
 			return {
 				id,
 				ownerId: record.ownerId,
-				...deepMerge(defaultScriptFields, queued as unknown as Record<string, unknown>)
+				...deepMerge(defaultScriptFields, queued)
 			};
 		}
 
@@ -105,10 +105,7 @@ export class ScriptService {
 	}
 
 	static async create(ownerId: string, fields: DeepPartial<ScriptFields> = {}): Promise<Script> {
-		const resolved: ScriptFields = deepMerge(
-			defaultScriptFields,
-			fields as Record<string, unknown>
-		);
+		const resolved: ScriptFields = deepMerge(defaultScriptFields, fields);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -145,9 +142,9 @@ export class ScriptService {
 
 		try {
 			const current = queued
-				? deepMerge(defaultScriptFields, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultScriptFields, queued)
 				: await decryptFields(masterKey, record);
-			const updated: ScriptFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: ScriptFields = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<ScriptFields, ScriptRecord>({
 				tableName: 'scripts',
@@ -155,8 +152,7 @@ export class ScriptService {
 				userId: record.userId,
 				createdAt: record.createdAt,
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id: recordId,
 					userId: recordUserId,

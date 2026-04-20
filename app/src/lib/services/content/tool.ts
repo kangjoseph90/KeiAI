@@ -100,7 +100,7 @@ export class ToolCallService {
 			return {
 				id,
 				chatId: record.chatId,
-				...deepMerge(defaultToolCallFields, queued as unknown as Record<string, unknown>)
+				...deepMerge(defaultToolCallFields, queued)
 			};
 		}
 
@@ -116,10 +116,7 @@ export class ToolCallService {
 	}
 
 	static async create(chatId: string, fields: DeepPartial<ToolCallFields> = {}): Promise<ToolCall> {
-		const resolved: ToolCallFields = deepMerge(
-			defaultToolCallFields,
-			fields as Record<string, unknown>
-		);
+		const resolved: ToolCallFields = deepMerge(defaultToolCallFields, fields);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -156,9 +153,9 @@ export class ToolCallService {
 
 		try {
 			const current = queued
-				? deepMerge(defaultToolCallFields, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultToolCallFields, queued)
 				: await decryptFields(masterKey, record);
-			const updated: ToolCallFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: ToolCallFields = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<ToolCallFields, ToolCallRecord>({
 				tableName: 'toolCalls',
@@ -166,8 +163,7 @@ export class ToolCallService {
 				userId: record.userId,
 				createdAt: record.createdAt,
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id: recordId,
 					userId: recordUserId,

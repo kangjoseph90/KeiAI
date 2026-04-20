@@ -43,6 +43,7 @@ import { generateId } from '$lib/utils/id';
 import { generateSortOrder } from '$lib/utils/ordering';
 import type { Character, Lorebook, Script, CharJS, Chat, AppSettings } from '$lib/services';
 import { makeSettings } from '../../utils';
+import { deepMerge } from '$lib/utils/defaults';
 import type { FolderDef, OrderedRef } from '$lib/types/refs';
 
 // Mock Services
@@ -95,11 +96,12 @@ vi.mock('$lib/stores/content/chat', () => ({
 
 // Mock settings store
 vi.mock('$lib/stores/content/settings', () => ({
-	getAppSettings: vi.fn()
+	getAppSettings: vi.fn(),
+	updateSettings: vi.fn()
 }));
 
 import { clearActiveChat } from '$lib/stores/content/chat';
-import { getAppSettings } from '$lib/stores/content/settings';
+import { getAppSettings, updateSettings } from '$lib/stores/content/settings';
 
 describe('Character Store', () => {
 	const mockCharacter: Character = {
@@ -230,25 +232,19 @@ describe('Character Store', () => {
 	describe('createCharacter', () => {
 		it('should create character and update stores', async () => {
 			vi.mocked(CharacterService.create).mockResolvedValue(mockCharacter);
-			vi.mocked(SettingsService.update).mockResolvedValue(
-				makeSettings({
-					theme: 'dark',
-					characterRefs: []
-				})
-			);
 
 			const result = await createCharacter({ name: 'Test Character' });
 
 			expect(result).toEqual(mockCharacter);
 			expect(get(characters)).toContainEqual(mockCharacter);
-			expect(SettingsService.update).toHaveBeenCalledWith({
+			expect(updateSettings).toHaveBeenCalledWith({
 				characterRefs: expect.arrayContaining([expect.objectContaining({ id: 'char-1' })])
 			});
 		});
 
 		it('should roll back if settings update fails', async () => {
 			vi.mocked(CharacterService.create).mockResolvedValue(mockCharacter);
-			vi.mocked(SettingsService.update).mockRejectedValue(new Error('Fail'));
+			vi.mocked(updateSettings).mockRejectedValueOnce(new Error('Fail'));
 
 			await expect(createCharacter({ name: 'New' })).rejects.toThrow();
 			expect(CharacterService.delete).toHaveBeenCalledWith('char-1');
@@ -258,30 +254,25 @@ describe('Character Store', () => {
 	describe('deleteCharacter', () => {
 		it('should delete character and remove from stores', async () => {
 			characters.setAll([mockCharacter]);
-			appSettings.set(
-				makeSettings({
-					theme: 'dark',
-					characterRefs: [{ id: 'char-1', sortOrder: 'a' }]
-				})
-			);
-			vi.mocked(getAppSettings).mockResolvedValue(
-				makeSettings({
-					theme: 'dark',
-					characterRefs: [{ id: 'char-1', sortOrder: 'a' }]
-				})
-			);
-			vi.mocked(SettingsService.update).mockResolvedValue(
-				makeSettings({
-					theme: 'dark',
-					characterRefs: []
-				})
-			);
+			const settings = makeSettings({
+				theme: 'dark',
+				characterRefs: [{ id: 'char-1', sortOrder: 'a' }]
+			});
+			appSettings.set(settings);
+			vi.mocked(getAppSettings).mockResolvedValue(settings);
+
+			vi.mocked(updateSettings).mockImplementation(async (changes) => {
+				appSettings.update((s) => (s ? deepMerge(s, changes) : s));
+			});
 			vi.mocked(CharacterService.delete).mockResolvedValue(undefined);
 
 			await deleteCharacter('char-1');
 
 			expect(get(characters)).toHaveLength(0);
 			expect(get(appSettings)?.characterRefs).toHaveLength(0);
+			expect(updateSettings).toHaveBeenCalledWith({
+				characterRefs: []
+			});
 		});
 	});
 

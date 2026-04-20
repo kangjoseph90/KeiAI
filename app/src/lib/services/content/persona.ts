@@ -73,7 +73,7 @@ export class PersonaService {
 			if (!record || record.isDeleted) return null;
 			return {
 				id,
-				...deepMerge(defaultPersonaFields, queued as unknown as Record<string, unknown>)
+				...deepMerge(defaultPersonaFields, queued)
 			};
 		}
 
@@ -89,10 +89,7 @@ export class PersonaService {
 
 	/** Create a persona */
 	static async create(fields: DeepPartial<PersonaFields> = {}): Promise<Persona> {
-		const resolved: PersonaFields = deepMerge(
-			defaultPersonaFields,
-			fields as Record<string, unknown>
-		);
+		const resolved: PersonaFields = deepMerge(defaultPersonaFields, fields);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -129,9 +126,9 @@ export class PersonaService {
 
 		try {
 			const current = queued
-				? deepMerge(defaultPersonaFields, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultPersonaFields, queued)
 				: await decryptFields(masterKey, record);
-			const updated: PersonaFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: PersonaFields = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<PersonaFields, PersonaRecord>({
 				tableName: 'personas',
@@ -139,8 +136,7 @@ export class PersonaService {
 				userId: record.userId,
 				createdAt: record.createdAt,
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id: recordId,
 					userId: recordUserId,

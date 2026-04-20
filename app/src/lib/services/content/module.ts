@@ -81,7 +81,7 @@ export class ModuleService {
 			if (!record || record.isDeleted) return null;
 			return {
 				id,
-				...deepMerge(defaultModuleFields, queued as unknown as Record<string, unknown>)
+				...deepMerge(defaultModuleFields, queued)
 			};
 		}
 
@@ -96,10 +96,7 @@ export class ModuleService {
 	}
 
 	static async create(fields: DeepPartial<ModuleFields> = {}): Promise<Module> {
-		const resolved: ModuleFields = deepMerge(
-			defaultModuleFields,
-			fields as Record<string, unknown>
-		);
+		const resolved: ModuleFields = deepMerge(defaultModuleFields, fields);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -135,9 +132,9 @@ export class ModuleService {
 
 		try {
 			const current = queued
-				? deepMerge(defaultModuleFields, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultModuleFields, queued)
 				: await decryptFields(masterKey, record);
-			const updated: ModuleFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: ModuleFields = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<ModuleFields, ModuleRecord>({
 				tableName: 'modules',
@@ -145,8 +142,7 @@ export class ModuleService {
 				userId: record.userId,
 				createdAt: record.createdAt,
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id: recordId,
 					userId: recordUserId,

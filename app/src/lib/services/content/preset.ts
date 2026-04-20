@@ -86,7 +86,7 @@ export class PresetService {
 			if (!record || record.isDeleted) return null;
 			return {
 				id,
-				...deepMerge(defaultPresetFields, queued as unknown as Record<string, unknown>)
+				...deepMerge(defaultPresetFields, queued)
 			};
 		}
 
@@ -98,10 +98,7 @@ export class PresetService {
 	}
 
 	static async create(fields: DeepPartial<PresetFields> = {}): Promise<Preset> {
-		const resolved: PresetFields = deepMerge(
-			defaultPresetFields,
-			fields as Record<string, unknown>
-		);
+		const resolved: PresetFields = deepMerge(defaultPresetFields, fields);
 
 		const { masterKey, userId } = getActiveSession();
 		const id = generateId();
@@ -137,9 +134,9 @@ export class PresetService {
 
 		try {
 			const current = queued
-				? deepMerge(defaultPresetFields, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultPresetFields, queued)
 				: await decryptFields(masterKey, record);
-			const updated: PresetFields = deepMerge(current, changes as Record<string, unknown>);
+			const updated: PresetFields = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<PresetFields, PresetRecord>({
 				tableName: 'presets',
@@ -147,8 +144,7 @@ export class PresetService {
 				userId: record.userId,
 				createdAt: record.createdAt,
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id: recordId,
 					userId: recordUserId,

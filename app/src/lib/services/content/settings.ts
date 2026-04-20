@@ -229,10 +229,7 @@ export class SettingsService {
 		const { masterKey, userId } = getActiveSession();
 		const queued = encryptedWriteQueue.peek<AppSettings>('settings', userId);
 		if (queued) {
-			return deepMerge(
-				defaultSettings as AppSettings,
-				queued as unknown as Record<string, unknown>
-			);
+			return deepMerge(defaultSettings as AppSettings, queued);
 		}
 
 		const record = await localDB.getRecord<SettingsRecord>('settings', userId);
@@ -262,10 +259,7 @@ export class SettingsService {
 				id: userId,
 				userId,
 				createdAt: existing?.createdAt ?? Date.now(),
-				nextFields: deepMerge(
-					defaultSettings as AppSettings,
-					settings as unknown as Record<string, unknown>
-				),
+				nextFields: deepMerge(defaultSettings as AppSettings, settings),
 				mergeFields: (_current, next) => next,
 				toRecord: ({
 					id,
@@ -299,7 +293,7 @@ export class SettingsService {
 			const record = queued ? null : await localDB.getRecord<SettingsRecord>('settings', userId);
 
 			const current: AppSettings = queued
-				? deepMerge(defaultSettings as AppSettings, queued as unknown as Record<string, unknown>)
+				? deepMerge(defaultSettings as AppSettings, queued)
 				: !record || record.isDeleted
 					? ({ ...defaultSettings } as AppSettings)
 					: deepMerge(
@@ -312,7 +306,7 @@ export class SettingsService {
 							)
 						);
 
-			const updated: AppSettings = deepMerge(current, changes as Record<string, unknown>);
+			const updated: AppSettings = deepMerge(current, changes);
 
 			encryptedWriteQueue.upsert<AppSettings, SettingsRecord>({
 				tableName: 'settings',
@@ -320,8 +314,7 @@ export class SettingsService {
 				userId,
 				createdAt: record?.createdAt ?? Date.now(),
 				nextFields: updated,
-				mergeFields: (queuedCurrent, next) =>
-					deepMerge(queuedCurrent, next as unknown as Record<string, unknown>),
+				mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
 				toRecord: ({
 					id,
 					userId: recordUserId,

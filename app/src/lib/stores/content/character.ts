@@ -31,7 +31,7 @@ import {
 	appSettings,
 	activeCharacterId
 } from '../state';
-import { getAppSettings } from './settings';
+import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
@@ -134,7 +134,7 @@ export async function createCharacter(
 		{ id: character.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await SettingsService.update({ characterRefs });
+		await updateSettings({ characterRefs });
 	} catch (error) {
 		// If parent's refs update fails, roll back DB
 		await CharacterService.delete(character.id);
@@ -142,7 +142,6 @@ export async function createCharacter(
 	}
 
 	// Update store
-	appSettings.update((s) => (s ? { ...s, characterRefs } : s));
 	characters.set(character.id, character);
 	return character;
 }
@@ -153,19 +152,18 @@ export async function deleteCharacter(characterId: string): Promise<void> {
 	// Remove from parent's refs
 	const existingRefs = settings.characterRefs || [];
 	const characterRefs = existingRefs.filter((r) => r.id !== characterId);
-	await SettingsService.update({ characterRefs });
+	await updateSettings({ characterRefs });
 
 	// Remove record from DB
 	try {
 		await CharacterService.delete(characterId);
 	} catch (error) {
 		// If DB delete fails, roll back parent's refs
-		await SettingsService.update({ characterRefs: existingRefs });
+		await updateSettings({ characterRefs: existingRefs });
 		throw error;
 	}
 
 	// Update Store
-	appSettings.update((s) => (s ? { ...s, characterRefs } : s));
 	characters.delete(characterId);
 	if (get(activeCharacter)?.id === characterId) {
 		clearActiveCharacter();
@@ -188,14 +186,13 @@ export async function createCharacterLorebook(
 		{ id: lb.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await CharacterService.update(characterId, { lorebookRefs });
+		await updateCharacter(characterId, { lorebookRefs });
 	} catch (error) {
 		await LorebookService.delete(lb.id);
 		throw error;
 	}
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, lorebookRefs } : c));
 		characterLorebooks.set(lb.id, lb);
 	}
 
@@ -210,17 +207,16 @@ export async function deleteCharacterLorebook(
 
 	const existingRefs = char.lorebookRefs || [];
 	const lorebookRefs = existingRefs.filter((r) => r.id !== lorebookId);
-	await CharacterService.update(characterId, { lorebookRefs });
+	await updateCharacter(characterId, { lorebookRefs });
 
 	try {
 		await LorebookService.delete(lorebookId);
 	} catch (error) {
-		await CharacterService.update(characterId, { lorebookRefs: existingRefs });
+		await updateCharacter(characterId, { lorebookRefs: existingRefs });
 		throw error;
 	}
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, lorebookRefs } : c));
 		characterLorebooks.delete(lorebookId);
 	}
 }
@@ -241,14 +237,13 @@ export async function createCharacterScript(
 		{ id: sc.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await CharacterService.update(characterId, { scriptRefs });
+		await updateCharacter(characterId, { scriptRefs });
 	} catch (error) {
 		await ScriptService.delete(sc.id);
 		throw error;
 	}
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, scriptRefs } : c));
 		characterScripts.set(sc.id, sc);
 	}
 
@@ -260,17 +255,16 @@ export async function deleteCharacterScript(characterId: string, scriptId: strin
 
 	const existingRefs = char.scriptRefs || [];
 	const scriptRefs = existingRefs.filter((r) => r.id !== scriptId);
-	await CharacterService.update(characterId, { scriptRefs });
+	await updateCharacter(characterId, { scriptRefs });
 
 	try {
 		await ScriptService.delete(scriptId);
 	} catch (error) {
-		await CharacterService.update(characterId, { scriptRefs: existingRefs });
+		await updateCharacter(characterId, { scriptRefs: existingRefs });
 		throw error;
 	}
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, scriptRefs } : c));
 		characterScripts.delete(scriptId);
 	}
 }
@@ -290,14 +284,13 @@ export async function createCharacterCharJS(
 		{ id: cjs.id, sortOrder: generateSortOrder(existingRefs) }
 	];
 	try {
-		await CharacterService.update(characterId, { charjsRefs });
+		await updateCharacter(characterId, { charjsRefs });
 	} catch (error) {
 		await CharJSService.delete(cjs.id);
 		throw error;
 	}
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, charjsRefs } : c));
 		characterCharJS.set(cjs.id, cjs);
 	}
 
@@ -309,17 +302,16 @@ export async function deleteCharacterCharJS(characterId: string, charjsId: strin
 
 	const existingRefs = char.charjsRefs || [];
 	const charjsRefs = existingRefs.filter((r) => r.id !== charjsId);
-	await CharacterService.update(characterId, { charjsRefs });
+	await updateCharacter(characterId, { charjsRefs });
 
 	try {
 		await CharJSService.delete(charjsId);
 	} catch (error) {
-		await CharacterService.update(characterId, { charjsRefs: existingRefs });
+		await updateCharacter(characterId, { charjsRefs: existingRefs });
 		throw error;
 	}
 
 	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, charjsRefs } : c));
 		characterCharJS.delete(charjsId);
 	}
 }
@@ -351,11 +343,7 @@ export async function createCharacterFolder(
 		[folderType]: [...typeFolders, newFolder]
 	};
 
-	await CharacterService.update(characterId, { folders: updatedFolders });
-
-	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, folders: updatedFolders } : c));
-	}
+	await updateCharacter(characterId, { folders: updatedFolders });
 
 	return newFolder;
 }
@@ -375,11 +363,7 @@ export async function updateCharacterFolder(
 
 	const updatedFolders = { ...folders, [folderType]: updatedTypeFolders };
 
-	await CharacterService.update(characterId, { folders: updatedFolders });
-
-	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, folders: updatedFolders } : c));
-	}
+	await updateCharacter(characterId, { folders: updatedFolders });
 }
 
 export async function deleteCharacterFolder(
@@ -394,11 +378,7 @@ export async function deleteCharacterFolder(
 
 	const updatedFolders = { ...folders, [folderType]: typeFolders.filter((f) => f.id !== folderId) };
 
-	await CharacterService.update(characterId, { folders: updatedFolders });
-
-	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, folders: updatedFolders } : c));
-	}
+	await updateCharacter(characterId, { folders: updatedFolders });
 }
 
 export async function moveCharacterItem(
@@ -441,9 +421,5 @@ export async function moveCharacterItem(
 		};
 	});
 
-	await CharacterService.update(characterId, { [refKey]: updatedRefs });
-
-	if (characterId === get(activeCharacterId)) {
-		activeCharacter.update((c) => (c ? { ...c, [refKey]: updatedRefs } : c));
-	}
+	await updateCharacter(characterId, { [refKey]: updatedRefs });
 }
