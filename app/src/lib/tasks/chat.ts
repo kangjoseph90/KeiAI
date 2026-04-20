@@ -75,21 +75,24 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
 		if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
 		if (!settings.personaId) throw new AppError('INVALID_INPUT', 'No persona selected');
+		if (!chat.lastMessageId) throw new AppError('INVALID_INPUT', 'Chat has no messages');
 
-		const [character, preset, persona] = await Promise.all([
+		const [character, preset, persona, targetMessage] = await Promise.all([
 			getCharacter(chat.characterId),
 			getPreset(settings.presetId),
-			getPersona(settings.personaId)
+			getPersona(settings.personaId),
+			getMessage(chat.lastMessageId)
 		]);
 
-		const messages: Message[] = await MessageService.getMessagesBefore(chatId, '\uffff', 2);
-		const targetMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-		if (!targetMessage) throw new AppError('INVALID_INPUT', 'No messages found');
-
-		const lastMessage = messages.length > 1 ? messages[messages.length - 2] : null;
-
-		const targetMessageId = targetMessage.id;
-		const targetSortOrder = targetMessage.sortOrder;
+		// ── 2. Load Prompt History ────────────────────────────────────
+		// Fetch 1000 messages at once and use the last one for variables
+		// TODO: lazy load for prompt builder
+		const promptMessages = await MessageService.getMessagesBefore(
+			chatId,
+			targetMessage.sortOrder,
+			1000
+		);
+		const lastMessage = promptMessages[promptMessages.length - 1] || null;
 
 		// setup variables
 		const variables = lastMessage?.swipes[lastMessage.activeSwipeId]?.variables ?? {};
@@ -108,12 +111,9 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 		await updateMessage(targetMessage.id, targetMessage);
 
 		// ── 3. Register task ──────────────────────────────────────────
-		createChatTask(chatId, targetMessageId, controller);
+		createChatTask(chatId, targetMessage.id, controller);
 
-		// ── 5. Build Prompt (pure function) ──────────────────────────────
-
-		// TODO: lazy load messages
-		const promptMessages = await MessageService.getMessagesBefore(chatId, targetSortOrder, 1000);
+		// ── 4. Build Prompt (pure function) ──────────────────────────────
 
 		const prompt = buildPrompt({
 			character,
@@ -123,7 +123,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 			messages: promptMessages
 		});
 
-		// ── 6. Apply Request Scripts ─────────────────────────────────
+		// ── 5. Apply Request Scripts ─────────────────────────────────
 		const processedMessages = await Promise.all(
 			prompt.map(async (msg, index) => ({
 				...msg,
@@ -133,16 +133,16 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 			}))
 		);
 
-		// ── 7. Select Handler ──────────────────────────────────────
+		// ── 6. Select Handler ──────────────────────────────────────
 		const handler = opts.handlerOverride ?? selectLLMHandler(preset.chatModel, settings);
 		if (!handler) {
 			throw new AppError('INVALID_INPUT', 'Failed to create LLM handler. Check API key.');
 		}
 
-		// ── 8. Stream chunks → update swipe in DB ─────────────────────
+		// ── 7. Stream chunks → update swipe in DB ─────────────────────
 		for await (const state of handler.stream(processedMessages, controller.signal)) {
 			const processedContent = await runPipeline(chatId, 'output', state.content, {
-				messageId: targetMessageId
+				messageId: targetMessage.id
 			});
 
 			const swipeUpdate: Record<string, Partial<MessageSwipe>> = {
@@ -151,11 +151,11 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 			if (state.thought !== undefined) {
 				swipeUpdate[targetSwipeId].thought = state.thought;
 			}
-			await updateMessage(targetMessageId, { swipes: swipeUpdate });
+			await updateMessage(targetMessage.id, { swipes: swipeUpdate });
 		}
 
-		// ── 9. Finalize ─────────────────────────────────────────────
-		const finalMsg = await getMessage(targetMessageId);
+		// ── 8. Finalize ─────────────────────────────────────────────
+		const finalMsg = await getMessage(targetMessage.id);
 		const finalSwipe = finalMsg.swipes[targetSwipeId];
 		if (!finalSwipe || finalSwipe.content.length === 0) {
 			setChatTaskError(chatId, 'Empty response from model');

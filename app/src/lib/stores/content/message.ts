@@ -86,16 +86,17 @@ export async function createMessage(
 	chatId: string,
 	fields: DeepPartial<MessageFields> = {}
 ): Promise<Message> {
-	// DB writes — always happen with explicit chatId
+	// 1. Create the message first to get its ID
+	const newMessage = await MessageService.create(chatId, fields);
+
+	// 2. Update chat with new count and lastMessageId
 	const currentChat = get(activeChat);
 	const newCount = (currentChat?.messageCount ?? 0) + 1;
 
-	const [newMessage, updatedChat] = await Promise.all([
-		MessageService.create(chatId, fields),
-		ChatService.update(chatId, {
-			messageCount: newCount
-		})
-	]);
+	const updatedChat = await ChatService.update(chatId, {
+		messageCount: newCount,
+		lastMessageId: newMessage.id
+	});
 
 	// Store update — only if still viewing this chat
 	if (get(activeChatId) === chatId) {
@@ -132,6 +133,12 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
 	const currentChat = get(activeChat);
 	const newCount = Math.max(0, (currentChat?.messageCount ?? 1) - 1);
 	const chatChanges: DeepPartial<ChatFields> = { messageCount: newCount };
+
+	// If the deleted message was the last one, we need to find the new last message
+	if (currentChat?.lastMessageId === msgId) {
+		const prevLastMsg = await MessageService.getMessagesBefore(chatId, '\uffff', 1);
+		chatChanges.lastMessageId = prevLastMsg[0]?.id || undefined;
+	}
 
 	const updatedChat = await ChatService.update(chatId, chatChanges);
 	chats.set(chatId, updatedChat);

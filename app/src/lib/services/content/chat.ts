@@ -11,12 +11,13 @@ import { encryptedWriteQueue } from './write_queue';
 
 export interface ChatContent {
 	title: string;
-	messageCount: number;
 	systemPromptOverride?: string;
 	defaultVariables?: Record<string, string>;
 }
 
 export interface ChatRefs {
+	messageCount: number;
+	lastMessageId?: string;
 	lorebookRefs?: OrderedRef[];
 	folders?: {
 		lorebooks?: FolderDef[];

@@ -136,7 +136,8 @@ describe('Message Store', () => {
 
 			expect(get(messages)).toContainEqual(newMessage);
 			expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
-				messageCount: 1
+				messageCount: 1,
+				lastMessageId: 'new-id'
 			});
 			expect(get(activeChat)).toMatchObject({});
 		});
@@ -170,12 +171,21 @@ describe('Message Store', () => {
 				characterId: 'char-1'
 			} as Chat);
 
+			activeChat.set({
+				id: mockChatId,
+				characterId: 'char-1',
+				messageCount: 1,
+				lastMessageId: 'msg-1'
+			} as Chat);
+
+			vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([]);
 			await deleteMessage(mockChatId, 'msg-1');
 
 			expect(get(messages)).toHaveLength(0);
 			expect(messages.has('msg-1')).toBe(false);
 			expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
-				messageCount: 0
+				messageCount: 0,
+				lastMessageId: undefined
 			});
 		});
 	});

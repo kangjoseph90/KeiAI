@@ -164,7 +164,7 @@ export async function forkChat(messageId: string): Promise<string> {
 		messageCount: allMessages.length
 	});
 
-	await Promise.all(
+	const createdMessages = await Promise.all(
 		allMessages.map((msg) =>
 			MessageService.create(
 				newChat.id,
@@ -177,6 +177,11 @@ export async function forkChat(messageId: string): Promise<string> {
 			)
 		)
 	);
+
+	const lastMessageId = createdMessages[createdMessages.length - 1]?.id;
+	if (lastMessageId) {
+		await ChatService.update(newChat.id, { lastMessageId });
+	}
 
 	const lorebooks = await LorebookService.listByOwner(chatId);
 	const copiedLorebooks = await Promise.all(
