@@ -6,13 +6,12 @@
  * Key design: AssetRegistryRecord is a device-local plaintext cache of the
  * encrypted AssetFields. Orchestration helpers keep both in sync:
  *
- *   setRegistry    — decrypt asset table → create registry entry
+ *   setRegistry    — create registry entry (accepts pre-decrypted fields)
  *   touchRegistry  — update accessedAt (no-op if missing)
  *   updateAsset    — update asset table + propagate to registry if present
  *   softDelete     — soft-delete asset table + storage + registry (delete queue)
  */
 
-import { encrypt, decrypt } from '$lib/crypto';
 import { sha256, type Bytes } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { appAsset, type AssetRegistryRecord } from '$lib/adapters/asset';
@@ -26,58 +25,51 @@ import {
     deriveAssetKey,
     decryptAsset,
     isValidImageHeader,
-    getRemoteURL
+    getRemoteURL,
+    encryptFields,
+    decryptFields
 } from './util';
 import { fetchAssetFromCDN } from './remote';
 import type { AssetKind } from './types';
 import { CACHE_HIGH_WATERMARK, CACHE_LOW_WATERMARK } from './types';
 
-// ─── Helpers: Encrypt / Decrypt AssetFields ──────────────────────────
-
-async function encryptFields(
-    masterKey: CryptoKey,
-    fields: AssetFields
-): Promise<{ ciphertext: Uint8Array; iv: Uint8Array }> {
-    const json = JSON.stringify(fields);
-    return encrypt(masterKey, json);
-}
-
-async function decryptFields(masterKey: CryptoKey, record: AssetRecord): Promise<AssetFields> {
-    const json = await decrypt(masterKey, {
-        ciphertext: record.encryptedData as unknown as Bytes,
-        iv: record.encryptedDataIV as unknown as Bytes
-    });
-    return JSON.parse(json) as AssetFields;
-}
-
 // ─── Orchestration Helpers ───────────────────────────────────────────
 
 /**
- * Set a registry entry by decrypting the asset table record.
- * Creates or overwrites the registry entry with the decrypted fields.
+ * Set a registry entry from decrypted or provided fields.
+ * Creates or overwrites the registry entry.
  *
  * @param id - Asset ID
  * @param size - Blob size in bytes (0 for entries without a local blob)
+ * @param fields - Pre-decrypted AssetFields (skips redundant DB read + decrypt)
  * @returns The created/updated registry record
  */
-async function setRegistry(id: string, size: number = 0): Promise<AssetRegistryRecord> {
+async function setRegistry(
+    id: string,
+    size: number,
+    fields?: AssetFields
+): Promise<AssetRegistryRecord> {
     const { masterKey, userId } = getActiveSession();
-    const asset = await appAsset.getAsset(id);
-    if (!asset) throw new AppError('NOT_FOUND', `Asset ${id} not found in asset table`);
 
-    const fields = await decryptFields(masterKey, asset);
+    // Use provided fields or fall back to decrypting from asset table
+    let assetFields = fields;
+    if (!assetFields) {
+        const asset = await appAsset.getAsset(id);
+        if (!asset) throw new AppError('NOT_FOUND', `Asset ${id} not found in asset table`);
+        assetFields = await decryptFields(masterKey, asset);
+    }
+
     const now = Date.now();
-
     const record: AssetRegistryRecord = {
         id,
         userId,
         createdAt: now,
         updatedAt: now,
         isDeleted: false,
-        kind: fields.kind,
-        status: fields.status,
-        hash: fields.hash,
-        encKey: fields.encKey,
+        kind: assetFields.kind,
+        status: assetFields.status,
+        hash: assetFields.hash,
+        encKey: assetFields.encKey,
         size,
         accessedAt: now
     };
@@ -160,16 +152,18 @@ async function softDelete(id: string): Promise<void> {
         fields = await decryptFields(masterKey, asset);
     } catch {
         // Can't decrypt — still soft-delete the metadata
-        await appAsset.softDeleteAsset(id);
-        await appStorage.delete(`assets/${id}`).catch(() => undefined);
+        await Promise.all([
+            appAsset.softDeleteAsset(id),
+            appStorage.delete(`assets/${id}`).catch(() => undefined)
+        ]);
         return;
     }
 
-    // 1. Soft-delete asset table record
-    await appAsset.softDeleteAsset(id);
-
-    // 2. Delete storage blob
-    await appStorage.delete(`assets/${id}`).catch(() => undefined);
+    // 1 & 2. Soft-delete asset table + storage blob in parallel
+    await Promise.all([
+        appAsset.softDeleteAsset(id),
+        appStorage.delete(`assets/${id}`).catch(() => undefined)
+    ]);
 
     // 3. Ensure registry entry exists with isDeleted=true (delete queue)
     const now = Date.now();
@@ -198,15 +192,36 @@ async function softDelete(id: string): Promise<void> {
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class AssetService {
+    private static pendingReads = new Map<string, Promise<string | null>>();
+
     /**
-     * Read an asset and return a renderable URL.
+     * Read an asset with request coalescing.
+     * Concurrent reads of the same ID share a single CDN fetch + decrypt.
+     */
+    static read(id: string): Promise<string | null> {
+        const pending = AssetService.pendingReads.get(id);
+        if (pending) return pending;
+
+        const promise = AssetService.readImpl(id).finally(() => {
+            AssetService.pendingReads.delete(id);
+        });
+        AssetService.pendingReads.set(id, promise);
+        return promise;
+    }
+
+    /**
+     * Internal read implementation.
      *
      * Resolution order:
      *   1. Local storage hit → touch registry → return URL
-     *   2. CDN download → detect kind → cache locally → return URL
+     *   2. CDN download → metadata-driven verification → cache locally → return URL
+     *
+     * Verification strategy (priority-based):
+     *   - Public: hash verification of plaintext
+     *   - Private/Inlay: optimistic AES-GCM decrypt → fallback hash check (promotion heal)
      */
-    static async read(id: string): Promise<string | null> {
-        const { masterKey, userId } = getActiveSession();
+    private static async readImpl(id: string): Promise<string | null> {
+        const { masterKey } = getActiveSession();
 
         // 1. Try local storage first
         const exists = await appStorage.exists(`assets/${id}`);
@@ -242,34 +257,42 @@ export class AssetService {
         const data = await fetchAssetFromCDN(url);
         if (!data || data.length === 0) return null;
 
-        // Detect if it's a plaintext public asset or encrypted private/inlay
-        if (isValidImageHeader(data)) {
-            // Remote public asset — plaintext bytes
-            await appStorage.write(`assets/${id}`, data);
+        // Priority-based verification: trust metadata, verify with data
 
-            // Heal kind to public if needed
-            if (fields.kind !== 'public') {
-                await updateAsset(id, { kind: 'public', status: 'remote' });
-            }
-            await setRegistry(id, data.length);
+        if (fields.kind === 'public') {
+            // Public asset — verify integrity via content hash
+            const hash = await sha256(data as unknown as Bytes);
+            if (hash !== fields.hash) return null;
+
+            await Promise.all([
+                appStorage.write(`assets/${id}`, data),
+                setRegistry(id, data.length, fields)
+            ]);
             return appStorage.getRenderUrl(`assets/${id}`);
         }
 
-        // Try decrypting as private/inlay
+        // Private / Inlay — optimistic decryption
         try {
             const plaintext = await decryptAsset(data, fields.encKey);
             if (!isValidImageHeader(plaintext)) return null;
 
             await appStorage.write(`assets/${id}`, plaintext);
 
-            // Heal status if needed
             if (fields.status !== 'remote') {
                 await updateAsset(id, { status: 'remote' });
             }
-            await setRegistry(id, plaintext.length);
+            await setRegistry(id, plaintext.length, fields);
             return appStorage.getRenderUrl(`assets/${id}`);
         } catch {
-            return null;
+            // Decrypt failed — asset may have been promoted to public
+            const hash = await sha256(data as unknown as Bytes);
+            if (hash !== fields.hash) return null;
+
+            // Self-heal: promoted to public
+            await appStorage.write(`assets/${id}`, data);
+            await updateAsset(id, { kind: 'public', status: 'remote' });
+            await setRegistry(id, data.length, { ...fields, kind: 'public', status: 'remote' });
+            return appStorage.getRenderUrl(`assets/${id}`);
         }
     }
 
@@ -308,12 +331,15 @@ export class AssetService {
             }
         }
 
-        // Derive hash and encKey if not provided
-        if (!hash && bytes) {
-            hash = await sha256(bytes as unknown as Bytes);
-        }
-        if (!encKey && bytes) {
-            encKey = await deriveAssetKey(bytes);
+        // Derive hash and encKey in parallel if both needed
+        if (bytes && !hash && !encKey) {
+            [hash, encKey] = await Promise.all([
+                sha256(bytes as unknown as Bytes),
+                deriveAssetKey(bytes)
+            ]);
+        } else {
+            if (!hash && bytes) hash = await sha256(bytes as unknown as Bytes);
+            if (!encKey && bytes) encKey = await deriveAssetKey(bytes);
         }
 
         if (!hash || !encKey) {
@@ -329,32 +355,45 @@ export class AssetService {
         const fields: AssetFields = { kind, status, hash, encKey };
         const { ciphertext, iv } = await encryptFields(masterKey, fields);
 
-        // Write asset table record
-        await appAsset.putAsset({
-            id,
-            userId,
-            createdAt: now,
-            updatedAt: Date.now(),
-            isDeleted: false,
-            encryptedData: ciphertext as unknown as Bytes,
-            encryptedDataIV: iv as unknown as Bytes
-        });
-
-        // Write blob and registry if file provided
         if (bytes) {
+            // OPFS first (most likely to fail, avoids orphan metadata)
             await appStorage.write(`assets/${id}`, bytes);
-            await appAsset.putRegistry({
+
+            // Parallel IDB writes
+            const assetRecord = {
                 id,
                 userId,
                 createdAt: now,
-                updatedAt: now,
+                updatedAt: Date.now(),
                 isDeleted: false,
-                kind,
-                status: 'local',
-                hash,
-                encKey,
-                size: bytes.length,
-                accessedAt: now
+                encryptedData: ciphertext as unknown as Bytes,
+                encryptedDataIV: iv as unknown as Bytes
+            };
+            await Promise.all([
+                appAsset.putAsset(assetRecord),
+                appAsset.putRegistry({
+                    id,
+                    userId,
+                    createdAt: now,
+                    updatedAt: now,
+                    isDeleted: false,
+                    kind,
+                    status: 'local',
+                    hash,
+                    encKey,
+                    size: bytes.length,
+                    accessedAt: now
+                })
+            ]);
+        } else {
+            await appAsset.putAsset({
+                id,
+                userId,
+                createdAt: now,
+                updatedAt: Date.now(),
+                isDeleted: false,
+                encryptedData: ciphertext as unknown as Bytes,
+                encryptedDataIV: iv as unknown as Bytes
             });
         }
 
@@ -410,14 +449,24 @@ export class AssetService {
         // Sort by accessedAt ascending (least recently used first)
         const sorted = remoteAssets.sort((a, b) => a.accessedAt - b.accessedAt);
 
-        let currentSize = totalSize;
+        // Calculate eviction list upfront
+        const toEvict: AssetRegistryRecord[] = [];
+        let remaining = totalSize;
         for (const entry of sorted) {
-            if (currentSize <= CACHE_LOW_WATERMARK) break;
-
-            await appStorage.delete(`assets/${entry.id}`).catch(() => undefined);
-            await appAsset.deleteRegistry(entry.id);
-            currentSize -= entry.size;
+            if (remaining <= CACHE_LOW_WATERMARK) break;
+            toEvict.push(entry);
+            remaining -= entry.size;
         }
+
+        // Batch delete (OPFS + IDB in parallel per entry)
+        await Promise.all(
+            toEvict.map((entry) =>
+                Promise.all([
+                    appStorage.delete(`assets/${entry.id}`).catch(() => undefined),
+                    appAsset.deleteRegistry(entry.id)
+                ])
+            )
+        );
     }
 }
 
@@ -425,8 +474,7 @@ export class AssetService {
 
 async function getStorageSize(id: string): Promise<number> {
     try {
-        const data = await appStorage.read(`assets/${id}`);
-        return data?.length ?? 0;
+        return await appStorage.getSize(`assets/${id}`);
     } catch {
         return 0;
     }

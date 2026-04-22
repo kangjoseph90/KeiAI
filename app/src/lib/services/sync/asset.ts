@@ -12,7 +12,7 @@
  */
 
 import { pb } from '$lib/adapters/pb';
-import { decrypt, toBase64, fromBase64, type Bytes, encrypt } from '$lib/crypto';
+import { toBase64, fromBase64, type Bytes, encrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { appAsset, type AssetRecord, type AssetFields } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
@@ -40,6 +40,7 @@ export interface AssetSyncStatus extends SyncStatus {
 // ─── Constants ────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 200;
+const DELETE_CONCURRENCY = 5;
 const SYNC_KEY_PREFIX = 'lastSync_assets_';
 
 const ALLOWED_RECORD_FIELDS = new Set([
@@ -53,20 +54,6 @@ const ALLOWED_RECORD_FIELDS = new Set([
 ]);
 
 const BYTE_FIELD_NAMES = new Set(['encryptedData', 'encryptedDataIV']);
-
-// ─── Helpers ──────────────────────────────────────────────────────────
-
-async function decryptAssetFields(masterKey: CryptoKey, record: AssetRecord): Promise<AssetFields> {
-    try {
-        const raw = await decrypt(masterKey, {
-            ciphertext: record.encryptedData as unknown as Bytes,
-            iv: record.encryptedDataIV as unknown as Bytes
-        });
-        return JSON.parse(raw) as AssetFields;
-    } catch (error) {
-        throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt asset record', error);
-    }
-}
 
 // ─── Asset Sync Engine ────────────────────────────────────────────────
 
@@ -359,23 +346,26 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
      */
     private async processDeleteQueue(userId: string): Promise<void> {
         const pending = await appAsset.getDeletedRegistry(userId);
+        if (pending.length === 0) return;
 
-        for (const entry of pending) {
-            if (this.abortController?.signal.aborted) break;
+        for (let i = 0; i < pending.length; i += DELETE_CONCURRENCY) {
+            if (this.abortController?.signal.aborted) return;
 
-            try {
-                if (entry.status === 'remote') {
-                    // Server has this asset → delete (refCount decrement)
-                    // noOp if not owner or missing — not an error
-                    await deleteRemoteAsset(entry.hash);
+            const batch = pending.slice(i, i + DELETE_CONCURRENCY);
+            const results = await Promise.allSettled(
+                batch.map(async (entry) => {
+                    if (entry.status === 'remote') {
+                        await deleteRemoteAsset(entry.hash);
+                    }
+                    await appAsset.deleteRegistry(entry.id);
+                })
+            );
+
+            for (const result of results) {
+                if (result.status === 'rejected') {
+                    if (this.isAuthError(result.reason)) throw result.reason;
+                    logger.error('Failed to process delete:', result.reason);
                 }
-                // Local-only assets never reached the server → skip
-
-                // Hard-delete from registry (consume queue entry)
-                await appAsset.deleteRegistry(entry.id);
-            } catch (error) {
-                if (this.isAuthError(error)) throw error;
-                logger.error(`Failed to process delete for ${entry.id}:`, error);
             }
         }
     }
@@ -420,31 +410,28 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
                 }
 
                 // Any non-error response → mark as remote
-                await appAsset.putRegistry({ ...entry, status: 'remote', updatedAt: Date.now() });
+                // Build updated fields from registry entry (skip redundant getAsset + decrypt)
+                const updatedFields: AssetFields = {
+                    kind: entry.kind,
+                    status: 'remote',
+                    hash: entry.hash,
+                    encKey: entry.encKey
+                };
+                const { ciphertext, iv } = await encrypt(masterKey, JSON.stringify(updatedFields));
 
-                // Also update asset table status
-                const assetRecord = await appAsset.getAsset(entry.id);
-                if (assetRecord) {
-                    try {
-                        const fields = await decryptAssetFields(masterKey, assetRecord);
-                        if (fields.status !== 'remote') {
-                            // Re-encrypt with updated status
-                            const updatedFields: AssetFields = { ...fields, status: 'remote' };
-                            const { ciphertext, iv } = await encrypt(
-                                masterKey,
-                                JSON.stringify(updatedFields)
-                            );
-                            await appAsset.putAsset({
-                                ...assetRecord,
-                                encryptedData: ciphertext,
-                                encryptedDataIV: iv,
-                                updatedAt: Date.now()
-                            });
-                        }
-                    } catch {
-                        // Non-critical: registry is already updated
-                    }
-                }
+                // Parallel IDB writes
+                await Promise.all([
+                    appAsset.putAsset({
+                        id: entry.id,
+                        userId: entry.userId,
+                        createdAt: entry.createdAt,
+                        updatedAt: Date.now(),
+                        isDeleted: false,
+                        encryptedData: ciphertext as unknown as Bytes,
+                        encryptedDataIV: iv as unknown as Bytes
+                    }),
+                    appAsset.putRegistry({ ...entry, status: 'remote', updatedAt: Date.now() })
+                ]);
 
                 this.updateStatus({
                     pendingCount: Math.max(pending.length - (index + 1), 0),

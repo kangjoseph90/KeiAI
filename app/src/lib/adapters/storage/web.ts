@@ -107,6 +107,13 @@ export class WebStorageAdapter implements IStorageAdapter {
         const handle = await this.getFileHandle(path);
         return handle !== null;
     }
+
+    async getSize(path: string): Promise<number> {
+        const handle = await this.getFileHandle(path);
+        if (!handle) return 0;
+        const file = await handle.getFile();
+        return file.size;
+    }
 }
 
 export const webStorage = new WebStorageAdapter();

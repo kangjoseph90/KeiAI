@@ -1,4 +1,4 @@
-import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
+import { exists, mkdir, readFile, remove, stat, writeFile } from '@tauri-apps/plugin-fs';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { appDataDir, join, dirname } from '@tauri-apps/api/path';
 import type { IStorageAdapter } from './types';
@@ -94,5 +94,15 @@ export class TauriStorageAdapter implements IStorageAdapter {
     async exists(path: string): Promise<boolean> {
         const fullPath = await this.resolvePath(path);
         return await exists(fullPath);
+    }
+
+    async getSize(path: string): Promise<number> {
+        try {
+            const fullPath = await this.resolvePath(path);
+            const info = await stat(fullPath);
+            return info.size;
+        } catch {
+            return 0;
+        }
     }
 }

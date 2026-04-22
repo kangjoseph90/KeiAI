@@ -59,6 +59,7 @@ vi.mock('$lib/adapters/kv', () => ({
 }));
 
 vi.mock('$lib/crypto', () => ({
+    encrypt: vi.fn(),
     decrypt: vi.fn(),
     toBase64: vi.fn((buf: Uint8Array) => Buffer.from(buf).toString('base64')),
     fromBase64: vi.fn((str: string) => new Uint8Array(Buffer.from(str, 'base64')))
@@ -78,7 +79,7 @@ import { pb } from '$lib/adapters/pb';
 import { getActiveSession } from '$lib/services/session';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
-import { decrypt } from '$lib/crypto';
+import { decrypt, encrypt } from '$lib/crypto';
 import { encryptAsset } from '$lib/services/asset/util';
 import { uploadAsset } from '$lib/services/asset/remote';
 
@@ -145,6 +146,10 @@ describe('AssetSyncService', () => {
                 encKey: 'enc-key'
             })
         );
+        vi.mocked(encrypt).mockResolvedValue({
+            ciphertext: new Uint8Array([1, 2, 3]),
+            iv: new Uint8Array([4, 5, 6])
+        });
         vi.mocked(encryptAsset).mockResolvedValue(new Uint8Array([10, 11, 12]));
         vi.mocked(uploadAsset).mockResolvedValue({
             status: 'uploaded',

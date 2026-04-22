@@ -6,7 +6,16 @@
 
 import { MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT, WEBP_QUALITY } from './types';
 import { CDN_BASE_URL, FIXED_SALT } from '$lib/config';
-import { sha256, fromHex, encryptBytes, decryptBytes, type Bytes } from '$lib/crypto';
+import {
+    sha256,
+    encrypt,
+    decrypt,
+    fromHex,
+    encryptBytes,
+    decryptBytes,
+    type Bytes
+} from '$lib/crypto';
+import type { AssetFields, AssetRecord } from '$lib/adapters/asset';
 
 // ─── Image Loading & Resizing ─────────────────────────────────────────────
 
@@ -181,4 +190,25 @@ export function isValidImageHeader(bytes: Uint8Array): boolean {
 
 export function getRemoteURL(hash: string): string {
     return `${CDN_BASE_URL}/assets/${hash}`;
+}
+
+// ─── Asset Field Encryption ─────────────────────────────────────────────
+
+export async function encryptFields(
+    masterKey: CryptoKey,
+    fields: AssetFields
+): Promise<{ ciphertext: Uint8Array; iv: Uint8Array }> {
+    const json = JSON.stringify(fields);
+    return encrypt(masterKey, json);
+}
+
+export async function decryptFields(
+    masterKey: CryptoKey,
+    record: AssetRecord
+): Promise<AssetFields> {
+    const json = await decrypt(masterKey, {
+        ciphertext: record.encryptedData as unknown as Bytes,
+        iv: record.encryptedDataIV as unknown as Bytes
+    });
+    return JSON.parse(json) as AssetFields;
 }

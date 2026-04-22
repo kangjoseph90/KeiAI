@@ -29,7 +29,8 @@ vi.mock('$lib/adapters/storage', () => ({
         delete: vi.fn(),
         exists: vi.fn(),
         getRenderUrl: vi.fn(),
-        revokeRenderUrl: vi.fn()
+        revokeRenderUrl: vi.fn(),
+        getSize: vi.fn()
     }
 }));
 
@@ -54,7 +55,9 @@ vi.mock('$lib/services/asset/util', () => ({
     deriveAssetKey: vi.fn(),
     decryptAsset: vi.fn(),
     getRemoteURL: vi.fn((hash: string) => `https://cdn.keiai.ai/assets/${hash}`),
-    isValidImageHeader: vi.fn()
+    isValidImageHeader: vi.fn(),
+    encryptFields: vi.fn(),
+    decryptFields: vi.fn()
 }));
 
 vi.mock('$lib/services/asset/remote', () => ({
@@ -70,7 +73,9 @@ import {
     deriveAssetKey,
     decryptAsset,
     getRemoteURL,
-    isValidImageHeader
+    isValidImageHeader,
+    encryptFields,
+    decryptFields
 } from '$lib/services/asset/util';
 import { fetchAssetFromCDN } from '$lib/services/asset/remote';
 
@@ -126,6 +131,10 @@ describe('AssetService', () => {
         vi.mocked(appStorage.exists).mockResolvedValue(false);
         vi.mocked(appStorage.getRenderUrl).mockResolvedValue('blob:asset-123');
         vi.mocked(appStorage.revokeRenderUrl).mockResolvedValue(undefined);
+        vi.mocked(appStorage.getSize).mockResolvedValue(100);
+
+        vi.mocked(isValidImageHeader).mockReturnValue(true);
+        vi.mocked(fetchAssetFromCDN).mockResolvedValue(null);
 
         vi.mocked(isValidImageHeader).mockReturnValue(true);
         vi.mocked(fetchAssetFromCDN).mockResolvedValue(null);
@@ -139,6 +148,16 @@ describe('AssetService', () => {
                 encKey: 'enc-key'
             })
         );
+        vi.mocked(decryptFields).mockResolvedValue({
+            kind: 'private',
+            status: 'remote',
+            hash: 'hash-123',
+            encKey: 'enc-key'
+        });
+        vi.mocked(encryptFields).mockResolvedValue({
+            ciphertext: mockCiphertext,
+            iv: mockIv
+        });
         vi.mocked(fetchAssetFromCDN).mockResolvedValue(mockBytes);
     });
 
@@ -275,8 +294,8 @@ describe('AssetService', () => {
             vi.mocked(appStorage.exists).mockResolvedValue(false);
             vi.mocked(appAsset.getRegistry).mockResolvedValue(undefined);
 
-            // isValidImageHeader is false for encrypted payload, true for decrypted
-            vi.mocked(isValidImageHeader).mockReturnValueOnce(false).mockReturnValueOnce(true);
+            // Decrypted payload is a valid image
+            vi.mocked(isValidImageHeader).mockReturnValue(true);
             vi.mocked(decryptAsset).mockResolvedValue(mockBytes);
             vi.mocked(fetchAssetFromCDN).mockResolvedValue(mockBytes);
 
@@ -296,8 +315,10 @@ describe('AssetService', () => {
             vi.mocked(appStorage.exists).mockResolvedValue(false);
             vi.mocked(appAsset.getRegistry).mockResolvedValue(undefined);
 
-            // Downloaded payload is already valid (public)
-            vi.mocked(isValidImageHeader).mockReturnValue(true);
+            // Decrypt fails (asset was promoted to public on CDN but metadata still says private)
+            vi.mocked(decryptAsset).mockRejectedValue(new Error('decrypt failed'));
+            // Hash matches → self-heal: promoted to public
+            vi.mocked(sha256).mockResolvedValue('hash-123');
             vi.mocked(fetchAssetFromCDN).mockResolvedValue(mockBytes);
 
             await AssetService.read('asset-123');
@@ -307,9 +328,9 @@ describe('AssetService', () => {
                 expect.objectContaining({ id: 'asset-123', updatedAt: expect.any(Number) })
             );
 
-            // setRegistry will be called with kind: 'private' because it decrypts the ORIGINAL asset (mockRecord)
+            // setRegistry called with kind: 'public' after self-heal
             expect(appAsset.putRegistry).toHaveBeenCalledWith(
-                expect.objectContaining({ kind: 'private', status: 'remote' })
+                expect.objectContaining({ kind: 'public', status: 'remote' })
             );
         });
 

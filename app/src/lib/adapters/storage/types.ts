@@ -28,4 +28,7 @@ export interface IStorageAdapter {
 
     /** Check if a file exists in storage */
     exists(path: string): Promise<boolean>;
+
+    /** Get file size in bytes without reading the content */
+    getSize(path: string): Promise<number>;
 }
