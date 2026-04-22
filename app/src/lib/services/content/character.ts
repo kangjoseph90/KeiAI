@@ -221,7 +221,11 @@ export class CharacterService {
                         localDB.softDeleteRecord('characters', id)
                     );
 
-                    await Promise.all(deletePromises);
+                    const results = await Promise.allSettled(deletePromises);
+                    const failed = results.find((r) => r.status === 'rejected');
+                    if (failed) {
+                        throw failed.reason;
+                    }
                 }
             );
         } catch (error) {
