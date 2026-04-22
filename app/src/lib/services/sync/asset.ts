@@ -11,6 +11,7 @@
  * This module has NO dependency on Svelte stores.
  */
 
+import { clock } from '$lib/utils/clock';
 import { pb } from '$lib/adapters/pb';
 import { toBase64, fromBase64, type Bytes, encrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
@@ -433,14 +434,18 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
                     id: entry.id,
                     userId: entry.userId,
                     createdAt: entry.createdAt,
-                    updatedAt: Date.now(),
+                    updatedAt: clock.now(),
                     isDeleted: false,
                     encryptedData: ciphertext as unknown as Bytes,
                     encryptedDataIV: iv as unknown as Bytes
                 };
                 await Promise.all([
                     appAsset.putAsset(updatedRecord),
-                    appAsset.putRegistry({ ...entry, status: 'remote', updatedAt: Date.now() })
+                    appAsset.putRegistry({
+                        ...entry,
+                        status: 'remote',
+                        updatedAt: clock.now()
+                    })
                 ]);
 
                 // Push updated metadata to server

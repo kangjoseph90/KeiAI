@@ -12,6 +12,7 @@
  *   softDelete     — soft-delete asset table + storage + registry (delete queue)
  */
 
+import { clock } from '$lib/utils/clock';
 import { sha256, type Bytes } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { appAsset, type AssetRegistryRecord } from '$lib/adapters/asset';
@@ -60,7 +61,7 @@ async function setRegistry(
         assetFields = await decryptFields(masterKey, asset);
     }
 
-    const now = Date.now();
+    const now = clock.now();
     const record: AssetRegistryRecord = {
         id,
         userId,
@@ -92,11 +93,12 @@ async function setRegistry(
 async function touchRegistry(id: string): Promise<AssetRegistryRecord | null> {
     const existing = await appAsset.getRegistry(id);
     if (!existing || existing.isDeleted) return null;
+    const now = clock.now();
 
     const updated: AssetRegistryRecord = {
         ...existing,
-        accessedAt: Date.now(),
-        updatedAt: Date.now()
+        accessedAt: now,
+        updatedAt: now
     };
     await appAsset.putRegistry(updated);
     return updated;
@@ -114,13 +116,14 @@ async function updateAsset(id: string, changes: DeepPartial<AssetFields>): Promi
 
     const fields = await decryptFields(masterKey, asset);
     const updated: AssetFields = { ...fields, ...changes };
+    const now = clock.now();
 
     const { ciphertext, iv } = await encryptFields(masterKey, updated);
     await appAsset.putAsset({
         ...asset,
         encryptedData: ciphertext as unknown as Bytes,
         encryptedDataIV: iv as unknown as Bytes,
-        updatedAt: Date.now()
+        updatedAt: now
     });
 
     // Propagate to registry if present
@@ -129,7 +132,7 @@ async function updateAsset(id: string, changes: DeepPartial<AssetFields>): Promi
         await appAsset.putRegistry({
             ...reg,
             ...changes,
-            updatedAt: Date.now()
+            updatedAt: now
         });
     }
 
@@ -167,7 +170,7 @@ async function softDelete(id: string): Promise<void> {
     ]);
 
     // 3. Ensure registry entry exists with isDeleted=true (delete queue)
-    const now = Date.now();
+    const now = clock.now();
     const reg = await appAsset.getRegistry(id);
     if (reg) {
         // Mark existing entry as deleted (preserves status/hash for sync engine)
@@ -350,7 +353,7 @@ export class AssetService {
         }
 
         const id = generateId();
-        const now = Date.now();
+        const now = clock.now();
 
         // Determine initial status: file present → local, import → remote
         const status = bytes ? 'local' : 'remote';
@@ -367,7 +370,7 @@ export class AssetService {
                 id,
                 userId,
                 createdAt: now,
-                updatedAt: Date.now(),
+                updatedAt: now,
                 isDeleted: false,
                 encryptedData: ciphertext as unknown as Bytes,
                 encryptedDataIV: iv as unknown as Bytes
@@ -393,7 +396,7 @@ export class AssetService {
                 id,
                 userId,
                 createdAt: now,
-                updatedAt: Date.now(),
+                updatedAt: now,
                 isDeleted: false,
                 encryptedData: ciphertext as unknown as Bytes,
                 encryptedDataIV: iv as unknown as Bytes
@@ -407,7 +410,7 @@ export class AssetService {
                     id,
                     userId,
                     createdAt: now,
-                    updatedAt: Date.now(),
+                    updatedAt: now,
                     isDeleted: false,
                     encryptedData: ciphertext as unknown as Bytes,
                     encryptedDataIV: iv as unknown as Bytes

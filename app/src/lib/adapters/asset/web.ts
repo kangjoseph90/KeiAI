@@ -16,6 +16,7 @@ import type {
     AssetTableName,
     AssetWriteOperation
 } from './types';
+import { clock } from '$lib/utils/clock';
 
 class AssetDexie extends Dexie {
     assets!: Table<AssetRecord, string>;
@@ -79,7 +80,7 @@ export class WebAssetAdapter implements IAssetAdapter {
         await assetDB.assets.put({
             ...existing,
             isDeleted: true,
-            updatedAt: Date.now()
+            updatedAt: clock.now()
         });
         this.emitWriteEvent('assets', 'softDelete', [id], options);
     }
@@ -118,7 +119,7 @@ export class WebAssetAdapter implements IAssetAdapter {
         await assetDB.assetRegistry.put({
             ...existing,
             isDeleted: true,
-            updatedAt: Date.now()
+            updatedAt: clock.now()
         });
         this.emitWriteEvent('assetRegistry', 'softDelete', [id], options);
     }

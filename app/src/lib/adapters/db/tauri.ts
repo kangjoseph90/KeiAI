@@ -10,6 +10,7 @@ import type {
 import { TABLES } from './types';
 import { AppError } from '$lib/types/errors';
 import { DatabaseWriteEventEmitter } from './events';
+import { clock } from '$lib/utils/clock';
 
 /**
  * Tauri SQLite Local Database Adapter
@@ -277,7 +278,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
         if (record) {
             record.isDeleted = true;
-            record.updatedAt = Date.now();
+            record.updatedAt = clock.now();
             await this.putRecord(tableName, record, options);
         }
     }
@@ -294,7 +295,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             `SELECT data FROM ${tableName} WHERE ${indexName} = $1`,
             [indexValue]
         );
-        const now = Date.now();
+        const now = clock.now();
         const recordsToUpdate: BaseRecord[] = [];
 
         for (const row of rows) {

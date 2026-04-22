@@ -15,6 +15,7 @@ import { appKV } from '$lib/adapters/kv';
 import { generateMasterKey, generateIdentityKeyPair } from '$lib/crypto';
 import { generateId } from '$lib/utils/id';
 import { setSession } from '../session';
+import { clock } from '$lib/utils/clock';
 import { minidenticon } from 'minidenticons';
 import { AppError } from '$lib/types/errors';
 
@@ -47,7 +48,7 @@ export class UserService {
                 if (!user.identityKeyPair) {
                     const identityKeyPair = await generateIdentityKeyPair();
                     user.identityKeyPair = identityKeyPair;
-                    user.updatedAt = Date.now();
+                    user.updatedAt = clock.now();
                     await appUser.saveUser(user);
                 }
                 setSession(user.id, user.masterKey, user.isGuest, user.identityKeyPair);
@@ -75,13 +76,13 @@ export class UserService {
         const existingUsers = await appUser.getAllUsers();
         const name = `Guest ${existingUsers.length + 1}`;
         const avatar = this.getDefaultAvatarUrl(id);
-
+        const now = clock.now();
         await appUser.saveUser({
             id,
             name,
             avatar,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
+            createdAt: now,
+            updatedAt: now,
             isDeleted: false,
             isGuest: true,
             masterKey: guestKey,
@@ -107,6 +108,7 @@ export class UserService {
         avatarUrl?: string;
     }): Promise<void> {
         const existing = await appUser.getUser(params.id);
+        const now = clock.now();
 
         await appUser.saveUser(
             {
@@ -114,8 +116,8 @@ export class UserService {
                 name: existing?.name ?? params.serverName ?? 'Synced Profile',
                 email: params.email,
                 avatar: existing?.avatar ?? params.avatarUrl ?? this.getDefaultAvatarUrl(params.id),
-                createdAt: existing?.createdAt ?? Date.now(),
-                updatedAt: Date.now(),
+                createdAt: existing?.createdAt ?? now,
+                updatedAt: now,
                 isDeleted: false,
                 isGuest: false,
                 masterKey: params.masterKey,
@@ -141,7 +143,7 @@ export class UserService {
 
         user.masterKey = unlockedKey;
         user.isGuest = true;
-        user.updatedAt = Date.now();
+        user.updatedAt = clock.now();
         await appUser.saveUser(user);
 
         setSession(userId, unlockedKey, true, user.identityKeyPair);
@@ -178,7 +180,7 @@ export class UserService {
         // Hard-delete all asset metadata records
         for (const asset of assets) {
             await appAsset.putAsset(
-                { ...asset, isDeleted: true, updatedAt: Date.now() },
+                { ...asset, isDeleted: true, updatedAt: clock.now() },
                 { origin: 'sync' }
             );
         }

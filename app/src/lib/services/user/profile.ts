@@ -9,6 +9,7 @@
  */
 
 import { getActiveSession } from '../session';
+import { clock } from '$lib/utils/clock';
 import { appUser, type UserRecord } from '$lib/adapters/user';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
@@ -49,7 +50,7 @@ export class ProfileService {
 
         if (changes.name !== undefined) user.name = changes.name;
         if (changes.avatar !== undefined) user.avatar = changes.avatar;
-        user.updatedAt = Date.now();
+        user.updatedAt = clock.now();
 
         await appUser.saveUser(user);
 

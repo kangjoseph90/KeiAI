@@ -35,6 +35,7 @@
     } from '$lib/stores';
     import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
     import { ToolCallService } from '$lib/services/content/tool';
+    import { clock } from '$lib/utils/clock';
     import { runPipeline } from '$lib/pipeline';
     import { navigate } from '$lib/router';
     import { generateId } from '$lib/utils/id';
@@ -58,7 +59,7 @@
         const swipeId = generateId();
         await createMessage(chatId, {
             role: 'user',
-            swipes: { [swipeId]: { id: swipeId, content: processedText, createdAt: Date.now() } },
+            swipes: { [swipeId]: { id: swipeId, content: processedText, createdAt: clock.now() } },
             activeSwipeId: swipeId
         });
         runChat(chatId);

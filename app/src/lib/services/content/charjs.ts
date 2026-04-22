@@ -1,3 +1,4 @@
+import { clock } from '$lib/utils/clock';
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type CharJSRecord } from '$lib/adapters/db';
@@ -95,7 +96,7 @@ export class CharJSService {
 
         const { masterKey, userId } = getActiveSession();
         const id = generateId();
-        const now = Date.now();
+        const now = clock.now();
 
         try {
             const enc = await encrypt(masterKey, JSON.stringify(resolved));

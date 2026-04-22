@@ -4,6 +4,7 @@ import { Stronghold } from '@tauri-apps/plugin-stronghold';
 import { appLocalDataDir } from '@tauri-apps/api/path';
 import { Store as TauriStore } from '@tauri-apps/plugin-store';
 import { UserWriteEventEmitter } from './events';
+import { clock } from '$lib/utils/clock';
 import type { IUserAdapter, UserRecord, UserWriteOptions, UserWriteEventListener } from './types';
 
 /**
@@ -264,7 +265,7 @@ export class TauriUserAdapter implements IUserAdapter {
         if (!user) return;
 
         user.isDeleted = true;
-        user.updatedAt = Date.now();
+        user.updatedAt = clock.now();
 
         await this.authDB.users.put(user);
         await this.sqliteSave(user);

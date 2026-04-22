@@ -1,6 +1,7 @@
 import Database from '@tauri-apps/plugin-sql';
 import { fromBase64, toBase64 } from '$lib/crypto/encoding';
 import { AssetWriteEventEmitter } from './events';
+import { clock } from '$lib/utils/clock';
 import type {
     IAssetAdapter,
     AssetRecord,
@@ -217,7 +218,7 @@ export class TauriAssetAdapter implements IAssetAdapter {
 
     async softDeleteAsset(id: string, options?: AssetWriteOptions): Promise<void> {
         const db = await this.getDb();
-        const now = Date.now();
+        const now = clock.now();
         await db.execute(`UPDATE assets SET isDeleted = 1, updatedAt = $1 WHERE id = $2`, [
             now,
             id
@@ -289,7 +290,7 @@ export class TauriAssetAdapter implements IAssetAdapter {
 
     async softDeleteRegistry(id: string, options?: AssetWriteOptions): Promise<void> {
         const db = await this.getDb();
-        const now = Date.now();
+        const now = clock.now();
         await db.execute(`UPDATE assetRegistry SET isDeleted = 1, updatedAt = $1 WHERE id = $2`, [
             now,
             id

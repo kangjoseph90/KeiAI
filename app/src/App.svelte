@@ -3,6 +3,8 @@
     import { onMount, onDestroy } from 'svelte';
     import { UserService, AuthService } from '$lib/services';
     import { SyncManager } from '$lib/services/sync';
+    import { clock } from '$lib/utils/clock';
+    import { appKV } from '$lib/adapters/kv';
     import AppSidebar from '$lib/components/layout/AppSidebar.svelte';
     import SettingsOverlay from '$lib/components/layout/SettingsOverlay.svelte';
     import {
@@ -138,6 +140,7 @@
     onMount(async () => {
         try {
             startSyncStatusTracking();
+            await clock.init(appKV);
             const wasRestored = await UserService.restoreOrCreateGuest();
             if (!wasRestored) {
                 AuthService.clearAuth();

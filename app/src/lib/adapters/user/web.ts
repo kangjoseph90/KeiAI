@@ -1,6 +1,7 @@
 import Dexie from 'dexie';
 import { UserWriteEventEmitter } from './events';
 import type { IUserAdapter, UserRecord, UserWriteOptions, UserWriteEventListener } from './types';
+import { clock } from '$lib/utils/clock';
 
 /**
  * Web User Adapter using Dexie.
@@ -58,7 +59,7 @@ export class WebUserAdapter implements IUserAdapter {
         const user = await this.getUser(id);
         if (user) {
             user.isDeleted = true;
-            user.updatedAt = Date.now();
+            user.updatedAt = clock.now();
             await authDB.users.put(user);
             this.emitWriteEvent('softDelete', [id], options);
         }

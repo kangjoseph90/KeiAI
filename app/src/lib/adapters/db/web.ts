@@ -25,6 +25,7 @@ import type {
     CharJSRecord
 } from './types';
 import { DatabaseWriteEventEmitter } from './events';
+import { clock } from '$lib/utils/clock';
 
 class DexieStore extends Dexie {
     characters!: Table<CharacterRecord, string>;
@@ -143,7 +144,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 
         if (record) {
             record.isDeleted = true;
-            record.updatedAt = Date.now();
+            record.updatedAt = clock.now();
             await this.putRecord(tableName, record, options);
         }
     }
@@ -156,7 +157,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
     ): Promise<void> {
         await this.flush();
         const table = this.getTable<BaseRecord>(tableName);
-        const now = Date.now();
+        const now = clock.now();
         const records = await table.where(indexName).equals(indexValue).toArray();
         for (const record of records) {
             record.isDeleted = true;

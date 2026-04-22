@@ -5,6 +5,7 @@ import type { OrderedRef, FolderDef, ResourceRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { encryptedWriteQueue } from './write_queue';
+import { clock } from '$lib/utils/clock';
 import type { CustomLLMModel } from '$lib/types/models/llm';
 import type {
     AnthropicProviderConfig,
@@ -258,7 +259,7 @@ export class SettingsService {
                 tableName: 'settings',
                 id: userId,
                 userId,
-                createdAt: existing?.createdAt ?? Date.now(),
+                createdAt: existing?.createdAt ?? clock.now(),
                 nextFields: deepMerge(defaultSettings as AppSettings, settings),
                 mergeFields: (_current, next) => next,
                 toRecord: ({
@@ -314,7 +315,7 @@ export class SettingsService {
                 tableName: 'settings',
                 id: userId,
                 userId,
-                createdAt: record?.createdAt ?? Date.now(),
+                createdAt: record?.createdAt ?? clock.now(),
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
                 toRecord: ({

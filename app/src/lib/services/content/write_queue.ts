@@ -1,3 +1,4 @@
+import { clock } from '$lib/utils/clock';
 import { encrypt } from '$lib/crypto';
 import {
     localDB,
@@ -62,7 +63,7 @@ class EncryptedWriteQueue {
         const existing = this.entries.get(key) as QueueEntry<TFields, TRecord> | undefined;
 
         if (!existing) {
-            const now = Date.now();
+            const now = clock.now();
             const created: QueueEntry<TFields, TRecord> = {
                 key,
                 tableName: args.tableName,
@@ -157,7 +158,7 @@ class EncryptedWriteQueue {
         this.clearTimers(entry);
         entry.flushPromise = (async () => {
             const { masterKey } = getActiveSession();
-            const updatedAt = Date.now();
+            const updatedAt = clock.now();
             const enc = await encrypt(masterKey, JSON.stringify(entry.fields));
             const record = entry.toRecord({
                 id: entry.id,

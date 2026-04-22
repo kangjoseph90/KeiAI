@@ -22,6 +22,7 @@ import {
 } from '$lib/stores';
 import type { LLMStreamHandler } from '$lib/llm/types';
 import { ToolCallService } from '$lib/services/content/tool';
+import { clock } from '$lib/utils/clock';
 import { MessageService, type Message, type MessageSwipe } from '$lib/services/content/message';
 import { updateMessage, createMessage, getMessage } from '$lib/stores/content/message';
 import { buildPrompt } from '../llm/prompt/builder';
@@ -104,7 +105,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
             id: targetSwipeId,
             content: '',
             variables: deepMerge(chat.defaultVariables, variables),
-            createdAt: Date.now()
+            createdAt: clock.now()
         };
         targetMessage.activeSwipeId = targetSwipeId;
 

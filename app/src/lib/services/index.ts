@@ -11,6 +11,7 @@ export * from './content/module';
 export * from './content/charjs';
 export * from './content/plugin';
 export * from './content/preset';
+export * from './content/tool';
 export * from './user/user';
 export * from './user/auth';
 export * from './sync';
