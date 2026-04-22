@@ -188,10 +188,12 @@ export class ModuleService {
                 ['lorebooks', 'scripts', 'charjs', 'modules'],
                 'rw',
                 async () => {
-                    await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-                    await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-                    await localDB.softDeleteByIndex('charjs', 'ownerId', id);
-                    await localDB.softDeleteRecord('modules', id);
+                    await Promise.all([
+                        localDB.softDeleteByIndex('lorebooks', 'ownerId', id),
+                        localDB.softDeleteByIndex('scripts', 'ownerId', id),
+                        localDB.softDeleteByIndex('charjs', 'ownerId', id),
+                        localDB.softDeleteRecord('modules', id)
+                    ]);
                 }
             );
         } catch (error) {

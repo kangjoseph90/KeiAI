@@ -192,11 +192,13 @@ export class ChatService {
                 ['lorebooks', 'scripts', 'messages', 'chats', 'toolCalls'],
                 'rw',
                 async () => {
-                    await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-                    await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-                    await localDB.softDeleteByIndex('messages', 'chatId', id);
-                    await localDB.softDeleteByIndex('toolCalls', 'chatId', id);
-                    await localDB.softDeleteRecord('chats', id);
+                    await Promise.all([
+                        localDB.softDeleteByIndex('lorebooks', 'ownerId', id),
+                        localDB.softDeleteByIndex('scripts', 'ownerId', id),
+                        localDB.softDeleteByIndex('messages', 'chatId', id),
+                        localDB.softDeleteByIndex('toolCalls', 'chatId', id),
+                        localDB.softDeleteRecord('chats', id)
+                    ]);
                 }
             );
         } catch (error) {

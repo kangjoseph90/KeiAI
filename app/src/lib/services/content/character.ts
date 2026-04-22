@@ -202,18 +202,26 @@ export class CharacterService {
                             Number.MAX_SAFE_INTEGER
                         )
                     ).map((c) => c.id);
+
+                    const deletePromises: Promise<void>[] = [];
                     for (const chatId of chatIds) {
-                        await localDB.softDeleteByIndex('messages', 'chatId', chatId);
-                        await localDB.softDeleteByIndex('toolCalls', 'chatId', chatId);
-                        await localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId);
-                        await localDB.softDeleteByIndex('scripts', 'ownerId', chatId);
-                        await localDB.softDeleteByIndex('charjs', 'ownerId', chatId);
+                        deletePromises.push(
+                            localDB.softDeleteByIndex('messages', 'chatId', chatId),
+                            localDB.softDeleteByIndex('toolCalls', 'chatId', chatId),
+                            localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId),
+                            localDB.softDeleteByIndex('scripts', 'ownerId', chatId),
+                            localDB.softDeleteByIndex('charjs', 'ownerId', chatId)
+                        );
                     }
-                    await localDB.softDeleteByIndex('chats', 'characterId', id);
-                    await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-                    await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-                    await localDB.softDeleteByIndex('charjs', 'ownerId', id);
-                    await localDB.softDeleteRecord('characters', id);
+                    deletePromises.push(
+                        localDB.softDeleteByIndex('chats', 'characterId', id),
+                        localDB.softDeleteByIndex('lorebooks', 'ownerId', id),
+                        localDB.softDeleteByIndex('scripts', 'ownerId', id),
+                        localDB.softDeleteByIndex('charjs', 'ownerId', id),
+                        localDB.softDeleteRecord('characters', id)
+                    );
+
+                    await Promise.all(deletePromises);
                 }
             );
         } catch (error) {
