@@ -188,10 +188,16 @@ export class ModuleService {
                 ['lorebooks', 'scripts', 'charjs', 'modules'],
                 'rw',
                 async () => {
-                    await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-                    await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-                    await localDB.softDeleteByIndex('charjs', 'ownerId', id);
-                    await localDB.softDeleteRecord('modules', id);
+                    const results = await Promise.allSettled([
+                        localDB.softDeleteByIndex('lorebooks', 'ownerId', id),
+                        localDB.softDeleteByIndex('scripts', 'ownerId', id),
+                        localDB.softDeleteByIndex('charjs', 'ownerId', id),
+                        localDB.softDeleteRecord('modules', id)
+                    ]);
+                    const failed = results.find((r) => r.status === 'rejected');
+                    if (failed) {
+                        throw failed.reason;
+                    }
                 }
             );
         } catch (error) {

@@ -192,11 +192,17 @@ export class ChatService {
                 ['lorebooks', 'scripts', 'messages', 'chats', 'toolCalls'],
                 'rw',
                 async () => {
-                    await localDB.softDeleteByIndex('lorebooks', 'ownerId', id);
-                    await localDB.softDeleteByIndex('scripts', 'ownerId', id);
-                    await localDB.softDeleteByIndex('messages', 'chatId', id);
-                    await localDB.softDeleteByIndex('toolCalls', 'chatId', id);
-                    await localDB.softDeleteRecord('chats', id);
+                    const results = await Promise.allSettled([
+                        localDB.softDeleteByIndex('lorebooks', 'ownerId', id),
+                        localDB.softDeleteByIndex('scripts', 'ownerId', id),
+                        localDB.softDeleteByIndex('messages', 'chatId', id),
+                        localDB.softDeleteByIndex('toolCalls', 'chatId', id),
+                        localDB.softDeleteRecord('chats', id)
+                    ]);
+                    const failed = results.find((r) => r.status === 'rejected');
+                    if (failed) {
+                        throw failed.reason;
+                    }
                 }
             );
         } catch (error) {
