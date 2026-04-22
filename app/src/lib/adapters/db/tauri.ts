@@ -116,9 +116,10 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
     }
 
     private async initDb(db: Database) {
+        let sql = '';
         for (const table of TABLES) {
-            await db.execute(`
-				CREATE TABLE IF NOT EXISTS ${table} (
+            sql += `
+				CREATE TABLE IF NOT EXISTS "${table}" (
 					id TEXT PRIMARY KEY,
 					userId TEXT,
 					characterId TEXT,
@@ -128,26 +129,31 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 					updatedAt INTEGER,
 					isDeleted INTEGER,
 					data TEXT
-				)
-			`);
+				);
+			`;
 
             // Common indices used securely for lookup and sync
-            await db.execute(`CREATE INDEX IF NOT EXISTS idx_${table}_userId ON ${table} (userId)`);
-            await db.execute(
-                `CREATE INDEX IF NOT EXISTS idx_${table}_updatedAt ON ${table} (updatedAt)`
-            );
+            sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_userId" ON "${table}" (userId);
+`;
+            sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_updatedAt" ON "${table}" (updatedAt);
+`;
         }
 
         // FK indices for 1:N parent→child queries
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_chats_characterId ON chats (characterId)`);
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_lorebooks_ownerId ON lorebooks (ownerId)`);
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_scripts_ownerId ON scripts (ownerId)`);
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_charjs_ownerId ON charjs (ownerId)`);
+        sql += `CREATE INDEX IF NOT EXISTS "idx_chats_characterId" ON chats (characterId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_lorebooks_ownerId" ON lorebooks (ownerId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_scripts_ownerId" ON scripts (ownerId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_charjs_ownerId" ON charjs (ownerId);
+`;
 
         // Compound index strictly required for pagination performance in messages
-        await db.execute(
-            `CREATE INDEX IF NOT EXISTS idx_messages_chatId_sortOrder ON messages (chatId, sortOrder)`
-        );
+        sql += `CREATE INDEX IF NOT EXISTS "idx_messages_chatId_sortOrder" ON messages (chatId, sortOrder);
+`;
+
+        await db.execute(sql);
     }
 
     async getRecord<T extends BaseRecord>(
