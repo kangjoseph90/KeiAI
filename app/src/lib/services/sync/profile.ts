@@ -20,6 +20,7 @@ import { ProfileService, type Profile } from '../user/profile';
 import { appUser } from '$lib/adapters/user';
 import { BaseSyncEngine } from './base';
 import { createLogger } from '$lib/adapters/logger';
+import { AppError } from '$lib/types/errors';
 
 const logger = createLogger('sync:profile');
 
@@ -200,6 +201,23 @@ export class ProfileSyncEngine extends BaseSyncEngine {
             logger.error('Pull failed', err);
             throw err;
         }
+    }
+
+    protected override isAuthError(error: unknown): boolean {
+        if (error instanceof AppError) {
+            return error.code === 'NOT_AUTHENTICATED' || error.code === 'SESSION_EXPIRED';
+        }
+
+        const status = (error as { status?: unknown })?.status;
+        return status === 401 || status === 403;
+    }
+
+    protected override isQuotaError(error: unknown): boolean {
+        if (error instanceof AppError) {
+            return error.code === 'QUOTA_EXCEEDED';
+        }
+        const status = (error as { status?: unknown })?.status;
+        return status === 402 || status === 413;
     }
 
     /**

@@ -79,6 +79,7 @@ import { pb } from '$lib/adapters/pb';
 import { getActiveSession } from '$lib/services/session';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
+import { appKV } from '$lib/adapters/kv';
 import { decrypt, encrypt } from '$lib/crypto';
 import { encryptAsset } from '$lib/services/asset/util';
 import { uploadAsset } from '$lib/services/asset/remote';
@@ -204,5 +205,35 @@ describe('AssetSyncService', () => {
         await AssetSyncService.start();
 
         expect(appAsset.getAllRegistry).not.toHaveBeenCalled();
+    });
+
+    it('should keep cursor unchanged when correction push fails', async () => {
+        vi.mocked(appKV.get).mockResolvedValue('1000');
+        vi.mocked(pb.collection).mockReturnValue({
+            getList: vi.fn().mockResolvedValue({
+                items: [{ id: 'asset-remote', updatedAt: 1100, updated: '2023-01-01' }],
+                page: 1,
+                totalPages: 1
+            }),
+            subscribe: vi.fn(),
+            unsubscribe: vi.fn()
+        } as never);
+
+        vi.mocked(appAsset.getAsset).mockResolvedValue({
+            ...createAssetRecord(),
+            id: 'asset-remote',
+            updatedAt: 1200
+        });
+
+        const failingBatchSend = vi.fn().mockRejectedValueOnce(new Error('batch failed'));
+        vi.mocked(pb.createBatch).mockReturnValue({
+            collection: vi.fn(() => ({ upsert: vi.fn(), create: vi.fn() })),
+            send: failingBatchSend
+        } as never);
+
+        await AssetSyncService.start();
+
+        expect(appKV.set).not.toHaveBeenCalled();
+        expect(AssetSyncService.getState().state).toBe('network_error');
     });
 });

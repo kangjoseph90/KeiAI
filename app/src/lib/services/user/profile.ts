@@ -76,7 +76,6 @@ export class ProfileService {
         user.name = remoteName;
         user.avatar = remoteAvatar;
         user.updatedAt = remoteUpdatedAt;
-        user.updatedAt = remoteUpdatedAt;
         await appUser.saveUser(user, { origin: 'sync' });
 
         return this.toProfile(user);

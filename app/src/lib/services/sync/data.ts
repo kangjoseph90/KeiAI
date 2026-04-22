@@ -27,6 +27,7 @@ import {
 import { appKV } from '$lib/adapters/kv';
 import { BaseSyncEngine } from './base';
 import { createLogger } from '$lib/adapters/logger';
+import { AppError } from '$lib/types/errors';
 
 type RealtimeEvent = {
     action: string;
@@ -171,6 +172,7 @@ export class DataSyncEngine extends BaseSyncEngine {
         let cursorSafeToAdvance = true;
         let page = 1;
         let syncError: unknown = null;
+        let correctionError: unknown = null;
         // Records where the local version is newer than what the server returned.
         // Accumulated across all pages and pushed as a single batch after the pull.
         const offlineWrites: BaseRecord[] = [];
@@ -201,7 +203,7 @@ export class DataSyncEngine extends BaseSyncEngine {
                             nextCursor = Math.max(nextCursor, remoteAt);
                         } else if (remoteAt < localAt) {
                             offlineWrites.push(local);
-                            nextCursor = Math.max(nextCursor, localAt);
+                            nextCursor = Math.max(nextCursor, remoteAt);
                         } else {
                             nextCursor = Math.max(nextCursor, remoteAt);
                         }
@@ -221,18 +223,25 @@ export class DataSyncEngine extends BaseSyncEngine {
             logger.error(`Failed to pull ${tableName}`, err);
         }
 
-        if (cursorSafeToAdvance && nextCursor > lastSyncTime) {
-            await appKV.set(syncKey, nextCursor.toString());
+        // Push locally-newer records first so cursor advancement never hides failed corrections.
+        if (offlineWrites.length > 0) {
+            try {
+                await this.pushBatch(tableName, offlineWrites, false);
+            } catch (err) {
+                correctionError = err;
+            }
         }
 
-        // Push locally-newer records as a single atomic batch transaction.
-        // Fire-and-forget: consistent with other push paths; errors are logged.
-        if (offlineWrites.length > 0) {
-            void this.pushBatch(tableName, offlineWrites);
+        if (cursorSafeToAdvance && !correctionError && nextCursor > lastSyncTime) {
+            await appKV.set(syncKey, nextCursor.toString());
         }
 
         if (syncError) {
             throw syncError;
+        }
+
+        if (correctionError) {
+            throw correctionError;
         }
     }
 
@@ -241,9 +250,13 @@ export class DataSyncEngine extends BaseSyncEngine {
      * transaction. Uses upsert so each record is created or updated as needed.
      * If any record in the batch fails (e.g. validation), the entire batch is rolled
      * back by PocketBase, preserving data consistency.
-     * Fire-and-forget: errors are logged but never thrown.
+     * Default behavior keeps fire-and-forget semantics; callers can opt into throw-on-failure.
      */
-    private async pushBatch(tableName: TableName, records: BaseRecord[]): Promise<void> {
+    private async pushBatch(
+        tableName: TableName,
+        records: BaseRecord[],
+        swallowErrors = true
+    ): Promise<void> {
         const batch = pb.createBatch();
         for (const record of records) {
             batch.collection(tableName).upsert(this.localToPbRecord(record));
@@ -252,6 +265,9 @@ export class DataSyncEngine extends BaseSyncEngine {
             await batch.send();
         } catch (err) {
             logger.error(`Failed to push corrections batch to ${tableName}`, err);
+            if (!swallowErrors) {
+                throw err;
+            }
         }
     }
 
@@ -418,6 +434,23 @@ export class DataSyncEngine extends BaseSyncEngine {
     }
 
     private readonly BYTE_FIELD_NAMES = new Set(['encryptedData', 'encryptedDataIV', 'masterKey']);
+
+    protected override isAuthError(error: unknown): boolean {
+        if (error instanceof AppError) {
+            return error.code === 'NOT_AUTHENTICATED' || error.code === 'SESSION_EXPIRED';
+        }
+
+        const status = (error as { status?: unknown })?.status;
+        return status === 401 || status === 403;
+    }
+
+    protected override isQuotaError(error: unknown): boolean {
+        if (error instanceof AppError) {
+            return error.code === 'QUOTA_EXCEEDED';
+        }
+        const status = (error as { status?: unknown })?.status;
+        return status === 402 || status === 413;
+    }
 
     private isBase64ByteField(fieldName: string): boolean {
         return this.BYTE_FIELD_NAMES.has(fieldName);

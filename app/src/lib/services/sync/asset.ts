@@ -182,6 +182,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
         let cursorSafeToAdvance = true;
         let page = 1;
         let syncError: unknown = null;
+        let correctionError: unknown = null;
         const offlineWrites: AssetRecord[] = [];
 
         try {
@@ -218,7 +219,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
                     } else if (localAt > remoteAt) {
                         // Local is newer → push correction
                         offlineWrites.push(local);
-                        nextCursor = Math.max(nextCursor, localAt);
+                        nextCursor = Math.max(nextCursor, remoteAt);
                     } else {
                         nextCursor = Math.max(nextCursor, remoteAt);
                     }
@@ -233,16 +234,21 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
             logger.error('Failed to pull assets', err);
         }
 
-        if (cursorSafeToAdvance && nextCursor > lastSyncTime) {
+        // Push locally-newer records first so cursor advancement never hides failed corrections.
+        if (offlineWrites.length > 0) {
+            try {
+                await this.pushBatch(offlineWrites, false);
+            } catch (err) {
+                correctionError = err;
+            }
+        }
+
+        if (cursorSafeToAdvance && !correctionError && nextCursor > lastSyncTime) {
             await appKV.set(syncKey, nextCursor.toString());
         }
 
-        // Push locally-newer records
-        if (offlineWrites.length > 0) {
-            void this.pushBatch(offlineWrites);
-        }
-
         if (syncError) throw syncError;
+        if (correctionError) throw correctionError;
     }
 
     // ── Realtime Event Handler ────────────────────────────────────────
@@ -304,7 +310,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
         }
     }
 
-    private async pushBatch(records: AssetRecord[]): Promise<void> {
+    private async pushBatch(records: AssetRecord[], swallowErrors = true): Promise<void> {
         const batch = pb.createBatch();
         for (const record of records) {
             batch.collection('assets').upsert(this.localToPbRecord(record));
@@ -313,6 +319,9 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
             await batch.send();
         } catch (err) {
             logger.error('Failed to push batch', err);
+            if (!swallowErrors) {
+                throw err;
+            }
         }
     }
 

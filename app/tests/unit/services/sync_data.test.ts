@@ -153,6 +153,32 @@ describe('DataSyncService', () => {
             );
             expect(mockBatch.send).toHaveBeenCalled();
         });
+
+        it('should keep cursor unchanged when correction push fails', async () => {
+            vi.mocked(appKV.get).mockResolvedValue('1000');
+            const serverRecord = { id: 'rec-1', updatedAt: 1100, updated: '2023-01-01' };
+            const localRecord = { id: 'rec-1', updatedAt: 1200, userId: mockUserId };
+
+            vi.mocked(mockCollection.getList)
+                .mockResolvedValueOnce({
+                    items: [serverRecord],
+                    page: 1,
+                    totalPages: 1
+                } as unknown as { items: unknown[]; page: number; totalPages: number })
+                .mockResolvedValue({
+                    items: [],
+                    page: 1,
+                    totalPages: 1
+                } as unknown as { items: unknown[]; page: number; totalPages: number });
+
+            vi.mocked(localDB.getRecord).mockResolvedValue(localRecord as BaseRecord);
+            vi.mocked(mockBatch.send).mockRejectedValueOnce(new Error('batch failed'));
+
+            await DataSyncService.syncAll();
+
+            expect(appKV.set).not.toHaveBeenCalled();
+            expect(DataSyncService.getState().state).toBe('network_error');
+        });
     });
 
     describe('Push Logic', () => {
