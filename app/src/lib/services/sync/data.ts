@@ -194,13 +194,14 @@ export class DataSyncEngine extends BaseSyncEngine {
                         this.pbToLocalRecord(serverRecord as unknown as Record<string, unknown>)
                     );
 
-                    const locals = await Promise.all(
-                        remotes.map((remote) => localDB.getRecord<BaseRecord>(tableName, remote.id))
+                    const pairedRecords = await Promise.all(
+                        remotes.map(async (remote) => ({
+                            remote,
+                            local: await localDB.getRecord<BaseRecord>(tableName, remote.id)
+                        }))
                     );
 
-                    for (let i = 0; i < remotes.length; i++) {
-                        const remote = remotes[i];
-                        const local = locals[i];
+                    for (const { remote, local } of pairedRecords) {
                         const remoteAt = remote.updatedAt ?? 0;
                         const localAt = local?.updatedAt ?? 0;
 
