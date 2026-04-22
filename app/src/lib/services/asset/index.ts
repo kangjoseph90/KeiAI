@@ -29,6 +29,7 @@ import {
     encryptFields,
     decryptFields
 } from './util';
+import { AssetSyncService } from '../sync/asset';
 import { fetchAssetFromCDN } from './remote';
 import type { AssetKind } from './types';
 import { CACHE_HIGH_WATERMARK, CACHE_LOW_WATERMARK } from './types';
@@ -280,6 +281,7 @@ export class AssetService {
 
             if (fields.status !== 'remote') {
                 await updateAsset(id, { status: 'remote' });
+                void AssetSyncService.pushById(id);
             }
             await setRegistry(id, plaintext.length, fields);
             return appStorage.getRenderUrl(`assets/${id}`);
@@ -291,6 +293,7 @@ export class AssetService {
             // Self-heal: promoted to public
             await appStorage.write(`assets/${id}`, data);
             await updateAsset(id, { kind: 'public', status: 'remote' });
+            void AssetSyncService.pushById(id);
             await setRegistry(id, data.length, { ...fields, kind: 'public', status: 'remote' });
             return appStorage.getRenderUrl(`assets/${id}`);
         }
@@ -397,6 +400,23 @@ export class AssetService {
             });
         }
 
+        // Push metadata to server + trigger upload queue
+        if (bytes) {
+            void AssetSyncService.pushRecord(
+                {
+                    id,
+                    userId,
+                    createdAt: now,
+                    updatedAt: Date.now(),
+                    isDeleted: false,
+                    encryptedData: ciphertext as unknown as Bytes,
+                    encryptedDataIV: iv as unknown as Bytes
+                },
+                true
+            );
+            void AssetSyncService.start();
+        }
+
         return id;
     }
 
@@ -407,6 +427,8 @@ export class AssetService {
      */
     static async delete(id: string): Promise<void> {
         await softDelete(id);
+        void AssetSyncService.pushById(id);
+        void AssetSyncService.start();
     }
 
     /**
@@ -423,6 +445,8 @@ export class AssetService {
 
         // Update kind to public, status to local (needs re-upload as plaintext)
         await updateAsset(id, { kind: 'public', status: 'local' });
+        void AssetSyncService.pushById(id);
+        void AssetSyncService.start();
     }
 
     /**

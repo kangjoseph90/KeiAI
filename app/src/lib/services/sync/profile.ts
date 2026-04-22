@@ -212,18 +212,12 @@ export class ProfileSyncEngine extends BaseSyncEngine {
             if (!response.ok) return url;
 
             const blob = await response.blob();
-            const buffer = await blob.arrayBuffer();
-            const contentType = blob.type || 'image/png';
-
-            // Convert buffer to Base64
-            let binary = '';
-            const bytes = new Uint8Array(buffer);
-            for (let i = 0; i < bytes.byteLength; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
-            const base64 = btoa(binary);
-
-            return `data:${contentType};base64,${base64}`;
+            return await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = () => reject(new Error('FileReader failed'));
+                reader.readAsDataURL(blob);
+            });
         } catch (err) {
             logger.warn('Failed to convert image to data URI', err);
             return url; // Fallback to original URL

@@ -21,9 +21,8 @@ export type { AssetSyncStatus } from './asset';
 import { DataSyncService } from './data';
 import { ProfileSyncService } from './profile';
 import { AssetSyncService } from './asset';
-import { appAsset } from '$lib/adapters/asset';
 import { appUser } from '$lib/adapters/user';
-import { localDB, TABLES } from '$lib/adapters/db';
+import { localDB, SYNC_TABLES } from '$lib/adapters/db';
 
 // TODO: ㅈ돼버린 가독성 좀 어떻게 하기
 
@@ -91,38 +90,16 @@ export class SyncManager {
         });
     };
 
-    private static readonly localDbTrigger: SyncTriggerRegistration = ({ data, asset }) => {
-        const unsubscribeDb = localDB.subscribeWriteEvents((events) => {
+    private static readonly localDbTrigger: SyncTriggerRegistration = ({ data }) => {
+        return localDB.subscribeWriteEvents((events) => {
             for (const event of events) {
                 if (event.origin !== 'local') continue;
 
-                if (TABLES.includes(event.tableName)) {
+                if (SYNC_TABLES.includes(event.tableName)) {
                     void data.handleLocalWrite(event);
                 }
             }
         });
-
-        const unsubscribeAsset = appAsset.subscribeWriteEvents((events) => {
-            for (const event of events) {
-                if (event.origin !== 'local') continue;
-
-                if (event.tableName === 'assets') {
-                    for (const id of event.ids) {
-                        void asset.pushById(id);
-                    }
-                    continue;
-                }
-
-                if (event.tableName === 'assetRegistry') {
-                    void asset.start();
-                }
-            }
-        });
-
-        return () => {
-            unsubscribeDb();
-            unsubscribeAsset();
-        };
     };
 
     private static initializedBuiltInTriggers = false;

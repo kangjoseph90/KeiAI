@@ -43,6 +43,7 @@ vi.mock('$lib/adapters/db', () => ({
     localDB: {
         getRecord: vi.fn(),
         putRecord: vi.fn(),
+        putRecords: vi.fn(),
         getUnsyncedChanges: vi.fn(),
         subscribeWriteEvents: vi.fn(() => () => {})
     }
@@ -120,12 +121,14 @@ describe('DataSyncService', () => {
 
             await DataSyncService.syncAll();
 
-            expect(localDB.putRecord).toHaveBeenCalledWith(
+            expect(localDB.putRecords).toHaveBeenCalledWith(
                 tableName,
-                expect.objectContaining({
-                    id: 'rec-1',
-                    updatedAt: 2000
-                }),
+                [
+                    expect.objectContaining({
+                        id: 'rec-1',
+                        updatedAt: 2000
+                    })
+                ],
                 expect.objectContaining({ origin: 'sync' })
             );
         });

@@ -420,18 +420,22 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
                 const { ciphertext, iv } = await encrypt(masterKey, JSON.stringify(updatedFields));
 
                 // Parallel IDB writes
+                const updatedRecord: AssetRecord = {
+                    id: entry.id,
+                    userId: entry.userId,
+                    createdAt: entry.createdAt,
+                    updatedAt: Date.now(),
+                    isDeleted: false,
+                    encryptedData: ciphertext as unknown as Bytes,
+                    encryptedDataIV: iv as unknown as Bytes
+                };
                 await Promise.all([
-                    appAsset.putAsset({
-                        id: entry.id,
-                        userId: entry.userId,
-                        createdAt: entry.createdAt,
-                        updatedAt: Date.now(),
-                        isDeleted: false,
-                        encryptedData: ciphertext as unknown as Bytes,
-                        encryptedDataIV: iv as unknown as Bytes
-                    }),
+                    appAsset.putAsset(updatedRecord),
                     appAsset.putRegistry({ ...entry, status: 'remote', updatedAt: Date.now() })
                 ]);
+
+                // Push updated metadata to server
+                void this.pushRecord(updatedRecord);
 
                 this.updateStatus({
                     pendingCount: Math.max(pending.length - (index + 1), 0),

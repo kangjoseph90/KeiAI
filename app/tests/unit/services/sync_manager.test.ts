@@ -197,7 +197,6 @@ describe('SyncManager', () => {
             SyncManager.startAutoSync();
             expect(DataSyncService.subscribeRealtime).toHaveBeenCalledTimes(1);
             expect(localDB.subscribeWriteEvents).toHaveBeenCalledTimes(1);
-            expect(appAsset.subscribeWriteEvents).toHaveBeenCalledTimes(1);
             expect(appUser.subscribeWriteEvents).toHaveBeenCalledTimes(1);
         });
     });
@@ -295,28 +294,11 @@ describe('SyncManager', () => {
         it('should route local DB writes to the appropriate sync engines', async () => {
             SyncManager.startAutoSync();
             expect(dbWriteListener).not.toBeNull();
-            expect(assetWriteListener).not.toBeNull();
 
             dbWriteListener?.([
                 {
                     tableName: 'characters',
                     ids: ['c1'],
-                    origin: 'local',
-                    operation: 'put'
-                }
-            ]);
-            assetWriteListener?.([
-                {
-                    tableName: 'assets',
-                    ids: ['a1'],
-                    origin: 'local',
-                    operation: 'put'
-                }
-            ]);
-            assetWriteListener?.([
-                {
-                    tableName: 'assetRegistry',
-                    ids: ['ar1'],
                     origin: 'local',
                     operation: 'put'
                 }
@@ -327,13 +309,6 @@ describe('SyncManager', () => {
             expect(DataSyncService.handleLocalWrite).toHaveBeenCalledWith(
                 expect.objectContaining({ tableName: 'characters', ids: ['c1'] })
             );
-            // assets writes go to AssetSyncEngine.pushById, not DataSyncService
-            expect(AssetSyncService.pushById).toHaveBeenCalledWith('a1');
-            expect(DataSyncService.handleLocalWrite).not.toHaveBeenCalledWith(
-                expect.objectContaining({ tableName: 'assets' })
-            );
-            // assetRegistry writes trigger asset upload queue
-            expect(AssetSyncService.start).toHaveBeenCalledTimes(2);
         });
     });
 });

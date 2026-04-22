@@ -138,14 +138,12 @@ describe('ProfileSyncService', () => {
 
             // Mock conversion process
             const mockDataUri = 'data:image/png;base64,cmVtb3Rl'; // 'remote' in base64
+            const realBlob = new Blob([new TextEncoder().encode('remote')], {
+                type: 'image/png'
+            });
             mockFetch.mockResolvedValue({
                 ok: true,
-                blob: vi.fn().mockResolvedValue({
-                    type: 'image/png',
-                    arrayBuffer: vi
-                        .fn()
-                        .mockResolvedValue(new TextEncoder().encode('remote').buffer)
-                })
+                blob: vi.fn().mockResolvedValue(realBlob)
             });
 
             await ProfileSyncService.pullProfile();

@@ -44,6 +44,7 @@ export class DataSyncEngine extends BaseSyncEngine {
     }
 
     private readonly PAGE_SIZE = 200;
+    private readonly TABLE_CONCURRENCY = 4;
 
     private readonly ALLOWED_RECORD_FIELDS = new Set([
         'id',
@@ -131,27 +132,29 @@ export class DataSyncEngine extends BaseSyncEngine {
         if (isGuest) return;
 
         let firstError: unknown = null;
+        let completed = 0;
 
-        for (const [index, table] of SYNC_TABLES.entries()) {
-            this.updateStatus({
-                progress: {
-                    completed: index,
-                    total: SYNC_TABLES.length,
-                    currentItemId: table
+        for (let i = 0; i < SYNC_TABLES.length; i += this.TABLE_CONCURRENCY) {
+            const chunk = SYNC_TABLES.slice(i, i + this.TABLE_CONCURRENCY);
+
+            const results = await Promise.allSettled(
+                chunk.map(async (table) => {
+                    await this.pullTable(table, userId);
+                    completed++;
+                    this.updateStatus({
+                        progress: {
+                            completed,
+                            total: SYNC_TABLES.length,
+                            currentItemId: table
+                        }
+                    });
+                })
+            );
+
+            for (const result of results) {
+                if (result.status === 'rejected') {
+                    firstError ??= result.reason;
                 }
-            });
-
-            try {
-                await this.pullTable(table, userId);
-                this.updateStatus({
-                    progress: {
-                        completed: index + 1,
-                        total: SYNC_TABLES.length,
-                        currentItemId: table
-                    }
-                });
-            } catch (error) {
-                firstError ??= error;
             }
         }
 
@@ -182,22 +185,30 @@ export class DataSyncEngine extends BaseSyncEngine {
                     sort: 'updatedAt'
                 });
 
-                for (const serverRecord of result.items) {
-                    const remote = this.pbToLocalRecord(
-                        serverRecord as unknown as Record<string, unknown>
-                    );
-                    const local = await localDB.getRecord<BaseRecord>(tableName, remote.id);
-                    const remoteAt = remote.updatedAt ?? 0;
-                    const localAt = local?.updatedAt ?? 0;
+                if (result.items.length > 0) {
+                    const toUpsert: BaseRecord[] = [];
 
-                    if (!local || remoteAt > localAt) {
-                        await localDB.putRecord(tableName, remote, { origin: 'sync' });
-                        nextCursor = Math.max(nextCursor, remoteAt);
-                    } else if (remoteAt < localAt) {
-                        offlineWrites.push(local);
-                        nextCursor = Math.max(nextCursor, localAt);
-                    } else {
-                        nextCursor = Math.max(nextCursor, remoteAt);
+                    for (const serverRecord of result.items) {
+                        const remote = this.pbToLocalRecord(
+                            serverRecord as unknown as Record<string, unknown>
+                        );
+                        const local = await localDB.getRecord<BaseRecord>(tableName, remote.id);
+                        const remoteAt = remote.updatedAt ?? 0;
+                        const localAt = local?.updatedAt ?? 0;
+
+                        if (!local || remoteAt > localAt) {
+                            toUpsert.push(remote);
+                            nextCursor = Math.max(nextCursor, remoteAt);
+                        } else if (remoteAt < localAt) {
+                            offlineWrites.push(local);
+                            nextCursor = Math.max(nextCursor, localAt);
+                        } else {
+                            nextCursor = Math.max(nextCursor, remoteAt);
+                        }
+                    }
+
+                    if (toUpsert.length > 0) {
+                        await localDB.putRecords(tableName, toUpsert, { origin: 'sync' });
                     }
                 }
 
@@ -306,13 +317,38 @@ export class DataSyncEngine extends BaseSyncEngine {
         if (record) void this.pushRecord(tableName, record);
     }
 
+    /**
+     * Handle a local DB write event by batching all IDs into a single push.
+     * Filters out non-local origins, deletions, and non-sync tables.
+     */
     async handleLocalWrite(event: DatabaseWriteEvent): Promise<void> {
         if (event.origin !== 'local' || !SYNC_TABLES.includes(event.tableName)) return;
         if (event.operation === 'delete' || event.operation === 'deleteByIndex') return;
+        if (event.ids.length === 0) return;
 
-        for (const id of event.ids) {
-            void this.pushById(event.tableName, id);
+        void this.pushIds(event.tableName, event.ids);
+    }
+
+    /**
+     * Batch-push multiple record IDs in a single HTTP request.
+     * Reads all records from local DB, then sends as one PocketBase batch.
+     */
+    private async pushIds(tableName: TableName, ids: string[]): Promise<void> {
+        if (!pb.authStore.isValid) return;
+        try {
+            const { isGuest } = getActiveSession();
+            if (isGuest) return;
+        } catch {
+            return;
         }
+
+        const records = await Promise.all(
+            ids.map((id) => localDB.getRecord<BaseRecord>(tableName, id))
+        );
+        const existing = records.filter((r): r is BaseRecord => r !== undefined);
+        if (existing.length === 0) return;
+
+        await this.pushBatch(tableName, existing);
     }
 
     /**
