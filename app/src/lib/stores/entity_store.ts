@@ -55,7 +55,12 @@ export class EntityStore<T extends { id: string }> implements Readable<T[]> {
     }
 
     set(id: string, item: T): void {
-        if (!this.#map.has(id)) this.#structChanged = true;
+        const existing = this.#map.get(id);
+        if (!existing) {
+            this.#structChanged = true;
+        } else if (this.#sortFn && this.#sortFn(existing, item) !== 0) {
+            this.#structChanged = true;
+        }
         this.#map.set(id, item);
         this.#cachedArray = null;
         this.#flush();
