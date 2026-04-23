@@ -5,6 +5,10 @@
  *
  * Each (script, chat, mode) triple gets its own VM so that different pipeline
  * phases and event handlers never block each other.
+ *
+ * Handler manifest: on first VM creation for a charjsId, we record every
+ * `pipe:<phase>` and `event:<name>` the script registers.  Subsequent calls
+ * for unregistered modes skip VM creation entirely.
  */
 
 import { newQuickJSAsyncWASMModuleFromVariant } from 'quickjs-emscripten';
@@ -52,6 +56,13 @@ const HANDLER_TIMEOUT_MS = 3000; // 3s per handler invocation
 
 const instances = new Map<string, CharJSInstance>();
 const pendingInstances = new Map<string, Promise<CharJSInstance | null>>();
+
+/**
+ * Handler manifest — records which `kind:mode` strings a script actually
+ * registered handlers for during its first evalCodeAsync.  Keyed by charjsId.
+ * `null` value means "probe pending" (another call is building the manifest).
+ */
+const handlerManifest = new Map<string, Set<string>>();
 
 const logger = createLogger('charjs:engine');
 
@@ -113,6 +124,7 @@ export function destroyAllInstances(): void {
     for (const [key, instance] of instances) {
         destroyInstance(key, instance);
     }
+    handlerManifest.clear();
     if (cleanupTimer) {
         clearInterval(cleanupTimer);
         cleanupTimer = null;
@@ -170,6 +182,18 @@ async function createInstance(
     // Reset interrupt handler to per-invocation timeout
     runtime.setInterruptHandler(() => false);
 
+    // ── Build handler manifest on first instance for this charjsId ──
+    if (!handlerManifest.has(charjs.id)) {
+        const modes = new Set<string>();
+        for (const phase of instance.pipelineHandlers.keys()) {
+            modes.add(`pipe:${phase}`);
+        }
+        for (const event of instance.eventListeners.keys()) {
+            modes.add(`event:${event}`);
+        }
+        handlerManifest.set(charjs.id, modes);
+    }
+
     instances.set(key, instance);
     startInstanceCleanup();
     return instance;
@@ -178,6 +202,9 @@ async function createInstance(
 /**
  * Get or create a CharJS engine instance for a specific mode.
  * Cache key = `${charjsId}:${chatId}:${kind}:${mode}` for per-mode isolation.
+ *
+ * Fast-path: if the handler manifest already knows this script never
+ * registers a handler for `kind:mode`, skip VM creation entirely.
  */
 export async function getOrCreateInstance(
     chatId: string,
@@ -186,6 +213,12 @@ export async function getOrCreateInstance(
     mode: string,
     allowLowLevel: boolean
 ): Promise<CharJSInstance | null> {
+    // ── Manifest fast-path: skip modes this script never registers ───
+    const manifest = handlerManifest.get(charjsId);
+    if (manifest && !manifest.has(`${kind}:${mode}`)) {
+        return null;
+    }
+
     const key = cacheKey(charjsId, chatId, kind, mode);
     const existing = instances.get(key);
 
@@ -208,7 +241,21 @@ export async function getOrCreateInstance(
             if (!charjs || !charjs.enabled || !charjs.code.trim()) {
                 return null;
             }
-            return await createInstance(chatId, charjs, kind, mode, allowLowLevel);
+            const instance = await createInstance(chatId, charjs, kind, mode, allowLowLevel);
+
+            // Post-creation check: if the manifest now shows no handler
+            // for this mode, destroy immediately and return null.
+            const hasHandler =
+                kind === 'pipe'
+                    ? (instance.pipelineHandlers.get(mode)?.length ?? 0) > 0
+                    : (instance.eventListeners.get(mode)?.length ?? 0) > 0;
+
+            if (!hasHandler) {
+                destroyInstance(key, instance);
+                return null;
+            }
+
+            return instance;
         } finally {
             pendingInstances.delete(key);
         }
@@ -280,6 +327,9 @@ export async function invokeHandler(
 // ─── Auto Invalidation ───────────────────────────────────────────────
 
 CharJSService.onChange((id) => {
+    // Invalidate manifest so next access re-probes registered handlers
+    handlerManifest.delete(id);
+
     const prefix = `${id}:`;
     for (const [key, instance] of instances.entries()) {
         if (key.startsWith(prefix)) {

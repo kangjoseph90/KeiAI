@@ -90,8 +90,8 @@ describe('Engine Pool', () => {
             expect(instance!.mode).toBe('pipe:display');
         });
 
-        it('returns instance even if no handler for requested mode', async () => {
-            // Now we don't cache null for "no handler", so we get a live VM
+        it('returns null if no handler for requested mode (optimization)', async () => {
+            // Manifest records display only, so input should return null
             const instance = await getOrCreateInstance(
                 'chat1',
                 CHARJS_WITH_HANDLER.id,
@@ -99,8 +99,7 @@ describe('Engine Pool', () => {
                 'input',
                 false
             );
-            expect(instance).not.toBeNull();
-            expect(instance!.pipelineHandlers.get('input')).toBeUndefined();
+            expect(instance).toBeNull();
         });
 
         it('returns cached instance on second call with same key', async () => {
@@ -139,21 +138,21 @@ describe('Engine Pool', () => {
             expect(a).not.toBe(b);
         });
 
-        it('creates separate instances for different modes', async () => {
-            const a = await getOrCreateInstance(
-                'chat1',
-                CHARJS_MULTI_HANDLER.id,
-                'pipe',
-                'display',
-                false
-            );
-            const b = await getOrCreateInstance(
-                'chat1',
-                CHARJS_MULTI_HANDLER.id,
-                'pipe',
-                'input',
-                false
-            );
+        it('creates separate instances for different modes if handlers exist', async () => {
+            // Setup a script with handlers for both modes
+            DB.set('multi_mode', {
+                id: 'multi_mode',
+                ownerId: 'o',
+                name: '',
+                enabled: true,
+                code: `
+                    KeiAPI.addPipelineHandler('display', (d) => d);
+                    KeiAPI.addPipelineHandler('input', (d) => d);
+                `
+            });
+
+            const a = await getOrCreateInstance('chat1', 'multi_mode', 'pipe', 'display', false);
+            const b = await getOrCreateInstance('chat1', 'multi_mode', 'pipe', 'input', false);
             expect(a).not.toBeNull();
             expect(b).not.toBeNull();
             expect(a).not.toBe(b);
