@@ -133,8 +133,10 @@ export class TauriAssetAdapter implements IAssetAdapter {
     }
 
     private async initDb(db: Database) {
+        let sql = '';
+
         // Assets table - encrypted metadata
-        await db.execute(`
+        sql += `
 			CREATE TABLE IF NOT EXISTS assets (
 				id TEXT PRIMARY KEY,
 				userId TEXT NOT NULL,
@@ -143,13 +145,15 @@ export class TauriAssetAdapter implements IAssetAdapter {
 				isDeleted INTEGER NOT NULL DEFAULT 0,
 				encryptedData TEXT,
 				encryptedDataIV TEXT
-			)
-		`);
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_assets_userId ON assets (userId)`);
-        await db.execute(`CREATE INDEX IF NOT EXISTS idx_assets_updatedAt ON assets (updatedAt)`);
+			);
+		`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assets_userId ON assets (userId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assets_updatedAt ON assets (updatedAt);
+`;
 
         // Asset registry table - plaintext cache + delete queue
-        await db.execute(`
+        sql += `
 			CREATE TABLE IF NOT EXISTS assetRegistry (
 				id TEXT PRIMARY KEY,
 				userId TEXT NOT NULL,
@@ -162,20 +166,18 @@ export class TauriAssetAdapter implements IAssetAdapter {
 				encKey TEXT NOT NULL DEFAULT '',
 				size INTEGER NOT NULL DEFAULT 0,
 				accessedAt INTEGER NOT NULL
-			)
-		`);
-        await db.execute(
-            `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId ON assetRegistry (userId)`
-        );
-        await db.execute(
-            `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_status ON assetRegistry (userId, status)`
-        );
-        await db.execute(
-            `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_isDeleted ON assetRegistry (userId, isDeleted)`
-        );
-        await db.execute(
-            `CREATE INDEX IF NOT EXISTS idx_assetRegistry_accessedAt ON assetRegistry (accessedAt)`
-        );
+			);
+		`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId ON assetRegistry (userId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_status ON assetRegistry (userId, status);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_isDeleted ON assetRegistry (userId, isDeleted);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_accessedAt ON assetRegistry (accessedAt);
+`;
+
+        await db.execute(sql);
     }
 
     // ── Metadata (assets table) ──────────────────────────────────────
