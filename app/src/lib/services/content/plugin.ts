@@ -14,13 +14,7 @@ export interface PluginFields {
     description: string;
     version: string;
     code: string; // Sandboxed JS source
-    config: Record<string, unknown>;
-    hooks: PluginHook[];
-}
-
-export interface PluginHook {
-    event: 'beforePrompt' | 'afterPrompt' | 'beforeSend' | 'afterReceive' | 'onRender';
-    handler: string; // Function name in plugin code
+    args: Record<string, unknown>; // KV storage
 }
 
 export interface Plugin extends PluginFields {
@@ -34,8 +28,7 @@ const defaultPluginFields: PluginFields = {
     description: '',
     version: '',
     code: '',
-    config: {},
-    hooks: []
+    args: {}
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────

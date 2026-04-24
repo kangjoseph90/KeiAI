@@ -169,7 +169,7 @@ async function createInstance(
     const evalStart = Date.now();
     runtime.setInterruptHandler(() => Date.now() - evalStart > EVAL_TIMEOUT_MS);
 
-    // Execute user code — this triggers KeiAPI.addPipelineHandler() / KeiAPI.onEvent() calls
+    // Execute user code — this triggers KeiAPI.onPipeline() / KeiAPI.onEvent() calls
     const result = await ctx.evalCodeAsync(charjs.code);
     if (result.error) {
         const error = ctx.dump(result.error);

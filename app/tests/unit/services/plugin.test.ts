@@ -45,8 +45,7 @@ describe('PluginService', () => {
         description: 'Desc',
         version: '1.0.0',
         code: 'console.log("hello")',
-        config: { key: 'val' },
-        hooks: [{ event: 'onRender', handler: 'main' }]
+        args: { key: 'val' }
     };
 
     beforeEach(() => {
@@ -88,7 +87,7 @@ describe('PluginService', () => {
             expect(result).toHaveLength(1);
             expect(result[0].id).toBe('p-1');
             expect(result[0].name).toBe('Test Plugin');
-            expect(result[0].hooks).toHaveLength(1);
+            expect(result[0].args).toBeDefined();
         });
     });
 

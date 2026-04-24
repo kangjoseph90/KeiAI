@@ -1,6 +1,7 @@
 import { applyRegexScript } from '$lib/scripts/regex';
 import { getMergedScripts } from '$lib/stores';
 import { collectCharJSInstances, invokeHandler } from '$lib/charjs';
+import { pluginManager } from '$lib/plugins';
 import type { PipelinePhase, PipelinePhaseType, PipelineContext, PipelineHandler } from './types';
 
 export async function collectPipelineHandlers<K extends keyof PipelinePhaseType>(
@@ -21,8 +22,13 @@ export async function collectPipelineHandlers(
     // ── 2. CharJS handlers (character + modules) ────────────────
     const charjsHandlers = await collectCharJSHandlers(chatId, phase);
 
-    // ── 3. Merge and sort by order ──────────────────────────────
-    return [...regexHandlers, ...charjsHandlers].sort((a, b) => a.order - b.order);
+    // ── 3. Plugin handlers ─────────────────────────────────────────
+    const pluginHandlers = await collectPluginHandlers(phase);
+
+    // ── 4. Merge and sort by order ──────────────────────────────
+    return [...regexHandlers, ...charjsHandlers, ...pluginHandlers].sort(
+        (a, b) => a.order - b.order
+    );
 }
 
 async function collectRegexHandlers(
@@ -64,6 +70,30 @@ async function collectCharJSHandlers(
                 order: h.order,
                 run: async (data: unknown, context: PipelineContext) => {
                     const result = await invokeHandler(instance, h.fnHandle, data, context);
+                    return result !== undefined ? result : data;
+                }
+            });
+        }
+    }
+
+    return handlers;
+}
+
+async function collectPluginHandlers(
+    phase: string
+): Promise<Array<PipelineHandler<unknown, string>>> {
+    await pluginManager.syncActivePlugins();
+
+    const handlers: Array<PipelineHandler<unknown, string>> = [];
+    for (const instance of pluginManager.getInstances()) {
+        const pluginHandlers = instance.pipelineHandlers.get(phase) ?? [];
+        for (const handler of pluginHandlers) {
+            handlers.push({
+                id: `plugin:${instance.pluginId}:${handler.fnId}:${phase}`,
+                phase,
+                order: handler.order,
+                run: async (data: unknown, context: PipelineContext) => {
+                    const result = await instance.broker.invoke(handler.fnId, [data, context]);
                     return result !== undefined ? result : data;
                 }
             });

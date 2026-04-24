@@ -14,7 +14,7 @@ const CHARJS_WITH_HANDLER: CharJS = {
     ownerId: 'owner1',
     name: '2',
     enabled: true,
-    code: `KeiAPI.addPipelineHandler('display', (data) => data + '_processed');`
+    code: `KeiAPI.onPipeline('display', (data) => data + '_processed');`
 };
 const CHARJS_MULTI_HANDLER: CharJS = {
     id: 'script3',
@@ -22,8 +22,8 @@ const CHARJS_MULTI_HANDLER: CharJS = {
     name: '3',
     enabled: true,
     code: `
-		KeiAPI.addPipelineHandler('display', (data) => data + '_a', { order: 1 });
-		KeiAPI.addPipelineHandler('display', (data) => data + '_b', { order: 2 });
+		KeiAPI.onPipeline('display', (data) => data + '_a', { order: 1 });
+		KeiAPI.onPipeline('display', (data) => data + '_b', { order: 2 });
 	`
 };
 
@@ -146,8 +146,8 @@ describe('Engine Pool', () => {
                 name: '',
                 enabled: true,
                 code: `
-                    KeiAPI.addPipelineHandler('display', (d) => d);
-                    KeiAPI.addPipelineHandler('input', (d) => d);
+                    KeiAPI.onPipeline('display', (d) => d);
+                    KeiAPI.onPipeline('input', (d) => d);
                 `
             });
 
@@ -229,7 +229,7 @@ describe('Engine Pool', () => {
                 ownerId: 'o',
                 name: '',
                 enabled: true,
-                code: `KeiAPI.addPipelineHandler('display', (data) => { throw new Error('boom'); });`
+                code: `KeiAPI.onPipeline('display', (data) => { throw new Error('boom'); });`
             });
             const instance = await getOrCreateInstance(
                 'chat1',
@@ -249,7 +249,7 @@ describe('Engine Pool', () => {
                 ownerId: 'o',
                 name: '',
                 enabled: true,
-                code: `KeiAPI.addPipelineHandler('display', (data) => data + '_done');`
+                code: `KeiAPI.onPipeline('display', (data) => data + '_done');`
             });
             const instance = await getOrCreateInstance(
                 'chat1',

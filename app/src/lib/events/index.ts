@@ -18,6 +18,7 @@
  */
 
 import { collectCharJSInstances, invokeHandler } from '$lib/charjs';
+import { pluginManager } from '$lib/plugins';
 import type { EventType, EventName } from './types';
 import { isSafeMode } from '$lib/config';
 
@@ -42,26 +43,40 @@ export async function emitEvent<E extends string>(
 export async function emitEvent(chatId: string, event: string, data?: unknown): Promise<void> {
     if (isSafeMode()) return;
 
-    // TODO: Plugin handlers
-
     try {
-        const instances = await collectCharJSInstances(chatId, 'event', event);
-
-        for (const instance of instances) {
-            const listeners = instance.eventListeners.get(event) ?? [];
-            for (const listener of listeners) {
-                // Fire and forget to prevent deadlock, and use setTimeout (macro-task) to prevent UI freezing
-                setTimeout(() => {
-                    invokeHandler(instance, listener, data ?? null).catch((err) => {
-                        console.error(
-                            `Event '${event}' handler error for script ${instance.charjs.name}:`,
-                            err
-                        );
-                    });
-                }, 0);
-            }
-        }
+        await emitPluginEvent(event, data);
+        await emitCharJSEvents(chatId, event, data);
     } catch (error) {
         console.error(`Error emitting event '${event}' for chat ${chatId}:`, error);
+    }
+}
+
+async function emitCharJSEvents(chatId: string, event: string, data?: unknown): Promise<void> {
+    const instances = await collectCharJSInstances(chatId, 'event', event);
+
+    for (const instance of instances) {
+        const listeners = instance.eventListeners.get(event) ?? [];
+        for (const listener of listeners) {
+            // Fire and forget to prevent deadlock, and use setTimeout (macro-task) to prevent UI freezing
+            setTimeout(() => {
+                invokeHandler(instance, listener, data ?? null).catch((err) => {
+                    console.error(
+                        `Event '${event}' handler error for script ${instance.charjs.name}:`,
+                        err
+                    );
+                });
+            }, 0);
+        }
+    }
+}
+
+async function emitPluginEvent(event: string, data?: unknown): Promise<void> {
+    await pluginManager.syncActivePlugins();
+
+    for (const instance of pluginManager.getInstances()) {
+        const listeners = instance.eventListeners.get(event) ?? [];
+        for (const fnId of listeners) {
+            instance.broker.fireEvent(fnId, [data ?? null]);
+        }
     }
 }

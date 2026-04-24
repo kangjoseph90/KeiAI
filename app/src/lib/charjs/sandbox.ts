@@ -24,8 +24,8 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
     ctx.setProp(keiObj, 'log', logFn);
     logFn.dispose();
 
-    // ── KeiAPI.addPipelineHandler(phase, fn, opts?) ────────────────
-    const addPipelineHandlerFn = ctx.newFunction('addPipelineHandler', (...args) => {
+    // ── KeiAPI.onPipeline(phase, fn, opts?) ────────────────
+    const onPipelineFn = ctx.newFunction('onPipeline', (...args) => {
         const [phaseHandle, fnHandle, optsHandle] = args;
         const phase = ctx.getString(phaseHandle);
 
@@ -45,8 +45,8 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
         const dupedFn = fnHandle.dup();
         instance.pipelineHandlers.get(phase)!.push({ order, fnHandle: dupedFn });
     });
-    ctx.setProp(keiObj, 'addPipelineHandler', addPipelineHandlerFn);
-    addPipelineHandlerFn.dispose();
+    ctx.setProp(keiObj, 'onPipeline', onPipelineFn);
+    onPipelineFn.dispose();
 
     // ── KeiAPI.onEvent(event, fn) ──────────────────────────────
     const onEventFn = ctx.newFunction('onEvent', (...args) => {

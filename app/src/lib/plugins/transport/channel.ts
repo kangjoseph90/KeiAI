@@ -48,10 +48,13 @@ export class ChannelImpl implements Channel {
         await new Promise<void>((resolve) => {
             this.waiter = resolve;
         });
+        if (this.queue.length > 0) {
+            return this.queue.shift()!;
+        }
         if (this.closed || this.signal.aborted) {
             throw new Error('Channel closed');
         }
-        return this.queue.shift()!;
+        throw new Error('Channel closed');
     }
 
     async *[Symbol.asyncIterator](): AsyncIterableIterator<unknown> {

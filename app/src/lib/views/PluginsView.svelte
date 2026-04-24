@@ -7,7 +7,7 @@
     items={$plugins}
     createPlaceholder="New Plugin Name"
     onCreate={(name) =>
-        createPlugin({ name, description: '', version: '0.0.1', code: '', config: {}, hooks: [] })}
+        createPlugin({ name, description: '', version: '0.0.1', code: '', args: {} })}
     onUpdate={(id, name) => updatePlugin(id, { name })}
     onDelete={(id) => deletePlugin(id)}
 />
