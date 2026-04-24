@@ -1,16 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PluginManager, type PluginInstance } from '$lib/plugins/manager';
+import { plugins } from '$lib/stores/state';
 
-const { mockGetAppSettings } = vi.hoisted(() => ({
-    mockGetAppSettings: vi.fn()
-}));
-
-vi.mock('$lib/stores/content/settings', () => ({
-    getAppSettings: mockGetAppSettings
+const { mockGetPlugin } = vi.hoisted(() => ({
+    mockGetPlugin: vi.fn()
 }));
 
 vi.mock('$lib/stores/content/plugin', () => ({
-    getPlugin: vi.fn(),
+    getPlugin: mockGetPlugin,
     updatePlugin: vi.fn()
 }));
 
@@ -36,6 +33,7 @@ function exposeInstances(manager: PluginManager): Map<string, PluginInstance> {
 describe('PluginManager lifecycle', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        plugins.clear();
     });
 
     it('unloadPlugin destroys transport, removes iframe, and drops runtime state', () => {
@@ -66,15 +64,30 @@ describe('PluginManager lifecycle', () => {
         expect(manager.getInstances()).toEqual([]);
     });
 
-    it('syncActivePlugins unloads plugins that are no longer enabled', async () => {
+    it('syncActivePlugins mirrors enabled plugins from the plugin store', async () => {
         const manager = new PluginManager();
         const enabled = createInstance('enabled-plugin');
         const disabled = createInstance('disabled-plugin');
         exposeInstances(manager).set(enabled.pluginId, enabled);
         exposeInstances(manager).set(disabled.pluginId, disabled);
 
-        mockGetAppSettings.mockResolvedValue({
-            pluginRefs: [{ id: enabled.pluginId, enabled: true }]
+        plugins.set(enabled.pluginId, {
+            id: enabled.pluginId,
+            name: 'Enabled Plugin',
+            description: '',
+            version: '',
+            enabled: true,
+            code: '',
+            args: {}
+        });
+        plugins.set(disabled.pluginId, {
+            id: disabled.pluginId,
+            name: 'Disabled Plugin',
+            description: '',
+            version: '',
+            enabled: false,
+            code: '',
+            args: {}
         });
 
         await manager.syncActivePlugins();

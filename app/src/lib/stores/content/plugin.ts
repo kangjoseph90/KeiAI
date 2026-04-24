@@ -37,7 +37,7 @@ export async function createPlugin(fields: DeepPartial<PluginFields> = {}): Prom
     const existingRefs = settings.pluginRefs || [];
     const pluginRefs = [
         ...existingRefs,
-        { id: plugin.id, sortOrder: generateSortOrder(existingRefs), enabled: true }
+        { id: plugin.id, sortOrder: generateSortOrder(existingRefs) }
     ];
     try {
         await updateSettings({ pluginRefs });

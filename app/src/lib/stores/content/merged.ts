@@ -6,7 +6,7 @@ import { getModule } from './module';
 
 /**
  * Returns active module IDs for a character.
- * Combines globally enabled modules and character-specific modules.
+ * Combines globally enabled modules and character-specific enabled modules.
  */
 export async function getActiveModuleIds(characterId: string): Promise<Set<string>> {
     const [settings, char] = await Promise.all([getAppSettings(), getCharacter(characterId)]);
@@ -16,7 +16,7 @@ export async function getActiveModuleIds(characterId: string): Promise<Set<strin
         if (r.enabled) ids.add(r.id);
     }
     for (const r of char.moduleRefs ?? []) {
-        ids.add(r.id);
+        if (r.enabled) ids.add(r.id);
     }
     return ids;
 }

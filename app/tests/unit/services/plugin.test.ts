@@ -44,6 +44,7 @@ describe('PluginService', () => {
         name: 'Test Plugin',
         description: 'Desc',
         version: '1.0.0',
+        enabled: true,
         code: 'console.log("hello")',
         args: { key: 'val' }
     };

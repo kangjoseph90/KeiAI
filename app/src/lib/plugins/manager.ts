@@ -3,8 +3,9 @@ import { RPCBroker } from './rpc/broker';
 import { guestSDK } from './sdk';
 import type { Plugin } from '$lib/services/content/plugin';
 import { getPlugin, updatePlugin } from '$lib/stores/content/plugin';
-import { getAppSettings } from '$lib/stores/content/settings';
+import { plugins } from '$lib/stores/state';
 import { createLogger } from '$lib/adapters/logger';
+import { get } from 'svelte/store';
 
 const logger = createLogger('plugins:manager');
 const PLUGIN_READY_TIMEOUT_MS = 5_000;
@@ -211,9 +212,10 @@ export class PluginManager {
     async syncActivePlugins(): Promise<void> {
         if (typeof document === 'undefined') return;
 
-        const settings = await getAppSettings();
         const activePluginIds = new Set(
-            (settings.pluginRefs ?? []).filter((ref) => ref.enabled).map((ref) => ref.id)
+            get(plugins)
+                .filter((plugin) => plugin.enabled)
+                .map((plugin) => plugin.id)
         );
 
         for (const pluginId of activePluginIds) {

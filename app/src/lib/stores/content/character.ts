@@ -16,7 +16,7 @@ import {
     type Script,
     type CharJS
 } from '$lib/services';
-import type { OrderedRef, FolderDef } from '$lib/types/refs';
+import type { OrderedRef, ResourceRef, FolderDef } from '$lib/types/refs';
 import { clearActiveChat } from './chat';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
@@ -416,7 +416,7 @@ export async function moveCharacterItem(
             return;
     }
 
-    const refs = (char[refKey] as OrderedRef[]) ?? [];
+    const refs = (char[refKey] as Array<OrderedRef | ResourceRef>) ?? [];
     const updatedRefs = refs.map((ref) => {
         if (ref.id !== itemId) return ref;
         return {

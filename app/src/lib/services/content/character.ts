@@ -2,7 +2,7 @@ import { clock } from '$lib/utils/clock';
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type CharacterRecord } from '$lib/adapters/db';
-import type { OrderedRef, FolderDef, AssetRef } from '$lib/types/refs';
+import type { OrderedRef, ResourceRef, FolderDef, AssetRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -22,7 +22,7 @@ export interface CharacterRefs {
     lastActiveChatId?: string;
     avatarAssetId?: string;
     chatRefs?: OrderedRef[];
-    moduleRefs?: OrderedRef[];
+    moduleRefs?: ResourceRef[];
     lorebookRefs?: OrderedRef[];
     scriptRefs?: OrderedRef[];
     charjsRefs?: OrderedRef[];

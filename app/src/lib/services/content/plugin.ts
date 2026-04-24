@@ -15,6 +15,7 @@ export interface PluginFields {
     version: string;
     code: string; // Sandboxed JS source
     args: Record<string, unknown>; // KV storage
+    enabled: boolean;
 }
 
 export interface Plugin extends PluginFields {
@@ -28,7 +29,8 @@ const defaultPluginFields: PluginFields = {
     description: '',
     version: '',
     code: '',
-    args: {}
+    args: {},
+    enabled: true
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────

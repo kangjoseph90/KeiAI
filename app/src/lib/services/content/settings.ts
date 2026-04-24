@@ -75,7 +75,7 @@ export interface AppSettingsRefs {
     personaRefs?: OrderedRef[];
     presetRefs?: OrderedRef[];
     moduleRefs?: ResourceRef[];
-    pluginRefs?: ResourceRef[];
+    pluginRefs?: OrderedRef[];
     // Folder definitions for each top-level list
     folders?: {
         characters?: FolderDef[];
