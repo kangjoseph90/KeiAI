@@ -28,6 +28,7 @@ import { appKV } from '$lib/adapters/kv';
 import { BaseSyncEngine } from './base';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
+import { Semaphore } from '$lib/utils/semaphore';
 
 type RealtimeEvent = {
     action: string;
@@ -135,11 +136,10 @@ export class DataSyncEngine extends BaseSyncEngine {
         let firstError: unknown = null;
         let completed = 0;
 
-        for (let i = 0; i < SYNC_TABLES.length; i += this.TABLE_CONCURRENCY) {
-            const chunk = SYNC_TABLES.slice(i, i + this.TABLE_CONCURRENCY);
-
-            const results = await Promise.allSettled(
-                chunk.map(async (table) => {
+        const semaphore = new Semaphore(this.TABLE_CONCURRENCY);
+        const results = await Promise.allSettled(
+            SYNC_TABLES.map((table) =>
+                semaphore.runExclusive(async () => {
                     await this.pullTable(table, userId);
                     completed++;
                     this.updateStatus({
@@ -150,12 +150,12 @@ export class DataSyncEngine extends BaseSyncEngine {
                         }
                     });
                 })
-            );
+            )
+        );
 
-            for (const result of results) {
-                if (result.status === 'rejected') {
-                    firstError ??= result.reason;
-                }
+        for (const result of results) {
+            if (result.status === 'rejected') {
+                firstError ??= result.reason;
             }
         }
 

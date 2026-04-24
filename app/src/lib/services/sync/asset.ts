@@ -23,6 +23,7 @@ import { encryptAsset } from '../asset/util';
 import { BaseSyncEngine, type SyncStatus } from './base';
 import { uploadAsset, deleteRemoteAsset, promoteAsset } from '../asset/remote';
 import { createLogger } from '$lib/adapters/logger';
+import { Semaphore } from '$lib/utils/semaphore';
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -358,24 +359,24 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
         const pending = await appAsset.getDeletedRegistry(userId);
         if (pending.length === 0) return;
 
-        for (let i = 0; i < pending.length; i += DELETE_CONCURRENCY) {
-            if (this.abortController?.signal.aborted) return;
+        const semaphore = new Semaphore(DELETE_CONCURRENCY);
+        const results = await Promise.allSettled(
+            pending.map((entry) =>
+                semaphore.runExclusive(async () => {
+                    if (this.abortController?.signal.aborted) return;
 
-            const batch = pending.slice(i, i + DELETE_CONCURRENCY);
-            const results = await Promise.allSettled(
-                batch.map(async (entry) => {
                     if (entry.status === 'remote') {
                         await deleteRemoteAsset(entry.hash);
                     }
                     await appAsset.deleteRegistry(entry.id);
                 })
-            );
+            )
+        );
 
-            for (const result of results) {
-                if (result.status === 'rejected') {
-                    if (this.isAuthError(result.reason)) throw result.reason;
-                    logger.error('Failed to process delete:', result.reason);
-                }
+        for (const result of results) {
+            if (result.status === 'rejected') {
+                if (this.isAuthError(result.reason)) throw result.reason;
+                logger.error('Failed to process delete:', result.reason);
             }
         }
     }
