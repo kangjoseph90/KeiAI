@@ -6,7 +6,6 @@ const { mockGetMergedScripts, mockCollectCharJSInstances, mockPluginManager } = 
     mockGetMergedScripts: vi.fn(),
     mockCollectCharJSInstances: vi.fn(),
     mockPluginManager: {
-        syncActivePlugins: vi.fn(),
         getInstances: vi.fn()
     }
 }));
@@ -43,7 +42,8 @@ function createPluginInstance(): PluginInstance {
                 ]
             ]
         ]),
-        eventListeners: new Map()
+        eventListeners: new Map(),
+        unloadHandlers: []
     };
 }
 
@@ -52,7 +52,6 @@ describe('pipeline plugin handler integration', () => {
         vi.clearAllMocks();
         mockGetMergedScripts.mockResolvedValue([]);
         mockCollectCharJSInstances.mockResolvedValue([]);
-        mockPluginManager.syncActivePlugins.mockResolvedValue(undefined);
     });
 
     it('collects plugin pipeline handlers from active plugin instances', async () => {
@@ -62,7 +61,6 @@ describe('pipeline plugin handler integration', () => {
         const handlers = await collectPipelineHandlers('chat-1', 'output');
         const result = await handlers[0].run('draft', { messageId: 'message-1' });
 
-        expect(mockPluginManager.syncActivePlugins).toHaveBeenCalledOnce();
         expect(handlers).toHaveLength(1);
         expect(handlers[0].id).toBe('plugin:plugin-1:transform-output:output');
         expect(handlers[0].order).toBe(25);

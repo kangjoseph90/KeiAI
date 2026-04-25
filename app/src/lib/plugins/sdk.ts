@@ -188,6 +188,13 @@ window.KeiAPI = {
         registrations.push(registration);
         return registration;
     },
+    onUnload: (fn) => {
+        const fnId = 'unload_' + Date.now() + '_' + Math.random();
+        broker.expose(fnId, fn);
+        const registration = broker.invoke('core.onUnload', [fnId]);
+        registrations.push(registration);
+        return registration;
+    },
     emitEvent: (chatId, event, data) => broker.fire('core.emitEvent', [chatId, event, data])
 };
 

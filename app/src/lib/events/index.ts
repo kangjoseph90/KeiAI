@@ -71,8 +71,6 @@ async function emitCharJSEvents(chatId: string, event: string, data?: unknown): 
 }
 
 async function emitPluginEvent(event: string, data?: unknown): Promise<void> {
-    await pluginManager.syncActivePlugins();
-
     for (const instance of pluginManager.getInstances()) {
         const listeners = instance.eventListeners.get(event) ?? [];
         for (const fnId of listeners) {

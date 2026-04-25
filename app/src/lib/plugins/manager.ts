@@ -3,13 +3,12 @@ import { RPCBroker } from './rpc/broker';
 import { guestSDK } from './sdk';
 import type { Plugin } from '$lib/services/content/plugin';
 import { getPlugin, updatePlugin } from '$lib/stores/content/plugin';
-import { plugins } from '$lib/stores/state';
 import { createLogger } from '$lib/adapters/logger';
-import { get } from 'svelte/store';
 import { emitEvent } from '$lib/events';
 
 const logger = createLogger('plugins:manager');
 const PLUGIN_READY_TIMEOUT_MS = 5_000;
+const PLUGIN_UNLOAD_TIMEOUT_MS = 1_000;
 
 export interface PluginInstance {
     pluginId: string;
@@ -18,6 +17,7 @@ export interface PluginInstance {
     broker: RPCBroker;
     pipelineHandlers: Map<string, Array<{ fnId: string; order: number }>>;
     eventListeners: Map<string, string[]>;
+    unloadHandlers: string[];
 }
 
 export class PluginManager {
@@ -98,7 +98,8 @@ export class PluginManager {
                 transport,
                 broker,
                 pipelineHandlers: new Map(),
-                eventListeners: new Map()
+                eventListeners: new Map(),
+                unloadHandlers: []
             };
 
             this.bindHostAPIs(instance);
@@ -145,7 +146,7 @@ export class PluginManager {
      * Binds core Host APIs that the guest can call.
      */
     private bindHostAPIs(instance: PluginInstance) {
-        const { broker, pluginId, pipelineHandlers, eventListeners } = instance;
+        const { broker, pluginId, pipelineHandlers, eventListeners, unloadHandlers } = instance;
 
         broker.expose('core.log', (...args: unknown[]) => {
             createLogger(`plugin:${pluginId}`).info(...args);
@@ -179,6 +180,10 @@ export class PluginManager {
             eventListeners.get(eventStr)!.push(String(fnId));
         });
 
+        broker.expose('core.onUnload', (fnId: unknown) => {
+            unloadHandlers.push(String(fnId));
+        });
+
         broker.expose('core.emitEvent', (chatId: unknown, event: unknown, data: unknown) => {
             emitEvent(String(chatId), String(event), data).catch((error: unknown) => {
                 logger.error(`Plugin event emit failed:`, error);
@@ -189,9 +194,17 @@ export class PluginManager {
     /**
      * Destroys a specific running plugin and removes its iframe.
      */
-    unloadPlugin(pluginId: string): void {
+    async unloadPlugin(pluginId: string): Promise<void> {
+        const pendingLoad = this.pendingLoads.get(pluginId);
+        if (pendingLoad) {
+            await pendingLoad.catch((error: unknown) => {
+                logger.warn(`Plugin load failed before unload ${pluginId}:`, error);
+            });
+        }
+
         const instance = this.instances.get(pluginId);
         if (instance) {
+            await this.invokeUnloadHandlers(instance);
             instance.transport.destroy();
             instance.iframe.remove();
             this.instances.delete(pluginId);
@@ -199,37 +212,31 @@ export class PluginManager {
         }
     }
 
+    async reloadPlugin(pluginId: string): Promise<void> {
+        await this.unloadPlugin(pluginId);
+        await this.loadPlugin(pluginId);
+    }
+
     /**
      * Destroys all running plugins and removes their iframes.
      */
-    destroyAll(): void {
+    async destroyAll(): Promise<void> {
         for (const id of this.instances.keys()) {
-            this.unloadPlugin(id);
+            await this.unloadPlugin(id);
         }
     }
 
-    async syncActivePlugins(): Promise<void> {
-        if (typeof document === 'undefined') return;
+    private async invokeUnloadHandlers(instance: PluginInstance): Promise<void> {
+        if (instance.unloadHandlers.length === 0) return;
 
-        const activePluginIds = new Set(
-            get(plugins)
-                .filter((plugin) => plugin.enabled)
-                .map((plugin) => plugin.id)
+        const unload = Promise.allSettled(
+            instance.unloadHandlers.map((fnId) => instance.broker.invoke(fnId, []))
         );
+        const timeout = new Promise<void>((resolve) => {
+            setTimeout(resolve, PLUGIN_UNLOAD_TIMEOUT_MS);
+        });
 
-        for (const pluginId of activePluginIds) {
-            try {
-                await this.loadPlugin(pluginId);
-            } catch (error) {
-                logger.error(`Failed to load plugin ${pluginId}:`, error);
-            }
-        }
-
-        for (const pluginId of this.instances.keys()) {
-            if (!activePluginIds.has(pluginId)) {
-                this.unloadPlugin(pluginId);
-            }
-        }
+        await Promise.race([unload, timeout]);
     }
 }
 

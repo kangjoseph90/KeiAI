@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PluginManager, type PluginInstance } from '$lib/plugins/manager';
-import { plugins } from '$lib/stores/state';
 
 const { mockGetPlugin } = vi.hoisted(() => ({
     mockGetPlugin: vi.fn()
@@ -16,9 +15,13 @@ function createInstance(pluginId: string): PluginInstance {
         pluginId,
         iframe: { remove: vi.fn() } as unknown as HTMLIFrameElement,
         transport: { destroy: vi.fn() } as unknown as PluginInstance['transport'],
-        broker: { invoke: vi.fn(), fireEvent: vi.fn() } as unknown as PluginInstance['broker'],
+        broker: {
+            invoke: vi.fn().mockResolvedValue(undefined),
+            fireEvent: vi.fn()
+        } as unknown as PluginInstance['broker'],
         pipelineHandlers: new Map(),
-        eventListeners: new Map()
+        eventListeners: new Map(),
+        unloadHandlers: []
     };
 }
 
@@ -33,29 +36,31 @@ function exposeInstances(manager: PluginManager): Map<string, PluginInstance> {
 describe('PluginManager lifecycle', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        plugins.clear();
     });
 
-    it('unloadPlugin destroys transport, removes iframe, and drops runtime state', () => {
+    it('unloadPlugin calls unload hooks, destroys transport, removes iframe, and drops runtime state', async () => {
         const manager = new PluginManager();
         const instance = createInstance('plugin-1');
+        instance.unloadHandlers.push('unload-1', 'unload-2');
         exposeInstances(manager).set('plugin-1', instance);
 
-        manager.unloadPlugin('plugin-1');
+        await manager.unloadPlugin('plugin-1');
 
+        expect(instance.broker.invoke).toHaveBeenNthCalledWith(1, 'unload-1', []);
+        expect(instance.broker.invoke).toHaveBeenNthCalledWith(2, 'unload-2', []);
         expect(instance.transport.destroy).toHaveBeenCalledOnce();
         expect(instance.iframe.remove).toHaveBeenCalledOnce();
         expect(manager.getInstances()).toEqual([]);
     });
 
-    it('destroyAll unloads every running plugin', () => {
+    it('destroyAll unloads every running plugin', async () => {
         const manager = new PluginManager();
         const first = createInstance('plugin-1');
         const second = createInstance('plugin-2');
         exposeInstances(manager).set(first.pluginId, first);
         exposeInstances(manager).set(second.pluginId, second);
 
-        manager.destroyAll();
+        await manager.destroyAll();
 
         expect(first.transport.destroy).toHaveBeenCalledOnce();
         expect(second.transport.destroy).toHaveBeenCalledOnce();
@@ -64,39 +69,16 @@ describe('PluginManager lifecycle', () => {
         expect(manager.getInstances()).toEqual([]);
     });
 
-    it('syncActivePlugins mirrors enabled plugins from the plugin store', async () => {
+    it('reloadPlugin unloads the current runtime before loading a fresh one', async () => {
         const manager = new PluginManager();
-        const enabled = createInstance('enabled-plugin');
-        const disabled = createInstance('disabled-plugin');
-        exposeInstances(manager).set(enabled.pluginId, enabled);
-        exposeInstances(manager).set(disabled.pluginId, disabled);
+        const instance = createInstance('plugin-1');
+        exposeInstances(manager).set(instance.pluginId, instance);
+        const loadSpy = vi.spyOn(manager, 'loadPlugin').mockResolvedValue(undefined);
 
-        plugins.set(enabled.pluginId, {
-            id: enabled.pluginId,
-            name: 'Enabled Plugin',
-            description: '',
-            version: '',
-            enabled: true,
-            code: '',
-            args: {}
-        });
-        plugins.set(disabled.pluginId, {
-            id: disabled.pluginId,
-            name: 'Disabled Plugin',
-            description: '',
-            version: '',
-            enabled: false,
-            code: '',
-            args: {}
-        });
+        await manager.reloadPlugin(instance.pluginId);
 
-        await manager.syncActivePlugins();
-
-        expect(enabled.transport.destroy).not.toHaveBeenCalled();
-        expect(disabled.transport.destroy).toHaveBeenCalledOnce();
-        expect(disabled.iframe.remove).toHaveBeenCalledOnce();
-        expect(manager.getInstances().map((instance) => instance.pluginId)).toEqual([
-            enabled.pluginId
-        ]);
+        expect(instance.transport.destroy).toHaveBeenCalledOnce();
+        expect(instance.iframe.remove).toHaveBeenCalledOnce();
+        expect(loadSpy).toHaveBeenCalledWith(instance.pluginId);
     });
 });

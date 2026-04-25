@@ -82,8 +82,6 @@ async function collectCharJSHandlers(
 async function collectPluginHandlers(
     phase: string
 ): Promise<Array<PipelineHandler<unknown, string>>> {
-    await pluginManager.syncActivePlugins();
-
     const handlers: Array<PipelineHandler<unknown, string>> = [];
     for (const instance of pluginManager.getInstances()) {
         const pluginHandlers = instance.pipelineHandlers.get(phase) ?? [];

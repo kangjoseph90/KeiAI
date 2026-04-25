@@ -5,7 +5,6 @@ import type { PluginInstance } from '$lib/plugins/manager';
 const { mockCollectCharJSInstances, mockPluginManager, mockIsSafeMode } = vi.hoisted(() => ({
     mockCollectCharJSInstances: vi.fn(),
     mockPluginManager: {
-        syncActivePlugins: vi.fn(),
         getInstances: vi.fn()
     },
     mockIsSafeMode: vi.fn()
@@ -36,7 +35,8 @@ function createPluginInstance(): PluginInstance {
         eventListeners: new Map([
             ['message:sent', ['listener-1', 'listener-2']],
             ['other:event', ['other-listener']]
-        ])
+        ]),
+        unloadHandlers: []
     };
 }
 
@@ -45,7 +45,6 @@ describe('event plugin integration', () => {
         vi.clearAllMocks();
         mockIsSafeMode.mockReturnValue(false);
         mockCollectCharJSInstances.mockResolvedValue([]);
-        mockPluginManager.syncActivePlugins.mockResolvedValue(undefined);
     });
 
     it('fires matching plugin event listeners', async () => {
@@ -54,7 +53,6 @@ describe('event plugin integration', () => {
 
         await emitEvent('chat-1', 'message:sent', { content: 'hello' });
 
-        expect(mockPluginManager.syncActivePlugins).toHaveBeenCalledOnce();
         expect(instance.broker.fireEvent).toHaveBeenCalledTimes(2);
         expect(instance.broker.fireEvent).toHaveBeenNthCalledWith(1, 'listener-1', [
             { content: 'hello' }
@@ -64,14 +62,13 @@ describe('event plugin integration', () => {
         ]);
     });
 
-    it('does not sync or fire plugin listeners in safe mode', async () => {
+    it('does not fire plugin listeners in safe mode', async () => {
         const instance = createPluginInstance();
         mockIsSafeMode.mockReturnValue(true);
         mockPluginManager.getInstances.mockReturnValue([instance]);
 
         await emitEvent('chat-1', 'message:sent', { content: 'hello' });
 
-        expect(mockPluginManager.syncActivePlugins).not.toHaveBeenCalled();
         expect(instance.broker.fireEvent).not.toHaveBeenCalled();
     });
 });
