@@ -25,14 +25,18 @@ import { ToolCallService } from '$lib/services/content/tool';
 import { clock } from '$lib/utils/clock';
 import type { MessageSwipe } from '$lib/services/content/message';
 import { PagedMessages } from '$lib/services/content/paged_messages';
-import { updateMessage, createMessage, getMessage } from '$lib/stores/content/message';
+import {
+    createMessage,
+    getMessage,
+    prepareNextSwipe,
+    updateMessage
+} from '$lib/stores/content/message';
 import { buildPrompt } from '../llm/prompt/builder';
 import { selectLLMHandler } from '../llm/handler';
 import { runPipeline } from '../pipeline';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
 import { deepMerge } from '$lib/utils/defaults';
-import { generateId } from '$lib/utils/id';
 
 export interface RunChatOptions {
     /** Optional handler override for testing */
@@ -95,19 +99,25 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
         // setup variables
         const variables = lastMessage?.swipes[lastMessage.activeSwipeId]?.variables ?? {};
-        const targetSwipeId = settings.chat.saveMessagesOnSwipe
-            ? generateId()
-            : targetMessage.activeSwipeId;
+        const shouldReplaceActiveSwipe =
+            !settings.chat.saveMessagesOnSwipe &&
+            Boolean(targetMessage.swipes[targetMessage.activeSwipeId]);
 
-        targetMessage.swipes[targetSwipeId] = {
-            id: targetSwipeId,
+        const nextSwipeFields = {
             content: '',
             variables: deepMerge(chat.defaultVariables, variables),
             createdAt: clock.now()
         };
-        targetMessage.activeSwipeId = targetSwipeId;
 
-        await updateMessage(targetMessage.id, targetMessage);
+        const { swipeId: targetSwipeId, message: preparedMessage } = await prepareNextSwipe(
+            targetMessage,
+            nextSwipeFields,
+            shouldReplaceActiveSwipe
+        );
+
+        // Keep the paged message object aligned for prompt building.
+        targetMessage.swipes = preparedMessage.swipes;
+        targetMessage.activeSwipeId = preparedMessage.activeSwipeId;
 
         // ── 3. Register task ──────────────────────────────────────────
         createChatTask(chatId, targetMessage.id, controller);

@@ -1,82 +1,51 @@
 import { clock } from '$lib/utils/clock';
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
-import { localDB, type ToolCallRecord } from '$lib/adapters/db';
+import { localDB, type TranslationRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { encryptedWriteQueue } from './write_queue';
 
-export type ToolCallStatus = 'pending' | 'success' | 'rejected' | 'error';
-
-// Lightweight tool call info stored on a message swipe.
-export interface ToolCallInfo {
-    id: string; // internal tool callid
-    name: string; // tool name
-    status: ToolCallStatus;
+export interface TranslationFields {
+    targetLang: string;
+    text: string;
+    methodKey?: string;
+    sourceHash?: string;
 }
 
-export type ToolCallRequest = {
-    callId: string; // Call Id given by LLM provider
-    name: string;
-    args: Record<string, unknown>;
-};
-
-export type ToolCallResponse =
-    | { type: 'text'; text: string }
-    | { type: 'image'; data: string; mimeType: string }
-    | { type: 'audio'; data: string; mimeType: string }
-    | { type: 'resource'; resource: { uri: string; mimeType: string; text: string } };
-
-export interface ToolCallFields {
-    status: ToolCallStatus;
-    call: ToolCallRequest;
-    response?: {
-        content: ToolCallResponse[];
-        isError?: boolean;
-    };
-}
-
-export interface ToolCall extends ToolCallFields {
-    id: string; // internal id
+export interface Translation extends TranslationFields {
+    id: string;
     chatId: string;
     messageId: string;
     swipeId: string;
 }
 
-// ─── Defaults ─────────────────────────────────────────────────────────
-
-const defaultToolCallFields: ToolCallFields = {
-    status: 'pending',
-    call: {
-        callId: '',
-        name: '',
-        args: {}
-    }
+const defaultTranslationFields: TranslationFields = {
+    targetLang: '',
+    text: ''
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────
-
-function decryptFields(masterKey: CryptoKey, record: ToolCallRecord): Promise<ToolCallFields> {
+function decryptFields(
+    masterKey: CryptoKey,
+    record: TranslationRecord
+): Promise<TranslationFields> {
     return decrypt(masterKey, {
         ciphertext: record.encryptedData,
         iv: record.encryptedDataIV
     })
-        .then((dec) => deepMerge(defaultToolCallFields, JSON.parse(dec)))
+        .then((dec) => deepMerge(defaultTranslationFields, JSON.parse(dec)))
         .catch((error) => {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt tool call', error);
+            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt translation', error);
         });
 }
 
-// ─── Service ──────────────────────────────────────────────────────────
-
-export class ToolCallService {
-    /** List tool calls for a specific swipe */
-    static async listBySwipe(swipeId: string): Promise<ToolCall[]> {
-        await encryptedWriteQueue.flushTable('tool_calls');
+export class TranslationService {
+    static async listBySwipe(swipeId: string): Promise<Translation[]> {
+        await encryptedWriteQueue.flushTable('translations');
         const { masterKey } = getActiveSession();
-        const records = await localDB.getByIndex<ToolCallRecord>(
-            'tool_calls',
+        const records = await localDB.getByIndex<TranslationRecord>(
+            'translations',
             'swipeId',
             swipeId,
             Number.MAX_SAFE_INTEGER
@@ -95,22 +64,22 @@ export class ToolCallService {
         );
     }
 
-    static async get(id: string): Promise<ToolCall | null> {
+    static async get(id: string): Promise<Translation | null> {
         const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<ToolCallFields>('tool_calls', id);
+        const queued = encryptedWriteQueue.peek<TranslationFields>('translations', id);
         if (queued) {
-            const record = await localDB.getRecord<ToolCallRecord>('tool_calls', id);
+            const record = await localDB.getRecord<TranslationRecord>('translations', id);
             if (!record || record.isDeleted) return null;
             return {
                 id,
                 chatId: record.chatId,
                 messageId: record.messageId,
                 swipeId: record.swipeId,
-                ...deepMerge(defaultToolCallFields, queued)
+                ...deepMerge(defaultTranslationFields, queued)
             };
         }
 
-        const record = await localDB.getRecord<ToolCallRecord>('tool_calls', id);
+        const record = await localDB.getRecord<TranslationRecord>('translations', id);
         if (!record || record.isDeleted) return null;
 
         const fields = await decryptFields(masterKey, record);
@@ -127,9 +96,9 @@ export class ToolCallService {
         chatId: string,
         messageId: string,
         swipeId: string,
-        fields: DeepPartial<ToolCallFields> = {}
-    ): Promise<ToolCall> {
-        const resolved: ToolCallFields = deepMerge(defaultToolCallFields, fields);
+        fields: DeepPartial<TranslationFields> = {}
+    ): Promise<Translation> {
+        const resolved: TranslationFields = deepMerge(defaultTranslationFields, fields);
 
         const { masterKey, userId } = getActiveSession();
         const id = generateId();
@@ -137,7 +106,7 @@ export class ToolCallService {
 
         try {
             const enc = await encrypt(masterKey, JSON.stringify(resolved));
-            const newRecord: ToolCallRecord = {
+            const newRecord: TranslationRecord = {
                 id,
                 userId,
                 chatId,
@@ -149,31 +118,31 @@ export class ToolCallService {
                 encryptedData: enc.ciphertext,
                 encryptedDataIV: enc.iv
             };
-            await localDB.putRecord<ToolCallRecord>('tool_calls', newRecord);
+            await localDB.putRecord<TranslationRecord>('translations', newRecord);
         } catch (error) {
             if (error instanceof AppError) throw error;
-            throw new AppError('DB_WRITE_FAILED', 'Failed to create tool call', error);
+            throw new AppError('DB_WRITE_FAILED', 'Failed to create translation', error);
         }
 
         return { id, chatId, messageId, swipeId, ...resolved };
     }
 
-    static async update(id: string, changes: DeepPartial<ToolCallFields>): Promise<ToolCall> {
+    static async update(id: string, changes: DeepPartial<TranslationFields>): Promise<Translation> {
         const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<ToolCallFields>('tool_calls', id);
-        const record = await localDB.getRecord<ToolCallRecord>('tool_calls', id);
+        const queued = encryptedWriteQueue.peek<TranslationFields>('translations', id);
+        const record = await localDB.getRecord<TranslationRecord>('translations', id);
         if (!record || record.isDeleted) {
-            throw new AppError('NOT_FOUND', `Tool call not found: ${id}`);
+            throw new AppError('NOT_FOUND', `Translation not found: ${id}`);
         }
 
         try {
             const current = queued
-                ? deepMerge(defaultToolCallFields, queued)
+                ? deepMerge(defaultTranslationFields, queued)
                 : await decryptFields(masterKey, record);
-            const updated: ToolCallFields = deepMerge(current, changes);
+            const updated: TranslationFields = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<ToolCallFields, ToolCallRecord>({
-                tableName: 'tool_calls',
+            encryptedWriteQueue.upsert<TranslationFields, TranslationRecord>({
+                tableName: 'translations',
                 id,
                 userId: record.userId,
                 createdAt: record.createdAt,
@@ -209,17 +178,17 @@ export class ToolCallService {
             };
         } catch (error) {
             if (error instanceof AppError) throw error;
-            throw new AppError('DB_WRITE_FAILED', 'Failed to update tool call', error);
+            throw new AppError('DB_WRITE_FAILED', 'Failed to update translation', error);
         }
     }
 
     static async delete(id: string): Promise<void> {
         try {
-            encryptedWriteQueue.drop('tool_calls', id);
-            await localDB.softDeleteRecord('tool_calls', id);
+            encryptedWriteQueue.drop('translations', id);
+            await localDB.softDeleteRecord('translations', id);
         } catch (error) {
             if (error instanceof AppError) throw error;
-            throw new AppError('DB_WRITE_FAILED', 'Failed to delete tool call', error);
+            throw new AppError('DB_WRITE_FAILED', 'Failed to delete translation', error);
         }
     }
 }

@@ -32,6 +32,8 @@ interface DatabaseSqlRow {
     userId: string | null;
     characterId: string | null;
     chatId: string | null;
+    messageId: string | null;
+    swipeId: string | null;
     sortOrder: string | null;
     ownerId: string | null;
     updatedAt: number | null;
@@ -46,6 +48,8 @@ interface RecordBindingShape {
     isDeleted?: boolean;
     characterId?: string;
     chatId?: string;
+    messageId?: string;
+    swipeId?: string;
     sortOrder?: string;
     ownerId?: string;
     encryptedData?: Uint8Array<ArrayBufferLike> | string;
@@ -61,6 +65,8 @@ function recordToBindings<T extends BaseRecord>(record: T): DatabaseSqlRow {
         userId: clone.userId ?? null,
         characterId: clone.characterId ?? null,
         chatId: clone.chatId ?? null,
+        messageId: clone.messageId ?? null,
+        swipeId: clone.swipeId ?? null,
         sortOrder: clone.sortOrder ?? null,
         ownerId: clone.ownerId ?? null,
         updatedAt: clone.updatedAt ?? null,
@@ -124,6 +130,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 					userId TEXT,
 					characterId TEXT,
 					chatId TEXT,
+					messageId TEXT,
+					swipeId TEXT,
 					sortOrder TEXT,
 					ownerId TEXT,
 					updatedAt INTEGER,
@@ -152,6 +160,22 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         // Compound index strictly required for pagination performance in messages
         sql += `CREATE INDEX IF NOT EXISTS "idx_messages_chatId_sortOrder" ON messages (chatId, sortOrder);
 `;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_tool_calls_chatId" ON tool_calls (chatId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_tool_calls_messageId" ON tool_calls (messageId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_tool_calls_swipeId" ON tool_calls (swipeId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_tool_calls_messageId_swipeId" ON tool_calls (messageId, swipeId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_translations_chatId" ON translations (chatId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_translations_messageId" ON translations (messageId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_translations_swipeId" ON translations (swipeId);
+`;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_translations_messageId_swipeId" ON translations (messageId, swipeId);
+`;
 
         await db.execute(sql);
     }
@@ -178,13 +202,15 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         const b = recordToBindings(record);
         await db.execute(
             `INSERT OR REPLACE INTO ${tableName} 
-			(id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data) 
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			(id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, updatedAt, isDeleted, data) 
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
             [
                 b.id,
                 b.userId,
                 b.characterId,
                 b.chatId,
+                b.messageId,
+                b.swipeId,
                 b.sortOrder,
                 b.ownerId,
                 b.updatedAt,
@@ -207,8 +233,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             const chunk = records.slice(i, i + chunkSize);
             const placeholders = chunk
                 .map((_, idx) => {
-                    const start = idx * 9 + 1;
-                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8})`;
+                    const start = idx * 11 + 1;
+                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10})`;
                 })
                 .join(', ');
 
@@ -220,6 +246,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                     b.userId,
                     b.characterId,
                     b.chatId,
+                    b.messageId,
+                    b.swipeId,
                     b.sortOrder,
                     b.ownerId,
                     b.updatedAt,
@@ -230,7 +258,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
             await db.execute(
                 `INSERT OR REPLACE INTO ${tableName} 
-				(id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data) 
+				(id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, updatedAt, isDeleted, data) 
 				VALUES ${placeholders}`,
                 values
             );
@@ -317,8 +345,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 const chunk = recordsToUpdate.slice(i, i + chunkSize);
                 const placeholders = chunk
                     .map((_, idx) => {
-                        const start = idx * 9 + 1;
-                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8})`;
+                        const start = idx * 11 + 1;
+                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10})`;
                     })
                     .join(', ');
                 const values: unknown[] = [];
@@ -329,6 +357,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         b.userId,
                         b.characterId,
                         b.chatId,
+                        b.messageId,
+                        b.swipeId,
                         b.sortOrder,
                         b.ownerId,
                         b.updatedAt,
@@ -338,7 +368,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 }
                 await db.execute(
                     `INSERT OR REPLACE INTO ${tableName}
-                (id, userId, characterId, chatId, sortOrder, ownerId, updatedAt, isDeleted, data)
+                (id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, updatedAt, isDeleted, data)
                 VALUES ${placeholders}`,
                     values
                 );

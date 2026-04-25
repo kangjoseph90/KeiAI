@@ -19,8 +19,11 @@ vi.mock('$lib/stores/tasks/chat', () => ({
 
 vi.mock('$lib/stores/content/message', () => ({
     createMessage: vi.fn().mockResolvedValue(undefined),
+    createMessageSwipe: vi.fn(),
+    prepareNextSwipe: vi.fn(),
     updateMessage: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
+    deleteMessageSwipe: vi.fn(),
     getMessage: vi.fn()
 }));
 
@@ -119,8 +122,8 @@ import {
 } from '$lib/stores/tasks/chat';
 import {
     createMessage,
+    prepareNextSwipe,
     updateMessage,
-    deleteMessage,
     getMessage
 } from '$lib/stores/content/message';
 import { MessageService } from '$lib/services/content/message';
@@ -168,6 +171,21 @@ describe('Chat Pipeline', () => {
         vi.mocked(createMessage).mockResolvedValue(
             mockNewMessage as unknown as import('$lib/services').Message
         );
+        vi.mocked(prepareNextSwipe).mockResolvedValue({
+            swipeId: 'swipe-new',
+            message: {
+                ...mockNewMessage,
+                activeSwipeId: 'swipe-new',
+                swipes: {
+                    'swipe-new': {
+                        id: 'swipe-new',
+                        content: '',
+                        createdAt: Date.now(),
+                        variables: {}
+                    }
+                }
+            } as unknown as import('$lib/services').Message
+        });
         // Default: getMessage returns message with content
         vi.mocked(getMessage).mockResolvedValue({
             ...mockNewMessage,
@@ -227,6 +245,11 @@ describe('Chat Pipeline', () => {
             expect.any(AbortController)
         );
         // Should update swipe content during streaming
+        expect(prepareNextSwipe).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'msg-new' }),
+            expect.objectContaining({ content: '' }),
+            false
+        );
         expect(updateMessage).toHaveBeenCalled();
         // Should NOT have an error
         expect(setChatTaskError).not.toHaveBeenCalled();
@@ -404,16 +427,50 @@ describe('Chat Pipeline', () => {
             await runChat(mockChatId, { handlerOverride: mockHandler, reroll: true });
 
             // Should add swipe to existing message, not create new message
-            expect(updateMessage).toHaveBeenCalledWith(
-                targetMessageId,
-                expect.objectContaining({
-                    activeSwipeId: 'swipe-new',
-                    swipes: expect.objectContaining({
-                        'swipe-new': expect.objectContaining({ content: expect.any(String) })
-                    })
-                })
+            expect(prepareNextSwipe).toHaveBeenCalledWith(
+                expect.objectContaining({ id: targetMessageId }),
+                expect.objectContaining({ content: '' }),
+                false
             );
             expect(createMessage).not.toHaveBeenCalled();
+        });
+
+        it('should replace the active swipe when previous swipes are not kept', async () => {
+            const mockHandler: LLMStreamHandler = {
+                stream: vi.fn(async function* () {
+                    yield { content: 'Replacement' };
+                })
+            };
+
+            const { getAppSettings } = await import('$lib/stores');
+            vi.mocked(getAppSettings).mockResolvedValueOnce({
+                personaId: 'persona-1',
+                presetId: 'preset-1',
+                apiKeys: {},
+                chat: { saveMessagesOnSwipe: false }
+            } as unknown as Awaited<ReturnType<typeof getAppSettings>>);
+            vi.mocked(MessageService.getMessagesAfter).mockResolvedValue([
+                mockExistingMessage as unknown as import('$lib/services').Message
+            ]);
+            vi.mocked(getMessage).mockResolvedValue({
+                ...mockExistingMessage,
+                swipes: {
+                    'swipe-new': {
+                        id: 'swipe-new',
+                        content: 'Replacement',
+                        createdAt: Date.now()
+                    }
+                },
+                activeSwipeId: 'swipe-new'
+            } as unknown as import('$lib/services').Message);
+
+            await runChat(mockChatId, { handlerOverride: mockHandler, reroll: true });
+
+            expect(prepareNextSwipe).toHaveBeenCalledWith(
+                expect.objectContaining({ id: targetMessageId }),
+                expect.objectContaining({ content: '' }),
+                true
+            );
         });
     });
 

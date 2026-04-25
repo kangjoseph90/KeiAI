@@ -24,7 +24,8 @@ export type TableName =
     | 'scripts'
     | 'modules'
     | 'plugins'
-    | 'toolCalls'
+    | 'tool_calls'
+    | 'translations'
     | 'charjs';
 
 export const SYNC_TABLES: TableName[] = [
@@ -41,7 +42,7 @@ export const SYNC_TABLES: TableName[] = [
     'charjs'
 ];
 
-export const LOCAL_TABLES: TableName[] = ['toolCalls'];
+export const LOCAL_TABLES: TableName[] = ['tool_calls', 'translations'];
 
 export const TABLES: TableName[] = [...SYNC_TABLES, ...LOCAL_TABLES];
 
@@ -135,6 +136,16 @@ export type PresetRecord = EncryptedRecord;
 
 export interface ToolCallRecord extends EncryptedRecord {
     chatId: string;
+    messageId: string;
+    swipeId: string;
+}
+
+// ─── Translations ───────────────────────────────────────────────────
+
+export interface TranslationRecord extends EncryptedRecord {
+    chatId: string;
+    messageId: string;
+    swipeId: string;
 }
 
 // ─── Adapter Interface ──────────────────────────────────────────────

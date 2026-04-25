@@ -179,21 +179,23 @@ export class ChatService {
             await Promise.all([
                 encryptedWriteQueue.flushTable('chats'),
                 encryptedWriteQueue.flushTable('messages'),
-                encryptedWriteQueue.flushTable('toolCalls'),
+                encryptedWriteQueue.flushTable('tool_calls'),
+                encryptedWriteQueue.flushTable('translations'),
                 encryptedWriteQueue.flushTable('lorebooks'),
                 encryptedWriteQueue.flushTable('scripts')
             ]);
 
             encryptedWriteQueue.drop('chats', id);
             await localDB.transaction(
-                ['lorebooks', 'scripts', 'messages', 'chats', 'toolCalls'],
+                ['lorebooks', 'scripts', 'messages', 'chats', 'tool_calls', 'translations'],
                 'rw',
                 async () => {
                     const results = await Promise.allSettled([
                         localDB.softDeleteByIndex('lorebooks', 'ownerId', id),
                         localDB.softDeleteByIndex('scripts', 'ownerId', id),
                         localDB.softDeleteByIndex('messages', 'chatId', id),
-                        localDB.softDeleteByIndex('toolCalls', 'chatId', id),
+                        localDB.softDeleteByIndex('tool_calls', 'chatId', id),
+                        localDB.softDeleteByIndex('translations', 'chatId', id),
                         localDB.softDeleteRecord('chats', id)
                     ]);
                     const failed = results.find((r) => r.status === 'rejected');

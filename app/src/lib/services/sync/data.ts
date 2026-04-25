@@ -58,6 +58,8 @@ export class DataSyncEngine extends BaseSyncEngine {
         'encryptedDataIV',
         'characterId',
         'chatId',
+        'messageId',
+        'swipeId',
         'sortOrder',
         'ownerId'
     ]);

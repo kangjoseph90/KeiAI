@@ -22,6 +22,7 @@ import type {
     PluginRecord,
     PresetRecord,
     ToolCallRecord,
+    TranslationRecord,
     CharJSRecord
 } from './types';
 import { DatabaseWriteEventEmitter } from './events';
@@ -38,13 +39,14 @@ class DexieStore extends Dexie {
     scripts!: Table<ScriptRecord, string>;
     modules!: Table<ModuleRecord, string>;
     plugins!: Table<PluginRecord, string>;
-    toolCalls!: Table<ToolCallRecord, string>;
+    tool_calls!: Table<ToolCallRecord, string>;
+    translations!: Table<TranslationRecord, string>;
     charjs!: Table<CharJSRecord, string>;
 
     constructor() {
         super('KeiLocalDB');
 
-        this.version(1).stores({
+        this.version(2).stores({
             characters: 'id, userId, updatedAt, isDeleted',
             chats: 'id, userId, characterId, updatedAt, isDeleted',
             presets: 'id, userId, updatedAt, isDeleted',
@@ -55,7 +57,10 @@ class DexieStore extends Dexie {
             scripts: 'id, userId, ownerId, updatedAt, isDeleted',
             modules: 'id, userId, updatedAt, isDeleted',
             plugins: 'id, userId, updatedAt, isDeleted',
-            toolCalls: 'id, userId, chatId, updatedAt, isDeleted',
+            tool_calls:
+                'id, userId, chatId, messageId, swipeId, [messageId+swipeId], updatedAt, isDeleted',
+            translations:
+                'id, userId, chatId, messageId, swipeId, [messageId+swipeId], updatedAt, isDeleted',
             charjs: 'id, userId, ownerId, updatedAt, isDeleted'
         });
     }

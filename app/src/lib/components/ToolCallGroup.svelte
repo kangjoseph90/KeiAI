@@ -4,7 +4,7 @@
      *
      * Continer for multiple tool calls within a message.
      */
-    import type { ToolCallAbstract, ToolCall } from '$lib/services/content/tool';
+    import type { ToolCallInfo, ToolCall } from '$lib/services/content/tool';
     import ToolCallItem from './ToolCallItem.svelte';
 
     let {
@@ -13,7 +13,7 @@
         onApprove = () => {},
         onReject = () => {}
     }: {
-        toolCalls: Record<string, ToolCallAbstract>;
+        toolCalls: Record<string, ToolCallInfo>;
         onLoadDetail?: (id: string) => Promise<ToolCall | null>;
         onApprove?: (id: string) => void;
         onReject?: (id: string) => void;

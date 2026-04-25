@@ -6,18 +6,21 @@ import { generateKeyBetween } from 'fractional-indexing';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import type { ToolCallAbstract } from './tool';
+import type { ToolCallInfo } from './tool';
 import { encryptedWriteQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
-export interface MessageSwipe {
-    id: string;
+export interface MessageSwipeFields {
     content: string;
     thought?: string;
-    toolCalls?: Record<string, ToolCallAbstract>;
+    toolCalls?: Record<string, ToolCallInfo>;
     variables?: Record<string, string>;
     createdAt: number;
+}
+
+export interface MessageSwipe extends MessageSwipeFields {
+    id: string;
 }
 
 export interface MessageFields {
@@ -253,11 +256,150 @@ export class MessageService {
     /** Soft-delete a message */
     static async delete(id: string): Promise<void> {
         try {
+            await Promise.all([
+                encryptedWriteQueue.flushTable('messages'),
+                encryptedWriteQueue.flushTable('tool_calls'),
+                encryptedWriteQueue.flushTable('translations')
+            ]);
             encryptedWriteQueue.drop('messages', id);
-            await localDB.softDeleteRecord('messages', id);
+            await localDB.transaction(
+                ['messages', 'tool_calls', 'translations'],
+                'rw',
+                async () => {
+                    const results = await Promise.allSettled([
+                        localDB.softDeleteByIndex('tool_calls', 'messageId', id),
+                        localDB.softDeleteByIndex('translations', 'messageId', id),
+                        localDB.softDeleteRecord('messages', id)
+                    ]);
+                    const failed = results.find((r) => r.status === 'rejected');
+                    if (failed) {
+                        throw failed.reason;
+                    }
+                }
+            );
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete message', error);
+        }
+    }
+
+    static async createSwipe(
+        messageId: string,
+        fields: MessageSwipeFields
+    ): Promise<{ swipeId: string; message: Message }> {
+        const message = await this.get(messageId);
+        if (!message) {
+            throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
+        }
+
+        const swipeId = generateId();
+        const swipe: MessageSwipe = {
+            ...fields,
+            id: swipeId,
+            createdAt: fields.createdAt ?? clock.now()
+        };
+
+        const updatedMessage = await this.update(messageId, {
+            role: message.role,
+            swipes: {
+                ...message.swipes,
+                [swipeId]: swipe
+            },
+            activeSwipeId: message.activeSwipeId
+        });
+
+        return { swipeId, message: updatedMessage };
+    }
+
+    static async updateSwipe(
+        messageId: string,
+        swipeId: string,
+        changes: DeepPartial<MessageSwipe>
+    ): Promise<Message> {
+        const message = await this.get(messageId);
+        if (!message) {
+            throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
+        }
+
+        const swipe = message.swipes[swipeId];
+        if (!swipe) {
+            throw new AppError('NOT_FOUND', `Swipe not found: ${swipeId}`);
+        }
+
+        const updatedSwipe = deepMerge(swipe, changes);
+        return await this.update(messageId, {
+            role: message.role,
+            swipes: {
+                ...message.swipes,
+                [swipeId]: updatedSwipe
+            },
+            activeSwipeId: message.activeSwipeId
+        });
+    }
+
+    static async deleteSwipe(messageId: string, swipeId: string): Promise<Message> {
+        await Promise.all([
+            encryptedWriteQueue.flushTable('messages'),
+            encryptedWriteQueue.flushTable('tool_calls'),
+            encryptedWriteQueue.flushTable('translations')
+        ]);
+
+        const message = await this.get(messageId);
+        if (!message) {
+            throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
+        }
+
+        if (!message.swipes[swipeId]) {
+            throw new AppError('NOT_FOUND', `Swipe not found: ${swipeId}`);
+        }
+
+        const record = await localDB.getRecord<MessageRecord>('messages', messageId);
+        if (!record || record.isDeleted) {
+            throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
+        }
+
+        const nextSwipes = { ...message.swipes };
+        delete nextSwipes[swipeId];
+        const nextFields: MessageFields = {
+            role: message.role,
+            swipes: nextSwipes,
+            activeSwipeId: message.activeSwipeId
+        };
+
+        try {
+            const enc = await encrypt(getActiveSession().masterKey, JSON.stringify(nextFields));
+            encryptedWriteQueue.drop('messages', messageId);
+
+            await localDB.transaction(
+                ['messages', 'tool_calls', 'translations'],
+                'rw',
+                async () => {
+                    const results = await Promise.allSettled([
+                        localDB.softDeleteByIndex('tool_calls', 'swipeId', swipeId),
+                        localDB.softDeleteByIndex('translations', 'swipeId', swipeId),
+                        localDB.putRecord<MessageRecord>('messages', {
+                            ...record,
+                            updatedAt: clock.now(),
+                            encryptedData: enc.ciphertext,
+                            encryptedDataIV: enc.iv
+                        })
+                    ]);
+                    const failed = results.find((r) => r.status === 'rejected');
+                    if (failed) {
+                        throw failed.reason;
+                    }
+                }
+            );
+
+            return {
+                id: messageId,
+                chatId: record.chatId,
+                sortOrder: record.sortOrder,
+                ...nextFields
+            };
+        } catch (error) {
+            if (error instanceof AppError) throw error;
+            throw new AppError('DB_WRITE_FAILED', 'Failed to delete message swipe', error);
         }
     }
 

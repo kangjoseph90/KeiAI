@@ -334,7 +334,16 @@ describe('CharacterService', () => {
             await CharacterService.delete('char-1');
 
             expect(localDB.transaction).toHaveBeenCalledWith(
-                ['chats', 'lorebooks', 'scripts', 'messages', 'toolCalls', 'characters', 'charjs'],
+                [
+                    'chats',
+                    'lorebooks',
+                    'scripts',
+                    'messages',
+                    'tool_calls',
+                    'translations',
+                    'characters',
+                    'charjs'
+                ],
                 'rw',
                 expect.any(Function)
             );
@@ -356,8 +365,26 @@ describe('CharacterService', () => {
             // Should call softDeleteByIndex for messages, lorebooks, scripts for each chat
             expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('messages', 'chatId', 'chat-1');
             expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('messages', 'chatId', 'chat-2');
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('toolCalls', 'chatId', 'chat-1');
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('toolCalls', 'chatId', 'chat-2');
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'tool_calls',
+                'chatId',
+                'chat-1'
+            );
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'tool_calls',
+                'chatId',
+                'chat-2'
+            );
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'translations',
+                'chatId',
+                'chat-1'
+            );
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'translations',
+                'chatId',
+                'chat-2'
+            );
         });
 
         it('should soft delete related tool calls for each chat', async () => {
@@ -370,7 +397,16 @@ describe('CharacterService', () => {
 
             await CharacterService.delete('char-1');
 
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('toolCalls', 'chatId', 'chat-a');
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'tool_calls',
+                'chatId',
+                'chat-a'
+            );
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'translations',
+                'chatId',
+                'chat-a'
+            );
         });
     });
 });

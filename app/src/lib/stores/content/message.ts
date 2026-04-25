@@ -10,7 +10,13 @@
  */
 
 import { get } from 'svelte/store';
-import { MessageService, type MessageFields, type Message } from '$lib/services';
+import {
+    MessageService,
+    type MessageFields,
+    type Message,
+    type MessageSwipe,
+    type MessageSwipeFields
+} from '$lib/services';
 import { messages, activeChatId } from '../state';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
@@ -111,4 +117,62 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
     if (get(activeChatId) !== chatId) return;
 
     messages.delete(msgId);
+}
+
+export async function createMessageSwipe(
+    messageId: string,
+    fields: MessageSwipeFields
+): Promise<{ swipeId: string; message: Message }> {
+    const { swipeId, message: updated } = await MessageService.createSwipe(messageId, fields);
+
+    if (get(activeChatId) === updated.chatId) {
+        messages.set(messageId, updated);
+    }
+    return { swipeId, message: updated };
+}
+
+export async function updateMessageSwipe(
+    messageId: string,
+    swipeId: string,
+    changes: DeepPartial<MessageSwipe>
+): Promise<Message> {
+    const updated = await MessageService.updateSwipe(messageId, swipeId, changes);
+
+    if (get(activeChatId) === updated.chatId) {
+        messages.set(messageId, updated);
+    }
+    return updated;
+}
+
+export async function deleteMessageSwipe(messageId: string, swipeId: string): Promise<Message> {
+    const updated = await MessageService.deleteSwipe(messageId, swipeId);
+
+    if (get(activeChatId) === updated.chatId) {
+        messages.set(messageId, updated);
+    }
+    return updated;
+}
+
+export async function prepareNextSwipe(
+    message: Message,
+    fields: MessageSwipeFields,
+    replaceActiveSwipe: boolean
+): Promise<{ swipeId: string; message: Message }> {
+    let current = message;
+
+    if (replaceActiveSwipe && current.activeSwipeId && current.swipes[current.activeSwipeId]) {
+        current = await deleteMessageSwipe(current.id, current.activeSwipeId);
+    }
+
+    const created = await createMessageSwipe(current.id, fields);
+    const updated = await MessageService.update(current.id, { activeSwipeId: created.swipeId });
+
+    if (get(activeChatId) === updated.chatId) {
+        messages.set(current.id, updated);
+    }
+
+    return {
+        swipeId: created.swipeId,
+        message: updated
+    };
 }

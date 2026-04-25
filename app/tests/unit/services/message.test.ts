@@ -26,7 +26,10 @@ vi.mock('$lib/adapters/db', () => ({
         getRecordsForward: vi.fn(),
         getRecord: vi.fn(),
         putRecord: vi.fn(),
-        softDeleteRecord: vi.fn()
+        softDeleteRecord: vi.fn(),
+        softDeleteByIndex: vi.fn(),
+        getByIndex: vi.fn(),
+        transaction: vi.fn()
     }
 }));
 
@@ -107,6 +110,10 @@ describe('MessageService', () => {
 
         // Default generateKeyBetween mock
         vi.mocked(generateKeyBetween).mockReturnValue('a0');
+
+        vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) =>
+            callback()
+        );
     });
 
     describe('getMessagesBefore (pagination)', () => {
@@ -366,10 +373,103 @@ describe('MessageService', () => {
     });
 
     describe('delete', () => {
-        it('should soft delete a message', async () => {
+        it('should soft delete a message and its local artifacts', async () => {
             await MessageService.delete('msg-1');
 
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'tool_calls',
+                'messageId',
+                'msg-1'
+            );
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'translations',
+                'messageId',
+                'msg-1'
+            );
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('messages', 'msg-1');
+        });
+    });
+
+    describe('swipe lifecycle', () => {
+        const existingRecord = {
+            id: 'msg-1',
+            chatId: 'chat-1',
+            sortOrder: 'a0',
+            userId: mockUserId,
+            createdAt: 1000,
+            updatedAt: 1000,
+            isDeleted: false,
+            encryptedData: new Uint8Array([1]),
+            encryptedDataIV: new Uint8Array([2])
+        } as unknown as BaseRecord;
+
+        beforeEach(() => {
+            vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
+            vi.mocked(localDB.getByIndex).mockResolvedValue([]);
+        });
+
+        it('deleteSwipe deletes swipe artifacts by index and removes the swipe', async () => {
+            vi.mocked(decrypt).mockResolvedValue(
+                JSON.stringify({
+                    role: 'char',
+                    activeSwipeId: 's2',
+                    swipes: {
+                        s1: { id: 's1', content: 'keep', createdAt: 1000 },
+                        s2: {
+                            id: 's2',
+                            content: 'remove',
+                            toolCalls: {
+                                tool1: { id: 'tool1', name: 'search', status: 'success' }
+                            },
+                            createdAt: 1000
+                        }
+                    }
+                })
+            );
+
+            const result = await MessageService.deleteSwipe('msg-1', 's2');
+
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('tool_calls', 'swipeId', 's2');
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('translations', 'swipeId', 's2');
+            expect(localDB.putRecord).toHaveBeenCalledWith(
+                'messages',
+                expect.objectContaining({
+                    id: 'msg-1',
+                    encryptedData: mockEncryptedData,
+                    encryptedDataIV: mockIV
+                })
+            );
+            expect(result.swipes.s2).toBeUndefined();
+            expect(result.swipes.s1.content).toBe('keep');
+            expect(result.activeSwipeId).toBe('s2');
+        });
+
+        it('createSwipe appends a swipe and returns its id without changing active swipe', async () => {
+            vi.mocked(decrypt).mockResolvedValue(JSON.stringify(makeFields('Old', 'char')));
+
+            const result = await MessageService.createSwipe('msg-1', {
+                content: 'New',
+                createdAt: 2000
+            });
+
+            expect(result.swipeId).toBe('test-msg-id');
+            expect(result.message.swipes['test-msg-id'].content).toBe('New');
+            expect(result.message.activeSwipeId).toBe('s1');
+            expect(localDB.softDeleteRecord).not.toHaveBeenCalledWith(
+                'tool_calls',
+                expect.any(String)
+            );
+        });
+
+        it('updateSwipe updates only the requested swipe', async () => {
+            vi.mocked(decrypt).mockResolvedValue(JSON.stringify(makeFields('Old', 'char')));
+
+            const result = await MessageService.updateSwipe('msg-1', 's1', {
+                content: 'New'
+            });
+
+            expect(result.swipes.s1.content).toBe('New');
+            expect(result.swipes.s1.id).toBe('s1');
         });
     });
 });

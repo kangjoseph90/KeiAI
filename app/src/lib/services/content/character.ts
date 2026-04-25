@@ -183,7 +183,8 @@ export class CharacterService {
                 encryptedWriteQueue.flushTable('characters'),
                 encryptedWriteQueue.flushTable('chats'),
                 encryptedWriteQueue.flushTable('messages'),
-                encryptedWriteQueue.flushTable('toolCalls'),
+                encryptedWriteQueue.flushTable('tool_calls'),
+                encryptedWriteQueue.flushTable('translations'),
                 encryptedWriteQueue.flushTable('lorebooks'),
                 encryptedWriteQueue.flushTable('scripts'),
                 encryptedWriteQueue.flushTable('charjs')
@@ -191,7 +192,16 @@ export class CharacterService {
 
             encryptedWriteQueue.drop('characters', id);
             await localDB.transaction(
-                ['chats', 'lorebooks', 'scripts', 'messages', 'toolCalls', 'characters', 'charjs'],
+                [
+                    'chats',
+                    'lorebooks',
+                    'scripts',
+                    'messages',
+                    'tool_calls',
+                    'translations',
+                    'characters',
+                    'charjs'
+                ],
                 'rw',
                 async () => {
                     const chatIds = (
@@ -207,7 +217,8 @@ export class CharacterService {
                     for (const chatId of chatIds) {
                         deletePromises.push(
                             localDB.softDeleteByIndex('messages', 'chatId', chatId),
-                            localDB.softDeleteByIndex('toolCalls', 'chatId', chatId),
+                            localDB.softDeleteByIndex('tool_calls', 'chatId', chatId),
+                            localDB.softDeleteByIndex('translations', 'chatId', chatId),
                             localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId),
                             localDB.softDeleteByIndex('scripts', 'ownerId', chatId),
                             localDB.softDeleteByIndex('charjs', 'ownerId', chatId)
