@@ -201,4 +201,5 @@ export interface IDatabaseAdapter {
         sinceUpdatedAt: number
     ): Promise<T[]>;
     transaction<R>(tables: TableName[], mode: 'r' | 'rw', callback: () => Promise<R>): Promise<R>;
+    countByIndex(tableName: TableName, indexName: string, indexValue: string): Promise<number>;
 }

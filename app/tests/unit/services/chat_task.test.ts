@@ -42,7 +42,8 @@ vi.mock('$lib/services/content/message', () => {
         MessageService: {
             get: vi.fn().mockResolvedValue(null),
             getMessagesAfter: vi.fn().mockResolvedValue([]),
-            getMessagesBefore: vi.fn().mockResolvedValue([])
+            getMessagesBefore: vi.fn().mockResolvedValue([]),
+            countByChat: vi.fn().mockResolvedValue(0)
         }
     };
 });

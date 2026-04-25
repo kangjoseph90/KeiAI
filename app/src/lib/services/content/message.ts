@@ -260,4 +260,9 @@ export class MessageService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete message', error);
         }
     }
+
+    static async countByChat(chatId: string): Promise<number> {
+        await encryptedWriteQueue.flushTable('messages');
+        return await localDB.countByIndex('messages', 'chatId', chatId);
+    }
 }

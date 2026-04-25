@@ -6,7 +6,8 @@ import {
     type ChatFields,
     type ChatContent,
     type LorebookFields,
-    type Lorebook
+    type Lorebook,
+    type Chat
 } from '$lib/services';
 import type { OrderedRef, FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
@@ -28,7 +29,7 @@ import type { DeepPartial } from '$lib/utils/defaults';
  * Returns chat from store cache first, then from DB if needed.
  * Explicitly throws error if not found
  */
-export async function getChat(chatId: string): Promise<import('$lib/services').Chat> {
+export async function getChat(chatId: string): Promise<Chat> {
     const active = get(activeChat);
     if (active?.id === chatId) return active;
     const cached = chats.get(chatId);
@@ -49,6 +50,33 @@ export async function selectChat(chatId: string, characterId: string): Promise<v
     chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebookRefs ?? []));
 
     await updateCharacter(characterId, { lastActiveChatId: chatId });
+
+    // Self-healing: Ensure messageCount and lastMessageId are accurate
+    await reconcileChatMeta(chatId);
+}
+
+/**
+ * Reconciles messageCount and lastMessageId against actual DB state.
+ * Essential for correcting drift from multi-device sync or race conditions.
+ * Called on chat entry and after sync events that touch messages.
+ */
+export async function reconcileChatMeta(chatId: string): Promise<void> {
+    const [actualCount, lastMessages] = await Promise.all([
+        MessageService.countByChat(chatId),
+        MessageService.getMessagesBefore(chatId, '\uffff', 1)
+    ]);
+
+    const actualLastId = lastMessages?.[0]?.id;
+    const chat = await getChat(chatId);
+
+    const needsUpdate = chat.messageCount !== actualCount || chat.lastMessageId !== actualLastId;
+
+    if (needsUpdate) {
+        await updateChat(chatId, {
+            messageCount: actualCount,
+            lastMessageId: actualLastId
+        });
+    }
 }
 
 export function clearActiveChat(): void {
@@ -60,7 +88,7 @@ export function clearActiveChat(): void {
 export async function createChat(
     characterId: string,
     fields: DeepPartial<ChatFields> = {}
-): Promise<import('$lib/services').Chat> {
+): Promise<Chat> {
     const char = await getCharacter(characterId);
 
     const chat = await ChatService.create(characterId, fields);

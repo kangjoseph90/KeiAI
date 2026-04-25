@@ -20,7 +20,8 @@ vi.mock('$lib/services', () => ({
         create: vi.fn(),
         update: vi.fn(),
         delete: vi.fn(),
-        get: vi.fn()
+        get: vi.fn(),
+        countByChat: vi.fn()
     },
     ChatService: {
         update: vi.fn()

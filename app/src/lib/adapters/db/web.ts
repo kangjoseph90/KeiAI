@@ -258,6 +258,19 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         return await this.db.transaction(mode, tables, callback);
     }
 
+    async countByIndex(
+        tableName: TableName,
+        indexName: string,
+        indexValue: string
+    ): Promise<number> {
+        await this.flush();
+        return await this.getTable<BaseRecord>(tableName)
+            .where(indexName)
+            .equals(indexValue)
+            .filter((record) => !record.isDeleted)
+            .count();
+    }
+
     private emitWriteEvent(
         tableName: TableName,
         operation:

@@ -493,6 +493,20 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         }
     }
 
+    async countByIndex(
+        tableName: TableName,
+        indexName: string,
+        indexValue: string
+    ): Promise<number> {
+        await this.flush();
+        const db = await this.getDb();
+        const rows = await db.select<{ 'COUNT(*)': number }[]>(
+            `SELECT COUNT(*) FROM ${tableName} WHERE ${indexName} = $1 AND isDeleted = 0`,
+            [indexValue]
+        );
+        return rows[0]?.['COUNT(*)'] ?? 0;
+    }
+
     private emitWriteEvent(
         tableName: TableName,
         operation:

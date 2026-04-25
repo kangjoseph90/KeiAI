@@ -42,7 +42,8 @@ vi.mock('$lib/services', () => ({
     MessageService: {
         get: vi.fn(),
         getMessagesBefore: vi.fn(),
-        create: vi.fn()
+        create: vi.fn(),
+        countByChat: vi.fn()
     }
 }));
 
@@ -95,6 +96,8 @@ describe('Chat Store', () => {
             vi.mocked(ChatService.get).mockResolvedValue(mockChat);
             vi.mocked(LorebookService.listByOwner).mockResolvedValue([]);
             vi.mocked(CharacterService.update).mockResolvedValue(mockCharacter);
+            vi.mocked(MessageService.countByChat).mockResolvedValue(0);
+            vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([]);
 
             await selectChat('chat-1', 'char-1');
 
