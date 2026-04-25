@@ -6,6 +6,7 @@ import { getPlugin, updatePlugin } from '$lib/stores/content/plugin';
 import { plugins } from '$lib/stores/state';
 import { createLogger } from '$lib/adapters/logger';
 import { get } from 'svelte/store';
+import { emitEvent } from '$lib/events';
 
 const logger = createLogger('plugins:manager');
 const PLUGIN_READY_TIMEOUT_MS = 5_000;
@@ -178,12 +179,10 @@ export class PluginManager {
             eventListeners.get(eventStr)!.push(String(fnId));
         });
 
-        broker.expose('core.emitEvent', (event: unknown, data: unknown) => {
-            import('$lib/events')
-                .then(({ emitEvent }) => emitEvent('system', String(event), data))
-                .catch((error: unknown) => {
-                    logger.error(`Plugin event emit failed:`, error);
-                });
+        broker.expose('core.emitEvent', (chatId: unknown, event: unknown, data: unknown) => {
+            emitEvent(String(chatId), String(event), data).catch((error: unknown) => {
+                logger.error(`Plugin event emit failed:`, error);
+            });
         });
     }
 

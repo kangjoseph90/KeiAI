@@ -188,7 +188,7 @@ window.KeiAPI = {
         registrations.push(registration);
         return registration;
     },
-    emitEvent: (event, data) => broker.fire('core.emitEvent', [event, data])
+    emitEvent: (chatId, event, data) => broker.fire('core.emitEvent', [chatId, event, data])
 };
 
 window.__KeiPluginBootDone = async () => {
