@@ -52,9 +52,7 @@ vi.mock('$lib/stores', () => ({
     getChat: vi.fn().mockResolvedValue({
         id: 'chat-1',
         characterId: 'char-1',
-        defaultVariables: {},
-        lastMessageId: 'msg-new',
-        messageCount: 1
+        defaultVariables: {}
     }),
     getCharacter: vi.fn().mockResolvedValue({ id: 'char-1', systemPrompt: '' }),
     getAppSettings: vi.fn().mockResolvedValue({
@@ -76,9 +74,7 @@ vi.mock('$lib/stores/content/chat', () => ({
     getChat: vi.fn().mockResolvedValue({
         id: 'chat-1',
         characterId: 'char-1',
-        defaultVariables: {},
-        lastMessageId: 'msg-new',
-        messageCount: 1
+        defaultVariables: {}
     })
 }));
 
@@ -104,7 +100,7 @@ vi.mock('$lib/charjs', () => ({
 }));
 
 vi.mock('$lib/llm/prompt/builder', () => ({
-    buildPrompt: vi.fn().mockReturnValue([])
+    buildPrompt: vi.fn().mockResolvedValue([])
 }));
 
 vi.mock('$lib/llm/handler', () => ({
@@ -162,7 +158,7 @@ describe('Chat Pipeline', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.mocked(getChatTask).mockReturnValue(null);
-        vi.mocked(buildPrompt).mockReturnValue([{ role: 'user', content: 'test' }]);
+        vi.mocked(buildPrompt).mockResolvedValue([{ role: 'user', content: 'test' }]);
         vi.mocked(selectLLMHandler).mockReturnValue({
             stream: vi.fn(async function* () {
                 yield { content: 'Response' };
@@ -186,8 +182,11 @@ describe('Chat Pipeline', () => {
             activeSwipeId: 'swipe-new'
         } as unknown as import('$lib/services').Message);
 
-        // Default: getMessagesBefore returns history
-        vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([
+        // Default: countByChat returns 1 (chat has messages)
+        vi.mocked(MessageService.countByChat).mockResolvedValue(1);
+
+        // Default: paged message view returns the generated target message
+        vi.mocked(MessageService.getMessagesAfter).mockResolvedValue([
             mockNewMessage as unknown as import('$lib/services').Message
         ]);
     });
@@ -368,8 +367,7 @@ describe('Chat Pipeline', () => {
             vi.mocked(getChat).mockResolvedValue({
                 id: mockChatId,
                 characterId: 'char-1',
-                defaultVariables: {},
-                lastMessageId: targetMessageId
+                defaultVariables: {}
             } as Chat);
         });
 
@@ -380,8 +378,8 @@ describe('Chat Pipeline', () => {
                 })
             };
 
-            // Mock historical context for reroll: last 2 messages are [..., existing]
-            vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([
+            // Mock paged context for reroll: the existing message is the target
+            vi.mocked(MessageService.getMessagesAfter).mockResolvedValue([
                 mockExistingMessage as unknown as import('$lib/services').Message
             ]);
 

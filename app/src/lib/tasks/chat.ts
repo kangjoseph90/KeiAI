@@ -23,7 +23,8 @@ import {
 import type { LLMStreamHandler } from '$lib/llm/types';
 import { ToolCallService } from '$lib/services/content/tool';
 import { clock } from '$lib/utils/clock';
-import { MessageService, type Message, type MessageSwipe } from '$lib/services/content/message';
+import type { MessageSwipe } from '$lib/services/content/message';
+import { PagedMessages } from '$lib/services/content/paged_messages';
 import { updateMessage, createMessage, getMessage } from '$lib/stores/content/message';
 import { buildPrompt } from '../llm/prompt/builder';
 import { selectLLMHandler } from '../llm/handler';
@@ -76,24 +77,21 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
         if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
         if (!settings.personaId) throw new AppError('INVALID_INPUT', 'No persona selected');
-        if (!chat.lastMessageId) throw new AppError('INVALID_INPUT', 'Chat has no messages');
 
-        const [character, preset, persona, targetMessage] = await Promise.all([
+        const messages = await PagedMessages.create(chatId);
+        if (messages.length === 0) throw new AppError('INVALID_INPUT', 'Chat has no messages');
+
+        const targetMessage = await messages.at(-1);
+        if (!targetMessage) throw new AppError('INVALID_INPUT', 'Chat has no messages');
+
+        const [character, preset, persona] = await Promise.all([
             getCharacter(chat.characterId),
             getPreset(settings.presetId),
-            getPersona(settings.personaId),
-            getMessage(chat.lastMessageId)
+            getPersona(settings.personaId)
         ]);
 
         // ── 2. Load Prompt History ────────────────────────────────────
-        // Fetch 1000 messages at once and use the last one for variables
-        // TODO: lazy load for prompt builder
-        const promptMessages = await MessageService.getMessagesBefore(
-            chatId,
-            targetMessage.sortOrder,
-            1000
-        );
-        const lastMessage = promptMessages[promptMessages.length - 1] || null;
+        const lastMessage = await messages.at(-2);
 
         // setup variables
         const variables = lastMessage?.swipes[lastMessage.activeSwipeId]?.variables ?? {};
@@ -116,12 +114,12 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
         // ── 4. Build Prompt (pure function) ──────────────────────────────
 
-        const prompt = buildPrompt({
+        const prompt = await buildPrompt({
             character,
             preset,
             persona,
             lorebooks,
-            messages: promptMessages
+            messages
         });
 
         // ── 5. Apply Request Scripts ─────────────────────────────────

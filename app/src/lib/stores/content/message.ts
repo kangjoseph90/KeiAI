@@ -10,9 +10,8 @@
  */
 
 import { get } from 'svelte/store';
-import { MessageService, type MessageFields, type Message, type ChatFields } from '$lib/services';
-import { messages, activeChat, activeChatId } from '../state';
-import { updateChat } from './chat';
+import { MessageService, type MessageFields, type Message } from '$lib/services';
+import { messages, activeChatId } from '../state';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
 
@@ -81,17 +80,7 @@ export async function createMessage(
     chatId: string,
     fields: DeepPartial<MessageFields> = {}
 ): Promise<Message> {
-    // 1. Create the message first to get its ID
     const newMessage = await MessageService.create(chatId, fields);
-
-    // 2. Update chat with new count and lastMessageId
-    const currentChat = get(activeChat);
-    const newCount = (currentChat?.messageCount ?? 0) + 1;
-
-    await updateChat(chatId, {
-        messageCount: newCount,
-        lastMessageId: newMessage.id
-    });
 
     // Store update — only if still viewing this chat
     if (get(activeChatId) === chatId) {
@@ -122,16 +111,4 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
     if (get(activeChatId) !== chatId) return;
 
     messages.delete(msgId);
-
-    const currentChat = get(activeChat);
-    const newCount = Math.max(0, (currentChat?.messageCount ?? 1) - 1);
-    const chatChanges: DeepPartial<ChatFields> = { messageCount: newCount };
-
-    // If the deleted message was the last one, we need to find the new last message
-    if (currentChat?.lastMessageId === msgId) {
-        const prevLastMsg = await MessageService.getMessagesBefore(chatId, '\uffff', 1);
-        chatChanges.lastMessageId = prevLastMsg[0]?.id || undefined;
-    }
-
-    await updateChat(chatId, chatChanges);
 }

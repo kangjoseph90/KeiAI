@@ -106,11 +106,6 @@
                                     <MessageSquare class="size-4 shrink-0 text-muted-foreground" />
                                     <div>
                                         <p class="font-medium">{chat.title}</p>
-                                        <p class="text-xs text-muted-foreground">
-                                            {chat.messageCount > 0
-                                                ? chat.messageCount + ' messages'
-                                                : 'No messages yet...'}
-                                        </p>
                                     </div>
                                 </div>
                                 <div class="flex gap-1">

@@ -45,7 +45,7 @@ import {
     type Module
 } from '$lib/services';
 import { clearActiveCharacter } from './content/character';
-import { clearActiveChat, reconcileChatMeta } from './content/chat';
+import { clearActiveChat } from './content/chat';
 import { loadSettings } from './content/settings';
 import { sortByRefs } from '$lib/utils/ordering';
 import { EntityStore } from './entity_store';
@@ -549,16 +549,6 @@ function startDataSyncListener(): () => void {
                                     }
                                 }
                             });
-
-                            // Reconcile messageCount and lastMessageId after sync
-                            const affectedChatIds = new Set(
-                                msgs
-                                    .filter((msg) => msg?.chatId === currentChatId)
-                                    .map((msg) => msg!.chatId)
-                            );
-                            for (const chatId of affectedChatIds) {
-                                await reconcileChatMeta(chatId);
-                            }
                         }
                         break;
                     }

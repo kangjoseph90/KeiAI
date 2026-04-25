@@ -67,7 +67,6 @@ describe('Chat Store', () => {
         id: 'chat-1',
         characterId: 'char-1',
         title: 'Test Chat',
-        messageCount: 0,
         lorebookRefs: [],
         folders: {}
     };
@@ -96,8 +95,6 @@ describe('Chat Store', () => {
             vi.mocked(ChatService.get).mockResolvedValue(mockChat);
             vi.mocked(LorebookService.listByOwner).mockResolvedValue([]);
             vi.mocked(CharacterService.update).mockResolvedValue(mockCharacter);
-            vi.mocked(MessageService.countByChat).mockResolvedValue(0);
-            vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([]);
 
             await selectChat('chat-1', 'char-1');
 

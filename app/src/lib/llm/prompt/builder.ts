@@ -1,13 +1,14 @@
 /**
  * Prompt Builder — KeiAI
  *
- * Pure function that assembles OpenAI-compatible messages from domain data.
- * No classes, no hidden state — data in, messages out.
+ * Assembles OpenAI-compatible messages from injected domain data.
+ * History is loaded lazily through PagedMessages when template entries need it.
  */
 
 import type { PromptTemplateEntry } from '$lib/services/content/preset';
 import { defaultPresetFields } from '$lib/services/content/preset';
-import type { Character, Preset, Persona, Lorebook, Message } from '$lib/services';
+import type { PagedMessages } from '$lib/services/content/paged_messages';
+import type { Character, Preset, Persona, Lorebook } from '$lib/services';
 import type { OpenAIChat } from '../types';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
@@ -17,17 +18,17 @@ export interface PromptInput {
     preset: Preset | null;
     persona: Persona | null;
     lorebooks: Lorebook[];
-    messages: Message[];
+    messages: PagedMessages;
 }
 
 // ─── Builder ──────────────────────────────────────────────────────────────────
 
-export function buildPrompt(input: PromptInput): OpenAIChat[] {
+export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
     const templateOrder = input.preset?.templateOrder ?? defaultPresetFields.templateOrder;
     const result: OpenAIChat[] = [];
 
     for (const entry of templateOrder) {
-        processEntry(entry, input, result);
+        await processEntry(entry, input, result);
     }
 
     return result;
@@ -35,7 +36,11 @@ export function buildPrompt(input: PromptInput): OpenAIChat[] {
 
 // ─── Entry Processing ─────────────────────────────────────────────────────────
 
-function processEntry(entry: PromptTemplateEntry, input: PromptInput, result: OpenAIChat[]): void {
+async function processEntry(
+    entry: PromptTemplateEntry,
+    input: PromptInput,
+    result: OpenAIChat[]
+): Promise<void> {
     switch (entry.type) {
         case 'instruction':
             if (entry.content) {
@@ -66,7 +71,10 @@ function processEntry(entry: PromptTemplateEntry, input: PromptInput, result: Op
             break;
         }
         case 'history':
-            for (const msg of resolveHistorySlice(input.messages, entry.start, entry.end)) {
+            for (const msg of await input.messages.slice(
+                toHistoryViewBound(entry.start),
+                toHistoryViewBound(entry.end)
+            )) {
                 const activeSwipe = msg.swipes[msg.activeSwipeId];
                 if (!activeSwipe) continue;
                 result.push({
@@ -81,15 +89,15 @@ function processEntry(entry: PromptTemplateEntry, input: PromptInput, result: Op
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Slice messages array with negative-index support (like Python). */
-function resolveHistorySlice(messages: Message[], start: number, end?: number): Message[] {
-    const len = messages.length;
-    let s = start >= 0 ? start : len + start;
-    let e = end === undefined ? len : end >= 0 ? end : len + end;
-    if (s < 0) s = 0;
-    if (e > len) e = len;
-    if (s >= e) return [];
-    return messages.slice(s, e);
+/**
+ * History template bounds are evaluated against the completed-message view.
+ * The final message is runChat's in-progress response slot, so negative bounds
+ * shift one step left before delegating to PagedMessages.
+ */
+function toHistoryViewBound(bound: number | undefined): number {
+    if (bound === undefined) return -1;
+    if (bound >= 0) return bound;
+    return bound - 1;
 }
 
 function mapMessageRole(role: string): 'system' | 'user' | 'assistant' {

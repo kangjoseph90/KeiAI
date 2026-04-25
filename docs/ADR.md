@@ -493,3 +493,26 @@
     - `getDetail()` → `get()`, `updateSummary()`/`updateData()` → 단일 `update()`로 통합
     - `lastMessagePreview` 필드 제거 (메시지 편집 시마다 chat 레코드를 불필요하게 갱신하던 오버헤드 해소)
 - 참고: ADR 005 (Refs/Content 분리)
+
+---
+
+## 029: 프롬프트 빌더의 PagedMessages 기반 Lazy History 로딩
+
+- 상태: 채택
+- 맥락: 메시지는 고볼륨 데이터이며, `runChat`은 프롬프트 생성을 위해 최근 메시지를 읽어야 한다. 기존 구조는 서비스 레이어의 페이지네이션 API를 직접 호출해 최대 1000개 메시지를 eager load한 뒤 `buildPrompt`에 배열로 전달했다.
+- 문제:
+    - `runChat`이 "프롬프트에 필요한 히스토리 범위"를 결정하게 되어, 프롬프트 템플릿 책임이 파이프라인에 새어 나왔다.
+    - 긴 채팅에서 불필요한 메시지 복호화가 발생할 수 있다.
+    - 향후 토큰 예산, tokenizer 기반 context trimming, 파이프라인 변환을 lazy하게 적용하려면 배열 기반 `Message[]` 인터페이스가 병목이 된다.
+- 결정:
+    - **`PagedMessages` 도입**: `services/content/paged_messages.ts`에 전체 채팅 메시지를 대상으로 하는 readonly/transient 가상 배열을 둔다. `at()`, `slice()`, `toArray()`를 async API로 제공하며 음수 인덱스를 지원한다.
+    - **서비스 레이어 소유**: `PagedMessages`는 Store에 의존하지 않고 `MessageService`만 사용한다. 내부 page cache는 인스턴스 생명주기 동안만 유지한다.
+    - **양방향 페이지 로드 최적화**: 앞쪽 페이지는 `getMessagesAfter`, 뒤쪽 페이지는 `getMessagesBefore`를 사용하여 큰 offset 스캔을 줄인다.
+    - **프롬프트 빌더 lazy화**: `buildPrompt`는 async 함수가 되고, `Message[]` 대신 `PagedMessages`를 입력받는다. `history` 템플릿 엔트리를 처리할 때만 필요한 범위를 `messages.slice()`로 로드한다.
+    - **생성 중 target 제외**: `runChat`은 시작 시 빈 char 메시지를 즉시 생성한다. 따라서 프롬프트 히스토리는 마지막 target placeholder를 제외한 completed-message view 기준으로 해석한다.
+- 결과:
+    - `runChat`은 프롬프트 히스토리 범위를 직접 결정하지 않고, 동일한 `PagedMessages` 인스턴스를 파이프라인과 프롬프트 빌더에 전달한다.
+    - 프롬프트 템플릿이 실제로 요구하는 히스토리만 복호화한다.
+    - `Chat` 레코드에서 `messageCount`, `lastMessageId` 같은 파생 메타데이터를 관리할 필요가 줄어든다. 메시지 수와 마지막 메시지 접근은 `PagedMessages`가 서비스 쿼리로 계산한다.
+    - 이후 tokenizer/context budgeting, request pipeline 적용, 스크립트 기반 메시지 접근을 lazy하게 확장할 수 있는 기반이 생겼다.
+- 참고: ADR 015 (EncryptedWriteQueue), ADR 026 (즉시 영속 메시지와 Thin Task 트래커), ADR 027 (Record 기반 중첩 구조)

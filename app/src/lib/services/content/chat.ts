@@ -17,8 +17,6 @@ export interface ChatContent {
 }
 
 export interface ChatRefs {
-    messageCount: number;
-    lastMessageId?: string;
     lorebookRefs?: OrderedRef[];
     folders?: {
         lorebooks?: FolderDef[];
@@ -35,8 +33,7 @@ export interface Chat extends ChatFields {
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultFields: ChatFields = {
-    title: 'New Chat',
-    messageCount: 0
+    title: 'New Chat'
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────

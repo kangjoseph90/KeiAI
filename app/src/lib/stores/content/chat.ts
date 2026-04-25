@@ -50,33 +50,6 @@ export async function selectChat(chatId: string, characterId: string): Promise<v
     chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebookRefs ?? []));
 
     await updateCharacter(characterId, { lastActiveChatId: chatId });
-
-    // Self-healing: Ensure messageCount and lastMessageId are accurate
-    await reconcileChatMeta(chatId);
-}
-
-/**
- * Reconciles messageCount and lastMessageId against actual DB state.
- * Essential for correcting drift from multi-device sync or race conditions.
- * Called on chat entry and after sync events that touch messages.
- */
-export async function reconcileChatMeta(chatId: string): Promise<void> {
-    const [actualCount, lastMessages] = await Promise.all([
-        MessageService.countByChat(chatId),
-        MessageService.getMessagesBefore(chatId, '\uffff', 1)
-    ]);
-
-    const actualLastId = lastMessages?.[0]?.id;
-    const chat = await getChat(chatId);
-
-    const needsUpdate = chat.messageCount !== actualCount || chat.lastMessageId !== actualLastId;
-
-    if (needsUpdate) {
-        await updateChat(chatId, {
-            messageCount: actualCount,
-            lastMessageId: actualLastId
-        });
-    }
 }
 
 export function clearActiveChat(): void {
@@ -181,8 +154,7 @@ export async function forkChat(messageId: string): Promise<string> {
 
     const newChat = await createChat(characterId, {
         ...fieldsCopy,
-        title: `${originalChat.title} (Fork)`,
-        messageCount: allMessages.length
+        title: `${originalChat.title} (Fork)`
     });
 
     const createdMessages = await Promise.all(
@@ -198,11 +170,6 @@ export async function forkChat(messageId: string): Promise<string> {
             )
         )
     );
-
-    const lastMessageId = createdMessages[createdMessages.length - 1]?.id;
-    if (lastMessageId) {
-        await updateChat(newChat.id, { lastMessageId });
-    }
 
     const lorebooks = await LorebookService.listByOwner(chatId);
     const copiedLorebooks = await Promise.all(

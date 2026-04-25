@@ -10,7 +10,7 @@ import type { CharJSInstance } from './types';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
 import { MessageService } from '$lib/services';
-import { updateMessage, getChat, getMessage } from '$lib/stores';
+import { updateMessage } from '$lib/stores';
 
 export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance): void {
     const keiObj = ctx.newObject();
@@ -82,11 +82,11 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
         const key = ctx.getString(keyHandle);
         const promise = ctx.newPromise();
 
-        getChat(instance.chatId)
-            .then(async (chat) => {
-                if (!chat.lastMessageId) return promise.resolve(ctx.null);
-                const last = await getMessage(chat.lastMessageId);
-                const vars = last?.swipes[last.activeSwipeId]?.variables ?? {};
+        MessageService.getMessagesBefore(instance.chatId, '\uffff', 1)
+            .then(async (msgs) => {
+                const last = msgs[0];
+                if (!last) return promise.resolve(ctx.null);
+                const vars = last.swipes[last.activeSwipeId]?.variables ?? {};
                 const val = vars[key];
                 promise.resolve(val !== undefined ? ctx.newString(val) : ctx.null);
             })
@@ -102,10 +102,9 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
         const value = ctx.getString(valueHandle);
         const promise = ctx.newPromise();
 
-        getChat(instance.chatId)
-            .then(async (chat) => {
-                if (!chat.lastMessageId) return promise.resolve(ctx.undefined);
-                const last = await getMessage(chat.lastMessageId);
+        MessageService.getMessagesBefore(instance.chatId, '\uffff', 1)
+            .then(async (msgs) => {
+                const last = msgs[0];
                 if (!last) return promise.resolve(ctx.undefined);
 
                 const swipe = last.swipes[last.activeSwipeId];

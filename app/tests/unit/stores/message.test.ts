@@ -44,7 +44,7 @@ describe('Message Store', () => {
         // Reset via messages (the EntityStore)
         messages.clear();
         chats.clear();
-        activeChat.set({ id: mockChatId, characterId: 'char-1', messageCount: 0 } as Chat);
+        activeChat.set({ id: mockChatId, characterId: 'char-1' } as Chat);
     });
 
     describe('loadInitialMessages', () => {
@@ -122,12 +122,10 @@ describe('Message Store', () => {
     });
 
     describe('createMessage', () => {
-        it('should create message and update chat preview', async () => {
+        it('should create message and add to store', async () => {
             const newMessage = { ...mockMessage, id: 'new-id' };
-            const updatedChat = { id: mockChatId, characterId: 'char-1' } as Chat;
 
             vi.mocked(MessageService.create).mockResolvedValue(newMessage);
-            vi.mocked(ChatService.update).mockResolvedValue(updatedChat);
             chats.setAll([{ id: mockChatId, characterId: 'char-1' } as Chat]);
 
             await createMessage(mockChatId, {
@@ -136,11 +134,7 @@ describe('Message Store', () => {
             });
 
             expect(get(messages)).toContainEqual(newMessage);
-            expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
-                messageCount: 1,
-                lastMessageId: 'new-id'
-            });
-            expect(get(activeChat)).toMatchObject({});
+            expect(MessageService.create).toHaveBeenCalledWith(mockChatId, expect.any(Object));
         });
     });
 
@@ -167,27 +161,12 @@ describe('Message Store', () => {
         it('should remove message from messages', async () => {
             messages.setAll([mockMessage]);
             vi.mocked(MessageService.delete).mockResolvedValue(undefined);
-            vi.mocked(ChatService.update).mockResolvedValue({
-                id: mockChatId,
-                characterId: 'char-1'
-            } as Chat);
 
-            activeChat.set({
-                id: mockChatId,
-                characterId: 'char-1',
-                messageCount: 1,
-                lastMessageId: 'msg-1'
-            } as Chat);
-
-            vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([]);
             await deleteMessage(mockChatId, 'msg-1');
 
             expect(get(messages)).toHaveLength(0);
             expect(messages.has('msg-1')).toBe(false);
-            expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
-                messageCount: 0,
-                lastMessageId: undefined
-            });
+            expect(MessageService.delete).toHaveBeenCalledWith('msg-1');
         });
     });
 });
