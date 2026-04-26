@@ -119,10 +119,10 @@ export class LorebookService {
             const current = parseFields(record);
             const updated: LorebookFields = deepMerge(current, changes);
 
-            writeQueue.upsert<LorebookRecord>({
+            writeQueue.update<LorebookRecord>({
                 tableName: 'lorebooks',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
-                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
+                patch: changes as unknown as Record<string, unknown>
             });
 
             return { ...updated, id: record.id, ownerId: record.ownerId };

@@ -116,10 +116,10 @@ export class TranslationService {
             const current = parseFields(record);
             const updated: TranslationFields = deepMerge(current, changes);
 
-            writeQueue.upsert<TranslationRecord>({
+            writeQueue.update<TranslationRecord>({
                 tableName: 'translations',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
-                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
+                patch: changes as unknown as Record<string, unknown>
             });
 
             return {

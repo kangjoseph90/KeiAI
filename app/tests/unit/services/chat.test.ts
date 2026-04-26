@@ -52,7 +52,7 @@ vi.mock('$lib/utils/defaults', () => ({
 vi.mock('$lib/services/content/write_queue', () => ({
     writeQueue: {
         peek: vi.fn(() => null),
-        upsert: vi.fn(),
+        update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
     }
@@ -260,7 +260,7 @@ describe('ChatService', () => {
             const result = await ChatService.update('chat-1', { title: 'New Title' });
 
             expect(result.title).toBe('New Title');
-            expect(writeQueue.upsert).toHaveBeenCalled();
+            expect(writeQueue.update).toHaveBeenCalled();
         });
 
         it('should throw NOT_FOUND when chat does not exist', async () => {

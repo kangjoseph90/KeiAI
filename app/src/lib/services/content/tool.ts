@@ -150,10 +150,10 @@ export class ToolCallService {
             const current = parseFields(record);
             const updated: ToolCallFields = deepMerge(current, changes);
 
-            writeQueue.upsert<ToolCallRecord>({
+            writeQueue.update<ToolCallRecord>({
                 tableName: 'tool_calls',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
-                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
+                patch: changes as unknown as Record<string, unknown>
             });
 
             return {

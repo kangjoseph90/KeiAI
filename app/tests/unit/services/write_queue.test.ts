@@ -43,18 +43,19 @@ describe('writeQueue', () => {
             )
             .mockResolvedValue(undefined);
 
-        writeQueue.upsert<DataRecord>({
+        writeQueue.update<DataRecord>({
             tableName: 'messages',
-            record: makeRecord({ data: { content: 'first' } })
+            record: makeRecord({ data: { content: 'first' } }),
+            patch: { content: 'first' }
         });
 
         const flushPromise = writeQueue.flush('messages', 'msg-1');
         expect(localDB.putRecord).toHaveBeenCalledTimes(1);
 
-        writeQueue.upsert<DataRecord>({
+        writeQueue.update<DataRecord>({
             tableName: 'messages',
             record: makeRecord({ data: { content: 'second' } }),
-            mergeData: (cur, next) => ({ ...cur, ...next })
+            patch: { content: 'second' }
         });
 
         resolveFirstWrite?.();
@@ -83,9 +84,10 @@ describe('writeQueue', () => {
     it('peek returns full record with metadata', () => {
         const record = makeRecord({ data: { content: 'hello' } });
 
-        writeQueue.upsert<DataRecord>({
+        writeQueue.update<DataRecord>({
             tableName: 'messages',
-            record
+            record,
+            patch: record.data
         });
 
         const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
@@ -99,41 +101,81 @@ describe('writeQueue', () => {
         expect(cached).toBeNull();
     });
 
-    it('mergeData merges record.data on subsequent upserts', () => {
-        writeQueue.upsert<DataRecord>({
+    it('update seeds the queue with the full record when no pending entry exists', () => {
+        writeQueue.update<DataRecord>({
             tableName: 'messages',
-            record: makeRecord({ data: { content: 'first', extra: 1 } })
+            record: makeRecord({ data: { content: 'first', extra: 1 } }),
+            patch: { content: 'ignored' }
         });
 
-        writeQueue.upsert<DataRecord>({
+        const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
+        expect(cached?.data).toEqual({ content: 'first', extra: 1 });
+    });
+
+    it('update merges only the patch when a pending entry exists', () => {
+        writeQueue.update<DataRecord>({
             tableName: 'messages',
-            record: makeRecord({ data: { content: 'second' } }),
-            mergeData: (cur, next) => ({ ...cur, ...next })
+            record: makeRecord({ data: { content: 'first', extra: 1 } }),
+            patch: { content: 'first', extra: 1 }
+        });
+
+        writeQueue.update<DataRecord>({
+            tableName: 'messages',
+            record: makeRecord({ data: { content: 'second', stale: true } }),
+            patch: { content: 'second' }
         });
 
         const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
         expect(cached?.data).toEqual({ content: 'second', extra: 1 });
     });
 
-    it('without mergeData, data is replaced entirely', () => {
-        writeQueue.upsert<DataRecord>({
+    it('update preserves nested object keys when merging patches', () => {
+        writeQueue.update<DataRecord>({
             tableName: 'messages',
-            record: makeRecord({ data: { content: 'first', extra: 1 } })
+            record: makeRecord({
+                data: {
+                    swipes: {
+                        s1: { content: 'first' }
+                    }
+                }
+            }),
+            patch: {
+                swipes: {
+                    s1: { content: 'first' }
+                }
+            }
         });
 
-        writeQueue.upsert<DataRecord>({
+        writeQueue.update<DataRecord>({
             tableName: 'messages',
-            record: makeRecord({ data: { content: 'second' } })
+            record: makeRecord({
+                data: {
+                    swipes: {
+                        s2: { content: 'second' }
+                    }
+                }
+            }),
+            patch: {
+                swipes: {
+                    s2: { content: 'second' }
+                }
+            }
         });
 
         const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
-        expect(cached?.data).toEqual({ content: 'second' });
+        expect(cached?.data).toEqual({
+            swipes: {
+                s1: { content: 'first' },
+                s2: { content: 'second' }
+            }
+        });
     });
 
     it('drop removes entry from queue', () => {
-        writeQueue.upsert<DataRecord>({
+        writeQueue.update<DataRecord>({
             tableName: 'messages',
-            record: makeRecord()
+            record: makeRecord(),
+            patch: makeRecord().data
         });
 
         writeQueue.drop('messages', 'msg-1');

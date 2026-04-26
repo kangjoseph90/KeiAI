@@ -191,10 +191,10 @@ export class MessageService {
             const current = parseFields(record);
             const updated: MessageFields = deepMerge(current, changes);
 
-            writeQueue.upsert<MessageRecord>({
+            writeQueue.update<MessageRecord>({
                 tableName: 'messages',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
-                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
+                patch: changes as unknown as Record<string, unknown>
             });
 
             return {

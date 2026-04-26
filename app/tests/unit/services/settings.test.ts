@@ -104,22 +104,6 @@ describe('SettingsService', () => {
         });
     });
 
-    describe('set', () => {
-        it('should encrypt and save full settings object', async () => {
-            await SettingsService.set(mockSettings);
-            await vi.runAllTimersAsync();
-
-            expect(localDB.putRecord).toHaveBeenCalledWith(
-                'settings',
-                expect.objectContaining({
-                    id: mockUserId,
-                    data: expect.any(Object)
-                }),
-                undefined
-            );
-        });
-    });
-
     describe('update', () => {
         it('should perform read-modify-write merge update', async () => {
             const mockRecord: SettingsRecord = {

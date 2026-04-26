@@ -118,10 +118,10 @@ export class ChatService {
             const current = parseFields(record);
             const updated: ChatFields = deepMerge(current, changes);
 
-            writeQueue.upsert<ChatRecord>({
+            writeQueue.update<ChatRecord>({
                 tableName: 'chats',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
-                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
+                patch: changes as unknown as Record<string, unknown>
             });
 
             return { ...updated, id: record.id, characterId: record.characterId };

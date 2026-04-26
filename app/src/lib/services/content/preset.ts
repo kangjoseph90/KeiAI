@@ -118,10 +118,10 @@ export class PresetService {
             const current = parseFields(record);
             const updated: PresetFields = deepMerge(current, changes);
 
-            writeQueue.upsert<PresetRecord>({
+            writeQueue.update<PresetRecord>({
                 tableName: 'presets',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
-                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
+                patch: changes as unknown as Record<string, unknown>
             });
 
             return { ...updated, id: record.id };

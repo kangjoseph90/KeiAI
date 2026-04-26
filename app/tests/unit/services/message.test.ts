@@ -53,7 +53,7 @@ vi.mock('fractional-indexing', () => ({
 vi.mock('$lib/services/content/write_queue', () => ({
     writeQueue: {
         peek: vi.fn(() => undefined),
-        upsert: vi.fn(),
+        update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
     }

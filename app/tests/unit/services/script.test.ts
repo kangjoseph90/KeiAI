@@ -31,7 +31,7 @@ vi.mock('$lib/utils/id', () => ({
 vi.mock('$lib/services/content/write_queue', () => ({
     writeQueue: {
         peek: vi.fn(() => undefined),
-        upsert: vi.fn(),
+        update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
     }
@@ -154,7 +154,7 @@ describe('ScriptService', () => {
             expect(result.phase).toBe('output');
             expect(result.name).toBe('Test Script'); // Preserved from existing
 
-            expect(writeQueue.upsert).toHaveBeenCalled();
+            expect(writeQueue.update).toHaveBeenCalled();
             expect(localDB.putRecord).not.toHaveBeenCalled();
         });
 

@@ -56,7 +56,7 @@ vi.mock('$lib/utils/defaults', () => ({
 vi.mock('$lib/services/content/write_queue', () => ({
     writeQueue: {
         peek: vi.fn(() => null),
-        upsert: vi.fn(),
+        update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
     }
@@ -275,7 +275,7 @@ describe('CharacterService', () => {
             });
 
             expect(result.name).toBe('New Name');
-            expect(writeQueue.upsert).toHaveBeenCalled();
+            expect(writeQueue.update).toHaveBeenCalled();
         });
 
         it('should throw NOT_FOUND when character does not exist', async () => {

@@ -246,40 +246,6 @@ export class SettingsService {
         return parseFields(record.data);
     }
 
-    static async set(settings: DeepPartial<AppSettings>): Promise<void> {
-        const { userId } = getActiveSession();
-
-        try {
-            const cached = writeQueue.peek<SettingsRecord>('settings', userId);
-            let createdAt: number;
-            if (cached) {
-                createdAt = cached.createdAt;
-            } else {
-                const existing = await localDB.getRecord<SettingsRecord>('settings', userId);
-                createdAt = existing?.createdAt ?? clock.now();
-            }
-
-            writeQueue.upsert<SettingsRecord>({
-                tableName: 'settings',
-                record: {
-                    id: userId,
-                    userId,
-                    createdAt,
-                    updatedAt: clock.now(),
-                    isDeleted: false,
-                    data: deepMerge(defaultSettings as AppSettings, settings) as unknown as Record<
-                        string,
-                        unknown
-                    >
-                },
-                mergeData: (_current, next) => next
-            });
-        } catch (error) {
-            if (error instanceof AppError) throw error;
-            throw new AppError('DB_WRITE_FAILED', 'Failed to save settings', error);
-        }
-    }
-
     /** Partial update – read-modify-write with merge */
     static async update(changes: DeepPartial<AppSettings>): Promise<AppSettings> {
         const { userId } = getActiveSession();
@@ -295,7 +261,7 @@ export class SettingsService {
 
             const updated: AppSettings = deepMerge(current, changes);
 
-            writeQueue.upsert<SettingsRecord>({
+            writeQueue.update<SettingsRecord>({
                 tableName: 'settings',
                 record: {
                     id: userId,
@@ -305,7 +271,7 @@ export class SettingsService {
                     isDeleted: false,
                     data: updated as unknown as Record<string, unknown>
                 },
-                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
+                patch: changes as unknown as Record<string, unknown>
             });
 
             return updated;

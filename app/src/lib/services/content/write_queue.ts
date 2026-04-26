@@ -6,6 +6,7 @@ import {
     type TableName
 } from '$lib/adapters/db';
 import { AppError } from '$lib/types/errors';
+import { deepMerge } from '$lib/utils/defaults';
 
 const WRITE_DEBOUNCE_MS = 400;
 const WRITE_MAX_WAIT_MS = 2000;
@@ -17,10 +18,6 @@ interface QueueEntry<TRecord extends DataRecord> {
     tableName: TableName;
     record: TRecord;
     options?: DatabaseWriteOptions;
-    mergeData?: (
-        current: Record<string, unknown>,
-        next: Record<string, unknown>
-    ) => Record<string, unknown>;
     flushTimer: ReturnType<typeof setTimeout> | null;
     maxWaitTimer: ReturnType<typeof setTimeout> | null;
     firstQueuedAt: number;
@@ -41,13 +38,10 @@ class WriteQueue {
         return structuredClone(entry.record) as TRecord;
     }
 
-    upsert<TRecord extends DataRecord>(args: {
+    update<TRecord extends DataRecord>(args: {
         tableName: TableName;
         record: TRecord;
-        mergeData?: (
-            current: Record<string, unknown>,
-            next: Record<string, unknown>
-        ) => Record<string, unknown>;
+        patch: Record<string, unknown>;
         options?: DatabaseWriteOptions;
     }): TRecord {
         const id = args.record.id;
@@ -55,29 +49,11 @@ class WriteQueue {
         const existing = this.entries.get(key) as QueueEntry<TRecord> | undefined;
 
         if (!existing) {
-            const now = clock.now();
-            const created: QueueEntry<TRecord> = {
-                key,
-                tableName: args.tableName,
-                record: structuredClone(args.record),
-                options: args.options,
-                mergeData: args.mergeData,
-                flushTimer: null,
-                maxWaitTimer: null,
-                firstQueuedAt: now,
-                flushPromise: null,
-                version: 0
-            };
-            this.entries.set(key, created as QueueEntry<DataRecord>);
-            this.schedule(created as QueueEntry<DataRecord>);
-            return structuredClone(created.record);
+            return this.seed(key, args.tableName, args.record, args.options);
         }
 
-        existing.record.data = args.mergeData
-            ? args.mergeData(existing.record.data, args.record.data)
-            : structuredClone(args.record.data);
+        existing.record.data = deepMerge(existing.record.data, args.patch);
         existing.options = args.options;
-        existing.mergeData = args.mergeData;
         existing.version++;
         this.schedule(existing as QueueEntry<DataRecord>);
         return structuredClone(existing.record);
@@ -109,6 +85,28 @@ class WriteQueue {
 
     private getKey(tableName: TableName, id: string): QueueKey {
         return `${tableName}:${id}`;
+    }
+
+    private seed<TRecord extends DataRecord>(
+        key: QueueKey,
+        tableName: TableName,
+        record: TRecord,
+        options?: DatabaseWriteOptions
+    ): TRecord {
+        const created: QueueEntry<TRecord> = {
+            key,
+            tableName,
+            record: structuredClone(record),
+            options,
+            flushTimer: null,
+            maxWaitTimer: null,
+            firstQueuedAt: clock.now(),
+            flushPromise: null,
+            version: 0
+        };
+        this.entries.set(key, created as QueueEntry<DataRecord>);
+        this.schedule(created as QueueEntry<DataRecord>);
+        return structuredClone(created.record);
     }
 
     private schedule(entry: QueueEntry<DataRecord>): void {

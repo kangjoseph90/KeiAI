@@ -37,7 +37,7 @@ vi.mock('$lib/utils/id', () => ({
 vi.mock('$lib/services/content/write_queue', () => ({
     writeQueue: {
         peek: vi.fn(() => null),
-        upsert: vi.fn(),
+        update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
     }
@@ -150,7 +150,7 @@ describe('PresetService', () => {
             expect(result.name).toBe('New Name');
             expect(result.maxResponse).toBe(800);
 
-            expect(writeQueue.upsert).toHaveBeenCalled();
+            expect(writeQueue.update).toHaveBeenCalled();
         });
 
         it('should throw if record not found', async () => {

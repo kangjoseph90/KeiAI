@@ -110,10 +110,10 @@ export class PersonaService {
             const current = parseFields(record);
             const updated: PersonaFields = deepMerge(current, changes);
 
-            writeQueue.upsert<PersonaRecord>({
+            writeQueue.update<PersonaRecord>({
                 tableName: 'personas',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
-                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
+                patch: changes as unknown as Record<string, unknown>
             });
 
             return { ...updated, id: record.id };

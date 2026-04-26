@@ -125,10 +125,10 @@ export class ScriptService {
             const current = parseFields(record);
             const updated: ScriptFields = deepMerge(current, changes);
 
-            writeQueue.upsert<ScriptRecord>({
+            writeQueue.update<ScriptRecord>({
                 tableName: 'scripts',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
-                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
+                patch: changes as unknown as Record<string, unknown>
             });
 
             return { ...updated, id: record.id, ownerId: record.ownerId };
