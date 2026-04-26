@@ -6,10 +6,10 @@
 
 ## 1. 저장소 구조: 단일 테이블 구조
 
-모든 엔티티는 **하나의 테이블**에 저장된다. 각 테이블은 하나의 암호화된 JSON Blob(`encryptedData` + `encryptedDataIV`)을 보관한다.
+모든 엔티티는 **하나의 테이블**에 저장된다. 로컬 테이블은 하나의 평문 JSON 필드(`data`)를 보관하고, PocketBase 동기화 테이블은 같은 내용을 암호화한 JSON Blob(`encryptedData` + `encryptedDataIV`)을 보관한다.
 
-- 엔티티의 모든 데이터(목록용 메타데이터 + 상세 본문)가 단일 암호화 Blob에 포함된다.
-- AES-GCM으로 암호화된 JSON Blob으로 저장된다.
+- 엔티티의 모든 데이터(목록용 메타데이터 + 상세 본문)가 단일 JSON에 포함된다.
+- 로컬에서는 평문 JSON으로 저장하고, 서버로 나갈 때만 AES-GCM으로 암호화된 JSON Blob으로 변환한다.
 - 부모 엔티티가 자식의 미리보기 데이터를 복사해서 들고 있으면 **안 된다**. 미리보기가 필요하면 항상 자식의 테이블을 쿼리한다.
 
 ---
@@ -18,22 +18,22 @@
 
 ### 2-1. 1:N (부모 → 자식)
 
-**자식 테이블의 평문 FK 컬럼**으로 표현한다.
+**자식 테이블의 로컬 인덱스 컬럼**으로 표현한다.
 
 ```
-ChatRecord     { ..., characterId: string }   ← 평문 (인덱싱 가능)
-MessageRecord  { ..., chatId: string }         ← 평문 (인덱싱 가능)
+ChatRecord     { ..., characterId: string }   ← 로컬 평문 (인덱싱 가능)
+MessageRecord  { ..., chatId: string }         ← 로컬 평문 (인덱싱 가능)
 ```
 
 - **이유:** "이 캐릭터의 채팅 목록", "이 채팅방의 메시지 목록"처럼 **부모 기준으로 자식을 빠르게 쿼리**해야 하므로 DB 인덱스가 필수적이다.
-- **트레이드오프:** 서버나 DB를 들여다보면 "이 유저의 A 캐릭터에 채팅방이 3개 있다" 정도의 메타데이터는 노출된다. 이는 쿼리 성능을 위해 수용하는 최소한의 양보이다.
+- **서버 측 원칙:** PocketBase에는 도메인 FK를 두지 않는다. 서버는 `userId`와 sync timestamp만으로 블라인드 동기화를 수행하고, `characterId`, `chatId` 같은 관계 정보는 로컬 인덱스 또는 암호화된 payload 내부에 둔다.
 
 ### 2-2. N:M (공유 자원 참조)
 
-**소비자(부모)의 암호화된 Blob 내부**에 `Array<{ id, enabled }>` 형태로 저장한다.
+**소비자(부모)의 JSON payload 내부**에 `Array<{ id, enabled }>` 형태로 저장한다.
 
 ```typescript
-// ChatFields (암호화된 JSON 내부)
+// ChatFields (로컬 JSON / 서버 암호화 payload 내부)
 {
   lorebookRefs: [
     { id: "lb_harrypotter", enabled: true },
@@ -52,14 +52,14 @@ MessageRecord  { ..., chatId: string }         ← 평문 (인덱싱 가능)
 
 ## 3. 참조 무결성: 느슨한 결합 (Loose Coupling)
 
-E2EE 환경에서는 RDB의 `FOREIGN KEY ... ON DELETE CASCADE`를 사용할 수 없다. 대신 **Graceful Degradation (관대한 실패 처리)** 전략을 따른다.
+E2EE + 로컬 퍼스트 환경에서는 서버 RDB의 `FOREIGN KEY ... ON DELETE CASCADE`에 의존하지 않는다. 대신 **Graceful Degradation (관대한 실패 처리)** 전략을 따른다.
 
 ### 원칙
-- 공유 자원(로어북, 스크립트)이 삭제되어도, 이를 참조하는 엔티티들의 Blob을 일괄 수정하지 **않는다**.
+- 공유 자원(로어북, 스크립트)이 삭제되어도, 이를 참조하는 엔티티들의 payload를 일괄 수정하지 **않는다**.
 - 삭제된 참조를 만나면 **조용히 무시(Skip)**하고, 기회가 될 때(예: 설정 화면을 열었을 때) 슬쩍 정리한다 **(Self-Healing)**.
 
 ### 이유
-- 삭제 시점에 모든 참조자를 일괄 복호화 → 수정 → 재암호화하는 것은 성능적으로 재앙적이다.
+- 삭제 시점에 모든 참조자를 일괄 로드 → 수정 → 서버 재동기화하는 것은 성능적으로 재앙적이다.
 - 고아 참조(Orphaned Reference)는 기능적 오류를 일으키지 않으며, 자연스럽게 정리된다.
 
 ```typescript
@@ -79,7 +79,7 @@ const valid = refs.filter((r, i) => fetched[i] !== null);
 
 ```typescript
 interface ActiveResourceEntry<T> {
-  data: T;            // 복호화된 실제 데이터
+  data: T;            // 실제 데이터
   enabled: boolean;   // 프롬프트 엔진이 실행할지 여부
   refs: Set<string>;  // 이 자원을 물고 있는 엔티티 ID 집합
 }
@@ -106,24 +106,24 @@ const activeResources = new Map<string, ActiveResourceEntry<any>>();
 
 ## 5. 엔티티 목록 (현재 + 확장 예정)
 
-| 엔티티 | 테이블 | 평문 FK | Blob 내 참조 |
+| 엔티티 | 테이블 | 로컬 인덱스 | JSON 내부 참조 |
 |---|---|---|---|
 | **User** | `users` | — | — |
 | **Character** | `characters` | — | `lorebookRefs`, `scriptRefs` |
 | **Chat** | `chats` | `characterId` | `lorebookRefs`, `scriptRefs`, `activePersonaId`, `promptPresetId` |
-| **Message** | `messages` | `chatId` | (Blob 내부에 `swipes[]`, `activeSwipeIndex` 등) |
+| **Message** | `messages` | `chatId` | (JSON 내부에 `swipes[]`, `activeSwipeIndex` 등) |
 | **Persona** | `personas` | — | `lorebookRefs` |
-| **Lorebook** | `lorebooks` | — | (Blob 내부에 `entries[]`) |
-| **Script** | `scripts` | — | (Blob 내부에 `rules[]`) |
-| **Prompt Preset** | `presets` | — | (Blob 내부에 프롬프트 조립 순서 등) |
-| **Settings** | `settings` | — | (Blob 내부에 전역 설정) |
+| **Lorebook** | `lorebooks` | — | (JSON 내부에 `entries[]`) |
+| **Script** | `scripts` | — | (JSON 내부에 `rules[]`) |
+| **Prompt Preset** | `presets` | — | (JSON 내부에 프롬프트 조립 순서 등) |
+| **Settings** | `settings` | — | (JSON 내부에 전역 설정) |
 
 ---
 
 ## 6. 한 줄 요약
 
 ```
-평문에는 "찾기 위한 최소한의 키(FK)"만 노출하고,
-"무엇을 어떻게 쓰는지"는 전부 암호화된 Blob 안에 숨긴다.
+로컬에는 "찾기 위한 최소한의 키"만 인덱스로 노출하고,
+서버에는 "무엇을 어떻게 쓰는지"를 전부 암호화된 Blob 안에 숨긴다.
 메모리에는 관련된 것을 전부 올려두되, 실행은 활성화된 것만 한다.
 ```

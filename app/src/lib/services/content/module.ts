@@ -1,12 +1,11 @@
 import { clock } from '$lib/utils/clock';
-import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ModuleRecord } from '$lib/adapters/db';
 import type { AssetRef, FolderDef, OrderedRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { encryptedWriteQueue } from './write_queue';
+import { writeQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -44,39 +43,26 @@ const defaultModuleFields: ModuleFields = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: ModuleRecord): Promise<ModuleFields> {
-    return decrypt(masterKey, {
-        ciphertext: record.encryptedData,
-        iv: record.encryptedDataIV
-    })
-        .then((dec) => deepMerge(defaultModuleFields, JSON.parse(dec)))
-        .catch((error) => {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt module', error);
-        });
+function parseFields(record: ModuleRecord): ModuleFields {
+    return deepMerge(defaultModuleFields, record.data as DeepPartial<ModuleFields>);
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
 
 export class ModuleService {
     static async list(): Promise<Module[]> {
-        await encryptedWriteQueue.flushTable('modules');
-        const { masterKey, userId } = getActiveSession();
+        await writeQueue.flushTable('modules');
+        const { userId } = getActiveSession();
         const records = await localDB.getAll<ModuleRecord>('modules', userId);
 
-        return Promise.all(
-            records.map(async (record) => {
-                const fields = await decryptFields(masterKey, record);
-                return {
-                    id: record.id,
-                    ...fields
-                };
-            })
-        );
+        return records.map((record) => ({
+            id: record.id,
+            ...parseFields(record)
+        }));
     }
 
     static async get(id: string): Promise<Module | null> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<ModuleFields>('modules', id);
+        const queued = writeQueue.peek<ModuleFields>('modules', id);
         if (queued) {
             const record = await localDB.getRecord<ModuleRecord>('modules', id);
             if (!record || record.isDeleted) return null;
@@ -89,30 +75,27 @@ export class ModuleService {
         const record = await localDB.getRecord<ModuleRecord>('modules', id);
         if (!record || record.isDeleted) return null;
 
-        const fields = await decryptFields(masterKey, record);
         return {
             id: record.id,
-            ...fields
+            ...parseFields(record)
         };
     }
 
     static async create(fields: DeepPartial<ModuleFields> = {}): Promise<Module> {
         const resolved: ModuleFields = deepMerge(defaultModuleFields, fields);
 
-        const { masterKey, userId } = getActiveSession();
+        const { userId } = getActiveSession();
         const id = generateId();
         const now = clock.now();
 
         try {
-            const enc = await encrypt(masterKey, JSON.stringify(resolved));
             const newRecord: ModuleRecord = {
                 id,
                 userId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                encryptedData: enc.ciphertext,
-                encryptedDataIV: enc.iv
+                data: resolved as unknown as Record<string, unknown>
             };
             await localDB.putRecord<ModuleRecord>('modules', newRecord);
         } catch (error) {
@@ -124,41 +107,30 @@ export class ModuleService {
     }
 
     static async update(id: string, changes: DeepPartial<ModuleFields>): Promise<Module> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<ModuleFields>('modules', id);
+        const queued = writeQueue.peek<ModuleFields>('modules', id);
         const record = await localDB.getRecord<ModuleRecord>('modules', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Module not found: ${id}`);
         }
 
         try {
-            const current = queued
-                ? deepMerge(defaultModuleFields, queued)
-                : await decryptFields(masterKey, record);
+            const current = queued ? deepMerge(defaultModuleFields, queued) : parseFields(record);
             const updated: ModuleFields = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<ModuleFields, ModuleRecord>({
+            writeQueue.upsert<ModuleFields, ModuleRecord>({
                 tableName: 'modules',
                 id,
                 userId: record.userId,
                 createdAt: record.createdAt,
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({
-                    id: recordId,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id: recordId,
                     userId: recordUserId,
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
 
@@ -169,7 +141,7 @@ export class ModuleService {
         }
     }
 
-    /** Update content fields only ??safe entry point for store layer */
+    /** Update content fields only — safe entry point for store layer */
     static async updateContent(id: string, changes: DeepPartial<ModuleContent>): Promise<Module> {
         return this.update(id, changes);
     }
@@ -177,13 +149,13 @@ export class ModuleService {
     static async delete(id: string): Promise<void> {
         try {
             await Promise.all([
-                encryptedWriteQueue.flushTable('modules'),
-                encryptedWriteQueue.flushTable('lorebooks'),
-                encryptedWriteQueue.flushTable('scripts'),
-                encryptedWriteQueue.flushTable('charjs')
+                writeQueue.flushTable('modules'),
+                writeQueue.flushTable('lorebooks'),
+                writeQueue.flushTable('scripts'),
+                writeQueue.flushTable('charjs')
             ]);
 
-            encryptedWriteQueue.drop('modules', id);
+            writeQueue.drop('modules', id);
             await localDB.transaction(
                 ['lorebooks', 'scripts', 'charjs', 'modules'],
                 'rw',

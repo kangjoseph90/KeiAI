@@ -31,7 +31,7 @@ vi.mock('$lib/services/sync', () => ({
 }));
 
 vi.mock('$lib/services/content/write_queue', () => ({
-    encryptedWriteQueue: {
+    writeQueue: {
         peek: vi.fn(() => undefined),
         upsert: vi.fn(),
         drop: vi.fn(),

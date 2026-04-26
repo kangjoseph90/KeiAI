@@ -42,17 +42,17 @@
 
 시스템은 3개의 계층 구조(`assets` 테이블, `assetRegistry` 캐시, `storage` 물리 파일망)로 구성됩니다.
 
-### 4.1. 유저 에셋 테이블 (`assets` / EncryptedRecord)
+### 4.1. 유저 에셋 테이블 (`assets`)
 
 이 유저가 보유한 모든 에셋 데이터의 **진실의 원천(Source of Truth)**입니다. PB(PocketBase)와 동기화됩니다.
 
 - **id**: UUID. 동일한 에셋 원본이더라도 임포트 시마다 각각 고유의 생명주기를 가짐.
 - **userId**: 에셋 소유자.
 - **createdAt**, **updatedAt**, **isDeleted**
-- **encryptedData**: 아래 `AssetFields` 데이터를 E2EE로 감싼 암호문.
-- **encryptedDataIV**: 암호화 초기화 벡터.
+- **data (local)**: 아래 `AssetFields` 데이터를 로컬 평문 JSON으로 저장.
+- **encryptedData / encryptedDataIV (PocketBase)**: 같은 `AssetFields`를 동기화 시점에 E2EE로 감싼 암호문과 IV.
 
-> **AssetFields (복호화 시 나오는 알맹이)**
+> **AssetFields (로컬 payload / 서버 복호화 시 나오는 알맹이)**
 >
 > - `kind`: inlay | private | public
 > - `status`: local | remote
@@ -106,7 +106,7 @@
 
 - **promote(id)**
   - 프라이빗 에셋을 공개 Hub로 보낼 때 사용.
-  - 로컬에서 복호화된 원본 데이터를 평문으로 서버에 PUT 요청하여 암호화본을 덮어씌웁니다.
+  - 로컬 원본 데이터를 평문으로 서버에 PUT 요청하여 공개본을 덮어씌웁니다.
 
 ---
 
@@ -120,7 +120,7 @@ UI 작업을 블락하지 않고, 캐시의 불건전한 상태(큐)를 백그�
 
 ### 6.1. 테이블 동기화 (Pull)
 
-메타데이터(`assets`)만 서버와 동기화합니다.
+메타데이터(`assets`)만 서버와 동기화합니다. 로컬의 `AssetFields`는 평문이지만, PB에는 `encryptedData + encryptedDataIV` 형태로 올라갑니다.
 
 - 서버 변경사항이 로컬보다 새로우면 덮어씁니다.
 - 서버 변경사항 중 `isDeleted=true`인 항목이 있다면, 다른 기기에서 지워진 것이므로 내 기기도 캐시 및 스토리지를 지우고 큐에서 뺍니다.

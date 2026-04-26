@@ -51,5 +51,11 @@ export function getErrorMessage(error: unknown, defaultMessage = 'An error occur
  * Check if an error is an AppError with a specific code.
  */
 export function isErrorCode(error: unknown, code: ErrorCode): boolean {
-    return error instanceof AppError && error.code === code;
+    if (error instanceof AppError) return error.code === code;
+
+    if (error instanceof Error && error.name === 'AppError') {
+        return (error as { code?: unknown }).code === code;
+    }
+
+    return false;
 }

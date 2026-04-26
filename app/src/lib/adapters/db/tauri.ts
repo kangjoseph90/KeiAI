@@ -1,5 +1,4 @@
 import Database from '@tauri-apps/plugin-sql';
-import { fromBase64, toBase64 } from '$lib/crypto/encoding';
 import type {
     IDatabaseAdapter,
     TableName,
@@ -19,11 +18,7 @@ import { clock } from '$lib/utils/clock';
  * Creates a unified row structure for all tables containing:
  *  - Primary `id`
  *  - Commonly indexed string/number columns
- *  - `data` column: JSON.stringified raw object payload
- *
- * `Uint8Array` properties are temporarily converted to base64 strings
- * during JSON.stringify to survive SQLite TEXT column storage, and converted
- * back upon reading.
+ *  - `data` column: JSON.stringified domain fields (plaintext)
  */
 
 /** Raw shape of a database record as stored in SQLite */
@@ -36,6 +31,7 @@ interface DatabaseSqlRow {
     swipeId: string | null;
     sortOrder: string | null;
     ownerId: string | null;
+    createdAt: number | null;
     updatedAt: number | null;
     isDeleted: number; // 0 | 1
     data: string; // JSON.stringify(...)
@@ -52,8 +48,8 @@ interface RecordBindingShape {
     swipeId?: string;
     sortOrder?: string;
     ownerId?: string;
-    encryptedData?: Uint8Array<ArrayBufferLike> | string;
-    encryptedDataIV?: Uint8Array<ArrayBufferLike> | string;
+    createdAt?: number;
+    data?: Record<string, unknown>;
 }
 
 // Convert record to DB row bindings safely
@@ -69,31 +65,31 @@ function recordToBindings<T extends BaseRecord>(record: T): DatabaseSqlRow {
         swipeId: clone.swipeId ?? null,
         sortOrder: clone.sortOrder ?? null,
         ownerId: clone.ownerId ?? null,
+        createdAt: clone.createdAt ?? null,
         updatedAt: clone.updatedAt ?? null,
         isDeleted: clone.isDeleted ? 1 : 0,
-        data: '' // placeholder
+        data: JSON.stringify(clone.data ?? {})
     };
 
-    if (clone.encryptedData instanceof Uint8Array) {
-        clone.encryptedData = toBase64(clone.encryptedData as Uint8Array<ArrayBuffer>);
-    }
-    if (clone.encryptedDataIV instanceof Uint8Array) {
-        clone.encryptedDataIV = toBase64(clone.encryptedDataIV as Uint8Array<ArrayBuffer>);
-    }
-
-    bindings.data = JSON.stringify(clone);
     return bindings;
 }
 
 function parseRecord<T>(row: DatabaseSqlRow): T {
-    const obj = JSON.parse(row.data);
-    if (typeof obj.encryptedData === 'string') {
-        obj.encryptedData = fromBase64(obj.encryptedData);
-    }
-    if (typeof obj.encryptedDataIV === 'string') {
-        obj.encryptedDataIV = fromBase64(obj.encryptedDataIV);
-    }
-    return obj as T;
+    const data = JSON.parse(row.data) as Record<string, unknown>;
+    return {
+        id: row.id,
+        userId: row.userId ?? '',
+        characterId: row.characterId ?? undefined,
+        chatId: row.chatId ?? undefined,
+        messageId: row.messageId ?? undefined,
+        swipeId: row.swipeId ?? undefined,
+        sortOrder: row.sortOrder ?? undefined,
+        ownerId: row.ownerId ?? undefined,
+        createdAt: row.createdAt ?? 0,
+        updatedAt: row.updatedAt ?? 0,
+        isDeleted: row.isDeleted === 1,
+        data
+    } as T;
 }
 
 export class TauriDatabaseAdapter implements IDatabaseAdapter {
@@ -125,20 +121,21 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         let sql = '';
         for (const table of TABLES) {
             sql += `
-				CREATE TABLE IF NOT EXISTS "${table}" (
-					id TEXT PRIMARY KEY,
-					userId TEXT,
-					characterId TEXT,
-					chatId TEXT,
-					messageId TEXT,
-					swipeId TEXT,
-					sortOrder TEXT,
-					ownerId TEXT,
-					updatedAt INTEGER,
-					isDeleted INTEGER,
-					data TEXT
-				);
-			`;
+					CREATE TABLE IF NOT EXISTS "${table}" (
+						id TEXT PRIMARY KEY,
+						userId TEXT,
+						characterId TEXT,
+						chatId TEXT,
+						messageId TEXT,
+						swipeId TEXT,
+                        sortOrder TEXT,
+                        ownerId TEXT,
+                        createdAt INTEGER,
+                        updatedAt INTEGER,
+                        isDeleted INTEGER,
+                        data TEXT
+					);
+				`;
 
             // Common indices used securely for lookup and sync
             sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_userId" ON "${table}" (userId);
@@ -175,7 +172,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         sql += `CREATE INDEX IF NOT EXISTS "idx_translations_swipeId" ON translations (swipeId);
 `;
         sql += `CREATE INDEX IF NOT EXISTS "idx_translations_messageId_swipeId" ON translations (messageId, swipeId);
-`;
+        `;
 
         await db.execute(sql);
     }
@@ -185,10 +182,9 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         id: string
     ): Promise<T | undefined> {
         const db = await this.getDb();
-        const rows = await db.select<DatabaseSqlRow[]>(
-            `SELECT data FROM ${tableName} WHERE id = $1`,
-            [id]
-        );
+        const rows = await db.select<DatabaseSqlRow[]>(`SELECT * FROM ${tableName} WHERE id = $1`, [
+            id
+        ]);
         if (rows.length > 0) return parseRecord<T>(rows[0]);
         return undefined;
     }
@@ -201,9 +197,9 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         const db = await this.getDb();
         const b = recordToBindings(record);
         await db.execute(
-            `INSERT OR REPLACE INTO ${tableName} 
-			(id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, updatedAt, isDeleted, data) 
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            `INSERT OR REPLACE INTO ${tableName}
+				(id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
             [
                 b.id,
                 b.userId,
@@ -213,6 +209,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 b.swipeId,
                 b.sortOrder,
                 b.ownerId,
+                b.createdAt,
                 b.updatedAt,
                 b.isDeleted,
                 b.data
@@ -233,8 +230,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             const chunk = records.slice(i, i + chunkSize);
             const placeholders = chunk
                 .map((_, idx) => {
-                    const start = idx * 11 + 1;
-                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10})`;
+                    const start = idx * 12 + 1;
+                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11})`;
                 })
                 .join(', ');
 
@@ -250,6 +247,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                     b.swipeId,
                     b.sortOrder,
                     b.ownerId,
+                    b.createdAt,
                     b.updatedAt,
                     b.isDeleted,
                     b.data
@@ -257,9 +255,9 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             }
 
             await db.execute(
-                `INSERT OR REPLACE INTO ${tableName} 
-				(id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, updatedAt, isDeleted, data) 
-				VALUES ${placeholders}`,
+                `INSERT OR REPLACE INTO ${tableName}
+					(id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
+					VALUES ${placeholders}`,
                 values
             );
         }
@@ -326,7 +324,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         await this.flush();
         const db = await this.getDb();
         const rows = await db.select<DatabaseSqlRow[]>(
-            `SELECT data FROM ${tableName} WHERE ${indexName} = $1`,
+            `SELECT * FROM ${tableName} WHERE ${indexName} = $1`,
             [indexValue]
         );
         const now = clock.now();
@@ -345,8 +343,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 const chunk = recordsToUpdate.slice(i, i + chunkSize);
                 const placeholders = chunk
                     .map((_, idx) => {
-                        const start = idx * 11 + 1;
-                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10})`;
+                        const start = idx * 12 + 1;
+                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11})`;
                     })
                     .join(', ');
                 const values: unknown[] = [];
@@ -361,6 +359,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         b.swipeId,
                         b.sortOrder,
                         b.ownerId,
+                        b.createdAt,
                         b.updatedAt,
                         b.isDeleted,
                         b.data
@@ -368,8 +367,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 }
                 await db.execute(
                     `INSERT OR REPLACE INTO ${tableName}
-                (id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, updatedAt, isDeleted, data)
-                VALUES ${placeholders}`,
+	                (id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
+	                VALUES ${placeholders}`,
                     values
                 );
             }
@@ -386,7 +385,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         await this.flush();
         const db = await this.getDb();
         const rows = await db.select<DatabaseSqlRow[]>(
-            `SELECT data FROM ${tableName} WHERE userId = $1 AND isDeleted = 0 ORDER BY updatedAt DESC`,
+            `SELECT * FROM ${tableName} WHERE userId = $1 AND isDeleted = 0 ORDER BY updatedAt DESC`,
             [userId]
         );
         return rows.map((row) => parseRecord<T>(row));
@@ -402,7 +401,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         await this.flush();
         const db = await this.getDb();
         const rows = await db.select<DatabaseSqlRow[]>(
-            `SELECT data FROM ${tableName} WHERE ${indexName} = $1 AND isDeleted = 0 LIMIT $2 OFFSET $3`,
+            `SELECT * FROM ${tableName} WHERE ${indexName} = $1 AND isDeleted = 0 LIMIT $2 OFFSET $3`,
             [indexValue, limit, offset]
         );
         return rows.map((row) => parseRecord<T>(row));
@@ -430,7 +429,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 const lower2 = lowerBound[1];
                 const upper2 = upperBound[1];
 
-                const query = `SELECT data FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} DESC LIMIT $4 OFFSET $5`;
+                const query = `SELECT * FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} DESC LIMIT $4 OFFSET $5`;
                 const rows = await db.select<DatabaseSqlRow[]>(query, [
                     val1,
                     lower2,
@@ -470,7 +469,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 const lower2 = lowerBound[1];
                 const upper2 = upperBound[1];
 
-                const query = `SELECT data FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} ASC LIMIT $4 OFFSET $5`;
+                const query = `SELECT * FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} ASC LIMIT $4 OFFSET $5`;
                 const rows = await db.select<DatabaseSqlRow[]>(query, [
                     val1,
                     lower2,
@@ -496,7 +495,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         await this.flush();
         const db = await this.getDb();
         const rows = await db.select<DatabaseSqlRow[]>(
-            `SELECT data FROM ${tableName} WHERE userId = $1 AND updatedAt >= $2`,
+            `SELECT * FROM ${tableName} WHERE userId = $1 AND updatedAt >= $2`,
             [userId, sinceUpdatedAt]
         );
         return rows.map((row) => parseRecord<T>(row));

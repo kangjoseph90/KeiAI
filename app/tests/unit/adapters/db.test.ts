@@ -10,7 +10,7 @@ import Dexie from 'dexie';
 import type {
     IDatabaseAdapter,
     BaseRecord,
-    EncryptedRecord,
+    DataRecord,
     TableName,
     ChatRecord,
     MessageRecord,
@@ -30,10 +30,10 @@ Dexie.dependencies.IDBKeyRange = FDBKeyRange as unknown as typeof IDBKeyRange;
 // Now we can import WebDatabaseAdapter
 import { WebDatabaseAdapter } from '$lib/adapters/db/web';
 
-// Helper to create a test record (with encrypted fields)
+// Helper to create a test record (with data field)
 function createTestRecord(
-    overrides: Partial<EncryptedRecord> & Record<string, unknown> = {}
-): EncryptedRecord {
+    overrides: Partial<DataRecord> & Record<string, unknown> = {}
+): DataRecord {
     const now = Date.now();
     return {
         id: `test-${now}`,
@@ -41,10 +41,9 @@ function createTestRecord(
         createdAt: now,
         updatedAt: now,
         isDeleted: false,
-        encryptedData: new Uint8Array([1, 2, 3]),
-        encryptedDataIV: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+        data: { name: 'Test' },
         ...overrides
-    } as EncryptedRecord;
+    } as DataRecord;
 }
 
 describe('WebDatabaseAdapter (Dexie)', () => {
@@ -575,15 +574,13 @@ describe('WebDatabaseAdapter (Dexie)', () => {
                     id: 'msg-1',
                     chatId: 'chat-compound',
                     sortOrder: 'a0',
-                    encryptedData: new Uint8Array([1]),
-                    encryptedDataIV: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+                    data: { content: 'message 1' }
                 }),
                 createTestRecord({
                     id: 'msg-2',
                     chatId: 'chat-compound',
                     sortOrder: 'a1',
-                    encryptedData: new Uint8Array([2]),
-                    encryptedDataIV: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+                    data: { content: 'message 2' }
                 })
             ];
 
@@ -600,24 +597,17 @@ describe('WebDatabaseAdapter (Dexie)', () => {
         });
     });
 
-    describe('encrypted data handling', () => {
-        it('should store encrypted data as Uint8Array', async () => {
-            const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const iv = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    describe('data field handling', () => {
+        it('should store and retrieve data field as a plain object', async () => {
+            const data = { name: 'Test', description: 'Hello' };
             const record = createTestRecord({
-                id: 'enc-test',
-                encryptedData: data,
-                encryptedDataIV: iv
+                id: 'data-test',
+                data
             });
             await localDB.putRecord('settings', record);
-            const retrieved = await localDB.getRecord<EncryptedRecord>('settings', 'enc-test');
+            const retrieved = await localDB.getRecord<DataRecord>('settings', 'data-test');
 
-            expect(retrieved?.encryptedData).toBeInstanceOf(Uint8Array);
-            expect(retrieved?.encryptedDataIV).toBeInstanceOf(Uint8Array);
-            expect(Array.from(retrieved!.encryptedData)).toEqual([1, 2, 3, 4, 5]);
-            expect(Array.from(retrieved!.encryptedDataIV)).toEqual([
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
-            ]);
+            expect(retrieved?.data).toEqual(data);
         });
     });
 

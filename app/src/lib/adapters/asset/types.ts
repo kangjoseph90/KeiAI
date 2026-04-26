@@ -3,15 +3,15 @@
  *
  * Unified local storage adapter for asset management.
  * Manages two storage layers behind a single interface:
- *   - assets table (encrypted metadata, EncryptedRecord)
- *   - assetRegistry table (plaintext cache of asset fields per device)
+ *   - assets table (plaintext metadata, DataRecord with kind/status/hash/encKey)
+ *   - assetRegistry table (device-local cache metadata: size, accessedAt)
  *
  * Binary blobs are stored via appStorage (OPFS or Tauri filesystem) directly.
  * The adapter is storage-only: no PB communication, no encryption logic.
  * Encryption is handled by the caller (AssetService / AssetSyncEngine).
  */
 
-import type { BaseRecord, EncryptedRecord, DatabaseMutationOrigin } from '$lib/adapters/db';
+import type { BaseRecord, DataRecord, DatabaseMutationOrigin } from '$lib/adapters/db';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -19,11 +19,11 @@ export type AssetKindPlain = 'private' | 'inlay' | 'public';
 
 export type AssetStatus = 'local' | 'remote';
 
-export type AssetRecord = EncryptedRecord;
+export type AssetRecord = DataRecord;
 
 /**
- * Decrypted fields stored inside the assets table's encryptedData blob.
- * Defined at the adapter layer because AssetRegistryRecord extends it.
+ * Plaintext fields stored inside the assets table's data field.
+ * Domain data: kind, status, hash, encKey.
  */
 export interface AssetFields {
     kind: AssetKindPlain;
@@ -33,13 +33,17 @@ export interface AssetFields {
 }
 
 /**
- * Registry record — a plaintext, device-local cache of AssetFields.
+ * Registry record — device-local cache metadata + routing fields.
+ * kind/status are cached here for queue filtering without joining the assets table.
+ * hash/encKey are read from the assets table only when needed for actual I/O.
  *
  * Invariants:
  * - Active registry (isDeleted=false) ⊆ storage (every entry has a blob)
  * - isDeleted=true entries serve as a persistent delete queue for the sync engine
  */
-export interface AssetRegistryRecord extends BaseRecord, AssetFields {
+export interface AssetRegistryRecord extends BaseRecord {
+    kind: AssetKindPlain;
+    status: AssetStatus;
     size: number; // blob size in bytes (0 for delete queue entries)
     accessedAt: number; // LRU eviction timestamp
 }
@@ -94,6 +98,13 @@ export interface IAssetAdapter {
 
     /** Get all deleted registry entries for a user (the delete queue). */
     getDeletedRegistry(userId: string): Promise<AssetRegistryRecord[]>;
+
+    /** Get registry entries by status, optionally filtered by kinds. */
+    getRegistryByStatus(
+        userId: string,
+        status: AssetStatus,
+        kinds?: AssetKindPlain[]
+    ): Promise<AssetRegistryRecord[]>;
 
     /** Insert or update a registry record (full record). */
     putRegistry(record: AssetRegistryRecord, options?: AssetWriteOptions): Promise<void>;

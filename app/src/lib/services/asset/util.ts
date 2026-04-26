@@ -6,16 +6,8 @@
 
 import { MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT, WEBP_QUALITY } from './types';
 import { CDN_BASE_URL, FIXED_SALT } from '$lib/config';
-import {
-    sha256,
-    encrypt,
-    decrypt,
-    fromHex,
-    encryptBytes,
-    decryptBytes,
-    type Bytes
-} from '$lib/crypto';
-import type { AssetFields, AssetRecord } from '$lib/adapters/asset';
+import { sha256, fromHex, encryptBytes, decryptBytes, type Bytes } from '$lib/crypto';
+import type { AssetFields } from '$lib/adapters/asset';
 
 // ─── Image Loading & Resizing ─────────────────────────────────────────────
 
@@ -192,23 +184,9 @@ export function getRemoteURL(hash: string): string {
     return `${CDN_BASE_URL}/assets/${hash}`;
 }
 
-// ─── Asset Field Encryption ─────────────────────────────────────────────
+// ─── Asset Field Parsing ─────────────────────────────────────────────
 
-export async function encryptFields(
-    masterKey: CryptoKey,
-    fields: AssetFields
-): Promise<{ ciphertext: Uint8Array; iv: Uint8Array }> {
-    const json = JSON.stringify(fields);
-    return encrypt(masterKey, json);
-}
-
-export async function decryptFields(
-    masterKey: CryptoKey,
-    record: AssetRecord
-): Promise<AssetFields> {
-    const json = await decrypt(masterKey, {
-        ciphertext: record.encryptedData as unknown as Bytes,
-        iv: record.encryptedDataIV as unknown as Bytes
-    });
-    return JSON.parse(json) as AssetFields;
+/** Parse plaintext data from a DataRecord */
+export function parseFields(record: { data: Record<string, unknown> }): AssetFields {
+    return record.data as unknown as AssetFields;
 }

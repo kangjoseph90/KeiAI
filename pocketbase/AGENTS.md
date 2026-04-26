@@ -1,6 +1,6 @@
 # PocketBase — AGENTS.md
 
-Zero-knowledge backend: stores encrypted blobs, handles auth, syncs between devices. Never sees plaintext.
+Zero-knowledge sync backend: stores encrypted blobs, handles auth, syncs between devices. Never sees application plaintext.
 
 ```bash
 # First run: copy config and set secrets
@@ -46,19 +46,19 @@ node start.js     # http://localhost:8090 — creates admin, runs migrations, st
 All user data tables share this structure:
 
 ```
-id, userId (FK → users, cascadeDelete), createdAt, updatedAt,
+id, userId (plain text), createdAt, updatedAt,
 encryptedData (text), encryptedDataIV (text), isDeleted (bool)
 ```
 
-Plus optional extra FK fields for indexing (never encrypted content):
+No PocketBase relation fields are used for domain ownership. Domain relationships stay in the encrypted payload unless a server feature explicitly needs a plain field.
 
 | Table                | Extra Fields     | Notes                          |
 | -------------------- | --------------- | ------------------------------ |
 | `characters`         | —               | Character data + refs          |
-| `chats`              | `characterId`   | FK for per-character queries   |
-| `messages`           | `chatId`, `sortOrder` | Compound index for pagination |
-| `lorebooks`          | `ownerId`       | Owner = character, chat, or module |
-| `scripts`            | `ownerId`       | Same ownership model           |
+| `chats`              | —               | Character refs are encrypted payload |
+| `messages`           | —               | Chat refs are encrypted payload |
+| `lorebooks`          | —               | Owner refs are encrypted payload |
+| `scripts`            | —               | Same ownership model           |
 | `settings`           | —               | One record per user            |
 | `personas`           | —               |                                |
 | `modules`            | —               |                                |
@@ -71,9 +71,8 @@ Every table has a composite index on `(userId, updatedAt)` for sync queries.
 ### Schema Philosophy
 
 - **Single-table entities**: Each entity type uses one table with one encrypted blob
-- **FK fields are plaintext** but carry no user content — they exist only for server-side indexing
-- **No ON DELETE CASCADE at the encrypted-table level** — soft deletes + client-side self-healing
-- **User deletion cascades**: `userId` is a PocketBase `relation` with `cascadeDelete: true` — deleting a user wipes all their encrypted data
+- **No PocketBase FKs** for domain records — soft deletes + client-side self-healing
+- **Clean-schema phase**: update the canonical init schema directly; do not add incremental migration files
 
 ---
 
@@ -147,9 +146,9 @@ The server never sees the real password, Y, or M. It only stores X (as hashed pa
 
 ---
 
-## Migrations
+## Canonical Schema
 
-Migration files in `pb_migrations/` run automatically on PocketBase startup.
+PocketBase calls files in `pb_migrations/` migrations, but this project currently assumes a clean database. Treat `1773000000_init_keiai_schema.js` as the canonical schema definition.
 
 - `1773000000_init_keiai_schema.js` — Creates all encrypted collections with proper fields, auth rules, and sync indices
 - Auth rules on all encrypted tables: `userId = @request.auth.id` (users can only access their own data)
@@ -157,9 +156,9 @@ Migration files in `pb_migrations/` run automatically on PocketBase startup.
 
 ### Adding a New Encrypted Table
 
-1. Create a new migration file with timestamp prefix
-2. Use `createEncryptedTable(name, extraFields?)` helper from the init migration pattern
-3. The helper adds: `userId` (relation, cascadeDelete), `createdAt`, `updatedAt`, `encryptedData`, `encryptedDataIV`, `isDeleted`, plus your extra fields
+1. Edit `1773000000_init_keiai_schema.js`
+2. Use the sync-table helper from the init schema pattern
+3. The helper adds: `userId` (plain text), `createdAt`, `updatedAt`, `encryptedData`, `encryptedDataIV`, `isDeleted`, plus your extra fields
 4. Creates `idx_{name}_sync` on `(userId, updatedAt)`
 5. Update `app/src/lib/adapters/db/types.ts` and `app/src/lib/adapters/db/web.ts` with the new table
 

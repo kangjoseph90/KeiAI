@@ -196,24 +196,24 @@
 
 ## 015: 암호화 비용 감소를 위한 서비스 레이어 EncryptedWriteQueue
 
-- 상태: 채택 (수정됨)
+- 상태: 채택 (ADR 030으로 의미 수정: 현재 write queue는 로컬 평문 병합 큐)
 - 맥락: 사용자가 채팅을 입력하거나 설정을 바꿀 때마다 서비스 레이어에서 암호화 후 `localDB`에 저장 요청이 발생한다.
 - 문제:
     - 고빈도 쓰기 환경에서의 실제 병목은 디스크 I/O가 아니라 **매 쓰기마다 수행되는 AES-256-GCM 암호화**였다.
     - UI 렌더링에 필요한 최신 데이터와 DB에 지연 기록된 데이터 간의 정합성(Read-Your-Writes)이 깨질 위험이 있다.
 - 접근법 검토:
     1. Adapter 레벨 Write-Buffer: DB 기록 직전에 디바운싱하면 **암호화는 매번 실행**되므로 실제 병목을 해소하지 못함. 또한 어댑터가 암호화 관심사를 알게 되어 계층 책임이 오염됨.
-    2. Service 레이어 EncryptedWriteQueue: 서비스 레이어에서 **평문 상태로 병합**하고, flush 시점에 단 한 번만 암호화. 어댑터는 순수 pass-through로 유지.
+    2. Service 레이어 WriteQueue: 서비스 레이어에서 **평문 상태로 병합**하고, flush 시점에 한 번만 로컬 DB에 기록. 어댑터는 순수 pass-through로 유지.
 - 결정:
-    - **서비스 레이어 `EncryptedWriteQueue`** (`services/content/write_queue.ts`): `entries` Map에 평문 필드를 보관하며 400ms 디바운스 + 2초 max-wait. 연속된 수정은 평문 상태에서 머지되고, flush 시 한 번만 `encrypt()` → `localDB.putRecord()` 실행.
+    - **서비스 레이어 write queue** (`services/content/write_queue.ts`): `entries` Map에 평문 필드를 보관하며 400ms 디바운스 + 2초 max-wait. 연속된 수정은 평문 상태에서 머지되고, flush 시 로컬 DB에 평문 `data` payload로 기록한다.
     - **일관성 보장(Read-Your-Writes)**: 서비스의 `get()`/`update()` 메서드가 `encryptedWriteQueue.peek()`로 대기 중인 평문을 우선 반환. DB 조회 없이 즉각적인 UI 반영 달성.
     - **목록 조회 시 일괄 flush**: `list()` 등 전체 레코드 조회 전에 `flushTable()`로 해당 테이블의 대기 중인 쓰기를 모두 완료한 뒤 DB에서 읽음.
-    - **생성은 즉시 기록**: `create()` 메서드는 큐를 우회하여 즉시 암호화 + `localDB.putRecord()` 수행. 신규 레코드의 영속성을 보장.
+    - **생성은 즉시 기록**: `create()` 메서드는 큐를 우회하여 즉시 `localDB.putRecord()` 수행. 신규 레코드의 영속성을 보장.
     - **라이프사이클 안전장치**: `pagehide`, `beforeunload`, `visibilitychange(hidden)` 이벤트에서 `flushAll()` 호출. 실패 시 재스케줄링(retry).
     - **에셋/유저 어댑터 제외**: 단발성 이벤트(로그인, 파일 업로드) 중심이므로 디바운싱 대상에서 제외.
 - 결과:
-    - 연속 수정 시 발생하던 수십 건의 암호화 + 디스크 쓰기가 **단 1건으로 통합**되어 성능 대폭 상승.
-    - 어댑터 레이어는 암호화 관심사 없이 순수 저장소 인터페이스로 유지되어 계층 책임이 깔끔하게 분리됨.
+    - 연속 수정 시 발생하던 수십 건의 디스크 쓰기가 **단 1건으로 통합**되어 성능 대폭 상승.
+    - 암호화는 ADR 030에 따라 sync engine 경계로 이동했고, 어댑터 레이어는 순수 저장소 인터페이스로 유지됨.
     - 한계: `deepMerge`는 배열을 재귀 병합하지 않고 통째로 덮어쓴다. 따라서 배열 필드에 대해 연속된 부분 업데이트가 발생하면 write queue의 자동 병합이 의도대로 동작하지 않는다. 이 문제의 해결은 ADR 027을 참조.
 
 ---
@@ -454,7 +454,7 @@
 ## 027: deepMerge 한계 극복을 위한 Record 기반 중첩 구조
 
 - 상태: 채택
-- 맥락: ADR 015에서 EncryptedWriteQueue를 도입했다. write queue는 `deepMerge`로 연속된 부분 업데이트를 평문 상태에서 병합한 뒤 flush 시 한 번만 암호화한다. 이는 객체 필드에는 완벽하게 동작한다.
+- 맥락: ADR 015에서 write queue를 도입했다. write queue는 `deepMerge`로 연속된 부분 업데이트를 평문 상태에서 병합한 뒤 flush 시 한 번만 로컬 DB에 기록한다. 이는 객체 필드에는 완벽하게 동작한다.
 - 문제:
     - `deepMerge`의 병합 규칙: 객체는 재귀 병합, 배열은 통째로 덮어쓰기.
     - swipes가 `MessageSwipe[]` 배열이었을 때, 스트리밍 루프의 content 업데이트와 CharJS 핸들러의 setVar가 같은 swipe를 동시에 수정하면, 나중에 온 업데이트가 전체 swipes 배열을 덮어써서 이전 변경사항이 유실되는 레이스 컨디션이 발생했다.
@@ -516,3 +516,25 @@
     - `Chat` 레코드에서 `messageCount`, `lastMessageId` 같은 파생 메타데이터를 관리할 필요가 줄어든다. 메시지 수와 마지막 메시지 접근은 `PagedMessages`가 서비스 쿼리로 계산한다.
     - 이후 tokenizer/context budgeting, request pipeline 적용, 스크립트 기반 메시지 접근을 lazy하게 확장할 수 있는 기반이 생겼다.
 - 참고: ADR 015 (EncryptedWriteQueue), ADR 026 (즉시 영속 메시지와 Thin Task 트래커), ADR 027 (Record 기반 중첩 구조)
+
+---
+
+## 030: 로컬 평문 저장소와 동기화 경계 암호화
+
+- 상태: 채택
+- 맥락: 초기 설계는 로컬 DB와 서버 DB 모두 암호문을 저장하고, 서비스 레이어가 매 읽기/쓰기마다 복호화/암호화를 수행하는 모델이었다. 그러나 로컬 퍼스트 앱에서 로컬 DB는 앱의 작업 공간이며, write queue, deepMerge, 스트리밍 메시지 부분 업데이트, 에셋 레지스트리 관리가 모두 평문 도메인 객체를 전제로 훨씬 단순하게 동작한다.
+- 문제:
+    - 로컬 암호화 저장은 XSS/로컬 침해에 대한 실질 방어를 크게 늘리지 못하는 반면, 모든 CRUD와 테스트에 암복호화 비용과 실패 경로를 강제했다.
+    - `masterKey`가 없는 로컬 전용/게스트 작업과, `masterKey`가 반드시 필요한 클라우드 동기화 작업의 경계가 흐려졌다.
+    - PocketBase relation/FK/cascadeDelete를 쓰면 서버가 도메인 관계를 알게 되고, 클라이언트 소유의 참조 무결성 모델과 충돌한다.
+- 결정:
+    - 로컬 DB(Dexie/SQLite)와 로컬 asset registry는 평문 JSON을 저장한다.
+    - 암호화 경계는 sync engine으로 올린다. Push 시 로컬 payload를 M으로 암호화해 PocketBase의 `encryptedData + encryptedDataIV`에 저장하고, Pull 시 복호화해 로컬 평문 DB에 반영한다.
+    - `getActiveSession()`은 로컬 작업용 userId를 제공하고, `getSyncSession()`은 서버 동기화에 필요한 masterKey를 요구한다.
+    - PocketBase 도메인 테이블은 FK/relation/cascadeDelete 없이 plain `userId`와 encrypted payload만 가진 blind sync table로 둔다. 현재 단계에서는 증분 마이그레이션을 추가하지 않고 `1773000000_init_keiai_schema.js`를 canonical clean schema로 직접 수정한다.
+- 결과:
+    - 서비스 레이어와 write queue가 평문 도메인 객체를 기준으로 단순해진다.
+    - 서버는 여전히 application plaintext를 보지 못한다.
+    - 로컬 디바이스 침해에 대한 방어는 OS/브라우저 저장소 격리와 앱 세션 관리에 맡기며, E2EE의 주된 경계는 네트워크/서버/타 기기 동기화로 명확해진다.
+    - 서버 FK가 사라진 만큼 orphan 정리, soft delete, cascade는 앱 서비스와 sync 훅의 명시 로직 및 테스트가 책임진다.
+- 참고: ADR 015 (EncryptedWriteQueue), ADR 028 (단일 테이블 통합), docs/schema.md, docs/asset-system-v2.md

@@ -1,11 +1,10 @@
 import { clock } from '$lib/utils/clock';
-import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type PresetRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { encryptedWriteQueue } from './write_queue';
+import { writeQueue } from './write_queue';
 import type { LLMModelConfig } from '$lib/types/models/llm';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
@@ -52,36 +51,23 @@ export const defaultPresetFields: PresetFields = {
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: PresetRecord): Promise<PresetFields> {
-    return decrypt(masterKey, {
-        ciphertext: record.encryptedData,
-        iv: record.encryptedDataIV
-    })
-        .then((dec) => deepMerge(defaultPresetFields, JSON.parse(dec)))
-        .catch((error) => {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt preset', error);
-        });
+function parseFields(record: PresetRecord): PresetFields {
+    return deepMerge(defaultPresetFields, record.data as DeepPartial<PresetFields>);
 }
 
 // ─── Service ───────────────────────────────────────────────────────────
 
 export class PresetService {
     static async list(): Promise<Preset[]> {
-        await encryptedWriteQueue.flushTable('presets');
-        const { masterKey, userId } = getActiveSession();
+        await writeQueue.flushTable('presets');
+        const { userId } = getActiveSession();
         const records = await localDB.getAll<PresetRecord>('presets', userId);
 
-        return Promise.all(
-            records.map(async (record) => {
-                const fields = await decryptFields(masterKey, record);
-                return { id: record.id, ...fields };
-            })
-        );
+        return records.map((record) => ({ id: record.id, ...parseFields(record) }));
     }
 
     static async get(id: string): Promise<Preset | null> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<PresetFields>('presets', id);
+        const queued = writeQueue.peek<PresetFields>('presets', id);
         if (queued) {
             const record = await localDB.getRecord<PresetRecord>('presets', id);
             if (!record || record.isDeleted) return null;
@@ -94,27 +80,24 @@ export class PresetService {
         const record = await localDB.getRecord<PresetRecord>('presets', id);
         if (!record || record.isDeleted) return null;
 
-        const fields = await decryptFields(masterKey, record);
-        return { id: record.id, ...fields };
+        return { id: record.id, ...parseFields(record) };
     }
 
     static async create(fields: DeepPartial<PresetFields> = {}): Promise<Preset> {
         const resolved: PresetFields = deepMerge(defaultPresetFields, fields);
 
-        const { masterKey, userId } = getActiveSession();
+        const { userId } = getActiveSession();
         const id = generateId();
         const now = clock.now();
 
         try {
-            const enc = await encrypt(masterKey, JSON.stringify(resolved));
             const record: PresetRecord = {
                 id,
                 userId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                encryptedData: enc.ciphertext,
-                encryptedDataIV: enc.iv
+                data: resolved as unknown as Record<string, unknown>
             };
             await localDB.putRecord<PresetRecord>('presets', record);
         } catch (error) {
@@ -126,41 +109,30 @@ export class PresetService {
     }
 
     static async update(id: string, changes: DeepPartial<PresetFields>): Promise<Preset> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<PresetFields>('presets', id);
+        const queued = writeQueue.peek<PresetFields>('presets', id);
         const record = await localDB.getRecord<PresetRecord>('presets', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
         }
 
         try {
-            const current = queued
-                ? deepMerge(defaultPresetFields, queued)
-                : await decryptFields(masterKey, record);
+            const current = queued ? deepMerge(defaultPresetFields, queued) : parseFields(record);
             const updated: PresetFields = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<PresetFields, PresetRecord>({
+            writeQueue.upsert<PresetFields, PresetRecord>({
                 tableName: 'presets',
                 id,
                 userId: record.userId,
                 createdAt: record.createdAt,
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({
-                    id: recordId,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id: recordId,
                     userId: recordUserId,
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
 
@@ -173,7 +145,7 @@ export class PresetService {
 
     static async delete(id: string): Promise<void> {
         try {
-            encryptedWriteQueue.drop('presets', id);
+            writeQueue.drop('presets', id);
             await localDB.softDeleteRecord('presets', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

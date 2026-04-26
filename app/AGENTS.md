@@ -1,6 +1,6 @@
 # KeiAI App — AGENTS.md
 
-Svelte frontend with client-side E2EE. TypeScript strict, Svelte 5, Tailwind CSS, Tauri (desktop/mobile).
+Svelte frontend with local plaintext storage and encrypted cloud sync. TypeScript strict, Svelte 5, Tailwind CSS, Tauri (desktop/mobile).
 
 ```bash
 pnpm install && pnpm dev          # http://localhost:5173
@@ -21,7 +21,7 @@ Stores (lib/stores/)
  │  state.ts: all writable store instances  │  domain files: action functions
  ▼
 Services (lib/services/)
- │  static-method classes  │  encrypt/decrypt  │  CRUD  │  guards
+ │  static-method classes  │  CRUD  │  sync encryption  │  guards
  ▼
 Adapters (lib/adapters/)
  │  interface + platform impl (Web: IndexedDB/localStorage, Tauri: SQLite/FS)
@@ -62,13 +62,13 @@ UI → Stores → Services → Adapters → platform APIs
 
 ## Core Design Principles
 
-### Zero-Knowledge Encryption
+### Local Plaintext, Encrypted Sync
 
-All user data is encrypted client-side (AES-256-GCM) before storage. The server sees only opaque blobs.
+Local storage is plaintext domain JSON. Synced data is encrypted client-side (AES-256-GCM) before leaving the browser, so the server sees only opaque blobs.
 
 - Master key `M` lives in memory (`session.ts` module-level var) or as a **non-extractable** `CryptoKey` in IndexedDB
 - Guest users hold an extractable key (wrappable on registration); registered users hold non-extractable (XSS protection)
-- Always obtain credentials via `getActiveSession()` — never cache `masterKey` in component state or stores
+- Use `getActiveSession()` for local identity; use `getSyncSession()` only at sync/encryption boundaries
 - Fresh random IV per encryption (semantic security)
 
 ### Encrypt-Decrypt-Merge Cycle
@@ -76,9 +76,9 @@ All user data is encrypted client-side (AES-256-GCM) before storage. The server 
 Every service follows the same data lifecycle:
 
 ```
-Read:  DB record → decrypt(M, blob) → JSON.parse → deepMerge(defaults, parsed) → domain object
-Update: DeepPartial<T> → deepMerge(current, patch) → JSON.stringify → encrypt(M, json) → DB record
-Write: JSON.stringify(full) → encrypt(M, json) → DB record → fire-and-forget sync push
+Read:  DB record.data → deepMerge(defaults, data) → domain object
+Update: DeepPartial<T> → deepMerge(current, patch) → plaintext DB record
+Sync:  plaintext DB record ↔ encrypt/decrypt(M) ↔ PocketBase encrypted blob
 ```
 
 - `deepMerge(defaults, stored)` on every read means new fields auto-populate without migration code.
@@ -94,10 +94,10 @@ Write: JSON.stringify(full) → encrypt(M, json) → DB record → fire-and-forg
 
 ### Single-Table Pattern
 
-Each entity type uses one table with one encrypted blob. The blob contains both user-editable content (`XxxContent`) and structural references (`XxxRefs`), combined via `XxxFields extends XxxContent, XxxRefs`.
+Each entity type uses one table with one local plaintext `data` payload. The same payload is encrypted only when synchronized to PocketBase.
 
 - Every entity is stored in a single table (e.g., `characters`, `chats`, `presets`)
-- No split between summary and data tables — one record, one encrypted blob
+- No split between summary and data tables — one record, one payload
 - `XxxContent` holds user-editable fields; `XxxRefs` holds structural references
 
 ### Relationship Model
@@ -105,6 +105,7 @@ Each entity type uses one table with one encrypted blob. The blob contains both 
 - **1:N** — Parent blob holds `OrderedRef[]` of child IDs (parent owns ordering + folders)
 - **N:M** — Consumer blob holds `ResourceRef[]` with per-context `enabled` flag
 - **Exception**: Messages use `chatId` FK + `sortOrder` compound index (O(1) writes vs O(n) parent blob rewrites)
+- PocketBase uses no FK relations for domain records; local adapters keep only the indexes the app needs
 - Fractional indexing (`generateKeyBetween()`) for `sortOrder` — inserts anywhere without renumbering
 
 ---
@@ -120,10 +121,10 @@ L0 (Global):     appSettings, activeUser, pbConnected
 L1 (Workspace):  characters, personas, presets, modules, plugins
 L2 (Character):  activeCharacter, chats, characterLorebooks, characterScripts
 L3 (Chat):       activeChat, messages, chatLorebooks
-Ephemeral:       chatTasks (Map<chatId, ChatTask>) — in stores/tasks/
+Task:            chatTasks (Map<chatId, ChatTask>) — execution state (status, error) in stores/tasks/
 ```
 
-- Leaving a level clears child stores and zeroes decrypted data from memory
+- Leaving a level clears child stores and drops plaintext UI state from memory
 - `stores/index.ts` re-exports all writables as `readonly()` — UI can subscribe but never `.set()`/`.update()`
 - Action functions import writables directly from `state.ts`
 
@@ -154,7 +155,7 @@ Every service file follows this order:
 // const default*Fields = { ... }  — base for deepMerge
 
 // ─── Helpers ─────────────────────────────────────────────────────────
-// Private decrypt* functions — never exported
+// Private parse* helpers — never exported
 
 // ─── Service ─────────────────────────────────────────────────────────
 // export class *Service { static async method() { ... } }
@@ -337,16 +338,16 @@ Pipeline steps:
 6. `buildPrompt()` — pure function (`llm/prompt/builder.ts`)
 7. Apply request-phase pipeline handlers
 8. `selectLLMHandler()` → stream chunks
-9. Per chunk: run output-phase pipeline → `getMessage` → `updateMessage` (encrypted write queue batches these)
+9. Per chunk: run output-phase pipeline → `updateMessage` (plaintext write queue batches these)
 10. Finalize: validate non-empty → `clearChatTask()`
 11. On abort: `clearChatTask()` (content already in DB)
 12. On error: `setChatTaskError()` — error overlay stays for user to dismiss
 
 ### ChatTask
 
-Ephemeral UI state keyed by chatId. Fields: `status` (generating | error), `messageId`, `controller` (AbortController), `errorMessage?`.
+Execution UI state keyed by chatId. Fields: `status` (generating | error), `messageId`, `controller` (AbortController), `errorMessage?`.
 
-The `displayMessages` derived store overlays task status onto existing DB messages. No virtual messages or virtual swipes are generated.
+The `displayMessages` derived store overlays task status (e.g. showing a loading indicator) onto existing DB messages. Content is read directly from the DB messages store as it is updated in real-time. No virtual messages or virtual swipes are generated.
 
 ### Variable System
 
@@ -403,9 +404,9 @@ ID convention: `provider::modelId` for built-in (e.g. `openai::gpt-5.4`), `custo
 
 Follow the existing single-table pattern:
 
-1. **Schema**: Add PocketBase collection in `pocketbase/pb_migrations/` (encrypted table with `userId` FK + `cascadeDelete`)
+1. **Schema**: Update the canonical PocketBase init schema (`pocketbase/pb_migrations/1773000000_init_keiai_schema.js`) with a blind sync table (`userId`, `encryptedData`, `encryptedDataIV`, no FK/relation). Do not add incremental migrations while the project assumes a clean database.
 2. **Adapter**: Add record types in `adapters/db/types.ts`, add table to Dexie schema in `db/web.ts`
-3. **Service**: Create `services/content/<entity>.ts` — domain types, defaults, decrypt helpers, static CRUD class
+3. **Service**: Create `services/content/<entity>.ts` — domain types, defaults, parse helpers, static CRUD class
 4. **Shared**: Add `OrderedRef[]` to parent's data fields for 1:N, or `ResourceRef[]` for N:M
 5. **Store**: Add writable in `stores/state.ts`, create `stores/content/<entity>.ts` with action functions
 6. **Sync**: Register table in sync manager

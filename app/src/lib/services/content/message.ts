@@ -1,5 +1,4 @@
 import { clock } from '$lib/utils/clock';
-import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type MessageRecord } from '$lib/adapters/db';
 import { generateKeyBetween } from 'fractional-indexing';
@@ -7,7 +6,7 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { ToolCallInfo } from './tool';
-import { encryptedWriteQueue } from './write_queue';
+import { writeQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -45,15 +44,8 @@ const defaultMessageFields: MessageFields = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: MessageRecord): Promise<MessageFields> {
-    return decrypt(masterKey, {
-        ciphertext: record.encryptedData,
-        iv: record.encryptedDataIV
-    })
-        .then((dec) => deepMerge(defaultMessageFields, JSON.parse(dec)))
-        .catch((error) => {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt message', error);
-        });
+function parseFields(record: MessageRecord): MessageFields {
+    return deepMerge(defaultMessageFields, record.data as DeepPartial<MessageFields>);
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
@@ -65,12 +57,11 @@ export class MessageService {
      */
     static async getMessagesBefore(
         chatId: string,
-        cursorSortOrder: string = '\uffff',
+        cursorSortOrder: string = '￿',
         limit = 50,
         offset = 0
     ): Promise<Message[]> {
-        await encryptedWriteQueue.flushTable('messages');
-        const { masterKey } = getActiveSession();
+        await writeQueue.flushTable('messages');
         const records = await localDB.getRecordsBackward<MessageRecord>(
             'messages',
             '[chatId+sortOrder]',
@@ -84,17 +75,12 @@ export class MessageService {
         // them again to get an oldest-to-newest ordering for the UI to prepend.
         records.reverse();
 
-        return Promise.all(
-            records.map(async (record) => {
-                const fields = await decryptFields(masterKey, record);
-                return {
-                    id: record.id,
-                    chatId: record.chatId,
-                    sortOrder: record.sortOrder,
-                    ...fields
-                };
-            })
-        );
+        return records.map((record) => ({
+            id: record.id,
+            chatId: record.chatId,
+            sortOrder: record.sortOrder,
+            ...parseFields(record)
+        }));
     }
 
     static async getMessagesAfter(
@@ -103,34 +89,27 @@ export class MessageService {
         limit = 50,
         offset = 0
     ): Promise<Message[]> {
-        await encryptedWriteQueue.flushTable('messages');
-        const { masterKey } = getActiveSession();
+        await writeQueue.flushTable('messages');
 
         const records = await localDB.getRecordsForward<MessageRecord>(
             'messages',
             '[chatId+sortOrder]',
             [chatId, cursorSortOrder],
-            [chatId, '\uffff'],
+            [chatId, '￿'],
             limit,
             offset
         );
 
-        return Promise.all(
-            records.map(async (record) => {
-                const fields = await decryptFields(masterKey, record);
-                return {
-                    id: record.id,
-                    chatId: record.chatId,
-                    sortOrder: record.sortOrder,
-                    ...fields
-                };
-            })
-        );
+        return records.map((record) => ({
+            id: record.id,
+            chatId: record.chatId,
+            sortOrder: record.sortOrder,
+            ...parseFields(record)
+        }));
     }
 
     static async get(id: string): Promise<Message | null> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<MessageFields>('messages', id);
+        const queued = writeQueue.peek<MessageFields>('messages', id);
         if (queued) {
             const record = await localDB.getRecord<MessageRecord>('messages', id);
             if (!record || record.isDeleted) return null;
@@ -145,12 +124,11 @@ export class MessageService {
         const record = await localDB.getRecord<MessageRecord>('messages', id);
         if (!record || record.isDeleted) return null;
 
-        const fields = await decryptFields(masterKey, record);
         return {
             id: record.id,
             chatId: record.chatId,
             sortOrder: record.sortOrder,
-            ...fields
+            ...parseFields(record)
         };
     }
 
@@ -162,7 +140,7 @@ export class MessageService {
     ): Promise<Message> {
         const resolved: MessageFields = deepMerge(defaultMessageFields, fields);
 
-        const { masterKey, userId } = getActiveSession();
+        const { userId } = getActiveSession();
         const id = generateId();
         const now = clock.now();
 
@@ -172,7 +150,7 @@ export class MessageService {
                 'messages',
                 '[chatId+sortOrder]',
                 [chatId, ''],
-                [chatId, '\uffff'],
+                [chatId, '￿'],
                 1
             );
             if (lastRecords.length > 0) {
@@ -183,7 +161,6 @@ export class MessageService {
         }
 
         try {
-            const enc = await encrypt(masterKey, JSON.stringify(resolved));
             const newRecord: MessageRecord = {
                 id,
                 userId,
@@ -192,8 +169,7 @@ export class MessageService {
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                encryptedData: enc.ciphertext,
-                encryptedDataIV: enc.iv
+                data: resolved as unknown as Record<string, unknown>
             };
             await localDB.putRecord<MessageRecord>('messages', newRecord);
         } catch (error) {
@@ -206,34 +182,24 @@ export class MessageService {
 
     /** Update a message */
     static async update(id: string, changes: DeepPartial<MessageFields>): Promise<Message> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<MessageFields>('messages', id);
+        const queued = writeQueue.peek<MessageFields>('messages', id);
         const record = await localDB.getRecord<MessageRecord>('messages', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Message not found: ${id}`);
         }
 
         try {
-            const current = queued
-                ? deepMerge(defaultMessageFields, queued)
-                : await decryptFields(masterKey, record);
+            const current = queued ? deepMerge(defaultMessageFields, queued) : parseFields(record);
             const updated: MessageFields = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<MessageFields, MessageRecord>({
+            writeQueue.upsert<MessageFields, MessageRecord>({
                 tableName: 'messages',
                 id,
                 userId: record.userId,
                 createdAt: record.createdAt,
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({
-                    id: recordId,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id: recordId,
                     userId: recordUserId,
                     chatId: record.chatId,
@@ -241,8 +207,7 @@ export class MessageService {
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
 
@@ -257,11 +222,11 @@ export class MessageService {
     static async delete(id: string): Promise<void> {
         try {
             await Promise.all([
-                encryptedWriteQueue.flushTable('messages'),
-                encryptedWriteQueue.flushTable('tool_calls'),
-                encryptedWriteQueue.flushTable('translations')
+                writeQueue.flushTable('messages'),
+                writeQueue.flushTable('tool_calls'),
+                writeQueue.flushTable('translations')
             ]);
-            encryptedWriteQueue.drop('messages', id);
+            writeQueue.drop('messages', id);
             await localDB.transaction(
                 ['messages', 'tool_calls', 'translations'],
                 'rw',
@@ -339,9 +304,9 @@ export class MessageService {
 
     static async deleteSwipe(messageId: string, swipeId: string): Promise<Message> {
         await Promise.all([
-            encryptedWriteQueue.flushTable('messages'),
-            encryptedWriteQueue.flushTable('tool_calls'),
-            encryptedWriteQueue.flushTable('translations')
+            writeQueue.flushTable('messages'),
+            writeQueue.flushTable('tool_calls'),
+            writeQueue.flushTable('translations')
         ]);
 
         const message = await this.get(messageId);
@@ -367,8 +332,7 @@ export class MessageService {
         };
 
         try {
-            const enc = await encrypt(getActiveSession().masterKey, JSON.stringify(nextFields));
-            encryptedWriteQueue.drop('messages', messageId);
+            writeQueue.drop('messages', messageId);
 
             await localDB.transaction(
                 ['messages', 'tool_calls', 'translations'],
@@ -380,8 +344,7 @@ export class MessageService {
                         localDB.putRecord<MessageRecord>('messages', {
                             ...record,
                             updatedAt: clock.now(),
-                            encryptedData: enc.ciphertext,
-                            encryptedDataIV: enc.iv
+                            data: nextFields as unknown as Record<string, unknown>
                         })
                     ]);
                     const failed = results.find((r) => r.status === 'rejected');
@@ -404,7 +367,7 @@ export class MessageService {
     }
 
     static async countByChat(chatId: string): Promise<number> {
-        await encryptedWriteQueue.flushTable('messages');
+        await writeQueue.flushTable('messages');
         return await localDB.countByIndex('messages', 'chatId', chatId);
     }
 }

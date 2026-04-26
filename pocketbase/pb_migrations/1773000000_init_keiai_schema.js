@@ -46,11 +46,13 @@ migrate(
       app.save(usersCollection);
     }
 
-    // 2. Create E2EE Encrypted Tables securely
+    // 2. Create blind sync tables.
+    // Local storage may keep plaintext, but PocketBase only stores encrypted sync blobs.
+    // Ownership identifiers are plain text fields, not PocketBase relations/FKs.
     const authRule = "userId = @request.auth.id";
     const createRule = "userId = @request.auth.id";
 
-    function createEncryptedTable(name, extraFields) {
+    function createSyncTable(name, extraFields) {
       let exists = false;
       try {
         exists = !!app.findCollectionByNameOrId(name);
@@ -67,15 +69,11 @@ migrate(
         deleteRule: authRule,
       });
 
-      // Use 'relation' type so that deleting a user cascades and wipes their E2EE data
       collection.fields.add(
         new Field({
           name: "userId",
-          type: "relation",
+          type: "text",
           required: true,
-          collectionId: usersCollection.id,
-          cascadeDelete: true,
-          maxSelect: 1,
         }),
       );
 
@@ -112,35 +110,19 @@ migrate(
       } catch (_) {}
     }
 
-    // ─── Standard Encrypted Tables ───────────────────────────────────
-    createEncryptedTable("characters");
-    createEncryptedTable("settings");
-    createEncryptedTable("personas");
-    createEncryptedTable("modules");
-    createEncryptedTable("plugins");
-    createEncryptedTable("presets");
-    createEncryptedTable("assets");
-
-    createEncryptedTable("lorebooks", [
-      { name: "ownerId", type: "text", required: true },
-    ]);
-    createEncryptedTable("scripts", [
-      { name: "ownerId", type: "text", required: true },
-    ]);
-    createEncryptedTable("charjs", [
-      { name: "ownerId", type: "text", required: true },
-    ]);
-
-    // ─── Chat Relations ───────────────────────────────────────────────
-    createEncryptedTable("chats", [
-      { name: "characterId", type: "text", required: true },
-    ]);
-
-    // ─── Message Relations ────────────────────────────────────────────
-    createEncryptedTable("messages", [
-      { name: "chatId", type: "text", required: true },
-      { name: "sortOrder", type: "text", required: true },
-    ]);
+    // ─── Standard Sync Tables ────────────────────────────────────────
+    createSyncTable("characters");
+    createSyncTable("settings");
+    createSyncTable("personas");
+    createSyncTable("modules");
+    createSyncTable("plugins");
+    createSyncTable("presets");
+    createSyncTable("assets");
+    createSyncTable("lorebooks");
+    createSyncTable("scripts");
+    createSyncTable("charjs");
+    createSyncTable("chats");
+    createSyncTable("messages");
 
     // ─── Asset Catalog ────────────────────────────────────────────────
     let catalogExists = false;
@@ -159,11 +141,8 @@ migrate(
       catalogCollection.fields.add(
         new Field({
           name: "ownerId",
-          type: "relation",
+          type: "text",
           required: true,
-          collectionId: usersCollection.id,
-          cascadeDelete: true,
-          maxSelect: 1,
         }),
       );
       catalogCollection.fields.add(

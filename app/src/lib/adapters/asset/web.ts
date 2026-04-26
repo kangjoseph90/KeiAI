@@ -14,7 +14,9 @@ import type {
     AssetWriteEventListener,
     AssetWriteOptions,
     AssetTableName,
-    AssetWriteOperation
+    AssetWriteOperation,
+    AssetStatus,
+    AssetKindPlain
 } from './types';
 import { clock } from '$lib/utils/clock';
 
@@ -26,7 +28,8 @@ class AssetDexie extends Dexie {
         super('KeiAssets');
         this.version(1).stores({
             assets: 'id, userId, updatedAt, isDeleted',
-            assetRegistry: 'id, userId, [userId+status], [userId+isDeleted], kind, accessedAt'
+            assetRegistry:
+                'id, userId, [userId+status], [userId+status+kind], [userId+isDeleted], accessedAt'
         });
     }
 }
@@ -105,6 +108,27 @@ export class WebAssetAdapter implements IAssetAdapter {
 
     async getDeletedRegistry(userId: string): Promise<AssetRegistryRecord[]> {
         return assetDB.assetRegistry.where('[userId+isDeleted]').equals([userId, 1]).toArray();
+    }
+
+    async getRegistryByStatus(
+        userId: string,
+        status: AssetStatus,
+        kinds?: AssetKindPlain[]
+    ): Promise<AssetRegistryRecord[]> {
+        if (!kinds || kinds.length === 0) {
+            return assetDB.assetRegistry
+                .where('[userId+status]')
+                .equals([userId, status])
+                .filter((r) => !r.isDeleted)
+                .toArray();
+        }
+
+        const keys = kinds.map((k) => [userId, status, k]);
+        return assetDB.assetRegistry
+            .where('[userId+status+kind]')
+            .anyOf(keys)
+            .filter((r) => !r.isDeleted)
+            .toArray();
     }
 
     async putRegistry(record: AssetRegistryRecord, options?: AssetWriteOptions): Promise<void> {

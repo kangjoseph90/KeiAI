@@ -70,6 +70,9 @@ export class AuthService {
                 'Already registered. Unlink your account to revert to guest mode.'
             );
         }
+        if (!masterKey) {
+            throw new AppError('SESSION_EXPIRED', 'Master key not available for registration.');
+        }
 
         const salt = await generateSalt();
         const { loginKey, encryptionKey } = await deriveKeys(password, salt);

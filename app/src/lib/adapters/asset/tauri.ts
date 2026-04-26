@@ -1,5 +1,4 @@
 import Database from '@tauri-apps/plugin-sql';
-import { fromBase64, toBase64 } from '$lib/crypto/encoding';
 import { AssetWriteEventEmitter } from './events';
 import { clock } from '$lib/utils/clock';
 import type {
@@ -9,7 +8,9 @@ import type {
     AssetWriteEventListener,
     AssetWriteOptions,
     AssetTableName,
-    AssetWriteOperation
+    AssetWriteOperation,
+    AssetStatus,
+    AssetKindPlain
 } from './types';
 
 /**
@@ -19,10 +20,8 @@ import type {
  * Binary blobs are stored via appStorage (native FS) directly by the service layer.
  *
  * Row structure:
- *   - assets: encrypted metadata record (EncryptedRecord)
- *   - assetRegistry: plaintext cache of asset fields per device
- *
- * Uint8Array properties are base64-encoded for SQLite TEXT storage.
+ *   - assets: plaintext metadata record (DataRecord with `data` JSON column)
+ *   - assetRegistry: device-local cache metadata only (size, accessedAt)
  */
 
 /** Raw shape of an asset record as stored in SQLite */
@@ -32,8 +31,7 @@ interface AssetSqlRow {
     createdAt: number;
     updatedAt: number;
     isDeleted: number; // SQLite uses 0/1 for boolean
-    encryptedData: string; // Base64
-    encryptedDataIV: string; // Base64
+    data: string; // JSON.stringify(AssetFields)
 }
 
 /** Raw shape of a registry record as stored in SQLite */
@@ -45,8 +43,6 @@ interface RegistrySqlRow {
     isDeleted: number;
     kind: string;
     status: string;
-    hash: string;
-    encKey: string;
     size: number;
     accessedAt: number;
 }
@@ -59,8 +55,7 @@ function assetRecordToBindings(record: AssetRecord): AssetSqlRow {
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
         isDeleted: record.isDeleted ? 1 : 0,
-        encryptedData: toBase64(record.encryptedData),
-        encryptedDataIV: toBase64(record.encryptedDataIV)
+        data: JSON.stringify(record.data ?? {})
     };
 }
 
@@ -72,8 +67,7 @@ function parseAssetRecord(row: AssetSqlRow): AssetRecord {
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         isDeleted: row.isDeleted === 1,
-        encryptedData: fromBase64(row.encryptedData),
-        encryptedDataIV: fromBase64(row.encryptedDataIV)
+        data: JSON.parse(row.data) as Record<string, unknown>
     };
 }
 
@@ -87,8 +81,6 @@ function parseRegistryRecord(row: RegistrySqlRow): AssetRegistryRecord {
         isDeleted: row.isDeleted === 1,
         kind: row.kind as AssetRegistryRecord['kind'],
         status: row.status as AssetRegistryRecord['status'],
-        hash: row.hash,
-        encKey: row.encKey,
         size: row.size,
         accessedAt: row.accessedAt
     };
@@ -135,47 +127,39 @@ export class TauriAssetAdapter implements IAssetAdapter {
     private async initDb(db: Database) {
         let sql = '';
 
-        // Assets table - encrypted metadata
+        // Assets table - plaintext metadata
         sql += `
-			CREATE TABLE IF NOT EXISTS assets (
-				id TEXT PRIMARY KEY,
-				userId TEXT NOT NULL,
-				createdAt INTEGER NOT NULL,
-				updatedAt INTEGER NOT NULL,
-				isDeleted INTEGER NOT NULL DEFAULT 0,
-				encryptedData TEXT,
-				encryptedDataIV TEXT
-			);
-		`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assets_userId ON assets (userId);
-`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assets_updatedAt ON assets (updatedAt);
-`;
+            CREATE TABLE IF NOT EXISTS assets (
+                id TEXT PRIMARY KEY,
+                userId TEXT NOT NULL,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL,
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                data TEXT
+            );
+        `;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assets_userId ON assets (userId);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assets_updatedAt ON assets (updatedAt);`;
 
-        // Asset registry table - plaintext cache + delete queue
+        // Asset registry table - device-local cache metadata + routing fields
         sql += `
-			CREATE TABLE IF NOT EXISTS assetRegistry (
-				id TEXT PRIMARY KEY,
-				userId TEXT NOT NULL,
-				createdAt INTEGER NOT NULL,
-				updatedAt INTEGER NOT NULL,
-				isDeleted INTEGER NOT NULL DEFAULT 0,
-				kind TEXT NOT NULL,
-				status TEXT NOT NULL,
-				hash TEXT NOT NULL DEFAULT '',
-				encKey TEXT NOT NULL DEFAULT '',
-				size INTEGER NOT NULL DEFAULT 0,
-				accessedAt INTEGER NOT NULL
-			);
-		`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId ON assetRegistry (userId);
-`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_status ON assetRegistry (userId, status);
-`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_isDeleted ON assetRegistry (userId, isDeleted);
-`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_accessedAt ON assetRegistry (accessedAt);
-`;
+            CREATE TABLE IF NOT EXISTS assetRegistry (
+                id TEXT PRIMARY KEY,
+                userId TEXT NOT NULL,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL,
+                isDeleted INTEGER NOT NULL DEFAULT 0,
+                kind TEXT NOT NULL,
+                status TEXT NOT NULL,
+                size INTEGER NOT NULL DEFAULT 0,
+                accessedAt INTEGER NOT NULL
+            );
+        `;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId ON assetRegistry (userId);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_status ON assetRegistry (userId, status);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_status_kind ON assetRegistry (userId, status, kind);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_isDeleted ON assetRegistry (userId, isDeleted);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_accessedAt ON assetRegistry (accessedAt);`;
 
         await db.execute(sql);
     }
@@ -203,17 +187,9 @@ export class TauriAssetAdapter implements IAssetAdapter {
         const data = assetRecordToBindings(record);
 
         await db.execute(
-            `INSERT OR REPLACE INTO assets (id, userId, createdAt, updatedAt, isDeleted, encryptedData, encryptedDataIV)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [
-                data.id,
-                data.userId,
-                data.createdAt,
-                data.updatedAt,
-                data.isDeleted,
-                data.encryptedData,
-                data.encryptedDataIV
-            ]
+            `INSERT OR REPLACE INTO assets (id, userId, createdAt, updatedAt, isDeleted, data)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [data.id, data.userId, data.createdAt, data.updatedAt, data.isDeleted, data.data]
         );
         this.emitWriteEvent('assets', 'put', [record.id], options);
     }
@@ -267,12 +243,34 @@ export class TauriAssetAdapter implements IAssetAdapter {
         return rows.map((row) => parseRegistryRecord(row));
     }
 
+    async getRegistryByStatus(
+        userId: string,
+        status: AssetStatus,
+        kinds?: AssetKindPlain[]
+    ): Promise<AssetRegistryRecord[]> {
+        const db = await this.getDb();
+        if (!kinds || kinds.length === 0) {
+            const rows = await db.select<RegistrySqlRow[]>(
+                `SELECT * FROM assetRegistry WHERE userId = $1 AND status = $2 AND isDeleted = 0`,
+                [userId, status]
+            );
+            return rows.map((row) => parseRegistryRecord(row));
+        }
+
+        const placeholders = kinds.map((_, i) => `$${i + 3}`).join(', ');
+        const rows = await db.select<RegistrySqlRow[]>(
+            `SELECT * FROM assetRegistry WHERE userId = $1 AND status = $2 AND isDeleted = 0 AND kind IN (${placeholders})`,
+            [userId, status, ...kinds]
+        );
+        return rows.map((row) => parseRegistryRecord(row));
+    }
+
     async putRegistry(record: AssetRegistryRecord, options?: AssetWriteOptions): Promise<void> {
         const db = await this.getDb();
 
         await db.execute(
-            `INSERT OR REPLACE INTO assetRegistry (id, userId, createdAt, updatedAt, isDeleted, kind, status, hash, encKey, size, accessedAt)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            `INSERT OR REPLACE INTO assetRegistry (id, userId, createdAt, updatedAt, isDeleted, kind, status, size, accessedAt)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
                 record.id,
                 record.userId,
@@ -281,8 +279,6 @@ export class TauriAssetAdapter implements IAssetAdapter {
                 record.isDeleted ? 1 : 0,
                 record.kind,
                 record.status,
-                record.hash,
-                record.encKey,
                 record.size,
                 record.accessedAt
             ]

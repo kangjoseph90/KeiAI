@@ -1,11 +1,10 @@
 import { clock } from '$lib/utils/clock';
-import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type CharJSRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { encryptedWriteQueue } from './write_queue';
+import { writeQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -30,15 +29,8 @@ const defaultCharJSFields: CharJSFields = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: CharJSRecord): Promise<CharJSFields> {
-    return decrypt(masterKey, {
-        ciphertext: record.encryptedData,
-        iv: record.encryptedDataIV
-    })
-        .then((dec) => deepMerge(defaultCharJSFields, JSON.parse(dec)))
-        .catch((error) => {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt charjs script', error);
-        });
+function parseFields(record: CharJSRecord): CharJSFields {
+    return deepMerge(defaultCharJSFields, record.data as DeepPartial<CharJSFields>);
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
@@ -46,8 +38,7 @@ function decryptFields(masterKey: CryptoKey, record: CharJSRecord): Promise<Char
 export class CharJSService {
     /** List charjs scripts owned by a specific parent (character, module) */
     static async listByOwner(ownerId: string): Promise<CharJS[]> {
-        await encryptedWriteQueue.flushTable('charjs');
-        const { masterKey } = getActiveSession();
+        await writeQueue.flushTable('charjs');
         const records = await localDB.getByIndex<CharJSRecord>(
             'charjs',
             'ownerId',
@@ -55,21 +46,15 @@ export class CharJSService {
             Number.MAX_SAFE_INTEGER
         );
 
-        return Promise.all(
-            records.map(async (record) => {
-                const fields = await decryptFields(masterKey, record);
-                return {
-                    id: record.id,
-                    ownerId: record.ownerId,
-                    ...fields
-                };
-            })
-        );
+        return records.map((record) => ({
+            id: record.id,
+            ownerId: record.ownerId,
+            ...parseFields(record)
+        }));
     }
 
     static async get(id: string): Promise<CharJS | null> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<CharJSFields>('charjs', id);
+        const queued = writeQueue.peek<CharJSFields>('charjs', id);
         if (queued) {
             const record = await localDB.getRecord<CharJSRecord>('charjs', id);
             if (!record || record.isDeleted) return null;
@@ -83,23 +68,21 @@ export class CharJSService {
         const record = await localDB.getRecord<CharJSRecord>('charjs', id);
         if (!record || record.isDeleted) return null;
 
-        const fields = await decryptFields(masterKey, record);
         return {
             id: record.id,
             ownerId: record.ownerId,
-            ...fields
+            ...parseFields(record)
         };
     }
 
     static async create(ownerId: string, fields: DeepPartial<CharJSFields> = {}): Promise<CharJS> {
         const resolved: CharJSFields = deepMerge(defaultCharJSFields, fields);
 
-        const { masterKey, userId } = getActiveSession();
+        const { userId } = getActiveSession();
         const id = generateId();
         const now = clock.now();
 
         try {
-            const enc = await encrypt(masterKey, JSON.stringify(resolved));
             const newRecord: CharJSRecord = {
                 id,
                 userId,
@@ -107,8 +90,7 @@ export class CharJSService {
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                encryptedData: enc.ciphertext,
-                encryptedDataIV: enc.iv
+                data: resolved as unknown as Record<string, unknown>
             };
             await localDB.putRecord<CharJSRecord>('charjs', newRecord);
         } catch (error) {
@@ -120,42 +102,31 @@ export class CharJSService {
     }
 
     static async update(id: string, changes: DeepPartial<CharJSFields>): Promise<CharJS> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<CharJSFields>('charjs', id);
+        const queued = writeQueue.peek<CharJSFields>('charjs', id);
         const record = await localDB.getRecord<CharJSRecord>('charjs', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `CharJS script not found: ${id}`);
         }
 
         try {
-            const current = queued
-                ? deepMerge(defaultCharJSFields, queued)
-                : await decryptFields(masterKey, record);
+            const current = queued ? deepMerge(defaultCharJSFields, queued) : parseFields(record);
             const updated: CharJSFields = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<CharJSFields, CharJSRecord>({
+            writeQueue.upsert<CharJSFields, CharJSRecord>({
                 tableName: 'charjs',
                 id,
                 userId: record.userId,
                 createdAt: record.createdAt,
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({
-                    id: recordId,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id: recordId,
                     userId: recordUserId,
                     ownerId: record.ownerId,
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
 
@@ -168,7 +139,7 @@ export class CharJSService {
 
     static delete(id: string): Promise<void> {
         try {
-            encryptedWriteQueue.drop('charjs', id);
+            writeQueue.drop('charjs', id);
             return localDB.softDeleteRecord('charjs', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

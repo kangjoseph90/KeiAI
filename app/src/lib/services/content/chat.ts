@@ -1,12 +1,11 @@
 import { clock } from '$lib/utils/clock';
-import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ChatRecord } from '$lib/adapters/db';
 import type { FolderDef, OrderedRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { encryptedWriteQueue } from './write_queue';
+import { writeQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -38,23 +37,15 @@ const defaultFields: ChatFields = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: ChatRecord): Promise<ChatFields> {
-    return decrypt(masterKey, {
-        ciphertext: record.encryptedData,
-        iv: record.encryptedDataIV
-    })
-        .then((dec) => deepMerge(defaultFields, JSON.parse(dec)))
-        .catch((error) => {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt chat', error);
-        });
+function parseFields(record: ChatRecord): ChatFields {
+    return deepMerge(defaultFields, record.data as DeepPartial<ChatFields>);
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
 
 export class ChatService {
     static async listByCharacter(characterId: string): Promise<Chat[]> {
-        await encryptedWriteQueue.flushTable('chats');
-        const { masterKey } = getActiveSession();
+        await writeQueue.flushTable('chats');
         const records = await localDB.getByIndex<ChatRecord>(
             'chats',
             'characterId',
@@ -62,21 +53,15 @@ export class ChatService {
             Number.MAX_SAFE_INTEGER
         );
 
-        return Promise.all(
-            records.map(async (record) => {
-                const fields = await decryptFields(masterKey, record);
-                return {
-                    id: record.id,
-                    characterId: record.characterId,
-                    ...fields
-                };
-            })
-        );
+        return records.map((record) => ({
+            id: record.id,
+            characterId: record.characterId,
+            ...parseFields(record)
+        }));
     }
 
     static async get(id: string): Promise<Chat | null> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<ChatFields>('chats', id);
+        const queued = writeQueue.peek<ChatFields>('chats', id);
         if (queued) {
             const record = await localDB.getRecord<ChatRecord>('chats', id);
             if (!record || record.isDeleted) return null;
@@ -90,23 +75,21 @@ export class ChatService {
         const record = await localDB.getRecord<ChatRecord>('chats', id);
         if (!record || record.isDeleted) return null;
 
-        const fields = await decryptFields(masterKey, record);
         return {
             id: record.id,
             characterId: record.characterId,
-            ...fields
+            ...parseFields(record)
         };
     }
 
     static async create(characterId: string, fields: DeepPartial<ChatFields> = {}): Promise<Chat> {
         const resolved: ChatFields = deepMerge(defaultFields, fields);
 
-        const { masterKey, userId } = getActiveSession();
+        const { userId } = getActiveSession();
         const id = generateId();
         const now = clock.now();
 
         try {
-            const enc = await encrypt(masterKey, JSON.stringify(resolved));
             const record: ChatRecord = {
                 id,
                 userId,
@@ -114,8 +97,7 @@ export class ChatService {
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                encryptedData: enc.ciphertext,
-                encryptedDataIV: enc.iv
+                data: resolved as unknown as Record<string, unknown>
             };
             await localDB.putRecord<ChatRecord>('chats', record);
         } catch (error) {
@@ -127,42 +109,31 @@ export class ChatService {
     }
 
     static async update(id: string, changes: DeepPartial<ChatFields>): Promise<Chat> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<ChatFields>('chats', id);
+        const queued = writeQueue.peek<ChatFields>('chats', id);
         const record = await localDB.getRecord<ChatRecord>('chats', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', 'Chat not found');
         }
 
         try {
-            const current = queued
-                ? deepMerge(defaultFields, queued)
-                : await decryptFields(masterKey, record);
+            const current = queued ? deepMerge(defaultFields, queued) : parseFields(record);
             const updated: ChatFields = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<ChatFields, ChatRecord>({
+            writeQueue.upsert<ChatFields, ChatRecord>({
                 tableName: 'chats',
                 id,
                 userId: record.userId,
                 createdAt: record.createdAt,
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({
-                    id: recordId,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id: recordId,
                     userId: recordUserId,
                     characterId: record.characterId,
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
 
@@ -177,15 +148,15 @@ export class ChatService {
     static async delete(id: string): Promise<void> {
         try {
             await Promise.all([
-                encryptedWriteQueue.flushTable('chats'),
-                encryptedWriteQueue.flushTable('messages'),
-                encryptedWriteQueue.flushTable('tool_calls'),
-                encryptedWriteQueue.flushTable('translations'),
-                encryptedWriteQueue.flushTable('lorebooks'),
-                encryptedWriteQueue.flushTable('scripts')
+                writeQueue.flushTable('chats'),
+                writeQueue.flushTable('messages'),
+                writeQueue.flushTable('tool_calls'),
+                writeQueue.flushTable('translations'),
+                writeQueue.flushTable('lorebooks'),
+                writeQueue.flushTable('scripts')
             ]);
 
-            encryptedWriteQueue.drop('chats', id);
+            writeQueue.drop('chats', id);
             await localDB.transaction(
                 ['lorebooks', 'scripts', 'messages', 'chats', 'tool_calls', 'translations'],
                 'rw',

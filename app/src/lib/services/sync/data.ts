@@ -1,7 +1,7 @@
 /**
  * Data Sync Service
  *
- * Handles blind synchronization of encrypted application data (characters,
+ * Handles blind synchronization of application data (characters,
  * chats, messages, settings, etc.) with PocketBase.
  *
  * - Pull: PocketBase Realtime subscription (SSE, push-based) for live updates
@@ -9,25 +9,27 @@
  * - Push: event-driven, triggered from local DB write events after local mutations
  *
  * The server never decrypts or inspects any data.
+ * Encryption/decryption happens ONLY at this sync boundary.
  *
  * Profile data has its own sync service (ProfileSyncService) because it is
  * NOT E2EE and uses PB file fields, not encrypted blobs.
  */
 
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession } from '../session';
-import { toBase64, fromBase64 } from '$lib/crypto';
+import { getSyncSession, hasSyncSession } from '../session';
+import { encrypt, decrypt, toBase64, fromBase64 } from '$lib/crypto';
 import {
     localDB,
     type TableName,
     SYNC_TABLES,
     type BaseRecord,
+    type DataRecord,
     type DatabaseWriteEvent
 } from '$lib/adapters/db';
 import { appKV } from '$lib/adapters/kv';
 import { BaseSyncEngine } from './base';
 import { createLogger } from '$lib/adapters/logger';
-import { AppError } from '$lib/types/errors';
+import { isErrorCode } from '$lib/types/errors';
 import { Semaphore } from '$lib/utils/semaphore';
 
 type RealtimeEvent = {
@@ -41,28 +43,12 @@ export class DataSyncEngine extends BaseSyncEngine {
     // ─── State ────────────────────────────────────────────────────────
     private subscribed = false;
 
-    constructor() {
-        super();
-    }
-
     private readonly PAGE_SIZE = 200;
     private readonly TABLE_CONCURRENCY = 4;
 
-    private readonly ALLOWED_RECORD_FIELDS = new Set([
-        'id',
-        'userId',
-        'createdAt',
-        'updatedAt',
-        'isDeleted',
-        'encryptedData',
-        'encryptedDataIV',
-        'characterId',
-        'chatId',
-        'messageId',
-        'swipeId',
-        'sortOrder',
-        'ownerId'
-    ]);
+    constructor() {
+        super();
+    }
 
     // ─── Realtime Subscriptions ───────────────────────────────────────
 
@@ -72,13 +58,9 @@ export class DataSyncEngine extends BaseSyncEngine {
 
     async subscribeRealtime(): Promise<void> {
         if (!pb.authStore.isValid) return;
-        let isGuest: boolean;
-        try {
-            ({ isGuest } = getActiveSession());
-        } catch {
-            return; // session not initialized yet
-        }
-        if (isGuest || this.subscribed) return;
+        if (!hasSyncSession()) return;
+
+        if (this.subscribed) return;
 
         for (const table of SYNC_TABLES) {
             await pb.collection(table).subscribe('*', (e) => {
@@ -126,14 +108,8 @@ export class DataSyncEngine extends BaseSyncEngine {
 
     protected override async performSync(): Promise<void> {
         if (!pb.authStore.isValid) return;
-        let userId: string;
-        let isGuest: boolean;
-        try {
-            ({ userId, isGuest } = getActiveSession());
-        } catch {
-            return; // session not initialized yet
-        }
-        if (isGuest) return;
+        if (!hasSyncSession()) return;
+        const { userId } = getSyncSession();
 
         let firstError: unknown = null;
         let completed = 0;
@@ -177,7 +153,7 @@ export class DataSyncEngine extends BaseSyncEngine {
         let correctionError: unknown = null;
         // Records where the local version is newer than what the server returned.
         // Accumulated across all pages and pushed as a single batch after the pull.
-        const offlineWrites: BaseRecord[] = [];
+        const offlineWrites: DataRecord[] = [];
 
         try {
             while (true) {
@@ -190,16 +166,18 @@ export class DataSyncEngine extends BaseSyncEngine {
                 });
 
                 if (result.items.length > 0) {
-                    const toUpsert: BaseRecord[] = [];
+                    const toUpsert: DataRecord[] = [];
 
-                    const remotes = result.items.map((serverRecord) =>
-                        this.pbToLocalRecord(serverRecord as unknown as Record<string, unknown>)
+                    const remotes = await Promise.all(
+                        result.items.map((serverRecord) =>
+                            this.pbToLocalRecord(serverRecord as unknown as Record<string, unknown>)
+                        )
                     );
 
                     const pairedRecords = await Promise.all(
                         remotes.map(async (remote) => ({
                             remote,
-                            local: await localDB.getRecord<BaseRecord>(tableName, remote.id)
+                            local: await localDB.getRecord<DataRecord>(tableName, remote.id)
                         }))
                     );
 
@@ -209,13 +187,10 @@ export class DataSyncEngine extends BaseSyncEngine {
 
                         if (!local || remoteAt > localAt) {
                             toUpsert.push(remote);
-                            nextCursor = Math.max(nextCursor, remoteAt);
                         } else if (remoteAt < localAt) {
                             offlineWrites.push(local);
-                            nextCursor = Math.max(nextCursor, remoteAt);
-                        } else {
-                            nextCursor = Math.max(nextCursor, remoteAt);
                         }
+                        nextCursor = Math.max(nextCursor, remoteAt);
                     }
 
                     if (toUpsert.length > 0) {
@@ -263,19 +238,23 @@ export class DataSyncEngine extends BaseSyncEngine {
      */
     private async pushBatch(
         tableName: TableName,
-        records: BaseRecord[],
+        records: DataRecord[],
         swallowErrors = true
     ): Promise<void> {
-        const batch = pb.createBatch();
-        for (const record of records) {
-            batch.collection(tableName).upsert(this.localToPbRecord(record));
-        }
-        try {
-            await batch.send();
-        } catch (err) {
-            logger.error(`Failed to push corrections batch to ${tableName}`, err);
-            if (!swallowErrors) {
-                throw err;
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+            const chunk = records.slice(i, i + CHUNK_SIZE);
+            const batch = pb.createBatch();
+            for (const record of chunk) {
+                batch.collection(tableName).upsert(await this.localToPbRecord(record));
+            }
+            try {
+                await batch.send();
+            } catch (err) {
+                logger.error(`Failed to push corrections batch to ${tableName}`, err);
+                if (!swallowErrors) {
+                    throw err;
+                }
             }
         }
     }
@@ -285,8 +264,8 @@ export class DataSyncEngine extends BaseSyncEngine {
     /** Apply a single realtime event pushed by PocketBase. */
     private async handleRealtimeEvent(tableName: TableName, e: RealtimeEvent): Promise<void> {
         try {
-            const remote = this.pbToLocalRecord(e.record);
-            const local = await localDB.getRecord<BaseRecord>(tableName, remote.id);
+            const remote = await this.pbToLocalRecord(e.record);
+            const local = await localDB.getRecord<DataRecord>(tableName, remote.id);
             const remoteAt = remote.updatedAt ?? 0;
             const localAt = local?.updatedAt ?? 0;
 
@@ -310,14 +289,9 @@ export class DataSyncEngine extends BaseSyncEngine {
      */
     async pushRecord(tableName: TableName, record: BaseRecord, isNew = false): Promise<void> {
         if (!pb.authStore.isValid) return;
-        try {
-            const { isGuest } = getActiveSession();
-            if (isGuest) return;
-        } catch {
-            return;
-        }
+        if (!hasSyncSession()) return;
 
-        const payload = this.localToPbRecord(record);
+        const payload = await this.localToPbRecord(record);
         const batch = pb.createBatch();
 
         if (isNew) {
@@ -360,17 +334,12 @@ export class DataSyncEngine extends BaseSyncEngine {
      */
     private async pushIds(tableName: TableName, ids: string[]): Promise<void> {
         if (!pb.authStore.isValid) return;
-        try {
-            const { isGuest } = getActiveSession();
-            if (isGuest) return;
-        } catch {
-            return;
-        }
+        if (!hasSyncSession()) return;
 
         const records = await Promise.all(
-            ids.map((id) => localDB.getRecord<BaseRecord>(tableName, id))
+            ids.map((id) => localDB.getRecord<DataRecord>(tableName, id))
         );
-        const existing = records.filter((r): r is BaseRecord => r !== undefined);
+        const existing = records.filter((r): r is DataRecord => r !== undefined);
         if (existing.length === 0) return;
 
         await this.pushBatch(tableName, existing);
@@ -383,70 +352,72 @@ export class DataSyncEngine extends BaseSyncEngine {
      */
     async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
         if (!pb.authStore.isValid) return;
-        try {
-            const { isGuest } = getActiveSession();
-            if (isGuest) return;
-        } catch {
-            return;
-        }
+        if (!hasSyncSession()) return;
 
-        const batch = pb.createBatch();
-        let hasItems = false;
+        const allChanges: { table: TableName; record: BaseRecord }[] = [];
 
         for (const table of SYNC_TABLES) {
             const changed = await localDB.getUnsyncedChanges(table, userId, sinceInclusive - 1);
-            if (changed.length > 0) {
-                hasItems = true;
-                for (const record of changed) {
-                    batch.collection(table).upsert(this.localToPbRecord(record));
-                }
+            for (const record of changed) {
+                allChanges.push({ table, record });
             }
         }
 
-        if (!hasItems) return;
+        if (allChanges.length === 0) return;
 
-        try {
-            await batch.send();
-        } catch (err) {
-            logger.error('Failed to push recent writes batch', err);
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < allChanges.length; i += CHUNK_SIZE) {
+            const chunk = allChanges.slice(i, i + CHUNK_SIZE);
+            const batch = pb.createBatch();
+            for (const { table, record } of chunk) {
+                batch.collection(table).upsert(await this.localToPbRecord(record));
+            }
+            try {
+                await batch.send();
+            } catch (err) {
+                logger.error('Failed to push recent writes batch', err);
+            }
         }
     }
 
     // ─── Serialization ────────────────────────────────────────────────
 
-    private localToPbRecord(record: BaseRecord): Record<string, unknown> {
-        const payload = { ...record } as Record<string, unknown>;
-        for (const key of Object.keys(payload)) {
-            if (payload[key] instanceof Uint8Array) {
-                payload[key] = toBase64(payload[key] as Uint8Array<ArrayBuffer>);
-            }
-        }
-        return payload;
+    private async localToPbRecord(record: BaseRecord): Promise<Record<string, unknown>> {
+        const { masterKey } = getSyncSession();
+        const { id, userId, createdAt, updatedAt, isDeleted, ...rest } = record;
+        const { ciphertext, iv } = await encrypt(masterKey, JSON.stringify(rest));
+
+        return {
+            id,
+            userId,
+            createdAt,
+            updatedAt,
+            isDeleted,
+            encryptedData: toBase64(ciphertext),
+            encryptedDataIV: toBase64(iv)
+        };
     }
 
-    private pbToLocalRecord(pbRecord: Record<string, unknown>): BaseRecord {
-        const record: Record<string, unknown> = {};
+    private async pbToLocalRecord(pbRecord: Record<string, unknown>): Promise<DataRecord> {
+        const { masterKey } = getSyncSession();
+        const encData = fromBase64(pbRecord.encryptedData as string);
+        const encIV = fromBase64(pbRecord.encryptedDataIV as string);
+        const json = await decrypt(masterKey, { ciphertext: encData, iv: encIV });
+        const payload = JSON.parse(json) as Record<string, unknown>;
 
-        for (const [key, value] of Object.entries(pbRecord)) {
-            if (!this.ALLOWED_RECORD_FIELDS.has(key)) continue;
-            record[key] =
-                typeof value === 'string' && this.isBase64ByteField(key)
-                    ? fromBase64(value)
-                    : value;
-        }
-
-        record.createdAt = this.normalizeTimestamp(record.createdAt, pbRecord.created);
-        record.updatedAt = this.normalizeTimestamp(record.updatedAt, pbRecord.updated);
-        record.isDeleted = Boolean(record.isDeleted);
-
-        return record as unknown as BaseRecord;
+        return {
+            id: pbRecord.id as string,
+            userId: pbRecord.userId as string,
+            createdAt: this.normalizeTimestamp(pbRecord.createdAt, pbRecord.created),
+            updatedAt: this.normalizeTimestamp(pbRecord.updatedAt, pbRecord.updated),
+            isDeleted: Boolean(pbRecord.isDeleted),
+            ...payload
+        } as DataRecord;
     }
-
-    private readonly BYTE_FIELD_NAMES = new Set(['encryptedData', 'encryptedDataIV', 'masterKey']);
 
     protected override isAuthError(error: unknown): boolean {
-        if (error instanceof AppError) {
-            return error.code === 'NOT_AUTHENTICATED' || error.code === 'SESSION_EXPIRED';
+        if (isErrorCode(error, 'NOT_AUTHENTICATED') || isErrorCode(error, 'SESSION_EXPIRED')) {
+            return true;
         }
 
         const status = (error as { status?: unknown })?.status;
@@ -454,15 +425,10 @@ export class DataSyncEngine extends BaseSyncEngine {
     }
 
     protected override isQuotaError(error: unknown): boolean {
-        if (error instanceof AppError) {
-            return error.code === 'QUOTA_EXCEEDED';
-        }
+        if (isErrorCode(error, 'QUOTA_EXCEEDED')) return true;
+
         const status = (error as { status?: unknown })?.status;
         return status === 402 || status === 413;
-    }
-
-    private isBase64ByteField(fieldName: string): boolean {
-        return this.BYTE_FIELD_NAMES.has(fieldName);
     }
 }
 

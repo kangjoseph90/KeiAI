@@ -1,8 +1,8 @@
 /**
  * Dexie-based Local Database Adapter (Web / PWA)
  *
- *   All encrypted tables share { id, [FK?], userId, …, data, iv }.
- *   Assets table is separate (plaintext, no encryption).
+ * All tables store plaintext JSON in the `data` field.
+ * Encryption happens only at the sync boundary (Sync Engine).
  */
 import Dexie, { type Table } from 'dexie';
 import type {
@@ -46,7 +46,7 @@ class DexieStore extends Dexie {
     constructor() {
         super('KeiLocalDB');
 
-        this.version(2).stores({
+        this.version(1).stores({
             characters: 'id, userId, updatedAt, isDeleted',
             chats: 'id, userId, characterId, updatedAt, isDeleted',
             presets: 'id, userId, updatedAt, isDeleted',

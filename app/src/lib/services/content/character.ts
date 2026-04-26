@@ -1,12 +1,11 @@
 import { clock } from '$lib/utils/clock';
-import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type CharacterRecord } from '$lib/adapters/db';
 import type { OrderedRef, ResourceRef, FolderDef, AssetRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { encryptedWriteQueue } from './write_queue';
+import { writeQueue } from './write_queue';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -54,35 +53,22 @@ const defaultFields: CharacterFields = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: CharacterRecord): Promise<CharacterFields> {
-    return decrypt(masterKey, {
-        ciphertext: record.encryptedData,
-        iv: record.encryptedDataIV
-    })
-        .then((dec) => deepMerge(defaultFields, JSON.parse(dec)))
-        .catch((error) => {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt character', error);
-        });
+function parseFields(record: CharacterRecord): CharacterFields {
+    return deepMerge(defaultFields, record.data as DeepPartial<CharacterFields>);
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class CharacterService {
     static async list(): Promise<Character[]> {
-        await encryptedWriteQueue.flushTable('characters');
-        const { masterKey, userId } = getActiveSession();
+        await writeQueue.flushTable('characters');
+        const { userId } = getActiveSession();
         const records = await localDB.getAll<CharacterRecord>('characters', userId);
-        return Promise.all(
-            records.map(async (record) => {
-                const fields = await decryptFields(masterKey, record);
-                return { id: record.id, ...fields };
-            })
-        );
+        return records.map((record) => ({ id: record.id, ...parseFields(record) }));
     }
 
     static async get(id: string): Promise<Character | null> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<CharacterFields>('characters', id);
+        const queued = writeQueue.peek<CharacterFields>('characters', id);
         if (queued) {
             const record = await localDB.getRecord<CharacterRecord>('characters', id);
             if (!record || record.isDeleted) return null;
@@ -92,27 +78,24 @@ export class CharacterService {
         const record = await localDB.getRecord<CharacterRecord>('characters', id);
         if (!record || record.isDeleted) return null;
 
-        const fields = await decryptFields(masterKey, record);
-        return { id: record.id, ...fields };
+        return { id: record.id, ...parseFields(record) };
     }
 
     static async create(fields: DeepPartial<CharacterFields> = {}): Promise<Character> {
         const resolved: CharacterFields = deepMerge(defaultFields, fields);
 
-        const { masterKey, userId } = getActiveSession();
+        const { userId } = getActiveSession();
         const id = generateId();
         const now = clock.now();
 
         try {
-            const enc = await encrypt(masterKey, JSON.stringify(resolved));
             const record: CharacterRecord = {
                 id,
                 userId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                encryptedData: enc.ciphertext,
-                encryptedDataIV: enc.iv
+                data: resolved as unknown as Record<string, unknown>
             };
             await localDB.putRecord<CharacterRecord>('characters', record);
         } catch (error) {
@@ -124,41 +107,30 @@ export class CharacterService {
     }
 
     static async update(id: string, changes: DeepPartial<CharacterFields>): Promise<Character> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<CharacterFields>('characters', id);
+        const queued = writeQueue.peek<CharacterFields>('characters', id);
         const record = await localDB.getRecord<CharacterRecord>('characters', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', 'Character not found');
         }
 
         try {
-            const current = queued
-                ? deepMerge(defaultFields, queued)
-                : await decryptFields(masterKey, record);
+            const current = queued ? deepMerge(defaultFields, queued) : parseFields(record);
             const updated: CharacterFields = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<CharacterFields, CharacterRecord>({
+            writeQueue.upsert<CharacterFields, CharacterRecord>({
                 tableName: 'characters',
                 id,
                 userId: record.userId,
                 createdAt: record.createdAt,
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({
-                    id: recordId,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id: recordId,
                     userId: recordUserId,
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
 
@@ -180,17 +152,17 @@ export class CharacterService {
     static async delete(id: string): Promise<void> {
         try {
             await Promise.all([
-                encryptedWriteQueue.flushTable('characters'),
-                encryptedWriteQueue.flushTable('chats'),
-                encryptedWriteQueue.flushTable('messages'),
-                encryptedWriteQueue.flushTable('tool_calls'),
-                encryptedWriteQueue.flushTable('translations'),
-                encryptedWriteQueue.flushTable('lorebooks'),
-                encryptedWriteQueue.flushTable('scripts'),
-                encryptedWriteQueue.flushTable('charjs')
+                writeQueue.flushTable('characters'),
+                writeQueue.flushTable('chats'),
+                writeQueue.flushTable('messages'),
+                writeQueue.flushTable('tool_calls'),
+                writeQueue.flushTable('translations'),
+                writeQueue.flushTable('lorebooks'),
+                writeQueue.flushTable('scripts'),
+                writeQueue.flushTable('charjs')
             ]);
 
-            encryptedWriteQueue.drop('characters', id);
+            writeQueue.drop('characters', id);
             await localDB.transaction(
                 [
                     'chats',

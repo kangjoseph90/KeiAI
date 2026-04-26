@@ -36,7 +36,7 @@ import { selectLLMHandler } from '../llm/handler';
 import { runPipeline } from '../pipeline';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
-import { deepMerge } from '$lib/utils/defaults';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 
 export interface RunChatOptions {
     /** Optional handler override for testing */
@@ -115,12 +115,8 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
             shouldReplaceActiveSwipe
         );
 
-        // Keep the paged message object aligned for prompt building.
-        targetMessage.swipes = preparedMessage.swipes;
-        targetMessage.activeSwipeId = preparedMessage.activeSwipeId;
-
         // ── 3. Register task ──────────────────────────────────────────
-        createChatTask(chatId, targetMessage.id, controller);
+        createChatTask(chatId, preparedMessage.id, controller);
 
         // ── 4. Build Prompt (pure function) ──────────────────────────────
 
@@ -151,20 +147,20 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
         // ── 7. Stream chunks → update swipe in DB ─────────────────────
         for await (const state of handler.stream(processedMessages, controller.signal)) {
             const processedContent = await runPipeline(chatId, 'output', state.content, {
-                messageId: targetMessage.id
+                messageId: preparedMessage.id
             });
 
-            const swipeUpdate: Record<string, Partial<MessageSwipe>> = {
+            const swipeUpdate: Record<string, DeepPartial<MessageSwipe>> = {
                 [targetSwipeId]: { content: processedContent }
             };
             if (state.thought !== undefined) {
                 swipeUpdate[targetSwipeId].thought = state.thought;
             }
-            await updateMessage(targetMessage.id, { swipes: swipeUpdate });
+            await updateMessage(preparedMessage.id, { swipes: swipeUpdate });
         }
 
         // ── 8. Finalize ─────────────────────────────────────────────
-        const finalMsg = await getMessage(targetMessage.id);
+        const finalMsg = await getMessage(preparedMessage.id);
         const finalSwipe = finalMsg.swipes[targetSwipeId];
         if (!finalSwipe || finalSwipe.content.length === 0) {
             setChatTaskError(chatId, 'Empty response from model');

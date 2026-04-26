@@ -37,8 +37,6 @@ import { localDB } from '$lib/adapters/db';
 describe('PluginService', () => {
     const mockUserId = 'user-123';
     const mockMasterKey = {} as CryptoKey;
-    const mockEncryptedData = new Uint8Array([7, 8, 9]);
-    const mockIV = new Uint8Array([10, 11, 12]);
 
     const defaultFields: PluginFields = {
         name: 'Test Plugin',
@@ -60,8 +58,8 @@ describe('PluginService', () => {
         });
 
         vi.mocked(encrypt).mockResolvedValue({
-            ciphertext: mockEncryptedData,
-            iv: mockIV
+            ciphertext: new Uint8Array([7, 8, 9]),
+            iv: new Uint8Array([10, 11, 12])
         });
 
         vi.mocked(decrypt).mockResolvedValue(JSON.stringify(defaultFields));
@@ -76,8 +74,7 @@ describe('PluginService', () => {
                     createdAt: 100,
                     updatedAt: 100,
                     isDeleted: false,
-                    encryptedData: mockEncryptedData,
-                    encryptedDataIV: mockIV
+                    data: defaultFields as unknown as Record<string, unknown>
                 }
             ];
 
@@ -100,8 +97,7 @@ describe('PluginService', () => {
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,
-                encryptedData: mockEncryptedData,
-                encryptedDataIV: mockIV
+                data: defaultFields as unknown as Record<string, unknown>
             };
 
             vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
@@ -129,8 +125,7 @@ describe('PluginService', () => {
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,
-                encryptedData: mockEncryptedData,
-                encryptedDataIV: mockIV
+                data: defaultFields as unknown as Record<string, unknown>
             };
 
             vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);

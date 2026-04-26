@@ -69,7 +69,8 @@ describe('session', () => {
             const session = getActiveSession();
 
             expect(session.isGuest).toBe(false);
-            expect(session.masterKey.extractable).toBe(false);
+            expect(session.masterKey).not.toBeNull();
+            expect((session.masterKey as CryptoKey).extractable).toBe(false);
         });
 
         it('should allow setting guest user session', async () => {
@@ -81,7 +82,8 @@ describe('session', () => {
             const session = getActiveSession();
 
             expect(session.isGuest).toBe(true);
-            expect(session.masterKey.extractable).toBe(true);
+            expect(session.masterKey).not.toBeNull();
+            expect((session.masterKey as CryptoKey).extractable).toBe(true);
         });
 
         it('should overwrite existing session', async () => {
@@ -156,9 +158,9 @@ describe('session', () => {
             expect(hasActiveSession()).toBe(true);
         });
 
-        it('should return false when masterKey is null', async () => {
-            setSession('user-123', null as unknown as CryptoKey, true, {} as CryptoKeyPair);
-            expect(hasActiveSession()).toBe(false);
+        it('should return true when masterKey is null (masterKey is optional)', async () => {
+            setSession('user-123', null, true, {} as CryptoKeyPair);
+            expect(hasActiveSession()).toBe(true);
         });
 
         it('should return false when userId is null', async () => {
@@ -169,15 +171,11 @@ describe('session', () => {
     });
 
     describe('getActiveSession', () => {
-        it('should throw error when masterKey is null', async () => {
-            const masterKey = await createTestMasterKey();
+        it('should return session with null masterKey (masterKey is optional)', async () => {
+            setSession('user-123', null, true, {} as CryptoKeyPair);
 
-            setSession('user-123', masterKey, true, {} as CryptoKeyPair);
-            // Manually clear masterKey to test edge case
-            clearSession();
-            setSession('user-123', null as unknown as CryptoKey, true, {} as CryptoKeyPair);
-
-            expect(() => getActiveSession()).toThrow('Session not initialized');
+            const session = getActiveSession();
+            expect(session.masterKey).toBeNull();
         });
 
         it('should throw error when userId is null', async () => {

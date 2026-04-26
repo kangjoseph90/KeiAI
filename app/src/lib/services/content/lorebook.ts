@@ -1,11 +1,10 @@
 import { clock } from '$lib/utils/clock';
-import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type LorebookRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { encryptedWriteQueue } from './write_queue';
+import { writeQueue } from './write_queue';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -36,15 +35,8 @@ const defaultLorebookFields: LorebookFields = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: LorebookRecord): Promise<LorebookFields> {
-    return decrypt(masterKey, {
-        ciphertext: record.encryptedData,
-        iv: record.encryptedDataIV
-    })
-        .then((dec) => deepMerge(defaultLorebookFields, JSON.parse(dec)))
-        .catch((error) => {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt lorebook', error);
-        });
+function parseFields(record: LorebookRecord): LorebookFields {
+    return deepMerge(defaultLorebookFields, record.data as DeepPartial<LorebookFields>);
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
@@ -52,29 +44,22 @@ function decryptFields(masterKey: CryptoKey, record: LorebookRecord): Promise<Lo
 export class LorebookService {
     /** List lorebooks owned by a specific parent (character, chat, module) */
     static async listByOwner(ownerId: string): Promise<Lorebook[]> {
-        await encryptedWriteQueue.flushTable('lorebooks');
-        const { masterKey } = getActiveSession();
+        await writeQueue.flushTable('lorebooks');
         const records = await localDB.getByIndex<LorebookRecord>(
             'lorebooks',
             'ownerId',
             ownerId,
             Number.MAX_SAFE_INTEGER
         );
-        return Promise.all(
-            records.map(async (record) => {
-                const fields = await decryptFields(masterKey, record);
-                return {
-                    id: record.id,
-                    ownerId: record.ownerId,
-                    ...fields
-                };
-            })
-        );
+        return records.map((record) => ({
+            id: record.id,
+            ownerId: record.ownerId,
+            ...parseFields(record)
+        }));
     }
 
     static async get(id: string): Promise<Lorebook | null> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<LorebookFields>('lorebooks', id);
+        const queued = writeQueue.peek<LorebookFields>('lorebooks', id);
         if (queued) {
             const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
             if (!record || record.isDeleted) return null;
@@ -88,11 +73,10 @@ export class LorebookService {
         const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
         if (!record || record.isDeleted) return null;
 
-        const fields = await decryptFields(masterKey, record);
         return {
             id: record.id,
             ownerId: record.ownerId,
-            ...fields
+            ...parseFields(record)
         };
     }
 
@@ -102,12 +86,11 @@ export class LorebookService {
     ): Promise<Lorebook> {
         const resolved: LorebookFields = deepMerge(defaultLorebookFields, fields);
 
-        const { masterKey, userId } = getActiveSession();
+        const { userId } = getActiveSession();
         const id = generateId();
         const now = clock.now();
 
         try {
-            const enc = await encrypt(masterKey, JSON.stringify(resolved));
             const newRecord: LorebookRecord = {
                 id,
                 userId,
@@ -115,8 +98,7 @@ export class LorebookService {
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                encryptedData: enc.ciphertext,
-                encryptedDataIV: enc.iv
+                data: resolved as unknown as Record<string, unknown>
             };
             await localDB.putRecord<LorebookRecord>('lorebooks', newRecord);
         } catch (error) {
@@ -128,42 +110,31 @@ export class LorebookService {
     }
 
     static async update(id: string, changes: DeepPartial<LorebookFields>): Promise<Lorebook> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<LorebookFields>('lorebooks', id);
+        const queued = writeQueue.peek<LorebookFields>('lorebooks', id);
         const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Lorebook not found: ${id}`);
         }
 
         try {
-            const current = queued
-                ? deepMerge(defaultLorebookFields, queued)
-                : await decryptFields(masterKey, record);
+            const current = queued ? deepMerge(defaultLorebookFields, queued) : parseFields(record);
             const updated: LorebookFields = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<LorebookFields, LorebookRecord>({
+            writeQueue.upsert<LorebookFields, LorebookRecord>({
                 tableName: 'lorebooks',
                 id,
                 userId: record.userId,
                 createdAt: record.createdAt,
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({
-                    id: recordId,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id: recordId,
                     userId: recordUserId,
                     ownerId: record.ownerId,
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
 
@@ -176,7 +147,7 @@ export class LorebookService {
 
     static async delete(id: string): Promise<void> {
         try {
-            encryptedWriteQueue.drop('lorebooks', id);
+            writeQueue.drop('lorebooks', id);
             await localDB.softDeleteRecord('lorebooks', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AssetService } from '$lib/services/asset';
 import type { AssetRecord, AssetRegistryRecord } from '$lib/adapters/asset';
-import { AppError } from '$lib/types/errors';
 
 vi.mock('$lib/services/session', () => ({
     getActiveSession: vi.fn()
@@ -56,8 +55,7 @@ vi.mock('$lib/services/asset/util', () => ({
     decryptAsset: vi.fn(),
     getRemoteURL: vi.fn((hash: string) => `https://cdn.keiai.ai/assets/${hash}`),
     isValidImageHeader: vi.fn(),
-    encryptFields: vi.fn(),
-    decryptFields: vi.fn()
+    parseFields: vi.fn()
 }));
 
 vi.mock('$lib/services/asset/remote', () => ({
@@ -74,8 +72,7 @@ import {
     decryptAsset,
     getRemoteURL,
     isValidImageHeader,
-    encryptFields,
-    decryptFields
+    parseFields
 } from '$lib/services/asset/util';
 import { fetchAssetFromCDN } from '$lib/services/asset/remote';
 
@@ -91,8 +88,24 @@ describe('AssetService', () => {
         createdAt: 1000,
         updatedAt: 1000,
         isDeleted: false,
-        encryptedData: mockCiphertext,
-        encryptedDataIV: mockIv
+        data: {
+            kind: 'private',
+            status: 'remote',
+            hash: 'hash-123',
+            encKey: 'enc-key'
+        }
+    };
+
+    const mockRegistry: AssetRegistryRecord = {
+        id: 'asset-123',
+        userId: mockUserId,
+        createdAt: 1000,
+        updatedAt: 1000,
+        isDeleted: false,
+        kind: 'private',
+        status: 'remote',
+        size: 100,
+        accessedAt: 1000
     };
 
     beforeEach(() => {
@@ -136,10 +149,6 @@ describe('AssetService', () => {
         vi.mocked(isValidImageHeader).mockReturnValue(true);
         vi.mocked(fetchAssetFromCDN).mockResolvedValue(null);
 
-        vi.mocked(isValidImageHeader).mockReturnValue(true);
-        vi.mocked(fetchAssetFromCDN).mockResolvedValue(null);
-
-        // DEFAULT DECRYPT (can be overriden in tests)
         vi.mocked(decrypt).mockResolvedValue(
             JSON.stringify({
                 kind: 'private',
@@ -148,15 +157,11 @@ describe('AssetService', () => {
                 encKey: 'enc-key'
             })
         );
-        vi.mocked(decryptFields).mockResolvedValue({
+        vi.mocked(parseFields).mockReturnValue({
             kind: 'private',
             status: 'remote',
             hash: 'hash-123',
             encKey: 'enc-key'
-        });
-        vi.mocked(encryptFields).mockResolvedValue({
-            ciphertext: mockCiphertext,
-            iv: mockIv
         });
         vi.mocked(fetchAssetFromCDN).mockResolvedValue(mockBytes);
     });
@@ -190,38 +195,23 @@ describe('AssetService', () => {
     describe('delete', () => {
         it('should soft-delete locally and put into queue', async () => {
             vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
-            vi.mocked(appAsset.getRegistry).mockResolvedValue({
-                id: 'asset-123',
-                userId: mockUserId,
-                kind: 'private',
-                status: 'local',
-                size: 100,
-                hash: 'hash-123',
-                encKey: 'enc-key',
-                accessedAt: 1000,
-                createdAt: 1000,
-                updatedAt: 1000,
-                isDeleted: false
-            } as AssetRegistryRecord);
+            vi.mocked(appAsset.getRegistry).mockResolvedValue(mockRegistry);
 
             await AssetService.delete('asset-123');
 
             expect(appAsset.softDeleteAsset).toHaveBeenCalledWith('asset-123');
             expect(appStorage.delete).toHaveBeenCalledWith('assets/asset-123');
-            // Since registry existed, it should soft-delete it
             expect(appAsset.softDeleteRegistry).toHaveBeenCalledWith('asset-123');
         });
 
         it('should create delete queue item if registry absent', async () => {
             vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
-            // No registry entry present
             vi.mocked(appAsset.getRegistry).mockResolvedValue(undefined);
 
             await AssetService.delete('asset-123');
 
             expect(appAsset.softDeleteAsset).toHaveBeenCalledWith('asset-123');
             expect(appStorage.delete).toHaveBeenCalledWith('assets/asset-123');
-            // It should synthesize a delete queue item from metadata
             expect(appAsset.putRegistry).toHaveBeenCalledWith(
                 expect.objectContaining({
                     id: 'asset-123',
@@ -232,32 +222,18 @@ describe('AssetService', () => {
     });
 
     describe('promote', () => {
-        it('should update kind to public and status to local', async () => {
-            // AssetService.read will be called inside promote, mock it to succeed
+        it('should update asset fields to public and local', async () => {
             vi.mocked(appStorage.exists).mockResolvedValue(true);
-            vi.mocked(appAsset.getRegistry).mockResolvedValue({
-                id: 'asset-123',
-                userId: mockUserId,
-                kind: 'private',
-                status: 'local',
-                size: 100,
-                hash: 'hash-123',
-                encKey: 'enc-key',
-                accessedAt: 1000,
-                createdAt: 1000,
-                updatedAt: 1000,
-                isDeleted: false
-            } as AssetRegistryRecord);
+            vi.mocked(appAsset.getRegistry).mockResolvedValue(mockRegistry);
             vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
 
             await AssetService.promote('asset-123');
 
-            // Check that it decrypts, updates fields and re-encrypts
-            expect(appAsset.putAsset).toHaveBeenCalled();
-            expect(appAsset.putRegistry).toHaveBeenCalledWith(
+            // Asset table updated with kind: public, status: local
+            expect(appAsset.putAsset).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    kind: 'public',
-                    status: 'local'
+                    id: 'asset-123',
+                    data: expect.objectContaining({ kind: 'public', status: 'local' })
                 })
             );
         });
@@ -266,24 +242,11 @@ describe('AssetService', () => {
     describe('read', () => {
         it('should return rendering URL if local blob exists', async () => {
             vi.mocked(appStorage.exists).mockResolvedValue(true);
-            vi.mocked(appAsset.getRegistry).mockResolvedValue({
-                id: 'asset-123',
-                userId: mockUserId,
-                kind: 'private',
-                status: 'local',
-                size: 100,
-                hash: 'hash-123',
-                encKey: 'enc-key',
-                accessedAt: 1000,
-                createdAt: 1000,
-                updatedAt: 1000,
-                isDeleted: false
-            } as AssetRegistryRecord);
+            vi.mocked(appAsset.getRegistry).mockResolvedValue(mockRegistry);
 
             const url = await AssetService.read('asset-123');
 
             expect(url).toBe('blob:asset-123');
-            // touchRegistry
             expect(appAsset.putRegistry).toHaveBeenCalledWith(
                 expect.objectContaining({ accessedAt: expect.any(Number) })
             );
@@ -294,7 +257,6 @@ describe('AssetService', () => {
             vi.mocked(appStorage.exists).mockResolvedValue(false);
             vi.mocked(appAsset.getRegistry).mockResolvedValue(undefined);
 
-            // Decrypted payload is a valid image
             vi.mocked(isValidImageHeader).mockReturnValue(true);
             vi.mocked(decryptAsset).mockResolvedValue(mockBytes);
             vi.mocked(fetchAssetFromCDN).mockResolvedValue(mockBytes);
@@ -304,9 +266,14 @@ describe('AssetService', () => {
             expect(url).toBe('blob:asset-123');
             expect(appStorage.write).toHaveBeenCalledWith('assets/asset-123', mockBytes);
 
-            // setRegistry
+            // setRegistry — cache metadata with routing fields
             expect(appAsset.putRegistry).toHaveBeenCalledWith(
-                expect.objectContaining({ status: 'remote', kind: 'private' })
+                expect.objectContaining({
+                    id: 'asset-123',
+                    kind: 'private',
+                    status: 'remote',
+                    size: mockBytes.length
+                })
             );
         });
 
@@ -315,22 +282,25 @@ describe('AssetService', () => {
             vi.mocked(appStorage.exists).mockResolvedValue(false);
             vi.mocked(appAsset.getRegistry).mockResolvedValue(undefined);
 
-            // Decrypt fails (asset was promoted to public on CDN but metadata still says private)
             vi.mocked(decryptAsset).mockRejectedValue(new Error('decrypt failed'));
-            // Hash matches → self-heal: promoted to public
             vi.mocked(sha256).mockResolvedValue('hash-123');
             vi.mocked(fetchAssetFromCDN).mockResolvedValue(mockBytes);
 
             await AssetService.read('asset-123');
 
-            // Should heal: update metadata to public
+            // Should heal: update asset metadata to public
             expect(appAsset.putAsset).toHaveBeenCalledWith(
                 expect.objectContaining({ id: 'asset-123', updatedAt: expect.any(Number) })
             );
 
-            // setRegistry called with kind: 'public' after self-heal
+            // setRegistry — cache metadata with routing fields (healed to public)
             expect(appAsset.putRegistry).toHaveBeenCalledWith(
-                expect.objectContaining({ kind: 'public', status: 'remote' })
+                expect.objectContaining({
+                    id: 'asset-123',
+                    kind: 'public',
+                    status: 'remote',
+                    size: mockBytes.length
+                })
             );
         });
 
@@ -338,7 +308,6 @@ describe('AssetService', () => {
             vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
             vi.mocked(appStorage.exists).mockResolvedValue(false);
 
-            // Decrypt yields invalid image
             vi.mocked(isValidImageHeader).mockReturnValue(false);
             vi.mocked(decryptAsset).mockResolvedValue(new Uint8Array([99]));
             vi.mocked(fetchAssetFromCDN).mockResolvedValue(mockBytes);

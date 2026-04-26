@@ -1,11 +1,10 @@
 import { clock } from '$lib/utils/clock';
-import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type TranslationRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { encryptedWriteQueue } from './write_queue';
+import { writeQueue } from './write_queue';
 
 export interface TranslationFields {
     targetLang: string;
@@ -26,47 +25,30 @@ const defaultTranslationFields: TranslationFields = {
     text: ''
 };
 
-function decryptFields(
-    masterKey: CryptoKey,
-    record: TranslationRecord
-): Promise<TranslationFields> {
-    return decrypt(masterKey, {
-        ciphertext: record.encryptedData,
-        iv: record.encryptedDataIV
-    })
-        .then((dec) => deepMerge(defaultTranslationFields, JSON.parse(dec)))
-        .catch((error) => {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt translation', error);
-        });
+function parseFields(record: TranslationRecord): TranslationFields {
+    return deepMerge(defaultTranslationFields, record.data as DeepPartial<TranslationFields>);
 }
 
 export class TranslationService {
     static async listBySwipe(swipeId: string): Promise<Translation[]> {
-        await encryptedWriteQueue.flushTable('translations');
-        const { masterKey } = getActiveSession();
+        await writeQueue.flushTable('translations');
         const records = await localDB.getByIndex<TranslationRecord>(
             'translations',
             'swipeId',
             swipeId,
             Number.MAX_SAFE_INTEGER
         );
-        return Promise.all(
-            records.map(async (record) => {
-                const fields = await decryptFields(masterKey, record);
-                return {
-                    id: record.id,
-                    chatId: record.chatId,
-                    messageId: record.messageId,
-                    swipeId: record.swipeId,
-                    ...fields
-                };
-            })
-        );
+        return records.map((record) => ({
+            id: record.id,
+            chatId: record.chatId,
+            messageId: record.messageId,
+            swipeId: record.swipeId,
+            ...parseFields(record)
+        }));
     }
 
     static async get(id: string): Promise<Translation | null> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<TranslationFields>('translations', id);
+        const queued = writeQueue.peek<TranslationFields>('translations', id);
         if (queued) {
             const record = await localDB.getRecord<TranslationRecord>('translations', id);
             if (!record || record.isDeleted) return null;
@@ -82,13 +64,12 @@ export class TranslationService {
         const record = await localDB.getRecord<TranslationRecord>('translations', id);
         if (!record || record.isDeleted) return null;
 
-        const fields = await decryptFields(masterKey, record);
         return {
             id: record.id,
             chatId: record.chatId,
             messageId: record.messageId,
             swipeId: record.swipeId,
-            ...fields
+            ...parseFields(record)
         };
     }
 
@@ -100,12 +81,11 @@ export class TranslationService {
     ): Promise<Translation> {
         const resolved: TranslationFields = deepMerge(defaultTranslationFields, fields);
 
-        const { masterKey, userId } = getActiveSession();
+        const { userId } = getActiveSession();
         const id = generateId();
         const now = clock.now();
 
         try {
-            const enc = await encrypt(masterKey, JSON.stringify(resolved));
             const newRecord: TranslationRecord = {
                 id,
                 userId,
@@ -115,8 +95,7 @@ export class TranslationService {
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                encryptedData: enc.ciphertext,
-                encryptedDataIV: enc.iv
+                data: resolved as unknown as Record<string, unknown>
             };
             await localDB.putRecord<TranslationRecord>('translations', newRecord);
         } catch (error) {
@@ -128,8 +107,7 @@ export class TranslationService {
     }
 
     static async update(id: string, changes: DeepPartial<TranslationFields>): Promise<Translation> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<TranslationFields>('translations', id);
+        const queued = writeQueue.peek<TranslationFields>('translations', id);
         const record = await localDB.getRecord<TranslationRecord>('translations', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Translation not found: ${id}`);
@@ -138,24 +116,17 @@ export class TranslationService {
         try {
             const current = queued
                 ? deepMerge(defaultTranslationFields, queued)
-                : await decryptFields(masterKey, record);
+                : parseFields(record);
             const updated: TranslationFields = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<TranslationFields, TranslationRecord>({
+            writeQueue.upsert<TranslationFields, TranslationRecord>({
                 tableName: 'translations',
                 id,
                 userId: record.userId,
                 createdAt: record.createdAt,
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({
-                    id: recordId,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id: recordId,
                     userId: recordUserId,
                     chatId: record.chatId,
@@ -164,8 +135,7 @@ export class TranslationService {
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
 
@@ -184,7 +154,7 @@ export class TranslationService {
 
     static async delete(id: string): Promise<void> {
         try {
-            encryptedWriteQueue.drop('translations', id);
+            writeQueue.drop('translations', id);
             await localDB.softDeleteRecord('translations', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

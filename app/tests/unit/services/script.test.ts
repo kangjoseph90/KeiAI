@@ -2,7 +2,7 @@
  * Script Service Tests
  *
  * Tests the ScriptService handling script CRUD operations
- * with encryption and local DB writes.
+ * with local DB writes.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -11,11 +11,6 @@ import type { BaseRecord } from '$lib/adapters/db/types';
 import { AppError } from '$lib/types/errors';
 
 // Mock dependencies
-vi.mock('$lib/crypto', () => ({
-    encrypt: vi.fn(),
-    decrypt: vi.fn()
-}));
-
 vi.mock('$lib/services/session', () => ({
     getActiveSession: vi.fn()
 }));
@@ -33,15 +28,21 @@ vi.mock('$lib/utils/id', () => ({
     generateId: vi.fn(() => 'test-id')
 }));
 
-import { encrypt, decrypt } from '$lib/crypto';
+vi.mock('$lib/services/content/write_queue', () => ({
+    writeQueue: {
+        peek: vi.fn(() => undefined),
+        upsert: vi.fn(),
+        drop: vi.fn(),
+        flushTable: vi.fn()
+    }
+}));
+
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
+import { writeQueue } from '$lib/services/content/write_queue';
 
 describe('ScriptService', () => {
     const mockUserId = 'user-123';
-    const mockMasterKey = {} as unknown as CryptoKey;
-    const mockEncryptedData = new Uint8Array([1, 2, 3]);
-    const mockIV = new Uint8Array([4, 5, 6]);
 
     const defaultScriptParams = {
         name: 'Test Script',
@@ -56,27 +57,19 @@ describe('ScriptService', () => {
 
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
-            masterKey: mockMasterKey,
+            masterKey: {} as CryptoKey,
             isGuest: false,
             identityKeyPair: {} as CryptoKeyPair
         });
-
-        vi.mocked(encrypt).mockResolvedValue({
-            ciphertext: mockEncryptedData,
-            iv: mockIV
-        });
-
-        vi.mocked(decrypt).mockResolvedValue(JSON.stringify(defaultScriptParams));
     });
 
     describe('listByOwner', () => {
-        it('should return decrypted scripts for an owner', async () => {
+        it('should return scripts for an owner', async () => {
             const mockRecords = [
                 {
                     id: 's-1',
                     ownerId: 'owner-1',
-                    encryptedData: mockEncryptedData,
-                    encryptedDataIV: mockIV
+                    data: defaultScriptParams
                 } as unknown as BaseRecord
             ];
 
@@ -89,32 +82,15 @@ describe('ScriptService', () => {
             expect(result[0].name).toBe('Test Script');
             expect(result[0].replacement).toBe('test');
         });
-
-        it('should handle decryption errors', async () => {
-            const mockRecords = [
-                {
-                    id: 's-1',
-                    ownerId: 'owner-1',
-                    encryptedData: mockEncryptedData,
-                    encryptedDataIV: mockIV
-                } as unknown as BaseRecord
-            ];
-
-            vi.mocked(localDB.getByIndex).mockResolvedValue(mockRecords);
-            vi.mocked(decrypt).mockRejectedValue(new Error('Decrypt error'));
-
-            await expect(ScriptService.listByOwner('owner-1')).rejects.toThrow(AppError);
-        });
     });
 
     describe('get', () => {
-        it('should return decrypted script detail', async () => {
+        it('should return script detail', async () => {
             const mockRecord = {
                 id: 's-1',
                 ownerId: 'owner-1',
                 isDeleted: false,
-                encryptedData: mockEncryptedData,
-                encryptedDataIV: mockIV
+                data: defaultScriptParams
             } as unknown as BaseRecord;
 
             vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
@@ -152,20 +128,23 @@ describe('ScriptService', () => {
                 expect.objectContaining({
                     id: 'test-id',
                     ownerId: 'owner-1',
-                    encryptedData: mockEncryptedData
+                    data: expect.objectContaining({
+                        name: 'Custom Name',
+                        phase: 'display'
+                    })
                 })
             );
         });
     });
 
     describe('update', () => {
-        it('should update and decrypt-merge existing fields', async () => {
+        it('should update and merge existing fields via write queue', async () => {
             const mockRecord = {
                 id: 's-1',
+                userId: mockUserId,
                 ownerId: 'owner-1',
                 isDeleted: false,
-                encryptedData: mockEncryptedData,
-                encryptedDataIV: mockIV
+                data: defaultScriptParams
             } as unknown as BaseRecord;
 
             vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
@@ -175,6 +154,7 @@ describe('ScriptService', () => {
             expect(result.phase).toBe('output');
             expect(result.name).toBe('Test Script'); // Preserved from existing
 
+            expect(writeQueue.upsert).toHaveBeenCalled();
             expect(localDB.putRecord).not.toHaveBeenCalled();
         });
 

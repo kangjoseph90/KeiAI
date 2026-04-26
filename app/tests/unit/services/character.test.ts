@@ -54,7 +54,7 @@ vi.mock('$lib/utils/defaults', () => ({
 }));
 
 vi.mock('$lib/services/content/write_queue', () => ({
-    encryptedWriteQueue: {
+    writeQueue: {
         peek: vi.fn(() => undefined),
         upsert: vi.fn(),
         drop: vi.fn(),
@@ -67,7 +67,7 @@ import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';
-import { encryptedWriteQueue } from '$lib/services/content/write_queue';
+import { writeQueue } from '$lib/services/content/write_queue';
 
 describe('CharacterService', () => {
     const mockMasterKey = {} as CryptoKey;
@@ -110,12 +110,12 @@ describe('CharacterService', () => {
         vi.mocked(generateId).mockReturnValue('test-id-123');
 
         // Default write queue mock
-        vi.mocked(encryptedWriteQueue.peek).mockReturnValue(undefined);
-        vi.mocked(encryptedWriteQueue.flushTable).mockResolvedValue(undefined);
+        vi.mocked(writeQueue.peek).mockReturnValue(undefined);
+        vi.mocked(writeQueue.flushTable).mockResolvedValue(undefined);
     });
 
     describe('list', () => {
-        it('should return list of characters with decrypted fields', async () => {
+        it('should return list of characters with parsed fields', async () => {
             const mockRecords = [
                 {
                     id: 'char-1',
@@ -123,8 +123,7 @@ describe('CharacterService', () => {
                     createdAt: 1000,
                     updatedAt: 1000,
                     isDeleted: false,
-                    encryptedData: new Uint8Array([1]),
-                    encryptedDataIV: new Uint8Array([2])
+                    data: { name: 'Character 1', shortDescription: 'Desc 1' }
                 },
                 {
                     id: 'char-2',
@@ -132,19 +131,11 @@ describe('CharacterService', () => {
                     createdAt: 2000,
                     updatedAt: 2000,
                     isDeleted: false,
-                    encryptedData: new Uint8Array([3]),
-                    encryptedDataIV: new Uint8Array([4])
+                    data: { name: 'Character 2', shortDescription: 'Desc 2' }
                 }
             ];
 
             vi.mocked(localDB.getAll).mockResolvedValue(mockRecords);
-            vi.mocked(decrypt)
-                .mockResolvedValueOnce(
-                    JSON.stringify({ name: 'Character 1', shortDescription: 'Desc 1' })
-                )
-                .mockResolvedValueOnce(
-                    JSON.stringify({ name: 'Character 2', shortDescription: 'Desc 2' })
-                );
 
             const result = await CharacterService.list();
 
@@ -165,7 +156,6 @@ describe('CharacterService', () => {
 
         it('should call getAll with correct table name and userId', async () => {
             vi.mocked(localDB.getAll).mockResolvedValue([]);
-            vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ name: 'Test' }));
 
             await CharacterService.list();
 
@@ -181,19 +171,15 @@ describe('CharacterService', () => {
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
-                encryptedData: new Uint8Array([1]),
-                encryptedDataIV: new Uint8Array([2])
-            };
-
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
-            vi.mocked(decrypt).mockResolvedValue(
-                JSON.stringify({
+                data: {
                     name: 'Test Char',
                     shortDescription: 'Test',
                     systemPrompt: 'Hello',
                     greetingMessage: 'Hi'
-                })
-            );
+                }
+            };
+
+            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
 
             const result = await CharacterService.get('char-1');
 
@@ -218,8 +204,7 @@ describe('CharacterService', () => {
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: true,
-                encryptedData: new Uint8Array([1]),
-                encryptedDataIV: new Uint8Array([2])
+                data: { name: 'Deleted' }
             } as unknown as BaseRecord);
 
             const result = await CharacterService.get('char-1');
@@ -280,25 +265,17 @@ describe('CharacterService', () => {
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
-                encryptedData: new Uint8Array([1]),
-                encryptedDataIV: new Uint8Array([2])
+                data: { name: 'Old Name', shortDescription: 'Old', systemPrompt: '' }
             };
 
             vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
-            vi.mocked(decrypt).mockResolvedValue(
-                JSON.stringify({ name: 'Old Name', shortDescription: 'Old', systemPrompt: '' })
-            );
-            vi.mocked(encrypt).mockResolvedValue({
-                ciphertext: new Uint8Array([99]),
-                iv: new Uint8Array([88])
-            });
 
             const result = await CharacterService.update('char-1', {
                 name: 'New Name'
             });
 
             expect(result.name).toBe('New Name');
-            expect(encryptedWriteQueue.upsert).toHaveBeenCalled();
+            expect(writeQueue.upsert).toHaveBeenCalled();
         });
 
         it('should throw NOT_FOUND when character does not exist', async () => {
@@ -316,8 +293,7 @@ describe('CharacterService', () => {
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: true,
-                encryptedData: new Uint8Array([1]),
-                encryptedDataIV: new Uint8Array([2])
+                data: { name: 'Deleted' }
             } as unknown as BaseRecord);
 
             await expect(CharacterService.update('char-1', { name: 'New' })).rejects.toThrow();

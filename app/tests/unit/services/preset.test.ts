@@ -35,7 +35,7 @@ vi.mock('$lib/utils/id', () => ({
 }));
 
 vi.mock('$lib/services/content/write_queue', () => ({
-    encryptedWriteQueue: {
+    writeQueue: {
         peek: vi.fn(() => undefined),
         upsert: vi.fn(),
         drop: vi.fn(),
@@ -43,7 +43,7 @@ vi.mock('$lib/services/content/write_queue', () => ({
     }
 }));
 
-import { encryptedWriteQueue } from '$lib/services/content/write_queue';
+import { writeQueue } from '$lib/services/content/write_queue';
 
 describe('PresetService', () => {
     const mockUserId = 'user-123';
@@ -66,8 +66,7 @@ describe('PresetService', () => {
         createdAt: mockNow,
         updatedAt: mockNow,
         isDeleted: false,
-        encryptedData: new Uint8Array([1]),
-        encryptedDataIV: new Uint8Array([2])
+        data: mockFields as unknown as Record<string, unknown>
     };
 
     beforeEach(() => {
@@ -89,8 +88,8 @@ describe('PresetService', () => {
 
         vi.mocked(decrypt).mockResolvedValue(JSON.stringify(mockFields));
 
-        vi.mocked(encryptedWriteQueue.peek).mockReturnValue(undefined);
-        vi.mocked(encryptedWriteQueue.flushTable).mockResolvedValue(undefined);
+        vi.mocked(writeQueue.peek).mockReturnValue(undefined);
+        vi.mocked(writeQueue.flushTable).mockResolvedValue(undefined);
     });
 
     describe('list', () => {
@@ -151,7 +150,7 @@ describe('PresetService', () => {
             expect(result.name).toBe('New Name');
             expect(result.maxResponse).toBe(800);
 
-            expect(encryptedWriteQueue.upsert).toHaveBeenCalled();
+            expect(writeQueue.upsert).toHaveBeenCalled();
         });
 
         it('should throw if record not found', async () => {

@@ -2,6 +2,7 @@
  * Asset Sync Engine — KeiAI v2
  *
  * Full bidirectional sync for the `assets` table + CDN upload/delete queues.
+ * Encryption/decryption happens ONLY at the sync boundary.
  *
  * performSync order:
  *   1. Pull: Paged catch-up + PB Realtime subscription (table sync)
@@ -13,13 +14,13 @@
 
 import { clock } from '$lib/utils/clock';
 import { pb } from '$lib/adapters/pb';
-import { toBase64, fromBase64, type Bytes, encrypt } from '$lib/crypto';
-import { getActiveSession } from '../session';
+import { encrypt, decrypt, toBase64, fromBase64 } from '$lib/crypto';
+import { getSyncSession, hasSyncSession } from '../session';
 import { appAsset, type AssetRecord, type AssetFields } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
-import { AppError } from '$lib/types/errors';
-import { encryptAsset } from '../asset/util';
+import { AppError, isErrorCode } from '$lib/types/errors';
+import { encryptAsset, parseFields } from '../asset/util';
 import { BaseSyncEngine, type SyncStatus } from './base';
 import { uploadAsset, deleteRemoteAsset, promoteAsset } from '../asset/remote';
 import { createLogger } from '$lib/adapters/logger';
@@ -44,18 +45,6 @@ export interface AssetSyncStatus extends SyncStatus {
 const PAGE_SIZE = 200;
 const DELETE_CONCURRENCY = 5;
 const SYNC_KEY_PREFIX = 'lastSync_assets_';
-
-const ALLOWED_RECORD_FIELDS = new Set([
-    'id',
-    'userId',
-    'createdAt',
-    'updatedAt',
-    'isDeleted',
-    'encryptedData',
-    'encryptedDataIV'
-]);
-
-const BYTE_FIELD_NAMES = new Set(['encryptedData', 'encryptedDataIV']);
 
 // ─── Asset Sync Engine ────────────────────────────────────────────────
 
@@ -105,13 +94,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     async subscribeRealtime(): Promise<void> {
         if (!pb.authStore.isValid || this.subscribed) return;
 
-        let isGuest: boolean;
-        try {
-            ({ isGuest } = getActiveSession());
-        } catch {
-            return;
-        }
-        if (isGuest) return;
+        if (!hasSyncSession()) return;
 
         await pb.collection('assets').subscribe('*', (e) => {
             void this.handleRealtimeEvent(e as unknown as RealtimeEvent);
@@ -137,26 +120,13 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
     // ── Core Sync Cycle ───────────────────────────────────────────────
 
-    /**
-     * Full sync cycle:
-     *   1. Pull catch-up from PocketBase (paged table sync)
-     *   2. Process delete queue (registry isDeleted=true → CDN delete → hard delete)
-     *   3. Process upload queue (registry status=local → upload/promote)
-     */
     protected override async performSync(): Promise<void> {
         if (!pb.authStore.isValid) return;
 
         this.abortController = new AbortController();
 
-        let userId: string;
-        let masterKey: CryptoKey;
-        let isGuest: boolean;
-        try {
-            ({ userId, masterKey, isGuest } = getActiveSession());
-        } catch {
-            return;
-        }
-        if (isGuest) return;
+        if (!hasSyncSession()) return;
+        const { userId } = getSyncSession();
 
         // Phase 1: Pull catch-up from PocketBase
         await this.pullAssets(userId);
@@ -169,7 +139,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
         if (this.abortController.signal.aborted) return;
 
         // Phase 3: Process upload queue
-        await this.processUploadQueue(userId, masterKey);
+        await this.processUploadQueue(userId);
 
         this.currentAssetId = null;
         this.updateStatus({ currentAssetId: undefined, pendingCount: 0, progress: undefined });
@@ -199,31 +169,41 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
                     sort: 'updatedAt'
                 });
 
-                for (const serverRecord of result.items) {
-                    const remote = this.pbToLocalRecord(
-                        serverRecord as unknown as Record<string, unknown>
-                    );
-                    const local = await appAsset.getAsset(remote.id);
-                    const remoteAt = remote.updatedAt ?? 0;
-                    const localAt = local?.updatedAt ?? 0;
+                if (result.items.length > 0) {
+                    const toUpsert: AssetRecord[] = [];
 
-                    if (!local || remoteAt > localAt) {
-                        // Server is newer → apply
-                        if (remote.isDeleted) {
-                            // Deleted on another device → local cleanup
-                            await appAsset.putAsset(remote, { origin: 'sync' });
+                    const remotes = await Promise.all(
+                        result.items.map((serverRecord) =>
+                            this.pbToLocalRecord(serverRecord as unknown as Record<string, unknown>)
+                        )
+                    );
+
+                    const pairedRecords = await Promise.all(
+                        remotes.map(async (remote) => ({
+                            remote,
+                            local: await appAsset.getAsset(remote.id)
+                        }))
+                    );
+
+                    for (const { remote, local } of pairedRecords) {
+                        const remoteAt = remote.updatedAt ?? 0;
+                        const localAt = local?.updatedAt ?? 0;
+
+                        if (!local || remoteAt > localAt) {
+                            toUpsert.push(remote);
+                            // Force eviction of local cache if remote is newer
                             await appStorage.delete(`assets/${remote.id}`).catch(() => undefined);
                             await appAsset.deleteRegistry(remote.id, { origin: 'sync' });
-                        } else {
-                            await appAsset.putAsset(remote, { origin: 'sync' });
+                        } else if (localAt > remoteAt) {
+                            offlineWrites.push(local);
                         }
                         nextCursor = Math.max(nextCursor, remoteAt);
-                    } else if (localAt > remoteAt) {
-                        // Local is newer → push correction
-                        offlineWrites.push(local);
-                        nextCursor = Math.max(nextCursor, remoteAt);
-                    } else {
-                        nextCursor = Math.max(nextCursor, remoteAt);
+                    }
+
+                    if (toUpsert.length > 0) {
+                        for (const record of toUpsert) {
+                            await appAsset.putAsset(record, { origin: 'sync' });
+                        }
                     }
                 }
 
@@ -236,7 +216,6 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
             logger.error('Failed to pull assets', err);
         }
 
-        // Push locally-newer records first so cursor advancement never hides failed corrections.
         if (offlineWrites.length > 0) {
             try {
                 await this.pushBatch(offlineWrites, false);
@@ -257,14 +236,9 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
     private async handleRealtimeEvent(e: RealtimeEvent): Promise<void> {
         try {
-            let userId: string;
-            try {
-                ({ userId } = getActiveSession());
-            } catch {
-                return;
-            }
+            if (!hasSyncSession()) return;
 
-            const remote = this.pbToLocalRecord(e.record);
+            const remote = await this.pbToLocalRecord(e.record);
             const local = await appAsset.getAsset(remote.id);
             const remoteAt = remote.updatedAt ?? 0;
             const localAt = local?.updatedAt ?? 0;
@@ -289,14 +263,9 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
     async pushRecord(record: AssetRecord, isNew = false): Promise<void> {
         if (!pb.authStore.isValid) return;
-        try {
-            const { isGuest } = getActiveSession();
-            if (isGuest) return;
-        } catch {
-            return;
-        }
+        if (!hasSyncSession()) return;
 
-        const payload = this.localToPbRecord(record);
+        const payload = await this.localToPbRecord(record);
         const batch = pb.createBatch();
 
         if (isNew) {
@@ -313,16 +282,20 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     }
 
     private async pushBatch(records: AssetRecord[], swallowErrors = true): Promise<void> {
-        const batch = pb.createBatch();
-        for (const record of records) {
-            batch.collection('assets').upsert(this.localToPbRecord(record));
-        }
-        try {
-            await batch.send();
-        } catch (err) {
-            logger.error('Failed to push batch', err);
-            if (!swallowErrors) {
-                throw err;
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+            const chunk = records.slice(i, i + CHUNK_SIZE);
+            const batch = pb.createBatch();
+            for (const record of chunk) {
+                batch.collection('assets').upsert(await this.localToPbRecord(record));
+            }
+            try {
+                await batch.send();
+            } catch (err) {
+                logger.error('Failed to push batch', err);
+                if (!swallowErrors) {
+                    throw err;
+                }
             }
         }
     }
@@ -334,12 +307,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
     async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
         if (!pb.authStore.isValid) return;
-        try {
-            const { isGuest } = getActiveSession();
-            if (isGuest) return;
-        } catch {
-            return;
-        }
+        if (!hasSyncSession()) return;
 
         const changed = await appAsset.getAssetsSince(userId, sinceInclusive - 1);
         if (changed.length === 0) return;
@@ -349,12 +317,6 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
     // ── Delete Queue Processing ───────────────────────────────────────
 
-    /**
-     * Process registry entries with isDeleted=true.
-     * For remote entries → call server delete (refCount decrement).
-     * For local entries → skip server call (never uploaded).
-     * Always hard-delete the registry entry after processing.
-     */
     private async processDeleteQueue(userId: string): Promise<void> {
         const pending = await appAsset.getDeletedRegistry(userId);
         if (pending.length === 0) return;
@@ -366,7 +328,11 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
                     if (this.abortController?.signal.aborted) return;
 
                     if (entry.status === 'remote') {
-                        await deleteRemoteAsset(entry.hash);
+                        const asset = await appAsset.getAsset(entry.id);
+                        if (asset) {
+                            const fields = parseFields(asset);
+                            await deleteRemoteAsset(fields.hash);
+                        }
                     }
                     await appAsset.deleteRegistry(entry.id);
                 })
@@ -383,16 +349,22 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
     // ── Upload Queue Processing ───────────────────────────────────────
 
-    /**
-     * Process all registry entries with status='local' and isDeleted=false.
-     * Uploads/promotes based on kind:
-     *   - public → promote (plaintext file replaces encrypted)
-     *   - private/inlay → encrypt then upload
-     */
-    private async processUploadQueue(userId: string, masterKey: CryptoKey): Promise<void> {
-        const allRegistry = await appAsset.getAllRegistry(userId);
-        const pending = allRegistry.filter((r) => r.status === 'local');
+    private async processUploadQueue(userId: string): Promise<void> {
+        const pending = await appAsset.getRegistryByStatus(userId, 'local');
         this.updateStatus({ pendingCount: pending.length, progress: undefined });
+
+        if (pending.length === 0) return;
+
+        // Batch read only the pending assets concurrently
+        const pendingAssets = await Promise.all(
+            pending.map((entry) => appAsset.getAsset(entry.id))
+        );
+        const assetMap = new Map();
+        for (const asset of pendingAssets) {
+            if (asset && !asset.isDeleted) {
+                assetMap.set(asset.id, asset);
+            }
+        }
 
         for (const [index, entry] of pending.entries()) {
             if (this.abortController?.signal.aborted) break;
@@ -409,47 +381,50 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
             try {
                 const blob = await appStorage.read(`assets/${entry.id}`);
-                if (!blob) continue; // Invariant violation, skip
+                if (!blob) continue;
+
+                // Read hash/encKey from assets table (only needed for actual I/O)
+                const asset = assetMap.get(entry.id);
+                if (!asset || asset.isDeleted) continue;
+                const fields = parseFields(asset);
 
                 if (entry.kind === 'public') {
-                    // Promote: plaintext file replaces encrypted version
-                    await promoteAsset(entry.hash, blob);
+                    await promoteAsset(fields.hash, blob);
                 } else {
-                    // private/inlay: encrypt then upload
-                    const encrypted = await encryptAsset(blob, entry.encKey);
-                    await uploadAsset(entry.hash, entry.kind, encrypted.length, encrypted);
+                    const encrypted = await encryptAsset(blob, fields.encKey);
+                    await uploadAsset(fields.hash, entry.kind, encrypted.length, encrypted);
                 }
 
-                // Any non-error response → mark as remote
-                // Build updated fields from registry entry (skip redundant getAsset + decrypt)
                 const updatedFields: AssetFields = {
                     kind: entry.kind,
                     status: 'remote',
-                    hash: entry.hash,
-                    encKey: entry.encKey
+                    hash: fields.hash,
+                    encKey: fields.encKey
                 };
-                const { ciphertext, iv } = await encrypt(masterKey, JSON.stringify(updatedFields));
 
-                // Parallel IDB writes
                 const updatedRecord: AssetRecord = {
                     id: entry.id,
                     userId: entry.userId,
                     createdAt: entry.createdAt,
                     updatedAt: clock.now(),
                     isDeleted: false,
-                    encryptedData: ciphertext as unknown as Bytes,
-                    encryptedDataIV: iv as unknown as Bytes
+                    data: updatedFields as unknown as Record<string, unknown>
                 };
                 await Promise.all([
                     appAsset.putAsset(updatedRecord),
                     appAsset.putRegistry({
-                        ...entry,
+                        id: entry.id,
+                        userId: entry.userId,
+                        createdAt: entry.createdAt,
+                        updatedAt: clock.now(),
+                        isDeleted: false,
+                        kind: entry.kind,
                         status: 'remote',
-                        updatedAt: clock.now()
+                        size: entry.size,
+                        accessedAt: entry.accessedAt
                     })
                 ]);
 
-                // Push updated metadata to server
                 void this.pushRecord(updatedRecord);
 
                 this.updateStatus({
@@ -470,50 +445,56 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
     // ── Serialization Helpers ─────────────────────────────────────────
 
-    private localToPbRecord(record: AssetRecord): Record<string, unknown> {
-        const payload = { ...record } as Record<string, unknown>;
-        for (const key of Object.keys(payload)) {
-            if (payload[key] instanceof Uint8Array) {
-                payload[key] = toBase64(payload[key] as Bytes);
-            }
-        }
-        return payload;
+    private async localToPbRecord(record: AssetRecord): Promise<Record<string, unknown>> {
+        const { masterKey } = getSyncSession();
+        const { id, userId, createdAt, updatedAt, isDeleted, ...rest } = record;
+        const { ciphertext, iv } = await encrypt(masterKey, JSON.stringify(rest));
+
+        return {
+            id,
+            userId,
+            createdAt,
+            updatedAt,
+            isDeleted,
+            encryptedData: toBase64(ciphertext),
+            encryptedDataIV: toBase64(iv)
+        };
     }
 
-    private pbToLocalRecord(pbRecord: Record<string, unknown>): AssetRecord {
-        const record: Record<string, unknown> = {};
+    private async pbToLocalRecord(pbRecord: Record<string, unknown>): Promise<AssetRecord> {
+        const { masterKey } = getSyncSession();
+        const encData = fromBase64(pbRecord.encryptedData as string);
+        const encIV = fromBase64(pbRecord.encryptedDataIV as string);
+        const json = await decrypt(masterKey, { ciphertext: encData, iv: encIV });
+        const payload = JSON.parse(json) as Record<string, unknown>;
 
-        for (const [key, value] of Object.entries(pbRecord)) {
-            if (!ALLOWED_RECORD_FIELDS.has(key)) continue;
-            record[key] =
-                typeof value === 'string' && BYTE_FIELD_NAMES.has(key) ? fromBase64(value) : value;
-        }
-
-        record.createdAt = this.normalizeTimestamp(record.createdAt, pbRecord.created);
-        record.updatedAt = this.normalizeTimestamp(record.updatedAt, pbRecord.updated);
-        record.isDeleted = Boolean(record.isDeleted);
-
-        return record as unknown as AssetRecord;
+        return {
+            id: pbRecord.id as string,
+            userId: pbRecord.userId as string,
+            createdAt: this.normalizeTimestamp(pbRecord.createdAt, pbRecord.created),
+            updatedAt: this.normalizeTimestamp(pbRecord.updatedAt, pbRecord.updated),
+            isDeleted: Boolean(pbRecord.isDeleted),
+            ...payload
+        } as AssetRecord;
     }
 
     protected override isQuotaError(error: unknown): boolean {
-        if (error instanceof AppError) {
-            return error.code === 'QUOTA_EXCEEDED';
-        }
+        if (isErrorCode(error, 'QUOTA_EXCEEDED')) return true;
         if (error instanceof Response) {
             return error.status === 402 || error.status === 413;
         }
-        return false;
+        const err = error as { status?: number };
+        return err?.status === 402 || err?.status === 413;
     }
 
     protected override isAuthError(error: unknown): boolean {
-        if (error instanceof AppError) {
-            return error.code === 'NOT_AUTHENTICATED' || error.code === 'SESSION_EXPIRED';
-        }
+        if (isErrorCode(error, 'NOT_AUTHENTICATED') || isErrorCode(error, 'SESSION_EXPIRED'))
+            return true;
         if (error instanceof Response) {
             return error.status === 401 || error.status === 403;
         }
-        return false;
+        const err = error as { status?: number };
+        return err?.status === 401 || err?.status === 403;
     }
 }
 

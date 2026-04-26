@@ -32,8 +32,6 @@ import { makeSettings } from '../../utils';
 describe('SettingsService', () => {
     const mockUserId = 'user-123';
     const mockMasterKey = {} as CryptoKey;
-    const mockEncryptedData = new Uint8Array([13, 14, 15]);
-    const mockIV = new Uint8Array([16, 17, 18]);
     const mockNow = 1710000000000;
 
     const mockSettings: AppSettings = makeSettings({
@@ -55,8 +53,8 @@ describe('SettingsService', () => {
         });
 
         vi.mocked(encrypt).mockResolvedValue({
-            ciphertext: mockEncryptedData,
-            iv: mockIV
+            ciphertext: new Uint8Array([13, 14, 15]),
+            iv: new Uint8Array([16, 17, 18])
         });
 
         vi.mocked(decrypt).mockResolvedValue(JSON.stringify(mockSettings));
@@ -70,8 +68,7 @@ describe('SettingsService', () => {
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,
-                encryptedData: mockEncryptedData,
-                encryptedDataIV: mockIV
+                data: mockSettings as unknown as Record<string, unknown>
             };
 
             vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
@@ -91,11 +88,19 @@ describe('SettingsService', () => {
             expect(result.theme).toBe('system');
         });
 
-        it('should throw AppError on decryption failure', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue({} as SettingsRecord);
-            vi.mocked(decrypt).mockRejectedValue(new Error('Fail'));
+        it('should return defaults when record is empty', async () => {
+            vi.mocked(localDB.getRecord).mockResolvedValue({
+                id: mockUserId,
+                userId: mockUserId,
+                createdAt: 100,
+                updatedAt: 100,
+                isDeleted: false,
+                data: {}
+            } as SettingsRecord);
 
-            await expect(SettingsService.get()).rejects.toThrow(AppError);
+            const result = await SettingsService.get();
+
+            expect(result.theme).toBe('system');
         });
     });
 
@@ -108,7 +113,7 @@ describe('SettingsService', () => {
                 'settings',
                 expect.objectContaining({
                     id: mockUserId,
-                    encryptedData: mockEncryptedData
+                    data: expect.any(Object)
                 }),
                 undefined
             );
@@ -123,8 +128,7 @@ describe('SettingsService', () => {
                 createdAt: 100,
                 updatedAt: 110,
                 isDeleted: false,
-                encryptedData: mockEncryptedData,
-                encryptedDataIV: mockIV
+                data: mockSettings as unknown as Record<string, unknown>
             };
             vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
 

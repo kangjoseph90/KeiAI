@@ -1,10 +1,9 @@
-import { decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type SettingsRecord } from '$lib/adapters/db';
 import type { OrderedRef, FolderDef, ResourceRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
-import { encryptedWriteQueue } from './write_queue';
+import { writeQueue } from './write_queue';
 import { clock } from '$lib/utils/clock';
 import type { CustomLLMModel } from '$lib/types/models/llm';
 import type {
@@ -225,10 +224,14 @@ export const defaultSettings: AppSettingsContent = {
 
 // ─── Service ──────────────────────────────────────────────────────────
 
+function parseFields(data: Record<string, unknown>): AppSettings {
+    return deepMerge(defaultSettings as AppSettings, data as DeepPartial<AppSettings>);
+}
+
 export class SettingsService {
     static async get(): Promise<AppSettings> {
-        const { masterKey, userId } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<AppSettings>('settings', userId);
+        const { userId } = getActiveSession();
+        const queued = writeQueue.peek<AppSettings>('settings', userId);
         if (queued) {
             return deepMerge(defaultSettings as AppSettings, queued);
         }
@@ -239,15 +242,7 @@ export class SettingsService {
             return { ...defaultSettings };
         }
 
-        try {
-            const dec = await decrypt(masterKey, {
-                ciphertext: record.encryptedData,
-                iv: record.encryptedDataIV
-            });
-            return deepMerge(defaultSettings as AppSettings, JSON.parse(dec));
-        } catch (error) {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt settings', error);
-        }
+        return parseFields(record.data);
     }
 
     static async set(settings: DeepPartial<AppSettings>): Promise<void> {
@@ -255,28 +250,20 @@ export class SettingsService {
 
         try {
             const existing = await localDB.getRecord<SettingsRecord>('settings', userId);
-            encryptedWriteQueue.upsert<AppSettings, SettingsRecord>({
+            writeQueue.upsert<AppSettings, SettingsRecord>({
                 tableName: 'settings',
                 id: userId,
                 userId,
                 createdAt: existing?.createdAt ?? clock.now(),
                 nextFields: deepMerge(defaultSettings as AppSettings, settings),
                 mergeFields: (_current, next) => next,
-                toRecord: ({
-                    id,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id,
                     userId: recordUserId,
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
         } catch (error) {
@@ -287,10 +274,10 @@ export class SettingsService {
 
     /** Partial update – read-modify-write with merge */
     static async update(changes: DeepPartial<AppSettings>): Promise<AppSettings> {
-        const { masterKey, userId } = getActiveSession();
+        const { userId } = getActiveSession();
 
         try {
-            const queued = encryptedWriteQueue.peek<AppSettings>('settings', userId);
+            const queued = writeQueue.peek<AppSettings>('settings', userId);
             const record = queued
                 ? null
                 : await localDB.getRecord<SettingsRecord>('settings', userId);
@@ -299,40 +286,24 @@ export class SettingsService {
                 ? deepMerge(defaultSettings as AppSettings, queued)
                 : !record || record.isDeleted
                   ? ({ ...defaultSettings } as AppSettings)
-                  : deepMerge(
-                        defaultSettings as AppSettings,
-                        JSON.parse(
-                            await decrypt(masterKey, {
-                                ciphertext: record.encryptedData,
-                                iv: record.encryptedDataIV
-                            })
-                        )
-                    );
+                  : parseFields(record.data);
 
             const updated: AppSettings = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<AppSettings, SettingsRecord>({
+            writeQueue.upsert<AppSettings, SettingsRecord>({
                 tableName: 'settings',
                 id: userId,
                 userId,
                 createdAt: record?.createdAt ?? clock.now(),
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({
-                    id,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id,
                     userId: recordUserId,
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
 

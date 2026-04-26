@@ -1,11 +1,10 @@
 import { clock } from '$lib/utils/clock';
-import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type PluginRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { encryptedWriteQueue } from './write_queue';
+import { writeQueue } from './write_queue';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -35,39 +34,26 @@ const defaultPluginFields: PluginFields = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: PluginRecord): Promise<PluginFields> {
-    return decrypt(masterKey, {
-        ciphertext: record.encryptedData,
-        iv: record.encryptedDataIV
-    })
-        .then((dec) => deepMerge(defaultPluginFields, JSON.parse(dec)))
-        .catch((error) => {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt plugin', error);
-        });
+function parseFields(record: PluginRecord): PluginFields {
+    return deepMerge(defaultPluginFields, record.data as DeepPartial<PluginFields>);
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
 
 export class PluginService {
     static async list(): Promise<Plugin[]> {
-        await encryptedWriteQueue.flushTable('plugins');
-        const { masterKey, userId } = getActiveSession();
+        await writeQueue.flushTable('plugins');
+        const { userId } = getActiveSession();
         const records = await localDB.getAll<PluginRecord>('plugins', userId);
 
-        return Promise.all(
-            records.map(async (record) => {
-                const fields = await decryptFields(masterKey, record);
-                return {
-                    id: record.id,
-                    ...fields
-                };
-            })
-        );
+        return records.map((record) => ({
+            id: record.id,
+            ...parseFields(record)
+        }));
     }
 
     static async get(id: string): Promise<Plugin | null> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<PluginFields>('plugins', id);
+        const queued = writeQueue.peek<PluginFields>('plugins', id);
         if (queued) {
             const record = await localDB.getRecord<PluginRecord>('plugins', id);
             if (!record || record.isDeleted) return null;
@@ -80,30 +66,27 @@ export class PluginService {
         const record = await localDB.getRecord<PluginRecord>('plugins', id);
         if (!record || record.isDeleted) return null;
 
-        const fields = await decryptFields(masterKey, record);
         return {
             id: record.id,
-            ...fields
+            ...parseFields(record)
         };
     }
 
     static async create(fields: DeepPartial<PluginFields> = {}): Promise<Plugin> {
         const resolved: PluginFields = deepMerge(defaultPluginFields, fields);
 
-        const { masterKey, userId } = getActiveSession();
+        const { userId } = getActiveSession();
         const id = generateId();
         const now = clock.now();
 
         try {
-            const enc = await encrypt(masterKey, JSON.stringify(resolved));
             const newRecord: PluginRecord = {
                 id,
                 userId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                encryptedData: enc.ciphertext,
-                encryptedDataIV: enc.iv
+                data: resolved as unknown as Record<string, unknown>
             };
             await localDB.putRecord<PluginRecord>('plugins', newRecord);
         } catch (error) {
@@ -115,41 +98,30 @@ export class PluginService {
     }
 
     static async update(id: string, changes: DeepPartial<PluginFields>): Promise<Plugin> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<PluginFields>('plugins', id);
+        const queued = writeQueue.peek<PluginFields>('plugins', id);
         const record = await localDB.getRecord<PluginRecord>('plugins', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Plugin not found: ${id}`);
         }
 
         try {
-            const current = queued
-                ? deepMerge(defaultPluginFields, queued)
-                : await decryptFields(masterKey, record);
+            const current = queued ? deepMerge(defaultPluginFields, queued) : parseFields(record);
             const updated: PluginFields = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<PluginFields, PluginRecord>({
+            writeQueue.upsert<PluginFields, PluginRecord>({
                 tableName: 'plugins',
                 id,
                 userId: record.userId,
                 createdAt: record.createdAt,
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({
-                    id: recordId,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id: recordId,
                     userId: recordUserId,
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
 
@@ -162,7 +134,7 @@ export class PluginService {
 
     static async delete(id: string): Promise<void> {
         try {
-            encryptedWriteQueue.drop('plugins', id);
+            writeQueue.drop('plugins', id);
             await localDB.softDeleteRecord('plugins', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

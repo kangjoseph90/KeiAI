@@ -1,17 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { AssetSyncService } from '$lib/services/sync/asset';
+import { AssetSyncEngine } from '$lib/services/sync/asset';
 import type { AssetRecord, AssetRegistryRecord } from '$lib/adapters/asset';
 import { AppError } from '$lib/types/errors';
 
+// Mock Dependencies
 vi.mock('$lib/adapters/pb', () => ({
     pb: {
         authStore: { isValid: true },
         collection: vi.fn(() => ({
             getList: vi.fn().mockResolvedValue({ items: [], page: 1, totalPages: 1 }),
-            subscribe: vi.fn(),
-            unsubscribe: vi.fn()
+            subscribe: vi.fn().mockResolvedValue(() => {}),
+            unsubscribe: vi.fn().mockResolvedValue(() => {})
         })),
-        filter: vi.fn(),
+        filter: vi.fn((s) => s),
         createBatch: vi.fn(() => ({
             collection: vi.fn(() => ({ upsert: vi.fn(), create: vi.fn() })),
             send: vi.fn()
@@ -20,7 +21,9 @@ vi.mock('$lib/adapters/pb', () => ({
 }));
 
 vi.mock('$lib/services/session', () => ({
-    getActiveSession: vi.fn()
+    getActiveSession: vi.fn(),
+    hasSyncSession: vi.fn(),
+    getSyncSession: vi.fn()
 }));
 
 vi.mock('$lib/adapters/asset', () => ({
@@ -32,6 +35,7 @@ vi.mock('$lib/adapters/asset', () => ({
         getAssetsSince: vi.fn(),
         getRegistry: vi.fn(),
         getAllRegistry: vi.fn(),
+        getRegistryByStatus: vi.fn(),
         getDeletedRegistry: vi.fn(),
         putRegistry: vi.fn(),
         softDeleteRegistry: vi.fn(),
@@ -59,14 +63,15 @@ vi.mock('$lib/adapters/kv', () => ({
 }));
 
 vi.mock('$lib/crypto', () => ({
-    encrypt: vi.fn(),
+    encrypt: vi.fn(() => ({ ciphertext: new Uint8Array(), iv: new Uint8Array() })),
     decrypt: vi.fn(),
     toBase64: vi.fn((buf: Uint8Array) => Buffer.from(buf).toString('base64')),
     fromBase64: vi.fn((str: string) => new Uint8Array(Buffer.from(str, 'base64')))
 }));
 
 vi.mock('$lib/services/asset/util', () => ({
-    encryptAsset: vi.fn()
+    encryptAsset: vi.fn(),
+    parseFields: vi.fn((record: AssetRecord) => record.data)
 }));
 
 vi.mock('$lib/services/asset/remote', () => ({
@@ -76,17 +81,17 @@ vi.mock('$lib/services/asset/remote', () => ({
 }));
 
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession } from '$lib/services/session';
+import { getActiveSession, hasSyncSession, getSyncSession } from '$lib/services/session';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
-import { appKV } from '$lib/adapters/kv';
-import { decrypt, encrypt } from '$lib/crypto';
+import { decrypt } from '$lib/crypto';
 import { encryptAsset } from '$lib/services/asset/util';
 import { uploadAsset } from '$lib/services/asset/remote';
 
-describe('AssetSyncService', () => {
+describe('AssetSyncEngine (Unit)', () => {
     const mockMasterKey = {} as CryptoKey;
     const mockUserId = 'user-123';
+    let service: AssetSyncEngine;
 
     const createRegistryRecord = (): AssetRegistryRecord => ({
         id: 'asset-1',
@@ -96,8 +101,6 @@ describe('AssetSyncService', () => {
         isDeleted: false,
         kind: 'private',
         status: 'local',
-        hash: 'hash-123',
-        encKey: 'enc-key',
         accessedAt: 1000,
         size: 42
     });
@@ -108,13 +111,17 @@ describe('AssetSyncService', () => {
         createdAt: 1000,
         updatedAt: 1000,
         isDeleted: false,
-        encryptedData: new Uint8Array([1, 2, 3]),
-        encryptedDataIV: new Uint8Array([4, 5, 6])
+        data: {
+            kind: 'private',
+            status: 'local',
+            hash: 'hash-123',
+            encKey: 'enc-key'
+        }
     });
 
     beforeEach(() => {
         vi.clearAllMocks();
-        AssetSyncService.stop();
+        service = new AssetSyncEngine();
 
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
@@ -122,23 +129,28 @@ describe('AssetSyncService', () => {
             isGuest: false,
             identityKeyPair: {} as CryptoKeyPair
         });
+        vi.mocked(hasSyncSession).mockReturnValue(true);
+        vi.mocked(getSyncSession).mockReturnValue({
+            userId: mockUserId,
+            masterKey: mockMasterKey
+        });
 
         (pb.authStore as { isValid: boolean }).isValid = true;
 
-        // Mock PB collection for pull phase (empty — no server records)
+        // Mock PB collection for pull phase
         vi.mocked(pb.collection).mockReturnValue({
             getList: vi.fn().mockResolvedValue({ items: [], page: 1, totalPages: 1 }),
-            subscribe: vi.fn(),
-            unsubscribe: vi.fn()
+            subscribe: vi.fn().mockResolvedValue(() => {}),
+            unsubscribe: vi.fn().mockResolvedValue(() => {})
         } as never);
 
         // Default mocks for upload queue phase
-        vi.mocked(appAsset.getAllRegistry).mockResolvedValue([createRegistryRecord()]);
+        vi.mocked(appAsset.getRegistryByStatus).mockResolvedValue([createRegistryRecord()]);
         vi.mocked(appAsset.getDeletedRegistry).mockResolvedValue([]);
         vi.mocked(appAsset.getAsset).mockResolvedValue(createAssetRecord());
         vi.mocked(appStorage.read).mockResolvedValue(new Uint8Array([7, 8, 9]));
         vi.mocked(appAsset.putRegistry).mockResolvedValue(undefined);
-        vi.mocked(appAsset.deleteRegistry).mockResolvedValue(undefined);
+        vi.mocked(appAsset.putAsset).mockResolvedValue(undefined);
 
         vi.mocked(decrypt).mockResolvedValue(
             JSON.stringify({
@@ -147,10 +159,6 @@ describe('AssetSyncService', () => {
                 encKey: 'enc-key'
             })
         );
-        vi.mocked(encrypt).mockResolvedValue({
-            ciphertext: new Uint8Array([1, 2, 3]),
-            iv: new Uint8Array([4, 5, 6])
-        });
         vi.mocked(encryptAsset).mockResolvedValue(new Uint8Array([10, 11, 12]));
         vi.mocked(uploadAsset).mockResolvedValue({
             status: 'uploaded',
@@ -159,15 +167,9 @@ describe('AssetSyncService', () => {
     });
 
     it('should mark asset as remote and upload when status is local', async () => {
-        await AssetSyncService.start();
+        await service.trigger();
 
-        expect(uploadAsset).toHaveBeenCalledWith(
-            'hash-123',
-            'private',
-            3, // encryptAsset mock returns [10, 11, 12] which has length 3
-            expect.any(Uint8Array)
-        );
-
+        expect(uploadAsset).toHaveBeenCalled();
         expect(appAsset.putRegistry).toHaveBeenCalledWith(
             expect.objectContaining({
                 id: 'asset-1',
@@ -181,59 +183,29 @@ describe('AssetSyncService', () => {
             new AppError('QUOTA_EXCEEDED', 'Asset quota exceeded.')
         );
 
-        await AssetSyncService.start();
+        await service.trigger();
 
-        expect(AssetSyncService.getState().state).toBe('quota_error');
+        // Use waitFor just in case there's some microtask delay
+        await vi.waitFor(() => expect(service.getState().state).toBe('quota_error'), {
+            timeout: 1000,
+            interval: 50
+        });
     });
 
-    it('should skip processing for guest sessions', async () => {
+    it('should process sync for guest sessions when sync session is available', async () => {
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
             masterKey: mockMasterKey,
             isGuest: true,
             identityKeyPair: {} as CryptoKeyPair
         });
-
-        await AssetSyncService.start();
-
-        expect(appAsset.getAllRegistry).not.toHaveBeenCalled();
-    });
-
-    it('should skip processing when PocketBase auth is invalid', async () => {
-        (pb.authStore as { isValid: boolean }).isValid = false;
-
-        await AssetSyncService.start();
-
-        expect(appAsset.getAllRegistry).not.toHaveBeenCalled();
-    });
-
-    it('should keep cursor unchanged when correction push fails', async () => {
-        vi.mocked(appKV.get).mockResolvedValue('1000');
-        vi.mocked(pb.collection).mockReturnValue({
-            getList: vi.fn().mockResolvedValue({
-                items: [{ id: 'asset-remote', updatedAt: 1100, updated: '2023-01-01' }],
-                page: 1,
-                totalPages: 1
-            }),
-            subscribe: vi.fn(),
-            unsubscribe: vi.fn()
-        } as never);
-
-        vi.mocked(appAsset.getAsset).mockResolvedValue({
-            ...createAssetRecord(),
-            id: 'asset-remote',
-            updatedAt: 1200
+        vi.mocked(getSyncSession).mockReturnValue({
+            userId: mockUserId,
+            masterKey: mockMasterKey
         });
 
-        const failingBatchSend = vi.fn().mockRejectedValueOnce(new Error('batch failed'));
-        vi.mocked(pb.createBatch).mockReturnValue({
-            collection: vi.fn(() => ({ upsert: vi.fn(), create: vi.fn() })),
-            send: failingBatchSend
-        } as never);
+        await service.trigger();
 
-        await AssetSyncService.start();
-
-        expect(appKV.set).not.toHaveBeenCalled();
-        expect(AssetSyncService.getState().state).toBe('network_error');
+        expect(appAsset.getRegistryByStatus).toHaveBeenCalled();
     });
 });

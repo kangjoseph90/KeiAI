@@ -32,6 +32,15 @@ vi.mock('$lib/utils/id', () => ({
     generateId: vi.fn(() => 'test-module-id')
 }));
 
+vi.mock('$lib/services/content/write_queue', () => ({
+    writeQueue: {
+        peek: vi.fn(() => undefined),
+        upsert: vi.fn(),
+        drop: vi.fn(),
+        flushTable: vi.fn()
+    }
+}));
+
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
@@ -39,8 +48,6 @@ import { localDB } from '$lib/adapters/db';
 describe('ModuleService', () => {
     const mockUserId = 'user-123';
     const mockMasterKey = {} as CryptoKey;
-    const mockEncryptedData = new Uint8Array([1, 2, 3]);
-    const mockIV = new Uint8Array([4, 5, 6]);
 
     const defaultFields: ModuleFields = {
         name: 'Test Module',
@@ -59,8 +66,8 @@ describe('ModuleService', () => {
         });
 
         vi.mocked(encrypt).mockResolvedValue({
-            ciphertext: mockEncryptedData,
-            iv: mockIV
+            ciphertext: new Uint8Array([1, 2, 3]),
+            iv: new Uint8Array([4, 5, 6])
         });
 
         vi.mocked(decrypt).mockResolvedValue(JSON.stringify(defaultFields));
@@ -75,8 +82,10 @@ describe('ModuleService', () => {
                     createdAt: 100,
                     updatedAt: 100,
                     isDeleted: false,
-                    encryptedData: mockEncryptedData,
-                    encryptedDataIV: mockIV
+                    data: defaultFields as unknown as Record<string, unknown> as unknown as Record<
+                        string,
+                        unknown
+                    >
                 }
             ];
 
@@ -99,8 +108,7 @@ describe('ModuleService', () => {
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,
-                encryptedData: mockEncryptedData,
-                encryptedDataIV: mockIV
+                data: defaultFields as unknown as Record<string, unknown>
             };
 
             vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
@@ -130,7 +138,7 @@ describe('ModuleService', () => {
         });
 
         it('should throw AppError on failure', async () => {
-            vi.mocked(encrypt).mockRejectedValue(new Error('Fail'));
+            vi.mocked(localDB.putRecord).mockRejectedValue(new Error('Fail'));
             await expect(ModuleService.create()).rejects.toThrow(AppError);
         });
     });
@@ -143,8 +151,7 @@ describe('ModuleService', () => {
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,
-                encryptedData: mockEncryptedData,
-                encryptedDataIV: mockIV
+                data: defaultFields as unknown as Record<string, unknown>
             };
 
             vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);

@@ -1,9 +1,8 @@
 import { clock } from '$lib/utils/clock';
-import { encrypt } from '$lib/crypto';
 import {
     localDB,
     type DatabaseWriteOptions,
-    type EncryptedRecord,
+    type DataRecord,
     type TableName
 } from '$lib/adapters/db';
 import { getActiveSession } from '../session';
@@ -14,7 +13,7 @@ const WRITE_MAX_WAIT_MS = 2000;
 
 type QueueKey = `${TableName}:${string}`;
 
-interface QueueEntry<TFields, TRecord extends EncryptedRecord> {
+interface QueueEntry<TFields, TRecord extends DataRecord> {
     key: QueueKey;
     tableName: TableName;
     id: string;
@@ -27,8 +26,7 @@ interface QueueEntry<TFields, TRecord extends EncryptedRecord> {
         userId: string;
         createdAt: number;
         updatedAt: number;
-        encryptedData: Uint8Array<ArrayBuffer>;
-        encryptedDataIV: Uint8Array<ArrayBuffer>;
+        data: Record<string, unknown>;
     }) => TRecord;
     flushTimer: ReturnType<typeof setTimeout> | null;
     maxWaitTimer: ReturnType<typeof setTimeout> | null;
@@ -36,8 +34,8 @@ interface QueueEntry<TFields, TRecord extends EncryptedRecord> {
     flushPromise: Promise<void> | null;
 }
 
-class EncryptedWriteQueue {
-    private readonly entries = new Map<QueueKey, QueueEntry<unknown, EncryptedRecord>>();
+class WriteQueue {
+    private readonly entries = new Map<QueueKey, QueueEntry<unknown, DataRecord>>();
 
     constructor() {
         this.installLifecycleFlushHooks();
@@ -49,7 +47,7 @@ class EncryptedWriteQueue {
         return structuredClone(entry.fields) as TFields;
     }
 
-    upsert<TFields, TRecord extends EncryptedRecord>(args: {
+    upsert<TFields, TRecord extends DataRecord>(args: {
         tableName: TableName;
         id: string;
         userId: string;
@@ -78,8 +76,8 @@ class EncryptedWriteQueue {
                 firstQueuedAt: now,
                 flushPromise: null
             };
-            this.entries.set(key, created as QueueEntry<unknown, EncryptedRecord>);
-            this.schedule(created as QueueEntry<unknown, EncryptedRecord>);
+            this.entries.set(key, created as QueueEntry<unknown, DataRecord>);
+            this.schedule(created as QueueEntry<unknown, DataRecord>);
             return structuredClone(created.fields);
         }
 
@@ -88,7 +86,7 @@ class EncryptedWriteQueue {
             : structuredClone(args.nextFields);
         existing.options = args.options;
         existing.toRecord = args.toRecord;
-        this.schedule(existing as QueueEntry<unknown, EncryptedRecord>);
+        this.schedule(existing as QueueEntry<unknown, DataRecord>);
         return structuredClone(existing.fields);
     }
 
@@ -120,7 +118,7 @@ class EncryptedWriteQueue {
         return `${tableName}:${id}`;
     }
 
-    private schedule(entry: QueueEntry<unknown, EncryptedRecord>): void {
+    private schedule(entry: QueueEntry<unknown, DataRecord>): void {
         if (entry.flushTimer) {
             clearTimeout(entry.flushTimer);
         }
@@ -136,7 +134,7 @@ class EncryptedWriteQueue {
         }
     }
 
-    private clearTimers(entry: QueueEntry<unknown, EncryptedRecord>): void {
+    private clearTimers(entry: QueueEntry<unknown, DataRecord>): void {
         if (entry.flushTimer) {
             clearTimeout(entry.flushTimer);
             entry.flushTimer = null;
@@ -157,16 +155,13 @@ class EncryptedWriteQueue {
 
         this.clearTimers(entry);
         entry.flushPromise = (async () => {
-            const { masterKey } = getActiveSession();
             const updatedAt = clock.now();
-            const enc = await encrypt(masterKey, JSON.stringify(entry.fields));
             const record = entry.toRecord({
                 id: entry.id,
                 userId: entry.userId,
                 createdAt: entry.createdAt,
                 updatedAt,
-                encryptedData: enc.ciphertext,
-                encryptedDataIV: enc.iv
+                data: entry.fields as Record<string, unknown>
             });
 
             await localDB.putRecord(entry.tableName, record, entry.options);
@@ -200,4 +195,4 @@ class EncryptedWriteQueue {
     }
 }
 
-export const encryptedWriteQueue = new EncryptedWriteQueue();
+export const writeQueue = new WriteQueue();

@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fakeIndexedDB, { IDBKeyRange as FDBKeyRange } from 'fake-indexeddb';
 import Dexie from 'dexie';
-import type { EncryptedRecord } from '$lib/adapters/db';
+import type { DataRecord } from '$lib/adapters/db';
 
 // Mock Tauri to ensure WebDatabaseAdapter is used
 vi.mock('@tauri-apps/api/core', () => ({
@@ -19,7 +19,7 @@ Dexie.dependencies.IDBKeyRange = FDBKeyRange as unknown as typeof IDBKeyRange;
 // Now we can import WebDatabaseAdapter
 import { WebDatabaseAdapter } from '$lib/adapters/db/web';
 
-function createTestRecord(id: string, overrides: Partial<EncryptedRecord> = {}): EncryptedRecord {
+function createTestRecord(id: string, overrides: Partial<DataRecord> = {}): DataRecord {
     const now = Date.now();
     return {
         id,
@@ -27,10 +27,9 @@ function createTestRecord(id: string, overrides: Partial<EncryptedRecord> = {}):
         createdAt: now,
         updatedAt: now,
         isDeleted: false,
-        encryptedData: new Uint8Array([1, 2, 3]),
-        encryptedDataIV: new Uint8Array([1, 2, 3, 4, 5, 6, 7]),
+        data: { name: 'Test' },
         ...overrides
-    } as EncryptedRecord;
+    } as DataRecord;
 }
 
 describe('WebDatabaseAdapter (Immediate writes)', () => {

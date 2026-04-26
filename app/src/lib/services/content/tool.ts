@@ -1,11 +1,10 @@
 import { clock } from '$lib/utils/clock';
-import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '../session';
 import { localDB, type ToolCallRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { encryptedWriteQueue } from './write_queue';
+import { writeQueue } from './write_queue';
 
 export type ToolCallStatus = 'pending' | 'success' | 'rejected' | 'error';
 
@@ -57,15 +56,8 @@ const defaultToolCallFields: ToolCallFields = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
-function decryptFields(masterKey: CryptoKey, record: ToolCallRecord): Promise<ToolCallFields> {
-    return decrypt(masterKey, {
-        ciphertext: record.encryptedData,
-        iv: record.encryptedDataIV
-    })
-        .then((dec) => deepMerge(defaultToolCallFields, JSON.parse(dec)))
-        .catch((error) => {
-            throw new AppError('ENCRYPTION_FAILED', 'Failed to decrypt tool call', error);
-        });
+function parseFields(record: ToolCallRecord): ToolCallFields {
+    return deepMerge(defaultToolCallFields, record.data as DeepPartial<ToolCallFields>);
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
@@ -73,31 +65,24 @@ function decryptFields(masterKey: CryptoKey, record: ToolCallRecord): Promise<To
 export class ToolCallService {
     /** List tool calls for a specific swipe */
     static async listBySwipe(swipeId: string): Promise<ToolCall[]> {
-        await encryptedWriteQueue.flushTable('tool_calls');
-        const { masterKey } = getActiveSession();
+        await writeQueue.flushTable('tool_calls');
         const records = await localDB.getByIndex<ToolCallRecord>(
             'tool_calls',
             'swipeId',
             swipeId,
             Number.MAX_SAFE_INTEGER
         );
-        return Promise.all(
-            records.map(async (record) => {
-                const fields = await decryptFields(masterKey, record);
-                return {
-                    id: record.id,
-                    chatId: record.chatId,
-                    messageId: record.messageId,
-                    swipeId: record.swipeId,
-                    ...fields
-                };
-            })
-        );
+        return records.map((record) => ({
+            id: record.id,
+            chatId: record.chatId,
+            messageId: record.messageId,
+            swipeId: record.swipeId,
+            ...parseFields(record)
+        }));
     }
 
     static async get(id: string): Promise<ToolCall | null> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<ToolCallFields>('tool_calls', id);
+        const queued = writeQueue.peek<ToolCallFields>('tool_calls', id);
         if (queued) {
             const record = await localDB.getRecord<ToolCallRecord>('tool_calls', id);
             if (!record || record.isDeleted) return null;
@@ -113,13 +98,12 @@ export class ToolCallService {
         const record = await localDB.getRecord<ToolCallRecord>('tool_calls', id);
         if (!record || record.isDeleted) return null;
 
-        const fields = await decryptFields(masterKey, record);
         return {
             id: record.id,
             chatId: record.chatId,
             messageId: record.messageId,
             swipeId: record.swipeId,
-            ...fields
+            ...parseFields(record)
         };
     }
 
@@ -131,12 +115,11 @@ export class ToolCallService {
     ): Promise<ToolCall> {
         const resolved: ToolCallFields = deepMerge(defaultToolCallFields, fields);
 
-        const { masterKey, userId } = getActiveSession();
+        const { userId } = getActiveSession();
         const id = generateId();
         const now = clock.now();
 
         try {
-            const enc = await encrypt(masterKey, JSON.stringify(resolved));
             const newRecord: ToolCallRecord = {
                 id,
                 userId,
@@ -146,8 +129,7 @@ export class ToolCallService {
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                encryptedData: enc.ciphertext,
-                encryptedDataIV: enc.iv
+                data: resolved as unknown as Record<string, unknown>
             };
             await localDB.putRecord<ToolCallRecord>('tool_calls', newRecord);
         } catch (error) {
@@ -159,34 +141,24 @@ export class ToolCallService {
     }
 
     static async update(id: string, changes: DeepPartial<ToolCallFields>): Promise<ToolCall> {
-        const { masterKey } = getActiveSession();
-        const queued = encryptedWriteQueue.peek<ToolCallFields>('tool_calls', id);
+        const queued = writeQueue.peek<ToolCallFields>('tool_calls', id);
         const record = await localDB.getRecord<ToolCallRecord>('tool_calls', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Tool call not found: ${id}`);
         }
 
         try {
-            const current = queued
-                ? deepMerge(defaultToolCallFields, queued)
-                : await decryptFields(masterKey, record);
+            const current = queued ? deepMerge(defaultToolCallFields, queued) : parseFields(record);
             const updated: ToolCallFields = deepMerge(current, changes);
 
-            encryptedWriteQueue.upsert<ToolCallFields, ToolCallRecord>({
+            writeQueue.upsert<ToolCallFields, ToolCallRecord>({
                 tableName: 'tool_calls',
                 id,
                 userId: record.userId,
                 createdAt: record.createdAt,
                 nextFields: updated,
                 mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({
-                    id: recordId,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    encryptedData,
-                    encryptedDataIV
-                }) => ({
+                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
                     id: recordId,
                     userId: recordUserId,
                     chatId: record.chatId,
@@ -195,8 +167,7 @@ export class ToolCallService {
                     createdAt,
                     updatedAt,
                     isDeleted: false,
-                    encryptedData,
-                    encryptedDataIV
+                    data
                 })
             });
 
@@ -215,7 +186,7 @@ export class ToolCallService {
 
     static async delete(id: string): Promise<void> {
         try {
-            encryptedWriteQueue.drop('tool_calls', id);
+            writeQueue.drop('tool_calls', id);
             await localDB.softDeleteRecord('tool_calls', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

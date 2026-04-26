@@ -1,6 +1,6 @@
 # KeiAI — Monorepo AGENTS.md
 
-Local-first AI character chat application with client-side E2EE. Uses pnpm workspaces.
+Local-first AI character chat application with encrypted cloud sync. Uses pnpm workspaces.
 
 ---
 
@@ -34,7 +34,8 @@ cd proxy && pnpm install && pnpm dev   # Local wrangler
 
 This is the single most important design constraint. Every decision flows from it.
 
-- **All user data is encrypted client-side** (AES-256-GCM) before leaving the browser
+- **Local data is stored as plaintext domain JSON** in the app database
+- **All synced user data is encrypted client-side** (AES-256-GCM) before leaving the browser
 - The server stores and syncs opaque encrypted blobs — it never sees plaintext
 - The master key `M` exists only in memory or as a non-extractable `CryptoKey` in IndexedDB
 - The proxy is stateless; it forwards AI API requests without logging or inspection
@@ -47,12 +48,12 @@ When adding any new feature or data type, ask: **"Does the server need to read t
 ## Data Flow
 
 ```
-User Input → Service (encrypt) → Adapter (IndexedDB) → Sync (push encrypted blob) → PocketBase
-PocketBase → Sync (pull encrypted blob) → Service (decrypt + deepMerge defaults) → Store → UI
+User Input → Service → Adapter (plaintext IndexedDB/SQLite) → Sync (encrypt + push blob) → PocketBase
+PocketBase → Sync (pull blob + decrypt) → Adapter (plaintext IndexedDB/SQLite) → Service (deepMerge defaults) → Store → UI
 ```
 
 - Domain types and business logic live in `app/`; PocketBase only stores what `app/` pushes
-- PocketBase defines the API contract. Schema changes there must update `app/src/lib/adapters/pb.ts`
+- PocketBase defines the sync API contract. During the clean-schema phase, change the canonical init schema instead of adding incremental migrations
 - Domain types in `app/src/lib/shared/types.ts` are the shared vocabulary across all layers
 
 ---

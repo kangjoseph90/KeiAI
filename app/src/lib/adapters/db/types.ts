@@ -1,15 +1,14 @@
 /**
  * Local Database Types — KeiAI
  *
- * Relationship patterns:
- *   1:N — Parent's encrypted blob holds OrderedRef[] of child IDs
- *         (order + folder managed by parent). Exception: messages use chatId FK.
- *   N:M — Consumer's encrypted blob holds ResourceRef[] with per-context state.
+ * Local DB stores plaintext JSON. Encryption happens only at the sync
+ * boundary (Sync Engine ↔ PocketBase).
  *
- * Every table stores AES-GCM encrypted JSON blobs.
+ * Relationship patterns:
+ *   1:N — Parent's data blob holds OrderedRef[] of child IDs
+ *         (order + folder managed by parent). Exception: messages use chatId FK.
+ *   N:M — Consumer's data blob holds ResourceRef[] with per-context state.
  */
-
-type Bytes = Uint8Array<ArrayBuffer>;
 
 // ─── Table Registry ──────────────────────────────────────────────────
 
@@ -39,10 +38,11 @@ export const SYNC_TABLES: TableName[] = [
     'scripts',
     'modules',
     'plugins',
-    'charjs'
+    'charjs',
+    'translations'
 ];
 
-export const LOCAL_TABLES: TableName[] = ['tool_calls', 'translations'];
+export const LOCAL_TABLES: TableName[] = ['tool_calls'];
 
 export const TABLES: TableName[] = [...SYNC_TABLES, ...LOCAL_TABLES];
 
@@ -79,19 +79,18 @@ export interface BaseRecord {
     isDeleted: boolean;
 }
 
-/** Standard encrypted payload — used by every table except `users` */
-export interface EncryptedRecord extends BaseRecord {
-    encryptedData: Bytes; // AES-GCM ciphertext of JSON.stringify(...)
-    encryptedDataIV: Bytes; // Random 12-byte nonce
+/** Standard record — stores domain fields as plaintext JSON */
+export interface DataRecord extends BaseRecord {
+    data: Record<string, unknown>;
 }
 
 // ─── Characters ──────────────────────────────────────────────────────
 
-export type CharacterRecord = EncryptedRecord;
+export type CharacterRecord = DataRecord;
 
 // ─── Chats ───────────────────────────────────────────────────────────
 
-export interface ChatRecord extends EncryptedRecord {
+export interface ChatRecord extends DataRecord {
     characterId: string;
 }
 
@@ -99,42 +98,42 @@ export interface ChatRecord extends EncryptedRecord {
 
 // Exception to the 1:N pattern: Messages manage their own sortOrder.
 // Since chats can easily exceed 10,000+ messages, storing an OrderedRef[] in the parent's
-// encrypted blob would require O(n) AES-GCM decryption/encryption on every single message sent.
+// data blob would require O(n) rewrites on every single message sent.
 // Using a database index [chatId+sortOrder] ensures O(1) writes and faster pagination.
-export interface MessageRecord extends EncryptedRecord {
+export interface MessageRecord extends DataRecord {
     chatId: string;
     sortOrder: string;
 }
 
 // ─── Settings ────────────────────────────────────────────────────────
 
-export type SettingsRecord = EncryptedRecord;
+export type SettingsRecord = DataRecord;
 
 // ─── Personas ────────────────────────────────────────────────────────
 
-export type PersonaRecord = EncryptedRecord;
+export type PersonaRecord = DataRecord;
 
 // ─── Single-table entities ───────────────────────────────────────────
 
-export interface LorebookRecord extends EncryptedRecord {
+export interface LorebookRecord extends DataRecord {
     ownerId: string;
 }
-export interface ScriptRecord extends EncryptedRecord {
+export interface ScriptRecord extends DataRecord {
     ownerId: string;
 }
-export interface CharJSRecord extends EncryptedRecord {
+export interface CharJSRecord extends DataRecord {
     ownerId: string;
 }
-export type ModuleRecord = EncryptedRecord;
-export type PluginRecord = EncryptedRecord;
+export type ModuleRecord = DataRecord;
+export type PluginRecord = DataRecord;
 
 // ─── Presets ─────────────────────────────────────────────────────────
 
-export type PresetRecord = EncryptedRecord;
+export type PresetRecord = DataRecord;
 
 // ─── Tool Calls ──────────────────────────────────────────────────────
 
-export interface ToolCallRecord extends EncryptedRecord {
+export interface ToolCallRecord extends DataRecord {
     chatId: string;
     messageId: string;
     swipeId: string;
@@ -142,7 +141,7 @@ export interface ToolCallRecord extends EncryptedRecord {
 
 // ─── Translations ───────────────────────────────────────────────────
 
-export interface TranslationRecord extends EncryptedRecord {
+export interface TranslationRecord extends DataRecord {
     chatId: string;
     messageId: string;
     swipeId: string;

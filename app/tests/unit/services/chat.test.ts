@@ -50,7 +50,7 @@ vi.mock('$lib/utils/defaults', () => ({
 }));
 
 vi.mock('$lib/services/content/write_queue', () => ({
-    encryptedWriteQueue: {
+    writeQueue: {
         peek: vi.fn(() => undefined),
         upsert: vi.fn(),
         drop: vi.fn(),
@@ -63,7 +63,7 @@ import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';
-import { encryptedWriteQueue } from '$lib/services/content/write_queue';
+import { writeQueue } from '$lib/services/content/write_queue';
 
 describe('ChatService', () => {
     const mockMasterKey = {} as CryptoKey;
@@ -103,8 +103,8 @@ describe('ChatService', () => {
         vi.mocked(generateId).mockReturnValue('test-chat-id');
 
         // Default write queue mock
-        vi.mocked(encryptedWriteQueue.peek).mockReturnValue(undefined);
-        vi.mocked(encryptedWriteQueue.flushTable).mockResolvedValue(undefined);
+        vi.mocked(writeQueue.peek).mockReturnValue(undefined);
+        vi.mocked(writeQueue.flushTable).mockResolvedValue(undefined);
     });
 
     describe('listByCharacter', () => {
@@ -117,8 +117,7 @@ describe('ChatService', () => {
                     createdAt: 1000,
                     updatedAt: 1000,
                     isDeleted: false,
-                    encryptedData: new Uint8Array([1]),
-                    encryptedDataIV: new Uint8Array([2])
+                    data: { title: 'Chat 1', messageCount: 0 }
                 } as unknown as BaseRecord,
                 {
                     id: 'chat-2',
@@ -127,15 +126,11 @@ describe('ChatService', () => {
                     createdAt: 2000,
                     updatedAt: 2000,
                     isDeleted: false,
-                    encryptedData: new Uint8Array([3]),
-                    encryptedDataIV: new Uint8Array([4])
+                    data: { title: 'Chat 2', messageCount: 0 }
                 } as unknown as BaseRecord
             ] as BaseRecord[];
 
             vi.mocked(localDB.getByIndex).mockResolvedValue(mockRecords);
-            vi.mocked(decrypt)
-                .mockResolvedValueOnce(JSON.stringify({ title: 'Chat 1', messageCount: 0 }))
-                .mockResolvedValueOnce(JSON.stringify({ title: 'Chat 2', messageCount: 0 }));
 
             const result = await ChatService.listByCharacter('char-1');
 
@@ -156,7 +151,6 @@ describe('ChatService', () => {
 
         it('should call getByIndex with correct parameters', async () => {
             vi.mocked(localDB.getByIndex).mockResolvedValue([]);
-            vi.mocked(decrypt).mockResolvedValue(JSON.stringify({ title: 'Test' }));
 
             await ChatService.listByCharacter('char-123');
 
@@ -178,18 +172,14 @@ describe('ChatService', () => {
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
-                encryptedData: new Uint8Array([1]),
-                encryptedDataIV: new Uint8Array([2])
-            } as unknown as BaseRecord;
-
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
-            vi.mocked(decrypt).mockResolvedValue(
-                JSON.stringify({
+                data: {
                     title: 'Test Chat',
                     messageCount: 0,
                     systemPromptOverride: 'Override'
-                })
-            );
+                }
+            } as unknown as BaseRecord;
+
+            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
 
             const result = await ChatService.get('chat-1');
 
@@ -214,8 +204,7 @@ describe('ChatService', () => {
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: true,
-                encryptedData: new Uint8Array([1]),
-                encryptedDataIV: new Uint8Array([2])
+                data: { title: 'Deleted' }
             } as unknown as BaseRecord);
 
             const result = await ChatService.get('chat-1');
@@ -263,23 +252,15 @@ describe('ChatService', () => {
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
-                encryptedData: new Uint8Array([1]),
-                encryptedDataIV: new Uint8Array([2])
+                data: { title: 'Old Title', messageCount: 5 }
             } as unknown as BaseRecord;
 
             vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
-            vi.mocked(decrypt).mockResolvedValue(
-                JSON.stringify({ title: 'Old Title', messageCount: 5 })
-            );
-            vi.mocked(encrypt).mockResolvedValue({
-                ciphertext: new Uint8Array([99]),
-                iv: new Uint8Array([88])
-            });
 
             const result = await ChatService.update('chat-1', { title: 'New Title' });
 
             expect(result.title).toBe('New Title');
-            expect(encryptedWriteQueue.upsert).toHaveBeenCalled();
+            expect(writeQueue.upsert).toHaveBeenCalled();
         });
 
         it('should throw NOT_FOUND when chat does not exist', async () => {

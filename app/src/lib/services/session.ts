@@ -7,9 +7,9 @@
  * Services call getActiveSession() to obtain credentials for DB operations.
  * UserService and AuthService call setSession()/clearSession() to mutate state.
  *
- * Master key storage strategy:
- *   - Guest:      CryptoKey with extractable: true  (can create M(Y) later)
- *   - Registered: CryptoKey with extractable: false (XSS cannot export raw bytes)
+ * Master key is optional — guests don't need one, and local DB operations
+ * no longer require encryption. Only the Sync Engine needs masterKey via
+ * getSyncSession().
  *
  * Identity key pair storage strategy:
  *   - Guest:      private key extractable: true  (can wrap with M later)
@@ -29,11 +29,11 @@ import { AppError } from '$lib/types/errors';
 
 export function getActiveSession(): {
     userId: string;
-    masterKey: CryptoKey;
+    masterKey: CryptoKey | null;
     isGuest: boolean;
     identityKeyPair: CryptoKeyPair;
 } {
-    if (!activeUserId || !activeMasterKey || !activeIdentityKeyPair) {
+    if (!activeUserId || !activeIdentityKeyPair) {
         throw new AppError('SESSION_EXPIRED', 'Session not initialized.');
     }
     return {
@@ -44,8 +44,23 @@ export function getActiveSession(): {
     };
 }
 
+/** Sync Engine only: masterKey must exist for encryption at sync boundary */
+export function getSyncSession(): {
+    userId: string;
+    masterKey: CryptoKey;
+} {
+    if (!activeUserId || !activeMasterKey) {
+        throw new AppError('SESSION_EXPIRED', 'Sync session not available.');
+    }
+    return { userId: activeUserId, masterKey: activeMasterKey };
+}
+
 export function hasActiveSession(): boolean {
-    return activeMasterKey !== null && activeUserId !== null && activeIdentityKeyPair !== null;
+    return activeUserId !== null && activeIdentityKeyPair !== null;
+}
+
+export function hasSyncSession(): boolean {
+    return activeUserId !== null && activeMasterKey !== null;
 }
 
 // ─── Mutation ────────────────────────────────────────────────────────
@@ -56,7 +71,7 @@ export function hasActiveSession(): boolean {
  */
 export function setSession(
     userId: string,
-    masterKey: CryptoKey,
+    masterKey: CryptoKey | null,
     isGuest: boolean,
     identityKeyPair: CryptoKeyPair
 ): void {

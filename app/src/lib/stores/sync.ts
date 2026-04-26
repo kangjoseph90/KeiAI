@@ -1,5 +1,6 @@
 import { get } from 'svelte/store';
 import { AssetSyncService, DataSyncService, ProfileSyncService } from '$lib/services/sync';
+import type { SyncStatus } from '$lib/services/sync/base';
 import {
     appSettings,
     assetSyncStatus,
@@ -346,7 +347,7 @@ export function startSyncStatusTracking(): void {
     if (stopTracking) return;
 
     const unsubscribers = [
-        DataSyncService.subscribeStatus((status) => {
+        DataSyncService.subscribeStatus((status: SyncStatus) => {
             dataSyncStatus.set(status);
         }),
         ProfileSyncService.subscribeStatus((status) => {
