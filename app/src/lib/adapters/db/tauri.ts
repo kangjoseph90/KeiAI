@@ -495,7 +495,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         await this.flush();
         const db = await this.getDb();
         const rows = await db.select<DatabaseSqlRow[]>(
-            `SELECT * FROM ${tableName} WHERE userId = $1 AND updatedAt > $2`,
+            `SELECT * FROM ${tableName} WHERE userId = $1 AND updatedAt >= $2`,
             [userId, sinceUpdatedAt]
         );
         return rows.map((row) => parseRecord<T>(row));
