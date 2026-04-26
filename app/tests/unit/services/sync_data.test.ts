@@ -90,6 +90,7 @@ describe('DataSyncService', () => {
 
         vi.mocked(mockCollection.subscribe).mockResolvedValue(() => {});
         vi.mocked(mockCollection.unsubscribe).mockResolvedValue(() => {});
+        vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([]);
     });
 
     describe('Realtime Subscription', () => {

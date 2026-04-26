@@ -83,7 +83,7 @@ export class ProfileSyncEngine extends BaseSyncEngine {
      * Subscribe to Realtime updates on the current user's PB record.
      */
     async subscribeRealtime(): Promise<void> {
-        if (!pb.authStore.isValid || this.subscribed) return;
+        if (!pb.authStore.isValid) return;
 
         let userId: string;
         let isGuest: boolean;
@@ -93,6 +93,9 @@ export class ProfileSyncEngine extends BaseSyncEngine {
             return;
         }
         if (isGuest) return;
+
+        // Ensure clean state before subscribing to avoid duplicate handlers
+        await this.unsubscribeRealtime();
 
         await pb.collection('users').subscribe(userId, (e) => {
             void this.handleRealtimeEvent(e.record as Record<string, unknown>);
@@ -104,8 +107,6 @@ export class ProfileSyncEngine extends BaseSyncEngine {
      * Unsubscribe from Realtime profile updates.
      */
     async unsubscribeRealtime(): Promise<void> {
-        if (!this.subscribed) return;
-
         try {
             const { userId } = getActiveSession();
             await pb.collection('users').unsubscribe(userId);
@@ -139,6 +140,15 @@ export class ProfileSyncEngine extends BaseSyncEngine {
             const remoteUpdatedAt = serverRecord.updated
                 ? new Date(serverRecord.updated as string).getTime()
                 : 0;
+
+            const localUser = await appUser.getUser(userId);
+            const localUpdatedAt = localUser?.updatedAt ?? 0;
+
+            if (localUpdatedAt > remoteUpdatedAt) {
+                // Local is newer: push back to server (background fire-and-forget)
+                void this.pushProfile();
+                return null;
+            }
 
             const updated = await ProfileService.applyRemoteUpdate(
                 userId,
@@ -188,14 +198,23 @@ export class ProfileSyncEngine extends BaseSyncEngine {
                 ? new Date(serverRecord.updated as string).getTime()
                 : 0;
 
-            this.lastPulledProfile = await ProfileService.applyRemoteUpdate(
-                userId,
-                remoteName,
-                remoteAvatar,
-                remoteUpdatedAt
-            );
-            if (this.lastPulledProfile) {
-                this.onRemoteUpdate?.();
+            const localUser = await appUser.getUser(userId);
+            const localUpdatedAt = localUser?.updatedAt ?? 0;
+
+            if (localUpdatedAt > remoteUpdatedAt) {
+                // Local is newer: push back to server
+                await this.pushProfile();
+            } else {
+                // Remote is newer or equal: apply locally
+                this.lastPulledProfile = await ProfileService.applyRemoteUpdate(
+                    userId,
+                    remoteName,
+                    remoteAvatar,
+                    remoteUpdatedAt
+                );
+                if (this.lastPulledProfile) {
+                    this.onRemoteUpdate?.();
+                }
             }
         } catch (err) {
             logger.error('Pull failed', err);

@@ -71,6 +71,9 @@ export interface IAssetAdapter {
     /** Subscribe to asset-local write events. */
     subscribeWriteEvents(listener: AssetWriteEventListener): () => void;
 
+    /** Ensure all pending writes are committed. */
+    flush(): Promise<void>;
+
     // ── Metadata (assets table) ──────────────────────────────────────
 
     /** Get an encrypted asset record by ID. */
@@ -114,4 +117,11 @@ export interface IAssetAdapter {
 
     /** Hard-delete a registry entry (called after delete queue processing). */
     deleteRegistry(id: string, options?: AssetWriteOptions): Promise<void>;
+
+    /** Run a block of work inside a database transaction. */
+    transaction<R>(
+        tables: AssetTableName[],
+        mode: 'r' | 'rw',
+        callback: () => Promise<R>
+    ): Promise<R>;
 }

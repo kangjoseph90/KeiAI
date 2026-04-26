@@ -147,6 +147,7 @@ describe('AssetSyncEngine (Unit)', () => {
         // Default mocks for upload queue phase
         vi.mocked(appAsset.getRegistryByStatus).mockResolvedValue([createRegistryRecord()]);
         vi.mocked(appAsset.getDeletedRegistry).mockResolvedValue([]);
+        vi.mocked(appAsset.getAssetsSince).mockResolvedValue([]);
         vi.mocked(appAsset.getAsset).mockResolvedValue(createAssetRecord());
         vi.mocked(appStorage.read).mockResolvedValue(new Uint8Array([7, 8, 9]));
         vi.mocked(appAsset.putRegistry).mockResolvedValue(undefined);

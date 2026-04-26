@@ -506,6 +506,11 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         _mode: 'r' | 'rw',
         callback: () => Promise<R>
     ): Promise<R> {
+        if (this.inTransaction) {
+            // Already in a transaction, just run the callback
+            return await callback();
+        }
+
         await this.flush();
         const db = await this.getDb();
         this.inTransaction = true;

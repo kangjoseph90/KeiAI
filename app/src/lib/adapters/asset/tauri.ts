@@ -91,9 +91,14 @@ function parseRegistryRecord(row: RegistrySqlRow): AssetRegistryRecord {
 export class TauriAssetAdapter implements IAssetAdapter {
     private dbPromise: Promise<Database> | null = null;
     private readonly writeEvents = new AssetWriteEventEmitter();
+    private inTransaction = false;
 
     subscribeWriteEvents(listener: AssetWriteEventListener): () => void {
         return this.writeEvents.subscribe(listener);
+    }
+
+    async flush(): Promise<void> {
+        return Promise.resolve();
     }
 
     private emitWriteEvent(
@@ -300,6 +305,32 @@ export class TauriAssetAdapter implements IAssetAdapter {
         const db = await this.getDb();
         await db.execute(`DELETE FROM assetRegistry WHERE id = $1`, [id]);
         this.emitWriteEvent('assetRegistry', 'delete', [id], options);
+    }
+
+    async transaction<R>(
+        _tables: AssetTableName[],
+        _mode: 'r' | 'rw',
+        callback: () => Promise<R>
+    ): Promise<R> {
+        if (this.inTransaction) {
+            // Already in a transaction, just run the callback
+            return await callback();
+        }
+
+        await this.flush();
+        const db = await this.getDb();
+        this.inTransaction = true;
+        await db.execute('BEGIN TRANSACTION');
+        try {
+            const result = await callback();
+            await db.execute('COMMIT');
+            return result;
+        } catch (error) {
+            await db.execute('ROLLBACK');
+            throw error;
+        } finally {
+            this.inTransaction = false;
+        }
     }
 }
 

@@ -60,18 +60,23 @@ export class DataSyncEngine extends BaseSyncEngine {
         if (!pb.authStore.isValid) return;
         if (!hasSyncSession()) return;
 
-        if (this.subscribed) return;
+        // Ensure clean state before subscribing to avoid duplicate handlers
+        await this.unsubscribeRealtime();
 
-        for (const table of SYNC_TABLES) {
-            await pb.collection(table).subscribe('*', (e) => {
-                void this.handleRealtimeEvent(table, e as unknown as RealtimeEvent);
-            });
+        try {
+            for (const table of SYNC_TABLES) {
+                await pb.collection(table).subscribe('*', (e) => {
+                    void this.handleRealtimeEvent(table, e as unknown as RealtimeEvent);
+                });
+            }
+        } catch (err) {
+            await this.unsubscribeRealtime();
+            throw err;
         }
         this.subscribed = true;
     }
 
     async unsubscribeRealtime(): Promise<void> {
-        if (!this.subscribed) return;
         for (const table of SYNC_TABLES) {
             try {
                 await pb.collection(table).unsubscribe('*');
@@ -207,10 +212,22 @@ export class DataSyncEngine extends BaseSyncEngine {
             logger.error(`Failed to pull ${tableName}`, err);
         }
 
-        // Push locally-newer records first so cursor advancement never hides failed corrections.
-        if (offlineWrites.length > 0) {
+        // Push locally-newer records (offline writes).
+        // Scan from one tick before the cursor so same-ms local writes on the
+        // cursor boundary cannot be hidden after a failed fire-and-forget push.
+        const scannedUnsynced = await localDB.getUnsyncedChanges<DataRecord>(
+            tableName,
+            userId,
+            lastSyncTime - 1
+        );
+        const pendingPushes = new Map<string, DataRecord>();
+        for (const record of offlineWrites) pendingPushes.set(record.id, record);
+        for (const record of scannedUnsynced) pendingPushes.set(record.id, record);
+        const unsynced = [...pendingPushes.values()];
+        if (unsynced.length > 0) {
             try {
-                await this.pushBatch(tableName, offlineWrites, false);
+                // Throw on failure so cursorSafeToAdvance remains false if push fails
+                await this.pushBatch(tableName, unsynced, false);
             } catch (err) {
                 correctionError = err;
             }
@@ -265,15 +282,20 @@ export class DataSyncEngine extends BaseSyncEngine {
     private async handleRealtimeEvent(tableName: TableName, e: RealtimeEvent): Promise<void> {
         try {
             const remote = await this.pbToLocalRecord(e.record);
-            const local = await localDB.getRecord<DataRecord>(tableName, remote.id);
             const remoteAt = remote.updatedAt ?? 0;
-            const localAt = local?.updatedAt ?? 0;
 
-            if (!local || remoteAt > localAt) {
-                await localDB.putRecord(tableName, remote, { origin: 'sync' });
-            } else if (remoteAt < localAt) {
-                void this.pushRecord(tableName, local);
-            }
+            // Atomic LWW check and write via transaction to avoid race conditions
+            await localDB.transaction([tableName], 'rw', async () => {
+                const local = await localDB.getRecord<DataRecord>(tableName, remote.id);
+                const localAt = local?.updatedAt ?? 0;
+
+                if (!local || remoteAt > localAt) {
+                    await localDB.putRecord(tableName, remote, { origin: 'sync' });
+                } else if (remoteAt < localAt) {
+                    // Local is newer: push back to server (background fire-and-forget)
+                    void this.pushRecord(tableName, local);
+                }
+            });
         } catch (err) {
             logger.error(`Realtime event error for ${tableName}`, err);
         }

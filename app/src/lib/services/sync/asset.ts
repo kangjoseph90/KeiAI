@@ -92,9 +92,11 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     // ── Realtime Subscriptions ────────────────────────────────────────
 
     async subscribeRealtime(): Promise<void> {
-        if (!pb.authStore.isValid || this.subscribed) return;
-
+        if (!pb.authStore.isValid) return;
         if (!hasSyncSession()) return;
+
+        // Ensure clean state before subscribing to avoid duplicate handlers
+        await this.unsubscribeRealtime();
 
         await pb.collection('assets').subscribe('*', (e) => {
             void this.handleRealtimeEvent(e as unknown as RealtimeEvent);
@@ -103,7 +105,6 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     }
 
     async unsubscribeRealtime(): Promise<void> {
-        if (!this.subscribed) return;
         try {
             await pb.collection('assets').unsubscribe('*');
         } catch {
@@ -216,9 +217,18 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
             logger.error('Failed to pull assets', err);
         }
 
-        if (offlineWrites.length > 0) {
+        // Push locally-newer records (offline writes).
+        // Scan from one tick before the cursor so same-ms local writes on the
+        // cursor boundary cannot be hidden after a failed fire-and-forget push.
+        const scannedUnsynced = await appAsset.getAssetsSince(userId, lastSyncTime - 1);
+        const pendingPushes = new Map<string, AssetRecord>();
+        for (const record of offlineWrites) pendingPushes.set(record.id, record);
+        for (const record of scannedUnsynced) pendingPushes.set(record.id, record);
+        const unsynced = [...pendingPushes.values()];
+        if (unsynced.length > 0) {
             try {
-                await this.pushBatch(offlineWrites, false);
+                // Throw on failure so cursorSafeToAdvance remains false if push fails
+                await this.pushBatch(unsynced, false);
             } catch (err) {
                 correctionError = err;
             }
@@ -239,20 +249,29 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
             if (!hasSyncSession()) return;
 
             const remote = await this.pbToLocalRecord(e.record);
-            const local = await appAsset.getAsset(remote.id);
             const remoteAt = remote.updatedAt ?? 0;
-            const localAt = local?.updatedAt ?? 0;
 
-            if (!local || remoteAt > localAt) {
-                if (remote.isDeleted) {
-                    await appAsset.putAsset(remote, { origin: 'sync' });
-                    await appStorage.delete(`assets/${remote.id}`).catch(() => undefined);
-                    await appAsset.deleteRegistry(remote.id, { origin: 'sync' });
-                } else {
-                    await appAsset.putAsset(remote, { origin: 'sync' });
+            let shouldDeleteLocalFile = false;
+            // Atomic LWW check and write via transaction to avoid race conditions
+            await appAsset.transaction(['assets', 'assetRegistry'], 'rw', async () => {
+                const local = await appAsset.getAsset(remote.id);
+                const localAt = local?.updatedAt ?? 0;
+
+                if (!local || remoteAt > localAt) {
+                    if (remote.isDeleted) {
+                        await appAsset.putAsset(remote, { origin: 'sync' });
+                        await appAsset.deleteRegistry(remote.id, { origin: 'sync' });
+                        shouldDeleteLocalFile = true;
+                    } else {
+                        await appAsset.putAsset(remote, { origin: 'sync' });
+                    }
+                } else if (localAt > remoteAt) {
+                    // Local is newer: push back to server (background fire-and-forget)
+                    void this.pushRecord(local);
                 }
-            } else if (localAt > remoteAt) {
-                void this.pushRecord(local);
+            });
+            if (shouldDeleteLocalFile) {
+                await appStorage.delete(`assets/${remote.id}`).catch(() => undefined);
             }
         } catch (err) {
             logger.error('Realtime event error', err);
@@ -261,9 +280,13 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
     // ── Push (Local → Server) ─────────────────────────────────────────
 
-    async pushRecord(record: AssetRecord, isNew = false): Promise<void> {
-        if (!pb.authStore.isValid) return;
-        if (!hasSyncSession()) return;
+    async pushRecord(record: AssetRecord, isNew = false, throwOnError = false): Promise<void> {
+        if (!pb.authStore.isValid || !hasSyncSession()) {
+            if (throwOnError) {
+                throw new AppError('NOT_AUTHENTICATED', 'Cannot push asset without sync session');
+            }
+            return;
+        }
 
         const payload = await this.localToPbRecord(record);
         const batch = pb.createBatch();
@@ -278,6 +301,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
             await batch.send();
         } catch (err) {
             logger.error(`Failed to push ${record.id}`, err);
+            if (throwOnError) throw err;
         }
     }
 
@@ -410,22 +434,24 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
                     isDeleted: false,
                     data: updatedFields as unknown as Record<string, unknown>
                 };
-                await Promise.all([
-                    appAsset.putAsset(updatedRecord),
-                    appAsset.putRegistry({
-                        id: entry.id,
-                        userId: entry.userId,
-                        createdAt: entry.createdAt,
-                        updatedAt: clock.now(),
-                        isDeleted: false,
-                        kind: entry.kind,
-                        status: 'remote',
-                        size: entry.size,
-                        accessedAt: entry.accessedAt
-                    })
-                ]);
+                // 1. Commit metadata to local DB first
+                await appAsset.putAsset(updatedRecord);
 
-                void this.pushRecord(updatedRecord);
+                // 2. Push metadata to server (Crucial: only advance registry if this succeeds)
+                await this.pushRecord(updatedRecord, false, true);
+
+                // 3. Finally mark registry as remote
+                await appAsset.putRegistry({
+                    id: entry.id,
+                    userId: entry.userId,
+                    createdAt: entry.createdAt,
+                    updatedAt: clock.now(),
+                    isDeleted: false,
+                    kind: entry.kind,
+                    status: 'remote',
+                    size: entry.size,
+                    accessedAt: entry.accessedAt
+                });
 
                 this.updateStatus({
                     pendingCount: Math.max(pending.length - (index + 1), 0),

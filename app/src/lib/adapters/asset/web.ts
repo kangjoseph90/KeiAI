@@ -43,6 +43,10 @@ export class WebAssetAdapter implements IAssetAdapter {
         return this.writeEvents.subscribe(listener);
     }
 
+    async flush(): Promise<void> {
+        return Promise.resolve();
+    }
+
     private emitWriteEvent(
         tableName: AssetTableName,
         operation: AssetWriteOperation,
@@ -151,6 +155,15 @@ export class WebAssetAdapter implements IAssetAdapter {
     async deleteRegistry(id: string, options?: AssetWriteOptions): Promise<void> {
         await assetDB.assetRegistry.delete(id);
         this.emitWriteEvent('assetRegistry', 'delete', [id], options);
+    }
+
+    async transaction<R>(
+        tables: AssetTableName[],
+        mode: 'r' | 'rw',
+        callback: () => Promise<R>
+    ): Promise<R> {
+        await this.flush();
+        return assetDB.transaction(mode, tables, callback);
     }
 }
 
