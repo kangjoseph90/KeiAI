@@ -137,10 +137,10 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 					);
 				`;
 
-            // Common indices used securely for lookup and sync
-            sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_userId" ON "${table}" (userId);
+            // Optimized indices for lookup and sync
+            sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_user_deleted" ON "${table}" (userId, isDeleted);
 `;
-            sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_updatedAt" ON "${table}" (updatedAt);
+            sql += `CREATE INDEX IF NOT EXISTS "idx_${table}_user_updatedAt" ON "${table}" (userId, updatedAt);
 `;
         }
 
@@ -495,7 +495,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         await this.flush();
         const db = await this.getDb();
         const rows = await db.select<DatabaseSqlRow[]>(
-            `SELECT * FROM ${tableName} WHERE userId = $1 AND updatedAt >= $2`,
+            `SELECT * FROM ${tableName} WHERE userId = $1 AND updatedAt > $2`,
             [userId, sinceUpdatedAt]
         );
         return rows.map((row) => parseRecord<T>(row));

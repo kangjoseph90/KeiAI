@@ -40,6 +40,7 @@ import { AssetSyncService } from '../sync/asset';
 import { fetchAssetFromCDN } from './remote';
 import type { AssetKind } from './types';
 import { CACHE_HIGH_WATERMARK, CACHE_LOW_WATERMARK } from './types';
+import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 
 // ─── Orchestration Helpers ───────────────────────────────────────────
 
@@ -100,12 +101,12 @@ async function touchRegistry(id: string): Promise<AssetRegistryRecord | null> {
  * Update asset table fields.
  * Writes plaintext fields to the asset table only (registry is cache metadata).
  */
-async function updateAsset(id: string, changes: Partial<AssetFields>): Promise<AssetFields> {
+async function updateAsset(id: string, changes: DeepPartial<AssetFields>): Promise<AssetFields> {
     const asset = await appAsset.getAsset(id);
     if (!asset) throw new AppError('NOT_FOUND', `Asset ${id} not found`);
 
     const fields = parseFields(asset);
-    const updated: AssetFields = { ...fields, ...changes };
+    const updated: AssetFields = deepMerge(fields, changes);
     const now = clock.now();
 
     await appAsset.putAsset({

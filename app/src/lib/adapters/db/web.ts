@@ -250,7 +250,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         return (await this.getTable<T>(tableName)
             .where('userId')
             .equals(userId)
-            .filter((record: T) => (record.updatedAt ?? 0) >= sinceUpdatedAt)
+            .filter((record: T) => (record.updatedAt ?? 0) > sinceUpdatedAt)
             .toArray()) as T[];
     }
 
