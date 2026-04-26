@@ -5,7 +5,6 @@ import {
     type DataRecord,
     type TableName
 } from '$lib/adapters/db';
-import { getActiveSession } from '../session';
 import { AppError } from '$lib/types/errors';
 
 const WRITE_DEBOUNCE_MS = 400;
@@ -13,21 +12,15 @@ const WRITE_MAX_WAIT_MS = 2000;
 
 type QueueKey = `${TableName}:${string}`;
 
-interface QueueEntry<TFields, TRecord extends DataRecord> {
+interface QueueEntry<TRecord extends DataRecord> {
     key: QueueKey;
     tableName: TableName;
-    id: string;
-    userId: string;
-    createdAt: number;
-    fields: TFields;
+    record: TRecord;
     options?: DatabaseWriteOptions;
-    toRecord: (payload: {
-        id: string;
-        userId: string;
-        createdAt: number;
-        updatedAt: number;
-        data: Record<string, unknown>;
-    }) => TRecord;
+    mergeData?: (
+        current: Record<string, unknown>,
+        next: Record<string, unknown>
+    ) => Record<string, unknown>;
     flushTimer: ReturnType<typeof setTimeout> | null;
     maxWaitTimer: ReturnType<typeof setTimeout> | null;
     firstQueuedAt: number;
@@ -36,61 +29,58 @@ interface QueueEntry<TFields, TRecord extends DataRecord> {
 }
 
 class WriteQueue {
-    private readonly entries = new Map<QueueKey, QueueEntry<unknown, DataRecord>>();
+    private readonly entries = new Map<QueueKey, QueueEntry<DataRecord>>();
 
     constructor() {
         this.installLifecycleFlushHooks();
     }
 
-    peek<TFields>(tableName: TableName, id: string): TFields | null {
+    peek<TRecord extends DataRecord>(tableName: TableName, id: string): TRecord | null {
         const entry = this.entries.get(this.getKey(tableName, id));
         if (!entry) return null;
-        return structuredClone(entry.fields) as TFields;
+        return structuredClone(entry.record) as TRecord;
     }
 
-    upsert<TFields, TRecord extends DataRecord>(args: {
+    upsert<TRecord extends DataRecord>(args: {
         tableName: TableName;
-        id: string;
-        userId: string;
-        createdAt: number;
-        nextFields: TFields;
-        mergeFields?: (current: TFields, next: TFields) => TFields;
+        record: TRecord;
+        mergeData?: (
+            current: Record<string, unknown>,
+            next: Record<string, unknown>
+        ) => Record<string, unknown>;
         options?: DatabaseWriteOptions;
-        toRecord: QueueEntry<TFields, TRecord>['toRecord'];
-    }): TFields {
-        const key = this.getKey(args.tableName, args.id);
-        const existing = this.entries.get(key) as QueueEntry<TFields, TRecord> | undefined;
+    }): TRecord {
+        const id = args.record.id;
+        const key = this.getKey(args.tableName, id);
+        const existing = this.entries.get(key) as QueueEntry<TRecord> | undefined;
 
         if (!existing) {
             const now = clock.now();
-            const created: QueueEntry<TFields, TRecord> = {
+            const created: QueueEntry<TRecord> = {
                 key,
                 tableName: args.tableName,
-                id: args.id,
-                userId: args.userId,
-                createdAt: args.createdAt,
-                fields: structuredClone(args.nextFields),
+                record: structuredClone(args.record),
                 options: args.options,
-                toRecord: args.toRecord,
+                mergeData: args.mergeData,
                 flushTimer: null,
                 maxWaitTimer: null,
                 firstQueuedAt: now,
                 flushPromise: null,
                 version: 0
             };
-            this.entries.set(key, created as QueueEntry<unknown, DataRecord>);
-            this.schedule(created as QueueEntry<unknown, DataRecord>);
-            return structuredClone(created.fields);
+            this.entries.set(key, created as QueueEntry<DataRecord>);
+            this.schedule(created as QueueEntry<DataRecord>);
+            return structuredClone(created.record);
         }
 
-        existing.fields = args.mergeFields
-            ? args.mergeFields(existing.fields, args.nextFields)
-            : structuredClone(args.nextFields);
+        existing.record.data = args.mergeData
+            ? args.mergeData(existing.record.data, args.record.data)
+            : structuredClone(args.record.data);
         existing.options = args.options;
-        existing.toRecord = args.toRecord;
+        existing.mergeData = args.mergeData;
         existing.version++;
-        this.schedule(existing as QueueEntry<unknown, DataRecord>);
-        return structuredClone(existing.fields);
+        this.schedule(existing as QueueEntry<DataRecord>);
+        return structuredClone(existing.record);
     }
 
     async flush(tableName: TableName, id: string): Promise<void> {
@@ -121,7 +111,7 @@ class WriteQueue {
         return `${tableName}:${id}`;
     }
 
-    private schedule(entry: QueueEntry<unknown, DataRecord>): void {
+    private schedule(entry: QueueEntry<DataRecord>): void {
         if (entry.flushTimer) {
             clearTimeout(entry.flushTimer);
         }
@@ -137,7 +127,7 @@ class WriteQueue {
         }
     }
 
-    private clearTimers(entry: QueueEntry<unknown, DataRecord>): void {
+    private clearTimers(entry: QueueEntry<DataRecord>): void {
         if (entry.flushTimer) {
             clearTimeout(entry.flushTimer);
             entry.flushTimer = null;
@@ -157,21 +147,13 @@ class WriteQueue {
             return;
         }
 
-        const snapshot = structuredClone(entry.fields);
+        const snapshot = structuredClone(entry.record);
         const flushVersion = entry.version;
         this.clearTimers(entry);
 
         entry.flushPromise = (async () => {
-            const updatedAt = clock.now();
-            const record = entry.toRecord({
-                id: entry.id,
-                userId: entry.userId,
-                createdAt: entry.createdAt,
-                updatedAt,
-                data: snapshot as Record<string, unknown>
-            });
-
-            await localDB.putRecord(entry.tableName, record, entry.options);
+            snapshot.updatedAt = clock.now();
+            await localDB.putRecord(entry.tableName, snapshot, entry.options);
         })();
 
         try {

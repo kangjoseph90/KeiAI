@@ -8,6 +8,18 @@ vi.mock('$lib/adapters/db', () => ({
     }
 }));
 
+function makeRecord(overrides: Partial<DataRecord> = {}): DataRecord {
+    return {
+        id: 'msg-1',
+        userId: 'user-1',
+        createdAt: 100,
+        updatedAt: 100,
+        isDeleted: false,
+        data: { content: 'first' },
+        ...overrides
+    };
+}
+
 describe('writeQueue', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -31,46 +43,18 @@ describe('writeQueue', () => {
             )
             .mockResolvedValue(undefined);
 
-        const toRecord = ({
-            id,
-            userId,
-            createdAt,
-            updatedAt,
-            data
-        }: {
-            id: string;
-            userId: string;
-            createdAt: number;
-            updatedAt: number;
-            data: Record<string, unknown>;
-        }): DataRecord => ({
-            id,
-            userId,
-            createdAt,
-            updatedAt,
-            isDeleted: false,
-            data
-        });
-
-        writeQueue.upsert({
+        writeQueue.upsert<DataRecord>({
             tableName: 'messages',
-            id: 'msg-1',
-            userId: 'user-1',
-            createdAt: 100,
-            nextFields: { content: 'first' },
-            toRecord
+            record: makeRecord({ data: { content: 'first' } })
         });
 
         const flushPromise = writeQueue.flush('messages', 'msg-1');
         expect(localDB.putRecord).toHaveBeenCalledTimes(1);
 
-        writeQueue.upsert({
+        writeQueue.upsert<DataRecord>({
             tableName: 'messages',
-            id: 'msg-1',
-            userId: 'user-1',
-            createdAt: 100,
-            nextFields: { content: 'second' },
-            toRecord
+            record: makeRecord({ data: { content: 'second' } }),
+            mergeData: (cur, next) => ({ ...cur, ...next })
         });
 
         resolveFirstWrite?.();
@@ -94,5 +78,65 @@ describe('writeQueue', () => {
             }),
             undefined
         );
+    });
+
+    it('peek returns full record with metadata', () => {
+        const record = makeRecord({ data: { content: 'hello' } });
+
+        writeQueue.upsert<DataRecord>({
+            tableName: 'messages',
+            record
+        });
+
+        const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
+        expect(cached).toEqual(record);
+        expect(cached?.userId).toBe('user-1');
+        expect(cached?.createdAt).toBe(100);
+    });
+
+    it('peek returns null when nothing is queued', () => {
+        const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
+        expect(cached).toBeNull();
+    });
+
+    it('mergeData merges record.data on subsequent upserts', () => {
+        writeQueue.upsert<DataRecord>({
+            tableName: 'messages',
+            record: makeRecord({ data: { content: 'first', extra: 1 } })
+        });
+
+        writeQueue.upsert<DataRecord>({
+            tableName: 'messages',
+            record: makeRecord({ data: { content: 'second' } }),
+            mergeData: (cur, next) => ({ ...cur, ...next })
+        });
+
+        const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
+        expect(cached?.data).toEqual({ content: 'second', extra: 1 });
+    });
+
+    it('without mergeData, data is replaced entirely', () => {
+        writeQueue.upsert<DataRecord>({
+            tableName: 'messages',
+            record: makeRecord({ data: { content: 'first', extra: 1 } })
+        });
+
+        writeQueue.upsert<DataRecord>({
+            tableName: 'messages',
+            record: makeRecord({ data: { content: 'second' } })
+        });
+
+        const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
+        expect(cached?.data).toEqual({ content: 'second' });
+    });
+
+    it('drop removes entry from queue', () => {
+        writeQueue.upsert<DataRecord>({
+            tableName: 'messages',
+            record: makeRecord()
+        });
+
+        writeQueue.drop('messages', 'msg-1');
+        expect(writeQueue.peek<DataRecord>('messages', 'msg-1')).toBeNull();
     });
 });

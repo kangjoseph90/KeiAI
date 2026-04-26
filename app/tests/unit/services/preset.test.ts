@@ -36,7 +36,7 @@ vi.mock('$lib/utils/id', () => ({
 
 vi.mock('$lib/services/content/write_queue', () => ({
     writeQueue: {
-        peek: vi.fn(() => undefined),
+        peek: vi.fn(() => null),
         upsert: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
@@ -88,7 +88,7 @@ describe('PresetService', () => {
 
         vi.mocked(decrypt).mockResolvedValue(JSON.stringify(mockFields));
 
-        vi.mocked(writeQueue.peek).mockReturnValue(undefined);
+        vi.mocked(writeQueue.peek).mockReturnValue(null);
         vi.mocked(writeQueue.flushTable).mockResolvedValue(undefined);
     });
 

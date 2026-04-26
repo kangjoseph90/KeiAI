@@ -48,16 +48,15 @@ export class TranslationService {
     }
 
     static async get(id: string): Promise<Translation | null> {
-        const queued = writeQueue.peek<TranslationFields>('translations', id);
-        if (queued) {
-            const record = await localDB.getRecord<TranslationRecord>('translations', id);
-            if (!record || record.isDeleted) return null;
+        const cached = writeQueue.peek<TranslationRecord>('translations', id);
+        if (cached) {
+            if (cached.isDeleted) return null;
             return {
-                id,
-                chatId: record.chatId,
-                messageId: record.messageId,
-                swipeId: record.swipeId,
-                ...deepMerge(defaultTranslationFields, queued)
+                id: cached.id,
+                chatId: cached.chatId,
+                messageId: cached.messageId,
+                swipeId: cached.swipeId,
+                ...parseFields(cached)
             };
         }
 
@@ -107,40 +106,24 @@ export class TranslationService {
     }
 
     static async update(id: string, changes: DeepPartial<TranslationFields>): Promise<Translation> {
-        const queued = writeQueue.peek<TranslationFields>('translations', id);
-        const record = await localDB.getRecord<TranslationRecord>('translations', id);
+        const cached = writeQueue.peek<TranslationRecord>('translations', id);
+        const record = cached ?? (await localDB.getRecord<TranslationRecord>('translations', id));
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Translation not found: ${id}`);
         }
 
         try {
-            const current = queued
-                ? deepMerge(defaultTranslationFields, queued)
-                : parseFields(record);
+            const current = parseFields(record);
             const updated: TranslationFields = deepMerge(current, changes);
 
-            writeQueue.upsert<TranslationFields, TranslationRecord>({
+            writeQueue.upsert<TranslationRecord>({
                 tableName: 'translations',
-                id,
-                userId: record.userId,
-                createdAt: record.createdAt,
-                nextFields: updated,
-                mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
-                    id: recordId,
-                    userId: recordUserId,
-                    chatId: record.chatId,
-                    messageId: record.messageId,
-                    swipeId: record.swipeId,
-                    createdAt,
-                    updatedAt,
-                    isDeleted: false,
-                    data
-                })
+                record: { ...record, data: updated as unknown as Record<string, unknown> },
+                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
             return {
-                id,
+                id: record.id,
                 chatId: record.chatId,
                 messageId: record.messageId,
                 swipeId: record.swipeId,

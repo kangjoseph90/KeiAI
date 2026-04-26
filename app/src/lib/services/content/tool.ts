@@ -82,16 +82,15 @@ export class ToolCallService {
     }
 
     static async get(id: string): Promise<ToolCall | null> {
-        const queued = writeQueue.peek<ToolCallFields>('tool_calls', id);
-        if (queued) {
-            const record = await localDB.getRecord<ToolCallRecord>('tool_calls', id);
-            if (!record || record.isDeleted) return null;
+        const cached = writeQueue.peek<ToolCallRecord>('tool_calls', id);
+        if (cached) {
+            if (cached.isDeleted) return null;
             return {
-                id,
-                chatId: record.chatId,
-                messageId: record.messageId,
-                swipeId: record.swipeId,
-                ...deepMerge(defaultToolCallFields, queued)
+                id: cached.id,
+                chatId: cached.chatId,
+                messageId: cached.messageId,
+                swipeId: cached.swipeId,
+                ...parseFields(cached)
             };
         }
 
@@ -141,38 +140,24 @@ export class ToolCallService {
     }
 
     static async update(id: string, changes: DeepPartial<ToolCallFields>): Promise<ToolCall> {
-        const queued = writeQueue.peek<ToolCallFields>('tool_calls', id);
-        const record = await localDB.getRecord<ToolCallRecord>('tool_calls', id);
+        const cached = writeQueue.peek<ToolCallRecord>('tool_calls', id);
+        const record = cached ?? (await localDB.getRecord<ToolCallRecord>('tool_calls', id));
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Tool call not found: ${id}`);
         }
 
         try {
-            const current = queued ? deepMerge(defaultToolCallFields, queued) : parseFields(record);
+            const current = parseFields(record);
             const updated: ToolCallFields = deepMerge(current, changes);
 
-            writeQueue.upsert<ToolCallFields, ToolCallRecord>({
+            writeQueue.upsert<ToolCallRecord>({
                 tableName: 'tool_calls',
-                id,
-                userId: record.userId,
-                createdAt: record.createdAt,
-                nextFields: updated,
-                mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
-                    id: recordId,
-                    userId: recordUserId,
-                    chatId: record.chatId,
-                    messageId: record.messageId,
-                    swipeId: record.swipeId,
-                    createdAt,
-                    updatedAt,
-                    isDeleted: false,
-                    data
-                })
+                record: { ...record, data: updated as unknown as Record<string, unknown> },
+                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
             return {
-                id,
+                id: record.id,
                 chatId: record.chatId,
                 messageId: record.messageId,
                 swipeId: record.swipeId,

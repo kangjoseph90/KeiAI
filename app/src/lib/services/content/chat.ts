@@ -61,14 +61,13 @@ export class ChatService {
     }
 
     static async get(id: string): Promise<Chat | null> {
-        const queued = writeQueue.peek<ChatFields>('chats', id);
-        if (queued) {
-            const record = await localDB.getRecord<ChatRecord>('chats', id);
-            if (!record || record.isDeleted) return null;
+        const cached = writeQueue.peek<ChatRecord>('chats', id);
+        if (cached) {
+            if (cached.isDeleted) return null;
             return {
-                id,
-                characterId: record.characterId,
-                ...deepMerge(defaultFields, queued)
+                id: cached.id,
+                characterId: cached.characterId,
+                ...parseFields(cached)
             };
         }
 
@@ -109,35 +108,23 @@ export class ChatService {
     }
 
     static async update(id: string, changes: DeepPartial<ChatFields>): Promise<Chat> {
-        const queued = writeQueue.peek<ChatFields>('chats', id);
-        const record = await localDB.getRecord<ChatRecord>('chats', id);
+        const cached = writeQueue.peek<ChatRecord>('chats', id);
+        const record = cached ?? (await localDB.getRecord<ChatRecord>('chats', id));
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', 'Chat not found');
         }
 
         try {
-            const current = queued ? deepMerge(defaultFields, queued) : parseFields(record);
+            const current = parseFields(record);
             const updated: ChatFields = deepMerge(current, changes);
 
-            writeQueue.upsert<ChatFields, ChatRecord>({
+            writeQueue.upsert<ChatRecord>({
                 tableName: 'chats',
-                id,
-                userId: record.userId,
-                createdAt: record.createdAt,
-                nextFields: updated,
-                mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
-                    id: recordId,
-                    userId: recordUserId,
-                    characterId: record.characterId,
-                    createdAt,
-                    updatedAt,
-                    isDeleted: false,
-                    data
-                })
+                record: { ...record, data: updated as unknown as Record<string, unknown> },
+                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
-            return { id, characterId: record.characterId, ...updated };
+            return { id: record.id, characterId: record.characterId, ...updated };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update chat', error);

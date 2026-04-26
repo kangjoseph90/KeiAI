@@ -54,14 +54,13 @@ export class CharJSService {
     }
 
     static async get(id: string): Promise<CharJS | null> {
-        const queued = writeQueue.peek<CharJSFields>('charjs', id);
-        if (queued) {
-            const record = await localDB.getRecord<CharJSRecord>('charjs', id);
-            if (!record || record.isDeleted) return null;
+        const cached = writeQueue.peek<CharJSRecord>('charjs', id);
+        if (cached) {
+            if (cached.isDeleted) return null;
             return {
-                id,
-                ownerId: record.ownerId,
-                ...deepMerge(defaultCharJSFields, queued)
+                id: cached.id,
+                ownerId: cached.ownerId,
+                ...parseFields(cached)
             };
         }
 
@@ -102,35 +101,23 @@ export class CharJSService {
     }
 
     static async update(id: string, changes: DeepPartial<CharJSFields>): Promise<CharJS> {
-        const queued = writeQueue.peek<CharJSFields>('charjs', id);
-        const record = await localDB.getRecord<CharJSRecord>('charjs', id);
+        const cached = writeQueue.peek<CharJSRecord>('charjs', id);
+        const record = cached ?? (await localDB.getRecord<CharJSRecord>('charjs', id));
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `CharJS script not found: ${id}`);
         }
 
         try {
-            const current = queued ? deepMerge(defaultCharJSFields, queued) : parseFields(record);
+            const current = parseFields(record);
             const updated: CharJSFields = deepMerge(current, changes);
 
-            writeQueue.upsert<CharJSFields, CharJSRecord>({
+            writeQueue.upsert<CharJSRecord>({
                 tableName: 'charjs',
-                id,
-                userId: record.userId,
-                createdAt: record.createdAt,
-                nextFields: updated,
-                mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
-                    id: recordId,
-                    userId: recordUserId,
-                    ownerId: record.ownerId,
-                    createdAt,
-                    updatedAt,
-                    isDeleted: false,
-                    data
-                })
+                record: { ...record, data: updated as unknown as Record<string, unknown> },
+                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
-            return { id, ownerId: record.ownerId, ...updated };
+            return { id: record.id, ownerId: record.ownerId, ...updated };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update charjs script', error);

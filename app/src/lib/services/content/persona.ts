@@ -54,13 +54,12 @@ export class PersonaService {
     }
 
     static async get(id: string): Promise<Persona | null> {
-        const queued = writeQueue.peek<PersonaFields>('personas', id);
-        if (queued) {
-            const record = await localDB.getRecord<PersonaRecord>('personas', id);
-            if (!record || record.isDeleted) return null;
+        const cached = writeQueue.peek<PersonaRecord>('personas', id);
+        if (cached) {
+            if (cached.isDeleted) return null;
             return {
-                id,
-                ...deepMerge(defaultPersonaFields, queued)
+                id: cached.id,
+                ...parseFields(cached)
             };
         }
 
@@ -101,34 +100,23 @@ export class PersonaService {
 
     /** Update a persona */
     static async update(id: string, changes: DeepPartial<PersonaFields>): Promise<Persona> {
-        const queued = writeQueue.peek<PersonaFields>('personas', id);
-        const record = await localDB.getRecord<PersonaRecord>('personas', id);
+        const cached = writeQueue.peek<PersonaRecord>('personas', id);
+        const record = cached ?? (await localDB.getRecord<PersonaRecord>('personas', id));
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Persona not found: ${id}`);
         }
 
         try {
-            const current = queued ? deepMerge(defaultPersonaFields, queued) : parseFields(record);
+            const current = parseFields(record);
             const updated: PersonaFields = deepMerge(current, changes);
 
-            writeQueue.upsert<PersonaFields, PersonaRecord>({
+            writeQueue.upsert<PersonaRecord>({
                 tableName: 'personas',
-                id,
-                userId: record.userId,
-                createdAt: record.createdAt,
-                nextFields: updated,
-                mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
-                    id: recordId,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
-                    isDeleted: false,
-                    data
-                })
+                record: { ...record, data: updated as unknown as Record<string, unknown> },
+                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
-            return { id, ...updated };
+            return { id: record.id, ...updated };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update persona', error);

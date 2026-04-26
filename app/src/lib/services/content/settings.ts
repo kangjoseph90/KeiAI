@@ -231,9 +231,10 @@ function parseFields(data: Record<string, unknown>): AppSettings {
 export class SettingsService {
     static async get(): Promise<AppSettings> {
         const { userId } = getActiveSession();
-        const queued = writeQueue.peek<AppSettings>('settings', userId);
-        if (queued) {
-            return deepMerge(defaultSettings as AppSettings, queued);
+        const cached = writeQueue.peek<SettingsRecord>('settings', userId);
+        if (cached) {
+            if (cached.isDeleted) return { ...defaultSettings };
+            return parseFields(cached.data);
         }
 
         const record = await localDB.getRecord<SettingsRecord>('settings', userId);
@@ -249,22 +250,29 @@ export class SettingsService {
         const { userId } = getActiveSession();
 
         try {
-            const existing = await localDB.getRecord<SettingsRecord>('settings', userId);
-            writeQueue.upsert<AppSettings, SettingsRecord>({
+            const cached = writeQueue.peek<SettingsRecord>('settings', userId);
+            let createdAt: number;
+            if (cached) {
+                createdAt = cached.createdAt;
+            } else {
+                const existing = await localDB.getRecord<SettingsRecord>('settings', userId);
+                createdAt = existing?.createdAt ?? clock.now();
+            }
+
+            writeQueue.upsert<SettingsRecord>({
                 tableName: 'settings',
-                id: userId,
-                userId,
-                createdAt: existing?.createdAt ?? clock.now(),
-                nextFields: deepMerge(defaultSettings as AppSettings, settings),
-                mergeFields: (_current, next) => next,
-                toRecord: ({ id, userId: recordUserId, createdAt, updatedAt, data }) => ({
-                    id,
-                    userId: recordUserId,
+                record: {
+                    id: userId,
+                    userId,
                     createdAt,
-                    updatedAt,
+                    updatedAt: clock.now(),
                     isDeleted: false,
-                    data
-                })
+                    data: deepMerge(defaultSettings as AppSettings, settings) as unknown as Record<
+                        string,
+                        unknown
+                    >
+                },
+                mergeData: (_current, next) => next
             });
         } catch (error) {
             if (error instanceof AppError) throw error;
@@ -277,32 +285,27 @@ export class SettingsService {
         const { userId } = getActiveSession();
 
         try {
-            const queued = writeQueue.peek<AppSettings>('settings', userId);
-            const record = await localDB.getRecord<SettingsRecord>('settings', userId);
+            const cached = writeQueue.peek<SettingsRecord>('settings', userId);
+            const record = cached ?? (await localDB.getRecord<SettingsRecord>('settings', userId));
 
-            const current: AppSettings = queued
-                ? deepMerge(defaultSettings as AppSettings, queued)
-                : !record || record.isDeleted
-                  ? ({ ...defaultSettings } as AppSettings)
-                  : parseFields(record.data);
+            const current: AppSettings =
+                !record || record.isDeleted
+                    ? ({ ...defaultSettings } as AppSettings)
+                    : parseFields(record.data);
 
             const updated: AppSettings = deepMerge(current, changes);
 
-            writeQueue.upsert<AppSettings, SettingsRecord>({
+            writeQueue.upsert<SettingsRecord>({
                 tableName: 'settings',
-                id: userId,
-                userId,
-                createdAt: record?.createdAt ?? clock.now(),
-                nextFields: updated,
-                mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({ id, userId: recordUserId, createdAt, updatedAt, data }) => ({
-                    id,
-                    userId: recordUserId,
-                    createdAt,
-                    updatedAt,
+                record: {
+                    id: userId,
+                    userId,
+                    createdAt: record?.createdAt ?? clock.now(),
+                    updatedAt: clock.now(),
                     isDeleted: false,
-                    data
-                })
+                    data: updated as unknown as Record<string, unknown>
+                },
+                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
             return updated;

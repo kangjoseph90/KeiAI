@@ -68,14 +68,13 @@ export class ScriptService {
     }
 
     static async get(id: string): Promise<Script | null> {
-        const queued = writeQueue.peek<ScriptFields>('scripts', id);
-        if (queued) {
-            const record = await localDB.getRecord<ScriptRecord>('scripts', id);
-            if (!record || record.isDeleted) return null;
+        const cached = writeQueue.peek<ScriptRecord>('scripts', id);
+        if (cached) {
+            if (cached.isDeleted) return null;
             return {
-                id,
-                ownerId: record.ownerId,
-                ...deepMerge(defaultScriptFields, queued)
+                id: cached.id,
+                ownerId: cached.ownerId,
+                ...parseFields(cached)
             };
         }
 
@@ -116,35 +115,23 @@ export class ScriptService {
     }
 
     static async update(id: string, changes: DeepPartial<ScriptFields>): Promise<Script> {
-        const queued = writeQueue.peek<ScriptFields>('scripts', id);
-        const record = await localDB.getRecord<ScriptRecord>('scripts', id);
+        const cached = writeQueue.peek<ScriptRecord>('scripts', id);
+        const record = cached ?? (await localDB.getRecord<ScriptRecord>('scripts', id));
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Script not found: ${id}`);
         }
 
         try {
-            const current = queued ? deepMerge(defaultScriptFields, queued) : parseFields(record);
+            const current = parseFields(record);
             const updated: ScriptFields = deepMerge(current, changes);
 
-            writeQueue.upsert<ScriptFields, ScriptRecord>({
+            writeQueue.upsert<ScriptRecord>({
                 tableName: 'scripts',
-                id,
-                userId: record.userId,
-                createdAt: record.createdAt,
-                nextFields: updated,
-                mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
-                    id: recordId,
-                    userId: recordUserId,
-                    ownerId: record.ownerId,
-                    createdAt,
-                    updatedAt,
-                    isDeleted: false,
-                    data
-                })
+                record: { ...record, data: updated as unknown as Record<string, unknown> },
+                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
-            return { id, ownerId: record.ownerId, ...updated };
+            return { id: record.id, ownerId: record.ownerId, ...updated };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update script', error);

@@ -51,7 +51,7 @@ vi.mock('$lib/utils/defaults', () => ({
 
 vi.mock('$lib/services/content/write_queue', () => ({
     writeQueue: {
-        peek: vi.fn(() => undefined),
+        peek: vi.fn(() => null),
         upsert: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
@@ -103,7 +103,7 @@ describe('ChatService', () => {
         vi.mocked(generateId).mockReturnValue('test-chat-id');
 
         // Default write queue mock
-        vi.mocked(writeQueue.peek).mockReturnValue(undefined);
+        vi.mocked(writeQueue.peek).mockReturnValue(null);
         vi.mocked(writeQueue.flushTable).mockResolvedValue(undefined);
     });
 

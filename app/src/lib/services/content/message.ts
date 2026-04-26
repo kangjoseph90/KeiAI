@@ -109,15 +109,14 @@ export class MessageService {
     }
 
     static async get(id: string): Promise<Message | null> {
-        const queued = writeQueue.peek<MessageFields>('messages', id);
-        if (queued) {
-            const record = await localDB.getRecord<MessageRecord>('messages', id);
-            if (!record || record.isDeleted) return null;
+        const cached = writeQueue.peek<MessageRecord>('messages', id);
+        if (cached) {
+            if (cached.isDeleted) return null;
             return {
-                id,
-                chatId: record.chatId,
-                sortOrder: record.sortOrder,
-                ...deepMerge(defaultMessageFields, queued)
+                id: cached.id,
+                chatId: cached.chatId,
+                sortOrder: cached.sortOrder,
+                ...parseFields(cached)
             };
         }
 
@@ -182,36 +181,28 @@ export class MessageService {
 
     /** Update a message */
     static async update(id: string, changes: DeepPartial<MessageFields>): Promise<Message> {
-        const queued = writeQueue.peek<MessageFields>('messages', id);
-        const record = await localDB.getRecord<MessageRecord>('messages', id);
+        const cached = writeQueue.peek<MessageRecord>('messages', id);
+        const record = cached ?? (await localDB.getRecord<MessageRecord>('messages', id));
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Message not found: ${id}`);
         }
 
         try {
-            const current = queued ? deepMerge(defaultMessageFields, queued) : parseFields(record);
+            const current = parseFields(record);
             const updated: MessageFields = deepMerge(current, changes);
 
-            writeQueue.upsert<MessageFields, MessageRecord>({
+            writeQueue.upsert<MessageRecord>({
                 tableName: 'messages',
-                id,
-                userId: record.userId,
-                createdAt: record.createdAt,
-                nextFields: updated,
-                mergeFields: (queuedCurrent, next) => deepMerge(queuedCurrent, next),
-                toRecord: ({ id: recordId, userId: recordUserId, createdAt, updatedAt, data }) => ({
-                    id: recordId,
-                    userId: recordUserId,
-                    chatId: record.chatId,
-                    sortOrder: record.sortOrder,
-                    createdAt,
-                    updatedAt,
-                    isDeleted: false,
-                    data
-                })
+                record: { ...record, data: updated as unknown as Record<string, unknown> },
+                mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
-            return { id, chatId: record.chatId, sortOrder: record.sortOrder, ...updated };
+            return {
+                id: record.id,
+                chatId: record.chatId,
+                sortOrder: record.sortOrder,
+                ...updated
+            };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update message', error);
