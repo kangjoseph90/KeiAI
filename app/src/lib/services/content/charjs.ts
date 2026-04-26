@@ -47,9 +47,9 @@ export class CharJSService {
         );
 
         return records.map((record) => ({
+            ...parseFields(record),
             id: record.id,
-            ownerId: record.ownerId,
-            ...parseFields(record)
+            ownerId: record.ownerId
         }));
     }
 
@@ -58,9 +58,9 @@ export class CharJSService {
         if (cached) {
             if (cached.isDeleted) return null;
             return {
+                ...parseFields(cached),
                 id: cached.id,
-                ownerId: cached.ownerId,
-                ...parseFields(cached)
+                ownerId: cached.ownerId
             };
         }
 
@@ -68,9 +68,9 @@ export class CharJSService {
         if (!record || record.isDeleted) return null;
 
         return {
+            ...parseFields(record),
             id: record.id,
-            ownerId: record.ownerId,
-            ...parseFields(record)
+            ownerId: record.ownerId
         };
     }
 
@@ -97,7 +97,7 @@ export class CharJSService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create charjs script', error);
         }
 
-        return { id, ownerId, ...resolved };
+        return { ...resolved, id, ownerId };
     }
 
     static async update(id: string, changes: DeepPartial<CharJSFields>): Promise<CharJS> {
@@ -117,7 +117,7 @@ export class CharJSService {
                 mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
-            return { id: record.id, ownerId: record.ownerId, ...updated };
+            return { ...updated, id: record.id, ownerId: record.ownerId };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update charjs script', error);

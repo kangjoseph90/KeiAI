@@ -276,6 +276,7 @@ field: string | null; // null = explicitly empty
 ```
 
 - **No `any`** — use `unknown` and narrow
+- **Defensive spread order**: Always put metadata _after_ spreads (e.g., `{ ...data, id }`) to prevent identity overwrites.
 - Strict mode enabled
 
 ### Svelte 5 Runes

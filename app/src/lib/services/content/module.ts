@@ -56,8 +56,8 @@ export class ModuleService {
         const records = await localDB.getAll<ModuleRecord>('modules', userId);
 
         return records.map((record) => ({
-            id: record.id,
-            ...parseFields(record)
+            ...parseFields(record),
+            id: record.id
         }));
     }
 
@@ -66,8 +66,8 @@ export class ModuleService {
         if (cached) {
             if (cached.isDeleted) return null;
             return {
-                id: cached.id,
-                ...parseFields(cached)
+                ...parseFields(cached),
+                id: cached.id
             };
         }
 
@@ -75,8 +75,8 @@ export class ModuleService {
         if (!record || record.isDeleted) return null;
 
         return {
-            id: record.id,
-            ...parseFields(record)
+            ...parseFields(record),
+            id: record.id
         };
     }
 
@@ -102,7 +102,7 @@ export class ModuleService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create module', error);
         }
 
-        return { id, ...resolved };
+        return { ...resolved, id };
     }
 
     static async update(id: string, changes: DeepPartial<ModuleFields>): Promise<Module> {
@@ -122,7 +122,7 @@ export class ModuleService {
                 mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
-            return { id: record.id, ...updated };
+            return { ...updated, id: record.id };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update module', error);

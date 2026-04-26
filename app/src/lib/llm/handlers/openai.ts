@@ -160,10 +160,10 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
         const useProxy = config.useProxy ?? true;
 
         const body = JSON.stringify({
+            ...config.parameters,
             model: config.modelId,
             messages: messages.map((m) => ({ role: m.role, content: m.content })),
-            stream: true,
-            ...config.parameters
+            stream: true
         });
 
         const response = await appHttp.fetch(

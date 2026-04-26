@@ -48,8 +48,8 @@ export class PersonaService {
         const records = await localDB.getAll<PersonaRecord>('personas', userId);
 
         return records.map((record) => ({
-            id: record.id,
-            ...parseFields(record)
+            ...parseFields(record),
+            id: record.id
         }));
     }
 
@@ -58,8 +58,8 @@ export class PersonaService {
         if (cached) {
             if (cached.isDeleted) return null;
             return {
-                id: cached.id,
-                ...parseFields(cached)
+                ...parseFields(cached),
+                id: cached.id
             };
         }
 
@@ -67,8 +67,8 @@ export class PersonaService {
         if (!record || record.isDeleted) return null;
 
         return {
-            id: record.id,
-            ...parseFields(record)
+            ...parseFields(record),
+            id: record.id
         };
     }
 
@@ -95,7 +95,7 @@ export class PersonaService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create persona', error);
         }
 
-        return { id, ...resolved };
+        return { ...resolved, id };
     }
 
     /** Update a persona */
@@ -116,7 +116,7 @@ export class PersonaService {
                 mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
-            return { id: record.id, ...updated };
+            return { ...updated, id: record.id };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update persona', error);

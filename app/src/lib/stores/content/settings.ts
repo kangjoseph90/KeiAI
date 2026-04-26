@@ -70,7 +70,7 @@ export async function updateGlobalFolder(
     const typeFolders = folders[folderType] ?? [];
 
     const updatedTypeFolders = typeFolders.map((f) =>
-        f.id === folderId ? { ...f, ...changes } : f
+        f.id === folderId ? { ...f, ...changes, id: f.id } : f
     );
 
     const updatedFolders = { ...folders, [folderType]: updatedTypeFolders };
@@ -130,7 +130,8 @@ export async function moveGlobalItem(
         return {
             ...ref,
             folderId: newFolderId,
-            sortOrder: newSortOrder ?? ref.sortOrder
+            sortOrder: newSortOrder ?? ref.sortOrder,
+            id: ref.id
         };
     });
 

@@ -63,7 +63,7 @@ export class PresetService {
         const { userId } = getActiveSession();
         const records = await localDB.getAll<PresetRecord>('presets', userId);
 
-        return records.map((record) => ({ id: record.id, ...parseFields(record) }));
+        return records.map((record) => ({ ...parseFields(record), id: record.id }));
     }
 
     static async get(id: string): Promise<Preset | null> {
@@ -71,15 +71,15 @@ export class PresetService {
         if (cached) {
             if (cached.isDeleted) return null;
             return {
-                id: cached.id,
-                ...parseFields(cached)
+                ...parseFields(cached),
+                id: cached.id
             };
         }
 
         const record = await localDB.getRecord<PresetRecord>('presets', id);
         if (!record || record.isDeleted) return null;
 
-        return { id: record.id, ...parseFields(record) };
+        return { ...parseFields(record), id: record.id };
     }
 
     static async create(fields: DeepPartial<PresetFields> = {}): Promise<Preset> {
@@ -104,7 +104,7 @@ export class PresetService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create preset', error);
         }
 
-        return { id, ...resolved };
+        return { ...resolved, id };
     }
 
     static async update(id: string, changes: DeepPartial<PresetFields>): Promise<Preset> {
@@ -124,7 +124,7 @@ export class PresetService {
                 mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
-            return { id: record.id, ...updated };
+            return { ...updated, id: record.id };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update preset', error);

@@ -21,12 +21,12 @@ cd proxy && pnpm install && pnpm dev   # Local wrangler
 
 ## What Goes Where
 
-| Directory     | Purpose                                           | Docs                                                             |
-| ------------- | ------------------------------------------------- | ---------------------------------------------------------------- |
-| `app/`        | Svelte frontend, E2EE engine, all client logic | [app/AGENTS.md](app/AGENTS.md), [app/TESTING.md](app/TESTING.md) |
-| `pocketbase/` | Blind data store, auth hooks, encrypted sync      | [pocketbase/AGENTS.md](pocketbase/AGENTS.md)                     |
-| `proxy/`      | Stateless AI API forwarding (Cloudflare Workers)  | [proxy/AGENTS.md](proxy/AGENTS.md)                               |
-| `notes/`      | Architecture philosophy, design docs              | Reference only                                                   |
+| Directory     | Purpose                                          | Docs                                                             |
+| ------------- | ------------------------------------------------ | ---------------------------------------------------------------- |
+| `app/`        | Svelte frontend, E2EE engine, all client logic   | [app/AGENTS.md](app/AGENTS.md), [app/TESTING.md](app/TESTING.md) |
+| `pocketbase/` | Blind data store, auth hooks, encrypted sync     | [pocketbase/AGENTS.md](pocketbase/AGENTS.md)                     |
+| `proxy/`      | Stateless AI API forwarding (Cloudflare Workers) | [proxy/AGENTS.md](proxy/AGENTS.md)                               |
+| `notes/`      | Architecture philosophy, design docs             | Reference only                                                   |
 
 ---
 
@@ -61,6 +61,7 @@ PocketBase → Sync (pull blob + decrypt) → Adapter (plaintext IndexedDB/SQLit
 ## Cross-Cutting Conventions
 
 - **No `any` type** anywhere in TypeScript code
+- **Defensive spread order**: Always put metadata (id, userId, etc.) after spreads (e.g., `{ ...data, id }`) to prevent accidental overwrites from untrusted data blobs.
 - **Type-check before commit**: `pnpm check` in `app/`
 - **Test after every module change**: write test → pass → then move on
 - Refer to each subproject's AGENTS.md for layer-specific rules

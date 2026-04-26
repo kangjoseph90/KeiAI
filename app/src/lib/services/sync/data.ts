@@ -428,12 +428,12 @@ export class DataSyncEngine extends BaseSyncEngine {
         const payload = JSON.parse(json) as Record<string, unknown>;
 
         return {
+            ...payload,
             id: pbRecord.id as string,
             userId: pbRecord.userId as string,
             createdAt: this.normalizeTimestamp(pbRecord.createdAt, pbRecord.created),
             updatedAt: this.normalizeTimestamp(pbRecord.updatedAt, pbRecord.updated),
-            isDeleted: Boolean(pbRecord.isDeleted),
-            ...payload
+            isDeleted: Boolean(pbRecord.isDeleted)
         } as DataRecord;
     }
 

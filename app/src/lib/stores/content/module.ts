@@ -338,7 +338,7 @@ export async function updateModuleFolder(
     const typeFolders = folders[folderType] ?? [];
 
     const updatedTypeFolders = typeFolders.map((f: FolderDef) =>
-        f.id === folderId ? { ...f, ...changes } : f
+        f.id === folderId ? { ...f, ...changes, id: f.id } : f
     );
 
     const updatedFolders = {
@@ -399,7 +399,8 @@ export async function moveModuleItem(
         return {
             ...ref,
             folderId: newFolderId,
-            sortOrder: newSortOrder ?? ref.sortOrder
+            sortOrder: newSortOrder ?? ref.sortOrder,
+            id: ref.id
         };
     });
 

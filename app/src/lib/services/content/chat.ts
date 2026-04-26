@@ -54,9 +54,9 @@ export class ChatService {
         );
 
         return records.map((record) => ({
+            ...parseFields(record),
             id: record.id,
-            characterId: record.characterId,
-            ...parseFields(record)
+            characterId: record.characterId
         }));
     }
 
@@ -65,9 +65,9 @@ export class ChatService {
         if (cached) {
             if (cached.isDeleted) return null;
             return {
+                ...parseFields(cached),
                 id: cached.id,
-                characterId: cached.characterId,
-                ...parseFields(cached)
+                characterId: cached.characterId
             };
         }
 
@@ -75,9 +75,9 @@ export class ChatService {
         if (!record || record.isDeleted) return null;
 
         return {
+            ...parseFields(record),
             id: record.id,
-            characterId: record.characterId,
-            ...parseFields(record)
+            characterId: record.characterId
         };
     }
 
@@ -104,7 +104,7 @@ export class ChatService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create chat', error);
         }
 
-        return { id, characterId, ...resolved };
+        return { ...resolved, id, characterId };
     }
 
     static async update(id: string, changes: DeepPartial<ChatFields>): Promise<Chat> {
@@ -124,7 +124,7 @@ export class ChatService {
                 mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
-            return { id: record.id, characterId: record.characterId, ...updated };
+            return { ...updated, id: record.id, characterId: record.characterId };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update chat', error);

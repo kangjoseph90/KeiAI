@@ -150,7 +150,7 @@ export async function forkChat(messageId: string): Promise<string> {
     const originalChat = await getChat(chatId);
     const characterId = originalChat.characterId;
 
-    const { lorebookRefs: _, ...fieldsCopy } = originalChat;
+    const { id: _id, characterId: _charId, lorebookRefs: _, ...fieldsCopy } = originalChat;
 
     const newChat = await createChat(characterId, {
         ...fieldsCopy,
@@ -286,7 +286,7 @@ export async function updateChatFolder(
     const typeFolders = folders[folderType] ?? [];
 
     const updatedTypeFolders = typeFolders.map((f) =>
-        f.id === folderId ? { ...f, ...changes } : f
+        f.id === folderId ? { ...f, ...changes, id: f.id } : f
     );
 
     const updatedFolders = {
@@ -339,7 +339,8 @@ export async function moveChatItem(
         return {
             ...ref,
             folderId: newFolderId,
-            sortOrder: newSortOrder ?? ref.sortOrder
+            sortOrder: newSortOrder ?? ref.sortOrder,
+            id: ref.id
         };
     });
 

@@ -39,11 +39,11 @@ export class TranslationService {
             Number.MAX_SAFE_INTEGER
         );
         return records.map((record) => ({
+            ...parseFields(record),
             id: record.id,
             chatId: record.chatId,
             messageId: record.messageId,
-            swipeId: record.swipeId,
-            ...parseFields(record)
+            swipeId: record.swipeId
         }));
     }
 
@@ -52,11 +52,11 @@ export class TranslationService {
         if (cached) {
             if (cached.isDeleted) return null;
             return {
+                ...parseFields(cached),
                 id: cached.id,
                 chatId: cached.chatId,
                 messageId: cached.messageId,
-                swipeId: cached.swipeId,
-                ...parseFields(cached)
+                swipeId: cached.swipeId
             };
         }
 
@@ -64,11 +64,11 @@ export class TranslationService {
         if (!record || record.isDeleted) return null;
 
         return {
+            ...parseFields(record),
             id: record.id,
             chatId: record.chatId,
             messageId: record.messageId,
-            swipeId: record.swipeId,
-            ...parseFields(record)
+            swipeId: record.swipeId
         };
     }
 
@@ -102,7 +102,7 @@ export class TranslationService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create translation', error);
         }
 
-        return { id, chatId, messageId, swipeId, ...resolved };
+        return { ...resolved, id, chatId, messageId, swipeId };
     }
 
     static async update(id: string, changes: DeepPartial<TranslationFields>): Promise<Translation> {
@@ -123,11 +123,11 @@ export class TranslationService {
             });
 
             return {
+                ...updated,
                 id: record.id,
                 chatId: record.chatId,
                 messageId: record.messageId,
-                swipeId: record.swipeId,
-                ...updated
+                swipeId: record.swipeId
             };
         } catch (error) {
             if (error instanceof AppError) throw error;

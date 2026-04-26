@@ -52,9 +52,9 @@ export class LorebookService {
             Number.MAX_SAFE_INTEGER
         );
         return records.map((record) => ({
+            ...parseFields(record),
             id: record.id,
-            ownerId: record.ownerId,
-            ...parseFields(record)
+            ownerId: record.ownerId
         }));
     }
 
@@ -63,9 +63,9 @@ export class LorebookService {
         if (cached) {
             if (cached.isDeleted) return null;
             return {
+                ...parseFields(cached),
                 id: cached.id,
-                ownerId: cached.ownerId,
-                ...parseFields(cached)
+                ownerId: cached.ownerId
             };
         }
 
@@ -73,9 +73,9 @@ export class LorebookService {
         if (!record || record.isDeleted) return null;
 
         return {
+            ...parseFields(record),
             id: record.id,
-            ownerId: record.ownerId,
-            ...parseFields(record)
+            ownerId: record.ownerId
         };
     }
 
@@ -105,7 +105,7 @@ export class LorebookService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create lorebook', error);
         }
 
-        return { id, ownerId, ...resolved };
+        return { ...resolved, id, ownerId };
     }
 
     static async update(id: string, changes: DeepPartial<LorebookFields>): Promise<Lorebook> {
@@ -125,7 +125,7 @@ export class LorebookService {
                 mergeData: (cur, next) => deepMerge(cur, next) as Record<string, unknown>
             });
 
-            return { id: record.id, ownerId: record.ownerId, ...updated };
+            return { ...updated, id: record.id, ownerId: record.ownerId };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update lorebook', error);

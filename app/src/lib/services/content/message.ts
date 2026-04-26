@@ -76,10 +76,10 @@ export class MessageService {
         records.reverse();
 
         return records.map((record) => ({
+            ...parseFields(record),
             id: record.id,
             chatId: record.chatId,
-            sortOrder: record.sortOrder,
-            ...parseFields(record)
+            sortOrder: record.sortOrder
         }));
     }
 
@@ -101,10 +101,10 @@ export class MessageService {
         );
 
         return records.map((record) => ({
+            ...parseFields(record),
             id: record.id,
             chatId: record.chatId,
-            sortOrder: record.sortOrder,
-            ...parseFields(record)
+            sortOrder: record.sortOrder
         }));
     }
 
@@ -113,10 +113,10 @@ export class MessageService {
         if (cached) {
             if (cached.isDeleted) return null;
             return {
+                ...parseFields(cached),
                 id: cached.id,
                 chatId: cached.chatId,
-                sortOrder: cached.sortOrder,
-                ...parseFields(cached)
+                sortOrder: cached.sortOrder
             };
         }
 
@@ -124,10 +124,10 @@ export class MessageService {
         if (!record || record.isDeleted) return null;
 
         return {
+            ...parseFields(record),
             id: record.id,
             chatId: record.chatId,
-            sortOrder: record.sortOrder,
-            ...parseFields(record)
+            sortOrder: record.sortOrder
         };
     }
 
@@ -176,7 +176,7 @@ export class MessageService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create message', error);
         }
 
-        return { id, chatId, sortOrder, ...resolved };
+        return { ...resolved, id, chatId, sortOrder };
     }
 
     /** Update a message */
@@ -198,10 +198,10 @@ export class MessageService {
             });
 
             return {
+                ...updated,
                 id: record.id,
                 chatId: record.chatId,
-                sortOrder: record.sortOrder,
-                ...updated
+                sortOrder: record.sortOrder
             };
         } catch (error) {
             if (error instanceof AppError) throw error;
@@ -353,10 +353,10 @@ export class MessageService {
             );
 
             return {
+                ...nextFields,
                 id: messageId,
                 chatId: record.chatId,
-                sortOrder: record.sortOrder,
-                ...nextFields
+                sortOrder: record.sortOrder
             };
         } catch (error) {
             if (error instanceof AppError) throw error;
