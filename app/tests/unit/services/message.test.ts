@@ -245,6 +245,22 @@ describe('MessageService', () => {
             expect(result.swipes.s2).toBeUndefined();
         });
 
+        it('deleteSwipe moves activeSwipeId when deleting the active swipe', async () => {
+            const result = await MessageService.deleteSwipe('msg-1', 's1');
+
+            expect(localDB.putRecord).toHaveBeenCalledWith(
+                'messages',
+                expect.objectContaining({
+                    id: 'msg-1',
+                    data: expect.objectContaining({
+                        activeSwipeId: 's2'
+                    })
+                })
+            );
+            expect(result.activeSwipeId).toBe('s2');
+            expect(result.swipes.s1).toBeUndefined();
+        });
+
         it('createSwipe appends a swipe without changing active swipe', async () => {
             const result = await MessageService.createSwipe('msg-1', {
                 content: 'New',

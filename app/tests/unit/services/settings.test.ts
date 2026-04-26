@@ -140,6 +140,31 @@ describe('SettingsService', () => {
             expect(localDB.putRecord).toHaveBeenCalled();
         });
 
+        it('should preserve createdAt across consecutive queued updates', async () => {
+            const mockRecord: SettingsRecord = {
+                id: mockUserId,
+                userId: mockUserId,
+                createdAt: 100,
+                updatedAt: 110,
+                isDeleted: false,
+                data: mockSettings as unknown as Record<string, unknown>
+            };
+            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+
+            await SettingsService.update({ theme: 'light' });
+            await SettingsService.update({ chat: { saveMessagesOnSwipe: false } });
+            await vi.runAllTimersAsync();
+
+            expect(localDB.putRecord).toHaveBeenLastCalledWith(
+                'settings',
+                expect.objectContaining({
+                    id: mockUserId,
+                    createdAt: 100
+                }),
+                undefined
+            );
+        });
+
         it('should handle updates when no record exists', async () => {
             vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as SettingsRecord);
 

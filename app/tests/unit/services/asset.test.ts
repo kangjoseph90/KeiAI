@@ -62,6 +62,13 @@ vi.mock('$lib/services/asset/remote', () => ({
     fetchAssetFromCDN: vi.fn()
 }));
 
+vi.mock('$lib/services/sync/asset', () => ({
+    AssetSyncService: {
+        pushById: vi.fn(),
+        start: vi.fn()
+    }
+}));
+
 import { getActiveSession } from '$lib/services/session';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
@@ -75,6 +82,7 @@ import {
     parseFields
 } from '$lib/services/asset/util';
 import { fetchAssetFromCDN } from '$lib/services/asset/remote';
+import { AssetSyncService } from '$lib/services/sync/asset';
 
 describe('AssetService', () => {
     const mockMasterKey = {} as CryptoKey;
@@ -190,6 +198,16 @@ describe('AssetService', () => {
                 })
             );
         });
+
+        it('should roll back storage and registry when metadata commit fails', async () => {
+            const file = new File([mockBytes], 'avatar.png', { type: 'image/png' });
+            vi.mocked(appAsset.putAsset).mockRejectedValue(new Error('metadata failed'));
+
+            await expect(AssetService.write(file, 'private')).rejects.toThrow('metadata failed');
+
+            expect(appStorage.delete).toHaveBeenCalledWith('assets/asset-123');
+            expect(appAsset.deleteRegistry).toHaveBeenCalledWith('asset-123');
+        });
     });
 
     describe('delete', () => {
@@ -236,6 +254,14 @@ describe('AssetService', () => {
                     data: expect.objectContaining({ kind: 'public', status: 'local' })
                 })
             );
+            expect(appAsset.putRegistry).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    id: 'asset-123',
+                    kind: 'public',
+                    status: 'local'
+                })
+            );
+            expect(AssetSyncService.start).toHaveBeenCalled();
         });
     });
 

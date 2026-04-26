@@ -278,9 +278,7 @@ export class SettingsService {
 
         try {
             const queued = writeQueue.peek<AppSettings>('settings', userId);
-            const record = queued
-                ? null
-                : await localDB.getRecord<SettingsRecord>('settings', userId);
+            const record = await localDB.getRecord<SettingsRecord>('settings', userId);
 
             const current: AppSettings = queued
                 ? deepMerge(defaultSettings as AppSettings, queued)

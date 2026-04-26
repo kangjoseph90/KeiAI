@@ -325,10 +325,17 @@ export class MessageService {
 
         const nextSwipes = { ...message.swipes };
         delete nextSwipes[swipeId];
+
+        let nextActiveId = message.activeSwipeId;
+        if (nextActiveId === swipeId) {
+            const remainingIds = Object.keys(nextSwipes);
+            nextActiveId = remainingIds.length > 0 ? remainingIds[0] : '';
+        }
+
         const nextFields: MessageFields = {
             role: message.role,
             swipes: nextSwipes,
-            activeSwipeId: message.activeSwipeId
+            activeSwipeId: nextActiveId
         };
 
         try {

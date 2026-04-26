@@ -32,6 +32,7 @@ interface QueueEntry<TFields, TRecord extends DataRecord> {
     maxWaitTimer: ReturnType<typeof setTimeout> | null;
     firstQueuedAt: number;
     flushPromise: Promise<void> | null;
+    version: number;
 }
 
 class WriteQueue {
@@ -74,7 +75,8 @@ class WriteQueue {
                 flushTimer: null,
                 maxWaitTimer: null,
                 firstQueuedAt: now,
-                flushPromise: null
+                flushPromise: null,
+                version: 0
             };
             this.entries.set(key, created as QueueEntry<unknown, DataRecord>);
             this.schedule(created as QueueEntry<unknown, DataRecord>);
@@ -86,6 +88,7 @@ class WriteQueue {
             : structuredClone(args.nextFields);
         existing.options = args.options;
         existing.toRecord = args.toRecord;
+        existing.version++;
         this.schedule(existing as QueueEntry<unknown, DataRecord>);
         return structuredClone(existing.fields);
     }
@@ -148,12 +151,16 @@ class WriteQueue {
     private async flushKey(key: QueueKey): Promise<void> {
         const entry = this.entries.get(key);
         if (!entry) return;
+
         if (entry.flushPromise) {
             await entry.flushPromise;
             return;
         }
 
+        const snapshot = structuredClone(entry.fields);
+        const flushVersion = entry.version;
         this.clearTimers(entry);
+
         entry.flushPromise = (async () => {
             const updatedAt = clock.now();
             const record = entry.toRecord({
@@ -161,7 +168,7 @@ class WriteQueue {
                 userId: entry.userId,
                 createdAt: entry.createdAt,
                 updatedAt,
-                data: entry.fields as Record<string, unknown>
+                data: snapshot as Record<string, unknown>
             });
 
             await localDB.putRecord(entry.tableName, record, entry.options);
@@ -169,7 +176,13 @@ class WriteQueue {
 
         try {
             await entry.flushPromise;
-            this.entries.delete(key);
+
+            const current = this.entries.get(key);
+            if (current === entry && current.version === flushVersion) {
+                this.entries.delete(key);
+            } else if (current === entry) {
+                this.schedule(current);
+            }
         } catch (error) {
             this.schedule(entry);
             throw new AppError('DB_WRITE_FAILED', `Failed to flush queued write: ${key}`, error);

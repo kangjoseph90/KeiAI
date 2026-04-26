@@ -296,20 +296,11 @@ export class AssetService {
         const status = bytes ? 'local' : 'remote';
         const fields: AssetFields = { kind, status, hash, encKey };
 
-        await appAsset.putAsset({
-            id,
-            userId,
-            createdAt: now,
-            updatedAt: now,
-            isDeleted: false,
-            data: fields as unknown as Record<string, unknown>
-        });
-
         if (bytes) {
-            // Write file first
+            // 1. Write file first
             await appStorage.write(`assets/${id}`, bytes);
             try {
-                // Then write registry
+                // 2. Write registry next
                 await appAsset.putRegistry({
                     id,
                     userId,
@@ -321,14 +312,37 @@ export class AssetService {
                     size: bytes.length,
                     accessedAt: now
                 });
+
+                // 3. Commit to assets table last (The Source of Truth for sync/listing)
+                await appAsset.putAsset({
+                    id,
+                    userId,
+                    createdAt: now,
+                    updatedAt: now,
+                    isDeleted: false,
+                    data: fields as unknown as Record<string, unknown>
+                });
             } catch (err) {
-                // Rollback file if registry fails to prevent orphans
-                await appStorage.delete(`assets/${id}`).catch(() => undefined);
+                // Rollback file and registry if metadata write fails
+                await Promise.all([
+                    appStorage.delete(`assets/${id}`).catch(() => undefined),
+                    appAsset.deleteRegistry(id).catch(() => undefined)
+                ]);
                 throw err;
             }
 
             void AssetSyncService.pushById(id);
             void AssetSyncService.start();
+        } else {
+            // Remote-only asset (e.g. Inlay metadata)
+            await appAsset.putAsset({
+                id,
+                userId,
+                createdAt: now,
+                updatedAt: now,
+                isDeleted: false,
+                data: fields as unknown as Record<string, unknown>
+            });
         }
 
         return id;
@@ -347,6 +361,18 @@ export class AssetService {
         }
 
         await updateAsset(id, { kind: 'public', status: 'local' });
+
+        // Update registry to match, ensuring upload queue treats it as public
+        const reg = await appAsset.getRegistry(id);
+        if (reg) {
+            await appAsset.putRegistry({
+                ...reg,
+                kind: 'public',
+                status: 'local',
+                updatedAt: clock.now()
+            });
+        }
+
         void AssetSyncService.pushById(id);
         void AssetSyncService.start();
     }
