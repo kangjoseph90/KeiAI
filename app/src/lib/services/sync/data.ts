@@ -42,6 +42,8 @@ const logger = createLogger('sync:data');
 export class DataSyncEngine extends BaseSyncEngine {
     // ─── State ────────────────────────────────────────────────────────
     private subscribed = false;
+    private syncing = false;
+    private pendingQueue: Array<() => Promise<void>> = [];
 
     private readonly PAGE_SIZE = 200;
     private readonly TABLE_CONCURRENCY = 4;
@@ -114,34 +116,48 @@ export class DataSyncEngine extends BaseSyncEngine {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
         const { userId } = getActiveSession();
 
+        this.syncing = true;
         let firstError: unknown = null;
         let completed = 0;
 
-        const semaphore = new Semaphore(this.TABLE_CONCURRENCY);
-        const results = await Promise.allSettled(
-            SYNC_TABLES.map((table) =>
-                semaphore.runExclusive(async () => {
-                    await this.pullTable(table, userId);
-                    completed++;
-                    this.updateStatus({
-                        progress: {
-                            completed,
-                            total: SYNC_TABLES.length,
-                            currentItemId: table
-                        }
-                    });
-                })
-            )
-        );
+        try {
+            const semaphore = new Semaphore(this.TABLE_CONCURRENCY);
+            const results = await Promise.allSettled(
+                SYNC_TABLES.map((table) =>
+                    semaphore.runExclusive(async () => {
+                        await this.pullTable(table, userId);
+                        completed++;
+                        this.updateStatus({
+                            progress: {
+                                completed,
+                                total: SYNC_TABLES.length,
+                                currentItemId: table
+                            }
+                        });
+                    })
+                )
+            );
 
-        for (const result of results) {
-            if (result.status === 'rejected') {
-                firstError ??= result.reason;
+            for (const result of results) {
+                if (result.status === 'rejected') {
+                    firstError ??= result.reason;
+                }
             }
+        } finally {
+            this.syncing = false;
+            void this.flushPendingQueue();
         }
 
         if (firstError) {
             throw firstError;
+        }
+    }
+
+    /** Flush all push tasks queued during a syncAll run. */
+    private async flushPendingQueue(): Promise<void> {
+        const tasks = this.pendingQueue.splice(0);
+        for (const task of tasks) {
+            await task();
         }
     }
 
@@ -264,7 +280,7 @@ export class DataSyncEngine extends BaseSyncEngine {
                 batch.collection(tableName).upsert(await this.localToPbRecord(record));
             }
             try {
-                await batch.send();
+                await batch.send({ requestKey: null });
             } catch (err) {
                 logger.error(`Failed to push corrections batch to ${tableName}`, err);
                 if (!swallowErrors) {
@@ -320,7 +336,7 @@ export class DataSyncEngine extends BaseSyncEngine {
         }
 
         try {
-            await batch.send();
+            await batch.send({ requestKey: null });
         } catch (err) {
             logger.error(`Failed to push ${record.id} to ${tableName}`, err);
         }
@@ -344,7 +360,13 @@ export class DataSyncEngine extends BaseSyncEngine {
         if (event.operation === 'delete' || event.operation === 'deleteByIndex') return;
         if (event.ids.length === 0) return;
 
-        void this.pushIds(event.tableName, event.ids);
+        const task = () => this.pushIds(event.tableName, event.ids);
+        if (this.syncing) {
+            // Defer until syncAll completes to avoid concurrent push conflicts
+            this.pendingQueue.push(task);
+        } else {
+            void task();
+        }
     }
 
     /**

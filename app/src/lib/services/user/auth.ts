@@ -27,6 +27,7 @@ import {
     recoverMasterKey,
     splitRecoveryCode,
     toBase64,
+    toHex,
     unwrapMasterKeyRaw,
     wrapMasterKey,
     type RecoveryBundle
@@ -85,6 +86,7 @@ export class AuthService {
         password: string,
         email?: string
     ): Promise<string> {
+        console.log('password:', password);
         const normalizedUsername = this.normalizeUsername(username);
         const effectiveUrl = await this.useActiveSyncServer();
         pb.baseUrl = effectiveUrl;
@@ -96,6 +98,7 @@ export class AuthService {
         const wrapped = await wrapMasterKey(masterKey, keys.encryptionKey);
         const recovery = await createRecoveryData(masterKey);
         keys.encryptionKey.fill(0);
+        console.log('loginKey:', keys.loginKey);
 
         const publicKeyJwk = await exportPublicKey(identityKeyPair.publicKey);
         const rawPrivateKey = await exportPrivateKey(identityKeyPair.privateKey);
@@ -106,8 +109,8 @@ export class AuthService {
             id: userId,
             username: normalizedUsername,
             name: existing?.name ?? 'Local Profile',
-            password: toBase64(keys.loginKey),
-            passwordConfirm: toBase64(keys.loginKey),
+            password: toHex(keys.loginKey),
+            passwordConfirm: toHex(keys.loginKey),
             salt: toBase64(salt),
             encryptedMasterKey: toBase64(wrapped.ciphertext),
             masterKeyIv: toBase64(wrapped.iv),
@@ -206,8 +209,8 @@ export class AuthService {
             method: 'POST',
             body: JSON.stringify({
                 authTokenHash: toBase64(authTokenHash),
-                newPassword: toBase64(newKeys.loginKey),
-                newPasswordConfirm: toBase64(newKeys.loginKey),
+                newPassword: toHex(newKeys.loginKey),
+                newPasswordConfirm: toHex(newKeys.loginKey),
                 salt: toBase64(salt),
                 encryptedMasterKey: toBase64(wrappedM.ciphertext),
                 masterKeyIv: toBase64(wrappedM.iv),
@@ -217,7 +220,7 @@ export class AuthService {
             })
         });
 
-        await pb.collection('users').authWithPassword(resp.username, toBase64(newKeys.loginKey));
+        await pb.collection('users').authWithPassword(resp.username, toHex(newKeys.loginKey));
         newKeys.loginKey.fill(0);
 
         try {
@@ -291,9 +294,9 @@ export class AuthService {
         newKeys.encryptionKey.fill(0);
 
         await pb.collection('users').update(userId, {
-            oldPassword: toBase64(oldKeys.loginKey),
-            password: toBase64(newKeys.loginKey),
-            passwordConfirm: toBase64(newKeys.loginKey),
+            oldPassword: toHex(oldKeys.loginKey),
+            password: toHex(newKeys.loginKey),
+            passwordConfirm: toHex(newKeys.loginKey),
             salt: toBase64(newSalt),
             encryptedMasterKey: toBase64(newWrapped.ciphertext),
             masterKeyIv: toBase64(newWrapped.iv),
@@ -420,10 +423,11 @@ export class AuthService {
     ): Promise<void> {
         const keys = await deriveKeys(password, salt);
         let authData: { record: Record<string, string> };
+        console.log('authwith:', keys.loginKey);
         try {
             authData = (await pb
                 .collection('users')
-                .authWithPassword(username, toBase64(keys.loginKey))) as {
+                .authWithPassword(username, toHex(keys.loginKey))) as {
                 record: Record<string, string>;
             };
         } catch {

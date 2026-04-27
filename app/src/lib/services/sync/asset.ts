@@ -295,7 +295,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
         }
 
         try {
-            await batch.send();
+            await batch.send({ requestKey: null });
         } catch (err) {
             logger.error(`Failed to push ${record.id}`, err);
             if (throwOnError) throw err;
@@ -311,7 +311,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
                 batch.collection('assets').upsert(await this.localToPbRecord(record));
             }
             try {
-                await batch.send();
+                await batch.send({ requestKey: null });
             } catch (err) {
                 logger.error('Failed to push batch', err);
                 if (!swallowErrors) {

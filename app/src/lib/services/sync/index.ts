@@ -67,11 +67,14 @@ export class SyncManager {
     };
 
     private static readonly visibilityTrigger: SyncTriggerRegistration = ({
+        data,
         resubscribeAndPull
     }) => {
         const listener = () => {
             if (document.visibilityState === 'visible') {
-                void resubscribeAndPull();
+                if (!data.isSubscribed) {
+                    void resubscribeAndPull();
+                }
             }
         };
 
