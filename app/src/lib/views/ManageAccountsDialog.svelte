@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { activeUser, performCreateNewGuest } from '$lib/stores';
+    import { activeUser, performCreateNewUser } from '$lib/stores';
     import { UserService, type UserRecord } from '$lib/services';
 
     import * as Dialog from '$lib/components/ui/dialog';
@@ -44,11 +44,11 @@
         }
     }
 
-    async function handleCreateNewGuest() {
+    async function handleCreateNewUser() {
         loading = true;
         errorMsg = '';
         try {
-            await performCreateNewGuest();
+            await performCreateNewUser();
         } catch (e) {
             errorMsg = getErrorMessage(e);
             loading = false;
@@ -111,7 +111,12 @@
                                 {/if}
                             </span>
                             <span class="text-xs text-muted-foreground truncate"
-                                >{u.email || (u.isGuest ? 'Offline Guest' : 'Synced')}</span
+                                >{u.email ||
+                                    (u.username
+                                        ? `@${u.username}`
+                                        : u.syncServerUrl
+                                          ? 'Sync server selected'
+                                          : 'Local only')}</span
                             >
                         </div>
                     </div>
@@ -147,10 +152,10 @@
             <Button
                 variant="outline"
                 class="w-full mt-2 border-dashed h-12 shrink-0 text-muted-foreground hover:text-foreground"
-                onclick={handleCreateNewGuest}
+                onclick={handleCreateNewUser}
                 disabled={loading}
             >
-                <UserPlus class="mr-2 size-4" /> Create New Guest Area
+                <UserPlus class="mr-2 size-4" /> Create New Local Account
             </Button>
         </div>
     </Dialog.Content>
@@ -168,11 +173,11 @@
             <AlertDialog.Description>
                 Are you sure you want to delete <strong>{userToDelete?.name}</strong> from this
                 device?
-                {#if userToDelete?.isGuest}
+                {#if !userToDelete?.username}
                     <div
                         class="mt-4 p-3 bg-destructive/10 text-destructive border border-destructive/20 rounded-md font-medium text-sm"
                     >
-                        This is a local guest account. All local messages, characters, and settings
+                        This is a local-only identity. All local messages, characters, and settings
                         for this profile will be permanently destroyed.
                     </div>
                 {:else}

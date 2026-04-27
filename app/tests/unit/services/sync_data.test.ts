@@ -3,7 +3,7 @@ import { DataSyncService } from '$lib/services/sync/data';
 import { pb } from '$lib/adapters/pb';
 import { localDB, TABLES } from '$lib/adapters/db';
 import { appKV } from '$lib/adapters/kv';
-import { getActiveSession, hasSyncSession, getSyncSession } from '$lib/services/session';
+import { getActiveSession, hasActiveSession } from '$lib/services/session';
 import { toBase64, fromBase64 } from '$lib/crypto';
 import type { BaseRecord } from '$lib/adapters/db';
 
@@ -59,8 +59,7 @@ vi.mock('$lib/adapters/kv', () => ({
 
 vi.mock('$lib/services/session', () => ({
     getActiveSession: vi.fn(),
-    hasSyncSession: vi.fn(),
-    getSyncSession: vi.fn()
+    hasActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/crypto', () => ({
@@ -77,15 +76,10 @@ describe('DataSyncService', () => {
         vi.clearAllMocks();
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
-            isGuest: false,
             masterKey: {} as CryptoKey,
             identityKeyPair: {} as CryptoKeyPair
         });
-        vi.mocked(hasSyncSession).mockReturnValue(true);
-        vi.mocked(getSyncSession).mockReturnValue({
-            userId: mockUserId,
-            masterKey: {} as CryptoKey
-        });
+        vi.mocked(hasActiveSession).mockReturnValue(true);
         (pb.authStore as unknown as { isValid: boolean }).isValid = true;
 
         vi.mocked(mockCollection.subscribe).mockResolvedValue(() => {});

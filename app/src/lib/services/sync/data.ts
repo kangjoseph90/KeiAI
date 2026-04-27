@@ -16,7 +16,7 @@
  */
 
 import { pb } from '$lib/adapters/pb';
-import { getSyncSession, hasSyncSession } from '../session';
+import { getActiveSession, hasActiveSession } from '../session';
 import { encrypt, decrypt, toBase64, fromBase64 } from '$lib/crypto';
 import {
     localDB,
@@ -57,8 +57,7 @@ export class DataSyncEngine extends BaseSyncEngine {
     }
 
     async subscribeRealtime(): Promise<void> {
-        if (!pb.authStore.isValid) return;
-        if (!hasSyncSession()) return;
+        if (!pb.authStore.isValid || !hasActiveSession()) return;
 
         // Ensure clean state before subscribing to avoid duplicate handlers
         await this.unsubscribeRealtime();
@@ -112,9 +111,8 @@ export class DataSyncEngine extends BaseSyncEngine {
     }
 
     protected override async performSync(): Promise<void> {
-        if (!pb.authStore.isValid) return;
-        if (!hasSyncSession()) return;
-        const { userId } = getSyncSession();
+        if (!pb.authStore.isValid || !hasActiveSession()) return;
+        const { userId } = getActiveSession();
 
         let firstError: unknown = null;
         let completed = 0;
@@ -310,8 +308,7 @@ export class DataSyncEngine extends BaseSyncEngine {
      * Fire-and-forget: errors are logged but never thrown.
      */
     async pushRecord(tableName: TableName, record: BaseRecord, isNew = false): Promise<void> {
-        if (!pb.authStore.isValid) return;
-        if (!hasSyncSession()) return;
+        if (!pb.authStore.isValid || !hasActiveSession()) return;
 
         const payload = await this.localToPbRecord(record);
         const batch = pb.createBatch();
@@ -355,8 +352,7 @@ export class DataSyncEngine extends BaseSyncEngine {
      * Reads all records from local DB, then sends as one PocketBase batch.
      */
     private async pushIds(tableName: TableName, ids: string[]): Promise<void> {
-        if (!pb.authStore.isValid) return;
-        if (!hasSyncSession()) return;
+        if (!pb.authStore.isValid || !hasActiveSession()) return;
 
         const records = await Promise.all(
             ids.map((id) => localDB.getRecord<DataRecord>(tableName, id))
@@ -373,8 +369,7 @@ export class DataSyncEngine extends BaseSyncEngine {
      * Called by the service layer after cascade-delete transactions.
      */
     async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
-        if (!pb.authStore.isValid) return;
-        if (!hasSyncSession()) return;
+        if (!pb.authStore.isValid || !hasActiveSession()) return;
 
         const allChanges: { table: TableName; record: BaseRecord }[] = [];
 
@@ -405,7 +400,7 @@ export class DataSyncEngine extends BaseSyncEngine {
     // ─── Serialization ────────────────────────────────────────────────
 
     private async localToPbRecord(record: BaseRecord): Promise<Record<string, unknown>> {
-        const { masterKey } = getSyncSession();
+        const { masterKey } = getActiveSession();
         const { id, userId, createdAt, updatedAt, isDeleted, ...rest } = record;
         const { ciphertext, iv } = await encrypt(masterKey, JSON.stringify(rest));
 
@@ -421,7 +416,7 @@ export class DataSyncEngine extends BaseSyncEngine {
     }
 
     private async pbToLocalRecord(pbRecord: Record<string, unknown>): Promise<DataRecord> {
-        const { masterKey } = getSyncSession();
+        const { masterKey } = getActiveSession();
         const encData = fromBase64(pbRecord.encryptedData as string);
         const encIV = fromBase64(pbRecord.encryptedDataIV as string);
         const json = await decrypt(masterKey, { ciphertext: encData, iv: encIV });

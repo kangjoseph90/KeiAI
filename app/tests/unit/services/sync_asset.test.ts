@@ -22,8 +22,7 @@ vi.mock('$lib/adapters/pb', () => ({
 
 vi.mock('$lib/services/session', () => ({
     getActiveSession: vi.fn(),
-    hasSyncSession: vi.fn(),
-    getSyncSession: vi.fn()
+    hasActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/adapters/asset', () => ({
@@ -81,7 +80,7 @@ vi.mock('$lib/services/asset/remote', () => ({
 }));
 
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession, hasSyncSession, getSyncSession } from '$lib/services/session';
+import { getActiveSession, hasActiveSession } from '$lib/services/session';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
 import { decrypt } from '$lib/crypto';
@@ -123,16 +122,11 @@ describe('AssetSyncEngine (Unit)', () => {
         vi.clearAllMocks();
         service = new AssetSyncEngine();
 
+        vi.mocked(hasActiveSession).mockReturnValue(true);
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
             masterKey: mockMasterKey,
-            isGuest: false,
             identityKeyPair: {} as CryptoKeyPair
-        });
-        vi.mocked(hasSyncSession).mockReturnValue(true);
-        vi.mocked(getSyncSession).mockReturnValue({
-            userId: mockUserId,
-            masterKey: mockMasterKey
         });
 
         (pb.authStore as { isValid: boolean }).isValid = true;
@@ -197,12 +191,7 @@ describe('AssetSyncEngine (Unit)', () => {
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
             masterKey: mockMasterKey,
-            isGuest: true,
             identityKeyPair: {} as CryptoKeyPair
-        });
-        vi.mocked(getSyncSession).mockReturnValue({
-            userId: mockUserId,
-            masterKey: mockMasterKey
         });
 
         await service.trigger();

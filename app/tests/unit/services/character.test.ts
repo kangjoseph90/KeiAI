@@ -85,7 +85,6 @@ describe('CharacterService', () => {
         vi.mocked(getActiveSession).mockReturnValue({
             masterKey: mockMasterKey,
             userId: mockUserId,
-            isGuest: false,
             identityKeyPair: {} as CryptoKeyPair
         });
 

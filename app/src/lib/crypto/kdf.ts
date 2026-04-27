@@ -70,3 +70,30 @@ export async function importWrappingKey(rawKey: Bytes, extractable = false): Pro
         'decrypt'
     ]);
 }
+
+/**
+ * Derive bits using HKDF-SHA-256.
+ *
+ * @param ikm - Input Keying Material (e.g. pairing code)
+ * @param info - Context/application info string
+ * @param outputBits - Number of bits to derive
+ */
+export async function deriveHKDF(ikm: string, info: string, outputBits = 256): Promise<Bytes> {
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(ikm), 'HKDF', false, [
+        'deriveBits'
+    ]);
+
+    return new Uint8Array(
+        (await crypto.subtle.deriveBits(
+            {
+                name: 'HKDF',
+                hash: 'SHA-256',
+                salt: encoder.encode('kei:pairing-salt'),
+                info: encoder.encode(info)
+            },
+            keyMaterial,
+            outputBits
+        )) as ArrayBuffer
+    );
+}

@@ -66,8 +66,8 @@ UI → Stores → Services → Adapters → platform APIs
 
 Local storage is plaintext domain JSON. Synced data is encrypted client-side (AES-256-GCM) before leaving the browser, so the server sees only opaque blobs.
 
-- Master key `M` lives in memory (`session.ts` module-level var) or as a **non-extractable** `CryptoKey` in IndexedDB
-- Guest users hold an extractable key (wrappable on registration); registered users hold non-extractable (XSS protection)
+- Master key `M` is generated with the local identity and remains extractable for sync wrapping, recovery, and device transfer
+- Local-only vs sync-linked state is derived from `UserRecord.username` and PocketBase auth validity. `syncServerUrl` is only the selected sync server setting, not the link state.
 - Use `getActiveSession()` for local identity; use `getSyncSession()` only at sync/encryption boundaries
 - Fresh random IV per encryption (semantic security)
 

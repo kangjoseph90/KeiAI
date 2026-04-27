@@ -15,7 +15,7 @@
  */
 
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession } from '../session';
+import { getActiveSession, hasActiveSession } from '../session';
 import { ProfileService, type Profile } from '../user/profile';
 import { appUser } from '$lib/adapters/user';
 import { BaseSyncEngine } from './base';
@@ -48,14 +48,13 @@ export class ProfileSyncEngine extends BaseSyncEngine {
      * Fire-and-forget: errors are logged but never thrown.
      */
     async pushProfile(): Promise<void> {
-        if (!pb.authStore.isValid) return;
+        if (!pb.authStore.isValid || !hasActiveSession()) return;
 
         try {
-            const { isGuest, userId } = getActiveSession();
-            if (isGuest) return;
+            const { userId } = getActiveSession();
 
             const user = await appUser.getUser(userId);
-            if (!user) return;
+            if (!user || !user.syncServerUrl) return;
 
             const updateData: Record<string, unknown> = { name: user.name };
 
@@ -83,16 +82,12 @@ export class ProfileSyncEngine extends BaseSyncEngine {
      * Subscribe to Realtime updates on the current user's PB record.
      */
     async subscribeRealtime(): Promise<void> {
-        if (!pb.authStore.isValid) return;
+        if (!pb.authStore.isValid || !hasActiveSession()) return;
 
-        let userId: string;
-        let isGuest: boolean;
-        try {
-            ({ userId, isGuest } = getActiveSession());
-        } catch {
-            return;
-        }
-        if (isGuest) return;
+        const { userId } = getActiveSession();
+
+        const user = await appUser.getUser(userId);
+        if (!user?.syncServerUrl) return;
 
         // Ensure clean state before subscribing to avoid duplicate handlers
         await this.unsubscribeRealtime();
@@ -180,11 +175,12 @@ export class ProfileSyncEngine extends BaseSyncEngine {
     }
 
     protected override async performSync(): Promise<void> {
-        if (!pb.authStore.isValid) return;
+        if (!pb.authStore.isValid || !hasActiveSession()) return;
 
         try {
-            const { userId, isGuest } = getActiveSession();
-            if (isGuest) return;
+            const { userId } = getActiveSession();
+            const user = await appUser.getUser(userId);
+            if (!user?.syncServerUrl) return;
 
             const serverRecord = await pb.collection('users').getOne(userId);
             const remoteName = (serverRecord.name as string) ?? '';
@@ -198,7 +194,7 @@ export class ProfileSyncEngine extends BaseSyncEngine {
                 ? new Date(serverRecord.updated as string).getTime()
                 : 0;
 
-            const localUser = await appUser.getUser(userId);
+            const localUser = user;
             const localUpdatedAt = localUser?.updatedAt ?? 0;
 
             if (localUpdatedAt > remoteUpdatedAt) {

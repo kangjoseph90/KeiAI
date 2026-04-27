@@ -15,7 +15,7 @@
 import { clock } from '$lib/utils/clock';
 import { pb } from '$lib/adapters/pb';
 import { encrypt, decrypt, toBase64, fromBase64 } from '$lib/crypto';
-import { getSyncSession, hasSyncSession } from '../session';
+import { getActiveSession, hasActiveSession } from '../session';
 import { appAsset, type AssetRecord, type AssetFields } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
@@ -92,8 +92,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     // ── Realtime Subscriptions ────────────────────────────────────────
 
     async subscribeRealtime(): Promise<void> {
-        if (!pb.authStore.isValid) return;
-        if (!hasSyncSession()) return;
+        if (!pb.authStore.isValid || !hasActiveSession()) return;
 
         // Ensure clean state before subscribing to avoid duplicate handlers
         await this.unsubscribeRealtime();
@@ -122,12 +121,10 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     // ── Core Sync Cycle ───────────────────────────────────────────────
 
     protected override async performSync(): Promise<void> {
-        if (!pb.authStore.isValid) return;
+        if (!pb.authStore.isValid || !hasActiveSession()) return;
+        const { userId } = getActiveSession();
 
         this.abortController = new AbortController();
-
-        if (!hasSyncSession()) return;
-        const { userId } = getSyncSession();
 
         // Phase 1: Pull catch-up from PocketBase
         await this.pullAssets(userId);
@@ -246,7 +243,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
     private async handleRealtimeEvent(e: RealtimeEvent): Promise<void> {
         try {
-            if (!hasSyncSession()) return;
+            if (!hasActiveSession()) return;
 
             const remote = await this.pbToLocalRecord(e.record);
             const remoteAt = remote.updatedAt ?? 0;
@@ -281,7 +278,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     // ── Push (Local → Server) ─────────────────────────────────────────
 
     async pushRecord(record: AssetRecord, isNew = false, throwOnError = false): Promise<void> {
-        if (!pb.authStore.isValid || !hasSyncSession()) {
+        if (!pb.authStore.isValid || !hasActiveSession()) {
             if (throwOnError) {
                 throw new AppError('NOT_AUTHENTICATED', 'Cannot push asset without sync session');
             }
@@ -330,8 +327,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     }
 
     async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
-        if (!pb.authStore.isValid) return;
-        if (!hasSyncSession()) return;
+        if (!pb.authStore.isValid || !hasActiveSession()) return;
 
         const changed = await appAsset.getAssetsSince(userId, sinceInclusive - 1);
         if (changed.length === 0) return;
@@ -472,7 +468,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     // ── Serialization Helpers ─────────────────────────────────────────
 
     private async localToPbRecord(record: AssetRecord): Promise<Record<string, unknown>> {
-        const { masterKey } = getSyncSession();
+        const { masterKey } = getActiveSession();
         const { id, userId, createdAt, updatedAt, isDeleted, ...rest } = record;
         const { ciphertext, iv } = await encrypt(masterKey, JSON.stringify(rest));
 
@@ -488,7 +484,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     }
 
     private async pbToLocalRecord(pbRecord: Record<string, unknown>): Promise<AssetRecord> {
-        const { masterKey } = getSyncSession();
+        const { masterKey } = getActiveSession();
         const encData = fromBase64(pbRecord.encryptedData as string);
         const encIV = fromBase64(pbRecord.encryptedDataIV as string);
         const json = await decrypt(masterKey, { ciphertext: encData, iv: encIV });

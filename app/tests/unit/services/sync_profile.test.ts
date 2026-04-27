@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ProfileSyncService } from '$lib/services/sync/profile';
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession } from '$lib/services/session';
+import { getActiveSession, hasActiveSession } from '$lib/services/session';
 import { ProfileService } from '$lib/services/user/profile';
 import { appUser } from '$lib/adapters/user';
 import type { RecordModel } from 'pocketbase';
@@ -28,7 +28,8 @@ vi.mock('$lib/adapters/pb', () => ({
 }));
 
 vi.mock('$lib/services/session', () => ({
-    getActiveSession: vi.fn()
+    getActiveSession: vi.fn(),
+    hasActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/services/user/profile', () => ({
@@ -55,10 +56,10 @@ describe('ProfileSyncService', () => {
         vi.clearAllMocks();
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
-            isGuest: false,
             masterKey: {} as CryptoKey,
             identityKeyPair: {} as CryptoKeyPair
         });
+        vi.mocked(hasActiveSession).mockReturnValue(true);
         (pb.authStore as unknown as { isValid: boolean }).isValid = true;
         (ProfileSyncService as unknown as { subscribed: boolean }).subscribed = false;
     });
@@ -68,7 +69,8 @@ describe('ProfileSyncService', () => {
             vi.mocked(appUser.getUser).mockResolvedValue({
                 id: mockUserId,
                 name: 'New Name',
-                avatar: 'avatar.png'
+                avatar: 'avatar.png',
+                syncServerUrl: 'http://test'
             } as UserRecord);
             vi.mocked(mockCollection.update).mockResolvedValue({
                 id: mockUserId
@@ -91,7 +93,8 @@ describe('ProfileSyncService', () => {
             vi.mocked(appUser.getUser).mockResolvedValue({
                 id: mockUserId,
                 name: 'Name',
-                avatar: 'data:image/png;base64,abc'
+                avatar: 'data:image/png;base64,abc',
+                syncServerUrl: 'http://test'
             } as UserRecord);
 
             await ProfileSyncService.pushProfile();
@@ -115,11 +118,15 @@ describe('ProfileSyncService', () => {
 
             (pb.authStore as unknown as { isValid: boolean }).isValid = true;
             vi.mocked(getActiveSession).mockReturnValue({
-                isGuest: true,
                 userId: mockUserId,
                 masterKey: {} as CryptoKey,
                 identityKeyPair: {} as CryptoKeyPair
             });
+            // Simulate a local-only user
+            vi.mocked(appUser.getUser).mockResolvedValue({
+                id: mockUserId,
+                name: 'Local User'
+            } as UserRecord);
             await ProfileSyncService.pushProfile();
             expect(pb.collection).not.toHaveBeenCalled();
         });
@@ -146,6 +153,13 @@ describe('ProfileSyncService', () => {
                 blob: vi.fn().mockResolvedValue(realBlob)
             });
 
+            vi.mocked(appUser.getUser).mockResolvedValue({
+                id: mockUserId,
+                name: 'Local Name',
+                avatar: '',
+                syncServerUrl: 'http://test'
+            } as UserRecord);
+
             await ProfileSyncService.pullProfile();
 
             expect(mockCollection.getOne).toHaveBeenCalledWith(mockUserId);
@@ -160,6 +174,12 @@ describe('ProfileSyncService', () => {
 
     describe('Realtime Subscription', () => {
         it('should subscribe to user record', async () => {
+            vi.mocked(appUser.getUser).mockResolvedValue({
+                id: mockUserId,
+                name: 'Name',
+                avatar: '',
+                syncServerUrl: 'http://test'
+            } as UserRecord);
             await ProfileSyncService.subscribeRealtime();
 
             expect(mockCollection.subscribe).toHaveBeenCalledWith(mockUserId, expect.any(Function));

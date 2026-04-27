@@ -250,7 +250,7 @@
                     </Avatar.Root>
                     <div class="flex flex-col overflow-hidden">
                         <span class="text-xs font-medium truncate"
-                            >{$activeUser?.name ?? 'Guest User'}</span
+                            >{$activeUser?.name ?? 'Local User'}</span
                         >
                         <span class="text-[10px] text-muted-foreground truncate"
                             >{$userEmail ?? 'Offline'}</span

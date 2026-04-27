@@ -31,7 +31,6 @@ describe('ProfileService', () => {
         name: 'John Doe',
         avatar: 'avatar.png',
         email: 'john@example.com',
-        isGuest: false,
         createdAt: 1000,
         updatedAt: 2000,
         isDeleted: false,
@@ -46,7 +45,6 @@ describe('ProfileService', () => {
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
             masterKey: {} as CryptoKey,
-            isGuest: false,
             identityKeyPair: {} as CryptoKeyPair
         });
 
@@ -63,8 +61,7 @@ describe('ProfileService', () => {
                 id: mockUserId,
                 name: 'John Doe',
                 avatar: 'avatar.png',
-                email: 'john@example.com',
-                isGuest: false
+                email: 'john@example.com'
             });
             expect(appUser.getUser).toHaveBeenCalledWith(mockUserId);
         });

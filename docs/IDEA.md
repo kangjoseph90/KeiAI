@@ -5,9 +5,9 @@
 - 오프라인 우선 진행: 앱을 켜면 서버 연결 여부와 상관없이 먼저 'Guest ID'와 메모리용 '마스터 키(M)'를 로컬에서 즉시 발급 (IndexedDB 저장). 유저는 로그인 없이 즉각 앱 사용 가능.
 - 서버 연동 (Link Account): 이후 유저가 가입(로그인)을 결심하면, 아래의 인증 흐름을 통해 그동안 게스트로 썼던 폰의 마스터 키 M을 서버용 패키지로 포장하여 서버에 업로드 연동함.
 - 데이터 레이어 분리:
-  1. Local DB (Storage Layer): Dexie(웹) / SQLite(Tauri) 중심. 초기 구상은 로컬까지 AES-GCM 암호문으로 저장하는 모델이었으나, 현재 구현은 **로컬을 평문 JSON 상태 저장소**로 두고 암호화 경계를 동기화 엔진으로 올린다. 즉 로컬 DB는 앱이 빠르게 읽고 병합하는 작업 공간이고, 서버로 나가는 순간에만 M으로 암호화한다.
-  2. Svelte Store (In-Memory Layer): 평문 상태 관리 및 처리를 담당. 3계층(Global, Active Character, Active Chat)으로 나뉘며 방을 벗어나면 평문은 Garbage Collect 됨.
-  3. UI / Prompt Engine: 스토어에 로드되어 있는 JSON 데이터를 자유롭게 조작(정규식, 삽입 등). 로컬 DB 조작은 의식하지 않음.
+  1. Local DB (Storage Layer): Dexie(웹) 중심. Tauri 환경에서는 캐시 휘발에 대비해 `Dexie(주) + SQLite(메타데이터 미러) + Stronghold(게스트 로컬 마스터키 백업)`의 강력한 3중 폴백 아키텍처 적용. 일반 데이터는 무조건 AES-GCM으로 암호화된 Byte Array 형태로만 저장 및 조회.
+  2. Svelte Store (In-Memory Layer): 평문 변환 및 처리를 담당. 3계층(Global, Active Character, Active Chat)으로 나뉘며 방을 벗어나면 평문은 Garbage Collect 됨.
+  3. UI / Prompt Engine: 스토어에 복호화되어 있는 JSON 데이터를 자유롭게 조작(정규식, 삽입 등). 로컬 DB 조작은 의식하지 않음.
 
 2. 키 생성 및 인증 (Authentication & Key Derivation)
 
@@ -28,7 +28,6 @@
 - 마스터 키(M) 로컬 보관:
   - M을 raw bytes가 아닌 `CryptoKey` 객체 자체를 IndexedDB에 저장 (Structured Clone 활용).
   - XSS 공격자가 IndexedDB를 읽어도 opaque한 CryptoKey 핸들만 얻으며, `extractable: false`이면 `exportKey()`가 에러를 던져 raw bytes 탈취가 불가능.
-  - 단, 로컬 전용 사용 흐름에서는 M이 즉시 필요하지 않을 수 있다. 현재 구현에서는 `getActiveSession()`은 로컬 작업용 신원(userId)을, `getSyncSession()`은 서버 동기화에 필요한 M을 요구하는 경계로 분리한다.
   - extractable 여부는 유저의 계정 상태에 따라 달라지는 라이프사이클로 관리:
     - 게스트: `extractable: true` — 나중에 M(Y)를 만들 능력이 있어야 하므로 추출 가능.
     - 회원가입 직후: `login()` 흐름이 M을 `extractable: false`로 재임포트 → IndexedDB에 덮어씀 (lockMasterKey).
@@ -38,12 +37,12 @@
 4. 데이터 저장 메커니즘 (Data at Rest)
 
 - 점진적 동기화 & 지연 로딩 (Progressive Sync / Lazy Load):
-  - 모든 엔티티는 단일 테이블에 하나의 JSON 필드로 저장된다. 로컬에서는 평문 JSON을 그대로 읽고, PocketBase와 동기화할 때만 암호화 Blob으로 변환한다. 목록 화면에서는 엔티티 전체를 읽어 렌더링하고, 채팅방 진입 시에만 수백 개의 Messages를 추가로 인메모리에 올림.
+  - 모든 엔티티는 단일 테이블에 하나의 암호화 Blob으로 저장된다. 목록 화면에서는 엔티티 전체를 복호화해 렌더링하고, 채팅방 진입 시에만 수백 개의 Messages를 추가로 복호화해 인메모리에 올림.
 - 유저의 API 키 (BYOK):
   - 클라이언트가 마스터 키 M으로 암호화하여 DB에 전송. 개발자 서버 탈취 시에도 API 키는 안전함.
 - 채팅 메시지 등 기타 데이터:
-  - 모든 데이터는 스키마리스 JSON 형태로 묶는다. 로컬 DB는 이 JSON을 평문으로 저장하고, 서버 DB는 M과 무작위 IV를 사용해 암호화된 Ciphertext만 저장한다.
-  - 새 기능(프리셋, 로어북 등)을 추가할 때 도메인 필드는 JSON 내부에 머무르므로 테이블 스키마 변경 부담이 작다.
+  - 모든 데이터는 스키마리스 JSON 형태로 묶어, M과 무작위 IV를 사용해 암호화(Ciphertext).
+  - 서버 DB와 로컬 DB 모두 오직 암호문과 IV만 저장. 새 기능(프리셋, 로어북 등)을 추가할 때 테이블 스키마 변경 부담이 없음.
 
 5. 백엔드 연동 및 동기화 전략 (PocketBase)
 
@@ -57,9 +56,9 @@
   - `GET /api/recovery-bundle/{email}`: 계정 복구를 위해 복구 키 묶음(M(Z))을 반환하는 엔드포인트.
   - `POST /api/recover-account/{email}`: 아날로그 복구 키 인증을 거쳐 서버의 비밀번호와 M(Y)를 리셋하는 엔드포인트 (Constant-Time 해시 비교 및 Rate Limit 적용).
 - 블라인드 동기화 춤 (Blind Sync Dance):
-  - 로컬 DB와 포켓베이스 DB는 같은 도메인 레코드를 바라보지만 저장 형태가 다르다. 로컬은 평문 JSON, 포켓베이스는 `encryptedData + encryptedDataIV`를 가진 블라인드 레코드다.
-  - [업로드/Push]: 오프라인에 쌓인 `lastSyncTime` 이후의 평문 JSON을 클라이언트에서 암호화한 뒤 서버에 Upsert.
-  - [다운로드/Pull]: 타 기기에서 업로드된 서버의 최신 암호문을 가져와 클라이언트에서 복호화한 뒤 로컬 DB에 덮어쓰기 (LWW: Last-Write-Wins 기반).
+  - 로컬 DB와 포켓베이스 DB의 테이블 스키마는 동일(BaseRecord 형태).
+  - [업로드/Push]: 오프라인에 쌓인 `lastSyncTime` 이후의 암호문 바이트 배열들을 서버에 그대로 Upsert.
+  - [다운로드/Pull]: 타 기기에서 업로드된 서버의 최신 암호문들을 가져와 로컬 DB 덮어쓰기 (LWW: Last-Write-Wins 기반).
   - `Realtime Subscription` 웹소켓을 활용해 클라이언트 간 즉시 푸시/알림 가능.
 - 스케일업 전략 (단계별 확장):
   - 1단계 (파일 외부 위임): 오라클 디스크가 꽉 차기 시작하면, PocketBase 관리자 설정에서 `Use S3 storage`를 켜고 Cloudflare R2(또는 Backblaze B2)를 연결. 무거운 이미지 파일들이 오라클을 거치지 않고 외부 스토리지로 빠짐.
@@ -91,10 +90,10 @@
 
 8. 데이터 스키마 설계 철학 (Schema Design Philosophy)
 
-- 핵심 원칙: 로컬에는 "찾기 위한 최소한의 키"를 인덱스로 노출하고, 서버에는 유저 식별과 동기화에 필요한 최소 필드만 둔다. "무엇을 어떻게 쓰는지"는 도메인 JSON 안에 두며, 서버로 나갈 때 암호화된 Blob 안에 숨긴다. 메모리에는 관련된 것을 전부 올려두되, 실행은 활성화된 것만 한다.
+- 핵심 원칙: 평문에는 "찾기 위한 최소한의 키(FK)"만 노출하고, "무엇을 어떻게 쓰는지"는 전부 암호화된 Blob 안에 숨긴다. 메모리에는 관련된 것을 전부 올려두되, 실행은 활성화된 것만 한다.
 - 단일 테이블 구조:
-  - 모든 엔티티는 단일 테이블에 하나의 JSON payload로 저장됨. 로컬은 평문 JSON, 서버는 암호화 Blob.
-  - JSON 내부에는 Content(사용자 편집 가능)와 Refs(구조적 참조)가 함께 포함됨.
+  - 모든 엔티티는 단일 테이블에 하나의 암호화 Blob으로 저장됨.
+  - Blob 내부에는 Content(사용자 편집 가능)와 Refs(구조적 참조)가 함께 포함됨.
   - 단일 테이블 대상: 캐릭터, 채팅, 페르소나, 로어북, 스크립트, 모듈, 플러그인, 프롬프트 프리셋, 설정.
 - 부모-자식 관계에서의 원칙:
   - 부모 엔티티가 자식의 미리보기 데이터를 복사해서 들고 있으면 안 된다 (데이터 중복 방지).
@@ -109,7 +108,7 @@
   - FolderDef: { id, name, sortOrder, color?, parentId? } — 폴더 정의 (부모 Blob에 저장).
   - AssetEntry: { name, assetId } — 에셋 이름→ID 매핑 (엔티티별 매니페스트).
 - 소유 관계 (1:N, Deep Copy):
-  - 부모의 JSON payload에 OrderedRef[] 또는 ResourceRef[]로 자식 ID를 소유.
+  - 부모의 암호화 Blob에 OrderedRef[] 또는 ResourceRef[]로 자식 ID를 소유.
   - 삭제 시 cascade: 부모 삭제 → 소유 자식 일괄 soft-delete.
   - 대상: 로어북, 스크립트는 항상 부모가 소유 (공유 시 Deep Copy).
   - 소유 트리:
@@ -118,11 +117,11 @@
     - 채팅 → 로어북 단독 소유 (채팅 고유의 설정 가능)
     - 모듈 → 로어북, 스크립트 단독 소유
     - 페르소나 → (추가 자원 소유 없음, 자체 설정과 에셋만 존재)
-  - 로컬 인덱스 및 정렬 예외 사항 (messages):
+  - FK 및 정렬 예외 사항 (messages):
     - messages.chatId — 고볼륨 트래픽으로 인해 [chatId+sortOrder] 조합의 인덱스 추가 사용 (O(1) 쓰기 및 빠른 페이지네이션)
     - chats.characterId — 캐릭터 삭제 시 종속된 채팅을 일괄 정리하기 위한 보조 장치
 - 참조 관계 (N:M, Shared Reference):
-  - 소비자의 JSON payload에 ResourceRef[]로 참조만 보유. 삭제 영향 없음.
+  - 소비자의 암호화 Blob에 ResourceRef[]로 참조만 보유. 삭제 영향 없음.
   - enabled 플래그: 동일 자원이라도 컨텍스트마다 개별 ON/OFF.
   - 대상: 모듈, 플러그인 (프리셋과 페르소나는 직접 string ID 지정).
   - 예: characters.moduleRefs (참조), characters.lorebookRefs (소유).
@@ -131,14 +130,14 @@
   - 폴더 정의: 부모의 Blob에 FolderDef[] 배열 (이름, 색, 중첩 등). 매우 소량.
   - 예: settings.folders.characters, characters.chatFolders.
 - 참조 무결성: Loose Coupling.
-  - PocketBase에는 FOREIGN KEY ON DELETE CASCADE를 두지 않음.
-  - 참조 자원 삭제 시 참조자의 payload 일괄 수정 불필요 → Graceful Degradation + Self-Healing.
+  - E2EE 환경에서는 FOREIGN KEY ON DELETE CASCADE 불가능.
+  - 참조 자원 삭제 시 참조자의 Blob 일괄 수정 불필요 → Graceful Degradation + Self-Healing.
   - DB에는 진실의 원천(Source of Truth)만 저장. 파생값 저장하지 않음.
 
 10. 모듈 시스템 (Module System)
 
 - 모듈의 정의: 로어북, 스크립트 등을 하나로 묶은 그룹 컨테이너. 모듈은 로어북/스크립트를 소유(Own)한다 (Deep Copy).
-- DB 스키마: 단일 도메인 레코드 (modules 테이블).
+- DB 스키마: 단일 EncryptedRecord (modules 테이블).
 - ModuleFields 내부 구조:
   - name, description.
   - lorebookRefs: OrderedRef[] (소유).
@@ -183,8 +182,8 @@
   - 모든 에셋의 로컬 ID = UUID. 셋 다 같은 체계를 쓰므로 엔티티(캐릭터 등)는 종류에 관계없이 assetId: string 하나만 보유.
   - 서버 파일명(프라이빗/인레이): UUID 그대로 사용. UUID는 내용과 무관한 랜덤 문자열이므로 별도 변환 없이도 프라이버시 완벽 보장.
   - CDN 파일명(퍼블릭): SHA-256(바이너리). 크로스 유저 중복 제거용.
-- 에셋 테이블 (assets):
-  - 모든 종류(프라이빗/인레이/퍼블릭)를 단일 테이블에 저장. 로컬은 평문 payload, 서버는 Blind Sync 대상.
+- 에셋 테이블 (assets, EncryptedRecord):
+  - 모든 종류(프라이빗/인레이/퍼블릭)를 단일 테이블에 저장. Blind Sync 대상.
   - id: UUID.
   - encryptedData 내부: kind ('private' | 'inlay' | 'public'), mimeType, remoteUrl?.
     - remoteUrl이 없으면 → 아직 로컬 전용 에셋.
@@ -293,11 +292,11 @@
 
 16. 전체 테이블 목록 (Table Registry)
 
-- 도메인 테이블 (로컬 평문 JSON, 서버 blind sync 대상):
-  - users — 특수 (인증 및 E2EE 전용 필드 보관: salt, encryptedMasterKey, recoveryAuthTokenHash 등). 사용자 삭제 시 하위 도메인 정리는 앱/서버 훅의 명시 로직으로 처리하고, PocketBase relation cascade에 의존하지 않음.
+- 암호화 테이블 (EncryptedRecord 기반, blind sync 대상):
+  - users — 특수 (인증 및 E2EE 전용 필드 보관: salt, encryptedMasterKey, recoveryAuthTokenHash 등). 사용자 계정 폭파 시 하위 테이블들 자동 삭제 되도록 `cascadeDelete` 적용 처리됨.
   - characters — 단일 (소유: chatRefs, lorebookRefs, scriptRefs. 참조: moduleRefs. 에셋: assets)
-  - chats — 단일 (로컬 인덱스 characterId 보유. 소유: lorebookRefs)
-  - messages — 단일, 로컬 인덱스: chatId ([chatId+sortOrder] 복합 인덱스, softDeleteByIndex 벌크 삭제)
+  - chats — 단일 (characterId 평문 FK 보유. 소유: lorebookRefs)
+  - messages — 단일, 평문 FK: chatId ([chatId+sortOrder] 복합 인덱스, softDeleteByIndex 벌크 삭제)
   - personas — 단일 (독립된 데이터 + 에셋 보유)
   - presets — 단일
   - modules — 단일 (소유: lorebookRefs, scriptRefs. 폴더 지원)
@@ -307,7 +306,7 @@
   - settings — 단일 (최상위 엔티티 관리: characterRefs, personaRefs, presetRefs, moduleRefs, pluginRefs + folders)
   - roomKeys — 단일, FK: roomId (미래)
 - 에셋 테이블 (단일 테이블, Blind Sync 대상 ✅):
-  - assets — kind: private/inlay/public. ID = UUID. 로컬 payload / 서버 encryptedData 내부에 kind, mimeType, remoteUrl? 저장.
+  - assets — kind: private/inlay/public. ID = UUID. encryptedData 내부에 kind, mimeType, remoteUrl? 저장.
     - remoteUrl 없음 → 로컬 전용. remoteUrl 있음 → 리모트(캐시 가능).
     - private/inlay의 remoteUrl: 오브젝트 스토리지 경로 (파일명 = HMAC-SHA256(MasterKey, UUID), Blind Hash).
     - public의 remoteUrl: CDN URL (평문).
@@ -354,8 +353,18 @@
 
 20. 렌더링 파이프라인 (Streaming Chat Display)
 
-- **DB-First Update**: 생성 시작 시점에 이미 DB 레코드(`createMessage`)가 존재하며, 스트리밍 청크가 올 때마다 즉시 DB를 업데이트합니다. 
-- **Write Queue 최적화**: 고빈도 쓰기가 발생해도 `writeQueue`가 메모리에서 병합(Debounce)하여 로컬 DB에 반영하므로, 메인 스레드의 부하 없이 실시간 UI 업데이트가 가능합니다.
-- **단일 메시지 컴포넌트**: UI는 스트리밍 여부를 몰라도 됩니다. DB의 메시지 스토어만 구독하고 있으면 `writeQueue`가 흘려보내는 최신 상태를 실시간으로 렌더링합니다. `displayStatus` 하나로 모든 상태(생성 중, 완료, 에러)를 제어합니다.
-- **성능 최적화**: 마크다운 파싱에 디바운스를 적용하고, Svelte의 효율적인 DOM 패치를 통해 스트리밍 중에도 브라우저 성능을 최상으로 유지합니다.
-- **생명주기 마감 (Finalize)**: 스트리밍이 끝나면 마지막 업데이트를 통해 'completed' 상태가 되고, `clearChatTask`를 호출하여 실행 제어권을 반환합니다. 시각적으로 생성 상태에서 완료 상태로의 전환은 깜빡임 없이 매끄럽게 이루어집니다.
+- 핵심 문제: UI는 생성 방식(Streaming 여부)에 대해 전혀 알 필요가 없어야 하며, 스트리밍 중 청크마다 전체 메시지를 마크다운 파싱하면 브라우저 성능 폭발(디바운스 필요).
+- Two-Track State (이중 상태 관리):
+  - 확정 메시지 (Confirmed): DB에 저장된 완성 메시지. `messages` 스토어에 평문 배열로 보유.
+  - 생성 중 메시지 (Ephemeral): LLM 스트리밍 도중의 텍스트. `generationTasks` 스토어에 chatId Map으로 보유. DB 미저장.
+  - `displayMessages` derived 스토어: 확정 메시지 모음 뒤에 현재 생성 중인 임시 메시지를 단일 리스트로 결합하여 뷰에 제공.
+- Message 단일 컴포넌트:
+  - UI 레이어에서는 스트리밍 버블 컴포넌트와 일반 컴포넌트를 분리하지 않고 단일 `<Message>` 컴포넌트로 처리.
+  - `message.displayStatus` ('completed' | 'generating' | 'error') props 하나로 모든 UI 상태 제어. (관심사의 완벽한 분리)
+- 렌더링 최적화:
+  - `displayMessages`의 변경에 따라 `Message.svelte`가 다시 렌더링.
+  - 컴포넌트 안에서 `display` 스크립트 및 마크다운 파싱을 디바운스 적용.
+  - `morphdom`을 사용한 diffDOM 교체로 이전 렌더링 결과와 비교하여 변경된 텍스트/HTML 노드만 패치해 성능 극대화.
+- 생명주기 마감 (Finalize):
+  - 스트리밍 완료 → `createMessage`(DB 영구 저장 및 확정 스토어 업데이트) → 그 직후 `clearTask`(임시 스토어 지움).
+  - 시각적으로 생성 말풍선이 일반 말풍선으로 깜빡임 없이 매끄럽게 교체됨.

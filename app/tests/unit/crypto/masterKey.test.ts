@@ -100,7 +100,7 @@ describe('masterKey', () => {
             const unwrapped = await unwrapMasterKey(wrapped.ciphertext, wrapped.iv, wrappingKey);
 
             expect(unwrapped).toBeInstanceOf(CryptoKey);
-            expect(unwrapped.extractable).toBe(false); // Must be non-extractable for security
+            expect(unwrapped.extractable).toBe(true); // Must be extractable in v2
         });
 
         it('should unwrap to a functional AES-GCM key', async () => {

@@ -19,7 +19,7 @@ export async function loadGlobalState() {
 }
 
 /**
- * Initialize default content for a new guest user.
+ * Initialize default content for a new local identity.
  * Ensures at least one persona and preset exist (delete guard requires min 1).
  * Also selects the newly created persona and preset as defaults.
  */

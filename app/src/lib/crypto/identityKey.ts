@@ -5,8 +5,8 @@
  * The key pair is used for asymmetric encryption (future: Room Key exchange in multi-room).
  *
  * Key lifecycle:
- *   - Generated on guest creation or first login
- *   - Private key stored locally as a non-extractable CryptoKey (XSS protection)
+ *   - Generated with the local identity on first app launch
+ *   - Private key stored locally as an extractable CryptoKey
  *   - Private key uploaded to server wrapped with master key M (AES-GCM)
  *   - Public key uploaded to server as plaintext JWK (intentional — needed for Room Key exchange)
  */
@@ -20,7 +20,7 @@ type Bytes = Uint8Array<ArrayBuffer>;
 /**
  * Generate a fresh ECDH P-256 identity key pair.
  * Private key is extractable so it can be immediately wrapped with M and uploaded.
- * After upload and local storage, it will be re-imported as non-extractable.
+ * It remains extractable in the current local identity model.
  */
 export async function generateIdentityKeyPair(): Promise<CryptoKeyPair> {
     return crypto.subtle.generateKey({ name: 'ECDH', namedCurve: ECDH_CURVE }, true, ['deriveKey']);
@@ -59,7 +59,7 @@ export async function exportPrivateKey(privateKey: CryptoKey): Promise<Bytes> {
  * Import PKCS#8 private key bytes back into a CryptoKey.
  *
  * @param raw - PKCS#8 bytes (decrypted from server's wrapped private key)
- * @param extractable - false for registered users (XSS protection), true for guests
+ * @param extractable - whether the imported key can be exported again
  */
 export async function importPrivateKey(raw: Bytes, extractable: boolean): Promise<CryptoKey> {
     return crypto.subtle.importKey(

@@ -225,6 +225,9 @@ migrate(
         "encryptedRecoveryMasterKey",
         "recoveryMasterKeyIv",
         "recoveryAuthTokenHash",
+        "identityPublicKey",
+        "encryptedIdentityPrivateKey",
+        "identityPrivateKeyIv",
         "assetQuota",
         "assetUsage",
       ];

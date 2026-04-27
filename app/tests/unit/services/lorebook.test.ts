@@ -58,7 +58,6 @@ describe('LorebookService', () => {
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
             masterKey: {} as CryptoKey,
-            isGuest: false,
             identityKeyPair: {} as CryptoKeyPair
         });
     });

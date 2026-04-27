@@ -58,7 +58,10 @@ export {
     isLoggedIn,
     userEmail,
     userId,
-    isGuest
+    username,
+    isSyncServerConfigured,
+    isLocalOnly,
+    isSyncLinked
 } from './state';
 
 export type { DisplayMessage, DisplayMessageStatus, TaskStatus } from './types';

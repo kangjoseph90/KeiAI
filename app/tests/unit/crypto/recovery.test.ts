@@ -36,10 +36,10 @@ describe('Crypto Recovery', () => {
         });
 
         it('splitRecoveryCode should correctly split a valid code', () => {
-            const code = 'ABCDEFGH12345678';
+            const code = 'ABCDEFGH12345678ABCD9012';
             const parts = splitRecoveryCode(code);
-            expect(parts.frontHalf).toBe('ABCDEFGH');
-            expect(parts.backHalf).toBe('12345678');
+            expect(parts.frontHalf).toBe('ABCDEFGH1234');
+            expect(parts.backHalf).toBe('5678ABCD9012');
         });
 
         it('splitRecoveryCode should throw on invalid length', () => {
@@ -49,7 +49,7 @@ describe('Crypto Recovery', () => {
 
     describe('Derivation and Hashing', () => {
         it('deriveRecoveryKey should produce consistent 32-byte key', async () => {
-            const front = 'ABCDEFGH';
+            const front = 'ABCDEFGH1234';
             const key1 = await deriveRecoveryKey(front);
             const key2 = await deriveRecoveryKey(front);
 
@@ -58,7 +58,7 @@ describe('Crypto Recovery', () => {
         });
 
         it('hashRecoveryAuthToken should produce consistent 32-byte hash', async () => {
-            const back = '12345678';
+            const back = '5678ABCD9012';
             const hash1 = await hashRecoveryAuthToken(back);
             const hash2 = await hashRecoveryAuthToken(back);
 

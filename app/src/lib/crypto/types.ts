@@ -28,8 +28,12 @@ export interface LoginBundle {
 
 /** Data returned from server during recovery */
 export interface RecoveryBundle {
+    userId: string;
     encryptedRecoveryMasterKey: Bytes; // M(Z)
     encryptedRecoveryMasterKeyIV: Bytes;
+    identityPublicKey: JsonWebKey;
+    encryptedIdentityPrivateKey: Bytes;
+    identityPrivateKeyIV: Bytes;
 }
 
 /** Result of encrypting plaintext with AES-GCM */
@@ -40,15 +44,15 @@ export interface EncryptedData {
 
 /** Recovery code split into two halves */
 export interface RecoveryCodeParts {
-    fullCode: string; // 16 characters, shown to user once
-    frontHalf: string; // first 8 chars — used to encrypt M → M(Z)
-    backHalf: string; // last 8 chars — hashed for server auth
+    fullCode: string; // 24 characters, shown to user once
+    frontHalf: string; // first 12 chars — used to encrypt M → M(Z)
+    backHalf: string; // last 12 chars — hashed for server auth
 }
 
 /** Result of the account linking (registration) flow */
 export interface LinkAccountResult {
     payload: RegistrationPayload;
-    recoveryCode: string; // 16-char code, user must save offline
+    recoveryCode: string; // 24-char code, user must save offline
 }
 
 /** KDF output: login key X and encryption key Y */
@@ -60,5 +64,5 @@ export interface DerivedKeys {
 /** User identity key pair for asymmetric encryption (Room Key exchange in multi-room) */
 export interface IdentityKeyPair {
     publicKey: CryptoKey; // ECDH P-256 public key (extractable, stored as JWK on server)
-    privateKey: CryptoKey; // ECDH P-256 private key (non-extractable after registration)
+    privateKey: CryptoKey; // ECDH P-256 private key (extractable in the local identity model)
 }

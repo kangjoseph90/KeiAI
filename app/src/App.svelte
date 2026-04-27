@@ -141,7 +141,7 @@
         try {
             startSyncStatusTracking();
             await clock.init(appKV);
-            const wasRestored = await UserService.restoreOrCreateGuest();
+            const wasRestored = await UserService.restoreOrCreateUser();
             if (!wasRestored) {
                 AuthService.clearAuth();
                 await initDefaultContents();

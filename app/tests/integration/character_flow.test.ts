@@ -52,7 +52,6 @@ describe('Character Flow Integration', () => {
         vi.mocked(getActiveSession).mockReturnValue({
             userId: uniqueUserId,
             masterKey: mockMasterKey,
-            isGuest: false,
             identityKeyPair: {} as CryptoKeyPair
         });
 

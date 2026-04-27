@@ -18,13 +18,14 @@ import type { DeepPartial } from '$lib/utils/defaults';
 
 export interface ProfileFields {
     name: string;
+    username?: string;
     avatar: string;
+    email?: string;
+    syncServerUrl?: string;
 }
 
 export interface Profile extends ProfileFields {
     id: string;
-    email?: string;
-    isGuest: boolean;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
@@ -88,9 +89,10 @@ export class ProfileService {
         return {
             id: user.id,
             name: user.name,
+            username: user.username,
             avatar: user.avatar,
             email: user.email,
-            isGuest: user.isGuest
+            syncServerUrl: user.syncServerUrl
         };
     }
 }

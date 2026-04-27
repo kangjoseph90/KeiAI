@@ -37,11 +37,14 @@ export const assetSyncStatus = writable<AssetSyncStatus>({ state: 'idle', pendin
 // ─── Derived Auth State ──────────────────────────────────────────────
 export const isLoggedIn = derived(
     [activeUser, pbConnected],
-    ([user, connected]) => user !== null && !user.isGuest && connected
+    ([user, connected]) => user !== null && user.username !== undefined && connected
 );
 export const userEmail = derived(activeUser, (u) => u?.email ?? null);
+export const username = derived(activeUser, (u) => u?.username ?? null);
 export const userId = derived(activeUser, (u) => u?.id ?? null);
-export const isGuest = derived(activeUser, (u) => u?.isGuest ?? true);
+export const isSyncServerConfigured = derived(activeUser, (u) => u?.syncServerUrl !== undefined);
+export const isLocalOnly = derived(activeUser, (u) => u?.username === undefined);
+export const isSyncLinked = derived(activeUser, (u) => u?.username !== undefined);
 
 // ─── Level 1 (Global Lists) ─────────────────────────────────────────
 export const characters = new EntityStore<Character>();

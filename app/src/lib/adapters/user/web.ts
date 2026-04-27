@@ -15,7 +15,7 @@ class UserDexie extends Dexie {
     constructor() {
         super('KeiUsers'); // Separate IndexedDB database just for auth
         this.version(1).stores({
-            users: 'id, isDeleted, isGuest, updatedAt' // 'id' is Primary Key, others for indexing
+            users: 'id, username, isDeleted, syncServerUrl, updatedAt' // 'id' is Primary Key, others for indexing
         });
     }
 }
@@ -65,7 +65,7 @@ export class WebUserAdapter implements IUserAdapter {
         }
     }
 
-    async backupGuestKey(_id: string, _rawKey: Uint8Array): Promise<void> {
+    async backupMasterKey(_id: string, _rawKey: Uint8Array): Promise<void> {
         // No-op for web. Key recovery relies on the server and password.
     }
 
@@ -77,7 +77,14 @@ export class WebUserAdapter implements IUserAdapter {
         // No-op for web.
     }
 
-    async restoreGuestKey(_id: string): Promise<Uint8Array | null> {
+    async restoreMasterKey(_id: string): Promise<Uint8Array | null> {
+        // No-op on the web platform.
+        return Promise.resolve(null);
+    }
+
+    async restoreIdentityKeys(
+        _id: string
+    ): Promise<{ publicKeyJwk: JsonWebKey; rawPrivateKey: Uint8Array } | null> {
         // No-op on the web platform.
         return Promise.resolve(null);
     }

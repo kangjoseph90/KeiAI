@@ -61,7 +61,6 @@ describe('ModuleService', () => {
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
             masterKey: mockMasterKey,
-            isGuest: false,
             identityKeyPair: {} as CryptoKeyPair
         });
 

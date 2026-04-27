@@ -1,15 +1,23 @@
 <script lang="ts">
     import {
         isLoggedIn,
-        isGuest,
+        isLocalOnly,
+        isSyncLinked,
+        isSyncServerConfigured,
+        activeUser,
+        username as activeUsername,
         userEmail,
-        performLogin,
-        performRegister,
-        performRecoverPassword,
+        performCreateAccount,
+        performSignIn,
+        performRecoverAndReset,
+        performDeleteWithRecoveryCode,
         performChangePassword,
-        performUnlink,
-        performLogout
+        performUnlinkSync,
+        performLogout,
+        performPairWithCode,
+        performSetSyncServerUrl
     } from '$lib/stores';
+    import { AuthService } from '$lib/services/user/auth';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import {
@@ -20,32 +28,58 @@
         CardDescription
     } from '$lib/components/ui/card';
     import { Label } from '$lib/components/ui/label';
-    import { Key, LogIn, LogOut, UserPlus, ShieldAlert, AlertTriangle } from 'lucide-svelte';
+    import { Key, LogOut, Link, ShieldAlert, AlertTriangle } from 'lucide-svelte';
     import { getErrorMessage } from '$lib/types/errors';
+    import { PB_URL } from '$lib/config';
 
     let email = $state('');
+    let username = $state('');
     let password = $state('');
     let confirmPassword = $state('');
-    let newPassword = $state('');
+    let syncServerUrl = $derived($activeUser?.syncServerUrl ?? PB_URL);
     let recoveryCode = $state('');
+    let newPassword = $state('');
+    let pairingCodeInput = $state('');
+    let generatedPairingCode = $state('');
 
     let loading = $state(false);
     let errorMsg = $state('');
     let successMsg = $state('');
     let displayRecovery = $state('');
 
-    let mode = $state<'login' | 'register' | 'recover' | 'change_password' | 'unlink'>('login');
+    let mode = $state<
+        | 'connect'
+        | 'signin'
+        | 'recover'
+        | 'recover_delete'
+        | 'pair_new'
+        | 'change_server'
+        | 'change_password'
+        | 'unlink'
+        | 'pair_existing'
+    >('connect');
 
     // Auto-reset mode when auth state changes (e.g. after login, logout, unlink)
     $effect(() => {
         if (!$isLoggedIn) {
-            if (!['login', 'register', 'recover'].includes(mode)) mode = 'login';
+            if (
+                ![
+                    'connect',
+                    'signin',
+                    'recover',
+                    'recover_delete',
+                    'pair_new',
+                    'change_server'
+                ].includes(mode)
+            )
+                mode = 'connect';
         } else {
-            if (!['change_password', 'unlink'].includes(mode)) mode = 'change_password';
+            if (!['change_password', 'unlink', 'pair_existing'].includes(mode))
+                mode = 'change_password';
         }
     });
 
-    async function runAction(action: () => Promise<void | string>, successText: string) {
+    async function runAction(action: () => Promise<void | string | null>, successText: string) {
         loading = true;
         errorMsg = '';
         successMsg = '';
@@ -55,10 +89,12 @@
             if (typeof result === 'string') displayRecovery = result;
             successMsg = successText;
             email = '';
+            username = '';
             password = '';
             confirmPassword = '';
             newPassword = '';
             recoveryCode = '';
+            pairingCodeInput = '';
         } catch (e) {
             errorMsg = getErrorMessage(e);
         } finally {
@@ -66,22 +102,36 @@
         }
     }
 
-    function handleLogin() {
-        runAction(() => performLogin(email, password), 'Logged in successfully.');
-    }
-
-    function handleRegister() {
+    function handleConnect() {
         if (password !== confirmPassword) {
             errorMsg = 'Passwords do not match.';
             return;
         }
-        runAction(() => performRegister(email, password), 'Account registered.');
+        runAction(
+            () => performCreateAccount(username, password, email || undefined),
+            'Account created.'
+        );
+    }
+
+    function handleSignIn() {
+        runAction(() => performSignIn(username, password), 'Signed in successfully.');
     }
 
     function handleRecover() {
+        if (newPassword !== confirmPassword) {
+            errorMsg = 'Passwords do not match.';
+            return;
+        }
         runAction(
-            () => performRecoverPassword(email, recoveryCode, newPassword),
-            'Password recovered.'
+            () => performRecoverAndReset(recoveryCode, newPassword),
+            'Device recovered. Save your new recovery code.'
+        );
+    }
+
+    function handleRecoverDelete() {
+        runAction(
+            () => performDeleteWithRecoveryCode(recoveryCode),
+            'Remote account deleted successfully. Local data remains intact.'
         );
     }
 
@@ -93,11 +143,35 @@
     }
 
     function handleUnlink() {
-        runAction(() => performUnlink(password), 'Account unlinked. Reverted to guest mode.');
+        runAction(() => performUnlinkSync(), 'Sync disconnected. Local data remains available.');
     }
 
     function handleLogout() {
         runAction(() => performLogout(), 'Logged out successfully.');
+    }
+
+    async function handleGeneratePairing() {
+        loading = true;
+        errorMsg = '';
+        generatedPairingCode = '';
+        try {
+            generatedPairingCode = await AuthService.createPairingCode();
+        } catch (e) {
+            errorMsg = getErrorMessage(e);
+        } finally {
+            loading = false;
+        }
+    }
+
+    function handlePairNewDevice() {
+        runAction(() => performPairWithCode(pairingCodeInput), 'Device paired successfully.');
+    }
+
+    function handleSetSyncServer() {
+        runAction(
+            () => performSetSyncServerUrl(syncServerUrl || undefined),
+            'Sync server updated.'
+        );
     }
 </script>
 
@@ -106,13 +180,19 @@
         <CardTitle>Account & Synchronization</CardTitle>
         <CardDescription>
             {#if !$isLoggedIn}
-                {#if $isGuest}
-                    You are currently using an offline guest account.
+                {#if $isLocalOnly}
+                    {#if $isSyncServerConfigured}
+                        Sync server selected. No account linked.
+                    {:else}
+                        You are using a local-only identity.
+                    {/if}
+                {:else if $isSyncLinked}
+                    Signed out{#if $activeUsername}: <strong>@{$activeUsername}</strong>{/if}
                 {:else}
-                    You are using an offline session. Data is not syncing.
+                    Sync is not connected.
                 {/if}
             {:else}
-                Logged in as: <strong>{$userEmail}</strong>
+                Sync connected{#if $userEmail}: <strong>{$userEmail}</strong>{/if}
             {/if}
         </CardDescription>
     </CardHeader>
@@ -154,91 +234,189 @@
         {/if}
 
         {#if !$isLoggedIn}
-            <!-- GUEST STATE -->
+            <div class="rounded-md border p-3 text-sm flex flex-col gap-2">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <div class="font-medium">Sync Server</div>
+                        <div class="text-muted-foreground break-all">
+                            {$activeUser?.syncServerUrl ?? PB_URL}
+                        </div>
+                    </div>
+                    <Button variant="outline" size="sm" onclick={() => (mode = 'change_server')}>
+                        Change
+                    </Button>
+                </div>
+            </div>
+
             <div class="flex border-b mb-2">
                 <button
-                    class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'login'
+                    class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'connect'
                         ? 'border-primary text-primary'
                         : 'border-transparent text-muted-foreground'}"
-                    onclick={() => (mode = 'login')}>Login</button
+                    onclick={() => (mode = 'connect')}>Create Account</button
                 >
-                {#if $isGuest}
-                    <button
-                        class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'register'
-                            ? 'border-primary text-primary'
-                            : 'border-transparent text-muted-foreground'}"
-                        onclick={() => (mode = 'register')}>Register / Link</button
-                    >
-                {/if}
+                <button
+                    class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'signin'
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground'}"
+                    onclick={() => (mode = 'signin')}>Sign In</button
+                >
                 <button
                     class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'recover'
                         ? 'border-primary text-primary'
                         : 'border-transparent text-muted-foreground'}"
                     onclick={() => (mode = 'recover')}>Recover</button
                 >
+                <button
+                    class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'pair_new'
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground'}"
+                    onclick={() => (mode = 'pair_new')}>Pair Device</button
+                >
             </div>
 
-            {#if mode === 'login' || mode === 'register'}
+            {#if mode === 'change_server'}
                 <div class="space-y-3">
-                    {#if !$isGuest && mode === 'login'}
+                    <div class="space-y-1">
+                        <Label>Sync Server URL</Label>
+                        <Input
+                            bind:value={syncServerUrl}
+                            type="url"
+                            placeholder="https://sync.example.com"
+                        />
+                    </div>
+                    <Button class="w-full" disabled={loading} onclick={handleSetSyncServer}>
+                        Save Sync Server
+                    </Button>
+                </div>
+            {:else if mode === 'connect'}
+                <div class="space-y-3">
+                    {#if $isSyncLinked}
                         <div
                             class="mb-2 p-3 text-sm rounded bg-primary/10 text-primary border border-primary/20"
                         >
-                            You are in Offline Mode. Log in to resume synchronization.
+                            Create a sync account for this local identity.
                         </div>
                     {/if}
                     <div class="space-y-1">
-                        <Label>Email</Label>
-                        <Input bind:value={email} type="email" placeholder="you@example.com" />
+                        <Label>Email (optional)</Label>
+                        <Input bind:value={email} type="email" placeholder="updates@example.com" />
                     </div>
                     <div class="space-y-1">
                         <Label>Password</Label>
                         <Input bind:value={password} type="password" placeholder="••••••••" />
                     </div>
-                    {#if mode === 'register'}
-                        <div class="space-y-1">
-                            <Label>Confirm Password</Label>
-                            <Input
-                                bind:value={confirmPassword}
-                                type="password"
-                                placeholder="••••••••"
-                            />
-                        </div>
-                    {/if}
-                    {#if mode === 'login'}
-                        <Button class="w-full" disabled={loading} onclick={handleLogin}>
-                            <LogIn class="mr-2 size-4" /> Log In
-                        </Button>
-                    {:else}
-                        <Button class="w-full" disabled={loading} onclick={handleRegister}>
-                            <UserPlus class="mr-2 size-4" /> Link Account & Setup Sync
-                        </Button>
-                        <p class="text-xs text-muted-foreground mt-2">
-                            This will securely back up your single-device guest data and encrypt it
-                            with your new password.
-                        </p>
-                    {/if}
+                    <div class="space-y-1">
+                        <Label>Confirm Password</Label>
+                        <Input
+                            bind:value={confirmPassword}
+                            type="password"
+                            placeholder="••••••••"
+                        />
+                    </div>
+                    <div class="space-y-1">
+                        <Label>Username</Label>
+                        <Input bind:value={username} type="text" placeholder="your-name" />
+                    </div>
+                    <Button class="w-full" disabled={loading} onclick={handleConnect}>
+                        <Link class="mr-2 size-4" /> Create Account
+                    </Button>
+                </div>
+            {:else if mode === 'signin'}
+                <div class="space-y-3">
+                    <div class="space-y-1">
+                        <Label>Username</Label>
+                        <Input bind:value={username} type="text" placeholder="your-name" />
+                    </div>
+                    <div class="space-y-1">
+                        <Label>Password</Label>
+                        <Input bind:value={password} type="password" placeholder="••••••••" />
+                    </div>
+                    <Button class="w-full" disabled={loading} onclick={handleSignIn}>
+                        <Link class="mr-2 size-4" /> Sign In
+                    </Button>
                 </div>
             {:else if mode === 'recover'}
                 <div class="space-y-3">
+                    <p class="text-sm text-muted-foreground">
+                        Use your recovery code to restore sync and set a new password.
+                    </p>
                     <div class="space-y-1">
-                        <Label>Email</Label>
-                        <Input bind:value={email} type="email" placeholder="you@example.com" />
-                    </div>
-                    <div class="space-y-1">
-                        <Label>16-char Recovery Code</Label>
+                        <Label>24-char Recovery Code</Label>
                         <Input
                             bind:value={recoveryCode}
                             type="text"
-                            placeholder="16 characters recovery code"
+                            placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
                         />
                     </div>
                     <div class="space-y-1">
                         <Label>New Password</Label>
                         <Input bind:value={newPassword} type="password" placeholder="••••••••" />
                     </div>
+                    <div class="space-y-1">
+                        <Label>Confirm New Password</Label>
+                        <Input
+                            bind:value={confirmPassword}
+                            type="password"
+                            placeholder="••••••••"
+                        />
+                    </div>
                     <Button class="w-full" disabled={loading} onclick={handleRecover}>
-                        <Key class="mr-2 size-4" /> Recover Account
+                        <Key class="mr-2 size-4" /> Recover Device & Reset Password
+                    </Button>
+                    <div class="text-center pt-2">
+                        <Button
+                            variant="link"
+                            class="text-xs text-muted-foreground"
+                            onclick={() => (mode = 'recover_delete')}
+                        >
+                            Or delete remote account completely
+                        </Button>
+                    </div>
+                </div>
+            {:else if mode === 'recover_delete'}
+                <div class="space-y-3 p-4 border border-destructive/30 bg-destructive/5 rounded-lg">
+                    <h3 class="font-bold flex items-center gap-2 text-destructive">
+                        <AlertTriangle class="size-4" /> Delete Remote Account
+                    </h3>
+                    <p class="text-sm">
+                        Use your recovery code to permanently delete your remote sync data. Your
+                        local data will not be deleted.
+                    </p>
+                    <div class="space-y-1">
+                        <Label>24-char Recovery Code</Label>
+                        <Input
+                            bind:value={recoveryCode}
+                            type="text"
+                            placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+                        />
+                    </div>
+                    <Button
+                        variant="destructive"
+                        class="w-full"
+                        disabled={loading}
+                        onclick={handleRecoverDelete}
+                    >
+                        Delete Remote Account
+                    </Button>
+                    <div class="text-center pt-2">
+                        <Button
+                            variant="link"
+                            class="text-xs text-muted-foreground"
+                            onclick={() => (mode = 'recover')}
+                        >
+                            Cancel
+                        </Button>
+                    </div>
+                </div>
+            {:else if mode === 'pair_new'}
+                <div class="space-y-3">
+                    <div class="space-y-1">
+                        <Label>8-char Pairing Code</Label>
+                        <Input bind:value={pairingCodeInput} type="text" placeholder="XXXXXXXX" />
+                    </div>
+                    <Button class="w-full" disabled={loading} onclick={handlePairNewDevice}>
+                        <Link class="mr-2 size-4" /> Pair Device
                     </Button>
                 </div>
             {/if}
@@ -257,6 +435,15 @@
                         : 'border-transparent text-muted-foreground'}"
                     onclick={() => (mode = 'unlink')}>Unlink</button
                 >
+                <button
+                    class="px-4 py-2 font-medium text-sm border-b-2 {mode === 'pair_existing'
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground'}"
+                    onclick={() => {
+                        mode = 'pair_existing';
+                        generatedPairingCode = '';
+                    }}>Pair New Device</button
+                >
             </div>
 
             {#if mode === 'unlink'}
@@ -265,21 +452,37 @@
                         <AlertTriangle class="size-4" /> Danger Zone
                     </h3>
                     <p class="text-sm">
-                        Unlinking will permanently delete your account from the server. Your data
-                        will remain locally on this device as a Guest account.
+                        Disconnecting stops sync on this device. Your local account and data remain
+                        available.
                     </p>
-                    <div class="space-y-1">
-                        <Label>Confirm Password</Label>
-                        <Input bind:value={password} type="password" />
-                    </div>
                     <Button
                         variant="destructive"
                         class="w-full"
                         disabled={loading}
                         onclick={handleUnlink}
                     >
-                        Unlink & Revert to Guest
+                        Disconnect Sync
                     </Button>
+                </div>
+            {:else if mode === 'pair_existing'}
+                <div class="space-y-3">
+                    <p class="text-sm text-muted-foreground">
+                        Generate a temporary pairing code to securely link another device without
+                        entering your password.
+                    </p>
+                    <Button class="w-full" disabled={loading} onclick={handleGeneratePairing}>
+                        Generate Pairing Code
+                    </Button>
+
+                    {#if generatedPairingCode}
+                        <div class="mt-4 p-4 border rounded-lg bg-secondary/20 text-center">
+                            <Label>Enter this code on the new device:</Label>
+                            <div class="mt-2 text-2xl font-mono tracking-widest font-bold">
+                                {generatedPairingCode}
+                            </div>
+                            <p class="text-xs text-muted-foreground mt-2">Expires in 5 minutes.</p>
+                        </div>
+                    {/if}
                 </div>
             {:else}
                 <div class="space-y-3">

@@ -3,9 +3,6 @@
  *
  * Follows the same Store pattern as persona.ts, settings.ts, etc.
  * UI imports these functions; they call ProfileService + update Svelte stores.
- *
- * Imports ProfileSyncService directly from sync/profile.js (not the barrel)
- * to avoid circular references: stores → sync, never sync → stores.
  */
 
 import { ProfileService, type ProfileFields } from '$lib/services';

@@ -2,8 +2,8 @@
  * User & Key Management Adapter Interface
  *
  * Dedicated storage adapter for managing the `UserRecord` and its underlying `CryptoKey` object.
- * Separated from normal application data to allow storing the `extractable: false` CryptoKeys
- * in IndexedDB even on Tauri, while the rest of the application data goes to SQLite.
+ * Separated from normal application data so Tauri can keep IndexedDB as the ergonomic primary
+ * CryptoKey store while mirroring metadata and raw key backups in more durable native storage.
  */
 
 import type { DatabaseMutationOrigin } from '$lib/adapters/db';
@@ -44,16 +44,23 @@ export interface IUserAdapter {
     /** Soft or hard delete a user from local storage. */
     deleteUser(id: string, options?: UserWriteOptions): Promise<void>;
 
-    /**
-     * Backup the guest's extractable CryptoKey to the OS Keychain.
-     * (Only applicable to Guest keys. Registered keys are non-extractable and cannot be backed up locally).
-     */
-    backupGuestKey(id: string, rawKey: Uint8Array): Promise<void>;
+    /** Backup the user's extractable master key to the OS key store. */
+    backupMasterKey(id: string, rawKey: Uint8Array): Promise<void>;
 
-    /**
-     * Restore a guest key from the OS Keychain if IndexedDB was cleared.
-     */
-    restoreGuestKey(id: string): Promise<Uint8Array | null>;
+    /** Restore a master key from the OS key store if IndexedDB was cleared. */
+    restoreMasterKey(id: string): Promise<Uint8Array | null>;
+
+    /** Backup identity keys to the OS key store. */
+    backupIdentityKeys(
+        id: string,
+        publicKeyJwk: JsonWebKey,
+        rawPrivateKey: Uint8Array
+    ): Promise<void>;
+
+    /** Restore identity keys from the OS key store if IndexedDB was cleared. */
+    restoreIdentityKeys(
+        id: string
+    ): Promise<{ publicKeyJwk: JsonWebKey; rawPrivateKey: Uint8Array } | null>;
 }
 
 /**
@@ -61,14 +68,15 @@ export interface IUserAdapter {
  * or at least we export it from here as it now belongs to the auth domain.
  */
 export interface UserRecord {
-    id: string; // UUID matching PocketBase ID (or local UUID for guests)
-    name: string; // Editable display name (e.g., "Guest 1", "Main Profile")
-    email?: string; // Cached email if synced with PocketBase
+    id: string; // UUID matching PocketBase ID
+    name: string; // Editable display name (e.g., "Local 1", "Main Profile")
+    username?: string; // Login alias on the current sync server
+    email?: string; // Optional contact email for notices; not used for auth
     avatar: string; // Identicon URL based on user ID
     createdAt: number;
     updatedAt: number;
     isDeleted: boolean;
-    isGuest: boolean;
+    syncServerUrl?: string; // Selected sync server for account operations; not link state
     masterKey: CryptoKey; // The live CryptoKey object
     identityKeyPair: CryptoKeyPair; // ECDH P-256 key pair for asymmetric operations (multi-room)
 }

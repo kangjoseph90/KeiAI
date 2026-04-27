@@ -50,7 +50,6 @@ describe('WebUserAdapter (Dexie)', () => {
             createdAt: Date.now(),
             updatedAt: Date.now(),
             isDeleted: false,
-            isGuest: true,
             masterKey: cryptoKey,
             identityKeyPair: {} as CryptoKeyPair,
             ...overrides
@@ -67,7 +66,6 @@ describe('WebUserAdapter (Dexie)', () => {
             expect(retrieved).toBeDefined();
             expect(retrieved?.id).toBe('user-1');
             expect(retrieved?.name).toBe('Test User');
-            expect(retrieved?.isGuest).toBe(true);
         });
 
         it('should return null for non-existent user', async () => {
@@ -221,20 +219,20 @@ describe('WebUserAdapter (Dexie)', () => {
         });
     });
 
-    describe('backupGuestKey and restoreGuestKey', () => {
+    describe('backupMasterKey and restoreMasterKey', () => {
         it('should be a no-op on web platform', async () => {
             const keyData = new Uint8Array([1, 2, 3, 4, 5]);
 
-            // backupGuestKey should not throw
-            await expect(adapter.backupGuestKey('user-1', keyData)).resolves.not.toThrow();
+            // backupMasterKey should not throw
+            await expect(adapter.backupMasterKey('user-1', keyData)).resolves.not.toThrow();
 
-            // restoreGuestKey should return null
-            const restored = await adapter.restoreGuestKey('user-1');
+            // restoreMasterKey should return null
+            const restored = await adapter.restoreMasterKey('user-1');
             expect(restored).toBeNull();
         });
 
         it('should handle restore without backup', async () => {
-            const restored = await adapter.restoreGuestKey('non-existent-user');
+            const restored = await adapter.restoreMasterKey('non-existent-user');
             expect(restored).toBeNull();
         });
     });
@@ -245,8 +243,7 @@ describe('WebUserAdapter (Dexie)', () => {
                 id: 'full-record',
                 name: 'Full Name',
                 email: 'test@example.com',
-                avatar: 'https://example.com/avatar.png',
-                isGuest: false
+                avatar: 'https://example.com/avatar.png'
             });
 
             await adapter.saveUser(user);
@@ -256,7 +253,6 @@ describe('WebUserAdapter (Dexie)', () => {
             expect(retrieved?.name).toBe('Full Name');
             expect(retrieved?.email).toBe('test@example.com');
             expect(retrieved?.avatar).toBe('https://example.com/avatar.png');
-            expect(retrieved?.isGuest).toBe(false);
         });
 
         it('should handle timestamps correctly', async () => {
@@ -276,50 +272,46 @@ describe('WebUserAdapter (Dexie)', () => {
     });
 
     describe('integration scenarios', () => {
-        it('should handle guest user lifecycle', async () => {
-            // Create guest user
-            const guest = await createTestUser({
-                id: 'guest-1',
-                name: 'Guest User',
-                isGuest: true
+        it('should handle local-to-sync-linked lifecycle', async () => {
+            const local = await createTestUser({
+                id: 'local-1',
+                name: 'Local User'
             });
 
-            await adapter.saveUser(guest);
+            await adapter.saveUser(local);
 
-            // Verify guest exists
-            expect(await adapter.getUser('guest-1')).toBeDefined();
+            expect(await adapter.getUser('local-1')).toBeDefined();
             expect((await adapter.getAllUsers()).length).toBe(1);
 
-            // Register (convert to non-guest)
-            const registered = {
-                ...guest,
-                isGuest: false,
-                name: 'Registered User',
-                email: 'user@example.com'
+            const linked = {
+                ...local,
+                name: 'Linked User',
+                email: 'user@example.com',
+                syncServerUrl: 'https://sync.example.test'
             };
-            await adapter.saveUser(registered);
+            await adapter.saveUser(linked);
 
-            const retrieved = await adapter.getUser('guest-1');
-            expect(retrieved?.isGuest).toBe(false);
+            const retrieved = await adapter.getUser('local-1');
             expect(retrieved?.email).toBe('user@example.com');
+            expect(retrieved?.syncServerUrl).toBe('https://sync.example.test');
         });
 
-        it('should handle multiple accounts with same guest', async () => {
-            const guest1 = await createTestUser({ id: 'guest-1', name: 'Guest 1', isGuest: true });
-            const guest2 = await createTestUser({ id: 'guest-2', name: 'Guest 2', isGuest: true });
+        it('should handle multiple local identities', async () => {
+            const local1 = await createTestUser({ id: 'local-1', name: 'Local 1' });
+            const local2 = await createTestUser({ id: 'local-2', name: 'Local 2' });
 
-            await adapter.saveUser(guest1);
-            await adapter.saveUser(guest2);
+            await adapter.saveUser(local1);
+            await adapter.saveUser(local2);
 
             const users = await adapter.getAllUsers();
             expect(users).toHaveLength(2);
 
             // Switch accounts by deleting one
-            await adapter.deleteUser('guest-1');
+            await adapter.deleteUser('local-1');
 
             const remaining = await adapter.getAllUsers();
             expect(remaining).toHaveLength(1);
-            expect(remaining[0].id).toBe('guest-2');
+            expect(remaining[0].id).toBe('local-2');
         });
     });
 });
@@ -332,8 +324,8 @@ describe('IUserAdapter interface contract', () => {
         expect(typeof adapter.getAllUsers).toBe('function');
         expect(typeof adapter.saveUser).toBe('function');
         expect(typeof adapter.deleteUser).toBe('function');
-        expect(typeof adapter.backupGuestKey).toBe('function');
-        expect(typeof adapter.restoreGuestKey).toBe('function');
+        expect(typeof adapter.backupMasterKey).toBe('function');
+        expect(typeof adapter.restoreMasterKey).toBe('function');
     });
 
     it('should have async methods that return promises', async () => {
@@ -351,7 +343,6 @@ describe('IUserAdapter interface contract', () => {
             createdAt: Date.now(),
             updatedAt: Date.now(),
             isDeleted: false,
-            isGuest: true,
             masterKey: getKey,
             identityKeyPair: {} as CryptoKeyPair
         };
@@ -361,8 +352,8 @@ describe('IUserAdapter interface contract', () => {
             adapter.getAllUsers(),
             adapter.saveUser(testUser),
             adapter.deleteUser('id'),
-            adapter.backupGuestKey('id', new Uint8Array([])),
-            adapter.restoreGuestKey('id')
+            adapter.backupMasterKey('id', new Uint8Array([])),
+            adapter.restoreMasterKey('id')
         ];
 
         for (const promise of promises) {

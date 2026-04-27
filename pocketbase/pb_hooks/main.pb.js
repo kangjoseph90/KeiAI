@@ -3,8 +3,8 @@
 /**
  * KeiAI E2EE Backend Hooks
  *
- * Custom endpoints for the E2EE Authentication dance.
- * The client needs the user's salt and recovery data BEFORE logging in.
+ * Custom endpoints for the E2EE authentication dance.
+ * The client needs the user's salt and recovery bundle before password auth.
  */
 
 // We attach our shared functions and state to the global $app.store()
@@ -53,209 +53,272 @@ if (!$app.store().has("checkRate")) {
     return result === 0;
   });
 
-  $app.store().set("hexToBase64", function (hex, byteCount) {
-    var chars =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  $app.store().set("hexToBytes", function (hex, byteCount) {
     var bytes = [];
-    for (var i = 0; i < byteCount * 2 && i < hex.length; i += 2) {
-      bytes.push(parseInt(hex.substring(i, i + 2), 16));
+    for (var i = 0; i < hex.length && bytes.length < byteCount; i += 2) {
+      bytes.push(parseInt(hex.slice(i, i + 2), 16));
     }
+    return bytes;
+  });
+
+  $app.store().set("bytesToBase64", function (bytes) {
+    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     var result = "";
-    for (var i = 0; i < bytes.length; i += 3) {
-      var b0 = bytes[i];
-      var b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
-      var b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
-      result += chars[b0 >> 2];
-      result += chars[((b0 & 3) << 4) | (b1 >> 4)];
-      result +=
-        i + 1 < bytes.length ? chars[((b1 & 15) << 2) | (b2 >> 6)] : "=";
-      result += i + 2 < bytes.length ? chars[b2 & 63] : "=";
+    var i, l = bytes.length;
+    for (i = 0; i < l; i += 3) {
+      var a = bytes[i] & 255;
+      var b = (i + 1 < l) ? (bytes[i + 1] & 255) : 0;
+      var c = (i + 2 < l) ? (bytes[i + 2] & 255) : 0;
+      
+      result += chars[a >> 2];
+      result += chars[((a & 3) << 4) | (b >> 4)];
+      if (i + 1 < l) result += chars[((b & 15) << 2) | (c >> 6)];
+      else result += "=";
+      if (i + 2 < l) result += chars[c & 63];
+      else result += "=";
     }
     return result;
   });
+
+  $app.store().set("dummySaltForUsername", function (username) {
+    var DUMMY_SALT_SECRET = $os.getenv("DUMMY_SALT_SECRET");
+    var normalized = String(username || "")
+      .trim()
+      .toLowerCase();
+    var digest = $security.sha256(DUMMY_SALT_SECRET + ":" + normalized);
+    var hexToBytes = $app.store().get("hexToBytes");
+    var bytesToBase64 = $app.store().get("bytesToBase64");
+
+    var bytes = /^[0-9a-f]+$/i.test(digest)
+      ? hexToBytes(digest, 16)
+      : Array.from(String(digest).slice(0, 16)).map(function (ch) {
+          return ch.charCodeAt(0) & 255;
+        });
+    return bytesToBase64(bytes);
+  });
+
+  $app.store().set("getAuthRecord", function (e) {
+    try {
+      if (e.auth && e.auth.id) return e.auth;
+    } catch (_) {}
+    try {
+      var requestInfo = e.requestInfo();
+      if (requestInfo && requestInfo.auth && requestInfo.auth.id) {
+        return requestInfo.auth;
+      }
+    } catch (_) {}
+    return null;
+  });
+
+  $app.store().set("getNumberField", function (record, fieldName, fallback) {
+    try {
+      var rawValue = record.get(fieldName);
+      if (rawValue === null || rawValue === "") return fallback;
+      var parsed = Number(rawValue);
+      if (!isNaN(parsed)) return parsed;
+    } catch (_) {}
+    return fallback;
+  });
+
+  $app.store().set("getAssetCatalogRecord", function (hash) {
+    try {
+      return $app.findFirstRecordByData("assetCatalog", "hash", hash);
+    } catch (_) {
+      return null;
+    }
+  });
+
+  $app.store().set("findRecoveryRecord", function (e, rateKey, maxRequests) {
+    var checkRate = $app.store().get("checkRate");
+    var constantTimeEqual = $app.store().get("constantTimeEqual");
+    var ip = e.realIP();
+    if (!checkRate(ip + ":" + rateKey, maxRequests, 60000)) {
+      return {
+        error: e.json(429, { error: "Too many requests. Try again later." }),
+      };
+    }
+    var body = e.requestInfo().body || {};
+    var authTokenHash = body.authTokenHash || "";
+    if (!authTokenHash) {
+      return { error: e.json(400, { error: "Missing auth token." }) };
+    }
+    var record;
+    try {
+      record = $app.findFirstRecordByData(
+        "users",
+        "recoveryAuthTokenHash",
+        authTokenHash,
+      );
+    } catch (_) {
+      return { error: e.json(401, { error: "Recovery failed." }) };
+    }
+    var storedHash = record.getString("recoveryAuthTokenHash");
+    if (!constantTimeEqual(storedHash, authTokenHash)) {
+      return { error: e.json(401, { error: "Recovery failed." }) };
+    }
+    return { record: record, body: body };
+  });
+}
+
+if (!$app.store().has("pairingBlobs")) {
+  $app.store().set("pairingBlobs", {});
 }
 
 // ─── Configuration ───────────────────────────────────────────────────
 
 var DUMMY_SALT_SECRET = $os.getenv("DUMMY_SALT_SECRET");
+var DEFAULT_ASSET_QUOTA_BYTES = Number(
+  $os.getenv("DEFAULT_ASSET_QUOTA_BYTES") || Infinity,
+);
 
 if (!DUMMY_SALT_SECRET) {
-  console.log(
-    "WARNING: DUMMY_SALT_SECRET env var is not set. " +
-      "Salt endpoint will reject requests until configured.",
-  );
+  throw new Error("DUMMY_SALT_SECRET is not defined");
 }
 
-var DEFAULT_ASSET_QUOTA_BYTES = Number($os.getenv("DEFAULT_ASSET_QUOTA_BYTES"));
+// ─── 1. Username Salt Lookup ─────────────────────────────────────────
 
-if (!DEFAULT_ASSET_QUOTA_BYTES || isNaN(DEFAULT_ASSET_QUOTA_BYTES)) {
-  throw new Error(
-    "DEFAULT_ASSET_QUOTA_BYTES environment variable is required and must be a number",
-  );
-}
-
-function getAuthRecord(e) {
+routerAdd("POST", "/api/account/salt", (e) => {
   try {
-    if (e.auth && e.auth.id) return e.auth;
-  } catch (_) {}
-
-  try {
-    var requestInfo = e.requestInfo();
-    if (requestInfo && requestInfo.auth && requestInfo.auth.id) {
-      return requestInfo.auth;
+    var checkRate = $app.store().get("checkRate");
+    var ip = e.realIP();
+    if (checkRate && !checkRate(ip + ":account-salt", 20, 60000)) {
+      return e.json(429, { error: "Too many requests. Try again later." });
     }
-  } catch (_) {}
 
-  return null;
-}
+    var body = e.requestInfo().body || {};
+    var username = body.username || "";
+    if (!username) return e.json(400, { error: "Missing username." });
 
-function getNumberField(record, fieldName, fallback) {
-  try {
-    var intValue = record.getInt(fieldName);
-    if (typeof intValue === "number" && !isNaN(intValue)) return intValue;
-  } catch (_) {}
+    var dummySaltForUsername = $app.store().get("dummySaltForUsername");
+    var dummySalt = dummySaltForUsername(username);
+    var realSalt = "";
 
-  try {
-    var rawValue = record.get(fieldName);
-    var parsed = Number(rawValue);
-    if (!isNaN(parsed)) return parsed;
-  } catch (_) {}
-
-  return fallback;
-}
-
-function getAssetCatalogRecord(hash) {
-  try {
-    return $app.findFirstRecordByData("assetCatalog", "hash", hash);
-  } catch (_) {
-    return null;
-  }
-}
-
-// ─── 1. Get Salt (Blind Fetch before login) ──────────────────────────
-
-routerAdd("GET", "/api/salt/{email}", (e) => {
-  var checkRate = $app.store().get("checkRate");
-  var hexToBase64 = $app.store().get("hexToBase64");
-  var DUMMY_SALT_SECRET = $os.getenv("DUMMY_SALT_SECRET");
-
-  var ip = e.realIP();
-  if (!checkRate(ip + ":salt", 20, 60000)) {
-    return e.json(429, { error: "Too many requests. Try again later." });
-  }
-
-  if (!DUMMY_SALT_SECRET) {
-    return e.json(500, { error: "Server misconfiguration." });
-  }
-
-  var email = e.request.pathValue("email");
-
-  try {
-    var record = $app.findFirstRecordByData("users", "email", email);
-    return e.json(200, { salt: record.getString("salt") });
-  } catch (_err) {
-    // User not found — return deterministic dummy salt in Base64 format
-    // (identical to real salt format) to prevent email enumeration.
-    var hmacHex = $security.hs256(DUMMY_SALT_SECRET, email);
-    var dummySalt = hexToBase64(hmacHex, 16);
-    return e.json(200, { salt: dummySalt });
-  }
-});
-
-// ─── 2. Get Recovery Bundle (M(Z)) before recovering ────────────────
-
-routerAdd("GET", "/api/recovery-bundle/{email}", (e) => {
-  var checkRate = $app.store().get("checkRate");
-
-  var ip = e.realIP();
-  if (!checkRate(ip + ":recovery-bundle", 5, 60000)) {
-    return e.json(429, { error: "Too many requests. Try again later." });
-  }
-
-  var email = e.request.pathValue("email");
-  try {
-    var record = $app.findFirstRecordByData("users", "email", email);
-    return e.json(200, {
-      encryptedRecoveryMasterKey: record.getString(
-        "encryptedRecoveryMasterKey",
-      ),
-      encryptedRecoveryMasterKeyIV: record.getString("recoveryMasterKeyIv"),
-    });
-  } catch (_err) {
-    // Return 200 with empty strings to prevent email enumeration.
-    // The client will fail during decryption (bad ciphertext), revealing nothing.
-    return e.json(200, {
-      encryptedRecoveryMasterKey: "",
-      encryptedRecoveryMasterKeyIV: "",
-    });
-  }
-});
-
-// ─── 3. Recover Account ─────────────────────────────────────────────
-
-routerAdd("POST", "/api/recover-account/{email}", (e) => {
-  var checkRate = $app.store().get("checkRate");
-  var constantTimeEqual = $app.store().get("constantTimeEqual");
-
-  var ip = e.realIP();
-  var email = e.request.pathValue("email");
-
-  // Rate limit by both IP and email to prevent distributed brute-force
-  if (
-    !checkRate(ip + ":recover", 5, 60000) ||
-    !checkRate("email:" + email + ":recover", 5, 300000)
-  ) {
-    return e.json(429, { error: "Too many requests. Try again later." });
-  }
-
-  try {
-    var rawBody = e.requestInfo().body || {};
-    var body = {
-      authTokenHash: rawBody.authTokenHash || "",
-      password: rawBody.password || "",
-      passwordConfirm: rawBody.passwordConfirm || "",
-      salt: rawBody.salt || "",
-      encryptedMasterKey: rawBody.encryptedMasterKey || "",
-      masterKeyIv: rawBody.masterKeyIv || "",
-      encryptedRecoveryMasterKey: rawBody.encryptedRecoveryMasterKey || "",
-      recoveryMasterKeyIv: rawBody.recoveryMasterKeyIv || "",
-      recoveryAuthTokenHash: rawBody.recoveryAuthTokenHash || "",
-    };
-
-    var record;
     try {
-      record = $app.findFirstRecordByData("users", "email", email);
-    } catch (_err) {
-      // User not found — return same generic error to prevent enumeration
-      return e.json(401, { error: "Recovery failed." });
+      var user = $app.findFirstRecordByData("users", "username", username);
+      if (user) {
+        realSalt = user.getString("salt");
+      }
+    } catch (_) {
+      realSalt = "";
     }
 
-    // Constant-time comparison to prevent timing attacks
-    var storedHash = record.getString("recoveryAuthTokenHash");
-    if (!constantTimeEqual(storedHash, body.authTokenHash)) {
-      return e.json(401, { error: "Recovery failed." });
-    }
-
-    // Update all credential fields
-    record.setPassword(body.password);
-    record.set("salt", body.salt);
-    record.set("encryptedMasterKey", body.encryptedMasterKey);
-    record.set("masterKeyIv", body.masterKeyIv);
-    record.set("encryptedRecoveryMasterKey", body.encryptedRecoveryMasterKey);
-    record.set("recoveryMasterKeyIv", body.recoveryMasterKeyIv);
-    record.set("recoveryAuthTokenHash", body.recoveryAuthTokenHash);
-
-    $app.save(record);
-
-    return e.json(200, { success: true });
+    return e.json(200, { salt: realSalt || dummySalt });
   } catch (err) {
-    return e.json(500, { error: "Recovery failed." });
+    return e.json(500, { error: "Internal server error." });
   }
+});
+
+// ─── 2. Recovery ────────────────────────────────────────────────────
+
+routerAdd("POST", "/api/recovery/lookup", (e) => {
+  var findRecoveryRecord = $app.store().get("findRecoveryRecord");
+  var result = findRecoveryRecord(e, "recovery-lookup", 5);
+  if (result.error) return result.error;
+  var record = result.record;
+
+  return e.json(200, {
+    userId: record.id,
+    username: record.getString("username"),
+    name: record.getString("name"),
+    email: record.getString("email"),
+    avatar: record.getString("avatar"),
+    encryptedRecoveryMasterKey: record.getString("encryptedRecoveryMasterKey"),
+    encryptedRecoveryMasterKeyIV: record.getString("recoveryMasterKeyIv"),
+    identityPublicKey: record.getString("identityPublicKey"),
+    encryptedIdentityPrivateKey: record.getString(
+      "encryptedIdentityPrivateKey",
+    ),
+    identityPrivateKeyIv: record.getString("identityPrivateKeyIv"),
+  });
+});
+
+routerAdd("POST", "/api/recovery/reset-password", (e) => {
+  var findRecoveryRecord = $app.store().get("findRecoveryRecord");
+  var result = findRecoveryRecord(e, "recovery-reset", 5);
+  if (result.error) return result.error;
+  var record = result.record;
+  var body = result.body;
+
+  record.setPassword(body.newPassword);
+  record.set("salt", body.salt);
+  record.set("encryptedMasterKey", body.encryptedMasterKey);
+  record.set("masterKeyIv", body.masterKeyIv);
+  record.set("encryptedRecoveryMasterKey", body.encryptedRecoveryMasterKey);
+  record.set("recoveryMasterKeyIv", body.recoveryMasterKeyIv);
+  record.set("recoveryAuthTokenHash", body.recoveryAuthTokenHash);
+
+  $app.save(record);
+  return e.json(200, { success: true });
+});
+
+routerAdd("POST", "/api/recovery/delete", (e) => {
+  var findRecoveryRecord = $app.store().get("findRecoveryRecord");
+  var result = findRecoveryRecord(e, "recovery-delete", 3);
+  if (result.error) return result.error;
+
+  $app.delete(result.record);
+  return e.json(200, { success: true });
+});
+
+// ─── 3. Device Pairing ──────────────────────────────────────────────
+
+routerAdd("POST", "/api/pairing", (e) => {
+  var checkRate = $app.store().get("checkRate");
+  var getAuthRecord = $app.store().get("getAuthRecord");
+  var ip = e.realIP();
+  if (!checkRate(ip + ":pairing-post", 10, 60000)) {
+    return e.json(429, { error: "Too many requests. Try again later." });
+  }
+
+  var auth = getAuthRecord(e);
+  if (!auth) return e.json(401, { error: "Authentication required." });
+
+  var body = e.requestInfo().body || {};
+  var id = body.id || "";
+  var blob = body.blob || "";
+  var ttl = Number(body.ttl || 300);
+  if (!id || !blob) return e.json(400, { error: "Invalid pairing payload." });
+
+  var pairingBlobs = $app.store().get("pairingBlobs");
+  pairingBlobs[id] = {
+    blob: blob,
+    expiresAt: Date.now() + Math.min(ttl, 300) * 1000,
+    attempts: 0,
+  };
+  $app.store().set("pairingBlobs", pairingBlobs);
+
+  return e.json(200, { success: true });
+});
+
+routerAdd("GET", "/api/pairing/{lookupId}", (e) => {
+  var checkRate = $app.store().get("checkRate");
+  var ip = e.realIP();
+  if (!checkRate(ip + ":pairing-get", 20, 60000)) {
+    return e.json(429, { error: "Too many requests. Try again later." });
+  }
+
+  var lookupId = e.request.pathValue("lookupId");
+  var pairingBlobs = $app.store().get("pairingBlobs");
+  var entry = pairingBlobs[lookupId];
+  if (!entry || entry.expiresAt < Date.now() || entry.attempts >= 5) {
+    delete pairingBlobs[lookupId];
+    $app.store().set("pairingBlobs", pairingBlobs);
+    return e.json(404, { error: "Pairing not found." });
+  }
+
+  entry.attempts += 1;
+  delete pairingBlobs[lookupId];
+  $app.store().set("pairingBlobs", pairingBlobs);
+  return e.json(200, { blob: entry.blob });
 });
 
 // ─── 4. Asset Upload ───────────────────────────────────────────────
 
 routerAdd("POST", "/api/assets/upload", (e) => {
+  var getAuthRecord = $app.store().get("getAuthRecord");
+  var getNumberField = $app.store().get("getNumberField");
+  var getAssetCatalogRecord = $app.store().get("getAssetCatalogRecord");
+  
   var auth = getAuthRecord(e);
   if (!auth) return e.json(401, { error: "Authentication required." });
 
@@ -303,18 +366,22 @@ routerAdd("POST", "/api/assets/upload", (e) => {
     }
 
     var collection = $app.findCollectionByNameOrId("assetCatalog");
-    var record = new Record(collection);
-    record.set("hash", hash);
-    record.set("ownerId", auth.id);
-    record.set("kind", kind);
-    record.set("size", size);
-    record.set("refCount", 1);
-    record.set("file", file);
+    $app.runInTransaction(function (txApp) {
+      var txCollection = txApp.findCollectionByNameOrId("assetCatalog");
+      var txRecord = new Record(txCollection);
+      txRecord.set("hash", hash);
+      txRecord.set("ownerId", auth.id);
+      txRecord.set("kind", kind);
+      txRecord.set("size", size);
+      txRecord.set("refCount", 1);
+      txRecord.set("file", file);
+      txApp.save(txRecord);
 
-    $app.save(record);
-
-    user.set("assetUsage", assetUsage + size);
-    $app.save(user);
+      var txUser = txApp.findRecordById("users", auth.id);
+      var txAssetUsage = getNumberField(txUser, "assetUsage", 0);
+      txUser.set("assetUsage", txAssetUsage + size);
+      txApp.save(txUser);
+    });
 
     return e.json(200, { status: "uploaded", hash: hash });
   } catch (err) {
@@ -325,6 +392,10 @@ routerAdd("POST", "/api/assets/upload", (e) => {
 // ─── 5. Asset Deletion ──────────────────────────────────────────────
 
 routerAdd("DELETE", "/api/assets/{hash}", (e) => {
+  var getAuthRecord = $app.store().get("getAuthRecord");
+  var getNumberField = $app.store().get("getNumberField");
+  var getAssetCatalogRecord = $app.store().get("getAssetCatalogRecord");
+
   var auth = getAuthRecord(e);
   if (!auth) return e.json(401, { error: "Authentication required." });
 
@@ -357,9 +428,16 @@ routerAdd("DELETE", "/api/assets/{hash}", (e) => {
     });
   } else {
     // Last reference: actual hard delete and refund quota
-    user.set("assetUsage", Math.max(assetUsage - size, 0));
-    $app.save(user);
-    $app.delete(record);
+    $app.runInTransaction(function (txApp) {
+      var txUser = txApp.findRecordById("users", auth.id);
+      var txRecord = txApp.findFirstRecordByData("assetCatalog", "hash", hash);
+      var txAssetUsage = getNumberField(txUser, "assetUsage", 0);
+      var txSize = getNumberField(txRecord, "size", 0);
+
+      txUser.set("assetUsage", Math.max(txAssetUsage - txSize, 0));
+      txApp.save(txUser);
+      txApp.delete(txRecord);
+    });
     return e.json(200, { deleted: true, status: "deleted", hash: hash });
   }
 });
@@ -367,6 +445,10 @@ routerAdd("DELETE", "/api/assets/{hash}", (e) => {
 // ─── 6. Asset Promotion ─────────────────────────────────────────────
 
 routerAdd("PUT", "/api/assets/promote/{hash}", (e) => {
+  var getAuthRecord = $app.store().get("getAuthRecord");
+  var getNumberField = $app.store().get("getNumberField");
+  var getAssetCatalogRecord = $app.store().get("getAssetCatalogRecord");
+
   var auth = getAuthRecord(e);
   if (!auth) return e.json(401, { error: "Authentication required." });
 
@@ -393,12 +475,19 @@ routerAdd("PUT", "/api/assets/promote/{hash}", (e) => {
   var size = getNumberField(record, "size", 0);
 
   // Promote to public: Overwrite with plain file and refund quota
-  record.set("kind", "public");
-  record.set("file", file);
-  $app.save(record);
+  $app.runInTransaction(function (txApp) {
+    var txRecord = txApp.findFirstRecordByData("assetCatalog", "hash", hash);
+    var txUser = txApp.findRecordById("users", auth.id);
+    var txAssetUsage = getNumberField(txUser, "assetUsage", 0);
+    var txSize = getNumberField(txRecord, "size", 0);
 
-  user.set("assetUsage", Math.max(assetUsage - size, 0));
-  $app.save(user);
+    txRecord.set("kind", "public");
+    txRecord.set("file", file);
+    txApp.save(txRecord);
+
+    txUser.set("assetUsage", Math.max(txAssetUsage - txSize, 0));
+    txApp.save(txUser);
+  });
 
   return e.json(200, { status: "promoted", hash: hash });
 });

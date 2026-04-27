@@ -85,7 +85,6 @@ describe('MessageService', () => {
         vi.mocked(getActiveSession).mockReturnValue({
             masterKey: {} as CryptoKey,
             userId: mockUserId,
-            isGuest: false,
             identityKeyPair: {} as CryptoKeyPair
         });
 

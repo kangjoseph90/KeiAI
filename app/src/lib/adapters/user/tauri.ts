@@ -21,9 +21,7 @@ import type { IUserAdapter, UserRecord, UserWriteOptions, UserWriteEventListener
  *               Survives WebView cache clears that would wipe IndexedDB.
  *
  *   Key store → Stronghold ("keiai.hold")
- *               Stores the raw AES-256 bytes of guest master keys.
- *               Only guest keys are stored here because registered keys are
- *               non-extractable and therefore cannot be serialised.
+ *               Stores the raw AES-256 bytes of the user's local master key.
  *               The vault password is auto-generated once and persisted in
  *               the Tauri plugin-store ("auth-meta.json").
  *
@@ -35,7 +33,7 @@ import type { IUserAdapter, UserRecord, UserWriteOptions, UserWriteEventListener
  *   → re-populate Dexie transparently
  *
  * Key backup flow:
- *   saveUser(guestUser) → adapter auto-exports raw key → stores in Stronghold
+ *   saveUser(user) → adapter auto-exports raw key → stores in Stronghold
  *   No changes needed in session.ts or callers.
  */
 
@@ -47,7 +45,7 @@ class UserDexie extends Dexie {
     constructor() {
         super('KeiUsers'); // Same dedicated auth IndexedDB as the web adapter
         this.version(1).stores({
-            users: 'id, isDeleted, isGuest, updatedAt'
+            users: 'id, username, isDeleted, syncServerUrl, updatedAt'
         });
     }
 }
@@ -58,12 +56,13 @@ interface SQLiteUserRow {
     id: string;
     userId: string;
     name: string;
+    username: string | null;
     email: string | null;
     avatar: string;
     createdAt: number;
     updatedAt: number;
     isDeleted: number; // 0 | 1
-    isGuest: number; // 0 | 1
+    syncServerUrl: string | null;
 }
 
 // ─── Adapter ──────────────────────────────────────────────────────────────────
@@ -107,12 +106,13 @@ export class TauriUserAdapter implements IUserAdapter {
 					id        TEXT    PRIMARY KEY,
 					userId    TEXT    NOT NULL,
 					name      TEXT    NOT NULL,
+					username  TEXT,
 					email     TEXT,
 					avatar    TEXT    NOT NULL,
 					createdAt INTEGER NOT NULL,
 					updatedAt INTEGER NOT NULL,
 					isDeleted INTEGER NOT NULL DEFAULT 0,
-					isGuest   INTEGER NOT NULL DEFAULT 0
+					syncServerUrl TEXT
 				)
 			`);
             await db.execute(`CREATE INDEX IF NOT EXISTS idx_users_updatedAt ON users (updatedAt)`);
@@ -125,18 +125,19 @@ export class TauriUserAdapter implements IUserAdapter {
     private async sqliteSave(user: UserRecord): Promise<void> {
         const db = await this.getSQLite();
         await db.execute(
-            `INSERT OR REPLACE INTO users (id, userId, name, email, avatar, createdAt, updatedAt, isDeleted, isGuest)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            `INSERT OR REPLACE INTO users (id, userId, name, username, email, avatar, createdAt, updatedAt, isDeleted, syncServerUrl)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [
                 user.id,
                 user.id,
                 user.name,
+                user.username ?? null,
                 user.email ?? null,
                 user.avatar,
                 user.createdAt,
                 user.updatedAt,
                 user.isDeleted ? 1 : 0,
-                user.isGuest ? 1 : 0
+                user.syncServerUrl ?? null
             ]
         );
     }
@@ -230,30 +231,23 @@ export class TauriUserAdapter implements IUserAdapter {
         // 2. SQLite mirror — no masterKey
         await this.sqliteSave(user);
 
-        // 3. Stronghold — backup raw bytes for extractable (guest) keys.
-        //    After registration, lockMasterKey() re-imports the same bytes as
-        //    non-extractable and calls saveUser again with isGuest: false.
-        //    We skip re-export there (impossible anyway), but the Stronghold
-        //    entry written during the guest phase is still intact and sufficient
-        //    for recovery of the registered user as well.
-        if (user.isGuest) {
-            try {
-                const rawKey = new Uint8Array(await crypto.subtle.exportKey('raw', user.masterKey));
-                await this.backupGuestKey(user.id, rawKey);
-                rawKey.fill(0); // scrub from memory after storing
+        // 3. Stronghold — backup raw bytes for durable local identity recovery.
+        try {
+            const rawKey = new Uint8Array(await crypto.subtle.exportKey('raw', user.masterKey));
+            await this.backupMasterKey(user.id, rawKey);
+            rawKey.fill(0); // scrub from memory after storing
 
-                const pubJwk = await crypto.subtle.exportKey('jwk', user.identityKeyPair.publicKey);
-                const privRaw = new Uint8Array(
-                    (await crypto.subtle.exportKey(
-                        'pkcs8',
-                        user.identityKeyPair.privateKey
-                    )) as ArrayBuffer
-                );
-                await this.backupIdentityKeys(user.id, pubJwk, privRaw);
-                privRaw.fill(0);
-            } catch {
-                // Key is non-extractable (should not happen for guests, but be safe)
-            }
+            const pubJwk = await crypto.subtle.exportKey('jwk', user.identityKeyPair.publicKey);
+            const privRaw = new Uint8Array(
+                (await crypto.subtle.exportKey(
+                    'pkcs8',
+                    user.identityKeyPair.privateKey
+                )) as ArrayBuffer
+            );
+            await this.backupIdentityKeys(user.id, pubJwk, privRaw);
+            privRaw.fill(0);
+        } catch {
+            // Keep the IndexedDB copy if the platform refuses export.
         }
 
         this.emitWriteEvent('put', [user.id], options);
@@ -276,17 +270,17 @@ export class TauriUserAdapter implements IUserAdapter {
         this.emitWriteEvent('softDelete', [id], options);
     }
 
-    async backupGuestKey(id: string, rawKey: Uint8Array): Promise<void> {
+    async backupMasterKey(id: string, rawKey: Uint8Array): Promise<void> {
         const store = await this.getStore();
         const stronghold = await this.getStronghold();
-        await store.insert(`guestKey:${id}`, Array.from(rawKey));
+        await store.insert(`masterKey:${id}`, Array.from(rawKey));
         await stronghold.save();
     }
 
-    async restoreGuestKey(id: string): Promise<Uint8Array | null> {
+    async restoreMasterKey(id: string): Promise<Uint8Array | null> {
         try {
             const store = await this.getStore();
-            const data = (await store.get(`guestKey:${id}`)) as number[] | null;
+            const data = (await store.get(`masterKey:${id}`)) as number[] | null;
             return data ? new Uint8Array(data) : null;
         } catch {
             return null;
@@ -301,8 +295,8 @@ export class TauriUserAdapter implements IUserAdapter {
         const store = await this.getStore();
         const stronghold = await this.getStronghold();
         const pubBytes = Array.from(new TextEncoder().encode(JSON.stringify(publicKeyJwk)));
-        await store.insert(`guestIdPub:${id}`, pubBytes);
-        await store.insert(`guestIdPriv:${id}`, Array.from(rawPrivateKey));
+        await store.insert(`identityPub:${id}`, pubBytes);
+        await store.insert(`identityPriv:${id}`, Array.from(rawPrivateKey));
         await stronghold.save();
     }
 
@@ -311,8 +305,8 @@ export class TauriUserAdapter implements IUserAdapter {
     ): Promise<{ publicKeyJwk: JsonWebKey; rawPrivateKey: Uint8Array } | null> {
         try {
             const store = await this.getStore();
-            const pubData = (await store.get(`guestIdPub:${id}`)) as number[] | null;
-            const privData = (await store.get(`guestIdPriv:${id}`)) as number[] | null;
+            const pubData = (await store.get(`identityPub:${id}`)) as number[] | null;
+            const privData = (await store.get(`identityPriv:${id}`)) as number[] | null;
             if (!pubData || !privData) return null;
 
             const pubJson = new TextDecoder().decode(new Uint8Array(pubData));
@@ -338,17 +332,11 @@ export class TauriUserAdapter implements IUserAdapter {
      * Reconstruct a full UserRecord from a SQLite row + Stronghold.
      *
      * Stronghold entry coverage:
-     *   - Guest → Register on this device: backed up during guest phase in saveUser()
-     *   - First login on this device: auth.ts login() calls backupGuestKey(serverUserId, rawM)
-     *     explicitly BEFORE scrubbing rawM, covering this case.
-     *   - recoverPassword(): delegates to login() internally → same coverage.
-     *
-     * The only unrecoverable case is if the Stronghold entry itself is missing
-     * (e.g. process killed mid-login before backupGuestKey completed), in which
-     * case we return null and let the session fall through to re-authentication.
+     * The only unrecoverable case is if the Stronghold entry itself is missing,
+     * in which case we return null and let the session fall through to recovery.
      */
     private async rebuildFromRow(row: SQLiteUserRow): Promise<UserRecord | null> {
-        const rawKey = await this.restoreGuestKey(row.id);
+        const rawKey = await this.restoreMasterKey(row.id);
         const idKeys = await this.restoreIdentityKeys(row.id);
 
         if (!rawKey || !idKeys) {
@@ -356,12 +344,11 @@ export class TauriUserAdapter implements IUserAdapter {
             return null;
         }
 
-        const extractable = row.isGuest === 1;
         const masterKey = await crypto.subtle.importKey(
             'raw',
             rawKey.buffer as ArrayBuffer,
             { name: 'AES-GCM' },
-            extractable,
+            true,
             ['encrypt', 'decrypt']
         );
 
@@ -377,19 +364,20 @@ export class TauriUserAdapter implements IUserAdapter {
             'pkcs8',
             idKeys.rawPrivateKey.buffer as ArrayBuffer,
             { name: 'ECDH', namedCurve: 'P-256' },
-            extractable,
+            true,
             ['deriveKey']
         );
 
         return {
             id: row.id,
             name: row.name,
+            username: row.username ?? undefined,
             email: row.email ?? undefined,
             avatar: row.avatar,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
             isDeleted: row.isDeleted === 1,
-            isGuest: row.isGuest === 1,
+            syncServerUrl: row.syncServerUrl ?? undefined,
             masterKey,
             identityKeyPair: { publicKey, privateKey }
         };

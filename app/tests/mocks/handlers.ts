@@ -13,6 +13,7 @@ const PB_URL = import.meta.env.VITE_PB_URL || 'http://127.0.0.1:8090';
 
 interface MockUser {
     id: string;
+    username: string;
     email: string;
     name: string;
     password: string; // base64-encoded login key
@@ -29,7 +30,7 @@ interface MockUser {
 
 const mockUsers = new Map<string, MockUser>();
 
-// Auth token storage (email -> token)
+// Auth token storage (username -> token)
 const authTokens = new Map<string, string>();
 // Token -> user mapping
 const tokenToUser = new Map<string, MockUser>();
@@ -91,43 +92,56 @@ function notifySubscribers(collection: string, action: string, record: MockRecor
 // ─── Auth Endpoints ─────────────────────────────────────────────────────
 
 export const handlers = [
-    // GET /api/salt/{email} - Get user salt for login
-    http.get(`${PB_URL}/api/salt/:email`, ({ params }) => {
-        const email = params.email as string;
-        const user = Array.from(mockUsers.values()).find((u) => u.email === email);
+    // POST /api/account/salt - Get real or dummy salt for username/password login
+    http.post(`${PB_URL}/api/account/salt`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        const username = body.username as string;
+        const user = Array.from(mockUsers.values()).find((u) => u.username === username);
 
         if (!user) {
-            return HttpResponse.json({ error: 'User not found' }, { status: 404 });
+            return HttpResponse.json({ salt: 'mock_dummy_salt_base64' });
         }
 
         return HttpResponse.json({ salt: user.salt });
     }),
 
-    // GET /api/recovery-bundle/{email} - Get recovery bundle
-    http.get(`${PB_URL}/api/recovery-bundle/:email`, ({ params }) => {
-        const email = params.email as string;
-        const user = Array.from(mockUsers.values()).find((u) => u.email === email);
+    // POST /api/recovery/lookup - Get recovery bundle
+    http.post(`${PB_URL}/api/recovery/lookup`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        const authTokenHash = body.authTokenHash as string;
+        const user = Array.from(mockUsers.values()).find(
+            (u) => u.recoveryAuthTokenHash === authTokenHash
+        );
 
         if (!user) {
-            return HttpResponse.json({ error: 'User not found' }, { status: 404 });
+            return HttpResponse.json({ error: 'Recovery failed' }, { status: 401 });
         }
 
         return HttpResponse.json({
+            userId: user.id,
+            username: user.username,
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar,
             encryptedRecoveryMasterKey: user.encryptedRecoveryMasterKey,
-            encryptedRecoveryMasterKeyIV: user.recoveryMasterKeyIv
+            encryptedRecoveryMasterKeyIV: user.recoveryMasterKeyIv,
+            identityPublicKey: '{}',
+            encryptedIdentityPrivateKey: '',
+            identityPrivateKeyIv: ''
         });
     }),
 
-    // POST /api/recover-account/{email} - Recover account with new password
-    http.post(`${PB_URL}/api/recover-account/:email`, async ({ params, request }) => {
-        const email = params.email as string;
-        const user = Array.from(mockUsers.values()).find((u) => u.email === email);
+    // POST /api/recovery/reset-password - Recover account with new password
+    http.post(`${PB_URL}/api/recovery/reset-password`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        const user = Array.from(mockUsers.values()).find(
+            (u) => u.recoveryAuthTokenHash === body.authTokenHash
+        );
 
         if (!user) {
-            return HttpResponse.json({ error: 'User not found' }, { status: 404 });
+            return HttpResponse.json({ error: 'Recovery failed' }, { status: 401 });
         }
 
-        const body = (await request.json()) as Record<string, unknown>;
         user.password = body.password as string;
         user.salt = body.salt as string;
         user.encryptedMasterKey = body.encryptedMasterKey as string;
@@ -140,20 +154,36 @@ export const handlers = [
         return HttpResponse.json({ success: true });
     }),
 
+    // POST /api/recovery/delete - Delete account with recovery code
+    http.post(`${PB_URL}/api/recovery/delete`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        const user = Array.from(mockUsers.values()).find(
+            (u) => u.recoveryAuthTokenHash === body.authTokenHash
+        );
+
+        if (!user) {
+            return HttpResponse.json({ error: 'Recovery failed' }, { status: 401 });
+        }
+
+        mockUsers.delete(user.id);
+        return HttpResponse.json({ success: true });
+    }),
+
     // POST /api/collections/users - Create user (register)
     http.post(`${PB_URL}/api/collections/users`, async ({ request }) => {
         const formData = await request.formData();
+        const username = formData.get('username') as string;
         const email = formData.get('email') as string;
         const password = formData.get('password') as string;
         const passwordConfirm = formData.get('passwordConfirm') as string;
 
-        if (!email || !password || password !== passwordConfirm) {
+        if (!username || !password || password !== passwordConfirm) {
             return HttpResponse.json({ error: 'Invalid request' }, { status: 400 });
         }
 
-        const existing = Array.from(mockUsers.values()).find((u) => u.email === email);
+        const existing = Array.from(mockUsers.values()).find((u) => u.username === username);
         if (existing) {
-            return HttpResponse.json({ error: 'Email already exists' }, { status: 400 });
+            return HttpResponse.json({ error: 'Username already exists' }, { status: 400 });
         }
 
         const id = (formData.get('id') as string) || generateId();
@@ -161,7 +191,8 @@ export const handlers = [
 
         const user: MockUser = {
             id,
-            email,
+            username,
+            email: email || '',
             name: (formData.get('name') as string) || 'User',
             password,
             salt: formData.get('salt') as string,
@@ -186,7 +217,7 @@ export const handlers = [
         const { identity, password } = body;
 
         const user = Array.from(mockUsers.values()).find(
-            (u) => u.email === identity && u.password === password
+            (u) => u.username === identity && u.password === password
         );
 
         if (!user) {
@@ -195,7 +226,7 @@ export const handlers = [
 
         // Generate and store token
         const token = `mock_token_${generateId()}`;
-        authTokens.set(user.email, token);
+        authTokens.set(user.username, token);
         tokenToUser.set(token, user);
 
         return HttpResponse.json({
@@ -260,10 +291,10 @@ export const handlers = [
         mockUsers.delete(id);
 
         // Clear auth token
-        for (const [email, token] of authTokens.entries()) {
-            if (email === user.email) {
+        for (const [username, token] of authTokens.entries()) {
+            if (username === user.username) {
                 tokenToUser.delete(token);
-                authTokens.delete(email);
+                authTokens.delete(username);
                 break;
             }
         }
@@ -568,7 +599,7 @@ export class MockPocketBase {
             // Auth with password (for users collection)
             authWithPassword: async (identity: string, password: string) => {
                 const user = Array.from(mockUsers.values()).find(
-                    (u) => u.email === identity && u.password === password
+                    (u) => u.username === identity && u.password === password
                 );
 
                 if (!user) {
@@ -647,6 +678,7 @@ export function createMockUser(overrides?: Partial<MockUser>): MockUser {
     const id = generateId();
     return {
         id,
+        username: `user${id.slice(0, 4)}`,
         email: `test${id.slice(0, 4)}@example.com`,
         name: 'Test User',
         password: 'mock_login_key_base64',

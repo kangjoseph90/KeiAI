@@ -37,7 +37,7 @@ This is the single most important design constraint. Every decision flows from i
 - **Local data is stored as plaintext domain JSON** in the app database
 - **All synced user data is encrypted client-side** (AES-256-GCM) before leaving the browser
 - The server stores and syncs opaque encrypted blobs — it never sees plaintext
-- The master key `M` exists only in memory or as a non-extractable `CryptoKey` in IndexedDB
+- The master key `M` is generated with the local identity and remains extractable for sync wrapping, recovery, and device transfer
 - The proxy is stateless; it forwards AI API requests without logging or inspection
 - Recovery uses a separate key path (recovery code → Z → M(Z)) that never touches the server in cleartext
 

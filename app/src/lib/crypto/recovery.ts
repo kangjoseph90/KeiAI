@@ -1,16 +1,15 @@
 /**
  * Recovery code generation and handling.
  *
- * Recovery code = 16 alphanumeric characters (uppercase + digits, no ambiguous chars).
- *   Front 8 chars → Z (encryption key for M) → M(Z) stored on server
- *   Back 8 chars  → auth token → SHA-256 hashed and stored on server
+ * Recovery code = 24 alphanumeric characters (uppercase + digits, no ambiguous chars).
+ *   Front 12 chars → Z (encryption key for M) → M(Z) stored on server
+ *   Back 12 chars  → auth token → SHA-256 hashed and stored on server
  *
  * When the user loses their password:
- *   1. Email verification for identity
- *   2. User enters full 16-char recovery code
- *   3. Back 8 → hashed → sent to server for auth
- *   4. Front 8 → derive Z → decrypt M(Z) → recover M
- *   5. New password → new KDF(salt, X, Y) → re-wrap M with new Y
+ *   1. User enters full 24-char recovery code
+ *   2. Back 12 → hashed → sent to server for lookup/auth
+ *   3. Front 12 → derive Z → decrypt M(Z) → recover M
+ *   4. A new one-time recovery code is issued immediately
  */
 
 import { RECOVERY_CODE_LENGTH, RECOVERY_FRONT_LENGTH } from './constants';
@@ -47,16 +46,17 @@ export function generateRecoveryCode(): RecoveryCodeParts {
  * Split an existing recovery code into its two halves.
  */
 export function splitRecoveryCode(code: string): RecoveryCodeParts {
-    if (code.length !== RECOVERY_CODE_LENGTH) {
+    const normalized = code.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    if (normalized.length !== RECOVERY_CODE_LENGTH) {
         throw new AppError(
             'INVALID_INPUT',
             `Recovery code must be exactly ${RECOVERY_CODE_LENGTH} characters`
         );
     }
     return {
-        fullCode: code,
-        frontHalf: code.slice(0, RECOVERY_FRONT_LENGTH),
-        backHalf: code.slice(RECOVERY_FRONT_LENGTH)
+        fullCode: normalized,
+        frontHalf: normalized.slice(0, RECOVERY_FRONT_LENGTH),
+        backHalf: normalized.slice(RECOVERY_FRONT_LENGTH)
     };
 }
 
@@ -65,7 +65,7 @@ export function splitRecoveryCode(code: string): RecoveryCodeParts {
  *
  * Uses PBKDF2 with a fixed domain-separated salt.
  * Lower iteration count is acceptable here because the recovery code
- * has ~39 bits of entropy (log2(30) ≈ 4.9, × 8 chars),
+ * has ~59.4 bits of entropy (log2(31) ≈ 4.95, × 12 chars),
  * and the recovery endpoint is rate-limited on the server.
  */
 export async function deriveRecoveryKey(frontHalf: string): Promise<Bytes> {
@@ -144,7 +144,7 @@ export async function createRecoveryData(masterKey: CryptoKey) {
  * @param fullCode - the 16-character recovery code
  * @param encryptedM - M(Z) from server
  * @param iv - IV used when creating M(Z)
- * @returns non-extractable master key M
+ * @returns extractable master key M
  */
 export async function recoverMasterKey(
     fullCode: string,
@@ -171,8 +171,8 @@ export async function recoverMasterKey(
         )) as ArrayBuffer
     );
 
-    // Import as non-extractable
-    const masterKey = await crypto.subtle.importKey('raw', rawMaster, { name: 'AES-GCM' }, false, [
+    // Import as extractable: current local identity model treats M as portable.
+    const masterKey = await crypto.subtle.importKey('raw', rawMaster, { name: 'AES-GCM' }, true, [
         'encrypt',
         'decrypt'
     ]);

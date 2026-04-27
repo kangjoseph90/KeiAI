@@ -1,8 +1,8 @@
 /**
  * User Service — Local User Lifecycle
  *
- * Owns ALL local user record CRUD: guest creation, login-based user save,
- * account unlinking (revert to guest), deletion, and account switching.
+ * Owns ALL local user record CRUD: local identity creation, sync-link user save,
+ * sync unlinking, deletion, and account switching.
  * AuthService delegates local record management here.
  */
 
@@ -18,6 +18,8 @@ import { setSession } from '../session';
 import { clock } from '$lib/utils/clock';
 import { minidenticon } from 'minidenticons';
 import { AppError } from '$lib/types/errors';
+import { PB_URL } from '$lib/config';
+import { pb } from '$lib/adapters/pb';
 
 export class UserService {
     /**
@@ -31,14 +33,14 @@ export class UserService {
     // ─── Boot ────────────────────────────────────────────────────────
 
     /**
-     * Restore the previously active user from local DB, or create a new guest.
+     * Restore the previously active user from local DB, or create a new local identity.
      * This is the app's boot entry point — called once from +page.svelte onMount.
      *
      * @returns true  — existing user was restored from local DB.
-     * @returns false — local DB was empty; a fresh guest was created.
+     * @returns false — local DB was empty; a fresh local identity was created.
      *                  Caller is responsible for clearing any stale PB auth token.
      */
-    static async restoreOrCreateGuest(): Promise<boolean> {
+    static async restoreOrCreateUser(): Promise<boolean> {
         const savedUserId = await appKV.get('activeUserId');
 
         if (savedUserId) {
@@ -51,30 +53,31 @@ export class UserService {
                     user.updatedAt = clock.now();
                     await appUser.saveUser(user);
                 }
-                setSession(user.id, user.masterKey, user.isGuest, user.identityKeyPair);
+                if (user.syncServerUrl) {
+                    pb.baseUrl = user.syncServerUrl;
+                } else {
+                    pb.baseUrl = PB_URL;
+                }
+                setSession(user.id, user.masterKey, user.identityKeyPair);
                 return true;
             }
         }
-
-        await this.createGuest();
+        await this.createUser();
         return false;
     }
 
-    // ─── Guest Creation ──────────────────────────────────────────────
+    // ─── Local Identity Creation ─────────────────────────────────────
 
     /**
-     * Create a brand new offline guest user with a fresh master key.
-     * The key is generated with extractable: true so that when the user
-     * registers, the raw bytes can be exported, wrapped with the
-     * password-derived key Y, and uploaded to the server.
+     * Create a brand new local-only user with a fresh master key.
      */
-    static async createGuest(): Promise<void> {
+    static async createUser(): Promise<void> {
         const id = generateId();
-        const guestKey = await generateMasterKey(); // extractable: true
+        const masterKey = await generateMasterKey();
         const identityKeyPair = await generateIdentityKeyPair(); // private: extractable: true
 
         const existingUsers = await appUser.getAllUsers();
-        const name = `Guest ${existingUsers.length + 1}`;
+        const name = `Local ${existingUsers.length + 1}`;
         const avatar = this.getDefaultAvatarUrl(id);
         const now = clock.now();
         await appUser.saveUser({
@@ -84,26 +87,27 @@ export class UserService {
             createdAt: now,
             updatedAt: now,
             isDeleted: false,
-            isGuest: true,
-            masterKey: guestKey,
+            masterKey,
             identityKeyPair
         });
 
         await appKV.set('activeUserId', id);
-        setSession(id, guestKey, true, identityKeyPair);
+        setSession(id, masterKey, identityKeyPair);
     }
 
     // ─── Login User Save ─────────────────────────────────────────────
 
     /**
      * Save or update a local user record after a successful PB login.
-     * Called by AuthService.login() — centralizes all local record logic.
+     * Called by AuthService connect/recovery flows — centralizes local record logic.
      */
     static async saveLoginUser(params: {
         id: string;
-        email: string;
+        username?: string;
+        email?: string;
         masterKey: CryptoKey;
         identityKeyPair: CryptoKeyPair;
+        syncServerUrl?: string;
         serverName?: string;
         avatarUrl?: string;
     }): Promise<void> {
@@ -114,39 +118,60 @@ export class UserService {
             {
                 id: params.id,
                 name: existing?.name ?? params.serverName ?? 'Synced Profile',
+                username: params.username ?? existing?.username,
                 email: params.email,
                 avatar: existing?.avatar ?? params.avatarUrl ?? this.getDefaultAvatarUrl(params.id),
                 createdAt: existing?.createdAt ?? now,
                 updatedAt: now,
                 isDeleted: false,
-                isGuest: false,
                 masterKey: params.masterKey,
-                identityKeyPair: params.identityKeyPair
+                identityKeyPair: params.identityKeyPair,
+                syncServerUrl: params.syncServerUrl ?? existing?.syncServerUrl ?? PB_URL
             },
             { origin: 'sync' }
         );
 
         await appKV.set('activeUserId', params.id);
-        setSession(params.id, params.masterKey, false, params.identityKeyPair);
+        setSession(params.id, params.masterKey, params.identityKeyPair);
     }
 
-    // ─── Account Unlinking ───────────────────────────────────────────
+    // ─── Sync Unlinking ──────────────────────────────────────────────
 
     /**
-     * Revert a registered user back to guest state.
-     * Upgrades the local master key to extractable: true.
-     * Called by AuthService.unlinkAccount() after deleting the server account.
+     * Disconnect local identity from a sync server.
+     * Local data and keys remain intact.
      */
-    static async revertToGuest(userId: string, unlockedKey: CryptoKey): Promise<void> {
+    static async unlinkSync(userId: string): Promise<void> {
         const user = await appUser.getUser(userId);
         if (!user) throw new AppError('NOT_FOUND', `User not found: ${userId}`);
 
-        user.masterKey = unlockedKey;
-        user.isGuest = true;
+        user.username = undefined;
         user.updatedAt = clock.now();
         await appUser.saveUser(user);
 
-        setSession(userId, unlockedKey, true, user.identityKeyPair);
+        setSession(userId, user.masterKey, user.identityKeyPair);
+    }
+
+    /**
+     * Change the active user's sync server setting.
+     * This is only allowed while disconnected from PB auth; callers should clear
+     * the auth token before changing it. The username is server-scoped, so a
+     * server change unlinks the cached remote account alias.
+     */
+    static async setSyncServerUrl(userId: string, syncServerUrl?: string): Promise<void> {
+        const user = await appUser.getUser(userId);
+        if (!user) throw new AppError('NOT_FOUND', `User not found: ${userId}`);
+
+        const nextUrl = syncServerUrl?.trim() || undefined;
+        if (user.syncServerUrl !== nextUrl) {
+            user.username = undefined;
+        }
+        user.syncServerUrl = nextUrl;
+        user.updatedAt = clock.now();
+        await appUser.saveUser(user);
+
+        pb.baseUrl = nextUrl ?? PB_URL;
+        setSession(userId, user.masterKey, user.identityKeyPair);
     }
 
     // ─── Account Management ──────────────────────────────────────────
@@ -156,6 +181,7 @@ export class UserService {
      * Updates KV and reloads the app to restart the boot sequence.
      */
     static async switchUser(userId: string): Promise<void> {
+        pb.authStore.clear();
         await appKV.set('activeUserId', userId);
         window.location.reload();
     }

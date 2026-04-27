@@ -51,9 +51,11 @@ import { loadSettings } from './content/settings';
 import { sortByRefs } from '$lib/utils/ordering';
 import { EntityStore } from './entity_store';
 import type { OrderedRef } from '$lib/types/refs';
+import { createLogger } from '$lib/adapters/logger';
 
 let stopTracking: (() => void) | null = null;
 let stopDataListener: (() => void) | null = null;
+const logger = createLogger('store:sync');
 
 function reorderStoreByRefs<T extends { id: string }>(
     store: EntityStore<T>,
@@ -567,7 +569,7 @@ function startDataSyncListener(): () => void {
                     }
                 }
             } catch (err) {
-                console.warn(`[DataSyncListener] Error handling ${tableName}`, err);
+                logger.warn(`Error handling synced table ${tableName}`, err);
             }
         }
     });

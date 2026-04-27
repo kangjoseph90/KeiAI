@@ -39,20 +39,32 @@ describe('Global Stores', () => {
     });
 
     describe('Authentication State (Derived)', () => {
-        it('should be logged in when user exists, is not guest, and pb is connected', () => {
-            activeUser.set({ id: 'u1', isGuest: false } as Profile);
+        it('should be logged in when user is sync linked and pb is connected', () => {
+            activeUser.set({
+                id: 'u1',
+                name: 'Local',
+                avatar: '',
+                username: 'kei',
+                syncServerUrl: 'https://sync.example.test'
+            } as Profile);
             pbConnected.set(true);
             expect(get(isLoggedIn)).toBe(true);
         });
 
-        it('should not be logged in if user is guest', () => {
-            activeUser.set({ id: 'u1', isGuest: true } as Profile);
+        it('should not be logged in if user is local-only', () => {
+            activeUser.set({ id: 'u1', name: 'Local', avatar: '' } as Profile);
             pbConnected.set(true);
             expect(get(isLoggedIn)).toBe(false);
         });
 
         it('should not be logged in if pb is disconnected', () => {
-            activeUser.set({ id: 'u1', isGuest: false } as Profile);
+            activeUser.set({
+                id: 'u1',
+                name: 'Local',
+                avatar: '',
+                username: 'kei',
+                syncServerUrl: 'https://sync.example.test'
+            } as Profile);
             pbConnected.set(false);
             expect(get(isLoggedIn)).toBe(false);
         });

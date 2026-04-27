@@ -1,11 +1,10 @@
 /**
  * Master Key management module.
  *
- * The master key M is a random AES-256-GCM key that encrypts all user data
- * (messages, API keys, etc.). It is:
- *   - Generated on registration
- *   - Wrapped (encrypted) with Y before sending to the server → M(Y)
- *   - Never exposed in extractable form outside IndexedDB
+ * The master key M is a random AES-256-GCM key that encrypts synced user data
+ * at the sync boundary. It is generated with the local identity on first app
+ * launch and remains extractable so it can be wrapped for server sync,
+ * recovery, and new-device transfer.
  */
 
 import { AES_IV_BYTES, AES_KEY_BITS } from './constants';
@@ -16,9 +15,7 @@ type Bytes = Uint8Array<ArrayBuffer>;
 /**
  * Generate a fresh master key M.
  *
- * `extractable: true` is required here ONLY so we can immediately wrap it
- * with Y. After wrapping, the unwrapped version stored in IndexedDB will
- * be non-extractable.
+ * `extractable: true` is intentional in the current local identity model.
  */
 export async function generateMasterKey(): Promise<CryptoKey> {
     return crypto.subtle.generateKey({ name: 'AES-GCM', length: AES_KEY_BITS }, true, [
@@ -66,14 +63,12 @@ export async function wrapMasterKey(
 /**
  * Unwrap (decrypt) the master key M from its encrypted form.
  *
- * The resulting CryptoKey is imported as **non-extractable** so that even
- * if an XSS attacker gains access to IndexedDB, they cannot export the
- * raw key bytes via `crypto.subtle.exportKey`.
+ * This helper imports as extractable to match the local identity model.
  *
  * @param ciphertext - encrypted master key bytes M(Y) or M(Z)
  * @param iv - IV used during wrapping
  * @param wrappingKeyBytes - raw key material (Y or Z)
- * @returns non-extractable AES-GCM CryptoKey
+ * @returns extractable AES-GCM CryptoKey
  */
 export async function unwrapMasterKey(
     ciphertext: Bytes,
@@ -91,14 +86,11 @@ export async function unwrapMasterKey(
         )) as ArrayBuffer
     );
 
-    // Import as non-extractable CryptoKey
-    const masterKey = await crypto.subtle.importKey(
-        'raw',
-        rawMaster,
-        { name: 'AES-GCM' },
-        false, // ← extractable: false — XSS protection
-        ['encrypt', 'decrypt']
-    );
+    // Import as extractable CryptoKey
+    const masterKey = await crypto.subtle.importKey('raw', rawMaster, { name: 'AES-GCM' }, true, [
+        'encrypt',
+        'decrypt'
+    ]);
 
     // Zero out raw bytes
     rawMaster.fill(0);

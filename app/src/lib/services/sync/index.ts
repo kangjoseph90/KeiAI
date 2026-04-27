@@ -24,8 +24,6 @@ import { AssetSyncService } from './asset';
 import { appUser } from '$lib/adapters/user';
 import { localDB, SYNC_TABLES } from '$lib/adapters/db';
 
-// TODO: ㅈ돼버린 가독성 좀 어떻게 하기
-
 type SyncTriggerCleanup = () => void;
 export type SyncTriggerContext = {
     data: typeof DataSyncService;

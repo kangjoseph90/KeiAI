@@ -17,7 +17,7 @@ type Bytes = Uint8Array<ArrayBuffer>;
 /**
  * Encrypt plaintext string with master key M using AES-256-GCM.
  *
- * @param masterKey - non-extractable CryptoKey from IndexedDB
+ * @param masterKey - local master key M
  * @param plaintext - data to encrypt (UTF-8 string)
  * @returns ciphertext + IV (both needed for decryption)
  */

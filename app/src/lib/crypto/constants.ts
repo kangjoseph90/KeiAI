@@ -21,22 +21,13 @@ export const AES_KEY_BITS = 256;
 export const AES_IV_BYTES = 12;
 
 /** Recovery code total length in characters */
-export const RECOVERY_CODE_LENGTH = 16;
+export const RECOVERY_CODE_LENGTH = 24;
 
 /** Recovery code front half length (encryption portion Z) */
-export const RECOVERY_FRONT_LENGTH = 8;
+export const RECOVERY_FRONT_LENGTH = 12;
 
 /** Recovery code back half length (auth token portion) */
-export const RECOVERY_BACK_LENGTH = 8;
-
-/** IndexedDB database name for key storage */
-export const IDB_DB_NAME = 'kei-crypto-store';
-
-/** IndexedDB object store name */
-export const IDB_STORE_NAME = 'keys';
-
-/** Key identifier for the master key in IndexedDB */
-export const IDB_MASTER_KEY_ID = 'master-key';
+export const RECOVERY_BACK_LENGTH = 12;
 
 /** ECDH named curve for identity key pairs */
 export const ECDH_CURVE = 'P-256';
