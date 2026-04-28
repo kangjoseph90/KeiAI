@@ -5,6 +5,7 @@ const isBrowser = typeof window !== 'undefined';
 
 import { AppError } from '$lib/types/errors';
 import { PB_URL } from '$lib/config';
+import { normalizeUrl } from '$lib/utils/url';
 
 if (!PB_URL) {
     throw new AppError('INVALID_INPUT', 'VITE_PB_URL environment variable is required');
@@ -18,4 +19,8 @@ if (isBrowser) {
     pb.authStore.onChange(() => {
         // Auth state changed — consumed by AuthService.onPbAuthChange
     });
+}
+
+export function isKeiServer(): boolean {
+    return normalizeUrl(pb.baseUrl) === normalizeUrl(PB_URL);
 }

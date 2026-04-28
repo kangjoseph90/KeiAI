@@ -29,8 +29,8 @@ migrate(
       { name: "encryptedRecoveryMasterKey", type: "text" },
       { name: "recoveryMasterKeyIv", type: "text" },
       { name: "recoveryAuthTokenHash", type: "text" },
-      { name: "assetQuota", type: "number" },
-      { name: "assetUsage", type: "number" },
+      { name: "assetMaxBytes", type: "number" },
+      { name: "assetUsedBytes", type: "number" },
       { name: "identityPublicKey", type: "text" },
       { name: "encryptedIdentityPrivateKey", type: "text" },
       { name: "identityPrivateKeyIv", type: "text" },
@@ -60,7 +60,7 @@ migrate(
     // ─── 3. Create blind sync tables ─────────────────────────────────
     const authRule = "userId = @request.auth.id";
 
-    function createSyncTable(name) {
+    function createSyncTable(name, extraFields) {
       const collection = new Collection({
         name: name,
         type: "base",
@@ -71,18 +71,34 @@ migrate(
         deleteRule: authRule,
       });
 
-      collection.fields.add(new Field({ name: "userId", type: "text", required: true }));
-      collection.fields.add(new Field({ name: "createdAt", type: "number", required: true }));
-      collection.fields.add(new Field({ name: "updatedAt", type: "number", required: true }));
-      collection.fields.add(new Field({ name: "encryptedData", type: "text", required: true }));
-      collection.fields.add(new Field({ name: "encryptedDataIV", type: "text", required: true }));
+      collection.fields.add(
+        new Field({ name: "userId", type: "text", required: true }),
+      );
+      collection.fields.add(
+        new Field({ name: "createdAt", type: "number", required: true }),
+      );
+      collection.fields.add(
+        new Field({ name: "updatedAt", type: "number", required: true }),
+      );
+      for (const field of extraFields || []) {
+        collection.fields.add(new Field(field));
+      }
+      collection.fields.add(
+        new Field({ name: "encryptedData", type: "text", required: true }),
+      );
+      collection.fields.add(
+        new Field({ name: "encryptedDataIV", type: "text", required: true }),
+      );
       collection.fields.add(new Field({ name: "isDeleted", type: "bool" }));
 
       app.save(collection);
 
-      app.db().newQuery(
-        `CREATE INDEX IF NOT EXISTS "idx_${name}_sync" ON "${name}" (userId, updatedAt)`,
-      ).execute();
+      app
+        .db()
+        .newQuery(
+          `CREATE INDEX IF NOT EXISTS "idx_${name}_sync" ON "${name}" (userId, updatedAt)`,
+        )
+        .execute();
     }
 
     createSyncTable("characters");
@@ -91,7 +107,10 @@ migrate(
     createSyncTable("modules");
     createSyncTable("plugins");
     createSyncTable("presets");
-    createSyncTable("assets");
+    createSyncTable("assets", [
+      { name: "hash", type: "text", required: true },
+      { name: "status", type: "text", required: true },
+    ]);
     createSyncTable("lorebooks");
     createSyncTable("scripts");
     createSyncTable("charjs");
@@ -99,37 +118,92 @@ migrate(
     createSyncTable("messages");
     createSyncTable("translations");
 
-    // ─── 4. Asset catalog ────────────────────────────────────────────
+    // ─── 4. Asset catalog and usage ledger ───────────────────────────
     const catalog = new Collection({
-      name: "assetCatalog",
+      name: "asset_catalog",
       type: "base",
     });
 
-    catalog.fields.add(new Field({ name: "hash", type: "text", required: true }));
-    catalog.fields.add(new Field({ name: "ownerId", type: "text", required: true }));
-    catalog.fields.add(new Field({ name: "kind", type: "text", required: true }));
-    catalog.fields.add(new Field({ name: "size", type: "number", required: true }));
-    catalog.fields.add(new Field({ name: "refCount", type: "number", min: 0 }));
-    catalog.fields.add(new Field({
-      name: "file",
-      type: "file",
-      maxSelect: 1,
-      maxSize: 10 * 1024 * 1024,
-      mimeTypes: ["image/webp", "image/png", "image/jpeg", "application/octet-stream"],
-    }));
+    catalog.fields.add(
+      new Field({ name: "hash", type: "text", required: true }),
+    );
+    catalog.fields.add(
+      new Field({ name: "size", type: "number", required: true }),
+    );
+    catalog.fields.add(
+      new Field({
+        name: "data",
+        type: "file",
+        maxSelect: 1,
+        maxSize: 10 * 1024 * 1024,
+        mimeTypes: ["application/octet-stream"],
+      }),
+    );
 
     app.save(catalog);
 
-    app.db().newQuery(
-      'CREATE UNIQUE INDEX IF NOT EXISTS "idx_assetCatalog_hash" ON "assetCatalog" (hash)',
-    ).execute();
+    app
+      .db()
+      .newQuery(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "idx_asset_catalog_hash" ON "asset_catalog" (hash)',
+      )
+      .execute();
+
+    const usage = new Collection({
+      name: "asset_usage",
+      type: "base",
+    });
+
+    usage.fields.add(
+      new Field({ name: "userId", type: "text", required: true }),
+    );
+    usage.fields.add(new Field({ name: "hash", type: "text", required: true }));
+    usage.fields.add(
+      new Field({ name: "refCount", type: "number", required: true, min: 0 }),
+    );
+    usage.fields.add(
+      new Field({ name: "size", type: "number", required: true }),
+    );
+    usage.fields.add(
+      new Field({ name: "createdAt", type: "number", required: true }),
+    );
+    usage.fields.add(
+      new Field({ name: "updatedAt", type: "number", required: true }),
+    );
+
+    app.save(usage);
+
+    app
+      .db()
+      .newQuery(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "idx_asset_usage_user_hash" ON "asset_usage" (userId, hash)',
+      )
+      .execute();
+    app
+      .db()
+      .newQuery(
+        'CREATE INDEX IF NOT EXISTS "idx_asset_usage_hash" ON "asset_usage" (hash)',
+      )
+      .execute();
   },
   (app) => {
     // DOWN — drop everything
     const tables = [
-      "translations", "messages", "chats", "charjs", "scripts",
-      "lorebooks", "assets", "presets", "plugins", "modules",
-      "personas", "settings", "characters", "assetCatalog",
+      "translations",
+      "messages",
+      "chats",
+      "charjs",
+      "scripts",
+      "lorebooks",
+      "assets",
+      "presets",
+      "plugins",
+      "modules",
+      "personas",
+      "settings",
+      "characters",
+      "asset_usage",
+      "asset_catalog",
     ];
     for (const name of tables) {
       try {
@@ -141,11 +215,18 @@ migrate(
     try {
       const users = app.findCollectionByNameOrId("_pb_users_auth_");
       const fields = [
-        "username", "salt", "encryptedMasterKey", "masterKeyIv",
-        "encryptedRecoveryMasterKey", "recoveryMasterKeyIv",
-        "recoveryAuthTokenHash", "identityPublicKey",
-        "encryptedIdentityPrivateKey", "identityPrivateKeyIv",
-        "assetQuota", "assetUsage",
+        "username",
+        "salt",
+        "encryptedMasterKey",
+        "masterKeyIv",
+        "encryptedRecoveryMasterKey",
+        "recoveryMasterKeyIv",
+        "recoveryAuthTokenHash",
+        "identityPublicKey",
+        "encryptedIdentityPrivateKey",
+        "identityPrivateKeyIv",
+        "assetMaxBytes",
+        "assetUsedBytes",
       ];
       for (const f of fields) {
         try {

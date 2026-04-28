@@ -81,6 +81,11 @@ vi.mock('$lib/crypto', () => ({
     ),
     derivePairingKeys: vi.fn(() => Promise.resolve({ lookupId: 'lookup' })),
     toBase64: vi.fn((data: Uint8Array) => `b64:${Array.from(data).join(',')}`),
+    toHex: vi.fn((data: Uint8Array) =>
+        Array.from(data)
+            .map((byte) => byte.toString(16).padStart(2, '0'))
+            .join('')
+    ),
     fromBase64: vi.fn(() => new Uint8Array([1, 2, 3]))
 }));
 

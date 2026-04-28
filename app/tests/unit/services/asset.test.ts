@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssetService } from '$lib/services/asset';
 import type { AssetRecord, AssetRegistryRecord } from '$lib/adapters/asset';
 
@@ -9,15 +9,12 @@ vi.mock('$lib/services/session', () => ({
 vi.mock('$lib/adapters/asset', () => ({
     appAsset: {
         getAsset: vi.fn(),
-        getAllAssets: vi.fn(),
         putAsset: vi.fn(),
         softDeleteAsset: vi.fn(),
-        getAssetsSince: vi.fn(),
         getRegistry: vi.fn(),
-        getAllRegistry: vi.fn(),
         putRegistry: vi.fn(),
-        softDeleteRegistry: vi.fn(),
-        deleteRegistry: vi.fn()
+        deleteRegistry: vi.fn(),
+        getRegistryByStatus: vi.fn()
     }
 }));
 
@@ -33,15 +30,7 @@ vi.mock('$lib/adapters/storage', () => ({
     }
 }));
 
-vi.mock('$lib/adapters/http', () => ({
-    appHttp: {
-        fetch: vi.fn()
-    }
-}));
-
 vi.mock('$lib/crypto', () => ({
-    encrypt: vi.fn(),
-    decrypt: vi.fn(),
     sha256: vi.fn()
 }));
 
@@ -51,15 +40,14 @@ vi.mock('$lib/utils/id', () => ({
 
 vi.mock('$lib/services/asset/util', () => ({
     preprocessImage: vi.fn(),
-    deriveAssetKey: vi.fn(),
-    decryptAsset: vi.fn(),
-    getRemoteURL: vi.fn((hash: string) => `https://cdn.keiai.ai/assets/${hash}`),
+    encryptConvergentAsset: vi.fn(),
+    decryptConvergentAsset: vi.fn(),
     isValidImageHeader: vi.fn(),
-    parseFields: vi.fn()
+    parseFields: vi.fn((record: AssetRecord) => record.data)
 }));
 
 vi.mock('$lib/services/asset/remote', () => ({
-    fetchAssetFromCDN: vi.fn()
+    fetchAssetCiphertext: vi.fn()
 }));
 
 vi.mock('$lib/services/sync/asset', () => ({
@@ -72,24 +60,20 @@ vi.mock('$lib/services/sync/asset', () => ({
 import { getActiveSession } from '$lib/services/session';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
-import { encrypt, decrypt, sha256 } from '$lib/crypto';
+import { sha256 } from '$lib/crypto';
 import {
-    preprocessImage,
-    deriveAssetKey,
-    decryptAsset,
-    getRemoteURL,
+    decryptConvergentAsset,
+    encryptConvergentAsset,
     isValidImageHeader,
-    parseFields
+    preprocessImage
 } from '$lib/services/asset/util';
-import { fetchAssetFromCDN } from '$lib/services/asset/remote';
-import { AssetSyncService } from '$lib/services/sync/asset';
+import { fetchAssetCiphertext } from '$lib/services/asset/remote';
 
 describe('AssetService', () => {
-    const mockMasterKey = {} as CryptoKey;
     const mockUserId = 'user-123';
-    const mockCiphertext = new Uint8Array([1, 2, 3]);
-    const mockIv = new Uint8Array([4, 5, 6]);
     const mockBytes = new Uint8Array([7, 8, 9, 10]);
+    const mockCiphertext = new Uint8Array([1, 2, 3]);
+
     const mockRecord: AssetRecord = {
         id: 'asset-123',
         userId: mockUserId,
@@ -97,7 +81,7 @@ describe('AssetService', () => {
         updatedAt: 1000,
         isDeleted: false,
         data: {
-            kind: 'private',
+            kind: 'resource',
             status: 'remote',
             hash: 'hash-123',
             encKey: 'enc-key'
@@ -110,7 +94,7 @@ describe('AssetService', () => {
         createdAt: 1000,
         updatedAt: 1000,
         isDeleted: false,
-        kind: 'private',
+        kind: 'resource',
         status: 'remote',
         size: 100,
         accessedAt: 1000
@@ -120,225 +104,116 @@ describe('AssetService', () => {
         vi.clearAllMocks();
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
-            masterKey: mockMasterKey,
+            masterKey: {} as CryptoKey,
             identityKeyPair: {} as CryptoKeyPair
         });
 
-        vi.mocked(encrypt).mockResolvedValue({
-            ciphertext: mockCiphertext,
-            iv: mockIv
-        });
-        vi.mocked(sha256).mockResolvedValue('hash-123');
-        vi.mocked(deriveAssetKey).mockResolvedValue('enc-key');
-        vi.mocked(preprocessImage).mockResolvedValue({
-            blob: new Blob([mockBytes], { type: 'image/webp' }),
-            width: 100,
-            height: 100
-        });
-
-        // Adapter mocks
         vi.mocked(appAsset.getAsset).mockResolvedValue(undefined);
         vi.mocked(appAsset.putAsset).mockResolvedValue(undefined);
         vi.mocked(appAsset.softDeleteAsset).mockResolvedValue(undefined);
         vi.mocked(appAsset.getRegistry).mockResolvedValue(undefined);
         vi.mocked(appAsset.putRegistry).mockResolvedValue(undefined);
-        vi.mocked(appAsset.softDeleteRegistry).mockResolvedValue(undefined);
         vi.mocked(appAsset.deleteRegistry).mockResolvedValue(undefined);
+        vi.mocked(appAsset.getRegistryByStatus).mockResolvedValue([]);
 
         vi.mocked(appStorage.write).mockResolvedValue(undefined);
-        vi.mocked(appStorage.read).mockResolvedValue(mockBytes);
         vi.mocked(appStorage.delete).mockResolvedValue(undefined);
         vi.mocked(appStorage.exists).mockResolvedValue(false);
         vi.mocked(appStorage.getRenderUrl).mockResolvedValue('blob:asset-123');
         vi.mocked(appStorage.revokeRenderUrl).mockResolvedValue(undefined);
         vi.mocked(appStorage.getSize).mockResolvedValue(100);
 
-        vi.mocked(isValidImageHeader).mockReturnValue(true);
-        vi.mocked(fetchAssetFromCDN).mockResolvedValue(null);
-
-        vi.mocked(decrypt).mockResolvedValue(
-            JSON.stringify({
-                kind: 'private',
-                status: 'remote',
-                hash: 'hash-123',
-                encKey: 'enc-key'
-            })
-        );
-        vi.mocked(parseFields).mockReturnValue({
-            kind: 'private',
-            status: 'remote',
+        vi.mocked(preprocessImage).mockResolvedValue({
+            blob: new Blob([mockBytes], { type: 'image/webp' }),
+            width: 100,
+            height: 100
+        });
+        vi.mocked(encryptConvergentAsset).mockResolvedValue({
+            ciphertext: mockCiphertext,
             hash: 'hash-123',
             encKey: 'enc-key'
         });
-        vi.mocked(fetchAssetFromCDN).mockResolvedValue(mockBytes);
+        vi.mocked(fetchAssetCiphertext).mockResolvedValue(mockCiphertext);
+        vi.mocked(sha256).mockResolvedValue('hash-123');
+        vi.mocked(decryptConvergentAsset).mockResolvedValue(mockBytes);
+        vi.mocked(isValidImageHeader).mockReturnValue(true);
     });
 
-    describe('write', () => {
-        it('should create local asset metadata and registry entry', async () => {
-            const file = new File([mockBytes], 'avatar.png', { type: 'image/png' });
+    it('creates local asset metadata, plaintext storage, and registry cache index', async () => {
+        const file = new File([mockBytes], 'avatar.png', { type: 'image/png' });
 
-            const id = await AssetService.write(file, 'private');
+        const id = await AssetService.write(file, 'resource');
 
-            expect(id).toBe('asset-123');
-            expect(appStorage.write).toHaveBeenCalledWith(
-                'assets/asset-123',
-                expect.any(Uint8Array)
-            );
-            expect(appAsset.putAsset).toHaveBeenCalledWith(
-                expect.objectContaining({ id: 'asset-123', userId: mockUserId })
-            );
-            expect(appAsset.putRegistry).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    id: 'asset-123',
-                    userId: mockUserId,
-                    kind: 'private',
+        expect(id).toBe('asset-123');
+        expect(appStorage.write).toHaveBeenCalledWith('assets/asset-123', mockBytes);
+        expect(appAsset.putAsset).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 'asset-123',
+                userId: mockUserId,
+                data: expect.objectContaining({
+                    kind: 'resource',
                     status: 'local',
-                    size: mockBytes.length
+                    hash: 'hash-123',
+                    encKey: 'enc-key'
                 })
-            );
-        });
-
-        it('should roll back storage and registry when metadata commit fails', async () => {
-            const file = new File([mockBytes], 'avatar.png', { type: 'image/png' });
-            vi.mocked(appAsset.putAsset).mockRejectedValue(new Error('metadata failed'));
-
-            await expect(AssetService.write(file, 'private')).rejects.toThrow('metadata failed');
-
-            expect(appStorage.delete).toHaveBeenCalledWith('assets/asset-123');
-            expect(appAsset.deleteRegistry).toHaveBeenCalledWith('asset-123');
-        });
+            })
+        );
+        expect(appAsset.putRegistry).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 'asset-123',
+                kind: 'resource',
+                status: 'local',
+                size: mockBytes.length
+            })
+        );
     });
 
-    describe('delete', () => {
-        it('should soft-delete locally and put into queue', async () => {
-            vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
-            vi.mocked(appAsset.getRegistry).mockResolvedValue(mockRegistry);
+    it('creates lightweight remote metadata without writing local storage', async () => {
+        const id = await AssetService.write(null, 'resource', 'hash-123', 'enc-key');
 
-            await AssetService.delete('asset-123');
-
-            expect(appAsset.softDeleteAsset).toHaveBeenCalledWith('asset-123');
-            expect(appStorage.delete).toHaveBeenCalledWith('assets/asset-123');
-            expect(appAsset.softDeleteRegistry).toHaveBeenCalledWith('asset-123');
-        });
-
-        it('should create delete queue item if registry absent', async () => {
-            vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
-            vi.mocked(appAsset.getRegistry).mockResolvedValue(undefined);
-
-            await AssetService.delete('asset-123');
-
-            expect(appAsset.softDeleteAsset).toHaveBeenCalledWith('asset-123');
-            expect(appStorage.delete).toHaveBeenCalledWith('assets/asset-123');
-            expect(appAsset.putRegistry).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    id: 'asset-123',
-                    isDeleted: true
-                })
-            );
-        });
+        expect(id).toBe('asset-123');
+        expect(appStorage.write).not.toHaveBeenCalled();
+        expect(appAsset.putAsset).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({ status: 'remote' })
+            })
+        );
     });
 
-    describe('promote', () => {
-        it('should update asset fields to public and local', async () => {
-            vi.mocked(appStorage.exists).mockResolvedValue(true);
-            vi.mocked(appAsset.getRegistry).mockResolvedValue(mockRegistry);
-            vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
+    it('deletes logical asset and local cache registry entry', async () => {
+        await AssetService.delete('asset-123');
 
-            await AssetService.promote('asset-123');
-
-            // Asset table updated with kind: public, status: local
-            expect(appAsset.putAsset).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    id: 'asset-123',
-                    data: expect.objectContaining({ kind: 'public', status: 'local' })
-                })
-            );
-            expect(appAsset.putRegistry).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    id: 'asset-123',
-                    kind: 'public',
-                    status: 'local'
-                })
-            );
-            expect(AssetSyncService.start).toHaveBeenCalled();
-        });
+        expect(appAsset.softDeleteAsset).toHaveBeenCalledWith('asset-123');
+        expect(appStorage.delete).toHaveBeenCalledWith('assets/asset-123');
+        expect(appAsset.deleteRegistry).toHaveBeenCalledWith('asset-123');
     });
 
-    describe('read', () => {
-        it('should return rendering URL if local blob exists', async () => {
-            vi.mocked(appStorage.exists).mockResolvedValue(true);
-            vi.mocked(appAsset.getRegistry).mockResolvedValue(mockRegistry);
+    it('returns cached render URL and refreshes registry index when local bytes exist', async () => {
+        vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
+        vi.mocked(appAsset.getRegistry).mockResolvedValue(mockRegistry);
+        vi.mocked(appStorage.exists).mockResolvedValue(true);
 
-            const url = await AssetService.read('asset-123');
+        const url = await AssetService.read('asset-123');
 
-            expect(url).toBe('blob:asset-123');
-            expect(appAsset.putRegistry).toHaveBeenCalledWith(
-                expect.objectContaining({ accessedAt: expect.any(Number) })
-            );
-        });
+        expect(url).toBe('blob:asset-123');
+        expect(appAsset.putRegistry).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 'asset-123',
+                kind: 'resource',
+                status: 'remote'
+            })
+        );
+    });
 
-        it('should download and restore remote asset', async () => {
-            vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
-            vi.mocked(appStorage.exists).mockResolvedValue(false);
-            vi.mocked(appAsset.getRegistry).mockResolvedValue(undefined);
+    it('downloads, verifies, decrypts, and caches remote ciphertext', async () => {
+        vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
 
-            vi.mocked(isValidImageHeader).mockReturnValue(true);
-            vi.mocked(decryptAsset).mockResolvedValue(mockBytes);
-            vi.mocked(fetchAssetFromCDN).mockResolvedValue(mockBytes);
+        const url = await AssetService.read('asset-123');
 
-            const url = await AssetService.read('asset-123');
-
-            expect(url).toBe('blob:asset-123');
-            expect(appStorage.write).toHaveBeenCalledWith('assets/asset-123', mockBytes);
-
-            // setRegistry — cache metadata with routing fields
-            expect(appAsset.putRegistry).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    id: 'asset-123',
-                    kind: 'private',
-                    status: 'remote',
-                    size: mockBytes.length
-                })
-            );
-        });
-
-        it('should heal metadata when CDN serves plaintext public bytes', async () => {
-            vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
-            vi.mocked(appStorage.exists).mockResolvedValue(false);
-            vi.mocked(appAsset.getRegistry).mockResolvedValue(undefined);
-
-            vi.mocked(decryptAsset).mockRejectedValue(new Error('decrypt failed'));
-            vi.mocked(sha256).mockResolvedValue('hash-123');
-            vi.mocked(fetchAssetFromCDN).mockResolvedValue(mockBytes);
-
-            await AssetService.read('asset-123');
-
-            // Should heal: update asset metadata to public
-            expect(appAsset.putAsset).toHaveBeenCalledWith(
-                expect.objectContaining({ id: 'asset-123', updatedAt: expect.any(Number) })
-            );
-
-            // setRegistry — cache metadata with routing fields (healed to public)
-            expect(appAsset.putRegistry).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    id: 'asset-123',
-                    kind: 'public',
-                    status: 'remote',
-                    size: mockBytes.length
-                })
-            );
-        });
-
-        it('should return null on invalid downloaded data', async () => {
-            vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
-            vi.mocked(appStorage.exists).mockResolvedValue(false);
-
-            vi.mocked(isValidImageHeader).mockReturnValue(false);
-            vi.mocked(decryptAsset).mockResolvedValue(new Uint8Array([99]));
-            vi.mocked(fetchAssetFromCDN).mockResolvedValue(mockBytes);
-
-            const url = await AssetService.read('asset-123');
-            expect(url).toBeNull();
-        });
+        expect(url).toBe('blob:asset-123');
+        expect(fetchAssetCiphertext).toHaveBeenCalledWith('hash-123');
+        expect(sha256).toHaveBeenCalledWith(mockCiphertext);
+        expect(decryptConvergentAsset).toHaveBeenCalledWith(mockCiphertext, 'enc-key');
+        expect(appStorage.write).toHaveBeenCalledWith('assets/asset-123', mockBytes);
     });
 });

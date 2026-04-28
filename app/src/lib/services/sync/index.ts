@@ -68,12 +68,18 @@ export class SyncManager {
 
     private static readonly visibilityTrigger: SyncTriggerRegistration = ({
         data,
+        profile,
+        asset,
         resubscribeAndPull
     }) => {
         const listener = () => {
             if (document.visibilityState === 'visible') {
                 if (!data.isSubscribed) {
                     void resubscribeAndPull();
+                } else {
+                    void data.syncAll();
+                    void asset.start();
+                    void profile.pullProfile();
                 }
             }
         };

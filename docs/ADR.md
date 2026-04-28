@@ -537,7 +537,7 @@
   - 서버는 여전히 application plaintext를 보지 못한다.
   - 로컬 디바이스 침해에 대한 방어는 OS/브라우저 저장소 격리와 앱 세션 관리에 맡기며, E2EE의 주된 경계는 네트워크/서버/타 기기 동기화로 명확해진다.
   - 서버 FK가 사라진 만큼 orphan 정리, soft delete, cascade는 앱 서비스와 sync 훅의 명시 로직 및 테스트가 책임진다.
-- 참고: ADR 015 (EncryptedWriteQueue), ADR 028 (단일 테이블 통합), docs/schema.md, docs/asset-system-v2.md
+- 참고: ADR 015 (EncryptedWriteQueue), ADR 028 (단일 테이블 통합), docs/schema.md, docs/asset-system-v3.md
 
 ---
 
@@ -568,3 +568,37 @@
   - 유저는 앱을 즉시 local-only로 사용할 수 있고, 나중에 어떤 동기화 서버든 같은 `userId + M`으로 연결할 수 있다.
   - 서버는 여전히 application plaintext와 `M`을 알 수 없고, PB는 로그인 토큰 발급과 opaque blob 저장소 역할만 수행한다.
 - 참고: docs/account-system-v2.md, ADR 030
+
+---
+
+## 032: Asset System v3 — 암호화 에셋 카탈로그와 서버 호환성 단순화
+
+- 상태: 채택
+- 맥락: 기존 에셋 시스템은 private/public/inlay 구분, promote API, delete API, owner 기반 catalog refCount, 고정 salt 기반 키 유도 등 여러 개념이 섞여 있었다. 공식 서버 CDN 공유와 셀프호스트 호환성을 동시에 지원하려면 물리 파일 저장, 논리 에셋 참조, 로컬 캐시 상태를 더 명확히 분리해야 했다.
+- 문제:
+  - public/private 구분은 서버가 에셋 의미를 알거나 plaintext/public 파일을 다루는 방향으로 흐르기 쉬워 zero-knowledge 원칙과 충돌한다.
+  - 클라이언트가 upload/delete/promote/ref API를 직접 조합하면 ref accounting이 누락되기 쉽고, sync 데이터와 서버 catalog가 서로 다른 truth가 된다.
+  - 셀프호스트 서버에서도 공식 서버와 같은 PB 코드로 동작해야 하므로, 공식 CDN에만 특화된 상태 모델은 장기적으로 부담이 된다.
+  - 동일 원본 이미지 dedup을 위해서는 파일 내용 기반 주소화가 필요하지만, 서버가 plaintext를 볼 수는 없다.
+- 결정:
+  - 모든 에셋은 암호화한다. public/private 구분과 promote API를 제거하고, 에셋 kind는 `resource | inlay`로 단순화한다.
+  - 수렴 암호화(convergent encryption)를 사용한다.
+    - `plaintextHash = SHA-256(plaintext)`
+    - `encKey = HKDF-SHA256(plaintextHash, "kei-asset-enc")`
+    - `iv = HKDF-SHA256(encKey, "kei-asset-iv")[0:12]`
+    - `ciphertext = AES-256-GCM(plaintext, encKey, iv)`
+    - `hash = SHA-256(ciphertext)`
+  - `assets` 테이블은 논리 에셋의 SOT로 둔다. `hash`와 `status`는 서버 hook이 ref/usage를 계산할 수 있도록 평문 필드로 저장하고, `kind`와 `encKey`는 `encryptedData` 안에 저장한다.
+  - `assetRegistry`는 디바이스 로컬 캐시 인덱스로만 둔다. LRU eviction, remote/local 필터링, kind 기반 캐시 정책을 빠르게 처리하기 위해 `kind`, `status`, `size`, `accessedAt`을 중복 저장하지만, source of truth는 항상 `assets`이다.
+  - 서버는 `asset_catalog(hash, size, data)`와 `asset_usage(userId, hash, refCount, size)`를 가진다.
+  - 클라이언트는 physical upload만 `PUT /api/assets/{hash}`로 수행한다. hard quota는 이 upload API에서만 검사한다.
+  - `assets` sync write는 quota/catalog 존재 여부로 거부하지 않는다. sync는 blind sync로 유지하고, PB hook은 `status=remote && !isDeleted && hash` 전이를 보고 `asset_usage` ledger만 갱신한다. catalog가 없으면 usage를 만들지 않고, 읽기 시 404 placeholder로 degrade한다.
+  - 삭제는 클라이언트가 `assets.isDeleted = true`를 동기화하는 것으로 표현한다. 별도 remote delete/ref API는 두지 않는다. 서버 GC는 `asset_usage`에 참조가 없는 catalog 항목을 주기적으로 제거한다.
+  - 공식 서버와 셀프호스트는 같은 PB schema/hook/API를 사용한다. 차이는 다운로드 경로뿐이다: 공식 서버는 CDN, 셀프호스트는 PB authenticated download endpoint.
+- 결과:
+  - 서버는 에셋 이미지 plaintext를 보지 못하고, 에셋 공유/동기화는 `hash + encKey` 메타데이터로 표현된다.
+  - 같은 원본 이미지가 같은 ciphertext/hash를 만들기 때문에 서버 catalog dedup이 자연스럽게 가능하다.
+  - 클라이언트 코드가 `local -> upload -> remote -> sync` 흐름으로 단순화되고, ref accounting은 서버 hook 한 곳으로 모인다.
+  - 셀프호스트 서버도 공식 서버와 동일한 hook/schema로 동작하며, 서버 이전은 remote ciphertext를 확보해 새 서버에 재업로드한 뒤 `assets` 레코드를 push하는 동일 절차로 처리할 수 있다.
+  - 수렴 암호화 특성상 confirmation attack 가능성은 있지만, 공격자가 원본 파일 후보를 이미 가지고 있어야 하며 이미지 에셋 dedup/경량 공유의 이득이 더 크다고 판단했다.
+- 참고: docs/asset-system-v3.md, ADR 030

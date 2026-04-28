@@ -16,7 +16,7 @@ import type {
     AssetTableName,
     AssetWriteOperation,
     AssetStatus,
-    AssetKindPlain
+    AssetKind
 } from './types';
 import { clock } from '$lib/utils/clock';
 
@@ -110,14 +110,10 @@ export class WebAssetAdapter implements IAssetAdapter {
         return assetDB.assetRegistry.where('[userId+isDeleted]').equals([userId, 0]).toArray();
     }
 
-    async getDeletedRegistry(userId: string): Promise<AssetRegistryRecord[]> {
-        return assetDB.assetRegistry.where('[userId+isDeleted]').equals([userId, 1]).toArray();
-    }
-
     async getRegistryByStatus(
         userId: string,
         status: AssetStatus,
-        kinds?: AssetKindPlain[]
+        kinds?: AssetKind[]
     ): Promise<AssetRegistryRecord[]> {
         if (!kinds || kinds.length === 0) {
             return assetDB.assetRegistry
@@ -138,18 +134,6 @@ export class WebAssetAdapter implements IAssetAdapter {
     async putRegistry(record: AssetRegistryRecord, options?: AssetWriteOptions): Promise<void> {
         await assetDB.assetRegistry.put(record);
         this.emitWriteEvent('assetRegistry', 'put', [record.id], options);
-    }
-
-    async softDeleteRegistry(id: string, options?: AssetWriteOptions): Promise<void> {
-        const existing = await assetDB.assetRegistry.get(id);
-        if (!existing) return;
-
-        await assetDB.assetRegistry.put({
-            ...existing,
-            isDeleted: true,
-            updatedAt: clock.now()
-        });
-        this.emitWriteEvent('assetRegistry', 'softDelete', [id], options);
     }
 
     async deleteRegistry(id: string, options?: AssetWriteOptions): Promise<void> {

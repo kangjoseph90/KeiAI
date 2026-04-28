@@ -26,3 +26,7 @@ export function buildUrl(baseUrl: string, endpoint: string): string {
 
     return `${base}${normalizedEndpoint}`;
 }
+
+export function normalizeUrl(url: string): string {
+    return url.replace(/\/+$/, '');
+}

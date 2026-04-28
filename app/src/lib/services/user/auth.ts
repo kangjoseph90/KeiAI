@@ -86,7 +86,6 @@ export class AuthService {
         password: string,
         email?: string
     ): Promise<string> {
-        console.log('password:', password);
         const normalizedUsername = this.normalizeUsername(username);
         const effectiveUrl = await this.useActiveSyncServer();
         pb.baseUrl = effectiveUrl;
@@ -98,7 +97,6 @@ export class AuthService {
         const wrapped = await wrapMasterKey(masterKey, keys.encryptionKey);
         const recovery = await createRecoveryData(masterKey);
         keys.encryptionKey.fill(0);
-        console.log('loginKey:', keys.loginKey);
 
         const publicKeyJwk = await exportPublicKey(identityKeyPair.publicKey);
         const rawPrivateKey = await exportPrivateKey(identityKeyPair.privateKey);
@@ -423,7 +421,6 @@ export class AuthService {
     ): Promise<void> {
         const keys = await deriveKeys(password, salt);
         let authData: { record: Record<string, string> };
-        console.log('authwith:', keys.loginKey);
         try {
             authData = (await pb
                 .collection('users')

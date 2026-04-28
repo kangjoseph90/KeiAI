@@ -440,4 +440,4 @@ pnpm lint             # ESLint + Prettier check
 - [../docs/IDEA.md](../docs/IDEA.md) — Comprehensive architecture design document
 - [../docs/ADR.md](../docs/ADR.md) — Architecture decision records
 - [../docs/schema.md](../docs/schema.md) — Data schema philosophy
-- [../docs/asset-system-v2.md](../docs/asset-system-v2.md) — Asset system specification
+- [../docs/asset-system-v3.md](../docs/asset-system-v3.md) — Asset system specification

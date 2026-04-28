@@ -4,7 +4,7 @@
  * Unified local storage adapter for asset management.
  * Manages two storage layers behind a single interface:
  *   - assets table (plaintext metadata, DataRecord with kind/status/hash/encKey)
- *   - assetRegistry table (device-local cache metadata: size, accessedAt)
+ *   - assetRegistry table (device-local cache metadata + denormalized cache indexes)
  *
  * Binary blobs are stored via appStorage (OPFS or Tauri filesystem) directly.
  * The adapter is storage-only: no PB communication, no encryption logic.
@@ -15,7 +15,7 @@ import type { BaseRecord, DataRecord, DatabaseMutationOrigin } from '$lib/adapte
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-export type AssetKindPlain = 'private' | 'inlay' | 'public';
+export type AssetKind = 'resource' | 'inlay';
 
 export type AssetStatus = 'local' | 'remote';
 
@@ -26,25 +26,26 @@ export type AssetRecord = DataRecord;
  * Domain data: kind, status, hash, encKey.
  */
 export interface AssetFields {
-    kind: AssetKindPlain;
+    kind: AssetKind;
     status: AssetStatus;
     hash: string;
     encKey: string;
 }
 
 /**
- * Registry record — device-local cache metadata + routing fields.
- * kind/status are cached here for queue filtering without joining the assets table.
- * hash/encKey are read from the assets table only when needed for actual I/O.
+ * Registry record — device-local cache metadata + denormalized query indexes.
+ * kind/status are copied from the assets table to make LRU eviction, optional
+ * inlay sync, and upload queue scans cheap without joining against assets.
+ * The assets table remains the source of truth when values disagree.
  *
  * Invariants:
  * - Active registry (isDeleted=false) ⊆ storage (every entry has a blob)
- * - isDeleted=true entries serve as a persistent delete queue for the sync engine
+ * - kind/status are local cache indexes; sync decisions must re-check assets.data
  */
 export interface AssetRegistryRecord extends BaseRecord {
-    kind: AssetKindPlain;
+    kind: AssetKind;
     status: AssetStatus;
-    size: number; // blob size in bytes (0 for delete queue entries)
+    size: number; // cached blob size in bytes
     accessedAt: number; // LRU eviction timestamp
 }
 
@@ -99,23 +100,17 @@ export interface IAssetAdapter {
     /** Get all active (non-deleted) registry entries for a user. */
     getAllRegistry(userId: string): Promise<AssetRegistryRecord[]>;
 
-    /** Get all deleted registry entries for a user (the delete queue). */
-    getDeletedRegistry(userId: string): Promise<AssetRegistryRecord[]>;
-
     /** Get registry entries by status, optionally filtered by kinds. */
     getRegistryByStatus(
         userId: string,
         status: AssetStatus,
-        kinds?: AssetKindPlain[]
+        kinds?: AssetKind[]
     ): Promise<AssetRegistryRecord[]>;
 
     /** Insert or update a registry record (full record). */
     putRegistry(record: AssetRegistryRecord, options?: AssetWriteOptions): Promise<void>;
 
-    /** Soft-delete a registry entry (isDeleted = true, preserves status/hash for delete queue). */
-    softDeleteRegistry(id: string, options?: AssetWriteOptions): Promise<void>;
-
-    /** Hard-delete a registry entry (called after delete queue processing). */
+    /** Delete a registry entry and leave assets as the logical source of truth. */
     deleteRegistry(id: string, options?: AssetWriteOptions): Promise<void>;
 
     /** Run a block of work inside a database transaction. */

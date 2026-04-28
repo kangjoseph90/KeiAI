@@ -1,19 +1,19 @@
 /**
- * Asset Types — KeiAI v2
+ * Asset Types — KeiAI v3
  *
  * Asset system with E2EE, local-first, and deduplication.
  * AssetFields is defined in adapters/asset/types.ts (shared with registry).
  */
 
 // Re-export for service-layer convenience
-export type { AssetFields, AssetKindPlain as AssetKind } from '$lib/adapters/asset';
+export type { AssetFields, AssetKind as AssetKind } from '$lib/adapters/asset';
 
 // ─── Compression Result ─────────────────────────────────────────────────────
 
 export interface CompressAndHashResult {
     blob: Blob; // Compressed WebP blob
-    hash: string; // SHA256 of compressed bytes
-    encKey: string; // SHA256(compressed + FIXED_SALT)
+    hash: string; // SHA256 of ciphertext
+    encKey: string; // Convergent encryption key, hex encoded
     width: number;
     height: number;
 }

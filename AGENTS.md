@@ -75,7 +75,7 @@ PocketBase → Sync (pull blob + decrypt) → Adapter (plaintext IndexedDB/SQLit
 | Architecture design           | [docs/IDEA.md](docs/IDEA.md)                       | When a major system concept changes                  |
 | Architecture Decision Records | [docs/ADR.md](docs/ADR.md)                         | When a structural design decision is made or changed |
 | Data schema philosophy        | [docs/schema.md](docs/schema.md)                   | When relationship or storage patterns change         |
-| Asset system spec             | [docs/asset-system-v2.md](docs/asset-system-v2.md) | When asset pipeline changes                          |
+| Asset system spec             | [docs/asset-system-v3.md](docs/asset-system-v3.md) | When asset pipeline changes                          |
 | Roadmap                       | [docs/TODO.md](docs/TODO.md)                       | When milestones shift                                |
 
 ---
@@ -89,5 +89,5 @@ PocketBase → Sync (pull blob + decrypt) → Adapter (plaintext IndexedDB/SQLit
 - [docs/IDEA.md](docs/IDEA.md) — Comprehensive architecture design document
 - [docs/ADR.md](docs/ADR.md) — Architecture decision records
 - [docs/schema.md](docs/schema.md) — Data schema philosophy
-- [docs/asset-system-v2.md](docs/asset-system-v2.md) — Asset system specification
+- [docs/asset-system-v3.md](docs/asset-system-v3.md) — Asset system specification
 - [docs/TODO.md](docs/TODO.md) — Development roadmap

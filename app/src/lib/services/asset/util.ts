@@ -1,12 +1,11 @@
 /**
- * Asset Utilities — KeiAI v2
+ * Asset Utilities — KeiAI v3
  *
  * Image processing, hashing, and encryption utilities.
  */
 
 import { MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT, WEBP_QUALITY } from './types';
-import { CDN_BASE_URL, FIXED_SALT } from '$lib/config';
-import { sha256, fromHex, encryptBytes, decryptBytes, type Bytes } from '$lib/crypto';
+import { sha256, sha256Bytes, fromHex, toHex, type Bytes } from '$lib/crypto';
 import type { AssetFields } from '$lib/adapters/asset';
 
 // ─── Image Loading & Resizing ─────────────────────────────────────────────
@@ -97,66 +96,102 @@ export async function preprocessImage(
     return { blob, width: dims.width, height: dims.height };
 }
 
-/**
- * Derive encryption key from plaintext bytes: SHA256(bytes + FIXED_SALT)
- */
-export async function deriveAssetKey(bytes: Uint8Array): Promise<string> {
-    const saltBytes = new TextEncoder().encode(FIXED_SALT);
-    const combined = new Uint8Array(bytes.length + saltBytes.length);
-    combined.set(bytes);
-    combined.set(saltBytes, bytes.length);
-    return await sha256(combined);
+// ─── Convergent Encryption ───────────────────────────────────────────
+
+function asWebCryptoBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+    const buffer = bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength
+    ) as ArrayBuffer;
+    return new Uint8Array(buffer);
+}
+
+async function hkdfBytes(ikm: Uint8Array, info: string, outputBits: number): Promise<Bytes> {
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey('raw', asWebCryptoBytes(ikm), 'HKDF', false, [
+        'deriveBits'
+    ]);
+
+    return new Uint8Array(
+        (await crypto.subtle.deriveBits(
+            {
+                name: 'HKDF',
+                hash: 'SHA-256',
+                salt: encoder.encode('kei:asset-v3'),
+                info: encoder.encode(info)
+            },
+            keyMaterial,
+            outputBits
+        )) as ArrayBuffer
+    );
+}
+
+async function importAssetCryptoKey(keyBytes: Uint8Array): Promise<CryptoKey> {
+    return crypto.subtle.importKey('raw', asWebCryptoBytes(keyBytes), { name: 'AES-GCM' }, false, [
+        'encrypt',
+        'decrypt'
+    ]);
+}
+
+async function deriveAssetIv(encKeyBytes: Uint8Array): Promise<Bytes> {
+    return hkdfBytes(encKeyBytes, 'kei-asset-iv', 96);
 }
 
 /**
- * Encrypt asset data using AES-GCM.
+ * Encrypt asset plaintext using convergent encryption.
+ *
+ * Same plaintext produces the same encKey, IV, ciphertext, and ciphertext hash.
+ * plaintextHash is internal keying material only and must not be exported.
  */
-export async function encryptAsset(
-    data: Uint8Array | ArrayBuffer,
-    keyHex: string
-): Promise<Uint8Array> {
-    const keyBytes = fromHex(keyHex);
-    const cryptoKey = await crypto.subtle.importKey(
-        'raw',
-        keyBytes.buffer as ArrayBuffer,
-        { name: 'AES-GCM' },
-        false,
-        ['encrypt']
+export async function encryptConvergentAsset(
+    data: Uint8Array | ArrayBuffer
+): Promise<{ ciphertext: Uint8Array; hash: string; encKey: string }> {
+    const plaintext = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const plaintextHash = await sha256Bytes(plaintext as unknown as Bytes);
+    const encKeyBytes = await hkdfBytes(plaintextHash, 'kei-asset-enc', 256);
+    const iv = await deriveAssetIv(encKeyBytes);
+    const cryptoKey = await importAssetCryptoKey(encKeyBytes);
+
+    const ciphertext = new Uint8Array(
+        (await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv: asWebCryptoBytes(iv) },
+            cryptoKey,
+            asWebCryptoBytes(plaintext)
+        )) as ArrayBuffer
     );
+    const hash = await sha256(ciphertext as unknown as Bytes);
+    const encKey = toHex(encKeyBytes);
 
-    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-    const { ciphertext, iv } = await encryptBytes(cryptoKey, bytes as unknown as Bytes);
+    plaintextHash.fill(0);
+    encKeyBytes.fill(0);
+    iv.fill(0);
 
-    const result = new Uint8Array(iv.length + ciphertext.length);
-    result.set(iv);
-    result.set(ciphertext, iv.length);
-
-    return result;
+    return { ciphertext, hash, encKey };
 }
 
 /**
- * Decrypt AES-GCM bytes using key.
+ * Decrypt convergently encrypted asset bytes using the stored encKey.
  */
-export async function decryptAsset(
-    encryptedBytes: Uint8Array,
-    keyHex: string
+export async function decryptConvergentAsset(
+    ciphertext: Uint8Array,
+    encKeyHex: string
 ): Promise<Uint8Array> {
-    const keyBytes = fromHex(keyHex);
-    const cryptoKey = await crypto.subtle.importKey(
-        'raw',
-        keyBytes.buffer as ArrayBuffer,
-        { name: 'AES-GCM' },
-        false,
-        ['decrypt']
-    );
+    const encKeyBytes = fromHex(encKeyHex);
+    const iv = await deriveAssetIv(encKeyBytes);
+    const cryptoKey = await importAssetCryptoKey(encKeyBytes);
 
-    const iv = encryptedBytes.slice(0, 12);
-    const ciphertext = encryptedBytes.slice(12);
-
-    return await decryptBytes(cryptoKey, {
-        ciphertext: ciphertext as unknown as Bytes,
-        iv: iv as unknown as Bytes
-    });
+    try {
+        return new Uint8Array(
+            (await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: asWebCryptoBytes(iv) },
+                cryptoKey,
+                asWebCryptoBytes(ciphertext)
+            )) as ArrayBuffer
+        );
+    } finally {
+        encKeyBytes.fill(0);
+        iv.fill(0);
+    }
 }
 
 /** Check if bytes start with a valid image magic number */
@@ -178,10 +213,6 @@ export function isValidImageHeader(bytes: Uint8Array): boolean {
     const isGif = bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38;
 
     return isPng || isJpeg || isWebP || isGif;
-}
-
-export function getRemoteURL(hash: string): string {
-    return `${CDN_BASE_URL}/assets/${hash}`;
 }
 
 // ─── Asset Field Parsing ─────────────────────────────────────────────

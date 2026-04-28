@@ -10,7 +10,7 @@ import type {
     AssetTableName,
     AssetWriteOperation,
     AssetStatus,
-    AssetKindPlain
+    AssetKind
 } from './types';
 
 /**
@@ -79,8 +79,8 @@ function parseRegistryRecord(row: RegistrySqlRow): AssetRegistryRecord {
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         isDeleted: row.isDeleted === 1,
-        kind: row.kind as AssetRegistryRecord['kind'],
-        status: row.status as AssetRegistryRecord['status'],
+        kind: row.kind as AssetKind,
+        status: row.status as AssetStatus,
         size: row.size,
         accessedAt: row.accessedAt
     };
@@ -239,19 +239,10 @@ export class TauriAssetAdapter implements IAssetAdapter {
         return rows.map((row) => parseRegistryRecord(row));
     }
 
-    async getDeletedRegistry(userId: string): Promise<AssetRegistryRecord[]> {
-        const db = await this.getDb();
-        const rows = await db.select<RegistrySqlRow[]>(
-            `SELECT * FROM assetRegistry WHERE userId = $1 AND isDeleted = 1`,
-            [userId]
-        );
-        return rows.map((row) => parseRegistryRecord(row));
-    }
-
     async getRegistryByStatus(
         userId: string,
         status: AssetStatus,
-        kinds?: AssetKindPlain[]
+        kinds?: AssetKind[]
     ): Promise<AssetRegistryRecord[]> {
         const db = await this.getDb();
         if (!kinds || kinds.length === 0) {
@@ -289,16 +280,6 @@ export class TauriAssetAdapter implements IAssetAdapter {
             ]
         );
         this.emitWriteEvent('assetRegistry', 'put', [record.id], options);
-    }
-
-    async softDeleteRegistry(id: string, options?: AssetWriteOptions): Promise<void> {
-        const db = await this.getDb();
-        const now = clock.now();
-        await db.execute(`UPDATE assetRegistry SET isDeleted = 1, updatedAt = $1 WHERE id = $2`, [
-            now,
-            id
-        ]);
-        this.emitWriteEvent('assetRegistry', 'softDelete', [id], options);
     }
 
     async deleteRegistry(id: string, options?: AssetWriteOptions): Promise<void> {
