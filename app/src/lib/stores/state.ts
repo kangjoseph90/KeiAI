@@ -8,7 +8,7 @@
 import { derived, writable, type Readable } from 'svelte/store';
 import type {
     AppSettings,
-    Profile,
+    User,
     Character,
     Chat,
     Message,
@@ -26,12 +26,12 @@ import { EntityStore } from './entity_store';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
-export const activeUser = writable<Profile | null>(null);
+export const activeUser = writable<User | null>(null);
 
 /** Tracks whether the PocketBase auth token is valid. */
 export const pbConnected = writable<boolean>(false);
 export const dataSyncStatus = writable<SyncStatus>({ state: 'idle' });
-export const profileSyncStatus = writable<SyncStatus>({ state: 'idle' });
+export const userSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const assetSyncStatus = writable<AssetSyncStatus>({ state: 'idle', pendingCount: 0 });
 
 // ─── Derived Auth State ──────────────────────────────────────────────

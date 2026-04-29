@@ -3,7 +3,7 @@ import { DataSyncService } from '$lib/services/sync/data';
 import { pb } from '$lib/adapters/pb';
 import { localDB, TABLES } from '$lib/adapters/db';
 import { appKV } from '$lib/adapters/kv';
-import { getActiveSession, hasActiveSession } from '$lib/services/session';
+import { getActiveSession, hasActiveSession } from '$lib/services/user';
 import { toBase64, fromBase64 } from '$lib/crypto';
 import type { BaseRecord } from '$lib/adapters/db';
 
@@ -57,7 +57,8 @@ vi.mock('$lib/adapters/kv', () => ({
     }
 }));
 
-vi.mock('$lib/services/session', () => ({
+vi.mock('$lib/services/user', () => ({
+    UserService: {},
     getActiveSession: vi.fn(),
     hasActiveSession: vi.fn()
 }));

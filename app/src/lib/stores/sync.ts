@@ -1,11 +1,11 @@
 import { get } from 'svelte/store';
-import { AssetSyncService, DataSyncService, ProfileSyncService } from '$lib/services/sync';
+import { AssetSyncService, DataSyncService, UserSyncService } from '$lib/services/sync';
 import type { SyncStatus } from '$lib/services/sync/base';
 import {
     appSettings,
     assetSyncStatus,
     dataSyncStatus,
-    profileSyncStatus,
+    userSyncStatus,
     activeCharacterId,
     activeChatId,
     messages,
@@ -352,8 +352,8 @@ export function startSyncStatusTracking(): void {
         DataSyncService.subscribeStatus((status: SyncStatus) => {
             dataSyncStatus.set(status);
         }),
-        ProfileSyncService.subscribeStatus((status) => {
-            profileSyncStatus.set(status);
+        UserSyncService.subscribeStatus((status) => {
+            userSyncStatus.set(status);
         }),
         AssetSyncService.subscribeStatus((status) => {
             assetSyncStatus.set(status);
@@ -370,7 +370,7 @@ export function startSyncStatusTracking(): void {
         }
 
         dataSyncStatus.set({ state: 'idle' });
-        profileSyncStatus.set({ state: 'idle' });
+        userSyncStatus.set({ state: 'idle' });
         assetSyncStatus.set({ state: 'idle', pendingCount: 0 });
         stopTracking = null;
 

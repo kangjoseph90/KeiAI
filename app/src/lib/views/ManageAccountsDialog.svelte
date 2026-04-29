@@ -1,6 +1,6 @@
 <script lang="ts">
     import { activeUser, performCreateNewUser } from '$lib/stores';
-    import { UserService, type UserRecord } from '$lib/services';
+    import { AuthService, UserService, type UserRecord } from '$lib/services';
 
     import * as Dialog from '$lib/components/ui/dialog';
     import * as AlertDialog from '$lib/components/ui/alert-dialog';
@@ -38,7 +38,9 @@
     async function switchUser(userId: string) {
         loading = true;
         try {
-            await UserService.switchUser(userId);
+            AuthService.clearAuth();
+            await UserService.setActiveUser(userId);
+            window.location.reload();
         } finally {
             loading = false;
         }

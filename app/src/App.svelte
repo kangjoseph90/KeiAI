@@ -2,6 +2,7 @@
     import './app.css';
     import { onMount, onDestroy } from 'svelte';
     import { UserService, AuthService } from '$lib/services';
+    import { PB_URL } from '$lib/config';
     import { SyncManager } from '$lib/services/sync';
     import { clock } from '$lib/utils/clock';
     import { appKV } from '$lib/adapters/kv';
@@ -9,7 +10,7 @@
     import SettingsOverlay from '$lib/components/layout/SettingsOverlay.svelte';
     import {
         loadGlobalState,
-        loadProfile,
+        loadUser,
         startSyncStatusTracking,
         stopSyncStatusTracking,
         selectCharacter,
@@ -141,14 +142,16 @@
         try {
             startSyncStatusTracking();
             await clock.init(appKV);
-            const wasRestored = await UserService.restoreOrCreateUser();
-            if (!wasRestored) {
+            const { user, restored } = await UserService.restoreOrCreateUser();
+            AuthService.setSyncServerUrl(user.syncServerUrl ?? PB_URL);
+            await UserService.setActiveUser(user.id);
+            if (!restored) {
                 AuthService.clearAuth();
                 await initDefaultContents();
             }
-            await loadProfile();
+            await loadUser();
             await loadGlobalState();
-            SyncManager.startAutoSync({ onProfileUpdate: loadProfile });
+            SyncManager.startAutoSync({ onUserUpdate: loadUser });
             await SyncManager.syncAll();
             ready = true;
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { activeUser, updateProfile } from '$lib/stores';
+    import { activeUser, updateUser } from '$lib/stores';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import {
@@ -14,8 +14,8 @@
     import { Upload, UserRoundPen } from 'lucide-svelte';
     import { getErrorMessage } from '$lib/types/errors';
 
-    let profileName = $state('');
-    let profileAvatar = $state('');
+    let userName = $state('');
+    let userAvatar = $state('');
     let fileInputRef: HTMLInputElement;
 
     let loading = $state(false);
@@ -23,8 +23,8 @@
     let successMsg = $state('');
 
     $effect(() => {
-        if ($activeUser && !profileName) {
-            profileName = $activeUser.name;
+        if ($activeUser && !userName) {
+            userName = $activeUser.name;
         }
     });
 
@@ -43,23 +43,23 @@
         const reader = new FileReader();
         reader.onload = (e) => {
             if (typeof e.target?.result === 'string') {
-                profileAvatar = e.target.result;
+                userAvatar = e.target.result;
             }
         };
         reader.readAsDataURL(file);
     }
 
-    async function handleUpdateProfile() {
+    async function handleUpdateUser() {
         loading = true;
         errorMsg = '';
         successMsg = '';
 
         try {
-            await updateProfile({
-                name: profileName,
-                ...(profileAvatar ? { avatar: profileAvatar } : {})
+            await updateUser({
+                name: userName,
+                ...(userAvatar ? { avatar: userAvatar } : {})
             });
-            successMsg = 'Profile updated successfully.';
+            successMsg = 'User updated successfully.';
         } catch (e) {
             errorMsg = getErrorMessage(e);
         } finally {
@@ -100,12 +100,12 @@
                 >
                     <!-- Show selected data URL if present, otherwise existing avatar -->
                     <Avatar.Image
-                        src={profileAvatar || $activeUser?.avatar}
-                        alt={profileName}
+                        src={userAvatar || $activeUser?.avatar}
+                        alt={userName}
                         class="object-cover"
                     />
                     <Avatar.Fallback class="text-xl font-bold"
-                        >{(profileName || 'U').charAt(0).toUpperCase()}</Avatar.Fallback
+                        >{(userName || 'U').charAt(0).toUpperCase()}</Avatar.Fallback
                     >
                 </Avatar.Root>
                 <button
@@ -127,11 +127,11 @@
 
             <div class="flex-1 space-y-2">
                 <Label>Display Name</Label>
-                <Input bind:value={profileName} placeholder="Your display name" />
+                <Input bind:value={userName} placeholder="Your display name" />
             </div>
         </div>
 
-        <Button class="w-full" disabled={loading || !profileName} onclick={handleUpdateProfile}>
+        <Button class="w-full" disabled={loading || !userName} onclick={handleUpdateUser}>
             <UserRoundPen class="mr-2 size-4" /> Save Profile
         </Button>
     </CardContent>

@@ -1,40 +1,62 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import {
-    clearSession,
-    getActiveSession,
-    hasActiveSession,
-    setSession
-} from '$lib/services/session';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getActiveSession, hasActiveSession, UserService } from '$lib/services/user';
 
-describe('session', () => {
+vi.mock('$lib/adapters/user', () => ({
+    appUser: {
+        getUser: vi.fn()
+    }
+}));
+
+vi.mock('$lib/adapters/kv', () => ({
+    appKV: {
+        set: vi.fn(),
+        get: vi.fn(),
+        remove: vi.fn()
+    }
+}));
+
+import { appUser } from '$lib/adapters/user';
+
+describe('UserService Session Management', () => {
     const masterKey = {} as CryptoKey;
     const identityKeyPair = {} as CryptoKeyPair;
 
-    beforeEach(() => {
-        clearSession();
+    beforeEach(async () => {
+        await UserService.clearActiveUser();
+        vi.clearAllMocks();
+        vi.mocked(appUser.getUser).mockResolvedValue({
+            id: 'user-1',
+            name: 'User',
+            avatar: '',
+            createdAt: 1,
+            updatedAt: 1,
+            isDeleted: false,
+            masterKey,
+            identityKeyPair
+        });
     });
 
-    it('stores active local identity state', () => {
-        setSession('user-1', masterKey, identityKeyPair);
+    it('loads active local identity state', async () => {
+        await UserService.setActiveUser('user-1');
 
         expect(getActiveSession().userId).toBe('user-1');
     });
 
-    it('tracks active and sync availability', () => {
+    it('tracks active and sync availability', async () => {
         expect(hasActiveSession()).toBe(false);
 
-        setSession('user-1', masterKey, identityKeyPair);
+        await UserService.setActiveUser('user-1');
 
         expect(hasActiveSession()).toBe(true);
     });
 
     it('throws when no session is initialized', () => {
-        expect(() => getActiveSession()).toThrow('Session not initialized.');
+        expect(() => getActiveSession()).toThrow('Active session not found');
     });
 
-    it('clears session state', () => {
-        setSession('user-1', masterKey, identityKeyPair);
-        clearSession();
+    it('clears session state', async () => {
+        await UserService.setActiveUser('user-1');
+        await UserService.clearActiveUser();
 
         expect(hasActiveSession()).toBe(false);
     });

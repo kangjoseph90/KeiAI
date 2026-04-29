@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserService } from '$lib/services/user/user';
+import { getActiveSession, UserService } from '$lib/services/user';
 
 const mockMasterKey = {} as CryptoKey;
 const mockIdentityKeyPair = {} as CryptoKeyPair;
@@ -29,7 +29,6 @@ vi.mock('$lib/crypto', () => ({
 vi.mock('$lib/utils/id', () => ({ generateId: vi.fn(() => 'local-id') }));
 vi.mock('$lib/utils/clock', () => ({ clock: { now: vi.fn(() => 1000) } }));
 vi.mock('minidenticons', () => ({ minidenticon: vi.fn((seed: string) => `<svg>${seed}</svg>`) }));
-vi.mock('$lib/services/session', () => ({ setSession: vi.fn() }));
 vi.mock('$lib/config', () => ({ PB_URL: 'https://sync.example.test' }));
 
 vi.mock('$lib/adapters/asset', () => ({
@@ -48,7 +47,6 @@ vi.mock('$lib/adapters/storage', () => ({ appStorage: { delete: vi.fn() } }));
 
 import { appUser } from '$lib/adapters/user';
 import { appKV } from '$lib/adapters/kv';
-import { setSession } from '$lib/services/session';
 
 describe('UserService', () => {
     beforeEach(() => {
@@ -71,8 +69,10 @@ describe('UserService', () => {
 
         const restored = await UserService.restoreOrCreateUser();
 
-        expect(restored).toBe(true);
-        expect(setSession).toHaveBeenCalledWith('user-1', mockMasterKey, mockIdentityKeyPair);
+        expect(restored).toEqual({
+            user: expect.objectContaining({ id: 'user-1' }),
+            restored: true
+        });
     });
 
     it('creates a new local identity when no active user exists', async () => {
@@ -80,7 +80,10 @@ describe('UserService', () => {
 
         const restored = await UserService.restoreOrCreateUser();
 
-        expect(restored).toBe(false);
+        expect(restored).toEqual({
+            user: expect.objectContaining({ id: 'local-id' }),
+            restored: false
+        });
         expect(appUser.saveUser).toHaveBeenCalledWith(
             expect.objectContaining({
                 id: 'local-id',
@@ -90,13 +93,14 @@ describe('UserService', () => {
                 identityKeyPair: mockIdentityKeyPair
             })
         );
-        expect(appKV.set).toHaveBeenCalledWith('activeUserId', 'local-id');
+        // KV set is now handled by the caller (App.svelte) or AuthService, not internally
+        expect(appKV.set).not.toHaveBeenCalled();
     });
 
     it('marks a user as sync linked after server authentication', async () => {
         vi.mocked(appUser.getUser).mockResolvedValue(null);
 
-        await UserService.saveLoginUser({
+        const user = await UserService.saveUser({
             id: 'user-1',
             email: 'notice@example.test',
             masterKey: mockMasterKey,
@@ -114,10 +118,10 @@ describe('UserService', () => {
             }),
             { origin: 'sync' }
         );
-        expect(setSession).toHaveBeenCalledWith('user-1', mockMasterKey, mockIdentityKeyPair);
+        expect(user.id).toBe('user-1');
     });
 
-    it('unlinks sync without changing local keys', async () => {
+    it('can clear sync account fields with updateUser', async () => {
         vi.mocked(appUser.getUser).mockResolvedValue({
             id: 'user-1',
             name: 'Linked',
@@ -131,7 +135,7 @@ describe('UserService', () => {
             identityKeyPair: mockIdentityKeyPair
         });
 
-        await UserService.unlinkSync('user-1');
+        await UserService.updateUser('user-1', { username: undefined });
 
         expect(appUser.saveUser).toHaveBeenCalledWith(
             expect.objectContaining({

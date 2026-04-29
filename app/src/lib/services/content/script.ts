@@ -1,5 +1,5 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../session';
+import { getActiveSession, UserService } from '../user';
 import { localDB, type ScriptRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';

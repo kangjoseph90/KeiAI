@@ -1,6 +1,12 @@
 import Dexie from 'dexie';
 import { UserWriteEventEmitter } from './events';
-import type { IUserAdapter, UserRecord, UserWriteOptions, UserWriteEventListener } from './types';
+import type {
+    IUserAdapter,
+    UserRecord,
+    UserWriteOptions,
+    UserWriteEventListener,
+    UserWriteOperation
+} from './types';
 import { clock } from '$lib/utils/clock';
 
 /**
@@ -30,7 +36,7 @@ export class WebUserAdapter implements IUserAdapter {
     }
 
     private emitWriteEvent(
-        operation: 'put' | 'softDelete',
+        operation: UserWriteOperation,
         ids: string[],
         options?: UserWriteOptions
     ): void {

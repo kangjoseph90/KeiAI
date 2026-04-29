@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { startSyncStatusTracking, stopSyncStatusTracking } from '$lib/stores/sync';
-import { dataSyncStatus, profileSyncStatus, assetSyncStatus } from '$lib/stores/state';
+import { dataSyncStatus, userSyncStatus, assetSyncStatus } from '$lib/stores/state';
 
 const dataStatusListeners = new Set<(status: { state: string }) => void>();
-const profileStatusListeners = new Set<(status: { state: string }) => void>();
+const userStatusListeners = new Set<(status: { state: string }) => void>();
 const assetStatusListeners = new Set<
     (status: { state: string; pendingCount: number; currentAssetId?: string }) => void
 >();
@@ -17,11 +17,11 @@ vi.mock('$lib/services/sync', () => ({
             return () => dataStatusListeners.delete(listener);
         })
     },
-    ProfileSyncService: {
+    UserSyncService: {
         subscribeStatus: vi.fn((listener: (status: { state: string }) => void) => {
-            profileStatusListeners.add(listener);
+            userStatusListeners.add(listener);
             listener({ state: 'idle' });
-            return () => profileStatusListeners.delete(listener);
+            return () => userStatusListeners.delete(listener);
         })
     },
     AssetSyncService: {
@@ -39,10 +39,10 @@ describe('sync status stores', () => {
     beforeEach(() => {
         stopSyncStatusTracking();
         dataStatusListeners.clear();
-        profileStatusListeners.clear();
+        userStatusListeners.clear();
         assetStatusListeners.clear();
         dataSyncStatus.set({ state: 'idle' });
-        profileSyncStatus.set({ state: 'idle' });
+        userSyncStatus.set({ state: 'idle' });
         assetSyncStatus.set({ state: 'idle', pendingCount: 0 });
     });
 
@@ -52,7 +52,7 @@ describe('sync status stores', () => {
         for (const listener of dataStatusListeners) {
             listener({ state: 'syncing' });
         }
-        for (const listener of profileStatusListeners) {
+        for (const listener of userStatusListeners) {
             listener({ state: 'network_error' });
         }
         for (const listener of assetStatusListeners) {
@@ -60,7 +60,7 @@ describe('sync status stores', () => {
         }
 
         expect(get(dataSyncStatus)).toEqual({ state: 'syncing' });
-        expect(get(profileSyncStatus)).toEqual({ state: 'network_error' });
+        expect(get(userSyncStatus)).toEqual({ state: 'network_error' });
         expect(get(assetSyncStatus)).toEqual({
             state: 'syncing',
             pendingCount: 3,
@@ -78,7 +78,7 @@ describe('sync status stores', () => {
         stopSyncStatusTracking();
 
         expect(get(dataSyncStatus)).toEqual({ state: 'idle' });
-        expect(get(profileSyncStatus)).toEqual({ state: 'idle' });
+        expect(get(userSyncStatus)).toEqual({ state: 'idle' });
         expect(get(assetSyncStatus)).toEqual({ state: 'idle', pendingCount: 0 });
     });
 });

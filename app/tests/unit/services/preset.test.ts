@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PresetService, type PresetFields } from '$lib/services/content/preset';
-import { getActiveSession } from '$lib/services/session';
+import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB, type PresetRecord } from '$lib/adapters/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
@@ -17,8 +17,10 @@ vi.mock('$lib/crypto', () => ({
     decrypt: vi.fn()
 }));
 
-vi.mock('$lib/services/session', () => ({
-    getActiveSession: vi.fn()
+vi.mock('$lib/services/user', () => ({
+    UserService: {},
+    getActiveSession: vi.fn(),
+    hasActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/adapters/db', () => ({

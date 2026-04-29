@@ -89,6 +89,9 @@ export interface IAssetAdapter {
     /** Soft-delete an asset record (isDeleted = true). */
     softDeleteAsset(id: string, options?: AssetWriteOptions): Promise<void>;
 
+    /** Delete an asset record from storage. */
+    deleteAsset(id: string, options?: AssetWriteOptions): Promise<void>;
+
     /** Get asset records updated since a given timestamp (includes deleted). */
     getAssetsSince(userId: string, sinceUpdatedAt: number): Promise<AssetRecord[]>;
 

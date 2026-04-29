@@ -5,7 +5,13 @@ import { appLocalDataDir } from '@tauri-apps/api/path';
 import { Store as TauriStore } from '@tauri-apps/plugin-store';
 import { UserWriteEventEmitter } from './events';
 import { clock } from '$lib/utils/clock';
-import type { IUserAdapter, UserRecord, UserWriteOptions, UserWriteEventListener } from './types';
+import type {
+    IUserAdapter,
+    UserRecord,
+    UserWriteOptions,
+    UserWriteEventListener,
+    UserWriteOperation
+} from './types';
 
 /**
  * Tauri User Adapter
@@ -80,7 +86,7 @@ export class TauriUserAdapter implements IUserAdapter {
     }
 
     private emitWriteEvent(
-        operation: 'put' | 'softDelete',
+        operation: UserWriteOperation,
         ids: string[],
         options?: UserWriteOptions
     ): void {

@@ -13,13 +13,13 @@
  * since stores/index.ts re-exports from this file indirectly via views.
  */
 
-import { activeUser, pbConnected } from '../state';
-import { AuthService, UserService } from '$lib/services';
+import { activeUser, pbConnected } from './state';
+import { AuthService, getActiveSession, UserService } from '$lib/services';
 import { SyncManager } from '$lib/services/sync';
-import { loadProfile } from './profile';
-import { clearActiveCharacter } from '../content/character';
-import { loadGlobalState } from '../init';
-import { getActiveSession } from '$lib/services/session';
+import { loadUser } from './user';
+import { clearActiveCharacter } from './content/character';
+import { loadGlobalState } from './init';
+import { PB_URL } from '$lib/config';
 
 // ─── PB Connection State ─────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ AuthService.onPbAuthChange((isValid) => {
  * newly authenticated user's data.
  */
 async function refreshAfterLogin(): Promise<void> {
-    void loadProfile();
+    void loadUser();
     await SyncManager.syncAll();
     clearActiveCharacter();
     await loadGlobalState();
@@ -83,8 +83,10 @@ export async function performSetSyncServerUrl(syncServerUrl?: string): Promise<v
     AuthService.clearAuth();
     pbConnected.set(false);
     const { userId } = getActiveSession();
-    await UserService.setSyncServerUrl(userId, syncServerUrl);
-    await loadProfile();
+    const nextUrl = syncServerUrl?.trim() || undefined;
+    await UserService.updateUser(userId, { syncServerUrl: nextUrl, username: undefined });
+    AuthService.setSyncServerUrl(nextUrl ?? PB_URL);
+    await loadUser();
 }
 
 export async function performChangePassword(
@@ -98,12 +100,12 @@ export async function performChangePassword(
 
 export async function performUnlinkSync(): Promise<void> {
     await AuthService.unlinkSync();
-    void loadProfile();
+    void loadUser();
 }
 
 export async function performLogout(): Promise<void> {
     await AuthService.logout();
-    void loadProfile();
+    void loadUser();
 }
 
 /**
@@ -114,5 +116,6 @@ export async function performLogout(): Promise<void> {
 export async function performCreateNewUser(): Promise<void> {
     SyncManager.stopAutoSync();
     AuthService.clearAuth();
-    await UserService.switchUser(''); // Clear activeUserId KV and reload
+    await UserService.setActiveUser(''); // Clear activeUserId KV and reload
+    window.location.reload();
 }

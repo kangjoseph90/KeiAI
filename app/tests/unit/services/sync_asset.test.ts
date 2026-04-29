@@ -19,7 +19,8 @@ vi.mock('$lib/adapters/pb', () => ({
     }
 }));
 
-vi.mock('$lib/services/session', () => ({
+vi.mock('$lib/services/user', () => ({
+    UserService: {},
     getActiveSession: vi.fn(),
     hasActiveSession: vi.fn()
 }));
@@ -70,7 +71,7 @@ vi.mock('$lib/services/asset/remote', () => ({
 import { pb } from '$lib/adapters/pb';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
-import { getActiveSession, hasActiveSession } from '$lib/services/session';
+import { getActiveSession, hasActiveSession } from '$lib/services/user';
 import { encryptConvergentAsset } from '$lib/services/asset/util';
 import { uploadAsset } from '$lib/services/asset/remote';
 

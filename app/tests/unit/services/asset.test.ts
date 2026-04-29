@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssetService } from '$lib/services/asset';
 import type { AssetRecord, AssetRegistryRecord } from '$lib/adapters/asset';
 
-vi.mock('$lib/services/session', () => ({
-    getActiveSession: vi.fn()
+vi.mock('$lib/services/user', () => ({
+    UserService: {},
+    getActiveSession: vi.fn(),
+    hasActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/adapters/asset', () => ({
@@ -57,7 +59,7 @@ vi.mock('$lib/services/sync/asset', () => ({
     }
 }));
 
-import { getActiveSession } from '$lib/services/session';
+import { getActiveSession } from '$lib/services/user';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
 import { sha256 } from '$lib/crypto';

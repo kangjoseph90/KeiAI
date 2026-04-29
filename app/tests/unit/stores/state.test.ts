@@ -15,7 +15,7 @@ import {
     displayMessages,
     isChatRunning
 } from '$lib/stores/state';
-import type { AppSettings, Profile, Chat, Message } from '$lib/services';
+import type { AppSettings, User, Chat, Message } from '$lib/services';
 import type { ChatTask } from '$lib/stores/types';
 
 function makeMockTask(overrides: Partial<ChatTask> = {}): ChatTask {
@@ -46,13 +46,13 @@ describe('Global Stores', () => {
                 avatar: '',
                 username: 'kei',
                 syncServerUrl: 'https://sync.example.test'
-            } as Profile);
+            } as User);
             pbConnected.set(true);
             expect(get(isLoggedIn)).toBe(true);
         });
 
         it('should not be logged in if user is local-only', () => {
-            activeUser.set({ id: 'u1', name: 'Local', avatar: '' } as Profile);
+            activeUser.set({ id: 'u1', name: 'Local', avatar: '' } as User);
             pbConnected.set(true);
             expect(get(isLoggedIn)).toBe(false);
         });
@@ -64,7 +64,7 @@ describe('Global Stores', () => {
                 avatar: '',
                 username: 'kei',
                 syncServerUrl: 'https://sync.example.test'
-            } as Profile);
+            } as User);
             pbConnected.set(false);
             expect(get(isLoggedIn)).toBe(false);
         });

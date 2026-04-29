@@ -11,12 +11,12 @@
  * The server never decrypts or inspects any data.
  * Encryption/decryption happens ONLY at this sync boundary.
  *
- * Profile data has its own sync service (ProfileSyncService) because it is
+ * User display data has its own sync service (UserSyncService) because it is
  * NOT E2EE and uses PB file fields, not encrypted blobs.
  */
 
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession, hasActiveSession } from '../session';
+import { getActiveSession, hasActiveSession } from '../user';
 import { encrypt, decrypt, toBase64, fromBase64 } from '$lib/crypto';
 import {
     localDB,

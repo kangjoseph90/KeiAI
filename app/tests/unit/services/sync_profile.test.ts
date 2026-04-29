@@ -1,11 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ProfileSyncService } from '$lib/services/sync/profile';
+import { UserSyncService } from '$lib/services/sync/user';
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession, hasActiveSession } from '$lib/services/session';
-import { ProfileService } from '$lib/services/user/profile';
+import { getActiveSession, hasActiveSession } from '$lib/services/user';
 import { appUser } from '$lib/adapters/user';
 import type { RecordModel } from 'pocketbase';
-import type { Profile } from '$lib/services';
+import type { User } from '$lib/services';
 import type { UserRecord } from '$lib/adapters/user';
 
 // Mock Collection Mock
@@ -27,15 +26,11 @@ vi.mock('$lib/adapters/pb', () => ({
     }
 }));
 
-vi.mock('$lib/services/session', () => ({
+vi.mock('$lib/services/user', () => ({
+    UserService: {},
     getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
-}));
-
-vi.mock('$lib/services/user/profile', () => ({
-    ProfileService: {
-        applyRemoteUpdate: vi.fn()
-    }
+    hasActiveSession: vi.fn(),
+    toUser: vi.fn((u) => u)
 }));
 
 vi.mock('$lib/adapters/user', () => ({
@@ -49,7 +44,7 @@ vi.mock('$lib/adapters/user', () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-describe('ProfileSyncService', () => {
+describe('UserSyncService', () => {
     const mockUserId = 'user-123';
 
     beforeEach(() => {
@@ -61,10 +56,10 @@ describe('ProfileSyncService', () => {
         });
         vi.mocked(hasActiveSession).mockReturnValue(true);
         (pb.authStore as unknown as { isValid: boolean }).isValid = true;
-        (ProfileSyncService as unknown as { subscribed: boolean }).subscribed = false;
+        (UserSyncService as unknown as { subscribed: boolean }).subscribed = false;
     });
 
-    describe('pushProfile', () => {
+    describe('pushUser', () => {
         it('should update PocketBase record', async () => {
             vi.mocked(appUser.getUser).mockResolvedValue({
                 id: mockUserId,
@@ -76,7 +71,7 @@ describe('ProfileSyncService', () => {
                 id: mockUserId
             } as unknown as RecordModel);
 
-            await ProfileSyncService.pushProfile();
+            await UserSyncService.pushUser();
 
             expect(mockCollection.update).toHaveBeenCalledWith(mockUserId, { name: 'New Name' });
         });
@@ -97,7 +92,7 @@ describe('ProfileSyncService', () => {
                 syncServerUrl: 'http://test'
             } as UserRecord);
 
-            await ProfileSyncService.pushProfile();
+            await UserSyncService.pushUser();
 
             expect(mockFetch).toHaveBeenCalledWith('data:image/png;base64,abc');
             expect(mockCollection.update).toHaveBeenCalledWith(
@@ -113,7 +108,7 @@ describe('ProfileSyncService', () => {
 
         it('should skip if guest or invalid auth', async () => {
             (pb.authStore as unknown as { isValid: boolean }).isValid = false;
-            await ProfileSyncService.pushProfile();
+            await UserSyncService.pushUser();
             expect(pb.collection).not.toHaveBeenCalled();
 
             (pb.authStore as unknown as { isValid: boolean }).isValid = true;
@@ -127,12 +122,12 @@ describe('ProfileSyncService', () => {
                 id: mockUserId,
                 name: 'Local User'
             } as UserRecord);
-            await ProfileSyncService.pushProfile();
+            await UserSyncService.pushUser();
             expect(pb.collection).not.toHaveBeenCalled();
         });
     });
 
-    describe('pullProfile', () => {
+    describe('pullUser', () => {
         it('should fetch from PocketBase and convert avatar to Data URI', async () => {
             const mockServerRecord = {
                 name: 'Remote Name',
@@ -160,14 +155,17 @@ describe('ProfileSyncService', () => {
                 syncServerUrl: 'http://test'
             } as UserRecord);
 
-            await ProfileSyncService.pullProfile();
+            await UserSyncService.pullUser();
 
             expect(mockCollection.getOne).toHaveBeenCalledWith(mockUserId);
-            expect(ProfileService.applyRemoteUpdate).toHaveBeenCalledWith(
-                mockUserId,
-                'Remote Name',
-                mockDataUri,
-                expect.any(Number)
+            expect(appUser.saveUser).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    id: mockUserId,
+                    name: 'Remote Name',
+                    avatar: mockDataUri,
+                    updatedAt: expect.any(Number)
+                }),
+                { origin: 'sync' }
             );
         });
     });
@@ -180,16 +178,16 @@ describe('ProfileSyncService', () => {
                 avatar: '',
                 syncServerUrl: 'http://test'
             } as UserRecord);
-            await ProfileSyncService.subscribeRealtime();
+            await UserSyncService.subscribeRealtime();
 
             expect(mockCollection.subscribe).toHaveBeenCalledWith(mockUserId, expect.any(Function));
         });
 
         it('should unsubscribe', async () => {
             // Use type casting to access private static member for testing
-            (ProfileSyncService as unknown as { subscribed: boolean }).subscribed = true;
+            (UserSyncService as unknown as { subscribed: boolean }).subscribed = true;
 
-            await ProfileSyncService.unsubscribeRealtime();
+            await UserSyncService.unsubscribeRealtime();
 
             expect(mockCollection.unsubscribe).toHaveBeenCalledWith(mockUserId);
         });

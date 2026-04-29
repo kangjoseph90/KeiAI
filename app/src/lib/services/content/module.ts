@@ -1,5 +1,5 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../session';
+import { getActiveSession } from '../user';
 import { localDB, type ModuleRecord } from '$lib/adapters/db';
 import type { AssetRef, FolderDef, OrderedRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';

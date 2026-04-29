@@ -13,8 +13,10 @@ vi.mock('$lib/crypto', () => ({
     decrypt: vi.fn()
 }));
 
-vi.mock('$lib/services/session', () => ({
-    getActiveSession: vi.fn()
+vi.mock('$lib/services/user', () => ({
+    UserService: {},
+    getActiveSession: vi.fn(),
+    hasActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -31,7 +33,7 @@ vi.mock('$lib/utils/id', () => ({
 }));
 
 import { encrypt, decrypt } from '$lib/crypto';
-import { getActiveSession } from '$lib/services/session';
+import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 
 describe('PluginService', () => {

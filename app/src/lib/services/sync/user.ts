@@ -1,13 +1,13 @@
 /**
- * Profile Sync Service
+ * User Sync Service
  *
- * Handles bidirectional synchronization of user profile data (name, avatar)
- * with PocketBase. Separated from DataSyncService because profile data:
+ * Handles bidirectional synchronization of user display data (name, avatar)
+ * with PocketBase. Separated from DataSyncService because user data:
  *   - Lives in the `users` PB collection (not the encrypted data tables)
  *   - Is NOT E2EE (name/avatar are plaintext)
  *   - Has different serialization (avatar is a PB file field, not Base64 blob)
  *
- * Push: Called by ProfileService.update() after local writes.
+ * Push: Called by UserService.updateUser() after local writes.
  * Pull: PB Realtime subscription on the user's own record.
  *
  * This module has NO dependency on Svelte stores - store refresh is handled
@@ -15,19 +15,18 @@
  */
 
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession, hasActiveSession } from '../session';
-import { ProfileService, type Profile } from '../user/profile';
+import { getActiveSession, hasActiveSession } from '../user';
+import { toUser, type User } from '../user';
 import { appUser } from '$lib/adapters/user';
 import { BaseSyncEngine } from './base';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
 
-const logger = createLogger('sync:profile');
+const logger = createLogger('sync:user');
 
-export class ProfileSyncEngine extends BaseSyncEngine {
+export class UserSyncEngine extends BaseSyncEngine {
     private subscribed = false;
     private onRemoteUpdate: (() => void) | null = null;
-    private lastPulledProfile: Profile | null = null;
 
     constructor() {
         super();
@@ -44,10 +43,10 @@ export class ProfileSyncEngine extends BaseSyncEngine {
     // ─── Push (local → server) ──────────────────────────
 
     /**
-     * Push the current profile to PocketBase.
+     * Push the current user display data to PocketBase.
      * Fire-and-forget: errors are logged but never thrown.
      */
-    async pushProfile(): Promise<void> {
+    async pushUser(): Promise<void> {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
 
         try {
@@ -99,7 +98,7 @@ export class ProfileSyncEngine extends BaseSyncEngine {
     }
 
     /**
-     * Unsubscribe from Realtime profile updates.
+     * Unsubscribe from Realtime user updates.
      */
     async unsubscribeRealtime(): Promise<void> {
         try {
@@ -115,9 +114,7 @@ export class ProfileSyncEngine extends BaseSyncEngine {
     /**
      * Handle a Realtime event for the user's own PB record.
      */
-    private async handleRealtimeEvent(
-        serverRecord: Record<string, unknown>
-    ): Promise<Profile | null> {
+    private async handleRealtimeEvent(serverRecord: Record<string, unknown>): Promise<User | null> {
         try {
             const { userId } = getActiveSession();
 
@@ -141,11 +138,11 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 
             if (localUpdatedAt > remoteUpdatedAt) {
                 // Local is newer: push back to server (background fire-and-forget)
-                void this.pushProfile();
+                void this.pushUser();
                 return null;
             }
 
-            const updated = await ProfileService.applyRemoteUpdate(
+            const updated = await this.applyRemoteUserUpdate(
                 userId,
                 remoteName,
                 remoteAvatar,
@@ -165,13 +162,11 @@ export class ProfileSyncEngine extends BaseSyncEngine {
     }
 
     /**
-     * One-shot pull: fetch the latest profile from PB and apply if newer.
+     * One-shot pull: fetch the latest user data from PB and apply if newer.
      * Called on reconnect / tab focus.
      */
-    async pullProfile(): Promise<Profile | null> {
-        this.lastPulledProfile = null;
+    async pullUser(): Promise<void> {
         await this.trigger();
-        return this.lastPulledProfile;
     }
 
     protected override async performSync(): Promise<void> {
@@ -199,16 +194,16 @@ export class ProfileSyncEngine extends BaseSyncEngine {
 
             if (localUpdatedAt > remoteUpdatedAt) {
                 // Local is newer: push back to server
-                await this.pushProfile();
+                await this.pushUser();
             } else {
                 // Remote is newer or equal: apply locally
-                this.lastPulledProfile = await ProfileService.applyRemoteUpdate(
+                const updatedUser = await this.applyRemoteUserUpdate(
                     userId,
                     remoteName,
                     remoteAvatar,
                     remoteUpdatedAt
                 );
-                if (this.lastPulledProfile) {
+                if (updatedUser) {
                     this.onRemoteUpdate?.();
                 }
             }
@@ -235,6 +230,27 @@ export class ProfileSyncEngine extends BaseSyncEngine {
         return status === 402 || status === 413;
     }
 
+    private async applyRemoteUserUpdate(
+        userId: string,
+        remoteName: string,
+        remoteAvatar: string,
+        remoteUpdatedAt: number
+    ): Promise<User | null> {
+        const user = await appUser.getUser(userId);
+        if (!user) return null;
+        if (remoteUpdatedAt <= user.updatedAt) return null;
+
+        const updated = {
+            ...user,
+            name: remoteName,
+            avatar: remoteAvatar,
+            updatedAt: remoteUpdatedAt
+        };
+        await appUser.saveUser(updated, { origin: 'sync' });
+
+        return toUser(updated);
+    }
+
     /**
      * Fetches an image from a URL and converts it to a Data URI.
      * Used to persist remote avatars as local-first Base64 strings.
@@ -258,4 +274,4 @@ export class ProfileSyncEngine extends BaseSyncEngine {
     }
 }
 
-export const ProfileSyncService = new ProfileSyncEngine();
+export const UserSyncService = new UserSyncEngine();

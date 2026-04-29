@@ -1,14 +1,14 @@
 /**
  * Sync Manager Tests
  *
- * Tests the SyncManager which orchestrates DataSyncService and ProfileSyncService
+ * Tests the SyncManager which orchestrates DataSyncService and UserSyncService
  * lifecycles (start/stop/reconnect).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SyncManager } from '$lib/services/sync';
 import { DataSyncService } from '$lib/services/sync/data';
-import { ProfileSyncService } from '$lib/services/sync/profile';
+import { UserSyncService } from '$lib/services/sync/user';
 import { AssetSyncService } from '$lib/services/sync/asset';
 import { appAsset } from '$lib/adapters/asset';
 import { appUser } from '$lib/adapters/user';
@@ -88,18 +88,18 @@ vi.mock('$lib/adapters/user', () => ({
     }
 }));
 
-vi.mock('$lib/services/sync/profile', () => ({
-    ProfileSyncService: {
+vi.mock('$lib/services/sync/user', () => ({
+    UserSyncService: {
         setOnRemoteUpdate: vi.fn((cb: (() => void) | null) => {
             storedOnRemoteUpdate = cb;
         }),
         subscribeRealtime: vi.fn(async () => {}),
         unsubscribeRealtime: vi.fn(async () => {}),
-        pullProfile: vi.fn(async () => {
+        pullUser: vi.fn(async () => {
             storedOnRemoteUpdate?.();
             return null;
         }),
-        pushProfile: vi.fn(async () => {}),
+        pushUser: vi.fn(async () => {}),
         isSubscribed: false
     }
 }));
@@ -146,10 +146,10 @@ describe('SyncManager', () => {
         SyncManager.stopAutoSync();
         storedOnRemoteUpdate = null;
         vi.mocked(DataSyncService.subscribeRealtime).mockClear();
-        vi.mocked(ProfileSyncService.setOnRemoteUpdate).mockClear();
-        vi.mocked(ProfileSyncService.subscribeRealtime).mockClear();
-        vi.mocked(ProfileSyncService.unsubscribeRealtime).mockClear();
-        vi.mocked(ProfileSyncService.pullProfile).mockClear();
+        vi.mocked(UserSyncService.setOnRemoteUpdate).mockClear();
+        vi.mocked(UserSyncService.subscribeRealtime).mockClear();
+        vi.mocked(UserSyncService.unsubscribeRealtime).mockClear();
+        vi.mocked(UserSyncService.pullUser).mockClear();
         vi.mocked(AssetSyncService.start).mockClear();
         vi.mocked(AssetSyncService.stop).mockClear();
         vi.mocked(AssetSyncService.subscribeRealtime).mockClear();
@@ -170,14 +170,14 @@ describe('SyncManager', () => {
 
     describe('startAutoSync', () => {
         it('should start subscriptions and set poll timer', () => {
-            const onProfileUpdate = vi.fn();
+            const onUserUpdate = vi.fn();
 
-            SyncManager.startAutoSync({ onProfileUpdate });
+            SyncManager.startAutoSync({ onUserUpdate });
 
             expect(DataSyncService.subscribeRealtime).toHaveBeenCalled();
             expect(AssetSyncService.subscribeRealtime).toHaveBeenCalled();
-            expect(ProfileSyncService.setOnRemoteUpdate).toHaveBeenCalledWith(onProfileUpdate);
-            expect(ProfileSyncService.subscribeRealtime).toHaveBeenCalled();
+            expect(UserSyncService.setOnRemoteUpdate).toHaveBeenCalledWith(onUserUpdate);
+            expect(UserSyncService.subscribeRealtime).toHaveBeenCalled();
             expect(AssetSyncService.start).toHaveBeenCalledTimes(1);
 
             expect(DataSyncService.syncAll).not.toHaveBeenCalled();
@@ -208,7 +208,7 @@ describe('SyncManager', () => {
 
             expect(DataSyncService.unsubscribeRealtime).toHaveBeenCalled();
             expect(AssetSyncService.unsubscribeRealtime).toHaveBeenCalled();
-            expect(ProfileSyncService.unsubscribeRealtime).toHaveBeenCalled();
+            expect(UserSyncService.unsubscribeRealtime).toHaveBeenCalled();
             expect(AssetSyncService.stop).toHaveBeenCalled();
 
             vi.advanceTimersByTime(300_000);
@@ -218,8 +218,8 @@ describe('SyncManager', () => {
 
     describe('event listeners', () => {
         it('should trigger resubscribe on "online" event if offline', async () => {
-            const onProfileUpdate = vi.fn();
-            SyncManager.startAutoSync({ onProfileUpdate });
+            const onUserUpdate = vi.fn();
+            SyncManager.startAutoSync({ onUserUpdate });
 
             // Find the online listener
             const onlineCall = vi
@@ -239,17 +239,17 @@ describe('SyncManager', () => {
             await Promise.resolve(); // sub 2
             await Promise.resolve(); // sub 3
             await Promise.resolve(); // syncAll
-            await Promise.resolve(); // pullProfile
+            await Promise.resolve(); // pullUser
             await Promise.resolve(); // final callback
 
             expect(DataSyncService.subscribeRealtime).toHaveBeenCalledTimes(2); // once at start, once at online
             expect(AssetSyncService.subscribeRealtime).toHaveBeenCalledTimes(2); // once at start, once at online
             expect(DataSyncService.syncAll).toHaveBeenCalled();
             expect(AssetSyncService.start).toHaveBeenCalledTimes(2);
-            expect(onProfileUpdate).toHaveBeenCalled();
+            expect(onUserUpdate).toHaveBeenCalled();
         });
 
-        it('should only pull on "visibilitychange" if already subscribed', async () => {
+        it('should do nothing on "visibilitychange" if already subscribed', async () => {
             SyncManager.startAutoSync();
 
             const visCall = vi
@@ -263,14 +263,14 @@ describe('SyncManager', () => {
 
             await visHandler();
             await Promise.resolve();
-            await Promise.resolve();
 
             expect(DataSyncService.subscribeRealtime).not.toHaveBeenCalled();
-            expect(DataSyncService.syncAll).toHaveBeenCalled();
-            expect(AssetSyncService.start).toHaveBeenCalledTimes(2);
+            expect(DataSyncService.syncAll).not.toHaveBeenCalled();
+            expect(AssetSyncService.start).toHaveBeenCalledTimes(1);
+            expect(UserSyncService.pullUser).not.toHaveBeenCalled();
         });
 
-        it('should route user write events to ProfileSyncService', async () => {
+        it('should route user write events to UserSyncService', async () => {
             SyncManager.startAutoSync();
             expect(userWriteListener).not.toBeNull();
 
@@ -278,17 +278,17 @@ describe('SyncManager', () => {
                 { tableName: 'users', ids: ['u1'], origin: 'local', operation: 'put' }
             ]);
             await Promise.resolve();
-            expect(ProfileSyncService.pushProfile).toHaveBeenCalled();
+            expect(UserSyncService.pushUser).toHaveBeenCalled();
         });
 
-        it('should not push profile for sync-origin user writes', async () => {
+        it('should not push user data for sync-origin user writes', async () => {
             SyncManager.startAutoSync();
 
             userWriteListener?.([
                 { tableName: 'users', ids: ['u1'], origin: 'sync', operation: 'put' }
             ]);
             await Promise.resolve();
-            expect(ProfileSyncService.pushProfile).not.toHaveBeenCalled();
+            expect(UserSyncService.pushUser).not.toHaveBeenCalled();
         });
 
         it('should route local DB writes to the appropriate sync engines', async () => {

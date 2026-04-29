@@ -4,7 +4,8 @@ import type {
     TableName,
     BaseRecord,
     DatabaseWriteEventListener,
-    DatabaseWriteOptions
+    DatabaseWriteOptions,
+    DatabaseWriteOperation
 } from './types';
 import { TABLES } from './types';
 import { AppError } from '$lib/types/errors';
@@ -543,13 +544,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
     private emitWriteEvent(
         tableName: TableName,
-        operation:
-            | 'put'
-            | 'putMany'
-            | 'delete'
-            | 'deleteByIndex'
-            | 'softDelete'
-            | 'softDeleteByIndex',
+        operation: DatabaseWriteOperation,
         ids: string[],
         options?: DatabaseWriteOptions
     ): void {

@@ -17,7 +17,7 @@ import { appStorage } from '$lib/adapters/storage';
 import { clock } from '$lib/utils/clock';
 import { generateId } from '$lib/utils/id';
 import { AppError } from '$lib/types/errors';
-import { getActiveSession } from '../session';
+import { getActiveSession } from '../user';
 import { AssetSyncService } from '../sync/asset';
 import type { AssetKind } from './types';
 import { CACHE_HIGH_WATERMARK, CACHE_LOW_WATERMARK } from './types';

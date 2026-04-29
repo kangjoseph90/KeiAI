@@ -209,6 +209,12 @@ export class TauriAssetAdapter implements IAssetAdapter {
         this.emitWriteEvent('assets', 'softDelete', [id], options);
     }
 
+    async deleteAsset(id: string, options?: AssetWriteOptions): Promise<void> {
+        const db = await this.getDb();
+        await db.execute(`DELETE FROM assets WHERE id = $1`, [id]);
+        this.emitWriteEvent('assets', 'delete', [id], options);
+    }
+
     async getAssetsSince(userId: string, sinceUpdatedAt: number): Promise<AssetRecord[]> {
         const db = await this.getDb();
         const rows = await db.select<AssetSqlRow[]>(

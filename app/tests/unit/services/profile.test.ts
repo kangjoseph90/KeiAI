@@ -1,19 +1,15 @@
 /**
- * Profile Service Tests
+ * User Service Tests
  *
- * Tests the ProfileService which manages the current user's profile data
- * and connects with the User adapter and ProfileSyncService.
+ * Tests the UserService which manages the current user's user data
+ * and connects with the User adapter and UserSyncService.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ProfileService } from '$lib/services/user/profile';
+import { getActiveSession, UserService } from '$lib/services/user';
 import type { UserRecord } from '$lib/adapters/user';
 
 // Mock all dependencies
-vi.mock('$lib/services/session', () => ({
-    getActiveSession: vi.fn()
-}));
-
 vi.mock('$lib/adapters/user', () => ({
     appUser: {
         getUser: vi.fn(),
@@ -21,10 +17,9 @@ vi.mock('$lib/adapters/user', () => ({
     }
 }));
 
-import { getActiveSession } from '$lib/services/session';
 import { appUser } from '$lib/adapters/user';
 
-describe('ProfileService', () => {
+describe('UserService', () => {
     const mockUserId = 'user-123';
     const baseMockUser: UserRecord = {
         id: mockUserId,
@@ -41,21 +36,14 @@ describe('ProfileService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
 
-        // Default session mock
-        vi.mocked(getActiveSession).mockReturnValue({
-            userId: mockUserId,
-            masterKey: {} as CryptoKey,
-            identityKeyPair: {} as CryptoKeyPair
-        });
-
         // Default user adapter mock
         vi.mocked(appUser.getUser).mockResolvedValue({ ...baseMockUser });
         vi.mocked(appUser.saveUser).mockResolvedValue(undefined);
     });
 
-    describe('get', () => {
+    describe('getUser', () => {
         it('should return the profile for the active session user', async () => {
-            const result = await ProfileService.get();
+            const result = await UserService.getUser(mockUserId);
 
             expect(result).toEqual({
                 id: mockUserId,
@@ -69,13 +57,15 @@ describe('ProfileService', () => {
         it('should throw an error if the user is not found', async () => {
             vi.mocked(appUser.getUser).mockResolvedValue(null);
 
-            await expect(ProfileService.get()).rejects.toThrow(`User not found: ${mockUserId}`);
+            await expect(UserService.getUser(mockUserId)).rejects.toThrow(
+                `User not found: ${mockUserId}`
+            );
         });
     });
 
-    describe('update', () => {
+    describe('updateUser', () => {
         it('should update name and avatar fields and trigger sync', async () => {
-            const result = await ProfileService.update({
+            const result = await UserService.updateUser(mockUserId, {
                 name: 'Jane Doe',
                 avatar: 'new_avatar.png'
             });
@@ -93,7 +83,7 @@ describe('ProfileService', () => {
         });
 
         it('should update only the provided fields', async () => {
-            const result = await ProfileService.update({ name: 'Jane Doe' });
+            const result = await UserService.updateUser(mockUserId, { name: 'Jane Doe' });
 
             expect(result.name).toBe('Jane Doe');
             expect(result.avatar).toBe('avatar.png'); // Unchanged
@@ -110,63 +100,9 @@ describe('ProfileService', () => {
         it('should throw an error if the user is not found', async () => {
             vi.mocked(appUser.getUser).mockResolvedValue(null);
 
-            await expect(ProfileService.update({ name: 'New Name' })).rejects.toThrow(
+            await expect(UserService.updateUser(mockUserId, { name: 'New Name' })).rejects.toThrow(
                 `User not found: ${mockUserId}`
             );
-            expect(appUser.saveUser).not.toHaveBeenCalled();
-        });
-    });
-
-    describe('applyRemoteUpdate', () => {
-        it('should apply remote update if server timestamp is strictly newer', async () => {
-            const newServerTime = baseMockUser.updatedAt + 1000;
-
-            const result = await ProfileService.applyRemoteUpdate(
-                mockUserId,
-                'Remote Name',
-                'remote_avatar.png',
-                newServerTime
-            );
-
-            expect(result).not.toBeNull();
-            expect(result?.name).toBe('Remote Name');
-            expect(result?.avatar).toBe('remote_avatar.png');
-
-            expect(appUser.saveUser).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    name: 'Remote Name',
-                    avatar: 'remote_avatar.png',
-                    updatedAt: newServerTime
-                }),
-                { origin: 'sync' }
-            );
-        });
-
-        it('should reject remote update if server timestamp is older or equal (LWW)', async () => {
-            const oldServerTime = baseMockUser.updatedAt; // Equal
-
-            const result = await ProfileService.applyRemoteUpdate(
-                mockUserId,
-                'Remote Name',
-                'remote_avatar.png',
-                oldServerTime
-            );
-
-            expect(result).toBeNull();
-            expect(appUser.saveUser).not.toHaveBeenCalled();
-        });
-
-        it('should return null if local user is not found', async () => {
-            vi.mocked(appUser.getUser).mockResolvedValue(null);
-
-            const result = await ProfileService.applyRemoteUpdate(
-                mockUserId,
-                'Remote Name',
-                'remote_avatar.png',
-                999999
-            );
-
-            expect(result).toBeNull();
             expect(appUser.saveUser).not.toHaveBeenCalled();
         });
     });

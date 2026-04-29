@@ -17,8 +17,10 @@ vi.mock('$lib/crypto', () => ({
     decrypt: vi.fn()
 }));
 
-vi.mock('$lib/services/session', () => ({
-    getActiveSession: vi.fn()
+vi.mock('$lib/services/user', () => ({
+    UserService: {},
+    getActiveSession: vi.fn(),
+    hasActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -63,7 +65,7 @@ vi.mock('$lib/services/content/write_queue', () => ({
 }));
 
 import { encrypt, decrypt } from '$lib/crypto';
-import { getActiveSession } from '$lib/services/session';
+import { getActiveSession } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';

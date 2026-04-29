@@ -23,7 +23,8 @@ import type {
     PresetRecord,
     ToolCallRecord,
     TranslationRecord,
-    CharJSRecord
+    CharJSRecord,
+    DatabaseWriteOperation
 } from './types';
 import { DatabaseWriteEventEmitter } from './events';
 import { clock } from '$lib/utils/clock';
@@ -278,13 +279,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 
     private emitWriteEvent(
         tableName: TableName,
-        operation:
-            | 'put'
-            | 'putMany'
-            | 'delete'
-            | 'deleteByIndex'
-            | 'softDelete'
-            | 'softDeleteByIndex',
+        operation: DatabaseWriteOperation,
         ids: string[],
         options?: DatabaseWriteOptions
     ): void {

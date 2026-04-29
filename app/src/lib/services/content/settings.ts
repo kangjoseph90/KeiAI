@@ -1,4 +1,4 @@
-import { getActiveSession } from '../session';
+import { getActiveSession } from '../user';
 import { localDB, type SettingsRecord } from '$lib/adapters/db';
 import type { OrderedRef, FolderDef, ResourceRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';

@@ -11,8 +11,10 @@ import type { MessageFields } from '$lib/services/content/message';
 import type { BaseRecord } from '$lib/adapters/db/types';
 
 // Mock all dependencies
-vi.mock('$lib/services/session', () => ({
-    getActiveSession: vi.fn()
+vi.mock('$lib/services/user', () => ({
+    UserService: {},
+    getActiveSession: vi.fn(),
+    hasActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -59,7 +61,7 @@ vi.mock('$lib/services/content/write_queue', () => ({
     }
 }));
 
-import { getActiveSession } from '$lib/services/session';
+import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { generateKeyBetween } from 'fractional-indexing';

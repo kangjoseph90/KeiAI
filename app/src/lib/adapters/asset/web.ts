@@ -92,6 +92,11 @@ export class WebAssetAdapter implements IAssetAdapter {
         this.emitWriteEvent('assets', 'softDelete', [id], options);
     }
 
+    async deleteAsset(id: string, options?: AssetWriteOptions): Promise<void> {
+        await assetDB.assets.delete(id);
+        this.emitWriteEvent('assets', 'delete', [id], options);
+    }
+
     async getAssetsSince(userId: string, sinceUpdatedAt: number): Promise<AssetRecord[]> {
         return assetDB.assets
             .where('userId')

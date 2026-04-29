@@ -17,7 +17,7 @@
         performPairWithCode,
         performSetSyncServerUrl
     } from '$lib/stores';
-    import { AuthService } from '$lib/services/user/auth';
+    import { AuthService } from '$lib/services/auth';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import {

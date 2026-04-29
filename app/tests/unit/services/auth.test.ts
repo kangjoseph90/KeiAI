@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthService } from '$lib/services/user/auth';
+import { AuthService } from '$lib/services/auth';
 
 const mockCollection = {
     create: vi.fn(),
@@ -89,7 +89,15 @@ vi.mock('$lib/crypto', () => ({
     fromBase64: vi.fn(() => new Uint8Array([1, 2, 3]))
 }));
 
-vi.mock('$lib/services/session', () => ({
+vi.mock('$lib/services/user', () => ({
+    UserService: {
+        saveUser: vi.fn(() => Promise.resolve()),
+        updateUser: vi.fn(() => Promise.resolve()),
+        clearActiveUser: vi.fn(() => Promise.resolve()),
+        getUser: vi.fn(),
+        setActiveUser: vi.fn(() => Promise.resolve()),
+        restoreOrCreateUser: vi.fn()
+    },
     getActiveSession: vi.fn(() => ({
         userId: 'user-123',
         masterKey: {} as CryptoKey,
@@ -98,38 +106,7 @@ vi.mock('$lib/services/session', () => ({
             privateKey: {} as CryptoKey
         }
     })),
-    getLocalIdentitySession: vi.fn(() => ({
-        userId: 'user-123',
-        masterKey: {} as CryptoKey,
-        identityKeyPair: {
-            publicKey: {} as CryptoKey,
-            privateKey: {} as CryptoKey
-        }
-    }))
-}));
-
-vi.mock('$lib/adapters/user', () => ({
-    appUser: {
-        getUser: vi.fn(() =>
-            Promise.resolve({
-                id: 'user-123',
-                name: 'Local 1',
-                avatar: '',
-                createdAt: 1,
-                updatedAt: 1,
-                isDeleted: false,
-                masterKey: {} as CryptoKey,
-                identityKeyPair: {} as CryptoKeyPair
-            })
-        )
-    }
-}));
-
-vi.mock('$lib/services/user/user', () => ({
-    UserService: {
-        saveLoginUser: vi.fn(() => Promise.resolve()),
-        unlinkSync: vi.fn(() => Promise.resolve())
-    }
+    hasActiveSession: vi.fn(() => true)
 }));
 
 vi.mock('$lib/services/sync', () => ({
@@ -139,7 +116,7 @@ vi.mock('$lib/services/sync', () => ({
 }));
 
 import { pb } from '$lib/adapters/pb';
-import { UserService } from '$lib/services/user/user';
+import { getActiveSession, UserService } from '$lib/services/user';
 
 describe('AuthService', () => {
     beforeEach(() => {
@@ -215,7 +192,7 @@ describe('AuthService', () => {
             '/api/recovery/reset-password',
             expect.objectContaining({ method: 'POST' })
         );
-        expect(UserService.saveLoginUser).toHaveBeenCalledWith(
+        expect(UserService.saveUser).toHaveBeenCalledWith(
             expect.objectContaining({ id: 'user-123', username: 'kei', serverName: 'Recovered' })
         );
     });
@@ -223,7 +200,7 @@ describe('AuthService', () => {
     it('disconnects sync without deleting local identity', async () => {
         await AuthService.unlinkSync();
 
-        expect(UserService.unlinkSync).toHaveBeenCalledWith('user-123');
+        expect(UserService.updateUser).toHaveBeenCalledWith('user-123', { username: undefined });
         expect(pb.authStore.clear).toHaveBeenCalled();
     });
 });

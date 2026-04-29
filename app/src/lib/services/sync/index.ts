@@ -3,7 +3,7 @@
  *
  * Directory layout:
  *   sync/data.ts     - DataSyncService:    encrypted app data (characters, chats, etc.)
- *   sync/profile.ts  - ProfileSyncService: plaintext user profile (name, avatar)
+ *   sync/user.ts     - UserSyncService:    plaintext user display data (name, avatar)
  *   sync/asset.ts    - AssetSyncService:   asset sync (pull/push/realtime) + upload queue
  *   sync/index.ts    - SyncManager:        unified lifecycle (start/stop/reconnect)
  *
@@ -13,13 +13,13 @@
  */
 
 export { DataSyncService } from './data';
-export { ProfileSyncService } from './profile';
+export { UserSyncService } from './user';
 export { AssetSyncService } from './asset';
 export type { SyncState, SyncProgress, SyncStatus } from './base';
 export type { AssetSyncStatus } from './asset';
 
 import { DataSyncService } from './data';
-import { ProfileSyncService } from './profile';
+import { UserSyncService } from './user';
 import { AssetSyncService } from './asset';
 import { appUser } from '$lib/adapters/user';
 import { localDB, SYNC_TABLES } from '$lib/adapters/db';
@@ -27,7 +27,7 @@ import { localDB, SYNC_TABLES } from '$lib/adapters/db';
 type SyncTriggerCleanup = () => void;
 export type SyncTriggerContext = {
     data: typeof DataSyncService;
-    profile: typeof ProfileSyncService;
+    user: typeof UserSyncService;
     asset: typeof AssetSyncService;
     resubscribeAndPull: () => Promise<void>;
 };
@@ -68,18 +68,12 @@ export class SyncManager {
 
     private static readonly visibilityTrigger: SyncTriggerRegistration = ({
         data,
-        profile,
-        asset,
         resubscribeAndPull
     }) => {
         const listener = () => {
             if (document.visibilityState === 'visible') {
                 if (!data.isSubscribed) {
                     void resubscribeAndPull();
-                } else {
-                    void data.syncAll();
-                    void asset.start();
-                    void profile.pullProfile();
                 }
             }
         };
@@ -88,11 +82,11 @@ export class SyncManager {
         return () => document.removeEventListener('visibilitychange', listener);
     };
 
-    private static readonly localUserTrigger: SyncTriggerRegistration = ({ profile }) => {
+    private static readonly localUserTrigger: SyncTriggerRegistration = ({ user }) => {
         return appUser.subscribeWriteEvents((events) => {
             for (const event of events) {
                 if (event.origin !== 'local') continue;
-                void profile.pushProfile();
+                void user.pushUser();
             }
         });
     };
@@ -116,17 +110,17 @@ export class SyncManager {
     /**
      * Start all sync subscriptions and the fallback poll timer.
      *
-     * @param options.onProfileUpdate - Callback invoked when a remote profile
-     *        update is applied locally. Injected here so the sync layer never
-     *        imports from the store layer directly.
+     * @param options.onUserUpdate - Callback invoked when a remote user update
+     *        is applied locally. Injected here so the sync layer never imports
+     *        from the store layer directly.
      */
-    static startAutoSync(options?: { onProfileUpdate?: () => void }): void {
+    static startAutoSync(options?: { onUserUpdate?: () => void }): void {
         if (typeof window === 'undefined' || this.started) return;
 
         this.ensureBuiltInTriggersRegistered();
         this.started = true;
 
-        ProfileSyncService.setOnRemoteUpdate(options?.onProfileUpdate ?? null);
+        UserSyncService.setOnRemoteUpdate(options?.onUserUpdate ?? null);
 
         // Data sync Realtime subscriptions
         void DataSyncService.subscribeRealtime();
@@ -136,15 +130,15 @@ export class SyncManager {
         void AssetSyncService.start();
 
         // Profile sync Realtime subscription
-        void ProfileSyncService.subscribeRealtime();
+        void UserSyncService.subscribeRealtime();
         this.installTriggerSources();
     }
 
     static stopAutoSync(): void {
         void DataSyncService.unsubscribeRealtime();
         void AssetSyncService.unsubscribeRealtime();
-        void ProfileSyncService.unsubscribeRealtime();
-        ProfileSyncService.setOnRemoteUpdate(null);
+        void UserSyncService.unsubscribeRealtime();
+        UserSyncService.setOnRemoteUpdate(null);
         AssetSyncService.stop();
         this.clearTriggerSources();
         this.started = false;
@@ -156,7 +150,7 @@ export class SyncManager {
     static async syncAll(): Promise<void> {
         await DataSyncService.syncAll();
         await AssetSyncService.start();
-        await ProfileSyncService.pullProfile();
+        await UserSyncService.pullUser();
     }
 
     static registerTriggerSource(register: SyncTriggerRegistration): () => void {
@@ -186,13 +180,13 @@ export class SyncManager {
         if (!AssetSyncService.isSubscribed) {
             await AssetSyncService.subscribeRealtime();
         }
-        if (!ProfileSyncService.isSubscribed) {
-            await ProfileSyncService.subscribeRealtime();
+        if (!UserSyncService.isSubscribed) {
+            await UserSyncService.subscribeRealtime();
         }
 
         await DataSyncService.syncAll();
         await AssetSyncService.start();
-        await ProfileSyncService.pullProfile();
+        await UserSyncService.pullUser();
     }
 
     private static ensureBuiltInTriggersRegistered(): void {
@@ -217,7 +211,7 @@ export class SyncManager {
 
         const cleanup = registration({
             data: DataSyncService,
-            profile: ProfileSyncService,
+            user: UserSyncService,
             asset: AssetSyncService,
             resubscribeAndPull: () => this.resubscribeAndPull()
         });

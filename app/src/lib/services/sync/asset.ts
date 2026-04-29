@@ -8,7 +8,7 @@
 import { clock } from '$lib/utils/clock';
 import { pb } from '$lib/adapters/pb';
 import { encrypt, decrypt, toBase64, fromBase64 } from '$lib/crypto';
-import { getActiveSession, hasActiveSession } from '../session';
+import { getActiveSession, hasActiveSession } from '../user';
 import {
     appAsset,
     type AssetFields,

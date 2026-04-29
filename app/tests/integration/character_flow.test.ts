@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CharacterService } from '$lib/services/content/character';
 import { LorebookService } from '$lib/services/content/lorebook';
-import { getActiveSession } from '$lib/services/session';
+import { getActiveSession } from '$lib/services';
 import { encrypt, decrypt } from '$lib/crypto';
 import { localDB } from '$lib/adapters/db';
 
@@ -18,9 +18,14 @@ vi.mock('$lib/crypto', () => ({
     decrypt: vi.fn()
 }));
 
-vi.mock('$lib/services/session', () => ({
-    getActiveSession: vi.fn()
-}));
+vi.mock('$lib/services/user', async (importOriginal) => {
+    const actual = (await importOriginal()) as typeof import('$lib/services/user');
+    return {
+        ...actual,
+        getActiveSession: vi.fn(),
+        hasActiveSession: vi.fn()
+    };
+});
 
 vi.mock('$lib/services/sync', () => ({
     DataSyncService: {
