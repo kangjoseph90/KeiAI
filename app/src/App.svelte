@@ -1,8 +1,7 @@
 <script lang="ts">
     import './app.css';
     import { onMount, onDestroy } from 'svelte';
-    import { UserService, AuthService } from '$lib/services';
-    import { PB_URL } from '$lib/config';
+    import { UserService } from '$lib/services';
     import { SyncManager } from '$lib/services/sync';
     import { clock } from '$lib/utils/clock';
     import { appKV } from '$lib/adapters/kv';
@@ -11,6 +10,8 @@
     import {
         loadGlobalState,
         loadUser,
+        startUserTracking,
+        stopUserTracking,
         startSyncStatusTracking,
         stopSyncStatusTracking,
         selectCharacter,
@@ -143,15 +144,14 @@
             startSyncStatusTracking();
             await clock.init(appKV);
             const { user, restored } = await UserService.restoreOrCreateUser();
-            AuthService.setSyncServerUrl(user.syncServerUrl ?? PB_URL);
-            await UserService.setActiveUser(user.id);
+            await UserService.setActiveUser(user.id, { preserveAuth: restored });
             if (!restored) {
-                AuthService.clearAuth();
                 await initDefaultContents();
             }
             await loadUser();
+            startUserTracking();
             await loadGlobalState();
-            SyncManager.startAutoSync({ onUserUpdate: loadUser });
+            SyncManager.startAutoSync();
             await SyncManager.syncAll();
             ready = true;
 
@@ -166,6 +166,7 @@
 
     onDestroy(() => {
         SyncManager.stopAutoSync();
+        stopUserTracking();
         stopSyncStatusTracking();
         _cleanupHash?.();
     });

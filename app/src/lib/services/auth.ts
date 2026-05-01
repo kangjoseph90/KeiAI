@@ -32,7 +32,6 @@ import {
     wrapMasterKey,
     type RecoveryBundle
 } from '$lib/crypto';
-import { PB_URL } from '$lib/config';
 import { getActiveSession, UserService } from './user';
 import { AssetSyncService, DataSyncService, SyncManager } from './sync';
 import { AppError } from '$lib/types/errors';
@@ -46,15 +45,21 @@ interface SaltResponse {
 
 interface RecoverResponse {
     userId: string;
-    username: string;
+    name: string;
+    avatar?: string;
     encryptedRecoveryMasterKey: string;
     encryptedRecoveryMasterKeyIV: string;
     identityPublicKey: string;
     encryptedIdentityPrivateKey: string;
     identityPrivateKeyIv: string;
-    name?: string;
+    username: string; // server specific field
     email?: string;
-    avatar?: string;
+}
+
+function normalizeUsername(username: string): string {
+    const normalized = username.trim().toLowerCase();
+    if (!normalized) throw new AppError('INVALID_INPUT', 'Username is required.');
+    return normalized;
 }
 
 export class AuthService {
@@ -69,19 +74,6 @@ export class AuthService {
     static onPbAuthChange(callback: (isValid: boolean) => void): void {
         pb.authStore.onChange(() => callback(pb.authStore.isValid));
     }
-    /** Clear the PocketBase auth token. Safe to call when no session exists. */
-    static clearAuth(): void {
-        pb.authStore.clear();
-    }
-
-    /** Set the sync server URL for PocketBase. */
-    static setSyncServerUrl(url: string): void {
-        pb.baseUrl = url;
-    }
-
-    static getSyncServerUrl(): string {
-        return pb.baseUrl;
-    }
 
     // ─── Account Flows ────────────────────────────────────────────────
 
@@ -93,52 +85,51 @@ export class AuthService {
         password: string,
         email?: string
     ): Promise<string> {
-        const normalizedUsername = this.normalizeUsername(username);
-        const effectiveUrl = await this.useActiveSyncServer();
-        this.setSyncServerUrl(effectiveUrl);
+        const normalizedUsername = normalizeUsername(username);
+        const currentSelfHostUrl = await UserService.getActiveSelfHostUrl();
 
         const { userId, masterKey, identityKeyPair } = getActiveSession();
         const existing = await UserService.getUser(userId);
         const salt = generateSalt();
         const keys = await deriveKeys(password, salt);
-        const wrapped = await wrapMasterKey(masterKey, keys.encryptionKey);
-        const recovery = await createRecoveryData(masterKey);
-        keys.encryptionKey.fill(0);
-
-        const publicKeyJwk = await exportPublicKey(identityKeyPair.publicKey);
-        const rawPrivateKey = await exportPrivateKey(identityKeyPair.privateKey);
-        const encryptedPrivateKey = await encryptBytes(masterKey, rawPrivateKey);
-        rawPrivateKey.fill(0);
-
-        const createData: Record<string, string | Blob> = {
-            id: userId,
-            username: normalizedUsername,
-            name: existing?.name ?? 'Local User',
-            password: toHex(keys.loginKey),
-            passwordConfirm: toHex(keys.loginKey),
-            salt: toBase64(salt),
-            encryptedMasterKey: toBase64(wrapped.ciphertext),
-            masterKeyIv: toBase64(wrapped.iv),
-            encryptedRecoveryMasterKey: toBase64(recovery.encryptedRecoveryMasterKey),
-            recoveryMasterKeyIv: toBase64(recovery.encryptedRecoveryMasterKeyIV),
-            recoveryAuthTokenHash: toBase64(recovery.recoveryAuthTokenHash),
-            identityPublicKey: JSON.stringify(publicKeyJwk),
-            encryptedIdentityPrivateKey: toBase64(encryptedPrivateKey.ciphertext),
-            identityPrivateKeyIv: toBase64(encryptedPrivateKey.iv)
-        };
-
-        if (email) createData.email = email;
-
-        if (existing?.avatar?.startsWith('data:image')) {
-            try {
-                const fetchResponse = await fetch(existing.avatar);
-                createData.avatar = await fetchResponse.blob();
-            } catch (e) {
-                logger.warn('Failed to parse local avatar for PB upload', e);
-            }
-        }
-
+        let recoveryCode = '';
+        let rawPrivateKey: Uint8Array<ArrayBuffer> | null = null;
         try {
+            const wrapped = await wrapMasterKey(masterKey, keys.encryptionKey);
+            const recovery = await createRecoveryData(masterKey);
+            recoveryCode = recovery.recoveryCode.fullCode;
+            const publicKeyJwk = await exportPublicKey(identityKeyPair.publicKey);
+            rawPrivateKey = await exportPrivateKey(identityKeyPair.privateKey);
+            const encryptedPrivateKey = await encryptBytes(masterKey, rawPrivateKey);
+
+            const createData: Record<string, string | Blob> = {
+                id: userId,
+                username: normalizedUsername,
+                name: existing.name,
+                password: toHex(keys.loginKey),
+                passwordConfirm: toHex(keys.loginKey),
+                salt: toBase64(salt),
+                encryptedMasterKey: toBase64(wrapped.ciphertext),
+                masterKeyIv: toBase64(wrapped.iv),
+                encryptedRecoveryMasterKey: toBase64(recovery.encryptedRecoveryMasterKey),
+                recoveryMasterKeyIv: toBase64(recovery.encryptedRecoveryMasterKeyIV),
+                recoveryAuthTokenHash: toBase64(recovery.recoveryAuthTokenHash),
+                identityPublicKey: JSON.stringify(publicKeyJwk),
+                encryptedIdentityPrivateKey: toBase64(encryptedPrivateKey.ciphertext),
+                identityPrivateKeyIv: toBase64(encryptedPrivateKey.iv)
+            };
+
+            if (email) createData.email = email;
+
+            if (existing.avatar.startsWith('data:image')) {
+                try {
+                    const fetchResponse = await fetch(existing.avatar);
+                    createData.avatar = await fetchResponse.blob();
+                } catch (e) {
+                    logger.warn('Failed to parse local avatar for PB upload', e);
+                }
+            }
+
             await pb.collection('users').create(createData);
         } catch (error) {
             if ((error as { status?: unknown })?.status === 400) {
@@ -147,22 +138,28 @@ export class AuthService {
             throw error;
         } finally {
             keys.loginKey.fill(0);
+            keys.encryptionKey.fill(0);
+            rawPrivateKey?.fill(0);
         }
 
-        await this.authenticateExisting(normalizedUsername, password, salt);
-        return recovery.recoveryCode.fullCode;
+        await this.authenticateExisting(normalizedUsername, password, salt, currentSelfHostUrl);
+        return recoveryCode;
     }
 
     /**
      * Sign in to an existing sync account and switch to its canonical userId.
      */
     static async signIn(username: string, password: string): Promise<void> {
-        const normalizedUsername = this.normalizeUsername(username);
-        const effectiveUrl = await this.useActiveSyncServer();
-        this.setSyncServerUrl(effectiveUrl);
+        const normalizedUsername = normalizeUsername(username);
+        const currentSelfHostUrl = await UserService.getActiveSelfHostUrl();
 
         const { salt } = await this.getSalt(normalizedUsername);
-        await this.authenticateExisting(normalizedUsername, password, fromBase64(salt));
+        await this.authenticateExisting(
+            normalizedUsername,
+            password,
+            fromBase64(salt),
+            currentSelfHostUrl
+        );
     }
 
     /**
@@ -175,8 +172,7 @@ export class AuthService {
         const { backHalf } = splitRecoveryCode(recoveryCode);
         const authTokenHash = await hashRecoveryAuthToken(backHalf);
 
-        const effectiveUrl = await this.useActiveSyncServer();
-        this.setSyncServerUrl(effectiveUrl);
+        const currentSelfHostUrl = await UserService.getActiveSelfHostUrl();
 
         const resp = (await pb.send('/api/recovery/lookup', {
             method: 'POST',
@@ -198,58 +194,35 @@ export class AuthService {
             bundle.encryptedRecoveryMasterKeyIV
         );
 
-        const publicKey = await importPublicKey(bundle.identityPublicKey);
-        const rawPrivateKey = await decryptBytes(masterKey, {
-            ciphertext: bundle.encryptedIdentityPrivateKey,
-            iv: bundle.identityPrivateKeyIV
-        });
-        const privateKey = await importPrivateKey(rawPrivateKey, true);
-        rawPrivateKey.fill(0);
-
         const salt = generateSalt();
         const newKeys = await deriveKeys(newPassword, salt);
-        const wrappedM = await wrapMasterKey(masterKey, newKeys.encryptionKey);
-        const newRecovery = await createRecoveryData(masterKey);
-        newKeys.encryptionKey.fill(0);
-
-        await pb.send('/api/recovery/reset-password', {
-            method: 'POST',
-            body: JSON.stringify({
-                authTokenHash: toBase64(authTokenHash),
-                newPassword: toHex(newKeys.loginKey),
-                newPasswordConfirm: toHex(newKeys.loginKey),
-                salt: toBase64(salt),
-                encryptedMasterKey: toBase64(wrappedM.ciphertext),
-                masterKeyIv: toBase64(wrappedM.iv),
-                encryptedRecoveryMasterKey: toBase64(newRecovery.encryptedRecoveryMasterKey),
-                recoveryMasterKeyIv: toBase64(newRecovery.encryptedRecoveryMasterKeyIV),
-                recoveryAuthTokenHash: toBase64(newRecovery.recoveryAuthTokenHash)
-            })
-        });
-
-        await pb.collection('users').authWithPassword(resp.username, toHex(newKeys.loginKey));
-        newKeys.loginKey.fill(0);
-
+        let newRecoveryCode = '';
         try {
-            await UserService.saveUser({
-                id: resp.userId,
-                username: resp.username,
-                email: resp.email,
-                masterKey,
-                identityKeyPair: { publicKey, privateKey },
-                syncServerUrl: effectiveUrl,
-                serverName: resp.name
-            });
-            await UserService.setActiveUser(resp.userId);
+            const wrappedM = await wrapMasterKey(masterKey, newKeys.encryptionKey);
+            const newRecovery = await createRecoveryData(masterKey);
+            newRecoveryCode = newRecovery.recoveryCode.fullCode;
 
-            await DataSyncService.resetCursors(resp.userId);
-            await AssetSyncService.resetCursors(resp.userId);
-        } catch (e) {
-            logger.error('Recovery succeeded on server but local save failed', e);
-            pb.authStore.clear();
+            await pb.send('/api/recovery/reset-password', {
+                method: 'POST',
+                body: JSON.stringify({
+                    authTokenHash: toBase64(authTokenHash),
+                    newPassword: toHex(newKeys.loginKey),
+                    newPasswordConfirm: toHex(newKeys.loginKey),
+                    salt: toBase64(salt),
+                    encryptedMasterKey: toBase64(wrappedM.ciphertext),
+                    masterKeyIv: toBase64(wrappedM.iv),
+                    encryptedRecoveryMasterKey: toBase64(newRecovery.encryptedRecoveryMasterKey),
+                    recoveryMasterKeyIv: toBase64(newRecovery.encryptedRecoveryMasterKeyIV),
+                    recoveryAuthTokenHash: toBase64(newRecovery.recoveryAuthTokenHash)
+                })
+            });
+        } finally {
+            newKeys.encryptionKey.fill(0);
+            newKeys.loginKey.fill(0);
         }
 
-        return newRecovery.recoveryCode.fullCode;
+        await this.authenticateExisting(resp.username, newPassword, salt, currentSelfHostUrl);
+        return newRecoveryCode;
     }
 
     /**
@@ -259,9 +232,6 @@ export class AuthService {
     static async deleteAccountWithRecoveryCode(recoveryCode: string): Promise<void> {
         const { backHalf } = splitRecoveryCode(recoveryCode);
         const authTokenHash = await hashRecoveryAuthToken(backHalf);
-
-        const effectiveUrl = await this.useActiveSyncServer();
-        this.setSyncServerUrl(effectiveUrl);
 
         await pb.send('/api/recovery/delete', {
             method: 'POST',
@@ -275,6 +245,8 @@ export class AuthService {
      */
     static async changePassword(oldPassword: string, newPassword: string): Promise<string> {
         const { userId } = getActiveSession();
+        const currentSelfHostUrl = await UserService.getActiveSelfHostUrl();
+
         const record = pb.authStore.record;
         const username = (record?.username as string | undefined) ?? null;
         if (!pb.authStore.isValid || !record || !username) {
@@ -298,29 +270,31 @@ export class AuthService {
         const masterKey = await importMasterKey(rawM, true);
         const newSalt = generateSalt();
         const newKeys = await deriveKeys(newPassword, newSalt);
-        const newWrapped = await wrapMasterKey(masterKey, newKeys.encryptionKey);
-        const newRecovery = await createRecoveryData(masterKey);
-        newKeys.encryptionKey.fill(0);
+        try {
+            const newWrapped = await wrapMasterKey(masterKey, newKeys.encryptionKey);
+            const newRecovery = await createRecoveryData(masterKey);
 
-        await pb.collection('users').update(userId, {
-            oldPassword: toHex(oldKeys.loginKey),
-            password: toHex(newKeys.loginKey),
-            passwordConfirm: toHex(newKeys.loginKey),
-            salt: toBase64(newSalt),
-            encryptedMasterKey: toBase64(newWrapped.ciphertext),
-            masterKeyIv: toBase64(newWrapped.iv),
-            encryptedRecoveryMasterKey: toBase64(newRecovery.encryptedRecoveryMasterKey),
-            recoveryMasterKeyIv: toBase64(newRecovery.encryptedRecoveryMasterKeyIV),
-            recoveryAuthTokenHash: toBase64(newRecovery.recoveryAuthTokenHash)
-        });
+            await pb.collection('users').update(userId, {
+                oldPassword: toHex(oldKeys.loginKey),
+                password: toHex(newKeys.loginKey),
+                passwordConfirm: toHex(newKeys.loginKey),
+                salt: toBase64(newSalt),
+                encryptedMasterKey: toBase64(newWrapped.ciphertext),
+                masterKeyIv: toBase64(newWrapped.iv),
+                encryptedRecoveryMasterKey: toBase64(newRecovery.encryptedRecoveryMasterKey),
+                recoveryMasterKeyIv: toBase64(newRecovery.encryptedRecoveryMasterKeyIV),
+                recoveryAuthTokenHash: toBase64(newRecovery.recoveryAuthTokenHash)
+            });
 
-        oldKeys.encryptionKey.fill(0);
-        oldKeys.loginKey.fill(0);
-        newKeys.loginKey.fill(0);
-        rawM.fill(0);
-
-        await this.authenticateExisting(username, newPassword, newSalt);
-        return newRecovery.recoveryCode.fullCode;
+            await this.authenticateExisting(username, newPassword, newSalt, currentSelfHostUrl);
+            return newRecovery.recoveryCode.fullCode;
+        } finally {
+            oldKeys.encryptionKey.fill(0);
+            oldKeys.loginKey.fill(0);
+            newKeys.encryptionKey.fill(0);
+            newKeys.loginKey.fill(0);
+            rawM.fill(0);
+        }
     }
 
     /**
@@ -338,7 +312,6 @@ export class AuthService {
             pairingCode,
             userId,
             username: pb.authStore.record.username as string,
-            syncServerUrl: this.getSyncServerUrl(),
             masterKey,
             identityKeyPair,
             pbToken: pb.authStore.token
@@ -356,8 +329,7 @@ export class AuthService {
      * Connect this device using an 8-char pairing code.
      */
     static async connectWithPairingCode(pairingCode: string): Promise<void> {
-        const effectiveUrl = await this.useActiveSyncServer();
-        this.setSyncServerUrl(effectiveUrl);
+        const currentSelfHostUrl = await UserService.getActiveSelfHostUrl();
 
         const { lookupId } = await derivePairingKeys(pairingCode);
 
@@ -371,39 +343,45 @@ export class AuthService {
             resp.blob
         );
 
-        let serverRecord = null;
-        if (pbToken) {
-            try {
-                pb.authStore.save(pbToken, null);
-                serverRecord = await pb.collection('users').getOne(userId);
-                pb.authStore.save(pbToken, serverRecord);
-            } catch (e) {
-                pb.authStore.clear();
-                logger.warn('Pairing token expired; sign in with password to reconnect.', e);
+        try {
+            let serverRecord = null;
+            if (pbToken) {
+                try {
+                    pb.authStore.save(pbToken, null);
+                    serverRecord = await pb.collection('users').getOne(userId);
+                    pb.authStore.save(pbToken, serverRecord);
+                } catch (e) {
+                    pb.authStore.clear();
+                    logger.warn('Pairing token expired; sign in with password to reconnect.', e);
+                }
             }
+
+            let avatarUrl: string | undefined;
+            if (serverRecord?.avatar) {
+                avatarUrl = pb.files.getURL(
+                    serverRecord as { id: string; collectionId: string; collectionName: string },
+                    serverRecord.avatar as string
+                );
+            }
+
+            await UserService.saveUser({
+                id: userId,
+                name: serverRecord?.name,
+                avatar: avatarUrl,
+                masterKey,
+                identityKeyPair,
+                selfHostUrl: currentSelfHostUrl,
+                username,
+                email: serverRecord?.email
+            });
+            await UserService.setActiveUser(userId, { preserveAuth: !!serverRecord });
+
+            await DataSyncService.resetCursors(userId);
+            await AssetSyncService.resetCursors(userId);
+        } catch (e) {
+            pb.authStore.clear();
+            throw e;
         }
-
-        let avatarUrl: string | undefined;
-        if (serverRecord?.avatar) {
-            avatarUrl = pb.files.getURL(
-                serverRecord as { id: string; collectionId: string; collectionName: string },
-                serverRecord.avatar as string
-            );
-        }
-
-        await UserService.saveUser({
-            id: userId,
-            username,
-            masterKey,
-            identityKeyPair,
-            syncServerUrl: this.getSyncServerUrl(),
-            serverName: serverRecord?.name,
-            avatarUrl
-        });
-        await UserService.setActiveUser(userId);
-
-        await DataSyncService.resetCursors(userId);
-        await AssetSyncService.resetCursors(userId);
     }
 
     /** Disconnect local identity from server sync without deleting local data. */
@@ -422,18 +400,6 @@ export class AuthService {
 
     // ─── Internals ───────────────────────────────────────────────────
 
-    private static normalizeUsername(username: string): string {
-        const normalized = username.trim().toLowerCase();
-        if (!normalized) throw new AppError('INVALID_INPUT', 'Username is required.');
-        return normalized;
-    }
-
-    private static async useActiveSyncServer(): Promise<string> {
-        const { userId } = getActiveSession();
-        const user = await UserService.getUser(userId);
-        return user?.syncServerUrl ?? PB_URL;
-    }
-
     private static async getSalt(username: string): Promise<SaltResponse> {
         return (await pb.send('/api/account/salt', {
             method: 'POST',
@@ -444,7 +410,8 @@ export class AuthService {
     private static async authenticateExisting(
         username: string,
         password: string,
-        salt: Uint8Array<ArrayBuffer>
+        salt: Uint8Array<ArrayBuffer>,
+        selfHostUrl?: string
     ): Promise<void> {
         const keys = await deriveKeys(password, salt);
         let rawM: Uint8Array<ArrayBuffer> | null = null;
@@ -482,20 +449,27 @@ export class AuthService {
                 pbAvatarUrl = pb.files.getURL(authData.record, authData.record.avatar);
             }
 
-            await UserService.saveUser({
-                id: authData.record.id,
-                username: authData.record.username,
-                email: authData.record.email || undefined,
-                masterKey,
-                identityKeyPair: { publicKey, privateKey },
-                syncServerUrl: this.getSyncServerUrl(),
-                serverName: authData.record?.name,
-                avatarUrl: pbAvatarUrl
-            });
-            await UserService.setActiveUser(authData.record.id);
+            try {
+                await UserService.saveUser({
+                    id: authData.record.id,
+                    name: authData.record?.name,
+                    avatar: pbAvatarUrl,
+                    masterKey,
+                    identityKeyPair: { publicKey, privateKey },
+                    selfHostUrl,
+                    username: authData.record.username,
+                    email: authData.record.email || undefined
+                });
+                await UserService.setActiveUser(authData.record.id, { preserveAuth: true });
 
-            await DataSyncService.resetCursors(authData.record.id);
-            await AssetSyncService.resetCursors(authData.record.id);
+                await DataSyncService.resetCursors(authData.record.id);
+                await AssetSyncService.resetCursors(authData.record.id);
+            } catch (err) {
+                // authWithPassword succeeded but local save failed (e.g. ISLAND_MISMATCH).
+                // Clear PB token so a stale cross-island token is never left in memory.
+                pb.authStore.clear();
+                throw err;
+            }
         } finally {
             keys.loginKey.fill(0);
             keys.encryptionKey.fill(0);

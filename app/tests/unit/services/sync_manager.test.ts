@@ -10,17 +10,13 @@ import { SyncManager } from '$lib/services/sync';
 import { DataSyncService } from '$lib/services/sync/data';
 import { UserSyncService } from '$lib/services/sync/user';
 import { AssetSyncService } from '$lib/services/sync/asset';
-import { appAsset } from '$lib/adapters/asset';
 import { appUser } from '$lib/adapters/user';
 import { localDB } from '$lib/adapters/db';
 import type { DatabaseWriteEventListener } from '$lib/adapters/db';
-import type { AssetWriteEventListener } from '$lib/adapters/asset';
 import type { UserWriteEventListener } from '$lib/adapters/user';
 
 let dbWriteListener: DatabaseWriteEventListener | null = null;
-let assetWriteListener: AssetWriteEventListener | null = null;
 let userWriteListener: UserWriteEventListener | null = null;
-let storedOnRemoteUpdate: (() => void) | null = null;
 
 // Mock dependencies with stateful spies
 vi.mock('$lib/services/sync/data', () => {
@@ -66,17 +62,6 @@ vi.mock('$lib/adapters/db', () => ({
     }
 }));
 
-vi.mock('$lib/adapters/asset', () => ({
-    appAsset: {
-        subscribeWriteEvents: vi.fn((listener: AssetWriteEventListener) => {
-            assetWriteListener = listener;
-            return () => {
-                assetWriteListener = null;
-            };
-        })
-    }
-}));
-
 vi.mock('$lib/adapters/user', () => ({
     appUser: {
         subscribeWriteEvents: vi.fn((listener: UserWriteEventListener) => {
@@ -90,15 +75,9 @@ vi.mock('$lib/adapters/user', () => ({
 
 vi.mock('$lib/services/sync/user', () => ({
     UserSyncService: {
-        setOnRemoteUpdate: vi.fn((cb: (() => void) | null) => {
-            storedOnRemoteUpdate = cb;
-        }),
         subscribeRealtime: vi.fn(async () => {}),
         unsubscribeRealtime: vi.fn(async () => {}),
-        pullUser: vi.fn(async () => {
-            storedOnRemoteUpdate?.();
-            return null;
-        }),
+        pullUser: vi.fn(async () => {}),
         pushUser: vi.fn(async () => {}),
         isSubscribed: false
     }
@@ -144,9 +123,7 @@ describe('SyncManager', () => {
 
         // Reset internal static state
         SyncManager.stopAutoSync();
-        storedOnRemoteUpdate = null;
         vi.mocked(DataSyncService.subscribeRealtime).mockClear();
-        vi.mocked(UserSyncService.setOnRemoteUpdate).mockClear();
         vi.mocked(UserSyncService.subscribeRealtime).mockClear();
         vi.mocked(UserSyncService.unsubscribeRealtime).mockClear();
         vi.mocked(UserSyncService.pullUser).mockClear();
@@ -159,7 +136,6 @@ describe('SyncManager', () => {
         vi.mocked(DataSyncService.handleLocalWrite).mockClear();
         (DataSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
         dbWriteListener = null;
-        assetWriteListener = null;
         userWriteListener = null;
     });
 
@@ -170,13 +146,10 @@ describe('SyncManager', () => {
 
     describe('startAutoSync', () => {
         it('should start subscriptions and set poll timer', () => {
-            const onUserUpdate = vi.fn();
-
-            SyncManager.startAutoSync({ onUserUpdate });
+            SyncManager.startAutoSync();
 
             expect(DataSyncService.subscribeRealtime).toHaveBeenCalled();
             expect(AssetSyncService.subscribeRealtime).toHaveBeenCalled();
-            expect(UserSyncService.setOnRemoteUpdate).toHaveBeenCalledWith(onUserUpdate);
             expect(UserSyncService.subscribeRealtime).toHaveBeenCalled();
             expect(AssetSyncService.start).toHaveBeenCalledTimes(1);
 
@@ -218,8 +191,7 @@ describe('SyncManager', () => {
 
     describe('event listeners', () => {
         it('should trigger resubscribe on "online" event if offline', async () => {
-            const onUserUpdate = vi.fn();
-            SyncManager.startAutoSync({ onUserUpdate });
+            SyncManager.startAutoSync();
 
             // Find the online listener
             const onlineCall = vi
@@ -246,7 +218,7 @@ describe('SyncManager', () => {
             expect(AssetSyncService.subscribeRealtime).toHaveBeenCalledTimes(2); // once at start, once at online
             expect(DataSyncService.syncAll).toHaveBeenCalled();
             expect(AssetSyncService.start).toHaveBeenCalledTimes(2);
-            expect(onUserUpdate).toHaveBeenCalled();
+            expect(UserSyncService.pullUser).toHaveBeenCalled();
         });
 
         it('should do nothing on "visibilitychange" if already subscribed', async () => {

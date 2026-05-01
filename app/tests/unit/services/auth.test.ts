@@ -94,6 +94,7 @@ vi.mock('$lib/services/user', () => ({
         saveUser: vi.fn(() => Promise.resolve()),
         updateUser: vi.fn(() => Promise.resolve()),
         clearActiveUser: vi.fn(() => Promise.resolve()),
+        getActiveSelfHostUrl: vi.fn(() => Promise.resolve(undefined)),
         getUser: vi.fn(),
         setActiveUser: vi.fn(() => Promise.resolve()),
         restoreOrCreateUser: vi.fn()
@@ -136,6 +137,11 @@ describe('AuthService', () => {
                 identityPrivateKeyIv: 'privIv'
             }
         });
+        vi.mocked(UserService.getUser).mockResolvedValue({
+            id: 'user-123',
+            name: 'Local 1',
+            avatar: ''
+        });
     });
 
     it('creates a server account when username is available', async () => {
@@ -175,7 +181,17 @@ describe('AuthService', () => {
             .mockResolvedValueOnce({ success: true });
 
         vi.mocked(mockCollection.authWithPassword).mockResolvedValueOnce({
-            record: { id: 'user-123', encryptedMasterKey: 'm', masterKeyIv: 'iv' }
+            record: {
+                id: 'user-123',
+                username: 'kei',
+                name: 'Recovered',
+                email: '',
+                encryptedMasterKey: 'm',
+                masterKeyIv: 'iv',
+                identityPublicKey: JSON.stringify({ kty: 'EC' }),
+                encryptedIdentityPrivateKey: 'priv',
+                identityPrivateKeyIv: 'privIv'
+            }
         });
 
         const newCode = await AuthService.recoverAndResetPassword(
@@ -193,7 +209,7 @@ describe('AuthService', () => {
             expect.objectContaining({ method: 'POST' })
         );
         expect(UserService.saveUser).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 'user-123', username: 'kei', serverName: 'Recovered' })
+            expect.objectContaining({ id: 'user-123', username: 'kei', name: 'Recovered' })
         );
     });
 

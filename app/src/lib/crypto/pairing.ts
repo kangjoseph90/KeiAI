@@ -24,7 +24,6 @@ const PAIRING_CODE_LENGTH = 8;
 export interface PairingPayload {
     userId: string;
     username: string;
-    syncServerUrl: string;
     rawM: string; // Base64
     publicKeyJwk: JsonWebKey;
     rawPrivateKey: string; // Base64
@@ -35,7 +34,6 @@ export interface CreatePairingBlobArgs {
     pairingCode: string;
     userId: string;
     username: string;
-    syncServerUrl: string;
     masterKey: CryptoKey;
     identityKeyPair: CryptoKeyPair;
     pbToken?: string;
@@ -77,32 +75,36 @@ export async function createPairingBlob(
     const rawM = new Uint8Array(
         (await crypto.subtle.exportKey('raw', args.masterKey)) as ArrayBuffer
     );
-    const publicKeyJwk = await exportPublicKey(args.identityKeyPair.publicKey);
-    const rawPrivateKey = await exportPrivateKey(args.identityKeyPair.privateKey);
+    let rawPrivateKey: Uint8Array<ArrayBuffer> | null = null;
 
-    const payload: PairingPayload = {
-        userId: args.userId,
-        username: args.username,
-        syncServerUrl: args.syncServerUrl,
-        rawM: toBase64(rawM),
-        publicKeyJwk,
-        rawPrivateKey: toBase64(rawPrivateKey),
-        pbToken: args.pbToken
-    };
+    try {
+        const publicKeyJwk = await exportPublicKey(args.identityKeyPair.publicKey);
+        rawPrivateKey = await exportPrivateKey(args.identityKeyPair.privateKey);
 
-    const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
-    const { ciphertext, iv } = await encryptBytes(encKey, payloadBytes);
+        const payload: PairingPayload = {
+            userId: args.userId,
+            username: args.username,
+            rawM: toBase64(rawM),
+            publicKeyJwk,
+            rawPrivateKey: toBase64(rawPrivateKey),
+            pbToken: args.pbToken
+        };
 
-    const blob = JSON.stringify({
-        ciphertext: toBase64(ciphertext),
-        iv: toBase64(iv)
-    });
+        const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
+        const { ciphertext, iv } = await encryptBytes(encKey, payloadBytes);
 
-    rawM.fill(0);
-    rawPrivateKey.fill(0);
-    encKeyBytes.fill(0);
-
-    return { lookupId, blob };
+        return {
+            lookupId,
+            blob: JSON.stringify({
+                ciphertext: toBase64(ciphertext),
+                iv: toBase64(iv)
+            })
+        };
+    } finally {
+        rawM.fill(0);
+        rawPrivateKey?.fill(0);
+        encKeyBytes.fill(0);
+    }
 }
 
 /**
@@ -114,41 +116,44 @@ export async function decryptPairingBlob(
 ): Promise<{
     userId: string;
     username: string;
-    syncServerUrl: string;
     masterKey: CryptoKey;
     identityKeyPair: CryptoKeyPair;
     pbToken?: string;
 }> {
     const { encKey, encKeyBytes } = await derivePairingKeys(pairingCode);
 
-    const parsed = JSON.parse(blobJson);
-    const ciphertext = fromBase64(parsed.ciphertext);
-    const iv = fromBase64(parsed.iv);
+    let rawM: Uint8Array<ArrayBuffer> | null = null;
+    let rawPrivateKey: Uint8Array<ArrayBuffer> | null = null;
 
-    const payloadBytes = await decryptBytes(encKey, { ciphertext, iv });
-    const payloadStr = new TextDecoder().decode(payloadBytes);
-    const payload = JSON.parse(payloadStr) as PairingPayload;
+    try {
+        const parsed = JSON.parse(blobJson);
+        const ciphertext = fromBase64(parsed.ciphertext);
+        const iv = fromBase64(parsed.iv);
 
-    const rawM = fromBase64(payload.rawM);
-    const masterKey = await crypto.subtle.importKey('raw', rawM, { name: 'AES-GCM' }, true, [
-        'encrypt',
-        'decrypt'
-    ]);
+        const payloadBytes = await decryptBytes(encKey, { ciphertext, iv });
+        const payloadStr = new TextDecoder().decode(payloadBytes);
+        const payload = JSON.parse(payloadStr) as PairingPayload;
 
-    const publicKey = await importPublicKey(payload.publicKeyJwk);
-    const rawPrivateKey = fromBase64(payload.rawPrivateKey);
-    const privateKey = await importPrivateKey(rawPrivateKey, true);
+        rawM = fromBase64(payload.rawM);
+        const masterKey = await crypto.subtle.importKey('raw', rawM, { name: 'AES-GCM' }, true, [
+            'encrypt',
+            'decrypt'
+        ]);
 
-    rawM.fill(0);
-    rawPrivateKey.fill(0);
-    encKeyBytes.fill(0);
+        const publicKey = await importPublicKey(payload.publicKeyJwk);
+        rawPrivateKey = fromBase64(payload.rawPrivateKey);
+        const privateKey = await importPrivateKey(rawPrivateKey, true);
 
-    return {
-        userId: payload.userId,
-        username: payload.username,
-        syncServerUrl: payload.syncServerUrl,
-        masterKey,
-        identityKeyPair: { publicKey, privateKey },
-        pbToken: payload.pbToken
-    };
+        return {
+            userId: payload.userId,
+            username: payload.username,
+            masterKey,
+            identityKeyPair: { publicKey, privateKey },
+            pbToken: payload.pbToken
+        };
+    } finally {
+        rawM?.fill(0);
+        rawPrivateKey?.fill(0);
+        encKeyBytes.fill(0);
+    }
 }

@@ -10,8 +10,8 @@
  * Push: Called by UserService.updateUser() after local writes.
  * Pull: PB Realtime subscription on the user's own record.
  *
- * This module has NO dependency on Svelte stores - store refresh is handled
- * via a callback registered once via setOnRemoteUpdate().
+ * This module has NO dependency on Svelte stores. Store refresh is handled by
+ * the user store subscribing to local user write events, just like data sync.
  */
 
 import { pb } from '$lib/adapters/pb';
@@ -26,7 +26,6 @@ const logger = createLogger('sync:user');
 
 export class UserSyncEngine extends BaseSyncEngine {
     private subscribed = false;
-    private onRemoteUpdate: (() => void) | null = null;
 
     constructor() {
         super();
@@ -34,10 +33,6 @@ export class UserSyncEngine extends BaseSyncEngine {
 
     get isSubscribed(): boolean {
         return this.subscribed;
-    }
-
-    setOnRemoteUpdate(callback: (() => void) | null): void {
-        this.onRemoteUpdate = callback;
     }
 
     // ─── Push (local → server) ──────────────────────────
@@ -53,7 +48,7 @@ export class UserSyncEngine extends BaseSyncEngine {
             const { userId } = getActiveSession();
 
             const user = await appUser.getUser(userId);
-            if (!user || !user.syncServerUrl) return;
+            if (!user) return;
 
             const updateData: Record<string, unknown> = { name: user.name };
 
@@ -86,7 +81,7 @@ export class UserSyncEngine extends BaseSyncEngine {
         const { userId } = getActiveSession();
 
         const user = await appUser.getUser(userId);
-        if (!user?.syncServerUrl) return;
+        if (!user) return;
 
         // Ensure clean state before subscribing to avoid duplicate handlers
         await this.unsubscribeRealtime();
@@ -142,19 +137,12 @@ export class UserSyncEngine extends BaseSyncEngine {
                 return null;
             }
 
-            const updated = await this.applyRemoteUserUpdate(
+            return await this.applyRemoteUserUpdate(
                 userId,
                 remoteName,
                 remoteAvatar,
                 remoteUpdatedAt
             );
-
-            // Notify the store layer via the injected callback
-            if (updated && this.onRemoteUpdate) {
-                this.onRemoteUpdate();
-            }
-
-            return updated;
         } catch (err) {
             logger.error('Realtime event error', err);
             return null;
@@ -175,7 +163,7 @@ export class UserSyncEngine extends BaseSyncEngine {
         try {
             const { userId } = getActiveSession();
             const user = await appUser.getUser(userId);
-            if (!user?.syncServerUrl) return;
+            if (!user) return;
 
             const serverRecord = await pb.collection('users').getOne(userId);
             const remoteName = (serverRecord.name as string) ?? '';
@@ -197,15 +185,7 @@ export class UserSyncEngine extends BaseSyncEngine {
                 await this.pushUser();
             } else {
                 // Remote is newer or equal: apply locally
-                const updatedUser = await this.applyRemoteUserUpdate(
-                    userId,
-                    remoteName,
-                    remoteAvatar,
-                    remoteUpdatedAt
-                );
-                if (updatedUser) {
-                    this.onRemoteUpdate?.();
-                }
+                await this.applyRemoteUserUpdate(userId, remoteName, remoteAvatar, remoteUpdatedAt);
             }
         } catch (err) {
             logger.error('Pull failed', err);

@@ -18,19 +18,20 @@ import { generateId } from '$lib/utils/id';
 import { clock } from '$lib/utils/clock';
 import { minidenticon } from 'minidenticons';
 import { AppError } from '$lib/types/errors';
-import { PB_URL } from '$lib/config';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
+import { pb } from '$lib/adapters/pb';
+import { PB_URL } from '$lib/config';
 
 export interface UserFields {
     name: string;
-    username?: string;
     avatar: string;
+    username?: string;
     email?: string;
-    syncServerUrl?: string;
 }
 
 export interface User extends UserFields {
     id: string;
+    selfHostUrl?: string;
 }
 
 export interface Session {
@@ -50,10 +51,10 @@ export function toUser(user: UserRecord): User {
     return {
         id: user.id,
         name: user.name,
-        username: user.username,
         avatar: user.avatar,
-        email: user.email,
-        syncServerUrl: user.syncServerUrl
+        selfHostUrl: user.selfHostUrl,
+        username: user.username,
+        email: user.email
     };
 }
 
@@ -73,7 +74,10 @@ export class UserService {
      * Persist the active user ID and activate the in-memory session.
      * Pass an empty string to clear the KV (e.g. before page reload for new user creation).
      */
-    static async setActiveUser(userId: string): Promise<void> {
+    static async setActiveUser(
+        userId: string,
+        options: { preserveAuth?: boolean } = {}
+    ): Promise<void> {
         if (!userId) return this.clearActiveUser();
         const user = await appUser.getUser(userId);
         if (!user) {
@@ -85,11 +89,17 @@ export class UserService {
             identityKeyPair: user.identityKeyPair
         };
         await appKV.set('activeUserId', userId);
+        pb.baseUrl = user.selfHostUrl || PB_URL;
+        if (!options.preserveAuth) {
+            pb.authStore.clear();
+        }
     }
 
     static async clearActiveUser(): Promise<void> {
         activeSession = null;
         await appKV.set('activeUserId', '');
+        pb.baseUrl = PB_URL;
+        pb.authStore.clear();
     }
 
     /** Get a user view by local user ID. */
@@ -163,33 +173,38 @@ export class UserService {
 
     static async saveUser(params: {
         id: string;
+        name?: string;
+        avatar?: string;
+        selfHostUrl?: string;
         username?: string;
         email?: string;
         masterKey: CryptoKey;
         identityKeyPair: CryptoKeyPair;
-        syncServerUrl?: string;
-        serverName?: string;
-        avatarUrl?: string;
     }): Promise<UserRecord> {
         const existing = await appUser.getUser(params.id);
         const now = clock.now();
 
-        const user: UserRecord = {
+        // selfHostUrl MUST be updated through migration stage, not through auth flow
+        if (existing && existing.selfHostUrl !== params.selfHostUrl) {
+            throw new AppError('INVALID_INPUT', 'selfHostUrl cannot be changed through login');
+        }
+
+        const record: UserRecord = {
             id: params.id,
-            name: existing?.name ?? params.serverName ?? 'Synced User',
-            username: params.username ?? existing?.username,
-            email: params.email,
-            avatar: existing?.avatar ?? params.avatarUrl ?? getDefaultAvatarUrl(params.id),
+            name: params.name ?? existing?.name ?? `User ${params.id}`,
+            avatar: params.avatar ?? existing?.avatar ?? getDefaultAvatarUrl(params.id),
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
             isDeleted: false,
             masterKey: params.masterKey,
             identityKeyPair: params.identityKeyPair,
-            syncServerUrl: params.syncServerUrl ?? existing?.syncServerUrl ?? PB_URL
+            selfHostUrl: params.selfHostUrl, // server specific fields, need to overwrite
+            username: params.username,
+            email: params.email
         };
 
-        await appUser.saveUser(user, { origin: 'sync' });
-        return user;
+        await appUser.saveUser(record, { origin: 'sync' });
+        return record;
     }
 
     /** Update a user view by local user ID. */
@@ -204,6 +219,35 @@ export class UserService {
 
         await appUser.saveUser(updated);
         return toUser(updated);
+    }
+
+    static async getActiveSelfHostUrl(): Promise<string | undefined> {
+        const { userId } = getActiveSession();
+        const user = await appUser.getUser(userId);
+        if (!user) {
+            throw new AppError('NOT_FOUND', `User not found: ${userId}`);
+        }
+        return user.selfHostUrl;
+    }
+
+    static async updateSelfHostUrl(userId: string, hostUrl?: string): Promise<void> {
+        const user = await appUser.getUser(userId);
+        if (!user) {
+            throw new AppError('NOT_FOUND', `User not found: ${userId}`);
+        }
+        user.selfHostUrl = hostUrl;
+        user.updatedAt = clock.now();
+        await appUser.saveUser(user, { origin: 'sync' });
+
+        try {
+            const { userId: currentUserId } = getActiveSession();
+            if (currentUserId === userId) {
+                pb.baseUrl = hostUrl || PB_URL;
+                pb.authStore.clear();
+            }
+        } catch (error) {
+            // Ignore
+        }
     }
 
     /**
@@ -232,5 +276,14 @@ export class UserService {
         const kvPromises = TABLES.map((table) => appKV.remove(`lastSync_${table}_${userId}`));
 
         await Promise.all([...dbPromises, ...kvPromises]);
+
+        try {
+            const { userId: currentUserId } = getActiveSession();
+            if (currentUserId === userId) {
+                pb.baseUrl = PB_URL;
+            }
+        } catch (error) {
+            // Ignore
+        }
     }
 }

@@ -51,7 +51,7 @@ class UserDexie extends Dexie {
     constructor() {
         super('KeiUsers'); // Same dedicated auth IndexedDB as the web adapter
         this.version(1).stores({
-            users: 'id, username, isDeleted, syncServerUrl, updatedAt'
+            users: 'id, username, isDeleted, selfHostUrl, updatedAt'
         });
     }
 }
@@ -68,7 +68,7 @@ interface SQLiteUserRow {
     createdAt: number;
     updatedAt: number;
     isDeleted: number; // 0 | 1
-    syncServerUrl: string | null;
+    selfHostUrl: string | null;
 }
 
 // ─── Adapter ──────────────────────────────────────────────────────────────────
@@ -118,7 +118,7 @@ export class TauriUserAdapter implements IUserAdapter {
 					createdAt INTEGER NOT NULL,
 					updatedAt INTEGER NOT NULL,
 					isDeleted INTEGER NOT NULL DEFAULT 0,
-					syncServerUrl TEXT
+					selfHostUrl TEXT
 				)
 			`);
             await db.execute(`CREATE INDEX IF NOT EXISTS idx_users_updatedAt ON users (updatedAt)`);
@@ -131,7 +131,7 @@ export class TauriUserAdapter implements IUserAdapter {
     private async sqliteSave(user: UserRecord): Promise<void> {
         const db = await this.getSQLite();
         await db.execute(
-            `INSERT OR REPLACE INTO users (id, userId, name, username, email, avatar, createdAt, updatedAt, isDeleted, syncServerUrl)
+            `INSERT OR REPLACE INTO users (id, userId, name, username, email, avatar, createdAt, updatedAt, isDeleted, selfHostUrl)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [
                 user.id,
@@ -143,7 +143,7 @@ export class TauriUserAdapter implements IUserAdapter {
                 user.createdAt,
                 user.updatedAt,
                 user.isDeleted ? 1 : 0,
-                user.syncServerUrl ?? null
+                user.selfHostUrl ?? null
             ]
         );
     }
@@ -383,7 +383,7 @@ export class TauriUserAdapter implements IUserAdapter {
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
             isDeleted: row.isDeleted === 1,
-            syncServerUrl: row.syncServerUrl ?? undefined,
+            selfHostUrl: row.selfHostUrl ?? undefined,
             masterKey,
             identityKeyPair: { publicKey, privateKey }
         };

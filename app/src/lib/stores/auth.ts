@@ -3,7 +3,8 @@
  *
  * Derived stores: isLoggedIn, isLocalOnly, userEmail, userId, pbConnected.
  * Action functions: performCreateAccount, performSignIn, performRecoverAndReset,
- *   performChangePassword, performUnlinkSync, performLogout, performDeleteWithRecoveryCode.
+ *   performChangePassword, performUnlinkSync, performLogout,
+ *   performDeleteWithRecoveryCode, performSetSelfHostUrl.
  *
  * Action functions wrap AuthService calls and handle post-auth store refresh.
  * UI components call these instead of AuthService directly — this keeps
@@ -14,12 +15,11 @@
  */
 
 import { activeUser, pbConnected } from './state';
-import { AuthService, getActiveSession, UserService } from '$lib/services';
+import { AuthService, MigrationService, UserService, type MigrationOptions } from '$lib/services';
 import { SyncManager } from '$lib/services/sync';
 import { loadUser } from './user';
 import { clearActiveCharacter } from './content/character';
 import { loadGlobalState } from './init';
-import { PB_URL } from '$lib/config';
 
 // ─── PB Connection State ─────────────────────────────────────────────
 
@@ -37,7 +37,8 @@ AuthService.onPbAuthChange((isValid) => {
  * newly authenticated user's data.
  */
 async function refreshAfterLogin(): Promise<void> {
-    void loadUser();
+    await loadUser();
+    SyncManager.startAutoSync();
     await SyncManager.syncAll();
     clearActiveCharacter();
     await loadGlobalState();
@@ -79,13 +80,16 @@ export async function performPairWithCode(pairingCode: string): Promise<void> {
     await refreshAfterLogin();
 }
 
-export async function performSetSyncServerUrl(syncServerUrl?: string): Promise<void> {
-    AuthService.clearAuth();
-    pbConnected.set(false);
-    const { userId } = getActiveSession();
-    const nextUrl = syncServerUrl?.trim() || undefined;
-    await UserService.updateUser(userId, { syncServerUrl: nextUrl, username: undefined });
-    AuthService.setSyncServerUrl(nextUrl ?? PB_URL);
+export async function performSetSelfHostUrl(
+    selfHostUrl?: string,
+    options?: MigrationOptions
+): Promise<void> {
+    const nextUrl = selfHostUrl?.trim() || undefined;
+    if (nextUrl) {
+        await MigrationService.enterSelfHost(nextUrl, options);
+    } else {
+        await MigrationService.leaveSelfHost(options);
+    }
     await loadUser();
 }
 
@@ -115,7 +119,6 @@ export async function performLogout(): Promise<void> {
  */
 export async function performCreateNewUser(): Promise<void> {
     SyncManager.stopAutoSync();
-    AuthService.clearAuth();
     await UserService.setActiveUser(''); // Clear activeUserId KV and reload
     window.location.reload();
 }

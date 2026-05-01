@@ -65,7 +65,7 @@ describe('UserSyncService', () => {
                 id: mockUserId,
                 name: 'New Name',
                 avatar: 'avatar.png',
-                syncServerUrl: 'http://test'
+                selfHostUrl: 'http://test'
             } as UserRecord);
             vi.mocked(mockCollection.update).mockResolvedValue({
                 id: mockUserId
@@ -89,7 +89,7 @@ describe('UserSyncService', () => {
                 id: mockUserId,
                 name: 'Name',
                 avatar: 'data:image/png;base64,abc',
-                syncServerUrl: 'http://test'
+                selfHostUrl: 'http://test'
             } as UserRecord);
 
             await UserSyncService.pushUser();
@@ -106,22 +106,13 @@ describe('UserSyncService', () => {
             expect(appUser.saveUser).not.toHaveBeenCalled();
         });
 
-        it('should skip if guest or invalid auth', async () => {
+        it('should skip if auth or session is unavailable', async () => {
             (pb.authStore as unknown as { isValid: boolean }).isValid = false;
             await UserSyncService.pushUser();
             expect(pb.collection).not.toHaveBeenCalled();
 
             (pb.authStore as unknown as { isValid: boolean }).isValid = true;
-            vi.mocked(getActiveSession).mockReturnValue({
-                userId: mockUserId,
-                masterKey: {} as CryptoKey,
-                identityKeyPair: {} as CryptoKeyPair
-            });
-            // Simulate a local-only user
-            vi.mocked(appUser.getUser).mockResolvedValue({
-                id: mockUserId,
-                name: 'Local User'
-            } as UserRecord);
+            vi.mocked(hasActiveSession).mockReturnValue(false);
             await UserSyncService.pushUser();
             expect(pb.collection).not.toHaveBeenCalled();
         });
@@ -152,7 +143,7 @@ describe('UserSyncService', () => {
                 id: mockUserId,
                 name: 'Local Name',
                 avatar: '',
-                syncServerUrl: 'http://test'
+                selfHostUrl: 'http://test'
             } as UserRecord);
 
             await UserSyncService.pullUser();
@@ -176,7 +167,7 @@ describe('UserSyncService', () => {
                 id: mockUserId,
                 name: 'Name',
                 avatar: '',
-                syncServerUrl: 'http://test'
+                selfHostUrl: 'http://test'
             } as UserRecord);
             await UserSyncService.subscribeRealtime();
 

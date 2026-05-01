@@ -285,6 +285,21 @@ if (!DUMMY_SALT_SECRET) {
   throw new Error("DUMMY_SALT_SECRET is not defined");
 }
 
+// ─── 0. Server Capabilities ─────────────────────────────────────────
+
+routerAdd("GET", "/api/capabilities", (e) => {
+  var checkRate = $app.store().get("checkRate");
+  var ip = e.realIP();
+  if (checkRate && !checkRate(ip + ":capabilities", 60, 60000)) {
+    return e.json(429, { error: "Too many requests. Try again later." });
+  }
+
+  return e.json(200, {
+    app: "keiai",
+    protocol: 1,
+  });
+});
+
 // ─── 1. Username Salt Lookup ─────────────────────────────────────────
 
 routerAdd("POST", "/api/account/salt", (e) => {

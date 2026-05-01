@@ -15,3 +15,4 @@ export * from './content/translation';
 export * from './user';
 export * from './auth';
 export * from './sync';
+export * from './migration';

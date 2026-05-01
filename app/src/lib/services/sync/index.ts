@@ -7,9 +7,8 @@
  *   sync/asset.ts    - AssetSyncService:   asset sync (pull/push/realtime) + upload queue
  *   sync/index.ts    - SyncManager:        unified lifecycle (start/stop/reconnect)
  *
- * This module has NO dependency on Svelte stores. Store refresh callbacks are
- * injected via startAutoSync() options, keeping the dependency direction as:
- *   stores → sync (never sync → stores)
+ * This module has NO dependency on Svelte stores. UI refresh is driven by
+ * store-level subscriptions to local adapter write events.
  */
 
 export { DataSyncService } from './data';
@@ -109,18 +108,11 @@ export class SyncManager {
 
     /**
      * Start all sync subscriptions and the fallback poll timer.
-     *
-     * @param options.onUserUpdate - Callback invoked when a remote user update
-     *        is applied locally. Injected here so the sync layer never imports
-     *        from the store layer directly.
      */
-    static startAutoSync(options?: { onUserUpdate?: () => void }): void {
+    static startAutoSync(): void {
         if (typeof window === 'undefined' || this.started) return;
-
         this.ensureBuiltInTriggersRegistered();
         this.started = true;
-
-        UserSyncService.setOnRemoteUpdate(options?.onUserUpdate ?? null);
 
         // Data sync Realtime subscriptions
         void DataSyncService.subscribeRealtime();
@@ -138,7 +130,6 @@ export class SyncManager {
         void DataSyncService.unsubscribeRealtime();
         void AssetSyncService.unsubscribeRealtime();
         void UserSyncService.unsubscribeRealtime();
-        UserSyncService.setOnRemoteUpdate(null);
         AssetSyncService.stop();
         this.clearTriggerSources();
         this.started = false;

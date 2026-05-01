@@ -105,8 +105,8 @@ describe('UserService', () => {
             email: 'notice@example.test',
             masterKey: mockMasterKey,
             identityKeyPair: mockIdentityKeyPair,
-            syncServerUrl: 'https://sync.example.test',
-            serverName: 'Synced'
+            selfHostUrl: 'https://sync.example.test',
+            name: 'Synced'
         });
 
         expect(appUser.saveUser).toHaveBeenCalledWith(
@@ -114,7 +114,7 @@ describe('UserService', () => {
                 id: 'user-1',
                 email: 'notice@example.test',
                 name: 'Synced',
-                syncServerUrl: 'https://sync.example.test'
+                selfHostUrl: 'https://sync.example.test'
             }),
             { origin: 'sync' }
         );
@@ -129,7 +129,7 @@ describe('UserService', () => {
             createdAt: 1,
             updatedAt: 1,
             isDeleted: false,
-            syncServerUrl: 'https://sync.example.test',
+            selfHostUrl: 'https://sync.example.test',
             username: 'kei',
             masterKey: mockMasterKey,
             identityKeyPair: mockIdentityKeyPair
@@ -140,7 +140,7 @@ describe('UserService', () => {
         expect(appUser.saveUser).toHaveBeenCalledWith(
             expect.objectContaining({
                 id: 'user-1',
-                syncServerUrl: 'https://sync.example.test',
+                selfHostUrl: 'https://sync.example.test',
                 username: undefined
             })
         );

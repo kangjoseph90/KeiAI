@@ -70,13 +70,14 @@ export interface IUserAdapter {
 export interface UserRecord {
     id: string; // UUID matching PocketBase ID
     name: string; // Editable display name (e.g., "Local 1", "Main Profile")
-    username?: string; // Login alias on the current sync server
-    email?: string; // Optional contact email for notices; not used for auth
     avatar: string; // Identicon URL based on user ID
     createdAt: number;
     updatedAt: number;
     isDeleted: boolean;
-    syncServerUrl?: string; // Selected sync server for account operations; not link state
     masterKey: CryptoKey; // The live CryptoKey object
     identityKeyPair: CryptoKeyPair; // ECDH P-256 key pair for asymmetric operations (multi-room)
+
+    selfHostUrl?: string; // Selected sync server for account operations; not link state
+    username?: string; // Login alias on the current sync server
+    email?: string; // Optional contact email for notices; not used for auth
 }

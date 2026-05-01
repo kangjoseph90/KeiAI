@@ -1,6 +1,6 @@
 <script lang="ts">
     import { activeUser, performCreateNewUser } from '$lib/stores';
-    import { AuthService, UserService, type UserRecord } from '$lib/services';
+    import { UserService, type UserRecord } from '$lib/services';
 
     import * as Dialog from '$lib/components/ui/dialog';
     import * as AlertDialog from '$lib/components/ui/alert-dialog';
@@ -38,7 +38,6 @@
     async function switchUser(userId: string) {
         loading = true;
         try {
-            AuthService.clearAuth();
             await UserService.setActiveUser(userId);
             window.location.reload();
         } finally {
@@ -112,14 +111,14 @@
                                     >
                                 {/if}
                             </span>
-                            <span class="text-xs text-muted-foreground truncate"
-                                >{u.email ||
+                            <span class="text-xs text-muted-foreground truncate">
+                                {u.email ||
                                     (u.username
                                         ? `@${u.username}`
-                                        : u.syncServerUrl
-                                          ? 'Sync server selected'
-                                          : 'Local only')}</span
-                            >
+                                        : u.selfHostUrl
+                                          ? 'Self-host connected'
+                                          : 'Kei default')}
+                            </span>
                         </div>
                     </div>
 
@@ -175,7 +174,7 @@
             <AlertDialog.Description>
                 Are you sure you want to delete <strong>{userToDelete?.name}</strong> from this
                 device?
-                {#if !userToDelete?.username}
+                {#if !userToDelete?.selfHostUrl}
                     <div
                         class="mt-4 p-3 bg-destructive/10 text-destructive border border-destructive/20 rounded-md font-medium text-sm"
                     >

@@ -111,22 +111,37 @@ async function updateAssetFields(id: string, changes: Partial<AssetFields>): Pro
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class AssetService {
-    private static pendingReads = new Map<string, Promise<string | null>>();
+    private static isEvictionPaused = false;
+    private static pendingLoads = new Map<string, Promise<boolean>>();
 
-    static read(id: string): Promise<string | null> {
-        const pending = AssetService.pendingReads.get(id);
+    /**
+     * Loads an asset into local appStorage without returning a render URL.
+     * Useful for prefetching or migration prepare steps.
+     * @returns true if the asset is now available locally, false if it failed.
+     */
+    static load(id: string): Promise<boolean> {
+        const pending = AssetService.pendingLoads.get(id);
         if (pending) return pending;
 
-        const promise = AssetService.readImpl(id).finally(() => {
-            AssetService.pendingReads.delete(id);
+        const promise = AssetService.loadImpl(id).finally(() => {
+            AssetService.pendingLoads.delete(id);
         });
-        AssetService.pendingReads.set(id, promise);
+        AssetService.pendingLoads.set(id, promise);
         return promise;
     }
 
-    private static async readImpl(id: string): Promise<string | null> {
+    /**
+     * Loads an asset and returns its renderable URL.
+     */
+    static async read(id: string): Promise<string | null> {
+        const success = await AssetService.load(id);
+        if (!success) return null;
+        return appStorage.getRenderUrl(`assets/${id}`);
+    }
+
+    private static async loadImpl(id: string): Promise<boolean> {
         const asset = await appAsset.getAsset(id);
-        if (!asset || asset.isDeleted) return null;
+        if (!asset || asset.isDeleted) return false;
 
         const fields = parseFields(asset);
         const storagePath = `assets/${id}`;
@@ -134,21 +149,21 @@ export class AssetService {
         if (await appStorage.exists(storagePath)) {
             await setRegistry(id, await getStorageSize(id), fields.kind, fields.status);
             await touchRegistry(id);
-            return appStorage.getRenderUrl(storagePath);
+            return true;
         }
 
         if (fields.status === 'local') {
-            return null;
+            return false;
         }
 
         const ciphertext = await fetchAssetCiphertext(fields.hash);
-        if (!ciphertext || ciphertext.length === 0) return null;
+        if (!ciphertext || ciphertext.length === 0) return false;
 
         const actualHash = await sha256(ciphertext as unknown as Bytes);
-        if (actualHash !== fields.hash) return null;
+        if (actualHash !== fields.hash) return false;
 
         const plaintext = await decryptConvergentAsset(ciphertext, fields.encKey);
-        if (!isValidImageHeader(plaintext)) return null;
+        if (!isValidImageHeader(plaintext)) return false;
 
         await appStorage.write(storagePath, plaintext);
         try {
@@ -158,7 +173,7 @@ export class AssetService {
             throw error;
         }
 
-        return appStorage.getRenderUrl(storagePath);
+        return true;
     }
 
     static async write(
@@ -243,11 +258,35 @@ export class AssetService {
         return updateAssetFields(id, { status: 'remote' });
     }
 
+    static async markLocal(id: string): Promise<AssetRecord> {
+        return updateAssetFields(id, { status: 'local' });
+    }
+
+    static async markLocalBatch(ids: string[]): Promise<void> {
+        await appAsset.transaction(['assets', 'assetRegistry'], 'rw', async () => {
+            for (const id of ids) {
+                const asset = await appAsset.getAsset(id);
+                if (!asset) throw new AppError('NOT_FOUND', `Asset ${id} not found`);
+
+                const fields = { ...parseFields(asset), status: 'local' as const };
+                await appAsset.putAsset({
+                    ...asset,
+                    data: fields as unknown as Record<string, unknown>,
+                    updatedAt: clock.now()
+                });
+
+                await syncRegistryIndex(id, fields.kind, fields.status);
+            }
+        });
+    }
+
     static async revokeUrl(url: string): Promise<void> {
         await appStorage.revokeRenderUrl(url);
     }
 
     static async evictCache(): Promise<void> {
+        if (AssetService.isEvictionPaused) return;
+
         const { userId } = getActiveSession();
         const remoteAssets = await appAsset.getRegistryByStatus(userId, 'remote');
 
@@ -272,5 +311,19 @@ export class AssetService {
                 ])
             )
         );
+    }
+
+    static async getAllAssets(userId: string): Promise<AssetRecord[]> {
+        return await appAsset.getAllAssets(userId);
+    }
+
+    static stopEviction(): void {
+        AssetService.isEvictionPaused = true;
+    }
+
+    static resumeEviction(): void {
+        AssetService.isEvictionPaused = false;
+        // Optionally trigger eviction immediately after resuming
+        void AssetService.evictCache();
     }
 }

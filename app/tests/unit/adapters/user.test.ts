@@ -287,13 +287,13 @@ describe('WebUserAdapter (Dexie)', () => {
                 ...local,
                 name: 'Linked User',
                 email: 'user@example.com',
-                syncServerUrl: 'https://sync.example.test'
+                selfHostUrl: 'https://sync.example.test'
             };
             await adapter.saveUser(linked);
 
             const retrieved = await adapter.getUser('local-1');
             expect(retrieved?.email).toBe('user@example.com');
-            expect(retrieved?.syncServerUrl).toBe('https://sync.example.test');
+            expect(retrieved?.selfHostUrl).toBe('https://sync.example.test');
         });
 
         it('should handle multiple local identities', async () => {

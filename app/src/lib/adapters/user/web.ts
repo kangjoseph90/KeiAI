@@ -21,7 +21,7 @@ class UserDexie extends Dexie {
     constructor() {
         super('KeiUsers'); // Separate IndexedDB database just for auth
         this.version(1).stores({
-            users: 'id, username, isDeleted, syncServerUrl, updatedAt' // 'id' is Primary Key, others for indexing
+            users: 'id, username, isDeleted, selfHostUrl, updatedAt' // 'id' is Primary Key, others for indexing
         });
     }
 }
