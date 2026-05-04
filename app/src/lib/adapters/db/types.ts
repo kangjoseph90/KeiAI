@@ -205,6 +205,12 @@ export interface IDatabaseAdapter {
         limit?: number,
         offset?: number
     ): Promise<T[]>;
+    countRecordsInRange(
+        tableName: TableName,
+        indexName: string,
+        lowerBound: unknown[],
+        upperBound: unknown[]
+    ): Promise<number>;
     getUnsyncedChanges<T extends BaseRecord>(
         tableName: TableName,
         userId: string,

@@ -24,6 +24,7 @@ vi.mock('$lib/stores/content/message', () => ({
     updateMessage: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
     deleteMessageSwipe: vi.fn(),
+    getLastMessage: vi.fn(),
     getMessage: vi.fn()
 }));
 
@@ -46,7 +47,8 @@ vi.mock('$lib/services/content/message', () => {
             get: vi.fn().mockResolvedValue(null),
             getMessagesAfter: vi.fn().mockResolvedValue([]),
             getMessagesBefore: vi.fn().mockResolvedValue([]),
-            countByChat: vi.fn().mockResolvedValue(0)
+            countByChat: vi.fn().mockResolvedValue(0),
+            countByChatBefore: vi.fn().mockResolvedValue(0)
         }
     };
 });
@@ -122,6 +124,7 @@ import {
 } from '$lib/stores/tasks/chat';
 import {
     createMessage,
+    getLastMessage,
     prepareNextSwipe,
     updateMessage,
     getMessage
@@ -199,9 +202,10 @@ describe('Chat Pipeline', () => {
             },
             activeSwipeId: 'swipe-new'
         } as unknown as import('$lib/services').Message);
+        vi.mocked(getLastMessage).mockResolvedValue(mockNewMessage as Message);
 
-        // Default: countByChat returns 1 (chat has messages)
-        vi.mocked(MessageService.countByChat).mockResolvedValue(1);
+        // Default: bounded history view has one prior message
+        vi.mocked(MessageService.countByChatBefore).mockResolvedValue(1);
 
         // Default: paged message view returns the generated target message
         vi.mocked(MessageService.getMessagesAfter).mockResolvedValue([
@@ -390,8 +394,11 @@ describe('Chat Pipeline', () => {
             vi.mocked(getChat).mockResolvedValue({
                 id: mockChatId,
                 characterId: 'char-1',
-                defaultVariables: {}
+                defaultVariables: {},
+                lastMessageId: targetMessageId
             } as Chat);
+            vi.mocked(MessageService.get).mockResolvedValue(mockExistingMessage as Message);
+            vi.mocked(getLastMessage).mockResolvedValue(mockExistingMessage as Message);
         });
 
         it('should add a new swipe for reroll', async () => {
@@ -400,11 +407,6 @@ describe('Chat Pipeline', () => {
                     yield { content: 'New content' };
                 })
             };
-
-            // Mock paged context for reroll: the existing message is the target
-            vi.mocked(MessageService.getMessagesAfter).mockResolvedValue([
-                mockExistingMessage as unknown as import('$lib/services').Message
-            ]);
 
             // Return a message with the new swipe for the final empty check
             vi.mocked(getMessage)

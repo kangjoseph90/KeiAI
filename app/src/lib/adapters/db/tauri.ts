@@ -488,6 +488,42 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         );
     }
 
+    async countRecordsInRange(
+        tableName: TableName,
+        indexName: string,
+        lowerBound: unknown[],
+        upperBound: unknown[]
+    ): Promise<number> {
+        await this.flush();
+        const db = await this.getDb();
+
+        const isComposite = indexName.startsWith('[') && indexName.endsWith(']');
+        if (isComposite) {
+            const cols = indexName.slice(1, -1).split('+');
+            if (cols.length === 2) {
+                const col1 = cols[0];
+                const col2 = cols[1];
+
+                const val1 = lowerBound[0];
+                const lower2 = lowerBound[1];
+                const upper2 = upperBound[1];
+
+                const query = `SELECT COUNT(*) FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0`;
+                const rows = await db.select<{ 'COUNT(*)': number }[]>(query, [
+                    val1,
+                    lower2,
+                    upper2
+                ]);
+                return rows[0]?.['COUNT(*)'] ?? 0;
+            }
+        }
+
+        throw new AppError(
+            'INVALID_INPUT',
+            `Unsupported indexName for countRecordsInRange: ${indexName}`
+        );
+    }
+
     async getUnsyncedChanges<T extends BaseRecord>(
         tableName: TableName,
         userId: string,

@@ -171,6 +171,11 @@ export async function forkChat(messageId: string): Promise<string> {
         )
     );
 
+    const lastCopiedMessage = createdMessages[createdMessages.length - 1];
+    if (lastCopiedMessage) {
+        await updateChat(newChat.id, { lastMessageId: lastCopiedMessage.id });
+    }
+
     const lorebooks = await LorebookService.listByOwner(chatId);
     const copiedLorebooks = await Promise.all(
         lorebooks.map(async (lb) => {

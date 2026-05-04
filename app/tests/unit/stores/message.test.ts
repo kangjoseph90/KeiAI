@@ -24,6 +24,7 @@ vi.mock('$lib/services', () => ({
         countByChat: vi.fn()
     },
     ChatService: {
+        get: vi.fn(),
         update: vi.fn()
     }
 }));
@@ -45,6 +46,16 @@ describe('Message Store', () => {
         messages.clear();
         chats.clear();
         activeChat.set({ id: mockChatId, characterId: 'char-1' } as Chat);
+        vi.mocked(ChatService.update).mockResolvedValue({
+            id: mockChatId,
+            characterId: 'char-1',
+            lastMessageId: mockMessage.id
+        } as Chat);
+        vi.mocked(ChatService.get).mockResolvedValue({
+            id: mockChatId,
+            characterId: 'char-1',
+            lastMessageId: mockMessage.id
+        } as Chat);
     });
 
     describe('loadInitialMessages', () => {
@@ -135,6 +146,9 @@ describe('Message Store', () => {
 
             expect(get(messages)).toContainEqual(newMessage);
             expect(MessageService.create).toHaveBeenCalledWith(mockChatId, expect.any(Object));
+            expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
+                lastMessageId: newMessage.id
+            });
         });
     });
 

@@ -365,7 +365,16 @@ export class MessageService {
     }
 
     static async countByChat(chatId: string): Promise<number> {
-        await writeQueue.flushTable('messages');
+        // create and delete bypasses the write queue - doesn't need to flush the queue
         return await localDB.countByIndex('messages', 'chatId', chatId);
+    }
+
+    static async countByChatBefore(chatId: string, beforeSortOrder: string): Promise<number> {
+        return await localDB.countRecordsInRange(
+            'messages',
+            '[chatId+sortOrder]',
+            [chatId, ''],
+            [chatId, beforeSortOrder]
+        );
     }
 }

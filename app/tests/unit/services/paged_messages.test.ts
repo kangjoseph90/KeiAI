@@ -5,6 +5,7 @@ import { MessageService, type Message } from '$lib/services/content/message';
 vi.mock('$lib/services/content/message', () => ({
     MessageService: {
         countByChat: vi.fn(),
+        countByChatBefore: vi.fn(),
         getMessagesAfter: vi.fn(),
         getMessagesBefore: vi.fn()
     }
@@ -48,20 +49,22 @@ describe('PagedMessages', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.mocked(MessageService.countByChat).mockResolvedValue(messages.length);
+        vi.mocked(MessageService.countByChatBefore).mockResolvedValue(messages.length);
         mockPages(messages);
     });
 
-    it('creates a readonly view with the chat message count', async () => {
-        const paged = await PagedMessages.create('chat-1', { pageSize: 4 });
+    it('creates a readonly view with the bounded chat message count', async () => {
+        const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
 
         expect(paged.chatId).toBe('chat-1');
         expect(paged.pageSize).toBe(4);
         expect(paged.length).toBe(10);
-        expect(MessageService.countByChat).toHaveBeenCalledWith('chat-1');
+        expect(paged.beforeSortOrder).toBe('a-target');
+        expect(MessageService.countByChatBefore).toHaveBeenCalledWith('chat-1', 'a-target');
     });
 
     it('reads positive and negative indexes', async () => {
-        const paged = await PagedMessages.create('chat-1', { pageSize: 4 });
+        const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
 
         await expect(paged.at(0)).resolves.toMatchObject({ id: 'msg-0' });
         await expect(paged.at(5)).resolves.toMatchObject({ id: 'msg-5' });
@@ -72,7 +75,7 @@ describe('PagedMessages', () => {
     });
 
     it('slices across page boundaries with negative bounds', async () => {
-        const paged = await PagedMessages.create('chat-1', { pageSize: 4 });
+        const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
 
         await expect(paged.slice(3, 8)).resolves.toEqual(messages.slice(3, 8));
         await expect(paged.slice(-4)).resolves.toEqual(messages.slice(6));
@@ -81,31 +84,31 @@ describe('PagedMessages', () => {
     });
 
     it('caches loaded pages for the instance', async () => {
-        const paged = await PagedMessages.create('chat-1', { pageSize: 4 });
+        const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
 
         await paged.at(5);
         await paged.at(7);
         expect(MessageService.getMessagesBefore).toHaveBeenCalledTimes(1);
-        expect(MessageService.getMessagesBefore).toHaveBeenCalledWith('chat-1', '\uffff', 4, 2);
+        expect(MessageService.getMessagesBefore).toHaveBeenCalledWith('chat-1', 'a-target', 4, 2);
 
         paged.clear();
         await paged.at(5);
         expect(MessageService.getMessagesBefore).toHaveBeenCalledTimes(2);
     });
 
-    it('uses the cheaper direction for pages near either end', async () => {
-        const paged = await PagedMessages.create('chat-1', { pageSize: 4 });
+    it('uses the cheaper stable direction for pages near either end', async () => {
+        const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
 
         await paged.at(0);
         await paged.at(-1);
 
         expect(MessageService.getMessagesAfter).toHaveBeenCalledWith('chat-1', '', 4, 0);
-        expect(MessageService.getMessagesBefore).toHaveBeenCalledWith('chat-1', '\uffff', 2, 0);
+        expect(MessageService.getMessagesBefore).toHaveBeenCalledWith('chat-1', 'a-target', 2, 0);
     });
 
     it('rejects invalid page sizes', async () => {
-        await expect(PagedMessages.create('chat-1', { pageSize: 0 })).rejects.toThrow(
-            'Page size must be a positive integer'
-        );
+        await expect(
+            PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 0 })
+        ).rejects.toThrow('Page size must be a positive integer');
     });
 });

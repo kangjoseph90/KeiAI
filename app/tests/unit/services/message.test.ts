@@ -26,6 +26,8 @@ vi.mock('$lib/adapters/db', () => ({
         softDeleteRecord: vi.fn(),
         softDeleteByIndex: vi.fn(),
         getByIndex: vi.fn(),
+        countByIndex: vi.fn(),
+        countRecordsInRange: vi.fn(),
         transaction: vi.fn()
     }
 }));

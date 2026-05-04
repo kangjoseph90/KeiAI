@@ -27,6 +27,7 @@ import type { MessageSwipe } from '$lib/services/content/message';
 import { PagedMessages } from '$lib/services/content/paged_messages';
 import {
     createMessage,
+    getLastMessage,
     getMessage,
     prepareNextSwipe,
     updateMessage
@@ -65,13 +66,6 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
     const controller = new AbortController();
     try {
-        // If not reroll, create new message slot
-        if (!opts.reroll) {
-            await createMessage(chatId, {
-                role: 'char'
-            });
-        }
-
         // ── 1. Load all context ──────────────────────────────────────────
         const [chat, settings, lorebooks] = await Promise.all([
             getChat(chatId),
@@ -82,11 +76,13 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
         if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
         if (!settings.personaId) throw new AppError('INVALID_INPUT', 'No persona selected');
 
-        const messages = await PagedMessages.create(chatId);
-        if (messages.length === 0) throw new AppError('INVALID_INPUT', 'Chat has no messages');
-
-        const targetMessage = await messages.at(-1);
+        const targetMessage = opts.reroll
+            ? await getLastMessage(chatId)
+            : await createMessage(chatId, {
+                  role: 'char'
+              });
         if (!targetMessage) throw new AppError('INVALID_INPUT', 'Chat has no messages');
+        const messages = await PagedMessages.createBefore(chatId, targetMessage.sortOrder);
 
         const [character, preset, persona] = await Promise.all([
             getCharacter(chat.characterId),
@@ -95,7 +91,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
         ]);
 
         // ── 2. Load Prompt History ────────────────────────────────────
-        const lastMessage = await messages.at(-2);
+        const lastMessage = await messages.at(-1);
 
         // setup variables
         const variables = lastMessage?.swipes[lastMessage.activeSwipeId]?.variables ?? {};

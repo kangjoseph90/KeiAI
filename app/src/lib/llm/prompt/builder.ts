@@ -71,10 +71,7 @@ async function processEntry(
             break;
         }
         case 'history':
-            for (const msg of await input.messages.slice(
-                toHistoryViewBound(entry.start),
-                toHistoryViewBound(entry.end)
-            )) {
+            for (const msg of await input.messages.slice(entry.start, entry.end)) {
                 const activeSwipe = msg.swipes[msg.activeSwipeId];
                 if (!activeSwipe) continue;
                 result.push({
@@ -88,17 +85,6 @@ async function processEntry(
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * History template bounds are evaluated against the completed-message view.
- * The final message is runChat's in-progress response slot, so negative bounds
- * shift one step left before delegating to PagedMessages.
- */
-function toHistoryViewBound(bound: number | undefined): number {
-    if (bound === undefined) return -1;
-    if (bound >= 0) return bound;
-    return bound - 1;
-}
 
 function mapMessageRole(role: string): 'system' | 'user' | 'assistant' {
     switch (role) {

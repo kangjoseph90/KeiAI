@@ -52,27 +52,32 @@ function normalizeSliceBound(value: number | undefined, length: number, fallback
  *
  * Pages are loaded on demand through MessageService and cached for this instance only.
  * Indexes are ordered oldest-to-newest, matching MessageService.getMessagesAfter().
+ * The view is bounded before a target message so prompt history cannot drift when
+ * newer messages are appended while the prompt is being built.
  */
 export class PagedMessages {
     readonly chatId: string;
     readonly pageSize: number;
     readonly length: number;
+    readonly beforeSortOrder: string;
 
     private readonly pages = new Map<number, Promise<Message[]>>();
 
-    private constructor(chatId: string, pageSize: number, length: number) {
+    private constructor(chatId: string, pageSize: number, length: number, beforeSortOrder: string) {
         this.chatId = chatId;
         this.pageSize = pageSize;
         this.length = length;
+        this.beforeSortOrder = beforeSortOrder;
     }
 
-    static async create(
+    static async createBefore(
         chatId: string,
+        beforeSortOrder: string,
         options: PagedMessagesOptions = {}
     ): Promise<PagedMessages> {
         const pageSize = normalizePageSize(options.pageSize ?? DEFAULT_PAGE_SIZE);
-        const length = await MessageService.countByChat(chatId);
-        return new PagedMessages(chatId, pageSize, length);
+        const length = await MessageService.countByChatBefore(chatId, beforeSortOrder);
+        return new PagedMessages(chatId, pageSize, length, beforeSortOrder);
     }
 
     async at(index: number): Promise<Message | null> {
@@ -123,7 +128,12 @@ export class PagedMessages {
         const page =
             offset <= backwardOffset
                 ? MessageService.getMessagesAfter(this.chatId, '', limit, offset)
-                : MessageService.getMessagesBefore(this.chatId, '\uffff', limit, backwardOffset);
+                : MessageService.getMessagesBefore(
+                      this.chatId,
+                      this.beforeSortOrder,
+                      limit,
+                      backwardOffset
+                  );
         this.pages.set(pageIndex, page);
         return page;
     }

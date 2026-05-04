@@ -45,7 +45,7 @@ describe('buildPrompt', () => {
             messages
         });
 
-        expect(slice).toHaveBeenCalledWith(-11, -2);
+        expect(slice).toHaveBeenCalledWith(-10, -1);
         expect(prompt).toEqual([
             { role: 'system', content: 'rules' },
             { role: 'user', content: 'hello', thought: undefined },
@@ -53,7 +53,7 @@ describe('buildPrompt', () => {
         ]);
     });
 
-    it('defaults history end to the message before the in-progress target', async () => {
+    it('defaults history end to the end of the completed history view', async () => {
         const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([]);
         const messages = { slice } as unknown as PagedMessages;
         const preset = {
@@ -68,7 +68,7 @@ describe('buildPrompt', () => {
             messages
         });
 
-        expect(slice).toHaveBeenCalledWith(-11, -1);
+        expect(slice).toHaveBeenCalledWith(-10, undefined);
     });
 
     it('does not touch PagedMessages when the template has no history entries', async () => {

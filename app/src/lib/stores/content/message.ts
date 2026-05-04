@@ -20,6 +20,7 @@ import {
 import { messages, activeChatId } from '../state';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
+import { getChat, updateChat } from './chat';
 
 // ─── Getter ────────────────────────────────────────────────────────────
 
@@ -35,6 +36,29 @@ export async function getMessage(messageId: string): Promise<Message> {
     const db = await MessageService.get(messageId);
     if (!db) throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
     return db;
+}
+
+/**
+ * Returns a last message of a chat.
+ * Returns null if chat is empty.
+ * @param chatId
+ * @returns
+ */
+export async function getLastMessage(chatId: string): Promise<Message | null> {
+    // should throw if chat not found
+    const chat = await getChat(chatId);
+
+    if (chat.lastMessageId) {
+        try {
+            const message = await getMessage(chat.lastMessageId);
+            if (message.chatId === chatId) return message;
+        } catch {
+            // Stale lastMessageId; fall back to index lookup.
+        }
+    }
+
+    const [message] = await MessageService.getMessagesBefore(chatId, '\uffff', 1);
+    return message ?? null;
 }
 
 // ─── Load ──────────────────────────────────────────────────────────────
@@ -87,6 +111,7 @@ export async function createMessage(
     fields: DeepPartial<MessageFields> = {}
 ): Promise<Message> {
     const newMessage = await MessageService.create(chatId, fields);
+    await updateChat(chatId, { lastMessageId: newMessage.id });
 
     // Store update — only if still viewing this chat
     if (get(activeChatId) === chatId) {
@@ -112,6 +137,11 @@ export async function updateMessage(
 export async function deleteMessage(chatId: string, msgId: string): Promise<void> {
     // DB write — always happens
     await MessageService.delete(msgId);
+    const chat = await getChat(chatId);
+    if (chat?.lastMessageId === msgId) {
+        const [lastMessage] = await MessageService.getMessagesBefore(chatId, '\uffff', 1);
+        await updateChat(chatId, { lastMessageId: lastMessage?.id });
+    }
 
     // Store update — only if still viewing this chat
     if (get(activeChatId) !== chatId) return;

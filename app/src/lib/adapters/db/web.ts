@@ -242,6 +242,20 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
             .toArray()) as T[];
     }
 
+    async countRecordsInRange(
+        tableName: TableName,
+        indexName: string,
+        lowerBound: unknown[],
+        upperBound: unknown[]
+    ): Promise<number> {
+        await this.flush();
+        return await this.getTable<BaseRecord>(tableName)
+            .where(indexName)
+            .between(lowerBound, upperBound, false, false)
+            .filter((record) => !record.isDeleted)
+            .count();
+    }
+
     async getUnsyncedChanges<T extends BaseRecord>(
         tableName: TableName,
         userId: string,
