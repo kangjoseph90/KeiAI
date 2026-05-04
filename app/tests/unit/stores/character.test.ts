@@ -5,6 +5,7 @@ import {
     selectCharacter,
     clearActiveCharacter,
     updateCharacter,
+    updateCharacterContent,
     createCharacter,
     deleteCharacter,
     createCharacterLorebook,
@@ -26,6 +27,7 @@ import {
     characterCharJS,
     characterModules,
     chats,
+    activeChat,
     modules,
     appSettings,
     activeCharacterId
@@ -53,6 +55,7 @@ vi.mock('$lib/services', () => ({
         get: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
+        updateContent: vi.fn(),
         delete: vi.fn()
     },
     ChatService: {
@@ -91,7 +94,9 @@ vi.mock('$lib/utils/ordering', () => ({
 
 // Mock other stores
 vi.mock('$lib/stores/content/chat', () => ({
-    clearActiveChat: vi.fn()
+    selectChat: vi.fn(),
+    clearActiveChat: vi.fn(),
+    setGreetings: vi.fn()
 }));
 
 // Mock settings store
@@ -100,7 +105,7 @@ vi.mock('$lib/stores/content/settings', () => ({
     updateSettings: vi.fn()
 }));
 
-import { clearActiveChat } from '$lib/stores/content/chat';
+import { clearActiveChat, setGreetings } from '$lib/stores/content/chat';
 import { getAppSettings, updateSettings } from '$lib/stores/content/settings';
 
 describe('Character Store', () => {
@@ -109,7 +114,7 @@ describe('Character Store', () => {
         name: 'Test Character',
         shortDescription: 'Description',
         systemPrompt: '',
-        greetingMessage: '',
+        greetings: {},
         allowLowLevel: false,
         chatRefs: [],
         lorebookRefs: [],
@@ -123,6 +128,7 @@ describe('Character Store', () => {
         vi.clearAllMocks();
         characters.clear();
         activeCharacter.set(null);
+        activeChat.set(null);
         characterLorebooks.clear();
         characterScripts.clear();
         characterCharJS.clear();

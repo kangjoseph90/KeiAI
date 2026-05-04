@@ -68,6 +68,7 @@ import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { generateKeyBetween } from 'fractional-indexing';
+import { writeQueue } from '$lib/services/content/write_queue';
 
 // Helper to create a minimal MessageFields payload
 function makeFields(content: string, role: MessageFields['role'] = 'user'): MessageFields {
@@ -245,12 +246,14 @@ describe('MessageService', () => {
                 '[messageId+swipeId]',
                 ['msg-1', 's2']
             );
-            expect(localDB.putRecord).toHaveBeenCalledWith(
-                'messages',
+            expect(writeQueue.update).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    id: 'msg-1',
-                    data: expect.objectContaining({
-                        activeSwipeId: 's1'
+                    tableName: 'messages',
+                    record: expect.objectContaining({
+                        id: 'msg-1',
+                        data: expect.objectContaining({
+                            activeSwipeId: 's1'
+                        })
                     })
                 })
             );
@@ -260,12 +263,14 @@ describe('MessageService', () => {
         it('deleteSwipe moves activeSwipeId when deleting the active swipe', async () => {
             const result = await MessageService.deleteSwipe('msg-1', 's1');
 
-            expect(localDB.putRecord).toHaveBeenCalledWith(
-                'messages',
+            expect(writeQueue.update).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    id: 'msg-1',
-                    data: expect.objectContaining({
-                        activeSwipeId: 's2'
+                    tableName: 'messages',
+                    record: expect.objectContaining({
+                        id: 'msg-1',
+                        data: expect.objectContaining({
+                            activeSwipeId: 's2'
+                        })
                     })
                 })
             );
@@ -275,8 +280,7 @@ describe('MessageService', () => {
 
         it('createSwipe appends a swipe without changing active swipe', async () => {
             const result = await MessageService.createSwipe('msg-1', {
-                content: 'New',
-                createdAt: 2000
+                content: 'New'
             });
 
             expect(result.swipeId).toBe('test-msg-id');

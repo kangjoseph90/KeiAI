@@ -11,6 +11,7 @@
  *   - If both are plain objects → recurse
  *   - Otherwise → use overlay value (arrays are replaced, not merged)
  * - Keys in base but NOT in overlay → keep base value
+ * - If overlay value is undefined → delete the key from base (deletion marker)
  */
 
 function isPlainObject(val: unknown): val is Record<string, unknown> {
@@ -29,7 +30,9 @@ export function deepMerge<T>(base: T, overlay?: unknown): T {
         const overlayVal = src[key];
         const baseVal = result[key];
 
-        if (isPlainObject(baseVal) && isPlainObject(overlayVal)) {
+        if (overlayVal === undefined) {
+            delete result[key];
+        } else if (isPlainObject(baseVal) && isPlainObject(overlayVal)) {
             result[key] = deepMerge(baseVal, overlayVal);
         } else {
             result[key] = overlayVal;

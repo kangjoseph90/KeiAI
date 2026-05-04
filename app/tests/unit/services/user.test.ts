@@ -140,9 +140,10 @@ describe('UserService', () => {
         expect(appUser.saveUser).toHaveBeenCalledWith(
             expect.objectContaining({
                 id: 'user-1',
-                selfHostUrl: 'https://sync.example.test',
-                username: undefined
+                selfHostUrl: 'https://sync.example.test'
             })
         );
+        const savedUser = vi.mocked(appUser.saveUser).mock.calls[0][0];
+        expect(savedUser).not.toHaveProperty('username');
     });
 });

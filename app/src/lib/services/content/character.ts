@@ -9,11 +9,17 @@ import { writeQueue } from './write_queue';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
+export interface Greeting {
+    id: string;
+    content: string;
+    createdAt: number;
+}
+
 export interface CharacterContent {
     name: string;
     shortDescription: string;
     systemPrompt: string;
-    greetingMessage: string;
+    greetings: Record<string, Greeting>;
     allowLowLevel: boolean;
 }
 
@@ -47,7 +53,7 @@ const defaultFields: CharacterFields = {
     name: 'New Character',
     shortDescription: '',
     systemPrompt: '',
-    greetingMessage: '',
+    greetings: {},
     allowLowLevel: false
 };
 
@@ -203,5 +209,69 @@ export class CharacterService {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete character', error);
         }
+    }
+
+    // ─── Greeting CRUD ───────────────────────────────────────────────
+
+    static async createGreeting(
+        characterId: string,
+        content: string
+    ): Promise<{ greetingId: string; character: Character }> {
+        const character = await this.get(characterId);
+        if (!character) {
+            throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
+        }
+
+        const greetingId = generateId();
+        const greeting: Greeting = {
+            id: greetingId,
+            content: content,
+            createdAt: clock.now()
+        };
+
+        const updatedCharacter = await this.update(characterId, {
+            greetings: {
+                [greetingId]: greeting
+            }
+        });
+
+        return { greetingId, character: updatedCharacter };
+    }
+
+    static async updateGreeting(
+        characterId: string,
+        greetingId: string,
+        content: string
+    ): Promise<Character> {
+        const character = await this.get(characterId);
+        if (!character) {
+            throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
+        }
+
+        const greeting = character.greetings[greetingId];
+        if (!greeting) {
+            throw new AppError('NOT_FOUND', `Greeting not found: ${greetingId}`);
+        }
+
+        return await this.update(characterId, {
+            greetings: {
+                [greetingId]: { content }
+            }
+        });
+    }
+
+    static async deleteGreeting(characterId: string, greetingId: string): Promise<Character> {
+        const character = await this.get(characterId);
+        if (!character) {
+            throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
+        }
+
+        if (!character.greetings[greetingId]) {
+            throw new AppError('NOT_FOUND', `Greeting not found: ${greetingId}`);
+        }
+
+        return await this.update(characterId, {
+            greetings: { [greetingId]: undefined }
+        });
     }
 }

@@ -21,7 +21,9 @@
         activeChat,
         chats,
         userEmail,
-        initDefaultContents
+        initDefaultContents,
+        createChat,
+        setGreetings
     } from '$lib/stores';
     import {
         route,
@@ -30,7 +32,6 @@
         getCurrentHashRoute,
         type RouteState
     } from '$lib/router';
-    import { createChat } from '$lib/stores';
     import { getErrorMessage } from '$lib/types/errors';
     import { createLogger } from '$lib/adapters/logger';
 
@@ -74,6 +75,7 @@
             const newChat = await createChat(charId, {
                 title: `Chat`
             });
+            await setGreetings(newChat.id, $activeCharacter?.greetings ?? {});
             await selectChat(newChat.id, charId);
             navigate({ view: 'chat', charId, chatId: newChat.id });
         } catch (e) {

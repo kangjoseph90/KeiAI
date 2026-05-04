@@ -176,7 +176,7 @@ describe('CharacterService', () => {
                     name: 'Test Char',
                     shortDescription: 'Test',
                     systemPrompt: 'Hello',
-                    greetingMessage: 'Hi'
+                    greetings: { '1': { id: '1', content: 'Hi', createdAt: 1000 } }
                 }
             };
 
@@ -220,7 +220,7 @@ describe('CharacterService', () => {
                 name: 'New Character',
                 shortDescription: 'A test character',
                 systemPrompt: 'You are helpful',
-                greetingMessage: 'Hello!'
+                greetings: { '1': { id: '1', content: 'Hello!', createdAt: 1000 } }
             });
 
             expect(result.id).toBe('test-id-123');

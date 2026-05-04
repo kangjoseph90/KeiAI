@@ -146,6 +146,51 @@ export async function createCharacter(
     return character;
 }
 
+// ─── Greeting CRUD ───────────────────────────────────────────────
+
+export async function createCharacterGreeting(
+    characterId: string,
+    content: string
+): Promise<{ greetingId: string; character: Character }> {
+    const { greetingId, character: updated } = await CharacterService.createGreeting(
+        characterId,
+        content
+    );
+
+    characters.set(characterId, updated);
+    if (characterId === get(activeCharacterId)) {
+        activeCharacter.set(updated);
+    }
+    return { greetingId, character: updated };
+}
+
+export async function updateCharacterGreeting(
+    characterId: string,
+    greetingId: string,
+    content: string
+): Promise<Character> {
+    const updated = await CharacterService.updateGreeting(characterId, greetingId, content);
+
+    characters.set(characterId, updated);
+    if (characterId === get(activeCharacterId)) {
+        activeCharacter.set(updated);
+    }
+    return updated;
+}
+
+export async function deleteCharacterGreeting(
+    characterId: string,
+    greetingId: string
+): Promise<Character> {
+    const updated = await CharacterService.deleteGreeting(characterId, greetingId);
+
+    characters.set(characterId, updated);
+    if (characterId === get(activeCharacterId)) {
+        activeCharacter.set(updated);
+    }
+    return updated;
+}
+
 export async function deleteCharacter(characterId: string): Promise<void> {
     const settings = await getAppSettings();
 

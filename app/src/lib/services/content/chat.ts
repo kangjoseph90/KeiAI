@@ -17,6 +17,7 @@ export interface ChatContent {
 
 export interface ChatRefs {
     lastMessageId?: string;
+    greetingMessageId?: string;
     lorebookRefs?: OrderedRef[];
     folders?: {
         lorebooks?: FolderDef[];

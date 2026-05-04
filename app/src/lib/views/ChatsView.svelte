@@ -10,6 +10,7 @@
         characterLorebooks,
         characterScripts,
         createChat,
+        setGreetings,
         updateChat,
         deleteChat,
         createCharacterLorebook,
@@ -28,6 +29,7 @@
     async function handleCreateChat() {
         if (!newNameInput.trim()) return;
         const chat = await createChat(charId, { title: newNameInput });
+        await setGreetings(chat.id, $activeCharacter?.greetings ?? {});
         newNameInput = '';
         onNavigate({ view: 'chat', charId, chatId: chat.id });
     }

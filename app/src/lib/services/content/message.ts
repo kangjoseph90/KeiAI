@@ -15,7 +15,6 @@ export interface MessageSwipeFields {
     thought?: string;
     toolCalls?: Record<string, ToolCallInfo>;
     variables?: Record<string, string>;
-    createdAt: number;
 }
 
 /**
@@ -26,6 +25,7 @@ export interface MessageSwipeFields {
  */
 export interface MessageSwipe extends MessageSwipeFields {
     id: string;
+    createdAt: number;
 }
 
 export interface MessageFields {
@@ -258,16 +258,13 @@ export class MessageService {
         const swipe: MessageSwipe = {
             ...fields,
             id: swipeId,
-            createdAt: fields.createdAt ?? clock.now()
+            createdAt: clock.now()
         };
 
         const updatedMessage = await this.update(messageId, {
-            role: message.role,
             swipes: {
-                ...message.swipes,
                 [swipeId]: swipe
-            },
-            activeSwipeId: message.activeSwipeId
+            }
         });
 
         return { swipeId, message: updatedMessage };
@@ -288,14 +285,10 @@ export class MessageService {
             throw new AppError('NOT_FOUND', `Swipe not found: ${swipeId}`);
         }
 
-        const updatedSwipe = deepMerge(swipe, changes);
         return await this.update(messageId, {
-            role: message.role,
             swipes: {
-                ...message.swipes,
-                [swipeId]: updatedSwipe
-            },
-            activeSwipeId: message.activeSwipeId
+                [swipeId]: changes
+            }
         });
     }
 
@@ -315,61 +308,30 @@ export class MessageService {
             throw new AppError('NOT_FOUND', `Swipe not found: ${swipeId}`);
         }
 
-        const record = await localDB.getRecord<MessageRecord>('messages', messageId);
-        if (!record || record.isDeleted) {
-            throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
-        }
-
-        const nextSwipes = { ...message.swipes };
-        delete nextSwipes[swipeId];
-
-        let nextActiveId = message.activeSwipeId;
-        if (nextActiveId === swipeId) {
-            const remainingIds = Object.keys(nextSwipes);
-            nextActiveId = remainingIds.length > 0 ? remainingIds[0] : '';
-        }
-
-        const nextFields: MessageFields = {
-            role: message.role,
-            swipes: nextSwipes,
-            activeSwipeId: nextActiveId
-        };
+        const remainingIds = Object.keys(message.swipes).filter((id) => id !== swipeId);
+        const nextActiveId =
+            message.activeSwipeId === swipeId ? (remainingIds[0] ?? '') : message.activeSwipeId;
 
         try {
-            writeQueue.drop('messages', messageId);
+            // 1. Delete associated data in transaction
+            await localDB.transaction(['tool_calls', 'translations'], 'rw', async () => {
+                await Promise.all([
+                    localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
+                        messageId,
+                        swipeId
+                    ]),
+                    localDB.softDeleteByCompoundIndex('translations', '[messageId+swipeId]', [
+                        messageId,
+                        swipeId
+                    ])
+                ]);
+            });
 
-            await localDB.transaction(
-                ['messages', 'tool_calls', 'translations'],
-                'rw',
-                async () => {
-                    const results = await Promise.allSettled([
-                        localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
-                            messageId,
-                            swipeId
-                        ]),
-                        localDB.softDeleteByCompoundIndex('translations', '[messageId+swipeId]', [
-                            messageId,
-                            swipeId
-                        ]),
-                        localDB.putRecord<MessageRecord>('messages', {
-                            ...record,
-                            updatedAt: clock.now(),
-                            data: nextFields as unknown as Record<string, unknown>
-                        })
-                    ]);
-                    const failed = results.find((r) => r.status === 'rejected');
-                    if (failed) {
-                        throw failed.reason;
-                    }
-                }
-            );
-
-            return {
-                ...nextFields,
-                id: messageId,
-                chatId: record.chatId,
-                sortOrder: record.sortOrder
-            };
+            // 2. Delegate message update to update() method (safe writeQueue usage)
+            return await this.update(messageId, {
+                swipes: { [swipeId]: undefined },
+                activeSwipeId: nextActiveId
+            });
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete message swipe', error);

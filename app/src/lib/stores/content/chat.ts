@@ -7,7 +7,9 @@ import {
     type ChatContent,
     type LorebookFields,
     type Lorebook,
-    type Chat
+    type Chat,
+    type MessageSwipe,
+    type Greeting
 } from '$lib/services';
 import type { OrderedRef, FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
@@ -150,7 +152,14 @@ export async function forkChat(messageId: string): Promise<string> {
     const originalChat = await getChat(chatId);
     const characterId = originalChat.characterId;
 
-    const { id: _id, characterId: _charId, lorebookRefs: _, ...fieldsCopy } = originalChat;
+    const {
+        id: _id,
+        characterId: _charId,
+        lorebookRefs: _,
+        lastMessageId: _lastMessageId,
+        greetingMessageId: _greetingMessageId,
+        ...fieldsCopy
+    } = originalChat;
 
     const newChat = await createChat(characterId, {
         ...fieldsCopy,
@@ -200,6 +209,92 @@ export async function forkChat(messageId: string): Promise<string> {
     }
 
     return newChat.id;
+}
+
+// ─── Greeting ─────────────────────────────────────
+
+export async function setGreetings(
+    chatId: string,
+    greetings: Record<string, Greeting>
+): Promise<Chat> {
+    const chat = await getChat(chatId);
+
+    if (chat.lastMessageId && chat.lastMessageId !== chat.greetingMessageId) return chat;
+
+    const greetingIds = Object.keys(greetings);
+    const activeSwipeId = greetingIds[0] ?? '';
+
+    const greetingSwipes = Object.fromEntries(
+        greetingIds.map((id) => {
+            const greeting = greetings[id];
+            return [id, { id, content: greeting.content, createdAt: greeting.createdAt }];
+        })
+    ) as Record<string, MessageSwipe>;
+
+    if (greetingIds.length === 0) {
+        if (!chat.greetingMessageId) return chat;
+
+        const greetingMessageId = chat.greetingMessageId;
+        const updatedChat = await ChatService.update(chat.id, {
+            greetingMessageId: undefined,
+            lastMessageId: undefined
+        });
+
+        await MessageService.delete(greetingMessageId);
+
+        chats.set(chat.id, updatedChat);
+        if (get(activeChatId) === chat.id) {
+            activeChat.set(updatedChat);
+            messages.delete(greetingMessageId);
+        }
+
+        return updatedChat;
+    }
+
+    if (chat.greetingMessageId) {
+        const greetingMessageId = chat.greetingMessageId;
+        const message =
+            messages.get(greetingMessageId) || (await MessageService.get(greetingMessageId));
+
+        if (message) {
+            const removedSwipes = Object.fromEntries(
+                Object.keys(message.swipes).map((id) => [id, undefined])
+            );
+            const swipePatch = { ...removedSwipes, ...greetingSwipes };
+
+            const updatedMessage = await MessageService.update(greetingMessageId, {
+                swipes: swipePatch,
+                activeSwipeId: greetings[message.activeSwipeId]
+                    ? message.activeSwipeId
+                    : activeSwipeId
+            });
+
+            if (get(activeChatId) === chatId) {
+                messages.set(greetingMessageId, updatedMessage);
+            }
+
+            return chat;
+        }
+    }
+
+    const message = await MessageService.create(chat.id, {
+        role: 'char',
+        swipes: greetingSwipes,
+        activeSwipeId
+    });
+
+    const updatedChat = await ChatService.update(chat.id, {
+        greetingMessageId: message.id,
+        lastMessageId: message.id
+    });
+
+    chats.set(chatId, updatedChat);
+    if (get(activeChatId) === chatId) {
+        activeChat.set(updatedChat);
+        messages.set(message.id, message);
+    }
+
+    return updatedChat;
 }
 
 // ─── Chat-owned Lorebook CRUD ─────────────────────────────────────
