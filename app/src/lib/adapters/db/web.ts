@@ -178,6 +178,29 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         );
     }
 
+    async softDeleteByCompoundIndex(
+        tableName: TableName,
+        indexName: string,
+        indexValue: string[],
+        options?: DatabaseWriteOptions
+    ): Promise<void> {
+        await this.flush();
+        const table = this.getTable<BaseRecord>(tableName);
+        const now = clock.now();
+        const records = await table.where(indexName).equals(indexValue).toArray();
+        for (const record of records) {
+            record.isDeleted = true;
+            record.updatedAt = now;
+        }
+        await table.bulkPut(records);
+        this.emitWriteEvent(
+            tableName,
+            'softDeleteByCompoundIndex',
+            records.map((record) => record.id),
+            options
+        );
+    }
+
     async getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]> {
         await this.flush();
         return (await this.getTable<T>(tableName)
@@ -192,6 +215,23 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         tableName: TableName,
         indexName: string,
         indexValue: string,
+        limit: number = 50,
+        offset: number = 0
+    ): Promise<T[]> {
+        await this.flush();
+        return (await this.getTable<T>(tableName)
+            .where(indexName)
+            .equals(indexValue)
+            .filter((record: T) => !record.isDeleted)
+            .offset(offset)
+            .limit(limit)
+            .toArray()) as T[];
+    }
+
+    async getByCompoundIndex<T extends BaseRecord>(
+        tableName: TableName,
+        indexName: string,
+        indexValue: string[],
         limit: number = 50,
         offset: number = 0
     ): Promise<T[]> {

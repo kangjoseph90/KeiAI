@@ -25,6 +25,7 @@ vi.mock('$lib/adapters/db', () => ({
         putRecord: vi.fn(),
         softDeleteRecord: vi.fn(),
         softDeleteByIndex: vi.fn(),
+        softDeleteByCompoundIndex: vi.fn(),
         getByIndex: vi.fn(),
         countByIndex: vi.fn(),
         countRecordsInRange: vi.fn(),
@@ -234,8 +235,16 @@ describe('MessageService', () => {
         it('deleteSwipe deletes swipe artifacts and removes the swipe', async () => {
             const result = await MessageService.deleteSwipe('msg-1', 's2');
 
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('tool_calls', 'swipeId', 's2');
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('translations', 'swipeId', 's2');
+            expect(localDB.softDeleteByCompoundIndex).toHaveBeenCalledWith(
+                'tool_calls',
+                '[messageId+swipeId]',
+                ['msg-1', 's2']
+            );
+            expect(localDB.softDeleteByCompoundIndex).toHaveBeenCalledWith(
+                'translations',
+                '[messageId+swipeId]',
+                ['msg-1', 's2']
+            );
             expect(localDB.putRecord).toHaveBeenCalledWith(
                 'messages',
                 expect.objectContaining({

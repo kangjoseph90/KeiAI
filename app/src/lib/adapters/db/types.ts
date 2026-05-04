@@ -52,7 +52,8 @@ export type DatabaseWriteOperation =
     | 'delete'
     | 'deleteByIndex'
     | 'softDelete'
-    | 'softDeleteByIndex';
+    | 'softDeleteByIndex'
+    | 'softDeleteByCompoundIndex';
 
 export type DatabaseMutationOrigin = 'local' | 'sync';
 
@@ -133,6 +134,7 @@ export type PresetRecord = DataRecord;
 
 // ─── Tool Calls ──────────────────────────────────────────────────────
 
+// swipeId is message-local; use [messageId+swipeId] for lookups.
 export interface ToolCallRecord extends DataRecord {
     chatId: string;
     messageId: string;
@@ -141,6 +143,7 @@ export interface ToolCallRecord extends DataRecord {
 
 // ─── Translations ───────────────────────────────────────────────────
 
+// swipeId is message-local; use [messageId+swipeId] for lookups.
 export interface TranslationRecord extends DataRecord {
     chatId: string;
     messageId: string;
@@ -181,11 +184,24 @@ export interface IDatabaseAdapter {
         indexValue: string,
         options?: DatabaseWriteOptions
     ): Promise<void>;
+    softDeleteByCompoundIndex(
+        tableName: TableName,
+        indexName: string,
+        indexValue: string[],
+        options?: DatabaseWriteOptions
+    ): Promise<void>;
     getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]>;
     getByIndex<T extends BaseRecord>(
         tableName: TableName,
         indexName: string,
         indexValue: string,
+        limit?: number,
+        offset?: number
+    ): Promise<T[]>;
+    getByCompoundIndex<T extends BaseRecord>(
+        tableName: TableName,
+        indexName: string,
+        indexValue: string[],
         limit?: number,
         offset?: number
     ): Promise<T[]>;

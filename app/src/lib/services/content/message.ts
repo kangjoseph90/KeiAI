@@ -18,6 +18,12 @@ export interface MessageSwipeFields {
     createdAt: number;
 }
 
+/**
+ * Swipe IDs are local to their parent message.
+ *
+ * A swipe must be addressed as (messageId, swipeId) outside the message JSON.
+ * Do not use swipeId alone for cross-table lookups or deletes.
+ */
 export interface MessageSwipe extends MessageSwipeFields {
     id: string;
 }
@@ -337,8 +343,14 @@ export class MessageService {
                 'rw',
                 async () => {
                     const results = await Promise.allSettled([
-                        localDB.softDeleteByIndex('tool_calls', 'swipeId', swipeId),
-                        localDB.softDeleteByIndex('translations', 'swipeId', swipeId),
+                        localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
+                            messageId,
+                            swipeId
+                        ]),
+                        localDB.softDeleteByCompoundIndex('translations', '[messageId+swipeId]', [
+                            messageId,
+                            swipeId
+                        ]),
                         localDB.putRecord<MessageRecord>('messages', {
                             ...record,
                             updatedAt: clock.now(),

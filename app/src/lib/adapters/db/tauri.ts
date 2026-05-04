@@ -93,6 +93,14 @@ function parseRecord<T>(row: DatabaseSqlRow): T {
     } as T;
 }
 
+function parseCompoundIndex(indexName: string): [string, string] | null {
+    const isComposite = indexName.startsWith('[') && indexName.endsWith(']');
+    if (!isComposite) return null;
+    const cols = indexName.slice(1, -1).split('+');
+    if (cols.length !== 2) return null;
+    return [cols[0], cols[1]];
+}
+
 export class TauriDatabaseAdapter implements IDatabaseAdapter {
     private dbPromise: Promise<Database> | null = null;
     private readonly writeEvents = new DatabaseWriteEventEmitter();
@@ -382,6 +390,42 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         }
     }
 
+    async softDeleteByCompoundIndex(
+        tableName: TableName,
+        indexName: string,
+        indexValue: string[],
+        options?: DatabaseWriteOptions
+    ): Promise<void> {
+        await this.flush();
+        const db = await this.getDb();
+        const cols = parseCompoundIndex(indexName);
+        if (!cols) {
+            throw new AppError(
+                'INVALID_INPUT',
+                `Unsupported indexName for softDeleteByCompoundIndex: ${indexName}`
+            );
+        }
+
+        const [col1, col2] = cols;
+        const rows = await db.select<{ id: string }[]>(
+            `SELECT id FROM ${tableName} WHERE ${col1} = $1 AND ${col2} = $2 AND isDeleted = 0`,
+            [indexValue[0], indexValue[1]]
+        );
+        const now = clock.now();
+        if (rows.length === 0) return;
+
+        await db.execute(
+            `UPDATE ${tableName} SET isDeleted = 1, updatedAt = $3 WHERE ${col1} = $1 AND ${col2} = $2 AND isDeleted = 0`,
+            [indexValue[0], indexValue[1], now]
+        );
+        this.emitWriteEvent(
+            tableName,
+            'softDeleteByCompoundIndex',
+            rows.map((row) => row.id),
+            options
+        );
+    }
+
     async getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]> {
         await this.flush();
         const db = await this.getDb();
@@ -408,6 +452,31 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         return rows.map((row) => parseRecord<T>(row));
     }
 
+    async getByCompoundIndex<T extends BaseRecord>(
+        tableName: TableName,
+        indexName: string,
+        indexValue: string[],
+        limit: number = 50,
+        offset: number = 0
+    ): Promise<T[]> {
+        await this.flush();
+        const db = await this.getDb();
+        const cols = parseCompoundIndex(indexName);
+        if (!cols) {
+            throw new AppError(
+                'INVALID_INPUT',
+                `Unsupported indexName for getByCompoundIndex: ${indexName}`
+            );
+        }
+
+        const [col1, col2] = cols;
+        const rows = await db.select<DatabaseSqlRow[]>(
+            `SELECT * FROM ${tableName} WHERE ${col1} = $1 AND ${col2} = $2 AND isDeleted = 0 LIMIT $3 OFFSET $4`,
+            [indexValue[0], indexValue[1], limit, offset]
+        );
+        return rows.map((row) => parseRecord<T>(row));
+    }
+
     async getRecordsBackward<T extends BaseRecord>(
         tableName: TableName,
         indexName: string,
@@ -419,27 +488,24 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         await this.flush();
         const db = await this.getDb();
 
-        const isComposite = indexName.startsWith('[') && indexName.endsWith(']');
-        if (isComposite) {
-            const cols = indexName.slice(1, -1).split('+');
-            if (cols.length === 2) {
-                const col1 = cols[0];
-                const col2 = cols[1];
+        const cols = parseCompoundIndex(indexName);
+        if (cols) {
+            const col1 = cols[0];
+            const col2 = cols[1];
 
-                const val1 = lowerBound[0];
-                const lower2 = lowerBound[1];
-                const upper2 = upperBound[1];
+            const val1 = lowerBound[0];
+            const lower2 = lowerBound[1];
+            const upper2 = upperBound[1];
 
-                const query = `SELECT * FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} DESC LIMIT $4 OFFSET $5`;
-                const rows = await db.select<DatabaseSqlRow[]>(query, [
-                    val1,
-                    lower2,
-                    upper2,
-                    limit,
-                    offset
-                ]);
-                return rows.map((row) => parseRecord<T>(row));
-            }
+            const query = `SELECT * FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} DESC LIMIT $4 OFFSET $5`;
+            const rows = await db.select<DatabaseSqlRow[]>(query, [
+                val1,
+                lower2,
+                upper2,
+                limit,
+                offset
+            ]);
+            return rows.map((row) => parseRecord<T>(row));
         }
 
         throw new AppError(
@@ -459,27 +525,24 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         await this.flush();
         const db = await this.getDb();
 
-        const isComposite = indexName.startsWith('[') && indexName.endsWith(']');
-        if (isComposite) {
-            const cols = indexName.slice(1, -1).split('+');
-            if (cols.length === 2) {
-                const col1 = cols[0];
-                const col2 = cols[1];
+        const cols = parseCompoundIndex(indexName);
+        if (cols) {
+            const col1 = cols[0];
+            const col2 = cols[1];
 
-                const val1 = lowerBound[0];
-                const lower2 = lowerBound[1];
-                const upper2 = upperBound[1];
+            const val1 = lowerBound[0];
+            const lower2 = lowerBound[1];
+            const upper2 = upperBound[1];
 
-                const query = `SELECT * FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} ASC LIMIT $4 OFFSET $5`;
-                const rows = await db.select<DatabaseSqlRow[]>(query, [
-                    val1,
-                    lower2,
-                    upper2,
-                    limit,
-                    offset
-                ]);
-                return rows.map((row) => parseRecord<T>(row));
-            }
+            const query = `SELECT * FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0 ORDER BY ${col2} ASC LIMIT $4 OFFSET $5`;
+            const rows = await db.select<DatabaseSqlRow[]>(query, [
+                val1,
+                lower2,
+                upper2,
+                limit,
+                offset
+            ]);
+            return rows.map((row) => parseRecord<T>(row));
         }
 
         throw new AppError(
@@ -497,25 +560,18 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         await this.flush();
         const db = await this.getDb();
 
-        const isComposite = indexName.startsWith('[') && indexName.endsWith(']');
-        if (isComposite) {
-            const cols = indexName.slice(1, -1).split('+');
-            if (cols.length === 2) {
-                const col1 = cols[0];
-                const col2 = cols[1];
+        const cols = parseCompoundIndex(indexName);
+        if (cols) {
+            const col1 = cols[0];
+            const col2 = cols[1];
 
-                const val1 = lowerBound[0];
-                const lower2 = lowerBound[1];
-                const upper2 = upperBound[1];
+            const val1 = lowerBound[0];
+            const lower2 = lowerBound[1];
+            const upper2 = upperBound[1];
 
-                const query = `SELECT COUNT(*) FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0`;
-                const rows = await db.select<{ 'COUNT(*)': number }[]>(query, [
-                    val1,
-                    lower2,
-                    upper2
-                ]);
-                return rows[0]?.['COUNT(*)'] ?? 0;
-            }
+            const query = `SELECT COUNT(*) FROM ${tableName} WHERE ${col1} = $1 AND ${col2} > $2 AND ${col2} < $3 AND isDeleted = 0`;
+            const rows = await db.select<{ 'COUNT(*)': number }[]>(query, [val1, lower2, upper2]);
+            return rows[0]?.['COUNT(*)'] ?? 0;
         }
 
         throw new AppError(

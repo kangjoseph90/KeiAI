@@ -15,7 +15,8 @@ import type {
     ChatRecord,
     MessageRecord,
     CharacterRecord,
-    SettingsRecord
+    SettingsRecord,
+    ToolCallRecord
 } from '$lib/adapters/db';
 
 // Mock Tauri to ensure WebDatabaseAdapter is used
@@ -594,6 +595,54 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             );
 
             expect(results).toHaveLength(2);
+        });
+
+        it('should scope compound swipe queries by messageId and swipeId', async () => {
+            const records = [
+                createTestRecord({
+                    id: 'tool-1',
+                    chatId: 'chat-1',
+                    messageId: 'msg-1',
+                    swipeId: 's1',
+                    data: { status: 'pending' }
+                }),
+                createTestRecord({
+                    id: 'tool-2',
+                    chatId: 'chat-1',
+                    messageId: 'msg-2',
+                    swipeId: 's1',
+                    data: { status: 'pending' }
+                })
+            ] as ToolCallRecord[];
+
+            await localDB.putRecords('tool_calls', records);
+
+            const msgOneTools = await localDB.getByCompoundIndex<ToolCallRecord>(
+                'tool_calls',
+                '[messageId+swipeId]',
+                ['msg-1', 's1']
+            );
+
+            expect(msgOneTools.map((record) => record.id)).toEqual(['tool-1']);
+
+            await localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
+                'msg-1',
+                's1'
+            ]);
+
+            const afterDeleteMsgOne = await localDB.getByCompoundIndex<ToolCallRecord>(
+                'tool_calls',
+                '[messageId+swipeId]',
+                ['msg-1', 's1']
+            );
+            const afterDeleteMsgTwo = await localDB.getByCompoundIndex<ToolCallRecord>(
+                'tool_calls',
+                '[messageId+swipeId]',
+                ['msg-2', 's1']
+            );
+
+            expect(afterDeleteMsgOne).toEqual([]);
+            expect(afterDeleteMsgTwo.map((record) => record.id)).toEqual(['tool-2']);
         });
     });
 

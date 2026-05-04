@@ -30,12 +30,12 @@ function parseFields(record: TranslationRecord): TranslationFields {
 }
 
 export class TranslationService {
-    static async listBySwipe(swipeId: string): Promise<Translation[]> {
+    static async listByMessageSwipe(messageId: string, swipeId: string): Promise<Translation[]> {
         await writeQueue.flushTable('translations');
-        const records = await localDB.getByIndex<TranslationRecord>(
+        const records = await localDB.getByCompoundIndex<TranslationRecord>(
             'translations',
-            'swipeId',
-            swipeId,
+            '[messageId+swipeId]',
+            [messageId, swipeId],
             Number.MAX_SAFE_INTEGER
         );
         return records.map((record) => ({

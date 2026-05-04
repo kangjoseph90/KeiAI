@@ -64,12 +64,12 @@ function parseFields(record: ToolCallRecord): ToolCallFields {
 
 export class ToolCallService {
     /** List tool calls for a specific swipe */
-    static async listBySwipe(swipeId: string): Promise<ToolCall[]> {
+    static async listByMessageSwipe(messageId: string, swipeId: string): Promise<ToolCall[]> {
         await writeQueue.flushTable('tool_calls');
-        const records = await localDB.getByIndex<ToolCallRecord>(
+        const records = await localDB.getByCompoundIndex<ToolCallRecord>(
             'tool_calls',
-            'swipeId',
-            swipeId,
+            '[messageId+swipeId]',
+            [messageId, swipeId],
             Number.MAX_SAFE_INTEGER
         );
         return records.map((record) => ({
