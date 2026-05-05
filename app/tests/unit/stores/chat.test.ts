@@ -12,8 +12,7 @@ import {
     updateChatFolder,
     deleteChatFolder,
     moveChatItem,
-    forkChat,
-    setGreetings
+    forkChat
 } from '$lib/stores/content/chat';
 import { chats, activeChat, activeCharacter, messages, chatLorebooks } from '$lib/stores/state';
 import { ChatService, LorebookService, CharacterService, MessageService } from '$lib/services';
@@ -30,6 +29,10 @@ vi.mock('$lib/services', () => ({
         create: vi.fn(),
         update: vi.fn(),
         delete: vi.fn()
+    },
+    AuthService: {
+        isPbConnected: vi.fn(() => false),
+        onPbAuthChange: vi.fn()
     },
     LorebookService: {
         create: vi.fn(),
@@ -50,7 +53,6 @@ vi.mock('$lib/services', () => ({
     }
 }));
 
-// Mock Message Store Logic
 vi.mock('$lib/stores/content/message', () => ({
     loadInitialMessages: vi.fn()
 }));
@@ -142,164 +144,6 @@ describe('Chat Store', () => {
 
             await expect(createChat('char-1')).rejects.toThrow();
             expect(ChatService.delete).toHaveBeenCalledWith('chat-1');
-        });
-    });
-
-    describe('setGreetings', () => {
-        it('should create a greeting message for an empty chat', async () => {
-            const chatWithGreeting = {
-                ...mockChat,
-                greetingMessageId: 'msg-1',
-                lastMessageId: 'msg-1'
-            };
-            vi.mocked(ChatService.get).mockResolvedValue(mockChat);
-            vi.mocked(MessageService.create).mockResolvedValue({
-                id: 'msg-1',
-                chatId: 'chat-1',
-                sortOrder: 'a',
-                role: 'assistant',
-                swipes: {
-                    '1': { id: '1', content: 'Hello', createdAt: 1 }
-                },
-                activeSwipeId: '1'
-            } as Message);
-            vi.mocked(ChatService.update).mockResolvedValue(chatWithGreeting);
-
-            const result = await setGreetings(mockChat.id, {
-                '1': { id: '1', content: 'Hello', createdAt: 1 }
-            });
-
-            expect(MessageService.create).toHaveBeenCalledWith(
-                'chat-1',
-                expect.objectContaining({
-                    role: 'assistant',
-                    swipes: {
-                        '1': expect.objectContaining({ content: 'Hello' })
-                    }
-                })
-            );
-            expect(ChatService.update).toHaveBeenCalledWith('chat-1', {
-                greetingMessageId: 'msg-1',
-                lastMessageId: 'msg-1'
-            });
-            expect(result).toEqual(chatWithGreeting);
-        });
-
-        it('should not create a greeting message for a single empty greeting', async () => {
-            vi.mocked(ChatService.get).mockResolvedValue(mockChat);
-            const result = await setGreetings(mockChat.id, {});
-
-            expect(MessageService.create).not.toHaveBeenCalled();
-            expect(ChatService.update).not.toHaveBeenCalled();
-            expect(result).toEqual(mockChat);
-        });
-
-        it('should update a greeting message in-place while it is still the last message', async () => {
-            const chat = {
-                ...mockChat,
-                greetingMessageId: 'msg-1',
-                lastMessageId: 'msg-1'
-            };
-            const existingMessage = {
-                id: 'msg-1',
-                chatId: 'chat-1',
-                sortOrder: 'a',
-                role: 'assistant',
-                swipes: { '1': { id: '1', content: 'Hello', createdAt: 1 } },
-                activeSwipeId: '1'
-            } as Message;
-
-            vi.mocked(ChatService.get).mockResolvedValue(chat);
-            vi.mocked(MessageService.get).mockResolvedValue(existingMessage);
-            vi.mocked(MessageService.update).mockResolvedValue({
-                ...existingMessage,
-                swipes: { '1': { id: '1', content: 'Updated hello', createdAt: 1 } }
-            } as Message);
-
-            await setGreetings(chat.id, {
-                '1': { id: '1', content: 'Updated hello', createdAt: 1 }
-            });
-
-            // Verify in-place update instead of delete+create
-            expect(MessageService.delete).not.toHaveBeenCalled();
-            expect(MessageService.create).not.toHaveBeenCalled();
-            expect(MessageService.update).toHaveBeenCalledWith('msg-1', {
-                swipes: {
-                    '1': expect.objectContaining({ content: 'Updated hello' })
-                },
-                activeSwipeId: '1'
-            });
-        });
-
-        it('should handle deletion of specific greetings via undefined marker', async () => {
-            const chat = {
-                ...mockChat,
-                greetingMessageId: 'msg-1',
-                lastMessageId: 'msg-1'
-            };
-            const existingMessage = {
-                id: 'msg-1',
-                chatId: 'chat-1',
-                sortOrder: 'a',
-                role: 'assistant',
-                swipes: {
-                    '1': { id: '1', content: 'Keep', createdAt: 1 },
-                    '2': { id: '2', content: 'Delete', createdAt: 2 }
-                },
-                activeSwipeId: '1'
-            } as Message;
-
-            vi.mocked(ChatService.get).mockResolvedValue(chat);
-            vi.mocked(MessageService.get).mockResolvedValue(existingMessage);
-
-            await setGreetings(chat.id, {
-                '1': { id: '1', content: 'Keep', createdAt: 1 }
-            });
-
-            expect(MessageService.update).toHaveBeenCalledWith('msg-1', {
-                swipes: {
-                    '1': expect.objectContaining({ content: 'Keep' }),
-                    '2': undefined // Deletion marker for deepMerge
-                },
-                activeSwipeId: '1'
-            });
-        });
-
-        it('should clear greeting message when input is empty', async () => {
-            const chat = {
-                ...mockChat,
-                greetingMessageId: 'msg-1',
-                lastMessageId: 'msg-1'
-            };
-            vi.mocked(ChatService.get).mockResolvedValue(chat);
-            vi.mocked(ChatService.update).mockResolvedValue(mockChat);
-
-            const result = await setGreetings(chat.id, {});
-
-            expect(ChatService.update).toHaveBeenCalledWith('chat-1', {
-                greetingMessageId: undefined,
-                lastMessageId: undefined
-            });
-            expect(MessageService.delete).toHaveBeenCalledWith('msg-1');
-            expect(result).toEqual(mockChat);
-        });
-
-        it('should not update after the chat has user messages', async () => {
-            const chat = {
-                ...mockChat,
-                greetingMessageId: 'msg-1',
-                lastMessageId: 'msg-2'
-            };
-            vi.mocked(ChatService.get).mockResolvedValue(chat);
-
-            const result = await setGreetings(chat.id, {
-                '1': { id: '1', content: 'Updated hello', createdAt: 1 }
-            });
-
-            expect(MessageService.delete).not.toHaveBeenCalled();
-            expect(MessageService.create).not.toHaveBeenCalled();
-            expect(MessageService.update).not.toHaveBeenCalled();
-            expect(result).toEqual(chat);
         });
     });
 

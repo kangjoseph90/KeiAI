@@ -402,6 +402,8 @@ describe('Chat Pipeline', () => {
             vi.mocked(getChat).mockResolvedValue({
                 id: mockChatId,
                 characterId: 'char-1',
+                title: 'Mock Chat',
+                chatNote: '',
                 defaultVariables: {},
                 lastMessageId: targetMessageId
             } as Chat);

@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { setGreetings } from '$lib/managers';
+
     import './app.css';
     import { onMount, onDestroy } from 'svelte';
     import { UserService } from '$lib/services';
@@ -22,8 +24,7 @@
         chats,
         userEmail,
         initDefaultContents,
-        createChat,
-        setGreetings
+        createChat
     } from '$lib/stores';
     import {
         route,

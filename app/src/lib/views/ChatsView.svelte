@@ -10,7 +10,6 @@
         characterLorebooks,
         characterScripts,
         createChat,
-        setGreetings,
         updateChat,
         deleteChat,
         createCharacterLorebook,
@@ -19,6 +18,7 @@
         deleteCharacterScript
     } from '$lib/stores';
     import type { RouteState } from '$lib/router';
+    import { setGreetings } from '$lib/managers';
 
     let { charId, onNavigate }: { charId: string; onNavigate: (r: RouteState) => void } = $props();
 

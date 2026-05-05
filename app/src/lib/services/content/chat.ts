@@ -12,7 +12,6 @@ import { writeQueue } from './write_queue';
 export interface ChatContent {
     title: string;
     chatNote: string;
-    defaultVariables?: Record<string, string>;
 }
 
 export interface ChatRefs {

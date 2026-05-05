@@ -101,7 +101,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
         const nextSwipeFields = {
             content: '',
-            variables: deepMerge(chat.defaultVariables, variables),
+            variables: deepMerge(character.defaultVariables, variables),
             createdAt: clock.now()
         };
 

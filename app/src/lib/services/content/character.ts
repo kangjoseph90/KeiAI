@@ -20,6 +20,7 @@ export interface CharacterContent {
     description: string;
     characterNote: string;
     greetings: Record<string, Greeting>;
+    defaultVariables?: Record<string, string>;
     allowLowLevel: boolean;
 }
 

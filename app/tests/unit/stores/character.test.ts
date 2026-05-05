@@ -58,6 +58,10 @@ vi.mock('$lib/services', () => ({
         updateContent: vi.fn(),
         delete: vi.fn()
     },
+    AuthService: {
+        isPbConnected: vi.fn(() => false),
+        onPbAuthChange: vi.fn()
+    },
     ChatService: {
         listByCharacter: vi.fn()
     },
@@ -95,8 +99,7 @@ vi.mock('$lib/utils/ordering', () => ({
 // Mock other stores
 vi.mock('$lib/stores/content/chat', () => ({
     selectChat: vi.fn(),
-    clearActiveChat: vi.fn(),
-    setGreetings: vi.fn()
+    clearActiveChat: vi.fn()
 }));
 
 // Mock settings store
@@ -105,7 +108,8 @@ vi.mock('$lib/stores/content/settings', () => ({
     updateSettings: vi.fn()
 }));
 
-import { clearActiveChat, setGreetings } from '$lib/stores/content/chat';
+import { clearActiveChat } from '$lib/stores/content/chat';
+import { setGreetings } from '$lib/managers';
 import { getAppSettings, updateSettings } from '$lib/stores/content/settings';
 
 describe('Character Store', () => {

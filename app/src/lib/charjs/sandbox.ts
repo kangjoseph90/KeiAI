@@ -9,8 +9,7 @@ import type { QuickJSAsyncContext } from 'quickjs-emscripten';
 import type { CharJSInstance } from './types';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
-import { MessageService } from '$lib/services';
-import { updateMessage } from '$lib/stores';
+import { getChatVariable, setChatVariable } from '$lib/managers';
 
 export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance): void {
     const keiObj = ctx.newObject();
@@ -82,13 +81,9 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
         const key = ctx.getString(keyHandle);
         const promise = ctx.newPromise();
 
-        MessageService.getMessagesBefore(instance.chatId, '\uffff', 1)
-            .then(async (msgs) => {
-                const last = msgs[0];
-                if (!last) return promise.resolve(ctx.null);
-                const vars = last.swipes[last.activeSwipeId]?.variables ?? {};
-                const val = vars[key];
-                promise.resolve(val !== undefined ? ctx.newString(val) : ctx.null);
+        getChatVariable(instance.chatId, key)
+            .then((val) => {
+                promise.resolve(val !== null ? ctx.newString(val) : ctx.null);
             })
             .catch(() => promise.resolve(ctx.null));
 
@@ -102,20 +97,8 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
         const value = ctx.getString(valueHandle);
         const promise = ctx.newPromise();
 
-        MessageService.getMessagesBefore(instance.chatId, '\uffff', 1)
-            .then(async (msgs) => {
-                const last = msgs[0];
-                if (!last) return promise.resolve(ctx.undefined);
-
-                const swipe = last.swipes[last.activeSwipeId];
-                const nextVars = { ...(swipe?.variables ?? {}), [key]: value };
-
-                await updateMessage(last.id, {
-                    swipes: { [last.activeSwipeId]: { variables: nextVars } }
-                });
-
-                promise.resolve(ctx.undefined);
-            })
+        setChatVariable(instance.chatId, key, value)
+            .then(() => promise.resolve(ctx.undefined))
             .catch(() => promise.resolve(ctx.undefined));
 
         return promise.handle;
