@@ -52,7 +52,7 @@
         if (!newCharName.trim()) return;
         const char = await createCharacter({
             name: newCharName,
-            shortDescription: 'A new character'
+            description: 'A new character'
         });
         newCharName = '';
         showNewChar = false;

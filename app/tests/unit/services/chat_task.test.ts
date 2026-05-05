@@ -57,9 +57,13 @@ vi.mock('$lib/stores', () => ({
     getChat: vi.fn().mockResolvedValue({
         id: 'chat-1',
         characterId: 'char-1',
+        title: 'Chat 1',
+        chatNote: '',
         defaultVariables: {}
     }),
-    getCharacter: vi.fn().mockResolvedValue({ id: 'char-1', systemPrompt: '' }),
+    getCharacter: vi
+        .fn()
+        .mockResolvedValue({ id: 'char-1', name: 'Char 1', description: '', characterNote: '' }),
     getAppSettings: vi.fn().mockResolvedValue({
         personaId: 'persona-1',
         presetId: 'preset-1',
@@ -79,6 +83,8 @@ vi.mock('$lib/stores/content/chat', () => ({
     getChat: vi.fn().mockResolvedValue({
         id: 'chat-1',
         characterId: 'char-1',
+        title: 'Chat 1',
+        chatNote: '',
         defaultVariables: {}
     })
 }));
@@ -86,7 +92,9 @@ vi.mock('$lib/stores/content/chat', () => ({
 vi.mock('$lib/stores/content/character', () => ({
     getCharacter: vi.fn().mockResolvedValue({
         id: 'char-1',
-        systemPrompt: ''
+        name: 'Char 1',
+        description: '',
+        characterNote: ''
     })
 }));
 
@@ -140,7 +148,7 @@ import type { Chat, Message } from '$lib/services';
 const mockNewMessage = {
     id: 'msg-new',
     chatId: 'chat-1',
-    role: 'char',
+    role: 'assistant',
     swipes: {},
     activeSwipeId: '',
     sortOrder: 'a0'
@@ -376,7 +384,7 @@ describe('Chat Pipeline', () => {
         const mockExistingMessage = {
             id: targetMessageId,
             chatId: mockChatId,
-            role: 'char',
+            role: 'assistant',
             swipes: {
                 'swipe-new': {
                     id: 'swipe-new',

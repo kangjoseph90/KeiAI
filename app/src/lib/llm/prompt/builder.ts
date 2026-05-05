@@ -1,20 +1,21 @@
 /**
  * Prompt Builder — KeiAI
  *
- * Assembles OpenAI-compatible messages from injected domain data.
- * History is loaded lazily through PagedMessages when template entries need it.
+ * Assembles OpenAI-compatible messages from preset prompt blocks.
+ * History is loaded lazily through PagedMessages when a history block needs it.
  */
 
-import type { PromptTemplateEntry } from '$lib/services/content/preset';
-import { defaultPresetFields } from '$lib/services/content/preset';
+import type { PromptBlock } from '$lib/services/content/preset';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
-import type { Character, Preset, Persona, Lorebook } from '$lib/services';
+import type { Character, Chat, Preset, Persona, Lorebook } from '$lib/services';
 import type { OpenAIChat } from '../types';
+import type { LLMRole } from '$lib/types/models/llm';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
 export interface PromptInput {
     character: Character;
+    chat: Chat;
     preset: Preset | null;
     persona: Persona | null;
     lorebooks: Lorebook[];
@@ -24,58 +25,60 @@ export interface PromptInput {
 // ─── Builder ──────────────────────────────────────────────────────────────────
 
 export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
-    const templateOrder = input.preset?.templateOrder ?? defaultPresetFields.templateOrder;
+    const blocks = sortPromptBlocks(input.preset?.promptBlocks ?? {});
     const result: OpenAIChat[] = [];
 
-    for (const entry of templateOrder) {
-        await processEntry(entry, input, result);
+    for (const block of blocks) {
+        await processBlock(block, input, result);
     }
 
     return result;
 }
 
-// ─── Entry Processing ─────────────────────────────────────────────────────────
+// ─── Block Processing ─────────────────────────────────────────────────────────
 
-async function processEntry(
-    entry: PromptTemplateEntry,
+async function processBlock(
+    block: PromptBlock,
     input: PromptInput,
     result: OpenAIChat[]
 ): Promise<void> {
-    switch (entry.type) {
-        case 'instruction':
-            if (entry.content) {
-                result.push({ role: entry.role, content: entry.content });
-            }
+    switch (block.type) {
+        case 'text':
+            appendMessage(result, block.role, block.content);
             break;
-        case 'description': {
-            const desc = input.character.systemPrompt;
-            if (desc) {
-                result.push({ role: 'system', content: desc });
-            }
+
+        case 'character':
+            appendMessage(result, block.role, input.character.description);
             break;
-        }
+
+        case 'characterNote':
+            appendMessage(result, block.role, input.character.characterNote);
+            break;
+
         case 'persona':
             if (input.persona) {
-                result.push({ role: 'system', content: input.persona.description });
+                appendMessage(result, block.role, input.persona.description);
             }
             break;
-        case 'lorebook': {
-            const content = input.lorebooks
-                .filter((lb) => lb.enabled)
-                .map((lb) => lb.content)
-                .filter(Boolean)
-                .join('\n\n');
-            if (content) {
-                result.push({ role: 'system', content });
-            }
+
+        case 'chatNote':
+            appendMessage(result, block.role, input.chat.chatNote);
             break;
-        }
+
+        case 'lorebook':
+            // TODO: Resolve activated lorebook entries once the lorebook engine is defined.
+            break;
+
+        case 'memory':
+            // TODO: Resolve memory summaries once the memory service is defined.
+            break;
+
         case 'history':
-            for (const msg of await input.messages.slice(entry.start, entry.end)) {
+            for (const msg of await input.messages.slice(block.start, block.end)) {
                 const activeSwipe = msg.swipes[msg.activeSwipeId];
                 if (!activeSwipe) continue;
                 result.push({
-                    role: mapMessageRole(msg.role),
+                    role: msg.role,
                     content: activeSwipe.content,
                     thought: activeSwipe.thought
                 });
@@ -86,14 +89,14 @@ async function processEntry(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function mapMessageRole(role: string): 'system' | 'user' | 'assistant' {
-    switch (role) {
-        case 'char':
-            return 'assistant';
-        case 'user':
-        case 'system':
-            return role;
-        default:
-            return 'user';
-    }
+function sortPromptBlocks(blocks: Record<string, PromptBlock>): PromptBlock[] {
+    return Object.values(blocks)
+        .filter((block) => block.enabled)
+        .sort((a, b) => a.sortOrder.localeCompare(b.sortOrder));
+}
+
+function appendMessage(result: OpenAIChat[], role: LLMRole, content: string): void {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+    result.push({ role, content: trimmed });
 }

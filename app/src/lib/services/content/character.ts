@@ -17,8 +17,8 @@ export interface Greeting {
 
 export interface CharacterContent {
     name: string;
-    shortDescription: string;
-    systemPrompt: string;
+    description: string;
+    characterNote: string;
     greetings: Record<string, Greeting>;
     allowLowLevel: boolean;
 }
@@ -51,8 +51,8 @@ export interface Character extends CharacterFields {
 
 const defaultFields: CharacterFields = {
     name: 'New Character',
-    shortDescription: '',
-    systemPrompt: '',
+    description: '',
+    characterNote: '',
     greetings: {},
     allowLowLevel: false
 };
@@ -217,21 +217,14 @@ export class CharacterService {
         characterId: string,
         content: string
     ): Promise<{ greetingId: string; character: Character }> {
-        const character = await this.get(characterId);
-        if (!character) {
-            throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-        }
-
         const greetingId = generateId();
-        const greeting: Greeting = {
-            id: greetingId,
-            content: content,
-            createdAt: clock.now()
-        };
-
         const updatedCharacter = await this.update(characterId, {
             greetings: {
-                [greetingId]: greeting
+                [greetingId]: {
+                    id: greetingId,
+                    content: content,
+                    createdAt: clock.now()
+                }
             }
         });
 
@@ -243,17 +236,7 @@ export class CharacterService {
         greetingId: string,
         content: string
     ): Promise<Character> {
-        const character = await this.get(characterId);
-        if (!character) {
-            throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-        }
-
-        const greeting = character.greetings[greetingId];
-        if (!greeting) {
-            throw new AppError('NOT_FOUND', `Greeting not found: ${greetingId}`);
-        }
-
-        return await this.update(characterId, {
+        return this.update(characterId, {
             greetings: {
                 [greetingId]: { content }
             }
@@ -261,16 +244,7 @@ export class CharacterService {
     }
 
     static async deleteGreeting(characterId: string, greetingId: string): Promise<Character> {
-        const character = await this.get(characterId);
-        if (!character) {
-            throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-        }
-
-        if (!character.greetings[greetingId]) {
-            throw new AppError('NOT_FOUND', `Greeting not found: ${greetingId}`);
-        }
-
-        return await this.update(characterId, {
+        return this.update(characterId, {
             greetings: { [greetingId]: undefined }
         });
     }

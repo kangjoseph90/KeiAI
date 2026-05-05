@@ -175,8 +175,7 @@ describe('ChatService', () => {
                 isDeleted: false,
                 data: {
                     title: 'Test Chat',
-                    messageCount: 0,
-                    systemPromptOverride: 'Override'
+                    chatNote: 'Override'
                 }
             } as unknown as BaseRecord;
 
@@ -187,7 +186,7 @@ describe('ChatService', () => {
             expect(result).not.toBeNull();
             expect(result?.id).toBe('chat-1');
             expect(result?.title).toBe('Test Chat');
-            expect(result?.systemPromptOverride).toBe('Override');
+            expect(result?.chatNote).toBe('Override');
         });
 
         it('should return null when record does not exist', async () => {

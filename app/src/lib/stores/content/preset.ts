@@ -1,5 +1,11 @@
 import { get } from 'svelte/store';
-import { PresetService, type PresetFields, type Preset } from '$lib/services/content/preset';
+import {
+    PresetService,
+    type PresetFields,
+    type Preset,
+    type PromptBlock,
+    type PromptBlockFields
+} from '$lib/services/content/preset';
 import { SettingsService } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
@@ -111,4 +117,39 @@ export async function deletePreset(presetId: string): Promise<void> {
     } else if (isActivePreset) {
         activePreset.set(null);
     }
+}
+
+// ─── Block Actions ───────────────────────────────────────────────────
+
+export async function createPromptBlock(
+    presetId: string,
+    fields: DeepPartial<PromptBlockFields> & { sortOrder: string }
+): Promise<string> {
+    const { blockId, preset } = await PresetService.createBlock(presetId, fields);
+
+    // Update Store
+    presets.set(presetId, preset);
+    activePreset.update((p) => (p && p.id === presetId ? preset : p));
+
+    return blockId;
+}
+
+export async function updatePromptBlock(
+    presetId: string,
+    blockId: string,
+    changes: DeepPartial<PromptBlock>
+): Promise<void> {
+    const updated = await PresetService.updateBlock(presetId, blockId, changes);
+
+    // Update Store
+    presets.set(presetId, updated);
+    activePreset.update((p) => (p && p.id === presetId ? updated : p));
+}
+
+export async function deletePromptBlock(presetId: string, blockId: string): Promise<void> {
+    const updated = await PresetService.deleteBlock(presetId, blockId);
+
+    // Update Store
+    presets.set(presetId, updated);
+    activePreset.update((p) => (p && p.id === presetId ? updated : p));
 }

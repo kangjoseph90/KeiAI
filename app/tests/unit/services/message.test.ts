@@ -116,7 +116,7 @@ describe('MessageService', () => {
                     createdAt: 2000,
                     updatedAt: 2000,
                     isDeleted: false,
-                    data: makeFields('Msg 2', 'char')
+                    data: makeFields('Msg 2', 'assistant')
                 } as unknown as BaseRecord,
                 {
                     id: 'msg-1',
@@ -215,7 +215,7 @@ describe('MessageService', () => {
             updatedAt: 1000,
             isDeleted: false,
             data: {
-                role: 'char',
+                role: 'assistant',
                 activeSwipeId: 's1',
                 swipes: {
                     s1: { id: 's1', content: 'keep', createdAt: 1000 },

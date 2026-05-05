@@ -104,7 +104,7 @@ describe('Global Stores', () => {
                 {
                     id: 'm-gen',
                     chatId,
-                    role: 'char',
+                    role: 'assistant',
                     swipes: { s1: { id: 's1', content: 'world', createdAt: 1001 } },
                     activeSwipeId: 's1',
                     sortOrder: 'b'
@@ -145,7 +145,7 @@ describe('Global Stores', () => {
                 {
                     id: 'm-gen',
                     chatId,
-                    role: 'char',
+                    role: 'assistant',
                     swipes: { s1: { id: 's1', content: '', createdAt: 1000 } },
                     activeSwipeId: 's1',
                     sortOrder: 'a'

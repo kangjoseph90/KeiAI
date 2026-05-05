@@ -11,7 +11,7 @@ import { writeQueue } from './write_queue';
 
 export interface ChatContent {
     title: string;
-    systemPromptOverride?: string;
+    chatNote: string;
     defaultVariables?: Record<string, string>;
 }
 
@@ -34,7 +34,8 @@ export interface Chat extends ChatFields {
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const defaultFields: ChatFields = {
-    title: 'New Chat'
+    title: 'New Chat',
+    chatNote: ''
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────

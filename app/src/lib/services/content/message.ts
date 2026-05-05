@@ -7,6 +7,7 @@ import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { ToolCallInfo } from './tool';
 import { writeQueue } from './write_queue';
+import type { LLMRole } from '$lib/types/models/llm';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -29,7 +30,7 @@ export interface MessageSwipe extends MessageSwipeFields {
 }
 
 export interface MessageFields {
-    role: 'user' | 'char' | 'system';
+    role: LLMRole;
     swipes: Record<string, MessageSwipe>;
     activeSwipeId: string;
 }
@@ -249,21 +250,14 @@ export class MessageService {
         messageId: string,
         fields: MessageSwipeFields
     ): Promise<{ swipeId: string; message: Message }> {
-        const message = await this.get(messageId);
-        if (!message) {
-            throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
-        }
-
         const swipeId = generateId();
-        const swipe: MessageSwipe = {
-            ...fields,
-            id: swipeId,
-            createdAt: clock.now()
-        };
-
         const updatedMessage = await this.update(messageId, {
             swipes: {
-                [swipeId]: swipe
+                [swipeId]: {
+                    ...fields,
+                    id: swipeId,
+                    createdAt: clock.now()
+                }
             }
         });
 
@@ -275,17 +269,7 @@ export class MessageService {
         swipeId: string,
         changes: DeepPartial<MessageSwipe>
     ): Promise<Message> {
-        const message = await this.get(messageId);
-        if (!message) {
-            throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
-        }
-
-        const swipe = message.swipes[swipeId];
-        if (!swipe) {
-            throw new AppError('NOT_FOUND', `Swipe not found: ${swipeId}`);
-        }
-
-        return await this.update(messageId, {
+        return this.update(messageId, {
             swipes: {
                 [swipeId]: changes
             }
@@ -293,58 +277,44 @@ export class MessageService {
     }
 
     static async deleteSwipe(messageId: string, swipeId: string): Promise<Message> {
-        await Promise.all([
-            writeQueue.flushTable('messages'),
-            writeQueue.flushTable('tool_calls'),
-            writeQueue.flushTable('translations')
-        ]);
-
         const message = await this.get(messageId);
-        if (!message) {
-            throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
-        }
-
-        if (!message.swipes[swipeId]) {
-            throw new AppError('NOT_FOUND', `Swipe not found: ${swipeId}`);
-        }
+        if (!message) throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
 
         const remainingIds = Object.keys(message.swipes).filter((id) => id !== swipeId);
         const nextActiveId =
             message.activeSwipeId === swipeId ? (remainingIds[0] ?? '') : message.activeSwipeId;
 
-        try {
-            // 1. Delete associated data in transaction
-            await localDB.transaction(['tool_calls', 'translations'], 'rw', async () => {
-                await Promise.all([
-                    localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
-                        messageId,
-                        swipeId
-                    ]),
-                    localDB.softDeleteByCompoundIndex('translations', '[messageId+swipeId]', [
-                        messageId,
-                        swipeId
-                    ])
-                ]);
-            });
+        // Cleanup associated data
+        await Promise.all([
+            writeQueue.flushTable('tool_calls'),
+            writeQueue.flushTable('translations')
+        ]);
+        await localDB.transaction(['tool_calls', 'translations'], 'rw', async () => {
+            await Promise.all([
+                localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
+                    messageId,
+                    swipeId
+                ]),
+                localDB.softDeleteByCompoundIndex('translations', '[messageId+swipeId]', [
+                    messageId,
+                    swipeId
+                ])
+            ]);
+        });
 
-            // 2. Delegate message update to update() method (safe writeQueue usage)
-            return await this.update(messageId, {
-                swipes: { [swipeId]: undefined },
-                activeSwipeId: nextActiveId
-            });
-        } catch (error) {
-            if (error instanceof AppError) throw error;
-            throw new AppError('DB_WRITE_FAILED', 'Failed to delete message swipe', error);
-        }
+        return this.update(messageId, {
+            swipes: { [swipeId]: undefined },
+            activeSwipeId: nextActiveId
+        });
     }
 
     static async countByChat(chatId: string): Promise<number> {
         // create and delete bypasses the write queue - doesn't need to flush the queue
-        return await localDB.countByIndex('messages', 'chatId', chatId);
+        return localDB.countByIndex('messages', 'chatId', chatId);
     }
 
     static async countByChatBefore(chatId: string, beforeSortOrder: string): Promise<number> {
-        return await localDB.countRecordsInRange(
+        return localDB.countRecordsInRange(
             'messages',
             '[chatId+sortOrder]',
             [chatId, ''],

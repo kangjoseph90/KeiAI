@@ -70,6 +70,7 @@ describe('Chat Store', () => {
         id: 'chat-1',
         characterId: 'char-1',
         title: 'Test Chat',
+        chatNote: '',
         lorebookRefs: [],
         folders: {}
     };
@@ -77,8 +78,8 @@ describe('Chat Store', () => {
     const mockCharacter: Character = {
         id: 'char-1',
         name: 'Test Character',
-        shortDescription: '',
-        systemPrompt: '',
+        description: '',
+        characterNote: '',
         greetings: {},
         allowLowLevel: false,
         chatRefs: []
@@ -156,7 +157,7 @@ describe('Chat Store', () => {
                 id: 'msg-1',
                 chatId: 'chat-1',
                 sortOrder: 'a',
-                role: 'char',
+                role: 'assistant',
                 swipes: {
                     '1': { id: '1', content: 'Hello', createdAt: 1 }
                 },
@@ -171,7 +172,7 @@ describe('Chat Store', () => {
             expect(MessageService.create).toHaveBeenCalledWith(
                 'chat-1',
                 expect.objectContaining({
-                    role: 'char',
+                    role: 'assistant',
                     swipes: {
                         '1': expect.objectContaining({ content: 'Hello' })
                     }
@@ -203,7 +204,7 @@ describe('Chat Store', () => {
                 id: 'msg-1',
                 chatId: 'chat-1',
                 sortOrder: 'a',
-                role: 'char',
+                role: 'assistant',
                 swipes: { '1': { id: '1', content: 'Hello', createdAt: 1 } },
                 activeSwipeId: '1'
             } as Message;
@@ -240,7 +241,7 @@ describe('Chat Store', () => {
                 id: 'msg-1',
                 chatId: 'chat-1',
                 sortOrder: 'a',
-                role: 'char',
+                role: 'assistant',
                 swipes: {
                     '1': { id: '1', content: 'Keep', createdAt: 1 },
                     '2': { id: '2', content: 'Delete', createdAt: 2 }
@@ -397,7 +398,7 @@ describe('Chat Store', () => {
             id: 'msg-2',
             chatId: 'chat-1',
             sortOrder: 'b',
-            role: 'char',
+            role: 'assistant',
             swipes: { s1: { id: 's1', content: 'Fork me', createdAt: 2000 } },
             activeSwipeId: 's1'
         };

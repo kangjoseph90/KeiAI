@@ -75,7 +75,7 @@ describe('Character Flow Integration', () => {
         // 1. Create a character
         const character = await CharacterService.create({
             name: 'Integration Hero',
-            systemPrompt: 'You are a hero.'
+            characterNote: 'You are a hero.'
         });
 
         expect(character.id).toBeDefined();

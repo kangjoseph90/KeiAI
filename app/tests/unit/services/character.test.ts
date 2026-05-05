@@ -174,8 +174,8 @@ describe('CharacterService', () => {
                 isDeleted: false,
                 data: {
                     name: 'Test Char',
-                    shortDescription: 'Test',
-                    systemPrompt: 'Hello',
+                    description: 'Test',
+                    characterNote: 'Hello',
                     greetings: { '1': { id: '1', content: 'Hi', createdAt: 1000 } }
                 }
             };
@@ -187,7 +187,7 @@ describe('CharacterService', () => {
             expect(result).not.toBeNull();
             expect(result?.id).toBe('char-1');
             expect(result?.name).toBe('Test Char');
-            expect(result?.systemPrompt).toBe('Hello');
+            expect(result?.characterNote).toBe('Hello');
         });
 
         it('should return null when record does not exist', async () => {
@@ -218,14 +218,14 @@ describe('CharacterService', () => {
         it('should create a new character with encrypted data', async () => {
             const result = await CharacterService.create({
                 name: 'New Character',
-                shortDescription: 'A test character',
-                systemPrompt: 'You are helpful',
+                description: 'A test character',
+                characterNote: 'You are helpful',
                 greetings: { '1': { id: '1', content: 'Hello!', createdAt: 1000 } }
             });
 
             expect(result.id).toBe('test-id-123');
             expect(result.name).toBe('New Character');
-            expect(result.systemPrompt).toBe('You are helpful');
+            expect(result.characterNote).toBe('You are helpful');
             expect(localDB.putRecord).toHaveBeenCalledWith(
                 'characters',
                 expect.objectContaining({
@@ -244,7 +244,7 @@ describe('CharacterService', () => {
             const result = await CharacterService.create();
 
             expect(result.name).toBe('New Character');
-            expect(result.systemPrompt).toBe('');
+            expect(result.characterNote).toBe('');
         });
 
         it('should generate unique ID for each character', async () => {
@@ -266,7 +266,7 @@ describe('CharacterService', () => {
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
-                data: { name: 'Old Name', shortDescription: 'Old', systemPrompt: '' }
+                data: { name: 'Old Name', description: 'Old', characterNote: '' }
             };
 
             vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);

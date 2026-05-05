@@ -57,7 +57,7 @@ describe('PresetService', () => {
         description: 'Test Description',
         chatModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: { temperature: 0.9 } },
         auxModel: { id: '', provider: 'openai', parameters: {} },
-        templateOrder: [],
+        promptBlocks: {},
         maxResponse: 600,
         maxContext: 4096
     };

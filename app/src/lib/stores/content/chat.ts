@@ -278,7 +278,7 @@ export async function setGreetings(
     }
 
     const message = await MessageService.create(chat.id, {
-        role: 'char',
+        role: 'assistant',
         swipes: greetingSwipes,
         activeSwipeId
     });

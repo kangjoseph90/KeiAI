@@ -79,7 +79,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
         const targetMessage = opts.reroll
             ? await getLastMessage(chatId)
             : await createMessage(chatId, {
-                  role: 'char'
+                  role: 'assistant'
               });
         if (!targetMessage) throw new AppError('INVALID_INPUT', 'Chat has no messages');
         const messages = await PagedMessages.createBefore(chatId, targetMessage.sortOrder);
@@ -118,6 +118,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
         const prompt = await buildPrompt({
             character,
+            chat,
             preset,
             persona,
             lorebooks,

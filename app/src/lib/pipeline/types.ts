@@ -1,16 +1,16 @@
-export type PipelineRole = 'user' | 'char' | 'system' | 'assistant';
+import type { LLMRole } from '$lib/types/models/llm';
 
 export interface PipelineContextType {
-    input: { role: PipelineRole };
+    input: { role: LLMRole };
     request: {
-        role: PipelineRole;
+        role: LLMRole;
     };
     output: {
         messageId: string;
     };
     display: {
         messageId: string;
-        role: PipelineRole;
+        role: LLMRole;
     };
 }
 

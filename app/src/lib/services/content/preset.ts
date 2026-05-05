@@ -5,26 +5,35 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { writeQueue } from './write_queue';
-import type { LLMModelConfig } from '$lib/types/models/llm';
+import type { LLMModelConfig, LLMRole } from '$lib/types/models/llm';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
+
+export type PromptBlockFields =
+    | { name: string; type: 'text'; role: LLMRole; content: string }
+    | { name: string; type: 'character'; role: LLMRole }
+    | { name: string; type: 'persona'; role: LLMRole }
+    | { name: string; type: 'lorebook'; role: LLMRole }
+    | { name: string; type: 'memory'; role: LLMRole }
+    | { name: string; type: 'characterNote'; role: LLMRole }
+    | { name: string; type: 'chatNote'; role: LLMRole }
+    | { name: string; type: 'history'; start: number; end?: number };
+
+export type PromptBlock = PromptBlockFields & {
+    id: string;
+    sortOrder: string;
+    enabled: boolean;
+};
 
 export interface PresetFields {
     name: string;
     description: string;
     chatModel: LLMModelConfig;
     auxModel: LLMModelConfig;
-    templateOrder: PromptTemplateEntry[];
+    promptBlocks: Record<string, PromptBlock>;
     maxResponse: number;
     maxContext: number;
 }
-
-export type PromptTemplateEntry =
-    | { name: string; type: 'instruction'; role: 'system' | 'user' | 'assistant'; content: string }
-    | { name: string; type: 'description' }
-    | { name: string; type: 'persona' }
-    | { name: string; type: 'lorebook' }
-    | { name: string; type: 'history'; start: number; end?: number };
 
 export interface Preset extends PresetFields {
     id: string;
@@ -37,16 +46,9 @@ export const defaultPresetFields: PresetFields = {
     description: '',
     chatModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: {} },
     auxModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: {} },
-    templateOrder: [
-        { name: 'System instruction', type: 'instruction', role: 'system', content: '' },
-        { name: 'Character description', type: 'description' },
-        { name: 'User persona', type: 'persona' },
-        { name: 'Lorebook', type: 'lorebook' },
-        { name: 'Early history', type: 'history', start: -10 },
-        { name: 'Additional instruction', type: 'instruction', role: 'system', content: '' }
-    ],
-    maxResponse: 600,
-    maxContext: 4096
+    promptBlocks: {},
+    maxResponse: 6000,
+    maxContext: 60000
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────
@@ -139,5 +141,45 @@ export class PresetService {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete preset', error);
         }
+    }
+
+    // ─── Block CRUD ───────────────────────────────────────────────────
+
+    static async createBlock(
+        presetId: string,
+        fields: DeepPartial<PromptBlockFields> & { sortOrder: string }
+    ): Promise<{ blockId: string; preset: Preset }> {
+        const blockId = generateId();
+        const preset = await this.update(presetId, {
+            promptBlocks: {
+                [blockId]: {
+                    ...fields,
+                    id: blockId,
+                    enabled: true
+                }
+            }
+        });
+
+        return { blockId, preset };
+    }
+
+    static async updateBlock(
+        presetId: string,
+        blockId: string,
+        changes: DeepPartial<PromptBlock>
+    ): Promise<Preset> {
+        return this.update(presetId, {
+            promptBlocks: {
+                [blockId]: changes
+            }
+        });
+    }
+
+    static async deleteBlock(presetId: string, blockId: string): Promise<Preset> {
+        return this.update(presetId, {
+            promptBlocks: {
+                [blockId]: undefined
+            }
+        });
     }
 }

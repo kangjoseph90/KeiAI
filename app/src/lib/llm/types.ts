@@ -9,6 +9,7 @@ import type { ToolCallRequest } from '$lib/services/content/tool';
 import type { RetryOptions } from '$lib/adapters/http/types';
 import type { LLMFlags, LLMParameter } from '$lib/types/models/llm';
 import type { StreamDebounceConfig } from '$lib/utils/stream';
+import type { LLMRole } from '$lib/types/models/llm';
 
 // ─── Stream Content ──────────────────────────────────────────────────────────
 
@@ -33,7 +34,7 @@ export interface LLMStreamHandler {
 
 /** OpenAI-compatible chat message type */
 export interface OpenAIChat {
-    role: 'system' | 'user' | 'assistant';
+    role: LLMRole;
     content: string;
     thought?: string;
 }

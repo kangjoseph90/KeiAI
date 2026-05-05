@@ -23,6 +23,9 @@ export type LLMHandler =
     | 'anthropic'
     | 'google';
 
+/** Canonical roles for LLM messages */
+export type LLMRole = 'system' | 'user' | 'assistant';
+
 // ─── Built-in Provider Types ─────────────────────────────────────────────────────────
 
 export type BuiltInLLMProvider =

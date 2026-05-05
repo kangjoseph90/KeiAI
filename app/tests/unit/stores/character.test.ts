@@ -112,8 +112,8 @@ describe('Character Store', () => {
     const mockCharacter: Character = {
         id: 'char-1',
         name: 'Test Character',
-        shortDescription: 'Description',
-        systemPrompt: '',
+        description: 'Description',
+        characterNote: '',
         greetings: {},
         allowLowLevel: false,
         chatRefs: [],

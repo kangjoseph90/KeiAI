@@ -16,7 +16,7 @@
         if (!newNameInput.trim()) return;
         await createCharacter({
             name: newNameInput,
-            shortDescription: 'An offline-first character'
+            description: 'An offline-first character'
         });
         newNameInput = '';
     }
@@ -69,7 +69,7 @@
                                 <div>
                                     <p class="font-medium">{char.name}</p>
                                     <p class="text-sm text-muted-foreground">
-                                        {char.shortDescription}
+                                        {char.description}
                                     </p>
                                 </div>
                             </div>
