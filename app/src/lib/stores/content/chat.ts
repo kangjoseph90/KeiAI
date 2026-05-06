@@ -41,6 +41,21 @@ export async function getChat(chatId: string): Promise<Chat> {
     return db;
 }
 
+/**
+ * Returns lorebooks owned by a chat.
+ * Uses store cache for the active chat, falls back to refs-based individual gets
+ * (avoids listByOwner which bypasses the record buffer LRU cache).
+ */
+export async function getChatLorebooks(chatId: string): Promise<Lorebook[]> {
+    if (chatId === get(activeChatId)) {
+        return get(chatLorebooks);
+    }
+    const chat = await getChat(chatId);
+    const refs = chat.lorebookRefs ?? [];
+    const results = await Promise.all(refs.map((ref) => LorebookService.get(ref.id)));
+    return results.filter((lb): lb is Lorebook => lb !== null);
+}
+
 export async function selectChat(chatId: string, characterId: string): Promise<void> {
     const chat = await getChat(chatId);
 

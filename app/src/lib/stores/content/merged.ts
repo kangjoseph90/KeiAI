@@ -1,8 +1,10 @@
-import { LorebookService, ScriptService, type Lorebook, type Script } from '$lib/services';
+import type { Lorebook, Script } from '$lib/services';
 import { getChat } from './chat';
 import { getCharacter } from './character';
 import { getAppSettings } from './settings';
-import { getModule } from './module';
+import { getChatLorebooks } from './chat';
+import { getCharacterLorebooks, getCharacterScripts } from './character';
+import { getModuleLorebooks, getModuleScripts } from './module';
 
 /**
  * Returns active module IDs for a character.
@@ -23,23 +25,17 @@ export async function getActiveModuleIds(characterId: string): Promise<Set<strin
 
 /**
  * Returns merged lorebooks from chat, character, and active modules.
- * Fetches from DB and combines in priority order.
+ * Uses store-cached getters that fall back to refs-based individual gets.
  */
 export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
     const chat = await getChat(chatId);
     const activeModuleIds = await getActiveModuleIds(chat.characterId);
 
-    const [chatLB, charLB, modules] = await Promise.all([
-        LorebookService.listByOwner(chatId),
-        LorebookService.listByOwner(chat.characterId),
-        Promise.all([...activeModuleIds].map((id) => getModule(id)))
+    const [chatLB, charLB, ...modLBResults] = await Promise.all([
+        getChatLorebooks(chatId),
+        getCharacterLorebooks(chat.characterId),
+        ...[...activeModuleIds].map((id) => getModuleLorebooks(id))
     ]);
-
-    const modLBResults = await Promise.all(
-        modules.map(async (mod) => {
-            return await LorebookService.listByOwner(mod.id);
-        })
-    );
 
     const modLB = modLBResults.flat();
 
@@ -48,22 +44,16 @@ export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
 
 /**
  * Returns merged scripts from character and active modules.
- * Fetches from DB and combines in priority order.
+ * Uses store-cached getters that fall back to refs-based individual gets.
  */
 export async function getMergedScripts(chatId: string): Promise<Script[]> {
     const chat = await getChat(chatId);
     const activeModuleIds = await getActiveModuleIds(chat.characterId);
 
-    const [charSC, modules] = await Promise.all([
-        ScriptService.listByOwner(chat.characterId),
-        Promise.all([...activeModuleIds].map((id) => getModule(id)))
+    const [charSC, ...modSCResults] = await Promise.all([
+        getCharacterScripts(chat.characterId),
+        ...[...activeModuleIds].map((id) => getModuleScripts(id))
     ]);
-
-    const modSCResults = await Promise.all(
-        modules.map(async (mod) => {
-            return await ScriptService.listByOwner(mod.id);
-        })
-    );
 
     const modSC = modSCResults.flat();
 

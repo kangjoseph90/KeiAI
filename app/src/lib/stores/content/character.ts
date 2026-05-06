@@ -51,6 +51,36 @@ export async function getCharacter(characterId: string): Promise<Character> {
 }
 
 /**
+ * Returns lorebooks owned by a character.
+ * Uses store cache for the active character, falls back to refs-based individual gets
+ * (avoids listByOwner which bypasses the record buffer LRU cache).
+ */
+export async function getCharacterLorebooks(characterId: string): Promise<Lorebook[]> {
+    if (characterId === get(activeCharacterId)) {
+        return get(characterLorebooks);
+    }
+    const char = await getCharacter(characterId);
+    const refs = char.lorebookRefs ?? [];
+    const results = await Promise.all(refs.map((ref) => LorebookService.get(ref.id)));
+    return results.filter((lb): lb is Lorebook => lb !== null);
+}
+
+/**
+ * Returns scripts owned by a character.
+ * Uses store cache for the active character, falls back to refs-based individual gets
+ * (avoids listByOwner which bypasses the record buffer LRU cache).
+ */
+export async function getCharacterScripts(characterId: string): Promise<Script[]> {
+    if (characterId === get(activeCharacterId)) {
+        return get(characterScripts);
+    }
+    const char = await getCharacter(characterId);
+    const refs = char.scriptRefs ?? [];
+    const results = await Promise.all(refs.map((ref) => ScriptService.get(ref.id)));
+    return results.filter((sc): sc is Script => sc !== null);
+}
+
+/**
  * Service errors propagate to the caller — this function does not catch them.
  * Callers (e.g. route load functions) are responsible for error boundaries.
  */
