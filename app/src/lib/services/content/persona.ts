@@ -5,7 +5,7 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import type { AssetRef } from '$lib/types/refs';
 import { generateId } from '$lib/utils/id';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ function parseFields(record: PersonaRecord): PersonaFields {
 export class PersonaService {
     /** List all personas */
     static async list(): Promise<Persona[]> {
-        await writeQueue.flushTable('personas');
+        await buffer.flushTable('personas');
         const { userId } = getActiveSession();
         const records = await localDB.getAll<PersonaRecord>('personas', userId);
 
@@ -54,16 +54,7 @@ export class PersonaService {
     }
 
     static async get(id: string): Promise<Persona | null> {
-        const cached = writeQueue.peek<PersonaRecord>('personas', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return {
-                ...parseFields(cached),
-                id: cached.id
-            };
-        }
-
-        const record = await localDB.getRecord<PersonaRecord>('personas', id);
+        const record = await buffer.get<PersonaRecord>('personas', id);
         if (!record || record.isDeleted) return null;
 
         return {
@@ -100,8 +91,7 @@ export class PersonaService {
 
     /** Update a persona */
     static async update(id: string, changes: DeepPartial<PersonaFields>): Promise<Persona> {
-        const cached = writeQueue.peek<PersonaRecord>('personas', id);
-        const record = cached ?? (await localDB.getRecord<PersonaRecord>('personas', id));
+        const record = await buffer.get<PersonaRecord>('personas', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Persona not found: ${id}`);
         }
@@ -110,7 +100,7 @@ export class PersonaService {
             const current = parseFields(record);
             const updated: PersonaFields = deepMerge(current, changes);
 
-            writeQueue.update<PersonaRecord>({
+            buffer.update<PersonaRecord>({
                 tableName: 'personas',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -126,7 +116,7 @@ export class PersonaService {
     /** Delete a persona */
     static async delete(id: string): Promise<void> {
         try {
-            writeQueue.drop('personas', id);
+            buffer.drop('personas', id);
             await localDB.softDeleteRecord('personas', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

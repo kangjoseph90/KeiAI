@@ -5,7 +5,7 @@ import type { AssetRef, FolderDef, OrderedRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ function parseFields(record: ModuleRecord): ModuleFields {
 
 export class ModuleService {
     static async list(): Promise<Module[]> {
-        await writeQueue.flushTable('modules');
+        await buffer.flushTable('modules');
         const { userId } = getActiveSession();
         const records = await localDB.getAll<ModuleRecord>('modules', userId);
 
@@ -62,16 +62,7 @@ export class ModuleService {
     }
 
     static async get(id: string): Promise<Module | null> {
-        const cached = writeQueue.peek<ModuleRecord>('modules', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return {
-                ...parseFields(cached),
-                id: cached.id
-            };
-        }
-
-        const record = await localDB.getRecord<ModuleRecord>('modules', id);
+        const record = await buffer.get<ModuleRecord>('modules', id);
         if (!record || record.isDeleted) return null;
 
         return {
@@ -106,8 +97,7 @@ export class ModuleService {
     }
 
     static async update(id: string, changes: DeepPartial<ModuleFields>): Promise<Module> {
-        const cached = writeQueue.peek<ModuleRecord>('modules', id);
-        const record = cached ?? (await localDB.getRecord<ModuleRecord>('modules', id));
+        const record = await buffer.get<ModuleRecord>('modules', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Module not found: ${id}`);
         }
@@ -116,7 +106,7 @@ export class ModuleService {
             const current = parseFields(record);
             const updated: ModuleFields = deepMerge(current, changes);
 
-            writeQueue.update<ModuleRecord>({
+            buffer.update<ModuleRecord>({
                 tableName: 'modules',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -137,13 +127,13 @@ export class ModuleService {
     static async delete(id: string): Promise<void> {
         try {
             await Promise.all([
-                writeQueue.flushTable('modules'),
-                writeQueue.flushTable('lorebooks'),
-                writeQueue.flushTable('scripts'),
-                writeQueue.flushTable('charjs')
+                buffer.flushTable('modules'),
+                buffer.flushTable('lorebooks'),
+                buffer.flushTable('scripts'),
+                buffer.flushTable('charjs')
             ]);
 
-            writeQueue.drop('modules', id);
+            buffer.drop('modules', id);
             await localDB.transaction(
                 ['lorebooks', 'scripts', 'charjs', 'modules'],
                 'rw',

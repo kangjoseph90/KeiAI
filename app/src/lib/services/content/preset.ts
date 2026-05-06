@@ -4,7 +4,7 @@ import { localDB, type PresetRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 import type { LLMModelConfig, LLMRole } from '$lib/types/models/llm';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ function parseFields(record: PresetRecord): PresetFields {
 
 export class PresetService {
     static async list(): Promise<Preset[]> {
-        await writeQueue.flushTable('presets');
+        await buffer.flushTable('presets');
         const { userId } = getActiveSession();
         const records = await localDB.getAll<PresetRecord>('presets', userId);
 
@@ -69,16 +69,7 @@ export class PresetService {
     }
 
     static async get(id: string): Promise<Preset | null> {
-        const cached = writeQueue.peek<PresetRecord>('presets', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return {
-                ...parseFields(cached),
-                id: cached.id
-            };
-        }
-
-        const record = await localDB.getRecord<PresetRecord>('presets', id);
+        const record = await buffer.get<PresetRecord>('presets', id);
         if (!record || record.isDeleted) return null;
 
         return { ...parseFields(record), id: record.id };
@@ -110,8 +101,7 @@ export class PresetService {
     }
 
     static async update(id: string, changes: DeepPartial<PresetFields>): Promise<Preset> {
-        const cached = writeQueue.peek<PresetRecord>('presets', id);
-        const record = cached ?? (await localDB.getRecord<PresetRecord>('presets', id));
+        const record = await buffer.get<PresetRecord>('presets', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
         }
@@ -120,7 +110,7 @@ export class PresetService {
             const current = parseFields(record);
             const updated: PresetFields = deepMerge(current, changes);
 
-            writeQueue.update<PresetRecord>({
+            buffer.update<PresetRecord>({
                 tableName: 'presets',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -135,7 +125,7 @@ export class PresetService {
 
     static async delete(id: string): Promise<void> {
         try {
-            writeQueue.drop('presets', id);
+            buffer.drop('presets', id);
             await localDB.softDeleteRecord('presets', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

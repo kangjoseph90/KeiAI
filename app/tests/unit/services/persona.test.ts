@@ -10,7 +10,7 @@ import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB, type PersonaRecord } from '$lib/adapters/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
-import { writeQueue } from '$lib/services/content/write_queue';
+import { buffer } from '$lib/services/content/record_buffer';
 
 // Mock all dependencies
 vi.mock('$lib/crypto', () => ({
@@ -37,6 +37,15 @@ vi.mock('$lib/utils/id', () => ({
     generateId: vi.fn(() => 'persona-123')
 }));
 
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: {
+        get: vi.fn(),
+        update: vi.fn(),
+        drop: vi.fn(),
+        flushTable: vi.fn()
+    }
+}));
+
 describe('PersonaService', () => {
     const mockUserId = 'user-123';
     const mockMasterKey = {} as CryptoKey;
@@ -60,7 +69,9 @@ describe('PersonaService', () => {
         vi.resetAllMocks(); // Use reset instead of clear for cleaner state
         vi.useFakeTimers();
         vi.setSystemTime(mockNow);
-        writeQueue.drop('personas', 'persona-123');
+        vi.mocked(buffer.get).mockResolvedValue(null);
+        vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
+        buffer.drop('personas', 'persona-123');
 
         // Default session mock
         vi.mocked(getActiveSession).mockReturnValue({
@@ -93,13 +104,13 @@ describe('PersonaService', () => {
 
     describe('get', () => {
         it('should return a persona by id', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
             const result = await PersonaService.get('persona-123');
             expect(result?.name).toBe(basePersonaFields.name);
         });
 
         it('should return null if missing', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+            vi.mocked(buffer.get).mockResolvedValue(null);
             expect(await PersonaService.get('none')).toBeNull();
         });
     });
@@ -114,16 +125,15 @@ describe('PersonaService', () => {
 
     describe('update', () => {
         it('should update fields', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
             const result = await PersonaService.update('persona-123', { name: 'Updated' });
             expect(result.name).toBe('Updated');
 
-            await vi.runAllTimersAsync();
-            expect(localDB.putRecord).toHaveBeenCalled();
+            expect(buffer.update).toHaveBeenCalled();
         });
 
         it('should throw AppError when record not found', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+            vi.mocked(buffer.get).mockResolvedValue(null);
 
             await expect(PersonaService.update('persona-123', { name: 'Fail' })).rejects.toThrow(
                 AppError

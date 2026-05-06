@@ -35,9 +35,9 @@ vi.mock('$lib/services/sync', () => ({
     }
 }));
 
-vi.mock('$lib/services/content/write_queue', () => ({
-    writeQueue: {
-        peek: vi.fn(() => undefined),
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: {
+        get: vi.fn(),
         update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()

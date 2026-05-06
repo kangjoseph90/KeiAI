@@ -4,7 +4,7 @@ import { localDB, type CharJSRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ function parseFields(record: CharJSRecord): CharJSFields {
 export class CharJSService {
     /** List charjs scripts owned by a specific parent (character, module) */
     static async listByOwner(ownerId: string): Promise<CharJS[]> {
-        await writeQueue.flushTable('charjs');
+        await buffer.flushTable('charjs');
         const records = await localDB.getByIndex<CharJSRecord>(
             'charjs',
             'ownerId',
@@ -54,17 +54,7 @@ export class CharJSService {
     }
 
     static async get(id: string): Promise<CharJS | null> {
-        const cached = writeQueue.peek<CharJSRecord>('charjs', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return {
-                ...parseFields(cached),
-                id: cached.id,
-                ownerId: cached.ownerId
-            };
-        }
-
-        const record = await localDB.getRecord<CharJSRecord>('charjs', id);
+        const record = await buffer.get<CharJSRecord>('charjs', id);
         if (!record || record.isDeleted) return null;
 
         return {
@@ -101,8 +91,7 @@ export class CharJSService {
     }
 
     static async update(id: string, changes: DeepPartial<CharJSFields>): Promise<CharJS> {
-        const cached = writeQueue.peek<CharJSRecord>('charjs', id);
-        const record = cached ?? (await localDB.getRecord<CharJSRecord>('charjs', id));
+        const record = await buffer.get<CharJSRecord>('charjs', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `CharJS script not found: ${id}`);
         }
@@ -111,7 +100,7 @@ export class CharJSService {
             const current = parseFields(record);
             const updated: CharJSFields = deepMerge(current, changes);
 
-            writeQueue.update<CharJSRecord>({
+            buffer.update<CharJSRecord>({
                 tableName: 'charjs',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -126,7 +115,7 @@ export class CharJSService {
 
     static delete(id: string): Promise<void> {
         try {
-            writeQueue.drop('charjs', id);
+            buffer.drop('charjs', id);
             return localDB.softDeleteRecord('charjs', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

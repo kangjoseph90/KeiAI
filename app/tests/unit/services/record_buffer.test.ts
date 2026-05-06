@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { writeQueue } from '$lib/services/content/write_queue';
-import { localDB, type DataRecord } from '$lib/adapters/db';
+import { buffer } from '$lib/services/content/record_buffer';
+import { localDB, type DataRecord, type DatabaseWriteEvent } from '$lib/adapters/db';
+
+const mockState = vi.hoisted(() => ({
+    writeEventListener: undefined as ((events: DatabaseWriteEvent[]) => void) | undefined
+}));
 
 vi.mock('$lib/adapters/db', () => ({
     localDB: {
-        putRecord: vi.fn()
+        getRecord: vi.fn(),
+        putRecord: vi.fn(),
+        subscribeWriteEvents: vi.fn((listener) => {
+            mockState.writeEventListener = listener;
+            return vi.fn();
+        })
     }
 }));
 
@@ -20,15 +29,16 @@ function makeRecord(overrides: Partial<DataRecord> = {}): DataRecord {
     };
 }
 
-describe('writeQueue', () => {
+describe('recordBuffer', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.useFakeTimers();
-        writeQueue.drop('messages', 'msg-1');
+        vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+        buffer.drop('messages', 'msg-1');
     });
 
     afterEach(() => {
-        writeQueue.drop('messages', 'msg-1');
+        buffer.drop('messages', 'msg-1');
         vi.useRealTimers();
     });
 
@@ -43,16 +53,16 @@ describe('writeQueue', () => {
             )
             .mockResolvedValue(undefined);
 
-        writeQueue.update<DataRecord>({
+        buffer.update<DataRecord>({
             tableName: 'messages',
             record: makeRecord({ data: { content: 'first' } }),
             patch: { content: 'first' }
         });
 
-        const flushPromise = writeQueue.flush('messages', 'msg-1');
+        const flushPromise = buffer.flush('messages', 'msg-1');
         expect(localDB.putRecord).toHaveBeenCalledTimes(1);
 
-        writeQueue.update<DataRecord>({
+        buffer.update<DataRecord>({
             tableName: 'messages',
             record: makeRecord({ data: { content: 'second' } }),
             patch: { content: 'second' }
@@ -81,56 +91,74 @@ describe('writeQueue', () => {
         );
     });
 
-    it('peek returns full record with metadata', () => {
+    it('get returns full record with metadata', async () => {
         const record = makeRecord({ data: { content: 'hello' } });
 
-        writeQueue.update<DataRecord>({
+        buffer.update<DataRecord>({
             tableName: 'messages',
             record,
             patch: record.data
         });
 
-        const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
+        const cached = await buffer.get<DataRecord>('messages', 'msg-1');
         expect(cached).toEqual(record);
         expect(cached?.userId).toBe('user-1');
         expect(cached?.createdAt).toBe(100);
     });
 
-    it('peek returns null when nothing is queued', () => {
-        const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
+    it('get returns null when nothing is queued', async () => {
+        const cached = await buffer.get<DataRecord>('messages', 'msg-1');
         expect(cached).toBeNull();
     });
 
-    it('update seeds the queue with the full record when no pending entry exists', () => {
-        writeQueue.update<DataRecord>({
+    it('invalidates read cache when localDB emits a write event', async () => {
+        vi.mocked(localDB.getRecord)
+            .mockResolvedValueOnce(makeRecord({ data: { content: 'old' } }))
+            .mockResolvedValueOnce(makeRecord({ data: { content: 'new' } }));
+
+        expect((await buffer.get<DataRecord>('messages', 'msg-1'))?.data).toEqual({
+            content: 'old'
+        });
+
+        mockState.writeEventListener?.([
+            { tableName: 'messages', operation: 'put', ids: ['msg-1'], origin: 'sync' }
+        ]);
+
+        expect((await buffer.get<DataRecord>('messages', 'msg-1'))?.data).toEqual({
+            content: 'new'
+        });
+    });
+
+    it('update seeds the queue with the full record when no pending entry exists', async () => {
+        buffer.update<DataRecord>({
             tableName: 'messages',
             record: makeRecord({ data: { content: 'first', extra: 1 } }),
             patch: { content: 'ignored' }
         });
 
-        const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
+        const cached = await buffer.get<DataRecord>('messages', 'msg-1');
         expect(cached?.data).toEqual({ content: 'first', extra: 1 });
     });
 
-    it('update merges only the patch when a pending entry exists', () => {
-        writeQueue.update<DataRecord>({
+    it('update merges only the patch when a pending entry exists', async () => {
+        buffer.update<DataRecord>({
             tableName: 'messages',
             record: makeRecord({ data: { content: 'first', extra: 1 } }),
             patch: { content: 'first', extra: 1 }
         });
 
-        writeQueue.update<DataRecord>({
+        buffer.update<DataRecord>({
             tableName: 'messages',
             record: makeRecord({ data: { content: 'second', stale: true } }),
             patch: { content: 'second' }
         });
 
-        const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
+        const cached = await buffer.get<DataRecord>('messages', 'msg-1');
         expect(cached?.data).toEqual({ content: 'second', extra: 1 });
     });
 
-    it('update preserves nested object keys when merging patches', () => {
-        writeQueue.update<DataRecord>({
+    it('update preserves nested object keys when merging patches', async () => {
+        buffer.update<DataRecord>({
             tableName: 'messages',
             record: makeRecord({
                 data: {
@@ -146,7 +174,7 @@ describe('writeQueue', () => {
             }
         });
 
-        writeQueue.update<DataRecord>({
+        buffer.update<DataRecord>({
             tableName: 'messages',
             record: makeRecord({
                 data: {
@@ -162,7 +190,7 @@ describe('writeQueue', () => {
             }
         });
 
-        const cached = writeQueue.peek<DataRecord>('messages', 'msg-1');
+        const cached = await buffer.get<DataRecord>('messages', 'msg-1');
         expect(cached?.data).toEqual({
             swipes: {
                 s1: { content: 'first' },
@@ -171,14 +199,14 @@ describe('writeQueue', () => {
         });
     });
 
-    it('drop removes entry from queue', () => {
-        writeQueue.update<DataRecord>({
+    it('drop removes entry from queue', async () => {
+        buffer.update<DataRecord>({
             tableName: 'messages',
             record: makeRecord(),
             patch: makeRecord().data
         });
 
-        writeQueue.drop('messages', 'msg-1');
-        expect(writeQueue.peek<DataRecord>('messages', 'msg-1')).toBeNull();
+        buffer.drop('messages', 'msg-1');
+        expect(await buffer.get<DataRecord>('messages', 'msg-1')).toBeNull();
     });
 });

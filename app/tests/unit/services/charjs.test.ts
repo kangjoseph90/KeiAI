@@ -31,9 +31,9 @@ vi.mock('$lib/utils/id', () => ({
     generateId: vi.fn(() => 'test-id')
 }));
 
-vi.mock('$lib/services/content/write_queue', () => ({
-    writeQueue: {
-        peek: vi.fn(() => undefined),
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: {
+        get: vi.fn(),
         update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
@@ -42,7 +42,7 @@ vi.mock('$lib/services/content/write_queue', () => ({
 
 import { getActiveSession } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
-import { writeQueue } from '$lib/services/content/write_queue';
+import { buffer } from '$lib/services/content/record_buffer';
 
 describe('CharJSService', () => {
     const mockUserId = 'user-123';
@@ -55,6 +55,8 @@ describe('CharJSService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(buffer.get).mockResolvedValue(null);
+        vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
 
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
@@ -93,7 +95,7 @@ describe('CharJSService', () => {
                 data: defaultCharJSParams
             } as unknown as BaseRecord;
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
             const result = await CharJSService.get('c-1');
 
@@ -103,13 +105,13 @@ describe('CharJSService', () => {
         });
 
         it('should return null if record is missing or deleted', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
+            vi.mocked(buffer.get).mockResolvedValue(null);
             expect(await CharJSService.get('non-existent')).toBeNull();
 
-            vi.mocked(localDB.getRecord).mockResolvedValue({
+            vi.mocked(buffer.get).mockResolvedValue({
                 id: 'deleted',
                 isDeleted: true
-            } as unknown as BaseRecord);
+            } as never);
             expect(await CharJSService.get('deleted')).toBeNull();
         });
     });
@@ -147,19 +149,18 @@ describe('CharJSService', () => {
                 data: defaultCharJSParams
             } as unknown as BaseRecord;
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
             const result = await CharJSService.update('c-1', { code: 'new code' });
 
             expect(result.code).toBe('new code');
             expect(result.name).toBe('Test Script'); // Preserved from existing
-
-            expect(writeQueue.update).toHaveBeenCalled();
+            expect(buffer.update).toHaveBeenCalled();
             expect(localDB.putRecord).not.toHaveBeenCalled();
         });
 
         it('should throw if not found', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
+            vi.mocked(buffer.get).mockResolvedValue(null);
 
             await expect(CharJSService.update('missing', { name: 'new' })).rejects.toThrow(
                 'CharJS script not found: missing'

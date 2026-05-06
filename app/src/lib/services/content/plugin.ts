@@ -4,7 +4,7 @@ import { localDB, type PluginRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ function parseFields(record: PluginRecord): PluginFields {
 
 export class PluginService {
     static async list(): Promise<Plugin[]> {
-        await writeQueue.flushTable('plugins');
+        await buffer.flushTable('plugins');
         const { userId } = getActiveSession();
         const records = await localDB.getAll<PluginRecord>('plugins', userId);
 
@@ -53,16 +53,7 @@ export class PluginService {
     }
 
     static async get(id: string): Promise<Plugin | null> {
-        const cached = writeQueue.peek<PluginRecord>('plugins', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return {
-                ...parseFields(cached),
-                id: cached.id
-            };
-        }
-
-        const record = await localDB.getRecord<PluginRecord>('plugins', id);
+        const record = await buffer.get<PluginRecord>('plugins', id);
         if (!record || record.isDeleted) return null;
 
         return {
@@ -97,8 +88,7 @@ export class PluginService {
     }
 
     static async update(id: string, changes: DeepPartial<PluginFields>): Promise<Plugin> {
-        const cached = writeQueue.peek<PluginRecord>('plugins', id);
-        const record = cached ?? (await localDB.getRecord<PluginRecord>('plugins', id));
+        const record = await buffer.get<PluginRecord>('plugins', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Plugin not found: ${id}`);
         }
@@ -107,7 +97,7 @@ export class PluginService {
             const current = parseFields(record);
             const updated: PluginFields = deepMerge(current, changes);
 
-            writeQueue.update<PluginRecord>({
+            buffer.update<PluginRecord>({
                 tableName: 'plugins',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -122,7 +112,7 @@ export class PluginService {
 
     static async delete(id: string): Promise<void> {
         try {
-            writeQueue.drop('plugins', id);
+            buffer.drop('plugins', id);
             await localDB.softDeleteRecord('plugins', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

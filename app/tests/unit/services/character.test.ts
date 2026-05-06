@@ -55,9 +55,9 @@ vi.mock('$lib/utils/defaults', () => ({
     })
 }));
 
-vi.mock('$lib/services/content/write_queue', () => ({
-    writeQueue: {
-        peek: vi.fn(() => null),
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: {
+        get: vi.fn(),
         update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
@@ -69,7 +69,7 @@ import { getActiveSession } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';
-import { writeQueue } from '$lib/services/content/write_queue';
+import { buffer } from '$lib/services/content/record_buffer';
 
 describe('CharacterService', () => {
     const mockMasterKey = {} as CryptoKey;
@@ -111,8 +111,8 @@ describe('CharacterService', () => {
         vi.mocked(generateId).mockReturnValue('test-id-123');
 
         // Default write queue mock
-        vi.mocked(writeQueue.peek).mockReturnValue(null);
-        vi.mocked(writeQueue.flushTable).mockResolvedValue(undefined);
+        vi.mocked(buffer.get).mockResolvedValue(null);
+        vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
     });
 
     describe('list', () => {
@@ -180,7 +180,7 @@ describe('CharacterService', () => {
                 }
             };
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
             const result = await CharacterService.get('char-1');
 
@@ -191,7 +191,7 @@ describe('CharacterService', () => {
         });
 
         it('should return null when record does not exist', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
+            vi.mocked(buffer.get).mockResolvedValue(null);
 
             const result = await CharacterService.get('non-existent');
 
@@ -199,14 +199,14 @@ describe('CharacterService', () => {
         });
 
         it('should return null when record is deleted', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue({
+            vi.mocked(buffer.get).mockResolvedValue({
                 id: 'char-1',
                 userId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: true,
                 data: { name: 'Deleted' }
-            } as unknown as BaseRecord);
+            } as never);
 
             const result = await CharacterService.get('char-1');
 
@@ -269,18 +269,18 @@ describe('CharacterService', () => {
                 data: { name: 'Old Name', description: 'Old', characterNote: '' }
             };
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
+            vi.mocked(buffer.get).mockResolvedValue(existingRecord as never);
 
             const result = await CharacterService.update('char-1', {
                 name: 'New Name'
             });
 
             expect(result.name).toBe('New Name');
-            expect(writeQueue.update).toHaveBeenCalled();
+            expect(buffer.update).toHaveBeenCalled();
         });
 
         it('should throw NOT_FOUND when character does not exist', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
+            vi.mocked(buffer.get).mockResolvedValue(null);
 
             await expect(
                 CharacterService.update('non-existent', { name: 'New' })
@@ -288,14 +288,14 @@ describe('CharacterService', () => {
         });
 
         it('should throw NOT_FOUND when character is deleted', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue({
+            vi.mocked(buffer.get).mockResolvedValue({
                 id: 'char-1',
                 userId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: true,
                 data: { name: 'Deleted' }
-            } as unknown as BaseRecord);
+            } as never);
 
             await expect(CharacterService.update('char-1', { name: 'New' })).rejects.toThrow();
         });

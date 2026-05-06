@@ -4,7 +4,7 @@ import { localDB, type ScriptRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ function parseFields(record: ScriptRecord): ScriptFields {
 export class ScriptService {
     /** List scripts owned by a specific parent (character, module) */
     static async listByOwner(ownerId: string): Promise<Script[]> {
-        await writeQueue.flushTable('scripts');
+        await buffer.flushTable('scripts');
         const records = await localDB.getByIndex<ScriptRecord>(
             'scripts',
             'ownerId',
@@ -68,17 +68,7 @@ export class ScriptService {
     }
 
     static async get(id: string): Promise<Script | null> {
-        const cached = writeQueue.peek<ScriptRecord>('scripts', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return {
-                ...parseFields(cached),
-                id: cached.id,
-                ownerId: cached.ownerId
-            };
-        }
-
-        const record = await localDB.getRecord<ScriptRecord>('scripts', id);
+        const record = await buffer.get<ScriptRecord>('scripts', id);
         if (!record || record.isDeleted) return null;
 
         return {
@@ -115,8 +105,7 @@ export class ScriptService {
     }
 
     static async update(id: string, changes: DeepPartial<ScriptFields>): Promise<Script> {
-        const cached = writeQueue.peek<ScriptRecord>('scripts', id);
-        const record = cached ?? (await localDB.getRecord<ScriptRecord>('scripts', id));
+        const record = await buffer.get<ScriptRecord>('scripts', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Script not found: ${id}`);
         }
@@ -125,7 +114,7 @@ export class ScriptService {
             const current = parseFields(record);
             const updated: ScriptFields = deepMerge(current, changes);
 
-            writeQueue.update<ScriptRecord>({
+            buffer.update<ScriptRecord>({
                 tableName: 'scripts',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -140,7 +129,7 @@ export class ScriptService {
 
     static async delete(id: string): Promise<void> {
         try {
-            writeQueue.drop('scripts', id);
+            buffer.drop('scripts', id);
             await localDB.softDeleteRecord('scripts', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

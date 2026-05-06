@@ -5,7 +5,7 @@ import type { FolderDef, OrderedRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ function parseFields(record: ChatRecord): ChatFields {
 
 export class ChatService {
     static async listByCharacter(characterId: string): Promise<Chat[]> {
-        await writeQueue.flushTable('chats');
+        await buffer.flushTable('chats');
         const records = await localDB.getByIndex<ChatRecord>(
             'chats',
             'characterId',
@@ -63,17 +63,7 @@ export class ChatService {
     }
 
     static async get(id: string): Promise<Chat | null> {
-        const cached = writeQueue.peek<ChatRecord>('chats', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return {
-                ...parseFields(cached),
-                id: cached.id,
-                characterId: cached.characterId
-            };
-        }
-
-        const record = await localDB.getRecord<ChatRecord>('chats', id);
+        const record = await buffer.get<ChatRecord>('chats', id);
         if (!record || record.isDeleted) return null;
 
         return {
@@ -110,8 +100,7 @@ export class ChatService {
     }
 
     static async update(id: string, changes: DeepPartial<ChatFields>): Promise<Chat> {
-        const cached = writeQueue.peek<ChatRecord>('chats', id);
-        const record = cached ?? (await localDB.getRecord<ChatRecord>('chats', id));
+        const record = await buffer.get<ChatRecord>('chats', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', 'Chat not found');
         }
@@ -120,7 +109,7 @@ export class ChatService {
             const current = parseFields(record);
             const updated: ChatFields = deepMerge(current, changes);
 
-            writeQueue.update<ChatRecord>({
+            buffer.update<ChatRecord>({
                 tableName: 'chats',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -137,15 +126,15 @@ export class ChatService {
     static async delete(id: string): Promise<void> {
         try {
             await Promise.all([
-                writeQueue.flushTable('chats'),
-                writeQueue.flushTable('messages'),
-                writeQueue.flushTable('tool_calls'),
-                writeQueue.flushTable('translations'),
-                writeQueue.flushTable('lorebooks'),
-                writeQueue.flushTable('scripts')
+                buffer.flushTable('chats'),
+                buffer.flushTable('messages'),
+                buffer.flushTable('tool_calls'),
+                buffer.flushTable('translations'),
+                buffer.flushTable('lorebooks'),
+                buffer.flushTable('scripts')
             ]);
 
-            writeQueue.drop('chats', id);
+            buffer.drop('chats', id);
             await localDB.transaction(
                 ['lorebooks', 'scripts', 'messages', 'chats', 'tool_calls', 'translations'],
                 'rw',

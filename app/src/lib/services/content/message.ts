@@ -6,7 +6,7 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { ToolCallInfo } from './tool';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 import type { LLMRole } from '$lib/types/models/llm';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ export class MessageService {
         limit = 50,
         offset = 0
     ): Promise<Message[]> {
-        await writeQueue.flushTable('messages');
+        await buffer.flushTable('messages');
         const records = await localDB.getRecordsBackward<MessageRecord>(
             'messages',
             '[chatId+sortOrder]',
@@ -96,7 +96,7 @@ export class MessageService {
         limit = 50,
         offset = 0
     ): Promise<Message[]> {
-        await writeQueue.flushTable('messages');
+        await buffer.flushTable('messages');
 
         const records = await localDB.getRecordsForward<MessageRecord>(
             'messages',
@@ -116,18 +116,7 @@ export class MessageService {
     }
 
     static async get(id: string): Promise<Message | null> {
-        const cached = writeQueue.peek<MessageRecord>('messages', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return {
-                ...parseFields(cached),
-                id: cached.id,
-                chatId: cached.chatId,
-                sortOrder: cached.sortOrder
-            };
-        }
-
-        const record = await localDB.getRecord<MessageRecord>('messages', id);
+        const record = await buffer.get<MessageRecord>('messages', id);
         if (!record || record.isDeleted) return null;
 
         return {
@@ -188,8 +177,7 @@ export class MessageService {
 
     /** Update a message */
     static async update(id: string, changes: DeepPartial<MessageFields>): Promise<Message> {
-        const cached = writeQueue.peek<MessageRecord>('messages', id);
-        const record = cached ?? (await localDB.getRecord<MessageRecord>('messages', id));
+        const record = await buffer.get<MessageRecord>('messages', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Message not found: ${id}`);
         }
@@ -198,7 +186,7 @@ export class MessageService {
             const current = parseFields(record);
             const updated: MessageFields = deepMerge(current, changes);
 
-            writeQueue.update<MessageRecord>({
+            buffer.update<MessageRecord>({
                 tableName: 'messages',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -220,11 +208,11 @@ export class MessageService {
     static async delete(id: string): Promise<void> {
         try {
             await Promise.all([
-                writeQueue.flushTable('messages'),
-                writeQueue.flushTable('tool_calls'),
-                writeQueue.flushTable('translations')
+                buffer.flushTable('messages'),
+                buffer.flushTable('tool_calls'),
+                buffer.flushTable('translations')
             ]);
-            writeQueue.drop('messages', id);
+            buffer.drop('messages', id);
             await localDB.transaction(
                 ['messages', 'tool_calls', 'translations'],
                 'rw',
@@ -285,10 +273,7 @@ export class MessageService {
             message.activeSwipeId === swipeId ? (remainingIds[0] ?? '') : message.activeSwipeId;
 
         // Cleanup associated data
-        await Promise.all([
-            writeQueue.flushTable('tool_calls'),
-            writeQueue.flushTable('translations')
-        ]);
+        await Promise.all([buffer.flushTable('tool_calls'), buffer.flushTable('translations')]);
         await localDB.transaction(['tool_calls', 'translations'], 'rw', async () => {
             await Promise.all([
                 localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [

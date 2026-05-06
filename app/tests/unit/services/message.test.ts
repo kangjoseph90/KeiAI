@@ -55,9 +55,9 @@ vi.mock('fractional-indexing', () => ({
     generateKeyBetween: vi.fn((a: string | null, b: string | null) => 'a0')
 }));
 
-vi.mock('$lib/services/content/write_queue', () => ({
-    writeQueue: {
-        peek: vi.fn(() => undefined),
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: {
+        get: vi.fn(),
         update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
@@ -68,7 +68,7 @@ import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { generateKeyBetween } from 'fractional-indexing';
-import { writeQueue } from '$lib/services/content/write_queue';
+import { buffer } from '$lib/services/content/record_buffer';
 
 // Helper to create a minimal MessageFields payload
 function makeFields(content: string, role: MessageFields['role'] = 'user'): MessageFields {
@@ -86,6 +86,8 @@ describe('MessageService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(buffer.get).mockResolvedValue(null);
+        vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
 
         // Default session mock
         vi.mocked(getActiveSession).mockReturnValue({
@@ -153,7 +155,7 @@ describe('MessageService', () => {
                 data: makeFields('Hello')
             } as unknown as BaseRecord;
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
             const result = await MessageService.get('msg-1');
 
@@ -194,7 +196,7 @@ describe('MessageService', () => {
                 data: makeFields('Old')
             } as unknown as BaseRecord;
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
+            vi.mocked(buffer.get).mockResolvedValue(existingRecord as never);
 
             const result = await MessageService.update('msg-1', {
                 swipes: { s1: { id: 's1', content: 'New content', createdAt: 2000 } }
@@ -229,7 +231,7 @@ describe('MessageService', () => {
         } as unknown as BaseRecord;
 
         beforeEach(() => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
+            vi.mocked(buffer.get).mockResolvedValue(existingRecord as never);
             vi.mocked(localDB.getByIndex).mockResolvedValue([]);
         });
 
@@ -246,7 +248,7 @@ describe('MessageService', () => {
                 '[messageId+swipeId]',
                 ['msg-1', 's2']
             );
-            expect(writeQueue.update).toHaveBeenCalledWith(
+            expect(buffer.update).toHaveBeenCalledWith(
                 expect.objectContaining({
                     tableName: 'messages',
                     record: expect.objectContaining({
@@ -263,7 +265,7 @@ describe('MessageService', () => {
         it('deleteSwipe moves activeSwipeId when deleting the active swipe', async () => {
             const result = await MessageService.deleteSwipe('msg-1', 's1');
 
-            expect(writeQueue.update).toHaveBeenCalledWith(
+            expect(buffer.update).toHaveBeenCalledWith(
                 expect.objectContaining({
                     tableName: 'messages',
                     record: expect.objectContaining({

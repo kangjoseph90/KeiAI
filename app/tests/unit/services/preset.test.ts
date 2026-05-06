@@ -36,16 +36,16 @@ vi.mock('$lib/utils/id', () => ({
     generateId: vi.fn(() => 'preset-123')
 }));
 
-vi.mock('$lib/services/content/write_queue', () => ({
-    writeQueue: {
-        peek: vi.fn(() => null),
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: {
+        get: vi.fn(),
         update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
     }
 }));
 
-import { writeQueue } from '$lib/services/content/write_queue';
+import { buffer } from '$lib/services/content/record_buffer';
 
 describe('PresetService', () => {
     const mockUserId = 'user-123';
@@ -75,6 +75,8 @@ describe('PresetService', () => {
         vi.clearAllMocks();
         vi.useFakeTimers();
         vi.setSystemTime(mockNow);
+        vi.mocked(buffer.get).mockResolvedValue(null);
+        vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
 
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
@@ -88,9 +90,6 @@ describe('PresetService', () => {
         });
 
         vi.mocked(decrypt).mockResolvedValue(JSON.stringify(mockFields));
-
-        vi.mocked(writeQueue.peek).mockReturnValue(null);
-        vi.mocked(writeQueue.flushTable).mockResolvedValue(undefined);
     });
 
     describe('list', () => {
@@ -107,7 +106,7 @@ describe('PresetService', () => {
 
     describe('get', () => {
         it('should return full preset', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
 
             const result = await PresetService.get('preset-123');
 
@@ -118,7 +117,7 @@ describe('PresetService', () => {
         });
 
         it('should return null if record is missing', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+            vi.mocked(buffer.get).mockResolvedValue(null);
             expect(await PresetService.get('none')).toBeNull();
         });
     });
@@ -141,7 +140,7 @@ describe('PresetService', () => {
 
     describe('update', () => {
         it('should update preset correctly', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
 
             const result = await PresetService.update('preset-123', {
                 name: 'New Name',
@@ -151,11 +150,11 @@ describe('PresetService', () => {
             expect(result.name).toBe('New Name');
             expect(result.maxResponse).toBe(800);
 
-            expect(writeQueue.update).toHaveBeenCalled();
+            expect(buffer.update).toHaveBeenCalled();
         });
 
         it('should throw if record not found', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+            vi.mocked(buffer.get).mockResolvedValue(null);
             await expect(PresetService.update('none', {})).rejects.toThrow(AppError);
         });
     });

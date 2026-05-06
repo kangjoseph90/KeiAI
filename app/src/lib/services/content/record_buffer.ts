@@ -7,35 +7,51 @@ import {
 } from '$lib/adapters/db';
 import { AppError } from '$lib/types/errors';
 import { deepMerge } from '$lib/utils/defaults';
+import { LRUCache } from '$lib/utils/cache';
 
 const WRITE_DEBOUNCE_MS = 400;
 const WRITE_MAX_WAIT_MS = 2000;
 
-type QueueKey = `${TableName}:${string}`;
+type BufferKey = `${TableName}:${string}`;
 
-interface QueueEntry<TRecord extends DataRecord> {
-    key: QueueKey;
+interface BufferEntry<TRecord extends DataRecord> {
+    key: BufferKey;
     tableName: TableName;
     record: TRecord;
     options?: DatabaseWriteOptions;
     flushTimer: ReturnType<typeof setTimeout> | null;
     maxWaitTimer: ReturnType<typeof setTimeout> | null;
-    firstQueuedAt: number;
+    firstBufferedAt: number;
     flushPromise: Promise<void> | null;
     version: number;
 }
 
-class WriteQueue {
-    private readonly entries = new Map<QueueKey, QueueEntry<DataRecord>>();
-
+class RecordBuffer {
+    private readonly entries = new Map<BufferKey, BufferEntry<DataRecord>>();
+    private readonly readCache = new LRUCache<BufferKey, DataRecord>(500);
     constructor() {
+        this.installWriteInvalidationHook();
         this.installLifecycleFlushHooks();
     }
 
-    peek<TRecord extends DataRecord>(tableName: TableName, id: string): TRecord | null {
-        const entry = this.entries.get(this.getKey(tableName, id));
-        if (!entry) return null;
-        return structuredClone(entry.record) as TRecord;
+    async get<TRecord extends DataRecord>(
+        tableName: TableName,
+        id: string
+    ): Promise<TRecord | null> {
+        const key = this.getKey(tableName, id);
+
+        const entry = this.entries.get(key);
+        if (entry) return structuredClone(entry.record) as TRecord;
+
+        const cached = this.readCache.get(key);
+        if (cached) return structuredClone(cached) as TRecord;
+
+        const record = await localDB.getRecord<TRecord>(tableName, id);
+        if (record) {
+            this.readCache.set(key, structuredClone(record));
+            return record;
+        }
+        return null;
     }
 
     update<TRecord extends DataRecord>(args: {
@@ -46,7 +62,8 @@ class WriteQueue {
     }): TRecord {
         const id = args.record.id;
         const key = this.getKey(args.tableName, id);
-        const existing = this.entries.get(key) as QueueEntry<TRecord> | undefined;
+        this.readCache.delete(key);
+        const existing = this.entries.get(key) as BufferEntry<TRecord> | undefined;
 
         if (!existing) {
             return this.seed(key, args.tableName, args.record, args.options);
@@ -55,7 +72,7 @@ class WriteQueue {
         existing.record.data = deepMerge(existing.record.data, args.patch);
         existing.options = args.options;
         existing.version++;
-        this.schedule(existing as QueueEntry<DataRecord>);
+        this.schedule(existing as BufferEntry<DataRecord>);
         return structuredClone(existing.record);
     }
 
@@ -77,39 +94,41 @@ class WriteQueue {
 
     drop(tableName: TableName, id: string): void {
         const key = this.getKey(tableName, id);
+        this.readCache.delete(key);
+
         const entry = this.entries.get(key);
         if (!entry) return;
         this.clearTimers(entry);
         this.entries.delete(key);
     }
 
-    private getKey(tableName: TableName, id: string): QueueKey {
+    private getKey(tableName: TableName, id: string): BufferKey {
         return `${tableName}:${id}`;
     }
 
     private seed<TRecord extends DataRecord>(
-        key: QueueKey,
+        key: BufferKey,
         tableName: TableName,
         record: TRecord,
         options?: DatabaseWriteOptions
     ): TRecord {
-        const created: QueueEntry<TRecord> = {
+        const created: BufferEntry<TRecord> = {
             key,
             tableName,
             record: structuredClone(record),
             options,
             flushTimer: null,
             maxWaitTimer: null,
-            firstQueuedAt: clock.now(),
+            firstBufferedAt: clock.now(),
             flushPromise: null,
             version: 0
         };
-        this.entries.set(key, created as QueueEntry<DataRecord>);
-        this.schedule(created as QueueEntry<DataRecord>);
+        this.entries.set(key, created as BufferEntry<DataRecord>);
+        this.schedule(created as BufferEntry<DataRecord>);
         return structuredClone(created.record);
     }
 
-    private schedule(entry: QueueEntry<DataRecord>): void {
+    private schedule(entry: BufferEntry<DataRecord>): void {
         if (entry.flushTimer) {
             clearTimeout(entry.flushTimer);
         }
@@ -125,7 +144,7 @@ class WriteQueue {
         }
     }
 
-    private clearTimers(entry: QueueEntry<DataRecord>): void {
+    private clearTimers(entry: BufferEntry<DataRecord>): void {
         if (entry.flushTimer) {
             clearTimeout(entry.flushTimer);
             entry.flushTimer = null;
@@ -136,7 +155,7 @@ class WriteQueue {
         }
     }
 
-    private async flushKey(key: QueueKey): Promise<void> {
+    private async flushKey(key: BufferKey): Promise<void> {
         const entry = this.entries.get(key);
         if (!entry) return;
 
@@ -171,6 +190,16 @@ class WriteQueue {
         }
     }
 
+    private installWriteInvalidationHook(): void {
+        localDB.subscribeWriteEvents((events) => {
+            for (const event of events) {
+                for (const id of event.ids) {
+                    this.readCache.delete(this.getKey(event.tableName, id));
+                }
+            }
+        });
+    }
+
     private installLifecycleFlushHooks(): void {
         if (typeof window === 'undefined') return;
 
@@ -188,4 +217,4 @@ class WriteQueue {
     }
 }
 
-export const writeQueue = new WriteQueue();
+export const buffer = new RecordBuffer();

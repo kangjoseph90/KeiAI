@@ -30,9 +30,9 @@ vi.mock('$lib/utils/id', () => ({
     generateId: vi.fn(() => 'test-id')
 }));
 
-vi.mock('$lib/services/content/write_queue', () => ({
-    writeQueue: {
-        peek: vi.fn(() => undefined),
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: {
+        get: vi.fn(),
         update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
@@ -41,7 +41,7 @@ vi.mock('$lib/services/content/write_queue', () => ({
 
 import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
-import { writeQueue } from '$lib/services/content/write_queue';
+import { buffer } from '$lib/services/content/record_buffer';
 
 describe('ScriptService', () => {
     const mockUserId = 'user-123';
@@ -56,6 +56,8 @@ describe('ScriptService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(buffer.get).mockResolvedValue(null);
+        vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
 
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
@@ -94,7 +96,7 @@ describe('ScriptService', () => {
                 data: defaultScriptParams
             } as unknown as BaseRecord;
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
             const result = await ScriptService.get('s-1');
 
@@ -104,13 +106,13 @@ describe('ScriptService', () => {
         });
 
         it('should return null if record is missing or deleted', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
+            vi.mocked(buffer.get).mockResolvedValue(null);
             expect(await ScriptService.get('non-existent')).toBeNull();
 
-            vi.mocked(localDB.getRecord).mockResolvedValue({
+            vi.mocked(buffer.get).mockResolvedValue({
                 id: 'deleted',
                 isDeleted: true
-            } as unknown as BaseRecord);
+            } as never);
             expect(await ScriptService.get('deleted')).toBeNull();
         });
     });
@@ -148,19 +150,19 @@ describe('ScriptService', () => {
                 data: defaultScriptParams
             } as unknown as BaseRecord;
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
             const result = await ScriptService.update('s-1', { phase: 'output' });
 
             expect(result.phase).toBe('output');
             expect(result.name).toBe('Test Script'); // Preserved from existing
 
-            expect(writeQueue.update).toHaveBeenCalled();
+            expect(buffer.update).toHaveBeenCalled();
             expect(localDB.putRecord).not.toHaveBeenCalled();
         });
 
         it('should throw if not found', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
+            vi.mocked(buffer.get).mockResolvedValue(null);
 
             await expect(ScriptService.update('missing', { name: 'new' })).rejects.toThrow(
                 'Script not found: missing'

@@ -4,7 +4,7 @@ import { localDB, type ToolCallRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 
 export type ToolCallStatus = 'pending' | 'success' | 'rejected' | 'error';
 
@@ -65,7 +65,7 @@ function parseFields(record: ToolCallRecord): ToolCallFields {
 export class ToolCallService {
     /** List tool calls for a specific swipe */
     static async listByMessageSwipe(messageId: string, swipeId: string): Promise<ToolCall[]> {
-        await writeQueue.flushTable('tool_calls');
+        await buffer.flushTable('tool_calls');
         const records = await localDB.getByCompoundIndex<ToolCallRecord>(
             'tool_calls',
             '[messageId+swipeId]',
@@ -82,19 +82,7 @@ export class ToolCallService {
     }
 
     static async get(id: string): Promise<ToolCall | null> {
-        const cached = writeQueue.peek<ToolCallRecord>('tool_calls', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return {
-                ...parseFields(cached),
-                id: cached.id,
-                chatId: cached.chatId,
-                messageId: cached.messageId,
-                swipeId: cached.swipeId
-            };
-        }
-
-        const record = await localDB.getRecord<ToolCallRecord>('tool_calls', id);
+        const record = await buffer.get<ToolCallRecord>('tool_calls', id);
         if (!record || record.isDeleted) return null;
 
         return {
@@ -140,8 +128,7 @@ export class ToolCallService {
     }
 
     static async update(id: string, changes: DeepPartial<ToolCallFields>): Promise<ToolCall> {
-        const cached = writeQueue.peek<ToolCallRecord>('tool_calls', id);
-        const record = cached ?? (await localDB.getRecord<ToolCallRecord>('tool_calls', id));
+        const record = await buffer.get<ToolCallRecord>('tool_calls', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Tool call not found: ${id}`);
         }
@@ -150,7 +137,7 @@ export class ToolCallService {
             const current = parseFields(record);
             const updated: ToolCallFields = deepMerge(current, changes);
 
-            writeQueue.update<ToolCallRecord>({
+            buffer.update<ToolCallRecord>({
                 tableName: 'tool_calls',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -171,7 +158,7 @@ export class ToolCallService {
 
     static async delete(id: string): Promise<void> {
         try {
-            writeQueue.drop('tool_calls', id);
+            buffer.drop('tool_calls', id);
             await localDB.softDeleteRecord('tool_calls', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

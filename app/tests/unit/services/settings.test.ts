@@ -5,7 +5,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SettingsService, type AppSettings, defaultSettings } from '$lib/services/content/settings';
 import type { SettingsRecord } from '$lib/adapters/db';
-import { AppError } from '$lib/types/errors';
 
 // Mock dependencies
 vi.mock('$lib/crypto', () => ({
@@ -26,9 +25,18 @@ vi.mock('$lib/adapters/db', () => ({
     }
 }));
 
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: {
+        get: vi.fn(),
+        update: vi.fn(),
+        drop: vi.fn(),
+        flushTable: vi.fn()
+    }
+}));
+
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession, UserService } from '$lib/services/user';
-import { localDB } from '$lib/adapters/db';
+import { buffer } from '$lib/services/content/record_buffer';
 import { makeSettings } from '../../utils';
 
 describe('SettingsService', () => {
@@ -72,17 +80,17 @@ describe('SettingsService', () => {
                 data: mockSettings as unknown as Record<string, unknown>
             };
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
 
             const result = await SettingsService.get();
 
             expect(result.theme).toBe('dark');
             expect(result.openai?.apiKey).toBe('sk-test');
-            expect(localDB.getRecord).toHaveBeenCalledWith('settings', mockUserId);
+            expect(buffer.get).toHaveBeenCalledWith('settings', mockUserId);
         });
 
         it('should return default settings if record missing', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as SettingsRecord);
+            vi.mocked(buffer.get).mockResolvedValue(null);
 
             const result = await SettingsService.get();
 
@@ -90,7 +98,7 @@ describe('SettingsService', () => {
         });
 
         it('should return defaults when record is empty', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue({
+            vi.mocked(buffer.get).mockResolvedValue({
                 id: mockUserId,
                 userId: mockUserId,
                 createdAt: 100,
@@ -115,14 +123,13 @@ describe('SettingsService', () => {
                 isDeleted: false,
                 data: mockSettings as unknown as Record<string, unknown>
             };
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
 
             const result = await SettingsService.update({ theme: 'light' });
-            await vi.runAllTimersAsync();
 
             expect(result.theme).toBe('light');
             expect(result.openai?.apiKey).toBe('sk-test'); // Preserved
-            expect(localDB.putRecord).toHaveBeenCalled();
+            expect(buffer.update).toHaveBeenCalled();
         });
 
         it('should preserve createdAt across consecutive queued updates', async () => {
@@ -134,30 +141,29 @@ describe('SettingsService', () => {
                 isDeleted: false,
                 data: mockSettings as unknown as Record<string, unknown>
             };
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
 
             await SettingsService.update({ theme: 'light' });
             await SettingsService.update({ chat: { saveMessagesOnSwipe: false } });
-            await vi.runAllTimersAsync();
 
-            expect(localDB.putRecord).toHaveBeenLastCalledWith(
-                'settings',
+            expect(buffer.update).toHaveBeenLastCalledWith(
                 expect.objectContaining({
-                    id: mockUserId,
-                    createdAt: 100
-                }),
-                undefined
+                    tableName: 'settings',
+                    record: expect.objectContaining({
+                        id: mockUserId,
+                        createdAt: 100
+                    })
+                })
             );
         });
 
         it('should handle updates when no record exists', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as SettingsRecord);
+            vi.mocked(buffer.get).mockResolvedValue(null);
 
             const result = await SettingsService.update({ theme: 'dark' });
-            await vi.runAllTimersAsync();
 
             expect(result.theme).toBe('dark');
-            expect(localDB.putRecord).toHaveBeenCalled();
+            expect(buffer.update).toHaveBeenCalled();
         });
     });
 });

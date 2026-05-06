@@ -4,7 +4,7 @@ import { localDB, type TranslationRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 
 export interface TranslationFields {
     targetLang: string;
@@ -31,7 +31,7 @@ function parseFields(record: TranslationRecord): TranslationFields {
 
 export class TranslationService {
     static async listByMessageSwipe(messageId: string, swipeId: string): Promise<Translation[]> {
-        await writeQueue.flushTable('translations');
+        await buffer.flushTable('translations');
         const records = await localDB.getByCompoundIndex<TranslationRecord>(
             'translations',
             '[messageId+swipeId]',
@@ -48,19 +48,7 @@ export class TranslationService {
     }
 
     static async get(id: string): Promise<Translation | null> {
-        const cached = writeQueue.peek<TranslationRecord>('translations', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return {
-                ...parseFields(cached),
-                id: cached.id,
-                chatId: cached.chatId,
-                messageId: cached.messageId,
-                swipeId: cached.swipeId
-            };
-        }
-
-        const record = await localDB.getRecord<TranslationRecord>('translations', id);
+        const record = await buffer.get<TranslationRecord>('translations', id);
         if (!record || record.isDeleted) return null;
 
         return {
@@ -106,8 +94,7 @@ export class TranslationService {
     }
 
     static async update(id: string, changes: DeepPartial<TranslationFields>): Promise<Translation> {
-        const cached = writeQueue.peek<TranslationRecord>('translations', id);
-        const record = cached ?? (await localDB.getRecord<TranslationRecord>('translations', id));
+        const record = await buffer.get<TranslationRecord>('translations', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Translation not found: ${id}`);
         }
@@ -116,7 +103,7 @@ export class TranslationService {
             const current = parseFields(record);
             const updated: TranslationFields = deepMerge(current, changes);
 
-            writeQueue.update<TranslationRecord>({
+            buffer.update<TranslationRecord>({
                 tableName: 'translations',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -137,7 +124,7 @@ export class TranslationService {
 
     static async delete(id: string): Promise<void> {
         try {
-            writeQueue.drop('translations', id);
+            buffer.drop('translations', id);
             await localDB.softDeleteRecord('translations', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

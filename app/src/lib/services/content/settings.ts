@@ -3,7 +3,7 @@ import { localDB, type SettingsRecord } from '$lib/adapters/db';
 import type { OrderedRef, FolderDef, ResourceRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 import { clock } from '$lib/utils/clock';
 import type { CustomLLMModel } from '$lib/types/models/llm';
 import type {
@@ -231,16 +231,10 @@ function parseFields(data: Record<string, unknown>): AppSettings {
 export class SettingsService {
     static async get(): Promise<AppSettings> {
         const { userId } = getActiveSession();
-        const cached = writeQueue.peek<SettingsRecord>('settings', userId);
-        if (cached) {
-            if (cached.isDeleted) return { ...defaultSettings };
-            return parseFields(cached.data);
-        }
-
-        const record = await localDB.getRecord<SettingsRecord>('settings', userId);
+        const record = await buffer.get<SettingsRecord>('settings', userId);
 
         if (!record || record.isDeleted) {
-            return { ...defaultSettings };
+            return { ...defaultSettings } as AppSettings;
         }
 
         return parseFields(record.data);
@@ -251,8 +245,7 @@ export class SettingsService {
         const { userId } = getActiveSession();
 
         try {
-            const cached = writeQueue.peek<SettingsRecord>('settings', userId);
-            const record = cached ?? (await localDB.getRecord<SettingsRecord>('settings', userId));
+            const record = await buffer.get<SettingsRecord>('settings', userId);
 
             const current: AppSettings =
                 !record || record.isDeleted
@@ -261,7 +254,7 @@ export class SettingsService {
 
             const updated: AppSettings = deepMerge(current, changes);
 
-            writeQueue.update<SettingsRecord>({
+            buffer.update<SettingsRecord>({
                 tableName: 'settings',
                 record: {
                     id: userId,

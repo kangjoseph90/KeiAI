@@ -28,6 +28,15 @@ vi.mock('$lib/adapters/db', () => ({
     }
 }));
 
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: {
+        get: vi.fn(),
+        update: vi.fn(),
+        drop: vi.fn(),
+        flushTable: vi.fn()
+    }
+}));
+
 vi.mock('$lib/utils/id', () => ({
     generateId: vi.fn(() => 'test-plugin-id')
 }));
@@ -35,6 +44,7 @@ vi.mock('$lib/utils/id', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
+import { buffer } from '$lib/services/content/record_buffer';
 
 describe('PluginService', () => {
     const mockUserId = 'user-123';
@@ -51,6 +61,8 @@ describe('PluginService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(buffer.get).mockResolvedValue(null);
+        vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
 
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
@@ -101,7 +113,7 @@ describe('PluginService', () => {
                 data: defaultFields as unknown as Record<string, unknown>
             };
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
 
             const result = await PluginService.get('p-1');
             expect(result?.id).toBe('p-1');
@@ -129,13 +141,13 @@ describe('PluginService', () => {
                 data: defaultFields as unknown as Record<string, unknown>
             };
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
 
             const result = await PluginService.update('p-1', { version: '1.1.0' });
 
             expect(result.version).toBe('1.1.0');
             expect(result.name).toBe('Test Plugin');
-            expect(localDB.putRecord).not.toHaveBeenCalled();
+            expect(buffer.update).toHaveBeenCalled();
         });
     });
 

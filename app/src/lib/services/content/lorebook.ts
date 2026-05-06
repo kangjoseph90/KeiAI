@@ -4,7 +4,7 @@ import { localDB, type LorebookRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ function parseFields(record: LorebookRecord): LorebookFields {
 export class LorebookService {
     /** List lorebooks owned by a specific parent (character, chat, module) */
     static async listByOwner(ownerId: string): Promise<Lorebook[]> {
-        await writeQueue.flushTable('lorebooks');
+        await buffer.flushTable('lorebooks');
         const records = await localDB.getByIndex<LorebookRecord>(
             'lorebooks',
             'ownerId',
@@ -59,17 +59,7 @@ export class LorebookService {
     }
 
     static async get(id: string): Promise<Lorebook | null> {
-        const cached = writeQueue.peek<LorebookRecord>('lorebooks', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return {
-                ...parseFields(cached),
-                id: cached.id,
-                ownerId: cached.ownerId
-            };
-        }
-
-        const record = await localDB.getRecord<LorebookRecord>('lorebooks', id);
+        const record = await buffer.get<LorebookRecord>('lorebooks', id);
         if (!record || record.isDeleted) return null;
 
         return {
@@ -109,8 +99,7 @@ export class LorebookService {
     }
 
     static async update(id: string, changes: DeepPartial<LorebookFields>): Promise<Lorebook> {
-        const cached = writeQueue.peek<LorebookRecord>('lorebooks', id);
-        const record = cached ?? (await localDB.getRecord<LorebookRecord>('lorebooks', id));
+        const record = await buffer.get<LorebookRecord>('lorebooks', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', `Lorebook not found: ${id}`);
         }
@@ -119,7 +108,7 @@ export class LorebookService {
             const current = parseFields(record);
             const updated: LorebookFields = deepMerge(current, changes);
 
-            writeQueue.update<LorebookRecord>({
+            buffer.update<LorebookRecord>({
                 tableName: 'lorebooks',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -134,7 +123,7 @@ export class LorebookService {
 
     static async delete(id: string): Promise<void> {
         try {
-            writeQueue.drop('lorebooks', id);
+            buffer.drop('lorebooks', id);
             await localDB.softDeleteRecord('lorebooks', id);
         } catch (error) {
             if (error instanceof AppError) throw error;

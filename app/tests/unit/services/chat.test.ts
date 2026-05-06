@@ -51,9 +51,9 @@ vi.mock('$lib/utils/defaults', () => ({
     })
 }));
 
-vi.mock('$lib/services/content/write_queue', () => ({
-    writeQueue: {
-        peek: vi.fn(() => null),
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: {
+        get: vi.fn(),
         update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
@@ -65,7 +65,7 @@ import { getActiveSession } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';
-import { writeQueue } from '$lib/services/content/write_queue';
+import { buffer } from '$lib/services/content/record_buffer';
 
 describe('ChatService', () => {
     const mockMasterKey = {} as CryptoKey;
@@ -104,8 +104,8 @@ describe('ChatService', () => {
         vi.mocked(generateId).mockReturnValue('test-chat-id');
 
         // Default write queue mock
-        vi.mocked(writeQueue.peek).mockReturnValue(null);
-        vi.mocked(writeQueue.flushTable).mockResolvedValue(undefined);
+        vi.mocked(buffer.get).mockResolvedValue(null);
+        vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
     });
 
     describe('listByCharacter', () => {
@@ -179,7 +179,7 @@ describe('ChatService', () => {
                 }
             } as unknown as BaseRecord;
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
             const result = await ChatService.get('chat-1');
 
@@ -190,7 +190,7 @@ describe('ChatService', () => {
         });
 
         it('should return null when record does not exist', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
+            vi.mocked(buffer.get).mockResolvedValue(null);
 
             const result = await ChatService.get('non-existent');
 
@@ -198,14 +198,14 @@ describe('ChatService', () => {
         });
 
         it('should return null when record is deleted', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue({
+            vi.mocked(buffer.get).mockResolvedValue({
                 id: 'chat-1',
                 userId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: true,
                 data: { title: 'Deleted' }
-            } as unknown as BaseRecord);
+            } as never);
 
             const result = await ChatService.get('chat-1');
 
@@ -255,16 +255,16 @@ describe('ChatService', () => {
                 data: { title: 'Old Title', messageCount: 5 }
             } as unknown as BaseRecord;
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(existingRecord);
+            vi.mocked(buffer.get).mockResolvedValue(existingRecord as never);
 
             const result = await ChatService.update('chat-1', { title: 'New Title' });
 
             expect(result.title).toBe('New Title');
-            expect(writeQueue.update).toHaveBeenCalled();
+            expect(buffer.update).toHaveBeenCalled();
         });
 
         it('should throw NOT_FOUND when chat does not exist', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
+            vi.mocked(buffer.get).mockResolvedValue(null);
 
             await expect(ChatService.update('non-existent', { title: 'New' })).rejects.toThrow();
         });

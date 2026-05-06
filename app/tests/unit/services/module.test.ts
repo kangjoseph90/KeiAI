@@ -34,9 +34,9 @@ vi.mock('$lib/utils/id', () => ({
     generateId: vi.fn(() => 'test-module-id')
 }));
 
-vi.mock('$lib/services/content/write_queue', () => ({
-    writeQueue: {
-        peek: vi.fn(() => undefined),
+vi.mock('$lib/services/content/record_buffer', () => ({
+    buffer: {
+        get: vi.fn(),
         update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
@@ -46,6 +46,7 @@ vi.mock('$lib/services/content/write_queue', () => ({
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
+import { buffer } from '$lib/services/content/record_buffer';
 
 describe('ModuleService', () => {
     const mockUserId = 'user-123';
@@ -59,6 +60,8 @@ describe('ModuleService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(buffer.get).mockResolvedValue(null);
+        vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
 
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
@@ -112,7 +115,7 @@ describe('ModuleService', () => {
                 data: defaultFields as unknown as Record<string, unknown>
             };
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
 
             const result = await ModuleService.get('mod-1');
 
@@ -121,10 +124,10 @@ describe('ModuleService', () => {
         });
 
         it('should return null if missing or deleted', async () => {
-            vi.mocked(localDB.getRecord).mockResolvedValue(undefined as unknown as BaseRecord);
+            vi.mocked(buffer.get).mockResolvedValue(null);
             expect(await ModuleService.get('missing')).toBeNull();
 
-            vi.mocked(localDB.getRecord).mockResolvedValue({ isDeleted: true } as ModuleRecord);
+            vi.mocked(buffer.get).mockResolvedValue({ isDeleted: true } as ModuleRecord);
             expect(await ModuleService.get('deleted')).toBeNull();
         });
     });
@@ -155,13 +158,13 @@ describe('ModuleService', () => {
                 data: defaultFields as unknown as Record<string, unknown>
             };
 
-            vi.mocked(localDB.getRecord).mockResolvedValue(mockRecord);
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
 
             const result = await ModuleService.update('mod-1', { description: 'Updated' });
 
             expect(result.description).toBe('Updated');
             expect(result.name).toBe('Test Module'); // Preserved
-            expect(localDB.putRecord).not.toHaveBeenCalled();
+            expect(buffer.update).toHaveBeenCalled();
         });
     });
 

@@ -5,7 +5,7 @@ import type { OrderedRef, ResourceRef, FolderDef, AssetRef } from '$lib/types/re
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import { writeQueue } from './write_queue';
+import { buffer } from './record_buffer';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -68,20 +68,14 @@ function parseFields(record: CharacterRecord): CharacterFields {
 
 export class CharacterService {
     static async list(): Promise<Character[]> {
-        await writeQueue.flushTable('characters');
+        await buffer.flushTable('characters');
         const { userId } = getActiveSession();
         const records = await localDB.getAll<CharacterRecord>('characters', userId);
         return records.map((record) => ({ ...parseFields(record), id: record.id }));
     }
 
     static async get(id: string): Promise<Character | null> {
-        const cached = writeQueue.peek<CharacterRecord>('characters', id);
-        if (cached) {
-            if (cached.isDeleted) return null;
-            return { ...parseFields(cached), id: cached.id };
-        }
-
-        const record = await localDB.getRecord<CharacterRecord>('characters', id);
+        const record = await buffer.get<CharacterRecord>('characters', id);
         if (!record || record.isDeleted) return null;
 
         return { ...parseFields(record), id: record.id };
@@ -113,8 +107,7 @@ export class CharacterService {
     }
 
     static async update(id: string, changes: DeepPartial<CharacterFields>): Promise<Character> {
-        const cached = writeQueue.peek<CharacterRecord>('characters', id);
-        const record = cached ?? (await localDB.getRecord<CharacterRecord>('characters', id));
+        const record = await buffer.get<CharacterRecord>('characters', id);
         if (!record || record.isDeleted) {
             throw new AppError('NOT_FOUND', 'Character not found');
         }
@@ -123,7 +116,7 @@ export class CharacterService {
             const current = parseFields(record);
             const updated: CharacterFields = deepMerge(current, changes);
 
-            writeQueue.update<CharacterRecord>({
+            buffer.update<CharacterRecord>({
                 tableName: 'characters',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
                 patch: changes as unknown as Record<string, unknown>
@@ -147,17 +140,17 @@ export class CharacterService {
     static async delete(id: string): Promise<void> {
         try {
             await Promise.all([
-                writeQueue.flushTable('characters'),
-                writeQueue.flushTable('chats'),
-                writeQueue.flushTable('messages'),
-                writeQueue.flushTable('tool_calls'),
-                writeQueue.flushTable('translations'),
-                writeQueue.flushTable('lorebooks'),
-                writeQueue.flushTable('scripts'),
-                writeQueue.flushTable('charjs')
+                buffer.flushTable('characters'),
+                buffer.flushTable('chats'),
+                buffer.flushTable('messages'),
+                buffer.flushTable('tool_calls'),
+                buffer.flushTable('translations'),
+                buffer.flushTable('lorebooks'),
+                buffer.flushTable('scripts'),
+                buffer.flushTable('charjs')
             ]);
 
-            writeQueue.drop('characters', id);
+            buffer.drop('characters', id);
             await localDB.transaction(
                 [
                     'chats',
