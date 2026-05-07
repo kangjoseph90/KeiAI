@@ -24,8 +24,6 @@ import {
     modules,
     plugins,
     moduleResources,
-    activePreset,
-    activePersona,
     type ModuleResourceEntry
 } from './state';
 import { localDB } from '$lib/adapters/db';
@@ -94,52 +92,6 @@ function reorderGlobalStoresBySettings(): void {
     reorderStoreByRefs(presets, settings.presetRefs);
     reorderStoreByRefs(modules, settings.moduleRefs);
     reorderStoreByRefs(plugins, settings.pluginRefs);
-}
-
-async function syncActivePresetFromSettings(): Promise<void> {
-    const settings = get(appSettings);
-    const presetId = settings?.presetId;
-    if (!presetId) {
-        activePreset.set(null);
-        return;
-    }
-
-    const cached = presets.get(presetId);
-    if (cached) {
-        activePreset.set(cached);
-        return;
-    }
-
-    const resolved = await PresetService.get(presetId);
-    if (resolved) {
-        presets.set(resolved.id, resolved);
-        activePreset.set(resolved);
-    } else {
-        activePreset.set(null);
-    }
-}
-
-async function syncActivePersonaFromSettings(): Promise<void> {
-    const settings = get(appSettings);
-    const personaId = settings?.personaId;
-    if (!personaId) {
-        activePersona.set(null);
-        return;
-    }
-
-    const cached = personas.get(personaId);
-    if (cached) {
-        activePersona.set(cached);
-        return;
-    }
-
-    const resolved = await PersonaService.get(personaId);
-    if (resolved) {
-        personas.set(resolved.id, resolved);
-        activePersona.set(resolved);
-    } else {
-        activePersona.set(null);
-    }
 }
 
 function refreshCharacterModulesStore(): void {
@@ -410,35 +362,15 @@ function startDataSyncListener(): () => void {
                     case 'settings': {
                         await loadSettings();
                         reorderGlobalStoresBySettings();
-                        await Promise.all([
-                            syncActivePresetFromSettings(),
-                            syncActivePersonaFromSettings()
-                        ]);
                         refreshCharacterModulesStore();
                         break;
                     }
                     case 'personas': {
-                        const synced = await patchEntityStoreByIds(
-                            ids,
-                            personas,
-                            PersonaService.get
-                        );
-
-                        const current = get(activePersona);
-                        if (current && ids.includes(current.id)) {
-                            activePersona.set(synced.get(current.id) ?? null);
-                        }
-                        await syncActivePersonaFromSettings();
+                        await patchEntityStoreByIds(ids, personas, PersonaService.get);
                         break;
                     }
                     case 'presets': {
-                        const synced = await patchEntityStoreByIds(ids, presets, PresetService.get);
-
-                        const current = get(activePreset);
-                        if (current && ids.includes(current.id)) {
-                            activePreset.set(synced.get(current.id) ?? null);
-                        }
-                        await syncActivePresetFromSettings();
+                        await patchEntityStoreByIds(ids, presets, PresetService.get);
                         break;
                     }
                     case 'modules': {

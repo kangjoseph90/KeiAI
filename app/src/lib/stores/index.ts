@@ -45,14 +45,14 @@ export const activeChat = readonly(StoreState.activeChat);
 export const chatLorebooks = readonly(StoreState.chatLorebooks);
 export const messages = readonly(StoreState.messages);
 export const chatTasks = readonly(StoreState.chatTasks);
-export const activePreset = readonly(StoreState.activePreset);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
+    activePreset,
+    activePersona,
     activeCharacterId,
     hasActiveCharacter,
     activeChatId,
     hasActiveChat,
-    activePersona,
     isChatRunning,
     displayMessages,
     isLoggedIn,

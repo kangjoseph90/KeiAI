@@ -159,8 +159,17 @@ export interface LLMModelConfig {
 
 const OPENAI_MODELS: BuiltInLLMModel[] = [
     {
+        id: 'openai::gpt-5.5',
+        name: 'GPT 5.5',
+        modelId: 'gpt-5.5',
+        provider: 'openai',
+        tokenizer: 'o200k_base',
+        flags: ['streaming'],
+        parameters: ['temperature']
+    },
+    {
         id: 'openai::gpt-5.4',
-        name: 'GPT-5.4',
+        name: 'GPT 5.4',
         modelId: 'gpt-5.4',
         provider: 'openai',
         tokenizer: 'o200k_base',
@@ -170,6 +179,15 @@ const OPENAI_MODELS: BuiltInLLMModel[] = [
 ];
 
 const ANTHROPIC_MODELS: BuiltInLLMModel[] = [
+    {
+        id: 'anthropic::claude-4.7-opus',
+        name: 'Claude 4.7 Opus',
+        modelId: 'claude-4.7-opus',
+        provider: 'anthropic',
+        tokenizer: 'claude',
+        flags: ['streaming'],
+        parameters: ['temperature']
+    },
     {
         id: 'anthropic::claude-4-6-sonnet',
         name: 'Claude 4.6 Sonnet',
@@ -183,9 +201,18 @@ const ANTHROPIC_MODELS: BuiltInLLMModel[] = [
 
 const DEEPSEEK_MODELS: BuiltInLLMModel[] = [
     {
-        id: 'deepseek::deepseek-chat',
-        name: 'DeepSeek Chat',
-        modelId: 'deepseek-chat',
+        id: 'deepseek::deepseek-v4-pro',
+        name: 'DeepSeek V4 Pro',
+        modelId: 'deepseek-v4-pro',
+        provider: 'deepseek',
+        tokenizer: 'deepseek',
+        flags: ['streaming'],
+        parameters: ['temperature']
+    },
+    {
+        id: 'deepseek::deepseek-v4-flash',
+        name: 'DeepSeek V4 Flash',
+        modelId: 'deepseek-v4-flash',
         provider: 'deepseek',
         tokenizer: 'deepseek',
         flags: ['streaming'],
@@ -195,9 +222,27 @@ const DEEPSEEK_MODELS: BuiltInLLMModel[] = [
 
 const GOOGLE_MODELS: BuiltInLLMModel[] = [
     {
-        id: 'google::gemini-3.1-pro',
-        name: 'Gemini 3.1 Pro',
-        modelId: 'gemini-3.1-pro',
+        id: 'google::gemini-3.1-pro-preview',
+        name: 'Gemini 3.1 Pro (preview)',
+        modelId: 'gemini-3.1-pro-preview',
+        provider: 'google',
+        tokenizer: 'gemma',
+        flags: ['streaming'],
+        parameters: ['temperature']
+    },
+    {
+        id: 'google::gemini-3-flash-preview',
+        name: 'Gemini 3 Flash (preview)',
+        modelId: 'gemini-3-flash-preview',
+        provider: 'google',
+        tokenizer: 'gemma',
+        flags: ['streaming'],
+        parameters: ['temperature']
+    },
+    {
+        id: 'google::gemini-3.1-flash-lite',
+        name: 'Gemini 3.1 Flash Lite',
+        modelId: 'gemini-3.1-flash-lite',
         provider: 'google',
         tokenizer: 'gemma',
         flags: ['streaming'],

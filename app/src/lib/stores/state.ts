@@ -59,6 +59,18 @@ export const presets = new EntityStore<Preset>();
 export const modules = new EntityStore<Module>();
 export const plugins = new EntityStore<Plugin>();
 
+export const activePreset = derived([appSettings, presets], ([$settings, $presets]) => {
+    const id = $settings?.presetId;
+    if (!id) return null;
+    return $presets.find((p) => p.id === id) ?? null;
+});
+
+export const activePersona = derived([appSettings, personas], ([$settings, $personas]) => {
+    const id = $settings?.personaId;
+    if (!id) return null;
+    return $personas.find((p) => p.id === id) ?? null;
+});
+
 export interface ModuleResourceEntry {
     lorebooks: EntityStore<Lorebook>;
     scripts: EntityStore<Script>;
@@ -69,6 +81,9 @@ export const moduleResources = writable(new Map<string, ModuleResourceEntry>());
 
 // ─── Level 2 (Character Context) ────────────────────────────────────
 export const activeCharacter = writable<Character | null>(null);
+export const activeCharacterId = derived(activeCharacter, (c) => c?.id);
+export const hasActiveCharacter = derived(activeCharacter, (c) => !!c);
+
 export const characterLorebooks = new EntityStore<Lorebook>();
 export const characterScripts = new EntityStore<Script>();
 export const characterCharJS = new EntityStore<CharJS>();
@@ -77,6 +92,9 @@ export const chats = new EntityStore<Chat>();
 
 // ─── Level 3 (Chat Context) ─────────────────────────────────────────
 export const activeChat = writable<Chat | null>(null);
+export const activeChatId = derived(activeChat, (c) => c?.id);
+export const hasActiveChat = derived(activeChat, (c) => !!c);
+
 export const chatLorebooks = new EntityStore<Lorebook>();
 export const chatScripts = new EntityStore<Script>();
 
@@ -117,15 +135,3 @@ export const displayMessages = derived(
         });
     }
 );
-
-// ─── Context Resources ─────────────────────────────────────────────────
-// Active preset from app settings. Managed by preset store logic.
-export const activePreset = writable<Preset | null>(null);
-export const activePersona = writable<Persona | null>(null);
-
-// ─── Derived Resources ─────────────────────────────────────────────────
-export const activeCharacterId = derived(activeCharacter, (c) => c?.id);
-export const hasActiveCharacter = derived(activeCharacter, (c) => !!c);
-
-export const activeChatId = derived(activeChat, (c) => c?.id);
-export const hasActiveChat = derived(activeChat, (c) => !!c);

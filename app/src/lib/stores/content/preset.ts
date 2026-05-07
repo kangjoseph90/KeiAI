@@ -42,8 +42,7 @@ export async function loadPresets(): Promise<void> {
 }
 
 export async function selectPreset(presetId: string): Promise<void> {
-    const preset = await getPreset(presetId);
-    activePreset.set(preset);
+    await getPreset(presetId);
     await updateSettings({ presetId: presetId });
 }
 
@@ -79,7 +78,6 @@ export async function updatePreset(
 ): Promise<void> {
     const updated = await PresetService.update(presetId, changes);
     presets.set(presetId, updated);
-    activePreset.update((p) => (p && p.id === presetId ? updated : p));
 }
 
 export async function deletePreset(presetId: string): Promise<void> {
@@ -115,7 +113,7 @@ export async function deletePreset(presetId: string): Promise<void> {
     if (fallback) {
         await selectPreset(fallback.id);
     } else if (isActivePreset) {
-        activePreset.set(null);
+        await updateSettings({ presetId: undefined });
     }
 }
 
@@ -129,7 +127,6 @@ export async function createPromptBlock(
 
     // Update Store
     presets.set(presetId, preset);
-    activePreset.update((p) => (p && p.id === presetId ? preset : p));
 
     return blockId;
 }
@@ -143,7 +140,6 @@ export async function updatePromptBlock(
 
     // Update Store
     presets.set(presetId, updated);
-    activePreset.update((p) => (p && p.id === presetId ? updated : p));
 }
 
 export async function deletePromptBlock(presetId: string, blockId: string): Promise<void> {
@@ -151,5 +147,4 @@ export async function deletePromptBlock(presetId: string, blockId: string): Prom
 
     // Update Store
     presets.set(presetId, updated);
-    activePreset.update((p) => (p && p.id === presetId ? updated : p));
 }

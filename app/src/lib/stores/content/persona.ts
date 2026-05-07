@@ -34,8 +34,7 @@ export async function loadPersonas(): Promise<void> {
 }
 
 export async function selectPersona(personaId: string): Promise<void> {
-    const persona = await getPersona(personaId);
-    activePersona.set(persona);
+    await getPersona(personaId);
     await updateSettings({ personaId: personaId });
 }
 

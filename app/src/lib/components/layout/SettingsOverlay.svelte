@@ -32,7 +32,6 @@
         { id: 'account', label: 'Account' },
         { id: 'chatbot', label: 'Chat Bot' },
         { id: 'persona', label: 'Persona' },
-        { id: 'presets', label: 'Presets' },
         { id: 'modules', label: 'Modules' },
         { id: 'plugins', label: 'Plugins' },
         { id: 'display', label: 'Display' }
@@ -105,10 +104,6 @@
                         {/await}
                     {:else if activeTab === 'persona'}
                         {#await import('$lib/views/PersonasView.svelte') then m}
-                            <m.default />
-                        {/await}
-                    {:else if activeTab === 'presets'}
-                        {#await import('$lib/views/PresetsView.svelte') then m}
                             <m.default />
                         {/await}
                     {:else if activeTab === 'modules'}
