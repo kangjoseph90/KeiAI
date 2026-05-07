@@ -3,7 +3,7 @@ import type { Mutex } from '$lib/utils/mutex';
 
 import type { CharJS } from '$lib/services/content/charjs';
 
-export type ModeKind = 'pipe' | 'event';
+export type ModeKind = 'pipe' | 'event' | 'template';
 
 /** Runtime instance managed by the engine pool */
 export interface CharJSInstance {
@@ -15,6 +15,7 @@ export interface CharJSInstance {
     ctx: QuickJSAsyncContext;
     pipelineHandlers: Map<string, Array<{ order: number; fnHandle: QuickJSHandle }>>;
     eventListeners: Map<string, QuickJSHandle[]>;
+    macroHandlers: Map<string, { fnHandle: QuickJSHandle; recursive?: boolean }>;
     lastAccessed: number;
     mutex: Mutex;
 }

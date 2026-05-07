@@ -21,6 +21,7 @@ function createInstance(pluginId: string): PluginInstance {
         } as unknown as PluginInstance['broker'],
         pipelineHandlers: new Map(),
         eventListeners: new Map(),
+        macroHandlers: new Map(),
         unloadHandlers: []
     };
 }

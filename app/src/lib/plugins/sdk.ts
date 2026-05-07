@@ -188,6 +188,13 @@ window.KeiAPI = {
         registrations.push(registration);
         return registration;
     },
+    registerMacro: (name, fn, opts = {}) => {
+        const fnId = 'macro_' + Date.now() + '_' + Math.random();
+        broker.expose(fnId, fn);
+        const registration = broker.invoke('core.registerMacro', [name, fnId, opts.recursive]);
+        registrations.push(registration);
+        return registration;
+    },
     onUnload: (fn) => {
         const fnId = 'unload_' + Date.now() + '_' + Math.random();
         broker.expose(fnId, fn);

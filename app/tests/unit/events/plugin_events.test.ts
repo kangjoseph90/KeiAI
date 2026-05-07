@@ -36,6 +36,7 @@ function createPluginInstance(): PluginInstance {
             ['message:sent', ['listener-1', 'listener-2']],
             ['other:event', ['other-listener']]
         ]),
+        macroHandlers: new Map(),
         unloadHandlers: []
     };
 }

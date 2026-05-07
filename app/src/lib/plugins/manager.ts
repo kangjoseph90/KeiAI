@@ -17,6 +17,7 @@ export interface PluginInstance {
     broker: RPCBroker;
     pipelineHandlers: Map<string, Array<{ fnId: string; order: number }>>;
     eventListeners: Map<string, string[]>;
+    macroHandlers: Map<string, { fnId: string; recursive?: boolean }>;
     unloadHandlers: string[];
 }
 
@@ -99,6 +100,7 @@ export class PluginManager {
                 broker,
                 pipelineHandlers: new Map(),
                 eventListeners: new Map(),
+                macroHandlers: new Map(),
                 unloadHandlers: []
             };
 
@@ -146,7 +148,14 @@ export class PluginManager {
      * Binds core Host APIs that the guest can call.
      */
     private bindHostAPIs(instance: PluginInstance) {
-        const { broker, pluginId, pipelineHandlers, eventListeners, unloadHandlers } = instance;
+        const {
+            broker,
+            pluginId,
+            pipelineHandlers,
+            eventListeners,
+            macroHandlers,
+            unloadHandlers
+        } = instance;
 
         broker.expose('core.log', (...args: unknown[]) => {
             createLogger(`plugin:${pluginId}`).info(...args);
@@ -182,6 +191,10 @@ export class PluginManager {
 
         broker.expose('core.onUnload', (fnId: unknown) => {
             unloadHandlers.push(String(fnId));
+        });
+
+        broker.expose('core.registerMacro', (name: unknown, fnId: unknown, recursive: unknown) => {
+            macroHandlers.set(String(name), { fnId: String(fnId), recursive: !!recursive });
         });
 
         broker.expose('core.emitEvent', (chatId: unknown, event: unknown, data: unknown) => {

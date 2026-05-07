@@ -111,6 +111,9 @@ function destroyInstance(key: string, instance: CharJSInstance): void {
                 if (h.alive) h.dispose();
             }
         }
+        for (const { fnHandle } of instance.macroHandlers.values()) {
+            if (fnHandle.alive) fnHandle.dispose();
+        }
         if (instance.ctx.alive) instance.ctx.dispose();
         if (instance.runtime.alive) instance.runtime.dispose();
     } catch (err) {
@@ -158,6 +161,7 @@ async function createInstance(
         ctx,
         pipelineHandlers: new Map(),
         eventListeners: new Map(),
+        macroHandlers: new Map(),
         lastAccessed: Date.now(),
         mutex: new Mutex()
     };
@@ -190,6 +194,9 @@ async function createInstance(
         }
         for (const event of instance.eventListeners.keys()) {
             modes.add(`event:${event}`);
+        }
+        if (instance.macroHandlers.size > 0) {
+            modes.add('template:macro');
         }
         handlerManifest.set(charjs.id, modes);
     }
@@ -248,7 +255,9 @@ export async function getOrCreateInstance(
             const hasHandler =
                 kind === 'pipe'
                     ? (instance.pipelineHandlers.get(mode)?.length ?? 0) > 0
-                    : (instance.eventListeners.get(mode)?.length ?? 0) > 0;
+                    : kind === 'event'
+                      ? (instance.eventListeners.get(mode)?.length ?? 0) > 0
+                      : instance.macroHandlers.size > 0;
 
             if (!hasHandler) {
                 destroyInstance(key, instance);

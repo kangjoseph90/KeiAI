@@ -62,6 +62,24 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
     ctx.setProp(keiObj, 'onEvent', onEventFn);
     onEventFn.dispose();
 
+    // ── KeiAPI.registerMacro(name, fn, opts?) ─────────────────
+    const registerMacroFn = ctx.newFunction('registerMacro', (nameHandle, fnHandle, optsHandle) => {
+        const name = ctx.getString(nameHandle);
+        const dupedFn = fnHandle.dup();
+
+        let recursive: boolean | undefined;
+        if (optsHandle) {
+            const opts = ctx.dump(optsHandle);
+            if (typeof opts === 'object' && opts !== null && 'recursive' in opts) {
+                recursive = !!opts.recursive;
+            }
+        }
+
+        instance.macroHandlers.set(name, { fnHandle: dupedFn, recursive });
+    });
+    ctx.setProp(keiObj, 'registerMacro', registerMacroFn);
+    registerMacroFn.dispose();
+
     // ── KeiAPI.emitEvent(event, data) ──────────────────────────
     const emitEventFn = ctx.newFunction('emitEvent', (...args) => {
         const [eventHandle, dataHandle] = args;
