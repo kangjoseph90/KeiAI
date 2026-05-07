@@ -17,7 +17,7 @@ export type PromptBlockFields =
     | { name: string; type: 'memory'; role: LLMRole }
     | { name: string; type: 'characterNote'; role: LLMRole }
     | { name: string; type: 'chatNote'; role: LLMRole }
-    | { name: string; type: 'history'; start: number; end?: number };
+    | { name: string; type: 'history'; start?: number; end?: number };
 
 export type PromptBlock = PromptBlockFields & {
     id: string;
@@ -33,6 +33,8 @@ export interface PresetFields {
     promptBlocks: Record<string, PromptBlock>;
     maxResponse: number;
     maxContext: number;
+    lorebookRatio: number;
+    memoryRatio: number;
 }
 
 export interface Preset extends PresetFields {
@@ -48,7 +50,9 @@ export const defaultPresetFields: PresetFields = {
     auxModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: {} },
     promptBlocks: {},
     maxResponse: 6000,
-    maxContext: 60000
+    maxContext: 60000,
+    lorebookRatio: 0.2,
+    memoryRatio: 0.2
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────

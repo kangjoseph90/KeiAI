@@ -59,7 +59,9 @@ describe('PresetService', () => {
         auxModel: { id: '', provider: 'openai', parameters: {} },
         promptBlocks: {},
         maxResponse: 600,
-        maxContext: 4096
+        maxContext: 4096,
+        lorebookRatio: 0.2,
+        memoryRatio: 0.2
     };
 
     const mockRecord: PresetRecord = {

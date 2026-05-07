@@ -124,7 +124,8 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
             preset,
             persona,
             lorebooks,
-            messages
+            messages,
+            tokenizer: preset.chatModel.tokenizer ?? 'o200k_base'
         });
 
         // ── 5. Select Handler ──────────────────────────────────────

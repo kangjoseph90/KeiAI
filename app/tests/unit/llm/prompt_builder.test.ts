@@ -8,12 +8,14 @@ const {
     mockCollectTemplateMacros,
     mockRunTemplate,
     mockCollectPipelineHandlers,
-    mockRunPipelineHandlers
+    mockRunPipelineHandlers,
+    mockTokenCount
 } = vi.hoisted(() => ({
     mockCollectTemplateMacros: vi.fn(),
     mockRunTemplate: vi.fn(),
     mockCollectPipelineHandlers: vi.fn(),
-    mockRunPipelineHandlers: vi.fn()
+    mockRunPipelineHandlers: vi.fn(),
+    mockTokenCount: vi.fn()
 }));
 
 vi.mock('$lib/template', () => ({
@@ -24,6 +26,12 @@ vi.mock('$lib/template', () => ({
 vi.mock('$lib/pipeline', () => ({
     collectPipelineHandlers: mockCollectPipelineHandlers,
     runPipelineHandlers: mockRunPipelineHandlers
+}));
+
+vi.mock('$lib/llm/tokenizer', () => ({
+    TokenCounter: {
+        count: mockTokenCount
+    }
 }));
 
 const model: LLMModelConfig = { id: 'mock::default', provider: 'mock', parameters: {} };
@@ -77,6 +85,10 @@ function makeMessage(id: string, role: Message['role'], content: string): Messag
     };
 }
 
+function buildTestPrompt(input: Omit<Parameters<typeof buildPrompt>[0], 'tokenizer'>) {
+    return buildPrompt({ ...input, tokenizer: 'o200k_base' });
+}
+
 describe('buildPrompt', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -86,6 +98,7 @@ describe('buildPrompt', () => {
         mockRunPipelineHandlers.mockImplementation(
             async (_handlers: unknown[], data: string) => data
         );
+        mockTokenCount.mockImplementation(async (text: string) => text.length);
     });
 
     it('loads history from PagedMessages only when processing history entries', async () => {
@@ -117,7 +130,7 @@ describe('buildPrompt', () => {
             }
         });
 
-        const prompt = await buildPrompt({
+        const prompt = await buildTestPrompt({
             character,
             chat,
             preset,
@@ -157,7 +170,7 @@ describe('buildPrompt', () => {
             }
         });
 
-        await buildPrompt({
+        await buildTestPrompt({
             character,
             chat,
             preset,
@@ -199,7 +212,7 @@ describe('buildPrompt', () => {
             }
         });
 
-        const prompt = await buildPrompt({
+        const prompt = await buildTestPrompt({
             character,
             chat,
             preset,
@@ -237,7 +250,7 @@ describe('buildPrompt', () => {
             async (_handlers: unknown[], data: string) => `request(${data})`
         );
 
-        const prompt = await buildPrompt({
+        const prompt = await buildTestPrompt({
             character,
             chat,
             preset,
@@ -256,5 +269,168 @@ describe('buildPrompt', () => {
                 thought: undefined
             }
         ]);
+    });
+
+    it('throws when required fixed blocks exceed the prompt input budget', async () => {
+        const messages = { slice: vi.fn<PagedMessages['slice']>() } as unknown as PagedMessages;
+        const preset = {
+            ...makePreset({
+                text: {
+                    id: 'text',
+                    name: 'System',
+                    type: 'text',
+                    role: 'system',
+                    content: 'too long',
+                    sortOrder: 'a',
+                    enabled: true
+                }
+            }),
+            maxContext: 10,
+            maxResponse: 3
+        };
+
+        await expect(
+            buildTestPrompt({
+                character,
+                chat,
+                preset,
+                persona: null,
+                lorebooks: [],
+                messages
+            })
+        ).rejects.toThrow('Prompt budget exceeded');
+    });
+
+    it('treats bounded history as required and throws when it exceeds budget', async () => {
+        const slice = vi
+            .fn<PagedMessages['slice']>()
+            .mockResolvedValue([makeMessage('msg-1', 'user', 'too long')]);
+        const messages = { slice } as unknown as PagedMessages;
+        const preset = {
+            ...makePreset({
+                history: {
+                    id: 'history',
+                    name: 'History',
+                    type: 'history',
+                    start: -1,
+                    sortOrder: 'a',
+                    enabled: true
+                }
+            }),
+            maxContext: 10,
+            maxResponse: 3
+        };
+
+        await expect(
+            buildTestPrompt({
+                character,
+                chat,
+                preset,
+                persona: null,
+                lorebooks: [],
+                messages
+            })
+        ).rejects.toThrow('Prompt budget exceeded');
+    });
+
+    it('truncates unbounded history to the remaining budget from newest to oldest', async () => {
+        const oldest = makeMessage('msg-1', 'user', 'older message');
+        const newest = makeMessage('msg-2', 'assistant', 'ok');
+        const at = vi.fn<PagedMessages['at']>(async (index) => {
+            if (index === 0) return oldest;
+            if (index === 1) return newest;
+            return null;
+        });
+        const messages = { length: 2, at } as unknown as PagedMessages;
+        const preset = {
+            ...makePreset({
+                history: {
+                    id: 'history',
+                    name: 'History',
+                    type: 'history',
+                    sortOrder: 'a',
+                    enabled: true
+                }
+            }),
+            maxContext: 8,
+            maxResponse: 5
+        };
+
+        const prompt = await buildTestPrompt({
+            character,
+            chat,
+            preset,
+            persona: null,
+            lorebooks: [],
+            messages
+        });
+
+        expect(at).toHaveBeenCalledWith(1);
+        expect(at).toHaveBeenCalledWith(0);
+        expect(prompt).toEqual([{ role: 'assistant', content: 'ok', thought: undefined }]);
+    });
+
+    it('throws when unbounded history has messages but the latest does not fit', async () => {
+        const latest = makeMessage('msg-1', 'user', 'too long');
+        const at = vi.fn<PagedMessages['at']>(async (index) => (index === 0 ? latest : null));
+        const messages = { length: 1, at } as unknown as PagedMessages;
+        const preset = {
+            ...makePreset({
+                history: {
+                    id: 'history',
+                    name: 'History',
+                    type: 'history',
+                    sortOrder: 'a',
+                    enabled: true
+                }
+            }),
+            maxContext: 10,
+            maxResponse: 3
+        };
+
+        await expect(
+            buildTestPrompt({
+                character,
+                chat,
+                preset,
+                persona: null,
+                lorebooks: [],
+                messages
+            })
+        ).rejects.toThrow('Latest history message does not fit');
+    });
+
+    it('throws when more than one unbounded history block is enabled', async () => {
+        const messages = {
+            length: 0,
+            at: vi.fn<PagedMessages['at']>()
+        } as unknown as PagedMessages;
+        const preset = makePreset({
+            firstHistory: {
+                id: 'firstHistory',
+                name: 'First History',
+                type: 'history',
+                sortOrder: 'a',
+                enabled: true
+            },
+            secondHistory: {
+                id: 'secondHistory',
+                name: 'Second History',
+                type: 'history',
+                sortOrder: 'b',
+                enabled: true
+            }
+        });
+
+        await expect(
+            buildTestPrompt({
+                character,
+                chat,
+                preset,
+                persona: null,
+                lorebooks: [],
+                messages
+            })
+        ).rejects.toThrow('Prompt can only have one unbounded history block');
     });
 });
