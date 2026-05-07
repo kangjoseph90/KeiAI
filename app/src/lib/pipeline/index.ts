@@ -16,9 +16,11 @@ import type {
     PipelinePhaseType,
     PipelinePhase,
     PipelineContext,
-    PipelineContextType
+    PipelineContextType,
+    PipelineHandler
 } from './types';
 import { isSafeMode } from '$lib/config';
+export { collectPipelineHandlers };
 
 export async function runPipeline<K extends keyof PipelinePhaseType>(
     chatId: string,
@@ -40,6 +42,14 @@ export async function runPipeline(
 ): Promise<unknown> {
     if (isSafeMode()) return data;
     const handlers = await collectPipelineHandlers(chatId, phase);
+    return runPipelineHandlers(handlers, data, context);
+}
+
+export async function runPipelineHandlers<K extends string, T>(
+    handlers: PipelineHandler<T, K>[],
+    data: T,
+    context: PipelineContext<K>
+): Promise<T> {
     let result = data;
     for (const handler of handlers) {
         const next = await handler.run(result, context);

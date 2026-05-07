@@ -23,21 +23,23 @@ import {
 import type { LLMStreamHandler } from '$lib/llm/types';
 import { ToolCallService } from '$lib/services/content/tool';
 import { clock } from '$lib/utils/clock';
-import type { MessageSwipe } from '$lib/services/content/message';
 import { PagedMessages } from '$lib/services/content/paged_messages';
 import {
-    createMessage,
-    getLastMessage,
     getMessage,
-    prepareNextSwipe,
-    updateMessage
+    createMessage,
+    updateMessage,
+    updateMessageSwipe,
+    getLastMessage,
+    prepareNextSwipe
 } from '$lib/stores/content/message';
 import { buildPrompt } from '../llm/prompt/builder';
 import { selectLLMHandler } from '../llm/handler';
 import { runPipeline } from '../pipeline';
+import { runTemplate } from '../template';
+import type { TemplateContext } from '../template';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
-import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
+import { deepMerge } from '$lib/utils/defaults';
 
 export interface RunChatOptions {
     /** Optional handler override for testing */
@@ -125,38 +127,47 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
             messages
         });
 
-        // ── 5. Apply Request Scripts ─────────────────────────────────
-        const processedMessages = await Promise.all(
-            prompt.map(async (msg, index) => ({
-                ...msg,
-                content: await runPipeline(chatId, 'request', msg.content, {
-                    role: msg.role
-                })
-            }))
-        );
-
-        // ── 6. Select Handler ──────────────────────────────────────
+        // ── 5. Select Handler ──────────────────────────────────────
         const handler = opts.handlerOverride ?? selectLLMHandler(preset.chatModel, settings);
         if (!handler) {
             throw new AppError('INVALID_INPUT', 'Failed to create LLM handler. Check API key.');
         }
 
-        // ── 7. Stream chunks → update swipe in DB ─────────────────────
-        for await (const state of handler.stream(processedMessages, controller.signal)) {
-            const processedContent = await runPipeline(chatId, 'output', state.content, {
-                messageId: preparedMessage.id
-            });
+        // ── 6. Stream chunks → update swipe in DB ─────────────────────
+        let finalContent = '';
 
-            const swipeUpdate: Record<string, DeepPartial<MessageSwipe>> = {
-                [targetSwipeId]: { content: processedContent }
-            };
-            if (state.thought !== undefined) {
-                swipeUpdate[targetSwipeId].thought = state.thought;
-            }
-            await updateMessage(preparedMessage.id, { swipes: swipeUpdate });
+        for await (const state of handler.stream(prompt, controller.signal)) {
+            finalContent = state.content;
+
+            await updateMessageSwipe(preparedMessage.id, targetSwipeId, {
+                content: finalContent,
+                ...(state.thought !== undefined ? { thought: state.thought } : {})
+            });
         }
 
-        // ── 8. Finalize ─────────────────────────────────────────────
+        // ── 6.5. Post-process (Output Pipeline & Side-effects) ────────────
+        if (finalContent.length > 0) {
+            const templateCtx: TemplateContext = {
+                characterId: chat.characterId,
+                personaId: persona.id,
+                chatId,
+                messageId: preparedMessage.id,
+                display: false,
+                dryRun: false
+            };
+
+            const templated = await runTemplate(finalContent, templateCtx);
+            const piped = await runPipeline(chatId, 'output', templated, {
+                messageId: preparedMessage.id
+            });
+            const processedContent = await runTemplate(piped, templateCtx);
+
+            await updateMessageSwipe(preparedMessage.id, targetSwipeId, {
+                content: processedContent
+            });
+        }
+
+        // ── 7. Finalize ─────────────────────────────────────────────
         const finalMsg = await getMessage(preparedMessage.id);
         const finalSwipe = finalMsg.swipes[targetSwipeId];
         if (!finalSwipe || finalSwipe.content.length === 0) {

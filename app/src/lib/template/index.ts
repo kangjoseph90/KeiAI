@@ -1,12 +1,16 @@
 import { collectTemplateMacros } from './macro';
 import { interpretTemplate } from './interpreter';
 import { parseTemplate } from './parser';
-import type { TemplateContext } from './types';
+import type { Macro, TemplateContext } from './types';
 
-export async function runTemplate(text: string, ctx: TemplateContext): Promise<string> {
-    const macros = await collectTemplateMacros(ctx);
+export async function runTemplate(
+    text: string,
+    ctx: TemplateContext,
+    macros?: ReadonlyMap<string, Macro>
+): Promise<string> {
+    const resolved = macros ?? (await collectTemplateMacros(ctx));
     const parsed = parseTemplate(text);
-    return interpretTemplate(parsed, ctx, macros);
+    return interpretTemplate(parsed, ctx, resolved);
 }
 
 export { collectTemplateMacros } from './macro';

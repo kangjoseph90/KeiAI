@@ -37,6 +37,8 @@
     import { ToolCallService } from '$lib/services/content/tool';
     import { clock } from '$lib/utils/clock';
     import { runPipeline } from '$lib/pipeline';
+    import { runTemplate } from '$lib/template';
+    import type { TemplateContext } from '$lib/template';
     import { navigate } from '$lib/router';
     import { generateId } from '$lib/utils/id';
     import { tick } from 'svelte';
@@ -52,9 +54,18 @@
 
     async function handleSendMessage() {
         if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
-        const processedText = await runPipeline(chatId, 'input', newMessageText, {
+        const templateCtx: TemplateContext = {
+            characterId: $activeCharacter?.id ?? $activeChat.characterId,
+            personaId: $appSettings?.personaId,
+            chatId,
+            display: false,
+            dryRun: false
+        };
+        const templated = await runTemplate(newMessageText, templateCtx);
+        const piped = await runPipeline(chatId, 'input', templated, {
             role: 'user'
         });
+        const processedText = await runTemplate(piped, templateCtx);
         newMessageText = '';
         const swipeId = generateId();
         await createMessage(chatId, {
@@ -196,6 +207,8 @@
                                 isEditing={editModeId === msg.id}
                                 bind:editText={editMessageText}
                                 characterName={$activeCharacter?.name ?? ''}
+                                characterId={$activeCharacter?.id}
+                                personaId={$appSettings?.personaId}
                                 onEdit={() => {
                                     editModeId = msg.id;
                                     // Initialize edit text from the active swipe

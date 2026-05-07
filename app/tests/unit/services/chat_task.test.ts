@@ -22,6 +22,7 @@ vi.mock('$lib/stores/content/message', () => ({
     createMessageSwipe: vi.fn(),
     prepareNextSwipe: vi.fn(),
     updateMessage: vi.fn().mockResolvedValue(undefined),
+    updateMessageSwipe: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
     deleteMessageSwipe: vi.fn(),
     getLastMessage: vi.fn(),
@@ -124,6 +125,10 @@ vi.mock('$lib/pipeline', () => ({
     runPipeline: vi.fn((_chatId: string, _phase: string, data: unknown) => Promise.resolve(data))
 }));
 
+vi.mock('$lib/template', () => ({
+    runTemplate: vi.fn((text: string) => Promise.resolve(text))
+}));
+
 import {
     createChatTask,
     setChatTaskError,
@@ -135,6 +140,7 @@ import {
     getLastMessage,
     prepareNextSwipe,
     updateMessage,
+    updateMessageSwipe,
     getMessage
 } from '$lib/stores/content/message';
 import { MessageService } from '$lib/services/content/message';
@@ -262,7 +268,7 @@ describe('Chat Pipeline', () => {
             expect.objectContaining({ content: '' }),
             false
         );
-        expect(updateMessage).toHaveBeenCalled();
+        expect(updateMessageSwipe).toHaveBeenCalled();
         // Should NOT have an error
         expect(setChatTaskError).not.toHaveBeenCalled();
         // Should clear task on success

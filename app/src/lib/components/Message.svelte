@@ -27,6 +27,8 @@
     import ToolCallGroup from './ToolCallGroup.svelte';
     import type { ToolCall } from '$lib/services/content/tool';
     import { runPipeline } from '$lib/pipeline';
+    import { collectTemplateMacros, runTemplate } from '$lib/template';
+    import type { TemplateContext } from '$lib/template';
     import { parseMarkdownAsync } from '$lib/markdown';
     import morphdom from 'morphdom';
     import DOMPurify from 'dompurify';
@@ -39,6 +41,8 @@
         isEditing = false,
         editText = $bindable(''),
         characterName = '',
+        characterId,
+        personaId,
         isLastMessage = false,
         onEdit = () => {},
         onSave = () => {},
@@ -56,6 +60,8 @@
         isEditing?: boolean;
         editText?: string;
         characterName?: string;
+        characterId?: string;
+        personaId?: string;
         isLastMessage?: boolean;
         onEdit?: () => void;
         onSave?: (text: string) => void;
@@ -80,6 +86,8 @@
     let lastContent = '';
     let renderedHtml = $state('');
     let lastStatus: string | undefined;
+    let lastCharacterId: string | undefined;
+    let lastPersonaId: string | undefined;
 
     // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -146,15 +154,26 @@
         pendingRefresh = true;
 
         try {
-            const processed = await runPipeline(message.chatId, 'display', contentToRender, {
+            const templateCtx: TemplateContext = {
+                characterId,
+                personaId,
+                chatId: message.chatId,
+                messageId: message.id,
+                display: true,
+                dryRun: true
+            };
+            const templateMacros = await collectTemplateMacros(templateCtx);
+            const templated = await runTemplate(contentToRender, templateCtx, templateMacros);
+            const processed = await runPipeline(message.chatId, 'display', templated, {
                 messageId: message.id,
                 role: message.role
             });
-            const rawHtml = await parseMarkdownAsync(processed);
+            const rendered = await runTemplate(processed, templateCtx, templateMacros);
+            const rawHtml = await parseMarkdownAsync(rendered);
             const sanitized = DOMPurify.sanitize(rawHtml as string);
 
             // Update states atomically
-            displayContent = processed;
+            displayContent = rendered;
             renderedHtml = sanitized;
         } finally {
             pendingRefresh = false;
@@ -202,7 +221,12 @@
         const status = message.displayStatus;
 
         // Ensure refresh on both content updates and status transitions (e.g. generating -> completed)
-        if (current !== lastContent || status !== lastStatus) {
+        if (
+            current !== lastContent ||
+            status !== lastStatus ||
+            characterId !== lastCharacterId ||
+            personaId !== lastPersonaId
+        ) {
             // Synchronously clear state when a fresh generation starts to prevent showing old content
             if (status === 'generating' && current === '') {
                 displayContent = '';
@@ -210,6 +234,8 @@
             }
             lastContent = current;
             lastStatus = status;
+            lastCharacterId = characterId;
+            lastPersonaId = personaId;
             refreshDisplay();
         }
     });
