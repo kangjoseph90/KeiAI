@@ -153,6 +153,15 @@ describe('PluginService', () => {
 
     describe('delete', () => {
         it('should soft delete a plugin', async () => {
+            const mockRecord: PluginRecord = {
+                id: 'p-1',
+                userId: mockUserId,
+                createdAt: 100,
+                updatedAt: 100,
+                isDeleted: false,
+                data: defaultFields as unknown as Record<string, unknown>
+            };
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
             await PluginService.delete('p-1');
 
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('plugins', 'p-1');

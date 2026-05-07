@@ -10,7 +10,8 @@ import { CharacterService } from '$lib/services/content/character';
 import { LorebookService } from '$lib/services/content/lorebook';
 import { getActiveSession } from '$lib/services';
 import { encrypt, decrypt } from '$lib/crypto';
-import { localDB } from '$lib/adapters/db';
+import { localDB, type TableName } from '$lib/adapters/db';
+import { buffer } from '$lib/services/content/record_buffer';
 
 // Mock high-level dependencies
 vi.mock('$lib/crypto', () => ({
@@ -68,6 +69,12 @@ describe('Character Flow Integration', () => {
 
         vi.mocked(decrypt).mockImplementation(async (_key, enc) => {
             return new TextDecoder().decode(enc.ciphertext);
+        });
+
+        // Mock buffer.get to fetch from localDB for integration realism
+        vi.mocked(buffer.get).mockImplementation(async (table, id) => {
+            const record = await localDB.getRecord(table as TableName, id);
+            return (record ?? null) as unknown as never;
         });
     });
 

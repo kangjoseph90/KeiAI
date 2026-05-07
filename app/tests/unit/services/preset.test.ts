@@ -163,6 +163,7 @@ describe('PresetService', () => {
 
     describe('delete', () => {
         it('should soft delete the record', async () => {
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
             await PresetService.delete('preset-123');
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('presets', 'preset-123');
         });

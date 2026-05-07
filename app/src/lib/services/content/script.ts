@@ -53,6 +53,7 @@ export class ScriptService {
     /** List scripts owned by a specific parent (character, module) */
     static async listByOwner(ownerId: string): Promise<Script[]> {
         await buffer.flushTable('scripts');
+        const { userId } = getActiveSession();
         const records = await localDB.getByIndex<ScriptRecord>(
             'scripts',
             'ownerId',
@@ -60,16 +61,19 @@ export class ScriptService {
             Number.MAX_SAFE_INTEGER
         );
 
-        return records.map((record) => ({
-            ...parseFields(record),
-            id: record.id,
-            ownerId: record.ownerId
-        }));
+        return records
+            .filter((record) => record.userId === userId)
+            .map((record) => ({
+                ...parseFields(record),
+                id: record.id,
+                ownerId: record.ownerId
+            }));
     }
 
     static async get(id: string): Promise<Script | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<ScriptRecord>('scripts', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return {
             ...parseFields(record),
@@ -105,8 +109,9 @@ export class ScriptService {
     }
 
     static async update(id: string, changes: DeepPartial<ScriptFields>): Promise<Script> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<ScriptRecord>('scripts', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', `Script not found: ${id}`);
         }
 
@@ -128,6 +133,12 @@ export class ScriptService {
     }
 
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<ScriptRecord>('scripts', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Script not found: ${id}`);
+        }
+
         try {
             buffer.drop('scripts', id);
             await localDB.softDeleteRecord('scripts', id);

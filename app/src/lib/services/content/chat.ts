@@ -48,6 +48,7 @@ function parseFields(record: ChatRecord): ChatFields {
 export class ChatService {
     static async listByCharacter(characterId: string): Promise<Chat[]> {
         await buffer.flushTable('chats');
+        const { userId } = getActiveSession();
         const records = await localDB.getByIndex<ChatRecord>(
             'chats',
             'characterId',
@@ -55,16 +56,19 @@ export class ChatService {
             Number.MAX_SAFE_INTEGER
         );
 
-        return records.map((record) => ({
-            ...parseFields(record),
-            id: record.id,
-            characterId: record.characterId
-        }));
+        return records
+            .filter((record) => record.userId === userId)
+            .map((record) => ({
+                ...parseFields(record),
+                id: record.id,
+                characterId: record.characterId
+            }));
     }
 
     static async get(id: string): Promise<Chat | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<ChatRecord>('chats', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return {
             ...parseFields(record),
@@ -100,8 +104,9 @@ export class ChatService {
     }
 
     static async update(id: string, changes: DeepPartial<ChatFields>): Promise<Chat> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<ChatRecord>('chats', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', 'Chat not found');
         }
 
@@ -124,6 +129,12 @@ export class ChatService {
 
     /** Cascade soft-delete: owned lorebooks, scripts, messages, then chat itself */
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<ChatRecord>('chats', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Chat not found: ${id}`);
+        }
+
         try {
             await Promise.all([
                 buffer.flushTable('chats'),

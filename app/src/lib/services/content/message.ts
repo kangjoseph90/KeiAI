@@ -69,6 +69,7 @@ export class MessageService {
         offset = 0
     ): Promise<Message[]> {
         await buffer.flushTable('messages');
+        const { userId } = getActiveSession();
         const records = await localDB.getRecordsBackward<MessageRecord>(
             'messages',
             '[chatId+sortOrder]',
@@ -82,12 +83,14 @@ export class MessageService {
         // them again to get an oldest-to-newest ordering for the UI to prepend.
         records.reverse();
 
-        return records.map((record) => ({
-            ...parseFields(record),
-            id: record.id,
-            chatId: record.chatId,
-            sortOrder: record.sortOrder
-        }));
+        return records
+            .filter((record) => record.userId === userId)
+            .map((record) => ({
+                ...parseFields(record),
+                id: record.id,
+                chatId: record.chatId,
+                sortOrder: record.sortOrder
+            }));
     }
 
     static async getMessagesAfter(
@@ -97,6 +100,7 @@ export class MessageService {
         offset = 0
     ): Promise<Message[]> {
         await buffer.flushTable('messages');
+        const { userId } = getActiveSession();
 
         const records = await localDB.getRecordsForward<MessageRecord>(
             'messages',
@@ -107,17 +111,20 @@ export class MessageService {
             offset
         );
 
-        return records.map((record) => ({
-            ...parseFields(record),
-            id: record.id,
-            chatId: record.chatId,
-            sortOrder: record.sortOrder
-        }));
+        return records
+            .filter((record) => record.userId === userId)
+            .map((record) => ({
+                ...parseFields(record),
+                id: record.id,
+                chatId: record.chatId,
+                sortOrder: record.sortOrder
+            }));
     }
 
     static async get(id: string): Promise<Message | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<MessageRecord>('messages', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return {
             ...parseFields(record),
@@ -177,8 +184,9 @@ export class MessageService {
 
     /** Update a message */
     static async update(id: string, changes: DeepPartial<MessageFields>): Promise<Message> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<MessageRecord>('messages', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', `Message not found: ${id}`);
         }
 
@@ -206,6 +214,12 @@ export class MessageService {
 
     /** Soft-delete a message */
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<MessageRecord>('messages', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Message not found: ${id}`);
+        }
+
         try {
             await Promise.all([
                 buffer.flushTable('messages'),
@@ -295,15 +309,25 @@ export class MessageService {
 
     static async countByChat(chatId: string): Promise<number> {
         // create and delete bypasses the write queue - doesn't need to flush the queue
-        return localDB.countByIndex('messages', 'chatId', chatId);
+        const { userId } = getActiveSession();
+        const records = await localDB.getByIndex<MessageRecord>(
+            'messages',
+            'chatId',
+            chatId,
+            Number.MAX_SAFE_INTEGER
+        );
+        return records.filter((record) => record.userId === userId).length;
     }
 
     static async countByChatBefore(chatId: string, beforeSortOrder: string): Promise<number> {
-        return localDB.countRecordsInRange(
+        const { userId } = getActiveSession();
+        const records = await localDB.getRecordsForward<MessageRecord>(
             'messages',
             '[chatId+sortOrder]',
             [chatId, ''],
-            [chatId, beforeSortOrder]
+            [chatId, beforeSortOrder],
+            Number.MAX_SAFE_INTEGER
         );
+        return records.filter((record) => record.userId === userId).length;
     }
 }

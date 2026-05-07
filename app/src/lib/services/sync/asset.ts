@@ -229,6 +229,8 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     private async handleRealtimeEvent(event: RealtimeEvent): Promise<void> {
         try {
             if (!hasActiveSession()) return;
+            const { userId: activeUserId } = getActiveSession();
+            if (event.record.userId !== activeUserId) return;
 
             const remote = await this.pbToLocalRecord(event.record);
             const remoteAt = remote.updatedAt ?? 0;
@@ -274,6 +276,9 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
             return;
         }
 
+        const { userId: activeUserId } = getActiveSession();
+        if (record.userId !== activeUserId) return;
+
         const payload = await this.localToPbRecord(record);
         const batch = pb.createBatch();
 
@@ -292,9 +297,13 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
     }
 
     private async pushBatch(records: AssetRecord[], swallowErrors = true): Promise<void> {
+        const { userId: activeUserId } = getActiveSession();
+        const owned = records.filter((r) => r.userId === activeUserId);
+        if (owned.length === 0) return;
+
         const CHUNK_SIZE = 100;
-        for (let i = 0; i < records.length; i += CHUNK_SIZE) {
-            const chunk = records.slice(i, i + CHUNK_SIZE);
+        for (let i = 0; i < owned.length; i += CHUNK_SIZE) {
+            const chunk = owned.slice(i, i + CHUNK_SIZE);
             const batch = pb.createBatch();
             for (const record of chunk) {
                 batch.collection('assets').upsert(await this.localToPbRecord(record));
@@ -315,6 +324,8 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
     async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
+        const { userId: activeUserId } = getActiveSession();
+        if (userId !== activeUserId) return;
 
         const changed = await appAsset.getAssetsSince(userId, sinceInclusive - 1);
         if (changed.length === 0) return;

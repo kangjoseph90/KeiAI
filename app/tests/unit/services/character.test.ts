@@ -302,12 +302,22 @@ describe('CharacterService', () => {
     });
 
     describe('delete', () => {
-        it('should soft delete character and related data', async () => {
+        const mockCharacter = {
+            id: 'char-1',
+            userId: mockUserId,
+            isDeleted: false,
+            data: { name: 'Delete Me' }
+        };
+
+        beforeEach(() => {
+            vi.mocked(buffer.get).mockResolvedValue(mockCharacter as never);
             vi.mocked(localDB.getByIndex).mockResolvedValue([]);
             vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
                 await callback();
             });
+        });
 
+        it('should soft delete character and related data', async () => {
             await CharacterService.delete('char-1');
 
             expect(localDB.transaction).toHaveBeenCalledWith(

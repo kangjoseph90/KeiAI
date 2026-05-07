@@ -272,9 +272,13 @@ export class DataSyncEngine extends BaseSyncEngine {
         records: DataRecord[],
         swallowErrors = true
     ): Promise<void> {
+        const { userId: activeUserId } = getActiveSession();
+        const owned = records.filter((r) => r.userId === activeUserId);
+        if (owned.length === 0) return;
+
         const CHUNK_SIZE = 100;
-        for (let i = 0; i < records.length; i += CHUNK_SIZE) {
-            const chunk = records.slice(i, i + CHUNK_SIZE);
+        for (let i = 0; i < owned.length; i += CHUNK_SIZE) {
+            const chunk = owned.slice(i, i + CHUNK_SIZE);
             const batch = pb.createBatch();
             for (const record of chunk) {
                 batch.collection(tableName).upsert(await this.localToPbRecord(record));
@@ -295,6 +299,10 @@ export class DataSyncEngine extends BaseSyncEngine {
     /** Apply a single realtime event pushed by PocketBase. */
     private async handleRealtimeEvent(tableName: TableName, e: RealtimeEvent): Promise<void> {
         try {
+            if (!hasActiveSession()) return;
+            const { userId: activeUserId } = getActiveSession();
+            if (e.record.userId !== activeUserId) return;
+
             const remote = await this.pbToLocalRecord(e.record);
             const remoteAt = remote.updatedAt ?? 0;
 
@@ -325,6 +333,8 @@ export class DataSyncEngine extends BaseSyncEngine {
      */
     async pushRecord(tableName: TableName, record: BaseRecord, isNew = false): Promise<void> {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
+        const { userId: activeUserId } = getActiveSession();
+        if (record.userId !== activeUserId) return;
 
         const payload = await this.localToPbRecord(record);
         const batch = pb.createBatch();
@@ -392,6 +402,8 @@ export class DataSyncEngine extends BaseSyncEngine {
      */
     async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
+        const { userId: activeUserId } = getActiveSession();
+        if (userId !== activeUserId) return;
 
         const allChanges: { table: TableName; record: BaseRecord }[] = [];
 

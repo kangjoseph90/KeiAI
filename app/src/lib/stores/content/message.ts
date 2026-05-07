@@ -186,7 +186,7 @@ export async function deleteMessageSwipe(messageId: string, swipeId: string): Pr
 export async function prepareNextSwipe(
     message: Message,
     fields: MessageSwipeFields,
-    replaceActiveSwipe: boolean
+    replaceActiveSwipe: boolean = false
 ): Promise<{ swipeId: string; message: Message }> {
     let current = message;
 

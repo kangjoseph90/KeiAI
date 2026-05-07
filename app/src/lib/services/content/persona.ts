@@ -54,8 +54,9 @@ export class PersonaService {
     }
 
     static async get(id: string): Promise<Persona | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<PersonaRecord>('personas', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return {
             ...parseFields(record),
@@ -91,8 +92,9 @@ export class PersonaService {
 
     /** Update a persona */
     static async update(id: string, changes: DeepPartial<PersonaFields>): Promise<Persona> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<PersonaRecord>('personas', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', `Persona not found: ${id}`);
         }
 
@@ -115,6 +117,12 @@ export class PersonaService {
 
     /** Delete a persona */
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<PersonaRecord>('personas', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Persona not found: ${id}`);
+        }
+
         try {
             buffer.drop('personas', id);
             await localDB.softDeleteRecord('personas', id);

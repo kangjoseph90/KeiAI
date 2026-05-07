@@ -70,6 +70,7 @@ describe('CharJSService', () => {
             const mockRecords = [
                 {
                     id: 'c-1',
+                    userId: mockUserId,
                     ownerId: 'owner-1',
                     data: defaultCharJSParams
                 } as unknown as BaseRecord
@@ -90,6 +91,7 @@ describe('CharJSService', () => {
         it('should return charjs detail', async () => {
             const mockRecord = {
                 id: 'c-1',
+                userId: mockUserId,
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultCharJSParams
@@ -170,6 +172,15 @@ describe('CharJSService', () => {
 
     describe('delete', () => {
         it('should soft delete the charjs script', async () => {
+            const mockRecord = {
+                id: 'c-1',
+                userId: mockUserId,
+                ownerId: 'owner-1',
+                isDeleted: false,
+                data: defaultCharJSParams
+            } as unknown as BaseRecord;
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
+
             await CharJSService.delete('c-1');
 
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('charjs', 'c-1');

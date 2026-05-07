@@ -71,6 +71,7 @@ describe('LorebookService', () => {
             const mockRecords = [
                 {
                     id: 'lb-1',
+                    userId: mockUserId,
                     ownerId: 'owner-1',
                     data: defaultLorebookParams
                 } as unknown as BaseRecord
@@ -91,6 +92,7 @@ describe('LorebookService', () => {
         it('should return lorebook detail', async () => {
             const mockRecord = {
                 id: 'lb-1',
+                userId: mockUserId,
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultLorebookParams
@@ -172,6 +174,15 @@ describe('LorebookService', () => {
 
     describe('delete', () => {
         it('should soft delete the lorebook', async () => {
+            const mockRecord = {
+                id: 'lb-1',
+                userId: mockUserId,
+                ownerId: 'owner-1',
+                isDeleted: false,
+                data: defaultLorebookParams
+            } as unknown as BaseRecord;
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
+
             await LorebookService.delete('lb-1');
 
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('lorebooks', 'lb-1');

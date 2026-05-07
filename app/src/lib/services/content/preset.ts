@@ -73,8 +73,9 @@ export class PresetService {
     }
 
     static async get(id: string): Promise<Preset | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<PresetRecord>('presets', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return { ...parseFields(record), id: record.id };
     }
@@ -105,8 +106,9 @@ export class PresetService {
     }
 
     static async update(id: string, changes: DeepPartial<PresetFields>): Promise<Preset> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<PresetRecord>('presets', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
         }
 
@@ -128,6 +130,12 @@ export class PresetService {
     }
 
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<PresetRecord>('presets', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
+        }
+
         try {
             buffer.drop('presets', id);
             await localDB.softDeleteRecord('presets', id);

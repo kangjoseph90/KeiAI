@@ -71,6 +71,7 @@ describe('ScriptService', () => {
             const mockRecords = [
                 {
                     id: 's-1',
+                    userId: mockUserId,
                     ownerId: 'owner-1',
                     data: defaultScriptParams
                 } as unknown as BaseRecord
@@ -91,6 +92,7 @@ describe('ScriptService', () => {
         it('should return script detail', async () => {
             const mockRecord = {
                 id: 's-1',
+                userId: mockUserId,
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultScriptParams
@@ -172,6 +174,15 @@ describe('ScriptService', () => {
 
     describe('delete', () => {
         it('should soft delete the script', async () => {
+            const mockRecord = {
+                id: 's-1',
+                userId: mockUserId,
+                ownerId: 'owner-1',
+                isDeleted: false,
+                data: defaultScriptParams
+            } as unknown as BaseRecord;
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
+
             await ScriptService.delete('s-1');
 
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('scripts', 's-1');

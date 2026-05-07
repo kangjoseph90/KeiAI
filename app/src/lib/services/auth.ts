@@ -249,7 +249,7 @@ export class AuthService {
 
         const record = pb.authStore.record;
         const username = (record?.username as string | undefined) ?? null;
-        if (!pb.authStore.isValid || !record || !username) {
+        if (!pb.authStore.isValid || !record || !username || record.id !== userId) {
             throw new AppError('NOT_AUTHENTICATED', 'Not connected to PocketBase.');
         }
 
@@ -303,7 +303,7 @@ export class AuthService {
      */
     static async createPairingCode(): Promise<string> {
         const { userId, masterKey, identityKeyPair } = getActiveSession();
-        if (!pb.authStore.isValid || !pb.authStore.record) {
+        if (!pb.authStore.isValid || !pb.authStore.record || pb.authStore.record.id !== userId) {
             throw new AppError('NOT_AUTHENTICATED', 'Must be connected to sync to pair a device.');
         }
 

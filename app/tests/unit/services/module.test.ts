@@ -170,6 +170,15 @@ describe('ModuleService', () => {
 
     describe('delete', () => {
         it('should delete module and its contents in a transaction', async () => {
+            const mockRecord: ModuleRecord = {
+                id: 'mod-1',
+                userId: mockUserId,
+                createdAt: 100,
+                updatedAt: 100,
+                isDeleted: false,
+                data: defaultFields as unknown as Record<string, unknown>
+            };
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
             vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
                 return callback();
             });

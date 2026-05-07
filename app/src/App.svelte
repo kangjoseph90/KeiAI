@@ -156,10 +156,9 @@
             await loadGlobalState();
             SyncManager.startAutoSync();
             await SyncManager.syncAll();
-            ready = true;
-
             const initialRoute = getCurrentHashRoute();
             await restoreRoute(initialRoute);
+            ready = true;
 
             _cleanupHash = initHashListener();
         } catch (err) {

@@ -31,17 +31,17 @@
         deleteChatLorebook,
         selectChat,
         forkChat,
-        appSettings
+        appSettings,
+        prepareNextSwipe
     } from '$lib/stores';
     import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
     import { ToolCallService } from '$lib/services/content/tool';
-    import { clock } from '$lib/utils/clock';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate } from '$lib/template';
     import type { TemplateContext } from '$lib/template';
     import { navigate } from '$lib/router';
-    import { generateId } from '$lib/utils/id';
     import { tick } from 'svelte';
+    import { getChatVariables } from '$lib/managers';
 
     let { chatId }: { chatId: string } = $props();
 
@@ -67,12 +67,13 @@
         });
         const processedText = await runTemplate(piped, templateCtx);
         newMessageText = '';
-        const swipeId = generateId();
-        await createMessage(chatId, {
-            role: 'user',
-            swipes: { [swipeId]: { id: swipeId, content: processedText, createdAt: clock.now() } },
-            activeSwipeId: swipeId
+
+        const variables = await getChatVariables(chatId);
+        const message = await createMessage(chatId, {
+            role: 'user'
         });
+
+        await prepareNextSwipe(message, { variables, content: processedText });
         runChat(chatId);
     }
 

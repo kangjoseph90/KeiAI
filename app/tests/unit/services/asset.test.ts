@@ -183,6 +183,7 @@ describe('AssetService', () => {
     });
 
     it('deletes logical asset and local cache registry entry', async () => {
+        vi.mocked(appAsset.getAsset).mockResolvedValue(mockRecord);
         await AssetService.delete('asset-123');
 
         expect(appAsset.softDeleteAsset).toHaveBeenCalledWith('asset-123');

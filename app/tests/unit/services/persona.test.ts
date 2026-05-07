@@ -143,6 +143,7 @@ describe('PersonaService', () => {
 
     describe('delete', () => {
         it('should soft delete', async () => {
+            vi.mocked(buffer.get).mockResolvedValue(mockRecord);
             await PersonaService.delete('persona-123');
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('personas', 'persona-123');
         });

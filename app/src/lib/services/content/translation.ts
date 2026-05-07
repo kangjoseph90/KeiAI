@@ -32,24 +32,28 @@ function parseFields(record: TranslationRecord): TranslationFields {
 export class TranslationService {
     static async listByMessageSwipe(messageId: string, swipeId: string): Promise<Translation[]> {
         await buffer.flushTable('translations');
+        const { userId } = getActiveSession();
         const records = await localDB.getByCompoundIndex<TranslationRecord>(
             'translations',
             '[messageId+swipeId]',
             [messageId, swipeId],
             Number.MAX_SAFE_INTEGER
         );
-        return records.map((record) => ({
-            ...parseFields(record),
-            id: record.id,
-            chatId: record.chatId,
-            messageId: record.messageId,
-            swipeId: record.swipeId
-        }));
+        return records
+            .filter((record) => record.userId === userId)
+            .map((record) => ({
+                ...parseFields(record),
+                id: record.id,
+                chatId: record.chatId,
+                messageId: record.messageId,
+                swipeId: record.swipeId
+            }));
     }
 
     static async get(id: string): Promise<Translation | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<TranslationRecord>('translations', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return {
             ...parseFields(record),
@@ -94,8 +98,9 @@ export class TranslationService {
     }
 
     static async update(id: string, changes: DeepPartial<TranslationFields>): Promise<Translation> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<TranslationRecord>('translations', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', `Translation not found: ${id}`);
         }
 
@@ -123,6 +128,12 @@ export class TranslationService {
     }
 
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<TranslationRecord>('translations', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Translation not found: ${id}`);
+        }
+
         try {
             buffer.drop('translations', id);
             await localDB.softDeleteRecord('translations', id);

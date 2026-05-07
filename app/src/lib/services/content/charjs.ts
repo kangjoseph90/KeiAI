@@ -39,6 +39,7 @@ export class CharJSService {
     /** List charjs scripts owned by a specific parent (character, module) */
     static async listByOwner(ownerId: string): Promise<CharJS[]> {
         await buffer.flushTable('charjs');
+        const { userId } = getActiveSession();
         const records = await localDB.getByIndex<CharJSRecord>(
             'charjs',
             'ownerId',
@@ -46,16 +47,19 @@ export class CharJSService {
             Number.MAX_SAFE_INTEGER
         );
 
-        return records.map((record) => ({
-            ...parseFields(record),
-            id: record.id,
-            ownerId: record.ownerId
-        }));
+        return records
+            .filter((record) => record.userId === userId)
+            .map((record) => ({
+                ...parseFields(record),
+                id: record.id,
+                ownerId: record.ownerId
+            }));
     }
 
     static async get(id: string): Promise<CharJS | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<CharJSRecord>('charjs', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return {
             ...parseFields(record),
@@ -91,8 +95,9 @@ export class CharJSService {
     }
 
     static async update(id: string, changes: DeepPartial<CharJSFields>): Promise<CharJS> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<CharJSRecord>('charjs', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', `CharJS script not found: ${id}`);
         }
 
@@ -113,7 +118,13 @@ export class CharJSService {
         }
     }
 
-    static delete(id: string): Promise<void> {
+    static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<CharJSRecord>('charjs', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `CharJS script not found: ${id}`);
+        }
+
         try {
             buffer.drop('charjs', id);
             return localDB.softDeleteRecord('charjs', id);

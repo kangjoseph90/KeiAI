@@ -53,8 +53,9 @@ export class PluginService {
     }
 
     static async get(id: string): Promise<Plugin | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<PluginRecord>('plugins', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return {
             ...parseFields(record),
@@ -88,8 +89,9 @@ export class PluginService {
     }
 
     static async update(id: string, changes: DeepPartial<PluginFields>): Promise<Plugin> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<PluginRecord>('plugins', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', `Plugin not found: ${id}`);
         }
 
@@ -111,6 +113,12 @@ export class PluginService {
     }
 
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<PluginRecord>('plugins', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Plugin not found: ${id}`);
+        }
+
         try {
             buffer.drop('plugins', id);
             await localDB.softDeleteRecord('plugins', id);

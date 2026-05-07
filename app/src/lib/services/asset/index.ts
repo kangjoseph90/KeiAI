@@ -60,8 +60,9 @@ async function setRegistry(
 }
 
 async function touchRegistry(id: string): Promise<void> {
+    const { userId } = getActiveSession();
     const existing = await appAsset.getRegistry(id);
-    if (!existing || existing.isDeleted) return;
+    if (!existing || existing.isDeleted || existing.userId !== userId) return;
 
     await appAsset.putRegistry({
         ...existing,
@@ -79,8 +80,9 @@ async function getStorageSize(id: string): Promise<number> {
 }
 
 async function syncRegistryIndex(id: string, kind: AssetKind, status: AssetStatus): Promise<void> {
+    const { userId } = getActiveSession();
     const existing = await appAsset.getRegistry(id);
-    if (!existing || existing.isDeleted) return;
+    if (!existing || existing.isDeleted || existing.userId !== userId) return;
     if (existing.kind === kind && existing.status === status) return;
 
     await appAsset.putRegistry({
@@ -92,10 +94,12 @@ async function syncRegistryIndex(id: string, kind: AssetKind, status: AssetStatu
 }
 
 // ─── Asset Table Helpers ─────────────────────────────────────────────
-
 async function updateAssetFields(id: string, changes: Partial<AssetFields>): Promise<AssetRecord> {
+    const { userId } = getActiveSession();
     const asset = await appAsset.getAsset(id);
-    if (!asset) throw new AppError('NOT_FOUND', `Asset ${id} not found`);
+    if (!asset || asset.isDeleted || asset.userId !== userId) {
+        throw new AppError('NOT_FOUND', `Asset ${id} not found`);
+    }
 
     const fields = { ...parseFields(asset), ...changes };
     const updated: AssetRecord = {
@@ -120,13 +124,15 @@ export class AssetService {
      * @returns true if the asset is now available locally, false if it failed.
      */
     static load(id: string): Promise<boolean> {
-        const pending = AssetService.pendingLoads.get(id);
+        const { userId } = getActiveSession();
+        const pendingKey = `${userId}:${id}`;
+        const pending = AssetService.pendingLoads.get(pendingKey);
         if (pending) return pending;
 
         const promise = AssetService.loadImpl(id).finally(() => {
-            AssetService.pendingLoads.delete(id);
+            AssetService.pendingLoads.delete(pendingKey);
         });
-        AssetService.pendingLoads.set(id, promise);
+        AssetService.pendingLoads.set(pendingKey, promise);
         return promise;
     }
 
@@ -140,8 +146,9 @@ export class AssetService {
     }
 
     private static async loadImpl(id: string): Promise<boolean> {
+        const { userId } = getActiveSession();
         const asset = await appAsset.getAsset(id);
-        if (!asset || asset.isDeleted) return false;
+        if (!asset || asset.isDeleted || asset.userId !== userId) return false;
 
         const fields = parseFields(asset);
         const storagePath = `assets/${id}`;
@@ -245,6 +252,12 @@ export class AssetService {
     }
 
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const asset = await appAsset.getAsset(id);
+        if (!asset || asset.isDeleted || asset.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Asset ${id} not found`);
+        }
+
         await Promise.all([
             appAsset.softDeleteAsset(id),
             appStorage.delete(`assets/${id}`).catch(() => undefined),
@@ -265,8 +278,11 @@ export class AssetService {
     static async markLocalBatch(ids: string[]): Promise<void> {
         await appAsset.transaction(['assets', 'assetRegistry'], 'rw', async () => {
             for (const id of ids) {
+                const { userId } = getActiveSession();
                 const asset = await appAsset.getAsset(id);
-                if (!asset) throw new AppError('NOT_FOUND', `Asset ${id} not found`);
+                if (!asset || asset.isDeleted || asset.userId !== userId) {
+                    throw new AppError('NOT_FOUND', `Asset ${id} not found`);
+                }
 
                 const fields = { ...parseFields(asset), status: 'local' as const };
                 await appAsset.putAsset({

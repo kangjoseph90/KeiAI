@@ -271,11 +271,21 @@ describe('ChatService', () => {
     });
 
     describe('delete', () => {
-        it('should soft delete chat and related data', async () => {
+        const mockChat = {
+            id: 'chat-1',
+            userId: mockUserId,
+            isDeleted: false,
+            data: { title: 'Delete Me' }
+        };
+
+        beforeEach(() => {
+            vi.mocked(buffer.get).mockResolvedValue(mockChat as never);
             vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
                 await callback();
             });
+        });
 
+        it('should soft delete chat and related data', async () => {
             await ChatService.delete('chat-1');
 
             expect(localDB.transaction).toHaveBeenCalledWith(

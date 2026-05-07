@@ -2,6 +2,7 @@ import type { Greeting } from '$lib/services';
 import {
     createMessage,
     deleteMessage,
+    getCharacter,
     getChat,
     getMessage,
     updateChat,
@@ -100,6 +101,38 @@ export async function setChatVariable(chatId: string, key: string, value: string
                 variables: {
                     [key]: value
                 }
+            }
+        }
+    });
+}
+
+export async function getChatVariables(chatId: string): Promise<Record<string, string>> {
+    const chat = await getChat(chatId);
+    const char = await getCharacter(chat.characterId);
+    if (!chat.lastMessageId) return { ...char.defaultVariables };
+
+    const lastMessage = await getMessage(chat.lastMessageId);
+    const swipe = lastMessage.swipes[lastMessage.activeSwipeId];
+    if (!swipe) return { ...char.defaultVariables };
+
+    return { ...char.defaultVariables, ...swipe.variables };
+}
+
+export async function setChatVariables(
+    chatId: string,
+    variables: Record<string, string>
+): Promise<void> {
+    const chat = await getChat(chatId);
+    if (!chat.lastMessageId) return;
+
+    const lastMessage = await getMessage(chat.lastMessageId);
+    const swipe = lastMessage.swipes[lastMessage.activeSwipeId];
+    if (!swipe) return;
+
+    await updateMessage(lastMessage.id, {
+        swipes: {
+            [lastMessage.activeSwipeId]: {
+                variables
             }
         }
     });

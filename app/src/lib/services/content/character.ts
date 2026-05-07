@@ -75,8 +75,9 @@ export class CharacterService {
     }
 
     static async get(id: string): Promise<Character | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<CharacterRecord>('characters', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return { ...parseFields(record), id: record.id };
     }
@@ -107,8 +108,9 @@ export class CharacterService {
     }
 
     static async update(id: string, changes: DeepPartial<CharacterFields>): Promise<Character> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<CharacterRecord>('characters', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', 'Character not found');
         }
 
@@ -138,6 +140,12 @@ export class CharacterService {
     }
 
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<CharacterRecord>('characters', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Character not found: ${id}`);
+        }
+
         try {
             await Promise.all([
                 buffer.flushTable('characters'),

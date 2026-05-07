@@ -66,24 +66,28 @@ export class ToolCallService {
     /** List tool calls for a specific swipe */
     static async listByMessageSwipe(messageId: string, swipeId: string): Promise<ToolCall[]> {
         await buffer.flushTable('tool_calls');
+        const { userId } = getActiveSession();
         const records = await localDB.getByCompoundIndex<ToolCallRecord>(
             'tool_calls',
             '[messageId+swipeId]',
             [messageId, swipeId],
             Number.MAX_SAFE_INTEGER
         );
-        return records.map((record) => ({
-            ...parseFields(record),
-            id: record.id,
-            chatId: record.chatId,
-            messageId: record.messageId,
-            swipeId: record.swipeId
-        }));
+        return records
+            .filter((record) => record.userId === userId)
+            .map((record) => ({
+                ...parseFields(record),
+                id: record.id,
+                chatId: record.chatId,
+                messageId: record.messageId,
+                swipeId: record.swipeId
+            }));
     }
 
     static async get(id: string): Promise<ToolCall | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<ToolCallRecord>('tool_calls', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return {
             ...parseFields(record),
@@ -128,8 +132,9 @@ export class ToolCallService {
     }
 
     static async update(id: string, changes: DeepPartial<ToolCallFields>): Promise<ToolCall> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<ToolCallRecord>('tool_calls', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', `Tool call not found: ${id}`);
         }
 
@@ -157,6 +162,12 @@ export class ToolCallService {
     }
 
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<ToolCallRecord>('tool_calls', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Tool call not found: ${id}`);
+        }
+
         try {
             buffer.drop('tool_calls', id);
             await localDB.softDeleteRecord('tool_calls', id);

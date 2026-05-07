@@ -22,7 +22,6 @@ import {
 } from '$lib/stores';
 import type { LLMStreamHandler } from '$lib/llm/types';
 import { ToolCallService } from '$lib/services/content/tool';
-import { clock } from '$lib/utils/clock';
 import { PagedMessages } from '$lib/services/content/paged_messages';
 import {
     getMessage,
@@ -39,7 +38,6 @@ import { runTemplate } from '../template';
 import type { TemplateContext } from '../template';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
-import { deepMerge } from '$lib/utils/defaults';
 
 export interface RunChatOptions {
     /** Optional handler override for testing */
@@ -103,8 +101,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
         const nextSwipeFields = {
             content: '',
-            variables: deepMerge(character.defaultVariables, variables),
-            createdAt: clock.now()
+            variables: { ...character.defaultVariables, ...variables }
         };
 
         const { swipeId: targetSwipeId, message: preparedMessage } = await prepareNextSwipe(

@@ -45,22 +45,26 @@ export class LorebookService {
     /** List lorebooks owned by a specific parent (character, chat, module) */
     static async listByOwner(ownerId: string): Promise<Lorebook[]> {
         await buffer.flushTable('lorebooks');
+        const { userId } = getActiveSession();
         const records = await localDB.getByIndex<LorebookRecord>(
             'lorebooks',
             'ownerId',
             ownerId,
             Number.MAX_SAFE_INTEGER
         );
-        return records.map((record) => ({
-            ...parseFields(record),
-            id: record.id,
-            ownerId: record.ownerId
-        }));
+        return records
+            .filter((record) => record.userId === userId)
+            .map((record) => ({
+                ...parseFields(record),
+                id: record.id,
+                ownerId: record.ownerId
+            }));
     }
 
     static async get(id: string): Promise<Lorebook | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<LorebookRecord>('lorebooks', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return {
             ...parseFields(record),
@@ -99,8 +103,9 @@ export class LorebookService {
     }
 
     static async update(id: string, changes: DeepPartial<LorebookFields>): Promise<Lorebook> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<LorebookRecord>('lorebooks', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', `Lorebook not found: ${id}`);
         }
 
@@ -122,6 +127,12 @@ export class LorebookService {
     }
 
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<LorebookRecord>('lorebooks', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Lorebook not found: ${id}`);
+        }
+
         try {
             buffer.drop('lorebooks', id);
             await localDB.softDeleteRecord('lorebooks', id);

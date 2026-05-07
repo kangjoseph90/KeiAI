@@ -62,8 +62,9 @@ export class ModuleService {
     }
 
     static async get(id: string): Promise<Module | null> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<ModuleRecord>('modules', id);
-        if (!record || record.isDeleted) return null;
+        if (!record || record.isDeleted || record.userId !== userId) return null;
 
         return {
             ...parseFields(record),
@@ -97,8 +98,9 @@ export class ModuleService {
     }
 
     static async update(id: string, changes: DeepPartial<ModuleFields>): Promise<Module> {
+        const { userId } = getActiveSession();
         const record = await buffer.get<ModuleRecord>('modules', id);
-        if (!record || record.isDeleted) {
+        if (!record || record.isDeleted || record.userId !== userId) {
             throw new AppError('NOT_FOUND', `Module not found: ${id}`);
         }
 
@@ -125,6 +127,12 @@ export class ModuleService {
     }
 
     static async delete(id: string): Promise<void> {
+        const { userId } = getActiveSession();
+        const record = await buffer.get<ModuleRecord>('modules', id);
+        if (!record || record.isDeleted || record.userId !== userId) {
+            throw new AppError('NOT_FOUND', `Module not found: ${id}`);
+        }
+
         try {
             await Promise.all([
                 buffer.flushTable('modules'),
