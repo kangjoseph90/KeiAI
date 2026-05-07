@@ -1,4 +1,4 @@
-import { applyRegexScript } from '$lib/scripts/regex';
+import { applyRegexScript } from '$lib/pipeline/regex';
 import { getMergedScripts } from '$lib/stores';
 import { collectCharJSInstances, invokeHandler } from '$lib/charjs';
 import { pluginManager } from '$lib/plugins';

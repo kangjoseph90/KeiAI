@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { applyRegexScript } from '$lib/scripts/regex';
+import { applyRegexScript } from '$lib/pipeline/regex';
 import type { Script } from '$lib/services';
 
 describe('applyRegexScript', () => {
