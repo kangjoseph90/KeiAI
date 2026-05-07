@@ -110,7 +110,15 @@ export async function createMessage(
     chatId: string,
     fields: DeepPartial<MessageFields> = {}
 ): Promise<Message> {
-    const newMessage = await MessageService.create(chatId, fields);
+    const chat = await getChat(chatId);
+
+    let prevSortOrder: string | undefined = undefined;
+    if (chat.lastMessageId) {
+        const lastMessage = await getMessage(chat.lastMessageId);
+        prevSortOrder = lastMessage.sortOrder;
+    }
+
+    const newMessage = await MessageService.create(chatId, fields, prevSortOrder);
     await updateChat(chatId, { lastMessageId: newMessage.id });
 
     // Store update — only if still viewing this chat

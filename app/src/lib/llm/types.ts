@@ -8,7 +8,6 @@
 import type { ToolCallRequest } from '$lib/services/content/tool';
 import type { RetryOptions } from '$lib/adapters/http/types';
 import type { LLMFlags, LLMParameter } from '$lib/types/models/llm';
-import type { StreamDebounceConfig } from '$lib/utils/stream';
 import type { LLMRole } from '$lib/types/models/llm';
 
 // ─── Stream Content ──────────────────────────────────────────────────────────
@@ -47,7 +46,6 @@ export interface LLMStreamHandlerConfig {
     modelId: string;
     flags?: LLMFlags[];
     parameters?: Partial<Record<LLMParameter, number | string | boolean>>;
-    debounce?: StreamDebounceConfig;
 }
 
 /**

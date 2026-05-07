@@ -64,7 +64,7 @@ export class MessageService {
      */
     static async getMessagesBefore(
         chatId: string,
-        cursorSortOrder: string = '￿',
+        cursorSortOrder: string = '\uffff',
         limit = 50,
         offset = 0
     ): Promise<Message[]> {
@@ -106,7 +106,7 @@ export class MessageService {
             'messages',
             '[chatId+sortOrder]',
             [chatId, cursorSortOrder],
-            [chatId, '￿'],
+            [chatId, '\uffff'],
             limit,
             offset
         );
@@ -138,7 +138,7 @@ export class MessageService {
     static async create(
         chatId: string,
         fields: DeepPartial<MessageFields> = {},
-        providedSortOrder?: string
+        prevSortOrder?: string
     ): Promise<Message> {
         const resolved: MessageFields = deepMerge(defaultMessageFields, fields);
 
@@ -146,21 +146,9 @@ export class MessageService {
         const id = generateId();
         const now = clock.now();
 
-        let sortOrder = providedSortOrder;
-        if (!sortOrder) {
-            const lastRecords = await localDB.getRecordsBackward<MessageRecord>(
-                'messages',
-                '[chatId+sortOrder]',
-                [chatId, ''],
-                [chatId, '￿'],
-                1
-            );
-            if (lastRecords.length > 0) {
-                sortOrder = generateKeyBetween(lastRecords[0].sortOrder, null);
-            } else {
-                sortOrder = generateKeyBetween(null, null);
-            }
-        }
+        const sortOrder = prevSortOrder
+            ? generateKeyBetween(prevSortOrder, null)
+            : generateKeyBetween(null, null);
 
         try {
             const newRecord: MessageRecord = {

@@ -30,7 +30,7 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
     async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent> {
         const rawStream = this.rawStream(messages, signal);
         // Debounce stream to batch fast successive chunks (common with Gemini)
-        yield* debounceStream(rawStream, this.config.debounce);
+        yield* debounceStream(rawStream);
     }
 
     private async *rawStream(

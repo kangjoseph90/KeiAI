@@ -23,7 +23,7 @@ export class TransformersLLMStreamHandler implements LLMStreamHandler {
 
     async *stream(messages: OpenAIChat[], _signal: AbortSignal): AsyncIterable<LLMStreamContent> {
         const rawStream = this.rawStream(messages);
-        yield* debounceStream(rawStream, this.config.debounce);
+        yield* debounceStream(rawStream);
     }
 
     private async *rawStream(messages: OpenAIChat[]): AsyncIterable<LLMStreamContent> {

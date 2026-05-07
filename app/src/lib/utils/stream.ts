@@ -4,35 +4,18 @@
  * Generic helpers for handling AsyncIterables.
  */
 
-export interface StreamDebounceConfig {
-    /** Minimum ms between yields. 0 = disabled (every chunk). Default: 0 */
-    intervalMs?: number;
-    /** Yield the first chunk immediately. Default: true */
-    leadingEdge?: boolean;
-}
-
 /**
  * Wrap an async iterable with time-based throttle.
- * Yields at most once per `intervalMs`, always flushing the final state.
+ * Yields at most once per 50ms, always flushing the final state.
  *
  * Strategy:
  *   - Leading edge: first chunk yields immediately (UI responsiveness)
- *   - Throttle: skips chunks that arrive within intervalMs of last yield
+ *   - Throttle: skips chunks that arrive within 50ms of last yield
  *   - Final flush: pending state always yields when source completes
- *   - intervalMs = 0 → passthrough (no throttle)
  */
-export async function* debounceStream<T>(
-    source: AsyncIterable<T>,
-    config?: StreamDebounceConfig
-): AsyncIterable<T> {
-    const intervalMs = config?.intervalMs ?? 0;
-    const leadingEdge = config?.leadingEdge ?? true;
-
-    // Passthrough when disabled
-    if (intervalMs <= 0) {
-        yield* source;
-        return;
-    }
+export async function* debounceStream<T>(source: AsyncIterable<T>): AsyncIterable<T> {
+    const intervalMs = 50;
+    const leadingEdge = true;
 
     let lastYieldTime = 0;
     let pending: T | null = null;

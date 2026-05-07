@@ -15,7 +15,7 @@
  */
 
 import type { LLMStreamContent, LLMStreamHandler, OpenAIChat } from '../types';
-import { debounceStream, type StreamDebounceConfig } from '$lib/utils/stream';
+import { debounceStream } from '$lib/utils/stream';
 import { abortableSleep } from '$lib/utils/async';
 
 export type MockBehavior = 'default' | 'echo' | 'markdown';
@@ -67,23 +67,20 @@ export interface MockHandlerConfig {
     behavior?: MockBehavior;
     /** Delay between word chunks in ms. Default: 60 */
     chunkDelayMs?: number;
-    debounce?: StreamDebounceConfig;
 }
 
 export class MockLLMStreamHandler implements LLMStreamHandler {
     private readonly behavior: MockBehavior;
     private readonly chunkDelayMs: number;
-    private readonly debounceConfig?: StreamDebounceConfig;
 
     constructor(config: MockHandlerConfig = {}) {
         this.behavior = config.behavior ?? 'default';
         this.chunkDelayMs = config.chunkDelayMs ?? 60;
-        this.debounceConfig = config.debounce;
     }
 
     async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent> {
         const rawStream = this.rawStream(messages, signal);
-        yield* debounceStream(rawStream, this.debounceConfig);
+        yield* debounceStream(rawStream);
     }
 
     private getResponse(messages: OpenAIChat[]): string {

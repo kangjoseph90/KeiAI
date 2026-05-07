@@ -29,7 +29,7 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
 
     async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent> {
         const rawStream = this.rawStream(messages, signal);
-        yield* debounceStream(rawStream, this.config.debounce);
+        yield* debounceStream(rawStream);
     }
 
     private async *rawStream(

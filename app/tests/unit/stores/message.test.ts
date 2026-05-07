@@ -145,7 +145,11 @@ describe('Message Store', () => {
             });
 
             expect(get(messages)).toContainEqual(newMessage);
-            expect(MessageService.create).toHaveBeenCalledWith(mockChatId, expect.any(Object));
+            expect(MessageService.create).toHaveBeenCalledWith(
+                mockChatId,
+                expect.any(Object),
+                undefined
+            );
             expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
                 lastMessageId: newMessage.id
             });
