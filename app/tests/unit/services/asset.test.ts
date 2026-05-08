@@ -54,8 +54,8 @@ vi.mock('$lib/services/asset/remote', () => ({
 
 vi.mock('$lib/services/sync/asset', () => ({
     AssetSyncService: {
-        pushById: vi.fn(),
-        start: vi.fn()
+        pushById: vi.fn().mockResolvedValue(undefined),
+        start: vi.fn().mockResolvedValue(undefined)
     }
 }));
 
@@ -70,6 +70,7 @@ import {
     preprocessImage
 } from '$lib/services/asset/util';
 import { fetchAssetCiphertext } from '$lib/services/asset/remote';
+import { AssetSyncService } from '$lib/services/sync/asset';
 
 describe('AssetService', () => {
     const mockUserId = 'user-123';

@@ -200,6 +200,18 @@ describe('template', () => {
         await expect(interpretTemplate(template, {}, macros)).resolves.toBe('yes');
     });
 
+    it('renders img macros as lazy asset placeholders in display mode', async () => {
+        await expect(runTemplate('{{img::asset-"<&>}}', { display: true })).resolves.toBe(
+            '<img data-keiai-asset-id="asset-&quot;&lt;&amp;&gt;" alt="" loading="lazy" decoding="async" />'
+        );
+    });
+
+    it('leaves img macros untouched outside display mode', async () => {
+        await expect(runTemplate('{{img::asset-1}}', { display: false })).resolves.toBe(
+            '{{img::asset-1}}'
+        );
+    });
+
     it('keeps escape block body as raw text', () => {
         expect(parseTemplate('{{#escape}}{{char}}{{/escape}}')).toEqual([
             {

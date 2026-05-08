@@ -112,7 +112,11 @@ export class WebAssetAdapter implements IAssetAdapter {
     }
 
     async getAllRegistry(userId: string): Promise<AssetRegistryRecord[]> {
-        return assetDB.assetRegistry.where('[userId+isDeleted]').equals([userId, 0]).toArray();
+        return assetDB.assetRegistry
+            .where('userId')
+            .equals(userId)
+            .filter((record) => !record.isDeleted)
+            .toArray();
     }
 
     async getRegistryByStatus(

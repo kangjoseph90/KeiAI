@@ -33,6 +33,7 @@
     import morphdom from 'morphdom';
     import DOMPurify from 'dompurify';
     import type { Action } from 'svelte/action';
+    import { hydrateAssets } from '$lib/components/hydrate';
 
     // ── Props ─────────────────────────────────────────────────────────────────
 
@@ -345,6 +346,7 @@
                 {:else}
                     <div
                         use:morphHtml={renderedHtml}
+                        use:hydrateAssets={renderedHtml}
                         class="prose prose-sm max-w-none {isUser
                             ? '**:text-primary-foreground prose-invert'
                             : 'dark:prose-invert'}"

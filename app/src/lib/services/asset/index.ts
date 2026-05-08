@@ -117,6 +117,8 @@ async function updateAssetFields(id: string, changes: Partial<AssetFields>): Pro
 export class AssetService {
     private static isEvictionPaused = false;
     private static pendingLoads = new Map<string, Promise<boolean>>();
+    private static evictionTimer: ReturnType<typeof setTimeout> | null = null;
+    private static readonly EVICTION_DEBOUNCE_MS = 5_000;
 
     /**
      * Loads an asset into local appStorage without returning a render URL.
@@ -180,6 +182,7 @@ export class AssetService {
             throw error;
         }
 
+        AssetService.scheduleEviction();
         return true;
     }
 
@@ -247,7 +250,9 @@ export class AssetService {
         }
 
         void AssetSyncService.pushById(id);
-        void AssetSyncService.start();
+        void AssetSyncService.start().finally(() => {
+            AssetService.scheduleEviction();
+        });
         return id;
     }
 
@@ -335,11 +340,23 @@ export class AssetService {
 
     static stopEviction(): void {
         AssetService.isEvictionPaused = true;
+        if (AssetService.evictionTimer) {
+            clearTimeout(AssetService.evictionTimer);
+            AssetService.evictionTimer = null;
+        }
     }
 
     static resumeEviction(): void {
         AssetService.isEvictionPaused = false;
-        // Optionally trigger eviction immediately after resuming
-        void AssetService.evictCache();
+        AssetService.scheduleEviction();
+    }
+
+    private static scheduleEviction(): void {
+        if (AssetService.isEvictionPaused) return;
+        if (AssetService.evictionTimer) return; // already scheduled
+        AssetService.evictionTimer = setTimeout(() => {
+            AssetService.evictionTimer = null;
+            void AssetService.evictCache();
+        }, AssetService.EVICTION_DEBOUNCE_MS);
     }
 }

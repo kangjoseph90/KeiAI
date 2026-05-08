@@ -10,20 +10,19 @@
         removePersonaAvatar
     } from '$lib/stores';
     import type { Persona } from '$lib/services';
-    import { AssetService } from '$lib/services/asset';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import { Textarea } from '$lib/components/ui/textarea';
     import { Card, CardContent } from '$lib/components/ui/card';
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
+    import AssetView from '$lib/components/AssetView.svelte';
     import { Check, Pencil, Plus, Trash2, X, User, Upload } from 'lucide-svelte';
 
     let newName = $state('');
     let editingId = $state<string | null>(null);
     let editName = $state('');
     let editDescription = $state('');
-    let avatarUrl = $state<string | null>(null);
     let uploading = $state(false);
     let fileInputRef = $state<HTMLInputElement>();
 
@@ -31,18 +30,12 @@
         editingId = persona.id;
         editName = persona.name;
         editDescription = persona.description;
-        if (persona.avatarAssetId) {
-            avatarUrl = await AssetService.read(persona.avatarAssetId);
-        } else {
-            avatarUrl = null;
-        }
     }
 
     function cancelEdit() {
         editingId = null;
         editName = '';
         editDescription = '';
-        avatarUrl = null;
     }
 
     async function handleCreate() {
@@ -55,7 +48,6 @@
         if (!editName.trim()) return;
         await updatePersona(id, { name: editName, description: editDescription });
         editingId = null;
-        avatarUrl = null;
     }
 
     async function handleAvatarUpload(event: Event) {
@@ -66,9 +58,6 @@
         uploading = true;
         try {
             await updatePersonaAvatar(editingId, file);
-            if (target.files?.[0]) {
-                avatarUrl = URL.createObjectURL(target.files[0]);
-            }
         } finally {
             uploading = false;
             target.value = '';
@@ -78,7 +67,6 @@
     async function handleRemoveAvatar() {
         if (!editingId) return;
         await removePersonaAvatar(editingId);
-        avatarUrl = null;
     }
 </script>
 
@@ -117,17 +105,17 @@
                                         onclick={() => fileInputRef?.click()}
                                         disabled={uploading}
                                     >
-                                        {#if avatarUrl}
-                                            <img
-                                                src={avatarUrl}
-                                                alt={editName}
-                                                class="size-full object-cover"
-                                            />
-                                        {:else}
-                                            <User class="size-6 text-muted-foreground" />
+                                        <AssetView
+                                            id={persona.avatarAssetId}
+                                            alt={editName}
+                                            class="size-full"
+                                            fallback="none"
+                                        />
+                                        {#if !persona.avatarAssetId}
+                                            <User class="size-6 text-muted-foreground absolute" />
                                         {/if}
                                     </button>
-                                    {#if avatarUrl}
+                                    {#if persona.avatarAssetId}
                                         <button
                                             type="button"
                                             class="absolute -top-1 -right-1 size-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/80 transition-colors"
@@ -183,11 +171,15 @@
                     {:else}
                         <div class="flex items-center justify-between gap-3">
                             <div class="flex items-center gap-3 min-w-0">
-                                <div
-                                    class="size-8 rounded-full border bg-muted flex items-center justify-center overflow-hidden shrink-0"
+                                <AssetView
+                                    id={persona.avatarAssetId}
+                                    class="size-8 rounded-full border bg-muted"
+                                    fallback="none"
                                 >
-                                    <User class="size-4 text-muted-foreground" />
-                                </div>
+                                    {#if !persona.avatarAssetId}
+                                        <User class="size-4 text-muted-foreground" />
+                                    {/if}
+                                </AssetView>
                                 <div class="min-w-0">
                                     <div class="flex items-center gap-2">
                                         <p class="font-medium">{persona.name || 'Unnamed'}</p>

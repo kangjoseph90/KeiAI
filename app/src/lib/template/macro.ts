@@ -143,6 +143,18 @@ function collectBuiltInMacros(): Map<string, Macro> {
         await setChatVariable(ctx.chatId, key, String(current + toNumber(amount)));
         return '';
     });
+    addAliases(['img', 'image'], ([assetId], ctx) => {
+        if (!assetId) return '';
+        if (!ctx.display) return `{{img::${assetId}}}`;
+        return [
+            '<img',
+            ` data-keiai-asset-id="${escapeHtmlAttribute(assetId)}"`,
+            ' alt=""',
+            ' loading="lazy"',
+            ' decoding="async"',
+            ' />'
+        ].join('');
+    });
 
     return macros;
 }
@@ -194,6 +206,14 @@ function toNumber(value: string | undefined): number {
 
 function bool(value: boolean): string {
     return value ? '1' : '0';
+}
+
+function escapeHtmlAttribute(value: string): string {
+    return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('"', '&quot;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
 }
 
 function isTruthy(value: string | undefined): boolean {

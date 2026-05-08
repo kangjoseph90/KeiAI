@@ -111,16 +111,22 @@ export async function deletePersona(personaId: string): Promise<void> {
 
 export async function updatePersonaAvatar(personaId: string, file: File): Promise<void> {
     const persona = await getPersona(personaId);
-    if (persona.avatarAssetId) {
-        await AssetService.delete(persona.avatarAssetId).catch(() => {});
+    const oldAssetId = persona.avatarAssetId;
+
+    const newAssetId = await AssetService.write(file, 'resource');
+    await updatePersona(personaId, { avatarAssetId: newAssetId });
+
+    if (oldAssetId) {
+        await AssetService.delete(oldAssetId).catch(() => {});
     }
-    const assetId = await AssetService.write(file, 'resource');
-    await updatePersona(personaId, { avatarAssetId: assetId });
 }
 
 export async function removePersonaAvatar(personaId: string): Promise<void> {
     const persona = await getPersona(personaId);
-    if (!persona.avatarAssetId) return;
-    await AssetService.delete(persona.avatarAssetId);
+    const oldAssetId = persona.avatarAssetId;
+
+    if (!oldAssetId) return;
+
     await updatePersona(personaId, { avatarAssetId: undefined });
+    await AssetService.delete(oldAssetId).catch(() => {});
 }

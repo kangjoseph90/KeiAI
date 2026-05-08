@@ -9,8 +9,6 @@ import { AppError } from '$lib/types/errors';
  * Uses Object URLs for rendering which must be revoked when no longer needed.
  */
 export class WebStorageAdapter implements IStorageAdapter {
-    private urlCache = new Map<string, string>();
-
     /**
      * Resolve a path to a file handle, creating parent directories as needed.
      * Path format: "dir/subdir/filename" (no leading slash)
@@ -39,26 +37,15 @@ export class WebStorageAdapter implements IStorageAdapter {
     }
 
     async getRenderUrl(path: string): Promise<string | null> {
-        const cached = this.urlCache.get(path);
-        if (cached) return cached;
-
         const handle = await this.getFileHandle(path);
         if (!handle) return null;
 
         const file = await handle.getFile();
-        const url = URL.createObjectURL(file);
-        this.urlCache.set(path, url);
-        return url;
+        return URL.createObjectURL(file);
     }
 
     async revokeRenderUrl(url: string): Promise<void> {
         URL.revokeObjectURL(url);
-        for (const [path, cached] of this.urlCache) {
-            if (cached === url) {
-                this.urlCache.delete(path);
-                break;
-            }
-        }
     }
 
     async write(path: string, data: Uint8Array | Blob): Promise<void> {
@@ -68,10 +55,6 @@ export class WebStorageAdapter implements IStorageAdapter {
         const writable = await handle.createWritable();
         await writable.write(data as FileSystemWriteChunkType);
         await writable.close();
-        // Revoke and invalidate cached Object URL (prevents memory leak)
-        const oldUrl = this.urlCache.get(path);
-        if (oldUrl) URL.revokeObjectURL(oldUrl);
-        this.urlCache.delete(path);
     }
 
     async read(path: string): Promise<Uint8Array | null> {
@@ -95,9 +78,6 @@ export class WebStorageAdapter implements IStorageAdapter {
             // Remove the file
             const filename = parts[parts.length - 1];
             await current.removeEntry(filename);
-            const oldUrl = this.urlCache.get(path);
-            if (oldUrl) URL.revokeObjectURL(oldUrl);
-            this.urlCache.delete(path);
         } catch (e) {
             if (e instanceof Error && e.name !== 'NotFoundError') throw e;
         }
