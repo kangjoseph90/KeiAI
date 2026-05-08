@@ -6,6 +6,7 @@ import { AppError } from '$lib/types/errors';
 import type { AssetRef } from '$lib/types/refs';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
+import { AssetService } from '../asset';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -123,9 +124,19 @@ export class PersonaService {
             throw new AppError('NOT_FOUND', `Persona not found: ${id}`);
         }
 
+        const fields = parseFields(record);
+        const assetIds: string[] = [];
+        if (fields.avatarAssetId) assetIds.push(fields.avatarAssetId);
+        if (fields.assets) {
+            for (const ref of fields.assets) {
+                assetIds.push(ref.assetId);
+            }
+        }
+
         try {
             buffer.drop('personas', id);
             await localDB.softDeleteRecord('personas', id);
+            await Promise.allSettled(assetIds.map((assetId) => AssetService.delete(assetId)));
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete persona', error);

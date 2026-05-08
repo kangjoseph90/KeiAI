@@ -5,6 +5,7 @@ import type { DeepPartial } from '$lib/utils/defaults';
 import { personas } from '../state';
 import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
+import { AssetService } from '$lib/services/asset';
 
 /**
  * Returns persona from store cache first, then from DB if needed.
@@ -98,13 +99,28 @@ export async function deletePersona(personaId: string): Promise<void> {
         await PersonaService.delete(personaId);
     } catch (error) {
         // If DB delete fails, roll back parent's refs
-        const rollback: DeepPartial<import('$lib/services').AppSettings> = {
+        await updateSettings({
             personas: { refs: { [personaId]: existingRef } }
-        };
-        await updateSettings(rollback);
+        });
         throw error;
     }
 
     // Update Store
     personas.delete(personaId);
+}
+
+export async function updatePersonaAvatar(personaId: string, file: File): Promise<void> {
+    const persona = await getPersona(personaId);
+    if (persona.avatarAssetId) {
+        await AssetService.delete(persona.avatarAssetId).catch(() => {});
+    }
+    const assetId = await AssetService.write(file, 'resource');
+    await updatePersona(personaId, { avatarAssetId: assetId });
+}
+
+export async function removePersonaAvatar(personaId: string): Promise<void> {
+    const persona = await getPersona(personaId);
+    if (!persona.avatarAssetId) return;
+    await AssetService.delete(persona.avatarAssetId);
+    await updatePersona(personaId, { avatarAssetId: undefined });
 }

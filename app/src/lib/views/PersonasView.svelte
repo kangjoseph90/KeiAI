@@ -5,32 +5,44 @@
         selectPersona,
         createPersona,
         updatePersona,
-        deletePersona
+        deletePersona,
+        updatePersonaAvatar,
+        removePersonaAvatar
     } from '$lib/stores';
     import type { Persona } from '$lib/services';
+    import { AssetService } from '$lib/services/asset';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import { Textarea } from '$lib/components/ui/textarea';
     import { Card, CardContent } from '$lib/components/ui/card';
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
-    import { Check, Pencil, Plus, Trash2, X, User } from 'lucide-svelte';
+    import { Check, Pencil, Plus, Trash2, X, User, Upload } from 'lucide-svelte';
 
     let newName = $state('');
     let editingId = $state<string | null>(null);
     let editName = $state('');
     let editDescription = $state('');
+    let avatarUrl = $state<string | null>(null);
+    let uploading = $state(false);
+    let fileInputRef = $state<HTMLInputElement>();
 
-    function startEdit(persona: Persona) {
+    async function startEdit(persona: Persona) {
         editingId = persona.id;
         editName = persona.name;
         editDescription = persona.description;
+        if (persona.avatarAssetId) {
+            avatarUrl = await AssetService.read(persona.avatarAssetId);
+        } else {
+            avatarUrl = null;
+        }
     }
 
     function cancelEdit() {
         editingId = null;
         editName = '';
         editDescription = '';
+        avatarUrl = null;
     }
 
     async function handleCreate() {
@@ -43,6 +55,30 @@
         if (!editName.trim()) return;
         await updatePersona(id, { name: editName, description: editDescription });
         editingId = null;
+        avatarUrl = null;
+    }
+
+    async function handleAvatarUpload(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const file = target.files?.[0];
+        if (!file || !editingId) return;
+
+        uploading = true;
+        try {
+            await updatePersonaAvatar(editingId, file);
+            if (target.files?.[0]) {
+                avatarUrl = URL.createObjectURL(target.files[0]);
+            }
+        } finally {
+            uploading = false;
+            target.value = '';
+        }
+    }
+
+    async function handleRemoveAvatar() {
+        if (!editingId) return;
+        await removePersonaAvatar(editingId);
+        avatarUrl = null;
     }
 </script>
 
@@ -73,9 +109,54 @@
                 <CardContent class="p-4">
                     {#if editingId === persona.id}
                         <div class="flex flex-col gap-3">
-                            <div class="space-y-1">
-                                <Label>Name</Label>
-                                <Input bind:value={editName} />
+                            <div class="flex items-start gap-4">
+                                <div class="relative group shrink-0">
+                                    <button
+                                        type="button"
+                                        class="size-16 rounded-full border-2 border-muted hover:border-primary transition-colors flex items-center justify-center overflow-hidden bg-muted"
+                                        onclick={() => fileInputRef?.click()}
+                                        disabled={uploading}
+                                    >
+                                        {#if avatarUrl}
+                                            <img
+                                                src={avatarUrl}
+                                                alt={editName}
+                                                class="size-full object-cover"
+                                            />
+                                        {:else}
+                                            <User class="size-6 text-muted-foreground" />
+                                        {/if}
+                                    </button>
+                                    {#if avatarUrl}
+                                        <button
+                                            type="button"
+                                            class="absolute -top-1 -right-1 size-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/80 transition-colors"
+                                            onclick={handleRemoveAvatar}
+                                            title="Remove avatar"
+                                        >
+                                            <X class="size-3" />
+                                        </button>
+                                    {:else}
+                                        <div
+                                            class="absolute inset-0 rounded-full bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity pointer-events-none"
+                                        >
+                                            <Upload class="size-5 text-foreground" />
+                                        </div>
+                                    {/if}
+                                    <input
+                                        bind:this={fileInputRef}
+                                        type="file"
+                                        accept="image/png, image/jpeg, image/webp"
+                                        class="hidden"
+                                        onchange={handleAvatarUpload}
+                                    />
+                                </div>
+                                <div class="flex-1 space-y-2">
+                                    <div class="space-y-1">
+                                        <Label>Name</Label>
+                                        <Input bind:value={editName} />
+                                    </div>
+                                </div>
                             </div>
                             <div class="space-y-1">
                                 <Label>Description</Label>
@@ -101,18 +182,27 @@
                         </div>
                     {:else}
                         <div class="flex items-center justify-between gap-3">
-                            <div class="min-w-0">
-                                <div class="flex items-center gap-2">
-                                    <p class="font-medium">{persona.name || 'Unnamed'}</p>
-                                    {#if $activePersona?.id === persona.id}
-                                        <Badge variant="outline" class="text-xs">Active</Badge>
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div
+                                    class="size-8 rounded-full border bg-muted flex items-center justify-center overflow-hidden shrink-0"
+                                >
+                                    <User class="size-4 text-muted-foreground" />
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <p class="font-medium">{persona.name || 'Unnamed'}</p>
+                                        {#if $activePersona?.id === persona.id}
+                                            <Badge variant="outline" class="text-xs">Active</Badge>
+                                        {/if}
+                                    </div>
+                                    {#if persona.description}
+                                        <p
+                                            class="text-sm text-muted-foreground mt-0.5 line-clamp-2"
+                                        >
+                                            {persona.description}
+                                        </p>
                                     {/if}
                                 </div>
-                                {#if persona.description}
-                                    <p class="text-sm text-muted-foreground mt-0.5 line-clamp-2">
-                                        {persona.description}
-                                    </p>
-                                {/if}
                             </div>
                             <div class="flex gap-1 shrink-0">
                                 {#if $activePersona?.id !== persona.id}

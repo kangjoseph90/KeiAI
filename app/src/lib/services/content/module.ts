@@ -6,6 +6,7 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
+import { AssetService } from '../asset';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -128,6 +129,14 @@ export class ModuleService {
             throw new AppError('NOT_FOUND', `Module not found: ${id}`);
         }
 
+        const fields = parseFields(record);
+        const assetIds: string[] = [];
+        if (fields.assets) {
+            for (const ref of fields.assets) {
+                assetIds.push(ref.assetId);
+            }
+        }
+
         try {
             await Promise.all([
                 buffer.flushTable('modules'),
@@ -153,6 +162,8 @@ export class ModuleService {
                     }
                 }
             );
+
+            await Promise.allSettled(assetIds.map((assetId) => AssetService.delete(assetId)));
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete module', error);
