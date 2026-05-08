@@ -178,6 +178,13 @@ export async function deleteModule(moduleId: string): Promise<void> {
     });
 }
 
+export async function setModuleEnabled(moduleId: string, enabled: boolean): Promise<void> {
+    const settings = await getAppSettings();
+    const existingRefs = settings.moduleRefs || [];
+    const moduleRefs = existingRefs.map((r) => (r.id === moduleId ? { ...r, enabled } : r));
+    await updateSettings({ moduleRefs });
+}
+
 // ─── Module-owned Lorebook CRUD ─────────────────────────────────────
 
 export async function createModuleLorebook(
@@ -207,6 +214,15 @@ export async function createModuleLorebook(
     get(moduleResources).get(moduleId)?.lorebooks.set(lb.id, lb);
 
     return lb;
+}
+
+export async function updateModuleLorebook(
+    moduleId: string,
+    lorebookId: string,
+    changes: DeepPartial<LorebookFields>
+): Promise<void> {
+    const updated = await LorebookService.update(lorebookId, changes);
+    get(moduleResources).get(moduleId)?.lorebooks.set(lorebookId, updated);
 }
 
 export async function deleteModuleLorebook(moduleId: string, lorebookId: string): Promise<void> {
@@ -260,6 +276,15 @@ export async function createModuleScript(
     return sc;
 }
 
+export async function updateModuleScript(
+    moduleId: string,
+    scriptId: string,
+    changes: DeepPartial<ScriptFields>
+): Promise<void> {
+    const updated = await ScriptService.update(scriptId, changes);
+    get(moduleResources).get(moduleId)?.scripts.set(scriptId, updated);
+}
+
 export async function deleteModuleScript(moduleId: string, scriptId: string): Promise<void> {
     const mod = await getModule(moduleId);
 
@@ -306,6 +331,15 @@ export async function createModuleCharJS(
     get(moduleResources).get(moduleId)?.charjs.set(cjs.id, cjs);
 
     return cjs;
+}
+
+export async function updateModuleCharJS(
+    moduleId: string,
+    charjsId: string,
+    changes: DeepPartial<CharJSFields>
+): Promise<void> {
+    const updated = await CharJSService.update(charjsId, changes);
+    get(moduleResources).get(moduleId)?.charjs.set(charjsId, updated);
 }
 
 export async function deleteModuleCharJS(moduleId: string, charjsId: string): Promise<void> {
