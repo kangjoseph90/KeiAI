@@ -32,12 +32,7 @@ vi.mock('$lib/utils/ordering', () => ({
 
 describe('Settings Store', () => {
     const mockSettings: AppSettings = makeSettings({
-        theme: 'dark',
-        characterRefs: [],
-        personaRefs: [],
-        presetRefs: [],
-        moduleRefs: [],
-        pluginRefs: []
+        theme: 'dark'
     });
 
     beforeEach(() => {
@@ -73,8 +68,10 @@ describe('Settings Store', () => {
             vi.mocked(SettingsService.update).mockResolvedValue(
                 makeSettings({
                     ...mockSettings,
-                    folders: {
-                        characters: [{ id: 'new-id', name: 'Folder', sortOrder: 'sort-order' }]
+                    characters: {
+                        folders: {
+                            'new-id': { id: 'new-id', name: 'Folder', sortOrder: 'sort-order' }
+                        }
                     }
                 })
             );
@@ -82,63 +79,73 @@ describe('Settings Store', () => {
             const folder = await createGlobalFolder('characters', 'Folder');
 
             expect(folder.name).toBe('Folder');
-            expect(get(appSettings)!.folders?.characters).toHaveLength(1);
+            expect(get(appSettings)!.characters?.folders?.['new-id']).toEqual(folder);
         });
 
         it('should update global folder', async () => {
-            const settingsWithFolder = {
+            const settingsWithFolder = makeSettings({
                 ...mockSettings,
-                folders: { characters: [{ id: 'f1', name: 'Old', sortOrder: 'a' }] }
-            };
-            appSettings.set(makeSettings(settingsWithFolder));
+                characters: {
+                    folders: { f1: { id: 'f1', name: 'Old', sortOrder: 'a' } }
+                }
+            });
+            appSettings.set(settingsWithFolder);
             vi.mocked(SettingsService.update).mockResolvedValue(
                 makeSettings({
                     ...mockSettings,
-                    folders: { characters: [{ id: 'f1', name: 'New', sortOrder: 'a' }] }
+                    characters: {
+                        folders: { f1: { id: 'f1', name: 'New', sortOrder: 'a' } }
+                    }
                 })
             );
 
             await updateGlobalFolder('characters', 'f1', { name: 'New' });
 
-            expect(get(appSettings)!.folders?.characters?.[0].name).toBe('New');
+            expect(get(appSettings)!.characters?.folders?.['f1']?.name).toBe('New');
         });
 
         it('should delete global folder', async () => {
-            const settingsWithFolder = {
+            const settingsWithFolder = makeSettings({
                 ...mockSettings,
-                folders: { characters: [{ id: 'f1', name: 'Folder', sortOrder: 'a' }] }
-            };
-            appSettings.set(makeSettings(settingsWithFolder));
+                characters: {
+                    folders: { f1: { id: 'f1', name: 'Folder', sortOrder: 'a' } }
+                }
+            });
+            appSettings.set(settingsWithFolder);
             vi.mocked(SettingsService.update).mockResolvedValue(
                 makeSettings({
                     ...mockSettings,
-                    folders: { characters: [] }
+                    characters: { folders: {} }
                 })
             );
 
             await deleteGlobalFolder('characters', 'f1');
 
-            expect(get(appSettings)!.folders?.characters).toHaveLength(0);
+            expect(Object.keys(get(appSettings)!.characters?.folders ?? {})).toHaveLength(0);
         });
     });
 
     describe('moveGlobalItem', () => {
         it('should move character to a folder', async () => {
-            const settingsWithRef = {
+            const settingsWithRef = makeSettings({
                 ...mockSettings,
-                characterRefs: [{ id: 'char-1', sortOrder: 'a' }]
-            };
-            appSettings.set(makeSettings(settingsWithRef));
+                characters: {
+                    refs: { 'char-1': { id: 'char-1', sortOrder: 'a' } }
+                }
+            });
+            appSettings.set(settingsWithRef);
             vi.mocked(SettingsService.update).mockResolvedValue(
                 makeSettings({
                     ...mockSettings,
-                    characterRefs: [{ id: 'char-1', sortOrder: 'a', folderId: 'f1' }]
+                    characters: {
+                        refs: { 'char-1': { id: 'char-1', sortOrder: 'a', folderId: 'f1' } }
+                    }
                 })
             );
 
             await moveGlobalItem('characters', 'char-1', 'f1');
 
-            expect(get(appSettings)!.characterRefs?.[0].folderId).toBe('f1');
+            expect(get(appSettings)!.characters?.refs?.['char-1']?.folderId).toBe('f1');
         });
     });
 });

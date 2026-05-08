@@ -8,17 +8,17 @@ import type { OrderedRef } from '$lib/types/refs';
 
 describe('Ordering Utilities', () => {
     describe('generateSortOrder', () => {
-        it('should generate a key for empty list', () => {
-            const result = generateSortOrder([]);
+        it('should generate a key for empty record', () => {
+            const result = generateSortOrder({});
             expect(result).toBeDefined();
             expect(typeof result).toBe('string');
         });
 
         it('should generate a key after the last item', () => {
-            const existing: OrderedRef[] = [
-                { id: '1', sortOrder: 'a0' },
-                { id: '2', sortOrder: 'a1' }
-            ];
+            const existing: Record<string, OrderedRef> = {
+                '1': { id: '1', sortOrder: 'a0' },
+                '2': { id: '2', sortOrder: 'a1' }
+            };
             const result = generateSortOrder(existing);
             expect(result.localeCompare('a1')).toBeGreaterThan(0);
         });
@@ -35,11 +35,11 @@ describe('Ordering Utilities', () => {
                 { id: 'a', name: 'Item A' },
                 { id: 'c', name: 'Item C' }
             ];
-            const refs: OrderedRef[] = [
-                { id: 'a', sortOrder: '1' },
-                { id: 'b', sortOrder: '2' },
-                { id: 'c', sortOrder: '3' }
-            ];
+            const refs: Record<string, OrderedRef> = {
+                a: { id: 'a', sortOrder: '1' },
+                b: { id: 'b', sortOrder: '2' },
+                c: { id: 'c', sortOrder: '3' }
+            };
 
             const result = sortByRefs(entities, refs);
 
@@ -53,7 +53,7 @@ describe('Ordering Utilities', () => {
                 id: string;
             }
             const entities: TestEntity[] = [{ id: 'missing' }, { id: 'exists' }];
-            const refs: OrderedRef[] = [{ id: 'exists', sortOrder: '1' }];
+            const refs: Record<string, OrderedRef> = { exists: { id: 'exists', sortOrder: '1' } };
 
             const result = sortByRefs(entities, refs);
 
@@ -63,7 +63,7 @@ describe('Ordering Utilities', () => {
 
         it('should return original list if refs empty', () => {
             const entities = [{ id: '1' }];
-            expect(sortByRefs(entities, [])).toEqual(entities);
+            expect(sortByRefs(entities, {})).toEqual(entities);
         });
     });
 });

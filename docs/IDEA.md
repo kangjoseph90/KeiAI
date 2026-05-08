@@ -108,27 +108,27 @@
   - FolderDef: { id, name, sortOrder, color?, parentId? } — 폴더 정의 (부모 Blob에 저장).
   - AssetEntry: { name, assetId } — 에셋 이름→ID 매핑 (엔티티별 매니페스트).
 - 소유 관계 (1:N, Deep Copy):
-  - 부모의 암호화 Blob에 OrderedRef[] 또는 ResourceRef[]로 자식 ID를 소유.
+  - 부모의 암호화 Blob에 `EntityListConfig` (Record<string, OrderedRef>)로 자식 ID를 소유.
   - 삭제 시 cascade: 부모 삭제 → 소유 자식 일괄 soft-delete.
   - 대상: 로어북, 스크립트는 항상 부모가 소유 (공유 시 Deep Copy).
   - 소유 트리:
-    - settings → 캐릭터, 페르소나, 프리셋, 모듈, 플러그인 (최상위 노드로서 각 엔티티의 ID 리스트와 폴더 정보 소유)
-    - 캐릭터 → 채팅(chatRefs로 소유), 로어북, 스크립트 단독 소유
+    - settings → 캐릭터, 페르소나, 프리셋, 모듈, 플러그인 (최상위 노드로서 각 엔티티의 EntityListConfig 소유)
+    - 캐릭터 → 채팅(chats로 소유), 로어북, 스크립트, CharJS 단독 소유
     - 채팅 → 로어북 단독 소유 (채팅 고유의 설정 가능)
-    - 모듈 → 로어북, 스크립트 단독 소유
+    - 모듈 → 로어북, 스크립트, CharJS 단독 소유
     - 페르소나 → (추가 자원 소유 없음, 자체 설정과 에셋만 존재)
   - FK 및 정렬 예외 사항 (messages):
     - messages.chatId — 고볼륨 트래픽으로 인해 [chatId+sortOrder] 조합의 인덱스 추가 사용 (O(1) 쓰기 및 빠른 페이지네이션)
     - chats.characterId — 캐릭터 삭제 시 종속된 채팅을 일괄 정리하기 위한 보조 장치
 - 참조 관계 (N:M, Shared Reference):
-  - 소비자의 암호화 Blob에 ResourceRef[]로 참조만 보유. 삭제 영향 없음.
+  - 소비자의 암호화 Blob에 `EntityListConfig<ResourceRef>`로 참조만 보유. 삭제 영향 없음.
   - enabled 플래그: 동일 자원이라도 컨텍스트마다 개별 ON/OFF.
-  - 대상: 모듈, 플러그인 (프리셋과 페르소나는 직접 string ID 지정).
-  - 예: characters.moduleRefs (참조), characters.lorebookRefs (소유).
+  - 대상: 모듈 (프리셋과 페르소나는 직접 string ID 지정).
+  - 예: `characters.modules` (참조, ResourceRef), `characters.lorebooks` (소유, OrderedRef).
 - 폴더 관리:
-  - 자식의 소속 폴더: refs[].folderId로 표현.
-  - 폴더 정의: 부모의 Blob에 FolderDef[] 배열 (이름, 색, 중첩 등). 매우 소량.
-  - 예: settings.folders.characters, characters.chatFolders.
+  - 자식의 소속 폴더: refs[id].folderId로 표현.
+  - 폴더 정의: EntityListConfig 내부의 `folders: Record<string, FolderDef>` (이름, 색, 중첩 등). 매우 소량.
+  - 예: `settings.characters.folders`, `character.chats.folders`.
 - 참조 무결성: Loose Coupling.
   - E2EE 환경에서는 FOREIGN KEY ON DELETE CASCADE 불가능.
   - 참조 자원 삭제 시 참조자의 Blob 일괄 수정 불필요 → Graceful Degradation + Self-Healing.
@@ -140,12 +140,13 @@
 - DB 스키마: 단일 EncryptedRecord (modules 테이블).
 - ModuleFields 내부 구조:
   - name, description.
-  - lorebookRefs: OrderedRef[] (소유).
-  - scriptRefs: OrderedRef[] (소유).
-- 참조 방식: 모듈 자체는 N:M 공유 자원. 소비자의 Data Blob에 moduleRefs: ResourceRef[] (참조).
+  - lorebooks: EntityListConfig (소유).
+  - scripts: EntityListConfig (소유).
+  - charjs: EntityListConfig (소유).
+- 참조 방식: 모듈 자체는 N:M 공유 자원. 소비자의 Data Blob에 `modules: EntityListConfig<ResourceRef>` (참조).
 - 삭제 캐스케이드: 모듈 삭제 → 소유 로어북/스크립트 일괄 삭제.
 - 이중 토글 (Two-Layer Toggle):
-  - 소비자 레벨: moduleRefs에서 모듈 자체 ON/OFF.
+  - 소비자 레벨: modules.refs[id].enabled로 모듈 자체 ON/OFF.
   - 모듈 내부 레벨: 모듈 안의 개별 로어북/스크립트 ON/OFF.
   - 모듈이 OFF → 안의 자원들 통째로 프롬프트 엔진 스킵.
 - 같은 자원이 직접 소유 + 모듈 소유로 중복되는 경우: 별개의 Deep Copy이므로 각각 독립.
@@ -294,16 +295,16 @@
 
 - 암호화 테이블 (EncryptedRecord 기반, blind sync 대상):
   - users — 특수 (인증 및 E2EE 전용 필드 보관: salt, encryptedMasterKey, recoveryAuthTokenHash 등). 사용자 계정 폭파 시 하위 테이블들 자동 삭제 되도록 `cascadeDelete` 적용 처리됨.
-  - characters — 단일 (소유: chatRefs, lorebookRefs, scriptRefs. 참조: moduleRefs. 에셋: assets)
-  - chats — 단일 (characterId 평문 FK 보유. 소유: lorebookRefs)
+  - characters — 단일 (소유: chats, lorebooks, scripts, charjs. 참조: modules. 에셋: assets)
+  - chats — 단일 (characterId 평문 FK 보유. 소유: lorebooks)
   - messages — 단일, 평문 FK: chatId ([chatId+sortOrder] 복합 인덱스, softDeleteByIndex 벌크 삭제)
   - personas — 단일 (독립된 데이터 + 에셋 보유)
   - presets — 단일
-  - modules — 단일 (소유: lorebookRefs, scriptRefs. 폴더 지원)
+  - modules — 단일 (소유: lorebooks, scripts, charjs. 폴더 지원)
   - plugins — 단일 (내장 hooks 및 샌드박스 설정)
   - lorebooks — 단일 (부모 소유, Deep Copy)
   - scripts — 단일 (부모 소유, Deep Copy)
-  - settings — 단일 (최상위 엔티티 관리: characterRefs, personaRefs, presetRefs, moduleRefs, pluginRefs + folders)
+  - settings — 단일 (최상위 엔티티 관리: characters, personas, presets, modules, plugins — 각각 EntityListConfig)
   - roomKeys — 단일, FK: roomId (미래)
 - 에셋 테이블 (단일 테이블, Blind Sync 대상 ✅):
   - assets — kind: private/inlay/public. ID = UUID. encryptedData 내부에 kind, mimeType, remoteUrl? 저장.

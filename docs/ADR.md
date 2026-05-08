@@ -602,3 +602,34 @@
   - 셀프호스트 서버도 공식 서버와 동일한 hook/schema로 동작하며, 서버 이전은 remote ciphertext를 확보해 새 서버에 재업로드한 뒤 `assets` 레코드를 push하는 동일 절차로 처리할 수 있다.
   - 수렴 암호화 특성상 confirmation attack 가능성은 있지만, 공격자가 원본 파일 후보를 이미 가지고 있어야 하며 이미지 에셋 dedup/경량 공유의 이득이 더 크다고 판단했다.
 - 참고: docs/asset-system-v3.md, ADR 030
+
+---
+
+## 033: Refs 배열 → EntityListConfig Record 전환
+
+- 상태: 채택
+- 맥락: 모든 엔티티 참조(OrderedRef, ResourceRef, FolderDef)가 배열로 관리되고 있었다. deepMerge는 배열을 통째로 덮어쓰기 때문에, 동기화 충돌 시 한쪽 변경이 전부 날아가는 문제가 있었다.
+- 문제:
+  - 배열 기반 refs는 deepMerge 시 전체 덮어쓰기 발생 → 동시에 다른 자식을 추가/수정하면 한쪽이 손실.
+  - refs와 folders가 별도 필드(`lorebookRefs`, `folders.lorebooks`)로 분산되어 응집도 낮음.
+  - `.find(r => r.id === id)` 조회가 O(n).
+- 결정: **EntityListConfig<R> 도입 — refs + folders를 엔티티 타입별로 그룹화하고 Record로 전환**
+  ```typescript
+  interface EntityListConfig<R extends OrderedRef = OrderedRef> {
+      refs?: Record<string, R>;
+      folders?: Record<string, FolderDef>;
+  }
+  ```
+  - 필드명 변경: `lorebookRefs` → `lorebooks`, `moduleRefs` → `modules` 등.
+  - FolderRef 배열 → Record<string, FolderDef> 전환.
+  - `generateSortOrder`, `sortByRefs` 시그니처를 Record 대응으로 변경.
+  - Create/Delete/Update 패턴:
+    - 추가: `{ lorebooks: { refs: { [id]: { id, sortOrder } } } }`
+    - 삭제: `{ lorebooks: { refs: { [id]: undefined } } }` (deepMerge가 키 삭제)
+    - 수정: `{ lorebooks: { refs: { [id]: { ...existing, ...changes } } } }`
+- 결과:
+  - deepMerge가 키별 머지 → 동시에 다른 자식 수정 시 충돌 없음.
+  - refs와 folders가 동일 EntityListConfig 내부에 응집.
+  - `refs[id]` 조회 O(1).
+  - 롤백이 간결: 전체 배열 백업 대신 키 하나만 복원.
+- 참고: ADR 022 (DeepPartial), ADR 027 (Record 기반 중첩 구조)

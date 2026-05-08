@@ -42,7 +42,7 @@
 
     let { mod }: { mod: Module } = $props();
 
-    let enabled = $derived($appSettings?.moduleRefs?.find((r) => r.id === mod.id)?.enabled ?? true);
+    let enabled = $derived($appSettings?.modules?.refs?.[mod.id]?.enabled ?? true);
 
     let expanded = $state(false);
     let editing = $state(false);

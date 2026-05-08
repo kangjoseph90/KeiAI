@@ -28,7 +28,9 @@
             type: 'text',
             role: 'system',
             content: '',
-            sortOrder: generateSortOrder(blocks.map((b) => ({ id: b.id, sortOrder: b.sortOrder })))
+            sortOrder: generateSortOrder(
+                Object.fromEntries(blocks.map((b) => [b.id, { id: b.id, sortOrder: b.sortOrder }]))
+            )
         });
     }
 

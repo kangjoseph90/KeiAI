@@ -14,11 +14,13 @@ export async function getActiveModuleIds(characterId: string): Promise<Set<strin
     const [settings, char] = await Promise.all([getAppSettings(), getCharacter(characterId)]);
 
     const ids = new Set<string>();
-    for (const r of settings.moduleRefs ?? []) {
-        if (r.enabled) ids.add(r.id);
+    const settingsRefs = settings.modules?.refs ?? {};
+    for (const [id, r] of Object.entries(settingsRefs)) {
+        if (r.enabled) ids.add(id);
     }
-    for (const r of char.moduleRefs ?? []) {
-        if (r.enabled) ids.add(r.id);
+    const charRefs = char.modules?.refs ?? {};
+    for (const [id, r] of Object.entries(charRefs)) {
+        if (r.enabled) ids.add(id);
     }
     return ids;
 }

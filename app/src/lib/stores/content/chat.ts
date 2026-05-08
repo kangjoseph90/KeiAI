@@ -11,7 +11,7 @@ import {
     type MessageSwipe,
     type Greeting
 } from '$lib/services';
-import type { OrderedRef, FolderDef } from '$lib/types/refs';
+import type { FolderDef, EntityListConfig } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
     chats,
@@ -51,8 +51,9 @@ export async function getChatLorebooks(chatId: string): Promise<Lorebook[]> {
         return get(chatLorebooks);
     }
     const chat = await getChat(chatId);
-    const refs = chat.lorebookRefs ?? [];
-    const results = await Promise.all(refs.map((ref) => LorebookService.get(ref.id)));
+    const refs = chat.lorebooks?.refs;
+    if (!refs) return [];
+    const results = await Promise.all(Object.keys(refs).map((id) => LorebookService.get(id)));
     return results.filter((lb): lb is Lorebook => lb !== null);
 }
 
@@ -64,7 +65,7 @@ export async function selectChat(chatId: string, characterId: string): Promise<v
     await loadInitialMessages(chatId, 50);
 
     const lorebooks = await LorebookService.listByOwner(chatId);
-    chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebookRefs ?? []));
+    chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebooks?.refs ?? {}));
 
     await updateCharacter(characterId, { lastActiveChatId: chatId });
 }
@@ -83,13 +84,12 @@ export async function createChat(
 
     const chat = await ChatService.create(characterId, fields);
 
-    const existingRefs = char.chatRefs || [];
-    const chatRefs: OrderedRef[] = [
-        ...existingRefs,
-        { id: chat.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = char.chats?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateCharacter(characterId, { chatRefs });
+        await updateCharacter(characterId, {
+            chats: { refs: { [chat.id]: { id: chat.id, sortOrder } } }
+        });
     } catch (error) {
         await ChatService.delete(chat.id);
         throw error;
@@ -124,14 +124,16 @@ export async function updateChatContent(
 export async function deleteChat(chatId: string, characterId: string): Promise<void> {
     const char = await getCharacter(characterId);
 
-    const existingRefs = char.chatRefs || [];
-    const chatRefs = existingRefs.filter((r) => r.id !== chatId);
-    await updateCharacter(characterId, { chatRefs });
+    // Capture ref for potential rollback
+    const existingRef = char.chats?.refs?.[chatId];
+
+    // Remove from parent's refs
+    await updateCharacter(characterId, { chats: { refs: { [chatId]: undefined } } });
 
     try {
         await ChatService.delete(chatId);
     } catch (error) {
-        await updateCharacter(characterId, { chatRefs: existingRefs });
+        await updateCharacter(characterId, { chats: { refs: { [chatId]: existingRef } } });
         throw error;
     }
 
@@ -170,7 +172,7 @@ export async function forkChat(messageId: string): Promise<string> {
     const {
         id: _id,
         characterId: _charId,
-        lorebookRefs: _,
+        lorebooks: _,
         lastMessageId: _lastMessageId,
         greetingMessageId: _greetingMessageId,
         ...fieldsCopy
@@ -208,16 +210,17 @@ export async function forkChat(messageId: string): Promise<string> {
         })
     );
 
-    const lorebookRefs: OrderedRef[] = [];
+    const lorebookRefs: Record<string, { id: string; sortOrder: string }> = {};
     for (const copiedLb of copiedLorebooks) {
-        lorebookRefs.push({ id: copiedLb.id, sortOrder: generateSortOrder(lorebookRefs) });
+        const sortOrder = generateSortOrder(lorebookRefs);
+        lorebookRefs[copiedLb.id] = { id: copiedLb.id, sortOrder };
     }
 
-    if (lorebookRefs.length > 0) {
-        await updateChat(newChat.id, { lorebookRefs });
+    if (Object.keys(lorebookRefs).length > 0) {
+        await updateChat(newChat.id, { lorebooks: { refs: lorebookRefs } });
     }
 
-    // Character's chatRefs are already updated by createChat() calling updateCharacter()
+    // Character's chat refs are already updated by createChat() calling updateCharacter()
 
     if (characterId === get(activeCharacterId)) {
         chats.set(newChat.id, newChat);
@@ -236,13 +239,12 @@ export async function createChatLorebook(
 
     const lb = await LorebookService.create(chatId, fields);
 
-    const existingRefs = chat.lorebookRefs || [];
-    const lorebookRefs: OrderedRef[] = [
-        ...existingRefs,
-        { id: lb.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = chat.lorebooks?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateChat(chatId, { lorebookRefs });
+        await updateChat(chatId, {
+            lorebooks: { refs: { [lb.id]: { id: lb.id, sortOrder } } }
+        });
     } catch (error) {
         await LorebookService.delete(lb.id);
         throw error;
@@ -258,14 +260,16 @@ export async function createChatLorebook(
 export async function deleteChatLorebook(chatId: string, lorebookId: string): Promise<void> {
     const chat = await getChat(chatId);
 
-    const existingRefs = chat.lorebookRefs || [];
-    const lorebookRefs = existingRefs.filter((r) => r.id !== lorebookId);
-    await updateChat(chatId, { lorebookRefs });
+    // Capture ref for potential rollback
+    const existingRef = chat.lorebooks?.refs?.[lorebookId];
+
+    // Remove from parent's refs
+    await updateChat(chatId, { lorebooks: { refs: { [lorebookId]: undefined } } });
 
     try {
         await LorebookService.delete(lorebookId);
     } catch (error) {
-        await updateChat(chatId, { lorebookRefs: existingRefs });
+        await updateChat(chatId, { lorebooks: { refs: { [lorebookId]: existingRef } } });
         throw error;
     }
 
@@ -286,19 +290,19 @@ export async function createChatFolder(
 ): Promise<FolderDef> {
     const chat = await getChat(chatId);
 
-    const folders = chat.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
+    const config = chat[folderType] as EntityListConfig | undefined;
+    const existingFolders = config?.folders ?? {};
 
-    const newFolder = {
+    const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
+        sortOrder: generateSortOrder(existingFolders),
         parentId
     };
 
-    const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
-
-    await updateChat(chatId, { folders: updatedFolders });
+    await updateChat(chatId, {
+        [folderType]: { folders: { [newFolder.id]: newFolder } }
+    });
 
     return newFolder;
 }
@@ -311,19 +315,16 @@ export async function updateChatFolder(
 ): Promise<void> {
     const chat = await getChat(chatId);
 
-    const folders = chat.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
+    const config = chat[folderType] as EntityListConfig | undefined;
+    const existingFolders = config?.folders ?? {};
+    const existing = existingFolders[folderId];
+    if (!existing) return;
 
-    const updatedTypeFolders = typeFolders.map((f) =>
-        f.id === folderId ? { ...f, ...changes, id: f.id } : f
-    );
+    const updated: FolderDef = { ...existing, ...changes, id: existing.id };
 
-    const updatedFolders = {
-        ...folders,
-        [folderType]: updatedTypeFolders
-    };
-
-    await updateChat(chatId, { folders: updatedFolders });
+    await updateChat(chatId, {
+        [folderType]: { folders: { [folderId]: updated } }
+    });
 }
 
 export async function deleteChatFolder(
@@ -331,17 +332,9 @@ export async function deleteChatFolder(
     folderType: ChatFolderType,
     folderId: string
 ): Promise<void> {
-    const chat = await getChat(chatId);
-
-    const folders = chat.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
-
-    const updatedFolders = {
-        ...folders,
-        [folderType]: typeFolders.filter((f) => f.id !== folderId)
-    };
-
-    await updateChat(chatId, { folders: updatedFolders });
+    await updateChat(chatId, {
+        [folderType]: { folders: { [folderId]: undefined } }
+    });
 }
 
 export async function moveChatItem(
@@ -353,25 +346,20 @@ export async function moveChatItem(
 ): Promise<void> {
     const chat = await getChat(chatId);
 
-    let refKey: keyof typeof chat;
-    switch (folderType) {
-        case 'lorebooks':
-            refKey = 'lorebookRefs';
-            break;
-        default:
-            return;
-    }
+    const config = chat[folderType] as EntityListConfig | undefined;
+    const refs = config?.refs ?? {};
+    const existing = refs[itemId];
+    if (!existing) return;
 
-    const refs = (chat[refKey] as OrderedRef[]) ?? [];
-    const updatedRefs = refs.map((ref) => {
-        if (ref.id !== itemId) return ref;
-        return {
-            ...ref,
-            folderId: newFolderId,
-            sortOrder: newSortOrder ?? ref.sortOrder,
-            id: ref.id
-        };
+    await updateChat(chatId, {
+        [folderType]: {
+            refs: {
+                [itemId]: {
+                    ...existing,
+                    folderId: newFolderId,
+                    sortOrder: newSortOrder ?? existing.sortOrder
+                }
+            }
+        }
     });
-
-    await updateChat(chatId, { [refKey]: updatedRefs });
 }

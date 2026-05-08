@@ -1,6 +1,6 @@
-import { PluginService, SettingsService, type PluginFields, type Plugin } from '$lib/services';
+import { PluginService, type PluginFields, type Plugin } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
-import { plugins, appSettings } from '../state';
+import { plugins } from '../state';
 import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
@@ -20,8 +20,9 @@ export async function getPlugin(pluginId: string): Promise<Plugin> {
 export async function loadPlugins(): Promise<void> {
     const settings = await getAppSettings();
     const list = await PluginService.list();
-    if (settings?.pluginRefs) {
-        plugins.setAll(sortByRefs(list, settings.pluginRefs));
+    const refs = settings?.plugins?.refs;
+    if (refs) {
+        plugins.setAll(sortByRefs(list, refs));
     } else {
         plugins.setAll(list);
     }
@@ -34,13 +35,12 @@ export async function createPlugin(fields: DeepPartial<PluginFields> = {}): Prom
     const plugin = await PluginService.create(fields);
 
     // Add to parent's refs
-    const existingRefs = settings.pluginRefs || [];
-    const pluginRefs = [
-        ...existingRefs,
-        { id: plugin.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = settings.plugins?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateSettings({ pluginRefs });
+        await updateSettings({
+            plugins: { refs: { [plugin.id]: { id: plugin.id, sortOrder } } }
+        });
     } catch (error) {
         // If parent's refs update fails, roll back DB
         await PluginService.delete(plugin.id);
@@ -64,17 +64,18 @@ export async function updatePlugin(
 export async function deletePlugin(pluginId: string): Promise<void> {
     const settings = await getAppSettings();
 
+    // Capture ref for potential rollback
+    const existingRef = settings.plugins?.refs?.[pluginId];
+
     // Remove from parent's refs
-    const existingRefs = settings.pluginRefs || [];
-    const pluginRefs = existingRefs.filter((r) => r.id !== pluginId);
-    await updateSettings({ pluginRefs });
+    await updateSettings({ plugins: { refs: { [pluginId]: undefined } } });
 
     // Remove record from DB
     try {
         await PluginService.delete(pluginId);
     } catch (error) {
         // If DB delete fails, roll back parent's refs
-        await updateSettings({ pluginRefs: existingRefs });
+        await updateSettings({ plugins: { refs: { [pluginId]: existingRef } } });
         throw error;
     }
 

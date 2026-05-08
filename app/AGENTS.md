@@ -83,7 +83,7 @@ Sync:  plaintext DB record ↔ encrypt/decrypt(M) ↔ PocketBase encrypted blob
 
 - `deepMerge(defaults, stored)` on every read means new fields auto-populate without migration code.
 - `DeepPartial<T>` allows safe, nested updates without restructuring the entire object.
-- Arrays are **overwritten**, objects are **recursively merged**.
+- Arrays are **overwritten**, objects are **recursively merged**, `undefined` values **delete keys**.
 
 ### Local-First, Sync-Later
 
@@ -102,8 +102,8 @@ Each entity type uses one table with one local plaintext `data` payload. The sam
 
 ### Relationship Model
 
-- **1:N** — Parent blob holds `OrderedRef[]` of child IDs (parent owns ordering + folders)
-- **N:M** — Consumer blob holds `ResourceRef[]` with per-context `enabled` flag
+- **1:N** — Parent blob holds `EntityListConfig` (`Record<string, OrderedRef>`) of child IDs (parent owns ordering + folders)
+- **N:M** — Consumer blob holds `EntityListConfig<ResourceRef>` with per-context `enabled` flag
 - **Exception**: Messages use `chatId` FK + `sortOrder` compound index (O(1) writes vs O(n) parent blob rewrites)
 - PocketBase uses no FK relations for domain records; local adapters keep only the indexes the app needs
 - Fractional indexing (`generateKeyBetween()`) for `sortOrder` — inserts anywhere without renumbering

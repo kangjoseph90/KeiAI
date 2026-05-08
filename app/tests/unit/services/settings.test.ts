@@ -46,8 +46,7 @@ describe('SettingsService', () => {
 
     const mockSettings: AppSettings = makeSettings({
         theme: 'dark',
-        openai: { apiKey: 'sk-test' },
-        characterRefs: []
+        openai: { apiKey: 'sk-test' }
     });
 
     beforeEach(() => {

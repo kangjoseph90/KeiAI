@@ -1,7 +1,7 @@
 import { clock } from '$lib/utils/clock';
 import { getActiveSession } from '../user';
 import { localDB, type ModuleRecord } from '$lib/adapters/db';
-import type { AssetRef, FolderDef, OrderedRef } from '$lib/types/refs';
+import type { AssetRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -10,14 +10,9 @@ import { buffer } from './record_buffer';
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ModuleRefs {
-    lorebookRefs?: OrderedRef[];
-    scriptRefs?: OrderedRef[];
-    charjsRefs?: OrderedRef[];
-    folders?: {
-        lorebooks?: FolderDef[];
-        scripts?: FolderDef[];
-        charjs?: FolderDef[];
-    };
+    lorebooks?: EntityListConfig;
+    scripts?: EntityListConfig;
+    charjs?: EntityListConfig;
     assets?: AssetRef[];
 }
 

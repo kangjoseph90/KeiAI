@@ -1,6 +1,6 @@
 import { getActiveSession } from '../user';
 import { localDB, type SettingsRecord } from '$lib/adapters/db';
-import type { OrderedRef, FolderDef, ResourceRef } from '$lib/types/refs';
+import type { ResourceRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { buffer } from './record_buffer';
@@ -69,20 +69,11 @@ export interface AppSettingsContent {
 export interface AppSettingsRefs {
     personaId?: string;
     presetId?: string;
-    // 1:N - workspace holds ordered refs for top-level entities
-    characterRefs?: OrderedRef[];
-    personaRefs?: OrderedRef[];
-    presetRefs?: OrderedRef[];
-    moduleRefs?: ResourceRef[];
-    pluginRefs?: OrderedRef[];
-    // Folder definitions for each top-level list
-    folders?: {
-        characters?: FolderDef[];
-        personas?: FolderDef[];
-        presets?: FolderDef[];
-        modules?: FolderDef[];
-        plugins?: FolderDef[];
-    };
+    characters?: EntityListConfig;
+    personas?: EntityListConfig;
+    presets?: EntityListConfig;
+    modules?: EntityListConfig<ResourceRef>;
+    plugins?: EntityListConfig;
 }
 
 export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}

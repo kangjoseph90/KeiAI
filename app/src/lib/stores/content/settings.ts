@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
-import { SettingsService, type AppSettingsContent, type AppSettings } from '$lib/services';
+import { SettingsService, type AppSettings } from '$lib/services';
 import { appSettings } from '../state';
-import type { OrderedRef, FolderDef } from '$lib/types/refs';
+import type { FolderDef, EntityListConfig } from '$lib/types/refs';
 import { generateSortOrder } from '$lib/utils/ordering';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -43,19 +43,19 @@ export async function createGlobalFolder(
 ): Promise<FolderDef> {
     const settings = await getAppSettings();
 
-    const folders = settings.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
+    const config = settings[folderType] as EntityListConfig | undefined;
+    const existingFolders = config?.folders ?? {};
 
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
+        sortOrder: generateSortOrder(existingFolders),
         parentId
     };
 
-    const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
-
-    await updateSettings({ folders: updatedFolders });
+    await updateSettings({
+        [folderType]: { folders: { [newFolder.id]: newFolder } }
+    });
     return newFolder;
 }
 
@@ -66,33 +66,25 @@ export async function updateGlobalFolder(
 ): Promise<void> {
     const settings = await getAppSettings();
 
-    const folders = settings.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
+    const config = settings[folderType] as EntityListConfig | undefined;
+    const existingFolders = config?.folders ?? {};
+    const existing = existingFolders[folderId];
+    if (!existing) return;
 
-    const updatedTypeFolders = typeFolders.map((f) =>
-        f.id === folderId ? { ...f, ...changes, id: f.id } : f
-    );
+    const updated: FolderDef = { ...existing, ...changes, id: existing.id };
 
-    const updatedFolders = { ...folders, [folderType]: updatedTypeFolders };
-
-    await updateSettings({ folders: updatedFolders });
+    await updateSettings({
+        [folderType]: { folders: { [folderId]: updated } }
+    });
 }
 
 export async function deleteGlobalFolder(
     folderType: GlobalFolderType,
     folderId: string
 ): Promise<void> {
-    const settings = await getAppSettings();
-
-    const folders = settings.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
-
-    const updatedFolders = {
-        ...folders,
-        [folderType]: typeFolders.filter((f) => f.id !== folderId)
-    };
-
-    await updateSettings({ folders: updatedFolders });
+    await updateSettings({
+        [folderType]: { folders: { [folderId]: undefined } }
+    });
 }
 
 export async function moveGlobalItem(
@@ -103,37 +95,20 @@ export async function moveGlobalItem(
 ): Promise<void> {
     const settings = await getAppSettings();
 
-    let refKey: keyof AppSettings;
-    switch (folderType) {
-        case 'characters':
-            refKey = 'characterRefs';
-            break;
-        case 'personas':
-            refKey = 'personaRefs';
-            break;
-        case 'presets':
-            refKey = 'presetRefs';
-            break;
-        case 'modules':
-            refKey = 'moduleRefs';
-            break;
-        case 'plugins':
-            refKey = 'pluginRefs';
-            break;
-        default:
-            return;
-    }
+    const config = settings[folderType] as EntityListConfig | undefined;
+    const refs = config?.refs ?? {};
+    const existing = refs[itemId];
+    if (!existing) return;
 
-    const refs = (settings[refKey] as OrderedRef[]) ?? [];
-    const updatedRefs = refs.map((ref) => {
-        if (ref.id !== itemId) return ref;
-        return {
-            ...ref,
-            folderId: newFolderId,
-            sortOrder: newSortOrder ?? ref.sortOrder,
-            id: ref.id
-        };
+    await updateSettings({
+        [folderType]: {
+            refs: {
+                [itemId]: {
+                    ...existing,
+                    folderId: newFolderId,
+                    sortOrder: newSortOrder ?? existing.sortOrder
+                }
+            }
+        }
     });
-
-    await updateSettings({ [refKey]: updatedRefs });
 }

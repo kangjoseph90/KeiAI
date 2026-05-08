@@ -5,7 +5,6 @@ import {
     LorebookService,
     ScriptService,
     CharJSService,
-    SettingsService,
     type CharacterFields,
     type CharacterContent,
     type Character,
@@ -16,7 +15,7 @@ import {
     type Script,
     type CharJS
 } from '$lib/services';
-import type { OrderedRef, ResourceRef, FolderDef } from '$lib/types/refs';
+import type { FolderDef, EntityListConfig } from '$lib/types/refs';
 import { clearActiveChat } from './chat';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
@@ -28,7 +27,6 @@ import {
     characterModules,
     chats,
     modules,
-    appSettings,
     activeCharacterId
 } from '../state';
 import { getAppSettings, updateSettings } from './settings';
@@ -60,8 +58,9 @@ export async function getCharacterLorebooks(characterId: string): Promise<Lorebo
         return get(characterLorebooks);
     }
     const char = await getCharacter(characterId);
-    const refs = char.lorebookRefs ?? [];
-    const results = await Promise.all(refs.map((ref) => LorebookService.get(ref.id)));
+    const refs = char.lorebooks?.refs;
+    if (!refs) return [];
+    const results = await Promise.all(Object.keys(refs).map((id) => LorebookService.get(id)));
     return results.filter((lb): lb is Lorebook => lb !== null);
 }
 
@@ -75,8 +74,9 @@ export async function getCharacterScripts(characterId: string): Promise<Script[]
         return get(characterScripts);
     }
     const char = await getCharacter(characterId);
-    const refs = char.scriptRefs ?? [];
-    const results = await Promise.all(refs.map((ref) => ScriptService.get(ref.id)));
+    const refs = char.scripts?.refs;
+    if (!refs) return [];
+    const results = await Promise.all(Object.keys(refs).map((id) => ScriptService.get(id)));
     return results.filter((sc): sc is Script => sc !== null);
 }
 
@@ -87,8 +87,9 @@ export async function getCharacterScripts(characterId: string): Promise<Script[]
 export async function loadCharacters(): Promise<void> {
     const settings = await getAppSettings();
     const list = await CharacterService.list();
-    if (settings?.characterRefs) {
-        characters.setAll(sortByRefs(list, settings.characterRefs));
+    const refs = settings?.characters?.refs;
+    if (refs) {
+        characters.setAll(sortByRefs(list, refs));
     } else {
         characters.setAll(list);
     }
@@ -101,10 +102,11 @@ export async function selectCharacter(characterId: string): Promise<void> {
 
     clearActiveChat();
     const chatList = await ChatService.listByCharacter(characterId);
-    chats.setAll(sortByRefs(chatList, character.chatRefs ?? []));
+    chats.setAll(sortByRefs(chatList, character.chats?.refs ?? {}));
 
-    const moduleIds = character.moduleRefs?.map((r) => r.id) ?? [];
-    characterModules.setAll(get(modules).filter((m) => moduleIds.includes(m.id)));
+    const moduleRefs = character.modules?.refs ?? {};
+    const moduleIds = new Set(Object.keys(moduleRefs));
+    characterModules.setAll(get(modules).filter((m) => moduleIds.has(m.id)));
 
     const [lorebooks, scripts, charjs] = await Promise.all([
         LorebookService.listByOwner(characterId),
@@ -112,9 +114,9 @@ export async function selectCharacter(characterId: string): Promise<void> {
         CharJSService.listByOwner(characterId)
     ]);
 
-    characterLorebooks.setAll(sortByRefs(lorebooks, character.lorebookRefs ?? []));
-    characterScripts.setAll(sortByRefs(scripts, character.scriptRefs ?? []));
-    characterCharJS.setAll(sortByRefs(charjs, character.charjsRefs ?? []));
+    characterLorebooks.setAll(sortByRefs(lorebooks, character.lorebooks?.refs ?? {}));
+    characterScripts.setAll(sortByRefs(scripts, character.scripts?.refs ?? {}));
+    characterCharJS.setAll(sortByRefs(charjs, character.charjs?.refs ?? {}));
 }
 
 export function clearActiveCharacter(): void {
@@ -158,13 +160,12 @@ export async function createCharacter(
     const character = await CharacterService.create(fields);
 
     // Add to parent's refs
-    const existingRefs = settings.characterRefs || [];
-    const characterRefs = [
-        ...existingRefs,
-        { id: character.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = settings.characters?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateSettings({ characterRefs });
+        await updateSettings({
+            characters: { refs: { [character.id]: { id: character.id, sortOrder } } }
+        });
     } catch (error) {
         // If parent's refs update fails, roll back DB
         await CharacterService.delete(character.id);
@@ -224,17 +225,18 @@ export async function deleteCharacterGreeting(
 export async function deleteCharacter(characterId: string): Promise<void> {
     const settings = await getAppSettings();
 
+    // Capture ref for potential rollback
+    const existingRef = settings.characters?.refs?.[characterId];
+
     // Remove from parent's refs
-    const existingRefs = settings.characterRefs || [];
-    const characterRefs = existingRefs.filter((r) => r.id !== characterId);
-    await updateSettings({ characterRefs });
+    await updateSettings({ characters: { refs: { [characterId]: undefined } } });
 
     // Remove record from DB
     try {
         await CharacterService.delete(characterId);
     } catch (error) {
         // If DB delete fails, roll back parent's refs
-        await updateSettings({ characterRefs: existingRefs });
+        await updateSettings({ characters: { refs: { [characterId]: existingRef } } });
         throw error;
     }
 
@@ -255,13 +257,12 @@ export async function createCharacterLorebook(
 
     const lb = await LorebookService.create(characterId, fields);
 
-    const existingRefs = char.lorebookRefs || [];
-    const lorebookRefs: OrderedRef[] = [
-        ...existingRefs,
-        { id: lb.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = char.lorebooks?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateCharacter(characterId, { lorebookRefs });
+        await updateCharacter(characterId, {
+            lorebooks: { refs: { [lb.id]: { id: lb.id, sortOrder } } }
+        });
     } catch (error) {
         await LorebookService.delete(lb.id);
         throw error;
@@ -280,14 +281,16 @@ export async function deleteCharacterLorebook(
 ): Promise<void> {
     const char = await getCharacter(characterId);
 
-    const existingRefs = char.lorebookRefs || [];
-    const lorebookRefs = existingRefs.filter((r) => r.id !== lorebookId);
-    await updateCharacter(characterId, { lorebookRefs });
+    // Capture ref for potential rollback
+    const existingRef = char.lorebooks?.refs?.[lorebookId];
+
+    // Remove from parent's refs
+    await updateCharacter(characterId, { lorebooks: { refs: { [lorebookId]: undefined } } });
 
     try {
         await LorebookService.delete(lorebookId);
     } catch (error) {
-        await updateCharacter(characterId, { lorebookRefs: existingRefs });
+        await updateCharacter(characterId, { lorebooks: { refs: { [lorebookId]: existingRef } } });
         throw error;
     }
 
@@ -306,13 +309,12 @@ export async function createCharacterScript(
 
     const sc = await ScriptService.create(characterId, fields);
 
-    const existingRefs = char.scriptRefs || [];
-    const scriptRefs: OrderedRef[] = [
-        ...existingRefs,
-        { id: sc.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = char.scripts?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateCharacter(characterId, { scriptRefs });
+        await updateCharacter(characterId, {
+            scripts: { refs: { [sc.id]: { id: sc.id, sortOrder } } }
+        });
     } catch (error) {
         await ScriptService.delete(sc.id);
         throw error;
@@ -328,14 +330,16 @@ export async function createCharacterScript(
 export async function deleteCharacterScript(characterId: string, scriptId: string): Promise<void> {
     const char = await getCharacter(characterId);
 
-    const existingRefs = char.scriptRefs || [];
-    const scriptRefs = existingRefs.filter((r) => r.id !== scriptId);
-    await updateCharacter(characterId, { scriptRefs });
+    // Capture ref for potential rollback
+    const existingRef = char.scripts?.refs?.[scriptId];
+
+    // Remove from parent's refs
+    await updateCharacter(characterId, { scripts: { refs: { [scriptId]: undefined } } });
 
     try {
         await ScriptService.delete(scriptId);
     } catch (error) {
-        await updateCharacter(characterId, { scriptRefs: existingRefs });
+        await updateCharacter(characterId, { scripts: { refs: { [scriptId]: existingRef } } });
         throw error;
     }
 
@@ -353,13 +357,12 @@ export async function createCharacterCharJS(
     const char = await getCharacter(characterId);
     const cjs = await CharJSService.create(characterId, fields);
 
-    const existingRefs = char.charjsRefs || [];
-    const charjsRefs: OrderedRef[] = [
-        ...existingRefs,
-        { id: cjs.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = char.charjs?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateCharacter(characterId, { charjsRefs });
+        await updateCharacter(characterId, {
+            charjs: { refs: { [cjs.id]: { id: cjs.id, sortOrder } } }
+        });
     } catch (error) {
         await CharJSService.delete(cjs.id);
         throw error;
@@ -375,14 +378,16 @@ export async function createCharacterCharJS(
 export async function deleteCharacterCharJS(characterId: string, charjsId: string): Promise<void> {
     const char = await getCharacter(characterId);
 
-    const existingRefs = char.charjsRefs || [];
-    const charjsRefs = existingRefs.filter((r) => r.id !== charjsId);
-    await updateCharacter(characterId, { charjsRefs });
+    // Capture ref for potential rollback
+    const existingRef = char.charjs?.refs?.[charjsId];
+
+    // Remove from parent's refs
+    await updateCharacter(characterId, { charjs: { refs: { [charjsId]: undefined } } });
 
     try {
         await CharJSService.delete(charjsId);
     } catch (error) {
-        await updateCharacter(characterId, { charjsRefs: existingRefs });
+        await updateCharacter(characterId, { charjs: { refs: { [charjsId]: existingRef } } });
         throw error;
     }
 
@@ -403,22 +408,19 @@ export async function createCharacterFolder(
 ): Promise<FolderDef> {
     const char = await getCharacter(characterId);
 
-    const folders = char.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
+    const config = char[folderType] as EntityListConfig | undefined;
+    const existingFolders = config?.folders ?? {};
 
-    const newFolder = {
+    const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
+        sortOrder: generateSortOrder(existingFolders),
         parentId
     };
 
-    const updatedFolders = {
-        ...folders,
-        [folderType]: [...typeFolders, newFolder]
-    };
-
-    await updateCharacter(characterId, { folders: updatedFolders });
+    await updateCharacter(characterId, {
+        [folderType]: { folders: { [newFolder.id]: newFolder } }
+    });
 
     return newFolder;
 }
@@ -431,16 +433,16 @@ export async function updateCharacterFolder(
 ): Promise<void> {
     const char = await getCharacter(characterId);
 
-    const folders = char.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
+    const config = char[folderType] as EntityListConfig | undefined;
+    const existingFolders = config?.folders ?? {};
+    const existing = existingFolders[folderId];
+    if (!existing) return;
 
-    const updatedTypeFolders = typeFolders.map((f) =>
-        f.id === folderId ? { ...f, ...changes, id: f.id } : f
-    );
+    const updated: FolderDef = { ...existing, ...changes, id: existing.id };
 
-    const updatedFolders = { ...folders, [folderType]: updatedTypeFolders };
-
-    await updateCharacter(characterId, { folders: updatedFolders });
+    await updateCharacter(characterId, {
+        [folderType]: { folders: { [folderId]: updated } }
+    });
 }
 
 export async function deleteCharacterFolder(
@@ -448,17 +450,9 @@ export async function deleteCharacterFolder(
     folderType: CharacterFolderType,
     folderId: string
 ): Promise<void> {
-    const char = await getCharacter(characterId);
-
-    const folders = char.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
-
-    const updatedFolders = {
-        ...folders,
-        [folderType]: typeFolders.filter((f) => f.id !== folderId)
-    };
-
-    await updateCharacter(characterId, { folders: updatedFolders });
+    await updateCharacter(characterId, {
+        [folderType]: { folders: { [folderId]: undefined } }
+    });
 }
 
 export async function moveCharacterItem(
@@ -470,37 +464,20 @@ export async function moveCharacterItem(
 ): Promise<void> {
     const char = await getCharacter(characterId);
 
-    let refKey: keyof typeof char;
-    switch (folderType) {
-        case 'chats':
-            refKey = 'chatRefs';
-            break;
-        case 'lorebooks':
-            refKey = 'lorebookRefs';
-            break;
-        case 'scripts':
-            refKey = 'scriptRefs';
-            break;
-        case 'modules':
-            refKey = 'moduleRefs';
-            break;
-        case 'charjs':
-            refKey = 'charjsRefs';
-            break;
-        default:
-            return;
-    }
+    const config = char[folderType] as EntityListConfig | undefined;
+    const refs = config?.refs ?? {};
+    const existing = refs[itemId];
+    if (!existing) return;
 
-    const refs = (char[refKey] as Array<OrderedRef | ResourceRef>) ?? [];
-    const updatedRefs = refs.map((ref) => {
-        if (ref.id !== itemId) return ref;
-        return {
-            ...ref,
-            folderId: newFolderId,
-            sortOrder: newSortOrder ?? ref.sortOrder,
-            id: ref.id
-        };
+    await updateCharacter(characterId, {
+        [folderType]: {
+            refs: {
+                [itemId]: {
+                    ...existing,
+                    folderId: newFolderId,
+                    sortOrder: newSortOrder ?? existing.sortOrder
+                }
+            }
+        }
     });
-
-    await updateCharacter(characterId, { [refKey]: updatedRefs });
 }

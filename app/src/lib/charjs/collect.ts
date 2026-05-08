@@ -7,7 +7,7 @@ import { getModule } from '$lib/stores/content/module';
 
 /**
  * Collect all active CharJS instances for a chat + specific mode.
- * Resolves character + module charjsRefs → creates/reuses per-mode instances.
+ * Resolves character + module charjs → creates/reuses per-mode instances.
  *
  * @param kind - 'pipe' for pipeline phases, 'event' for event listeners
  * @param mode - the specific phase or event name (e.g. 'output', 'message:sent')
@@ -23,18 +23,22 @@ export async function collectCharJSInstances(
 
     const charjsRequests: Array<{ id: string; allowLowLevel: boolean }> = [];
 
-    if (character.charjsRefs) {
+    const charjsRefs = character.charjs?.refs;
+    if (charjsRefs) {
         const allow = character.allowLowLevel;
         charjsRequests.push(
-            ...character.charjsRefs.map((r) => ({ id: r.id, allowLowLevel: allow }))
+            ...Object.values(charjsRefs).map((r) => ({ id: r.id, allowLowLevel: allow }))
         );
     }
 
-    const modules = await Promise.all([...activeModuleIds].map((id) => getModule(id)));
-    for (const mod of modules) {
-        if (mod.charjsRefs) {
+    const mods = await Promise.all([...activeModuleIds].map((id) => getModule(id)));
+    for (const mod of mods) {
+        const modCharjsRefs = mod.charjs?.refs;
+        if (modCharjsRefs) {
             const allow = mod.allowLowLevel;
-            charjsRequests.push(...mod.charjsRefs.map((r) => ({ id: r.id, allowLowLevel: allow })));
+            charjsRequests.push(
+                ...Object.values(modCharjsRefs).map((r) => ({ id: r.id, allowLowLevel: allow }))
+            );
         }
     }
 

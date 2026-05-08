@@ -84,16 +84,13 @@ describe('Module Store', () => {
         id: 'mod-1',
         name: 'Test Module',
         description: 'Description',
-        allowLowLevel: false,
-        lorebookRefs: [],
-        scriptRefs: [],
-        charjsRefs: []
+        allowLowLevel: false
     };
 
     beforeEach(() => {
         vi.clearAllMocks();
         modules.clear();
-        appSettings.set(makeSettings({ theme: 'dark', moduleRefs: [] }));
+        appSettings.set(makeSettings({ theme: 'dark' }));
         moduleResources.set(new Map());
         vi.mocked(getAppSettings).mockImplementation(async () => get(appSettings)!);
         vi.mocked(updateSettings).mockImplementation(async (changes) => {
@@ -124,9 +121,15 @@ describe('Module Store', () => {
 
             expect(result).toEqual(mockModule);
             expect(get(modules)).toContainEqual(mockModule);
-            expect(updateSettings).toHaveBeenCalledWith({
-                moduleRefs: expect.arrayContaining([expect.objectContaining({ id: 'mod-1' })])
-            });
+            expect(updateSettings).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    modules: expect.objectContaining({
+                        refs: expect.objectContaining({
+                            'mod-1': expect.objectContaining({ id: 'mod-1', enabled: true })
+                        })
+                    })
+                })
+            );
         });
 
         it('should rollback if settings update fails', async () => {
@@ -155,13 +158,13 @@ describe('Module Store', () => {
             modules.setAll([mockModule]);
             appSettings.set(
                 makeSettings({
-                    moduleRefs: [{ id: 'mod-1', sortOrder: 'a', enabled: true }]
+                    modules: { refs: { 'mod-1': { id: 'mod-1', sortOrder: 'a', enabled: true } } }
                 })
             );
             await deleteModule('mod-1');
 
             expect(get(modules)).toHaveLength(0);
-            expect(get(appSettings)?.moduleRefs).toHaveLength(0);
+            expect(get(appSettings)?.modules?.refs?.['mod-1']).toBeUndefined();
             expect(get(moduleResources).has('mod-1')).toBe(false);
         });
     });
@@ -184,19 +187,22 @@ describe('Module Store', () => {
             await createModuleLorebook('mod-1', { name: 'LB' });
 
             expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
-                lorebookRefs: expect.arrayContaining([{ id: 'lb-1', sortOrder: 'sort-order' }])
+                lorebooks: { refs: { 'lb-1': { id: 'lb-1', sortOrder: 'sort-order' } } }
             });
         });
 
         it('should delete module lorebook', async () => {
-            const modWithRef = { ...mockModule, lorebookRefs: [{ id: 'lb-1', sortOrder: 'a' }] };
+            const modWithRef = {
+                ...mockModule,
+                lorebooks: { refs: { 'lb-1': { id: 'lb-1', sortOrder: 'a' } } }
+            };
             modules.setAll([modWithRef]);
             vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
 
             await deleteModuleLorebook('mod-1', 'lb-1');
 
             expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
-                lorebookRefs: []
+                lorebooks: { refs: { 'lb-1': undefined } }
             });
             expect(LorebookService.delete).toHaveBeenCalledWith('lb-1');
         });
@@ -216,19 +222,22 @@ describe('Module Store', () => {
             await createModuleCharJS('mod-1', { name: 'New Script' });
 
             expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
-                charjsRefs: expect.arrayContaining([{ id: 'cjs-1', sortOrder: 'sort-order' }])
+                charjs: { refs: { 'cjs-1': { id: 'cjs-1', sortOrder: 'sort-order' } } }
             });
         });
 
         it('should delete module charjs', async () => {
-            const modWithRef = { ...mockModule, charjsRefs: [{ id: 'cjs-1', sortOrder: 'a' }] };
+            const modWithRef = {
+                ...mockModule,
+                charjs: { refs: { 'cjs-1': { id: 'cjs-1', sortOrder: 'a' } } }
+            };
             modules.setAll([modWithRef]);
             vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
 
             await deleteModuleCharJS('mod-1', 'cjs-1');
 
             expect(vi.mocked(ModuleService.update)).toHaveBeenCalledWith('mod-1', {
-                charjsRefs: []
+                charjs: { refs: { 'cjs-1': undefined } }
             });
             expect(CharJSService.delete).toHaveBeenCalledWith('cjs-1');
         });
@@ -237,15 +246,18 @@ describe('Module Store', () => {
     describe('Folder Management', () => {
         it('should create module folder', async () => {
             modules.setAll([mockModule]);
-            vi.mocked(ModuleService.update).mockImplementation(async (_id, changes) => ({
-                ...mockModule,
-                ...changes
-            }));
+            vi.mocked(ModuleService.update).mockImplementation(
+                async (_id, changes) =>
+                    ({
+                        ...mockModule,
+                        ...changes
+                    }) as unknown as Module
+            );
 
             const folder = await createModuleFolder('mod-1', 'lorebooks', 'New Folder');
 
             expect(folder.name).toBe('New Folder');
-            expect(get(modules)[0].folders?.lorebooks).toContainEqual(folder);
+            expect(get(modules)[0].lorebooks?.folders?.['new-id']).toEqual(folder);
         });
     });
 });

@@ -31,3 +31,9 @@ export interface AssetRef {
     name: string; // Logical name (e.g., 'avatar', 'happy', 'background_night')
     assetId: string; // The UUID of the asset
 }
+
+/** Grouped ref + folder config for an entity list */
+export interface EntityListConfig<R extends OrderedRef = OrderedRef> {
+    refs?: Record<string, R>;
+    folders?: Record<string, FolderDef>;
+}

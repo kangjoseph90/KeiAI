@@ -30,22 +30,22 @@ MessageRecord  { ..., chatId: string }         ← 로컬 평문 (인덱싱 가�
 
 ### 2-2. N:M (공유 자원 참조)
 
-**소비자(부모)의 JSON payload 내부**에 `Array<{ id, enabled }>` 형태로 저장한다.
+**소비자(부모)의 JSON payload 내부**에 `EntityListConfig` Record 형태로 저장한다.
 
 ```typescript
 // ChatFields (로컬 JSON / 서버 암호화 payload 내부)
 {
-  lorebookRefs: [
-    { id: "lb_harrypotter", enabled: true },
-    { id: "lb_medieval",    enabled: false }
-  ],
-  scriptRefs: [
-    { id: "sc_translator", enabled: true }
-  ]
+  lorebooks: {
+    refs: {
+      "lb_harrypotter": { id: "lb_harrypotter", sortOrder: "a0", enabled: true },
+      "lb_medieval":    { id: "lb_medieval",    sortOrder: "a1", enabled: false }
+    }
+  }
 }
 ```
 
 - **이유:** 로어북, 스크립트 같은 공유 자원은 여러 캐릭터/채팅/페르소나가 동시에 참조할 수 있다(N:M). 이를 별도 맵핑 테이블로 만들면 *"누가 무엇을 쓰는지"* 라는 메타데이터가 평문으로 노출된다.
+- **Record 구조 채택:** 배열 대신 `Record<string, Ref>`를 사용하여 deepMerge 시 키별 머지가 가능하다. 동시에 다른 키를 수정해도 덮어쓰지 않아 동기화 충돌이 감소한다.
 - **활성화 상태(`enabled`)도 함께 저장:** 같은 로어북이라도 A 채팅방에서는 켜고, B 채팅방에서는 끌 수 있어야 하므로, 참조하는 쪽에서 개별적으로 `enabled` 플래그를 관리한다.
 
 ---
@@ -64,8 +64,8 @@ E2EE + 로컬 퍼스트 환경에서는 서버 RDB의 `FOREIGN KEY ... ON DELETE
 
 ```typescript
 // 로딩 시 방어 코드 (Self-Healing 예시)
-const fetched = await Promise.all(refs.map(r => LorebookService.get(r.id)));
-const valid = refs.filter((r, i) => fetched[i] !== null);
+const fetched = await Promise.all(Object.keys(refs).map(id => LorebookService.get(id)));
+const validIds = Object.keys(refs).filter((id, i) => fetched[i] !== null);
 // valid만 사용하고, 저장 시 자연스럽게 고아 ID가 탈락
 ```
 
@@ -109,14 +109,17 @@ const activeResources = new Map<string, ActiveResourceEntry<any>>();
 | 엔티티 | 테이블 | 로컬 인덱스 | JSON 내부 참조 |
 |---|---|---|---|
 | **User** | `users` | — | — |
-| **Character** | `characters` | — | `lorebookRefs`, `scriptRefs` |
-| **Chat** | `chats` | `characterId` | `lorebookRefs`, `scriptRefs`, `activePersonaId`, `promptPresetId` |
+| **Character** | `characters` | — | `lorebooks`, `scripts`, `charjs`, `modules` |
+| **Chat** | `chats` | `characterId` | `lorebooks` |
 | **Message** | `messages` | `chatId` | (JSON 내부에 `swipes[]`, `activeSwipeIndex` 등) |
-| **Persona** | `personas` | — | `lorebookRefs` |
-| **Lorebook** | `lorebooks` | — | (JSON 내부에 `entries[]`) |
-| **Script** | `scripts` | — | (JSON 내부에 `rules[]`) |
+| **Persona** | `personas` | — | — |
+| **Lorebook** | `lorebooks` | `ownerId` | (JSON 내부에 `entries[]`) |
+| **Script** | `scripts` | `ownerId` | (JSON 내부에 `rules[]`) |
+| **CharJS** | `charjs` | `ownerId` | (JSON 내부에 `code`) |
+| **Module** | `modules` | — | `lorebooks`, `scripts`, `charjs` |
+| **Plugin** | `plugins` | — | (JSON 내부에 hooks 및 args) |
 | **Prompt Preset** | `presets` | — | (JSON 내부에 프롬프트 조립 순서 등) |
-| **Settings** | `settings` | — | (JSON 내부에 전역 설정) |
+| **Settings** | `settings` | — | `characters`, `personas`, `presets`, `modules`, `plugins` |
 
 ---
 

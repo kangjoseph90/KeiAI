@@ -119,13 +119,7 @@ describe('Character Store', () => {
         description: 'Description',
         characterNote: '',
         greetings: {},
-        allowLowLevel: false,
-        chatRefs: [],
-        lorebookRefs: [],
-        scriptRefs: [],
-        charjsRefs: [],
-        moduleRefs: [],
-        folders: {}
+        allowLowLevel: false
     };
 
     beforeEach(() => {
@@ -139,25 +133,15 @@ describe('Character Store', () => {
         characterModules.clear();
         chats.clear();
         modules.clear();
-        appSettings.set(
-            makeSettings({
-                theme: 'dark',
-                characterRefs: []
-            })
-        );
-        vi.mocked(getAppSettings).mockResolvedValue(
-            makeSettings({
-                theme: 'dark',
-                characterRefs: []
-            })
-        );
+        appSettings.set(makeSettings({ theme: 'dark' }));
+        vi.mocked(getAppSettings).mockResolvedValue(makeSettings({ theme: 'dark' }));
     });
 
     describe('loadCharacters', () => {
         it('should load characters and update store', async () => {
             const mockList = [mockCharacter];
             vi.mocked(CharacterService.list).mockResolvedValue(mockList);
-            vi.mocked(getAppSettings).mockResolvedValue(makeSettings({ characterRefs: [] }));
+            vi.mocked(getAppSettings).mockResolvedValue(makeSettings());
 
             await loadCharacters();
 
@@ -168,7 +152,7 @@ describe('Character Store', () => {
         it('should sort characters if refs exist in settings', async () => {
             const mockList = [mockCharacter];
             const settingsWithRefs = makeSettings({
-                characterRefs: [{ id: 'char-1', sortOrder: 'a' }]
+                characters: { refs: { 'char-1': { id: 'char-1', sortOrder: 'a' } } }
             });
             appSettings.set(settingsWithRefs);
             vi.mocked(getAppSettings).mockResolvedValue(settingsWithRefs);
@@ -249,9 +233,15 @@ describe('Character Store', () => {
 
             expect(result).toEqual(mockCharacter);
             expect(get(characters)).toContainEqual(mockCharacter);
-            expect(updateSettings).toHaveBeenCalledWith({
-                characterRefs: expect.arrayContaining([expect.objectContaining({ id: 'char-1' })])
-            });
+            expect(updateSettings).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    characters: expect.objectContaining({
+                        refs: expect.objectContaining({
+                            'char-1': expect.objectContaining({ id: 'char-1' })
+                        })
+                    })
+                })
+            );
         });
 
         it('should roll back if settings update fails', async () => {
@@ -268,7 +258,7 @@ describe('Character Store', () => {
             characters.setAll([mockCharacter]);
             const settings = makeSettings({
                 theme: 'dark',
-                characterRefs: [{ id: 'char-1', sortOrder: 'a' }]
+                characters: { refs: { 'char-1': { id: 'char-1', sortOrder: 'a' } } }
             });
             appSettings.set(settings);
             vi.mocked(getAppSettings).mockResolvedValue(settings);
@@ -281,10 +271,7 @@ describe('Character Store', () => {
             await deleteCharacter('char-1');
 
             expect(get(characters)).toHaveLength(0);
-            expect(get(appSettings)?.characterRefs).toHaveLength(0);
-            expect(updateSettings).toHaveBeenCalledWith({
-                characterRefs: []
-            });
+            expect(get(appSettings)?.characters?.refs?.['char-1']).toBeUndefined();
         });
     });
 
@@ -295,16 +282,25 @@ describe('Character Store', () => {
             vi.mocked(CharJSService.create).mockResolvedValue(cjs);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                charjsRefs: [{ id: 'cjs-1', sortOrder: 'sort-order' }]
+                charjs: { refs: { 'cjs-1': { id: 'cjs-1', sortOrder: 'sort-order' } } }
             });
 
             await createCharacterCharJS('char-1', { name: 'New Script' });
 
-            expect(get(activeCharacter)?.charjsRefs).toHaveLength(1);
             expect(get(characterCharJS)).toContainEqual(cjs);
-            expect(CharacterService.update).toHaveBeenCalledWith('char-1', {
-                charjsRefs: expect.arrayContaining([{ id: 'cjs-1', sortOrder: 'sort-order' }])
-            });
+            expect(CharacterService.update).toHaveBeenCalledWith(
+                'char-1',
+                expect.objectContaining({
+                    charjs: expect.objectContaining({
+                        refs: expect.objectContaining({
+                            'cjs-1': expect.objectContaining({
+                                id: 'cjs-1',
+                                sortOrder: 'sort-order'
+                            })
+                        })
+                    })
+                })
+            );
         });
     });
 
@@ -312,19 +308,19 @@ describe('Character Store', () => {
         it('should delete CharJS script and remove from refs', async () => {
             const charWithRefs = {
                 ...mockCharacter,
-                charjsRefs: [{ id: 'cjs-1', sortOrder: 'a' }]
+                charjs: { refs: { 'cjs-1': { id: 'cjs-1', sortOrder: 'a' } } }
             };
             activeCharacter.set(charWithRefs);
             characterCharJS.setAll([{ id: 'cjs-1' } as CharJS]);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                charjsRefs: []
+                charjs: { refs: {} }
             });
             vi.mocked(CharJSService.delete).mockResolvedValue(undefined);
 
             await deleteCharacterCharJS('char-1', 'cjs-1');
 
-            expect(get(activeCharacter)?.charjsRefs).toHaveLength(0);
+            expect(Object.keys(get(activeCharacter)?.charjs?.refs ?? {})).toHaveLength(0);
             expect(get(characterCharJS)).toHaveLength(0);
             expect(CharJSService.delete).toHaveBeenCalledWith('cjs-1');
         });
@@ -335,47 +331,51 @@ describe('Character Store', () => {
             activeCharacter.set(mockCharacter);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                folders: { chats: [{ id: 'new-id', name: 'My Folder', sortOrder: 'sort-order' }] }
+                chats: {
+                    folders: {
+                        'new-id': { id: 'new-id', name: 'My Folder', sortOrder: 'sort-order' }
+                    }
+                }
             });
 
             const folder = await createCharacterFolder('char-1', 'chats', 'My Folder');
 
             expect(folder.name).toBe('My Folder');
-            expect(get(activeCharacter)?.folders?.chats).toContainEqual(folder);
+            expect(get(activeCharacter)?.chats?.folders?.['new-id']).toEqual(folder);
         });
 
         it('should update a character folder', async () => {
             const folder: FolderDef = { id: 'f1', name: 'Old', sortOrder: 'a' };
             const charWithFolder = {
                 ...mockCharacter,
-                folders: { chats: [folder] }
+                chats: { folders: { f1: folder } }
             };
             activeCharacter.set(charWithFolder);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                folders: { chats: [{ ...folder, name: 'New' }] }
+                chats: { folders: { f1: { ...folder, name: 'New' } } }
             });
 
             await updateCharacterFolder('char-1', 'chats', 'f1', { name: 'New' });
 
-            expect(get(activeCharacter)?.folders?.chats?.[0].name).toBe('New');
+            expect(get(activeCharacter)?.chats?.folders?.['f1']?.name).toBe('New');
         });
 
         it('should delete a character folder', async () => {
             const folder: FolderDef = { id: 'f1', name: 'Folder', sortOrder: 'a' };
             const charWithFolder = {
                 ...mockCharacter,
-                folders: { chats: [folder] }
+                chats: { folders: { f1: folder } }
             };
             activeCharacter.set(charWithFolder);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                folders: { chats: [] }
+                chats: { folders: {} }
             });
 
             await deleteCharacterFolder('char-1', 'chats', 'f1');
 
-            expect(get(activeCharacter)?.folders?.chats).toHaveLength(0);
+            expect(Object.keys(get(activeCharacter)?.chats?.folders ?? {})).toHaveLength(0);
         });
     });
 
@@ -383,17 +383,19 @@ describe('Character Store', () => {
         it('should move item to a different folder', async () => {
             const charWithRefs = {
                 ...mockCharacter,
-                chatRefs: [{ id: 'chat-1', sortOrder: 'a' }]
+                chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a' } } }
             };
             activeCharacter.set(charWithRefs);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                chatRefs: [{ id: 'chat-1', sortOrder: 'a', folderId: 'folder-1' }]
+                chats: {
+                    refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a', folderId: 'folder-1' } }
+                }
             });
 
             await moveCharacterItem('char-1', 'chats', 'chat-1', 'folder-1');
 
-            expect(get(activeCharacter)?.chatRefs?.[0].folderId).toBe('folder-1');
+            expect(get(activeCharacter)?.chats?.refs?.['chat-1']?.folderId).toBe('folder-1');
         });
     });
 });

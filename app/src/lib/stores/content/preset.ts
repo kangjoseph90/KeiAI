@@ -6,10 +6,9 @@ import {
     type PromptBlock,
     type PromptBlockFields
 } from '$lib/services/content/preset';
-import { SettingsService } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
-import { presets, activePreset, appSettings } from '../state';
+import { presets, activePreset } from '../state';
 import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
@@ -34,8 +33,9 @@ export async function getPreset(presetId: string): Promise<Preset> {
 export async function loadPresets(): Promise<void> {
     const settings = await getAppSettings();
     const list = await PresetService.list();
-    if (settings?.presetRefs) {
-        presets.setAll(sortByRefs(list, settings.presetRefs));
+    const refs = settings?.presets?.refs;
+    if (refs) {
+        presets.setAll(sortByRefs(list, refs));
     } else {
         presets.setAll(list);
     }
@@ -53,13 +53,12 @@ export async function createPreset(fields: DeepPartial<PresetFields> = {}): Prom
     const preset = await PresetService.create(fields);
 
     // Add to parent's refs
-    const existingRefs = settings.presetRefs || [];
-    const presetRefs = [
-        ...existingRefs,
-        { id: preset.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = settings.presets?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateSettings({ presetRefs });
+        await updateSettings({
+            presets: { refs: { [preset.id]: { id: preset.id, sortOrder } } }
+        });
     } catch (error) {
         // If parent's refs update fails, roll back DB
         await PresetService.delete(preset.id);
@@ -87,33 +86,33 @@ export async function deletePreset(presetId: string): Promise<void> {
 
     const settings = await getAppSettings();
 
+    // Capture ref for potential rollback
+    const existingRef = settings.presets?.refs?.[presetId];
+
     // Remove from parent's refs
-    const existingRefs = settings.presetRefs || [];
-    const presetRefs = existingRefs.filter((r) => r.id !== presetId);
-
-    // If deleting the active preset, select a fallback first
-    const isActivePreset = get(activePreset)?.id === presetId;
-    const fallback = isActivePreset ? get(presets).find((p) => p.id !== presetId) : undefined;
-
-    await updateSettings({ presetRefs });
+    await updateSettings({ presets: { refs: { [presetId]: undefined } } });
 
     // Remove record from DB
     try {
         await PresetService.delete(presetId);
     } catch (error) {
         // If DB delete fails, roll back parent's refs
-        await updateSettings({ presetRefs: existingRefs });
+        await updateSettings({ presets: { refs: { [presetId]: existingRef } } });
         throw error;
     }
 
     // Update Store
     presets.delete(presetId);
 
-    // Select fallback if the deleted preset was active
-    if (fallback) {
-        await selectPreset(fallback.id);
-    } else if (isActivePreset) {
-        await updateSettings({ presetId: undefined });
+    // If deleting the active preset, select a fallback
+    const isActivePreset = get(activePreset)?.id === presetId;
+    if (isActivePreset) {
+        const fallback = get(presets).find((p) => p.id !== presetId);
+        if (fallback) {
+            await selectPreset(fallback.id);
+        } else {
+            await updateSettings({ presetId: undefined });
+        }
     }
 }
 

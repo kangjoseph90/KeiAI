@@ -1,9 +1,8 @@
 import { get } from 'svelte/store';
 import { PersonaService, type PersonaFields, type Persona } from '$lib/services/content/persona';
-import { SettingsService } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
-import { appSettings, activePersona, personas } from '../state';
+import { personas } from '../state';
 import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 
@@ -26,8 +25,9 @@ export async function getPersona(personaId: string): Promise<Persona> {
 export async function loadPersonas(): Promise<void> {
     const settings = await getAppSettings();
     const list = await PersonaService.list();
-    if (settings?.personaRefs) {
-        personas.setAll(sortByRefs(list, settings.personaRefs));
+    const refs = settings?.personas?.refs;
+    if (refs) {
+        personas.setAll(sortByRefs(list, refs));
     } else {
         personas.setAll(list);
     }
@@ -45,13 +45,12 @@ export async function createPersona(fields: DeepPartial<PersonaFields> = {}): Pr
     const persona = await PersonaService.create(fields);
 
     // Add to parent's refs
-    const existingRefs = settings.personaRefs || [];
-    const personaRefs = [
-        ...existingRefs,
-        { id: persona.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = settings.personas?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateSettings({ personaRefs });
+        await updateSettings({
+            personas: { refs: { [persona.id]: { id: persona.id, sortOrder } } }
+        });
     } catch (error) {
         // If parent's refs update fails, roll back DB
         await PersonaService.delete(persona.id);
@@ -80,16 +79,18 @@ export async function deletePersona(personaId: string): Promise<void> {
 
     const settings = await getAppSettings();
 
-    // Remove from parent's refs
-    const existingRefs = settings.personaRefs || [];
-    const personaRefs = existingRefs.filter((r) => r.id !== personaId);
+    // Capture ref for potential rollback
+    const existingRef = settings.personas?.refs?.[personaId];
 
     // If deleting the selected persona, determine a fallback
     const isDeletingSelected = settings.personaId === personaId;
     const fallback = isDeletingSelected ? currentList.find((p) => p.id !== personaId) : undefined;
 
-    const settingsChanges = fallback ? { personaRefs, personaId: fallback.id } : { personaRefs };
-
+    // Remove from parent's refs
+    const settingsChanges: DeepPartial<import('$lib/services').AppSettings> = {
+        personas: { refs: { [personaId]: undefined } }
+    };
+    if (fallback) settingsChanges.personaId = fallback.id;
     await updateSettings(settingsChanges);
 
     // Remove record from DB
@@ -97,7 +98,10 @@ export async function deletePersona(personaId: string): Promise<void> {
         await PersonaService.delete(personaId);
     } catch (error) {
         // If DB delete fails, roll back parent's refs
-        await updateSettings({ personaRefs: existingRefs });
+        const rollback: DeepPartial<import('$lib/services').AppSettings> = {
+            personas: { refs: { [personaId]: existingRef } }
+        };
+        await updateSettings(rollback);
         throw error;
     }
 

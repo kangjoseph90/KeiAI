@@ -44,9 +44,7 @@ describe('ChatManager', () => {
         id: 'chat-1',
         characterId: 'char-1',
         title: 'Test Chat',
-        chatNote: '',
-        lorebookRefs: [],
-        folders: {}
+        chatNote: ''
     };
 
     beforeEach(() => {

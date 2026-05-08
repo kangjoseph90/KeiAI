@@ -1,7 +1,7 @@
 import { clock } from '$lib/utils/clock';
 import { getActiveSession } from '../user';
 import { localDB, type ChatRecord } from '$lib/adapters/db';
-import type { FolderDef, OrderedRef } from '$lib/types/refs';
+import type { EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -17,10 +17,7 @@ export interface ChatContent {
 export interface ChatRefs {
     lastMessageId?: string;
     greetingMessageId?: string;
-    lorebookRefs?: OrderedRef[];
-    folders?: {
-        lorebooks?: FolderDef[];
-    };
+    lorebooks?: EntityListConfig;
 }
 
 export interface ChatFields extends ChatContent, ChatRefs {}

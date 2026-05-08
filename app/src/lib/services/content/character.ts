@@ -1,7 +1,7 @@
 import { clock } from '$lib/utils/clock';
 import { getActiveSession } from '../user';
 import { localDB, type CharacterRecord } from '$lib/adapters/db';
-import type { OrderedRef, ResourceRef, FolderDef, AssetRef } from '$lib/types/refs';
+import type { OrderedRef, ResourceRef, AssetRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -27,18 +27,11 @@ export interface CharacterContent {
 export interface CharacterRefs {
     lastActiveChatId?: string;
     avatarAssetId?: string;
-    chatRefs?: OrderedRef[];
-    moduleRefs?: ResourceRef[];
-    lorebookRefs?: OrderedRef[];
-    scriptRefs?: OrderedRef[];
-    charjsRefs?: OrderedRef[];
-    folders?: {
-        chats?: FolderDef[];
-        modules?: FolderDef[];
-        lorebooks?: FolderDef[];
-        scripts?: FolderDef[];
-        charjs?: FolderDef[];
-    };
+    chats?: EntityListConfig;
+    modules?: EntityListConfig<ResourceRef>;
+    lorebooks?: EntityListConfig;
+    scripts?: EntityListConfig;
+    charjs?: EntityListConfig;
     assets?: AssetRef[];
 }
 

@@ -3,7 +3,6 @@ import {
     LorebookService,
     ScriptService,
     CharJSService,
-    SettingsService,
     type ModuleFields,
     type ModuleContent,
     type Module,
@@ -14,9 +13,9 @@ import {
     type CharJSFields,
     type CharJS
 } from '$lib/services';
-import type { OrderedRef, FolderDef } from '$lib/types/refs';
+import type { FolderDef, EntityListConfig } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
-import { modules, appSettings, moduleResources } from '../state';
+import { modules, moduleResources } from '../state';
 import { EntityStore } from '../entity_store';
 import { getAppSettings, updateSettings } from './settings';
 import { get } from 'svelte/store';
@@ -45,8 +44,9 @@ export async function getModuleLorebooks(moduleId: string): Promise<Lorebook[]> 
     const entry = get(moduleResources).get(moduleId);
     if (entry) return get(entry.lorebooks);
     const mod = await getModule(moduleId);
-    const refs = mod.lorebookRefs ?? [];
-    const results = await Promise.all(refs.map((ref) => LorebookService.get(ref.id)));
+    const refs = mod.lorebooks?.refs;
+    if (!refs) return [];
+    const results = await Promise.all(Object.keys(refs).map((id) => LorebookService.get(id)));
     return results.filter((lb): lb is Lorebook => lb !== null);
 }
 
@@ -59,8 +59,9 @@ export async function getModuleScripts(moduleId: string): Promise<Script[]> {
     const entry = get(moduleResources).get(moduleId);
     if (entry) return get(entry.scripts);
     const mod = await getModule(moduleId);
-    const refs = mod.scriptRefs ?? [];
-    const results = await Promise.all(refs.map((ref) => ScriptService.get(ref.id)));
+    const refs = mod.scripts?.refs;
+    if (!refs) return [];
+    const results = await Promise.all(Object.keys(refs).map((id) => ScriptService.get(id)));
     return results.filter((sc): sc is Script => sc !== null);
 }
 
@@ -72,8 +73,9 @@ export async function loadModules(): Promise<void> {
     const settings = await getAppSettings();
     const mods = await ModuleService.list();
 
-    if (settings?.moduleRefs) {
-        modules.setAll(sortByRefs(mods, settings.moduleRefs));
+    const refs = settings?.modules?.refs;
+    if (refs) {
+        modules.setAll(sortByRefs(mods, refs));
     } else {
         modules.setAll(mods);
     }
@@ -86,11 +88,11 @@ export async function loadModules(): Promise<void> {
                 CharJSService.listByOwner(mod.id)
             ]);
             const lorebooksStore = new EntityStore<Lorebook>();
-            lorebooksStore.setAll(sortByRefs(lorebooks, mod.lorebookRefs ?? []));
+            lorebooksStore.setAll(sortByRefs(lorebooks, mod.lorebooks?.refs ?? {}));
             const scriptsStore = new EntityStore<Script>();
-            scriptsStore.setAll(sortByRefs(scripts, mod.scriptRefs ?? []));
+            scriptsStore.setAll(sortByRefs(scripts, mod.scripts?.refs ?? {}));
             const charjsStore = new EntityStore<CharJS>();
-            charjsStore.setAll(sortByRefs(charjs, mod.charjsRefs ?? []));
+            charjsStore.setAll(sortByRefs(charjs, mod.charjs?.refs ?? {}));
             return [
                 mod.id,
                 { lorebooks: lorebooksStore, scripts: scriptsStore, charjs: charjsStore }
@@ -108,13 +110,12 @@ export async function createModule(fields: DeepPartial<ModuleFields> = {}): Prom
     const mod = await ModuleService.create(fields);
 
     // Add to parent's refs
-    const existingRefs = settings.moduleRefs || [];
-    const moduleRefs = [
-        ...existingRefs,
-        { id: mod.id, sortOrder: generateSortOrder(existingRefs), enabled: true }
-    ];
+    const refs = settings.modules?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateSettings({ moduleRefs });
+        await updateSettings({
+            modules: { refs: { [mod.id]: { id: mod.id, sortOrder, enabled: true } } }
+        });
     } catch (error) {
         // If parent's refs update fails, roll back DB
         await ModuleService.delete(mod.id);
@@ -155,17 +156,18 @@ export async function updateModuleContent(
 export async function deleteModule(moduleId: string): Promise<void> {
     const settings = await getAppSettings();
 
+    // Capture ref for potential rollback
+    const existingRef = settings.modules?.refs?.[moduleId];
+
     // Remove from parent's refs
-    const existingRefs = settings.moduleRefs || [];
-    const moduleRefs = existingRefs.filter((r) => r.id !== moduleId);
-    await updateSettings({ moduleRefs });
+    await updateSettings({ modules: { refs: { [moduleId]: undefined } } });
 
     // Remove record from DB
     try {
         await ModuleService.delete(moduleId);
     } catch (error) {
         // If DB delete fails, roll back parent's refs
-        await updateSettings({ moduleRefs: existingRefs });
+        await updateSettings({ modules: { refs: { [moduleId]: existingRef } } });
         throw error;
     }
 
@@ -180,9 +182,12 @@ export async function deleteModule(moduleId: string): Promise<void> {
 
 export async function setModuleEnabled(moduleId: string, enabled: boolean): Promise<void> {
     const settings = await getAppSettings();
-    const existingRefs = settings.moduleRefs || [];
-    const moduleRefs = existingRefs.map((r) => (r.id === moduleId ? { ...r, enabled } : r));
-    await updateSettings({ moduleRefs });
+    const refs = settings.modules?.refs ?? {};
+    const existing = refs[moduleId];
+    if (!existing) return;
+    await updateSettings({
+        modules: { refs: { [moduleId]: { ...existing, enabled } } }
+    });
 }
 
 // ─── Module-owned Lorebook CRUD ─────────────────────────────────────
@@ -197,13 +202,12 @@ export async function createModuleLorebook(
     const lb = await LorebookService.create(moduleId, fields);
 
     // Update parent's refs
-    const existingRefs = mod.lorebookRefs || [];
-    const lorebookRefs: OrderedRef[] = [
-        ...existingRefs,
-        { id: lb.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = mod.lorebooks?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateModule(moduleId, { lorebookRefs });
+        await updateModule(moduleId, {
+            lorebooks: { refs: { [lb.id]: { id: lb.id, sortOrder } } }
+        });
     } catch (error) {
         // If parent's refs update fails, roll back DB
         await LorebookService.delete(lb.id);
@@ -228,16 +232,17 @@ export async function updateModuleLorebook(
 export async function deleteModuleLorebook(moduleId: string, lorebookId: string): Promise<void> {
     const mod = await getModule(moduleId);
 
+    // Capture ref for potential rollback
+    const existingRef = mod.lorebooks?.refs?.[lorebookId];
+
     // Remove from parent's refs
-    const existingRefs = mod.lorebookRefs || [];
-    const lorebookRefs = existingRefs.filter((r) => r.id !== lorebookId);
-    await updateModule(moduleId, { lorebookRefs });
+    await updateModule(moduleId, { lorebooks: { refs: { [lorebookId]: undefined } } });
 
     try {
         await LorebookService.delete(lorebookId);
     } catch (error) {
         // If DB delete fails, roll back parent's refs
-        await updateModule(moduleId, { lorebookRefs: existingRefs });
+        await updateModule(moduleId, { lorebooks: { refs: { [lorebookId]: existingRef } } });
         throw error;
     }
 
@@ -257,13 +262,12 @@ export async function createModuleScript(
     const sc = await ScriptService.create(moduleId, fields);
 
     // Update parent's refs
-    const existingRefs = mod.scriptRefs || [];
-    const scriptRefs: OrderedRef[] = [
-        ...existingRefs,
-        { id: sc.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = mod.scripts?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateModule(moduleId, { scriptRefs });
+        await updateModule(moduleId, {
+            scripts: { refs: { [sc.id]: { id: sc.id, sortOrder } } }
+        });
     } catch (error) {
         // If parent's refs update fails, roll back DB
         await ScriptService.delete(sc.id);
@@ -288,16 +292,17 @@ export async function updateModuleScript(
 export async function deleteModuleScript(moduleId: string, scriptId: string): Promise<void> {
     const mod = await getModule(moduleId);
 
+    // Capture ref for potential rollback
+    const existingRef = mod.scripts?.refs?.[scriptId];
+
     // Remove from parent's refs
-    const existingRefs = mod.scriptRefs || [];
-    const scriptRefs = existingRefs.filter((r) => r.id !== scriptId);
-    await updateModule(moduleId, { scriptRefs });
+    await updateModule(moduleId, { scripts: { refs: { [scriptId]: undefined } } });
 
     try {
         await ScriptService.delete(scriptId);
     } catch (error) {
         // If DB delete fails, roll back parent's refs
-        await updateModule(moduleId, { scriptRefs: existingRefs });
+        await updateModule(moduleId, { scripts: { refs: { [scriptId]: existingRef } } });
         throw error;
     }
 
@@ -315,13 +320,12 @@ export async function createModuleCharJS(
 
     const cjs = await CharJSService.create(moduleId, fields);
 
-    const existingRefs = mod.charjsRefs || [];
-    const charjsRefs: OrderedRef[] = [
-        ...existingRefs,
-        { id: cjs.id, sortOrder: generateSortOrder(existingRefs) }
-    ];
+    const refs = mod.charjs?.refs ?? {};
+    const sortOrder = generateSortOrder(refs);
     try {
-        await updateModule(moduleId, { charjsRefs });
+        await updateModule(moduleId, {
+            charjs: { refs: { [cjs.id]: { id: cjs.id, sortOrder } } }
+        });
     } catch (error) {
         await CharJSService.delete(cjs.id);
         throw error;
@@ -345,14 +349,16 @@ export async function updateModuleCharJS(
 export async function deleteModuleCharJS(moduleId: string, charjsId: string): Promise<void> {
     const mod = await getModule(moduleId);
 
-    const existingRefs = mod.charjsRefs || [];
-    const charjsRefs = existingRefs.filter((r) => r.id !== charjsId);
-    await updateModule(moduleId, { charjsRefs });
+    // Capture ref for potential rollback
+    const existingRef = mod.charjs?.refs?.[charjsId];
+
+    // Remove from parent's refs
+    await updateModule(moduleId, { charjs: { refs: { [charjsId]: undefined } } });
 
     try {
         await CharJSService.delete(charjsId);
     } catch (error) {
-        await updateModule(moduleId, { charjsRefs: existingRefs });
+        await updateModule(moduleId, { charjs: { refs: { [charjsId]: existingRef } } });
         throw error;
     }
 
@@ -371,19 +377,19 @@ export async function createModuleFolder(
 ): Promise<FolderDef> {
     const mod = await getModule(moduleId);
 
-    const folders = mod.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
+    const config = mod[folderType] as EntityListConfig | undefined;
+    const existingFolders = config?.folders ?? {};
 
-    const newFolder = {
+    const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(typeFolders as OrderedRef[]),
+        sortOrder: generateSortOrder(existingFolders),
         parentId
     };
 
-    const updatedFolders = { ...folders, [folderType]: [...typeFolders, newFolder] };
-
-    await updateModule(moduleId, { folders: updatedFolders });
+    await updateModule(moduleId, {
+        [folderType]: { folders: { [newFolder.id]: newFolder } }
+    });
 
     return newFolder;
 }
@@ -396,19 +402,16 @@ export async function updateModuleFolder(
 ): Promise<void> {
     const mod = await getModule(moduleId);
 
-    const folders = mod.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
+    const config = mod[folderType] as EntityListConfig | undefined;
+    const existingFolders = config?.folders ?? {};
+    const existing = existingFolders[folderId];
+    if (!existing) return;
 
-    const updatedTypeFolders = typeFolders.map((f: FolderDef) =>
-        f.id === folderId ? { ...f, ...changes, id: f.id } : f
-    );
+    const updated: FolderDef = { ...existing, ...changes, id: existing.id };
 
-    const updatedFolders = {
-        ...folders,
-        [folderType]: updatedTypeFolders
-    };
-
-    await updateModule(moduleId, { folders: updatedFolders });
+    await updateModule(moduleId, {
+        [folderType]: { folders: { [folderId]: updated } }
+    });
 }
 
 export async function deleteModuleFolder(
@@ -416,19 +419,9 @@ export async function deleteModuleFolder(
     folderType: ModuleFolderType,
     folderId: string
 ): Promise<void> {
-    const mod = await getModule(moduleId);
-
-    const folders = mod.folders ?? {};
-    const typeFolders = folders[folderType] ?? [];
-
-    const updatedTypeFolders = typeFolders.filter((f: FolderDef) => f.id !== folderId);
-
-    const updatedFolders = {
-        ...folders,
-        [folderType]: updatedTypeFolders
-    };
-
-    await updateModule(moduleId, { folders: updatedFolders });
+    await updateModule(moduleId, {
+        [folderType]: { folders: { [folderId]: undefined } }
+    });
 }
 
 export async function moveModuleItem(
@@ -440,31 +433,20 @@ export async function moveModuleItem(
 ): Promise<void> {
     const mod = await getModule(moduleId);
 
-    let refKey: keyof typeof mod;
-    switch (folderType) {
-        case 'lorebooks':
-            refKey = 'lorebookRefs';
-            break;
-        case 'scripts':
-            refKey = 'scriptRefs';
-            break;
-        case 'charjs':
-            refKey = 'charjsRefs';
-            break;
-        default:
-            return;
-    }
+    const config = mod[folderType] as EntityListConfig | undefined;
+    const refs = config?.refs ?? {};
+    const existing = refs[itemId];
+    if (!existing) return;
 
-    const refs = (mod[refKey] as OrderedRef[]) ?? [];
-    const updatedRefs = refs.map((ref) => {
-        if (ref.id !== itemId) return ref;
-        return {
-            ...ref,
-            folderId: newFolderId,
-            sortOrder: newSortOrder ?? ref.sortOrder,
-            id: ref.id
-        };
+    await updateModule(moduleId, {
+        [folderType]: {
+            refs: {
+                [itemId]: {
+                    ...existing,
+                    folderId: newFolderId,
+                    sortOrder: newSortOrder ?? existing.sortOrder
+                }
+            }
+        }
     });
-
-    await updateModule(moduleId, { [refKey]: updatedRefs });
 }

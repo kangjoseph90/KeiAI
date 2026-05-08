@@ -72,9 +72,7 @@ describe('Chat Store', () => {
         id: 'chat-1',
         characterId: 'char-1',
         title: 'Test Chat',
-        chatNote: '',
-        lorebookRefs: [],
-        folders: {}
+        chatNote: ''
     };
 
     const mockCharacter: Character = {
@@ -83,8 +81,7 @@ describe('Chat Store', () => {
         description: '',
         characterNote: '',
         greetings: {},
-        allowLowLevel: false,
-        chatRefs: []
+        allowLowLevel: false
     };
 
     beforeEach(() => {
@@ -125,15 +122,22 @@ describe('Chat Store', () => {
             vi.mocked(ChatService.create).mockResolvedValue(mockChat);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                chatRefs: [{ id: 'chat-1', sortOrder: 'sort-order' }]
+                chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'sort-order' } } }
             });
 
             const result = await createChat('char-1', { title: 'New Chat' });
 
             expect(result).toEqual(mockChat);
-            expect(CharacterService.update).toHaveBeenCalledWith('char-1', {
-                chatRefs: expect.arrayContaining([expect.objectContaining({ id: 'chat-1' })])
-            });
+            expect(CharacterService.update).toHaveBeenCalledWith(
+                'char-1',
+                expect.objectContaining({
+                    chats: expect.objectContaining({
+                        refs: expect.objectContaining({
+                            'chat-1': expect.objectContaining({ id: 'chat-1' })
+                        })
+                    })
+                })
+            );
             expect(get(chats)).toContainEqual(mockChat);
         });
 
@@ -151,20 +155,22 @@ describe('Chat Store', () => {
         it('should delete chat and remove from character refs', async () => {
             const charWithRefs = {
                 ...mockCharacter,
-                chatRefs: [{ id: 'chat-1', sortOrder: 'a' }]
+                chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a' } } }
             };
             activeCharacter.set(charWithRefs);
             chats.setAll([mockChat]);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                chatRefs: []
+                chats: { refs: {} }
             });
             vi.mocked(ChatService.delete).mockResolvedValue(undefined);
 
             await deleteChat('chat-1', 'char-1');
 
             expect(get(chats)).toHaveLength(0);
-            expect(CharacterService.update).toHaveBeenCalledWith('char-1', { chatRefs: [] });
+            expect(CharacterService.update).toHaveBeenCalledWith('char-1', {
+                chats: { refs: { 'chat-1': undefined } }
+            });
         });
     });
 
@@ -173,49 +179,51 @@ describe('Chat Store', () => {
             activeChat.set(mockChat);
             vi.mocked(ChatService.update).mockResolvedValue({
                 ...mockChat,
-                folders: {
-                    lorebooks: [{ id: 'new-id', name: 'My Folder', sortOrder: 'sort-order' }]
+                lorebooks: {
+                    folders: {
+                        'new-id': { id: 'new-id', name: 'My Folder', sortOrder: 'sort-order' }
+                    }
                 }
             });
 
             const folder = await createChatFolder('chat-1', 'lorebooks', 'My Folder');
 
             expect(folder.name).toBe('My Folder');
-            expect(get(activeChat)?.folders?.lorebooks).toContainEqual(folder);
+            expect(get(activeChat)?.lorebooks?.folders?.['new-id']).toEqual(folder);
         });
 
         it('should update a chat lorebook folder', async () => {
             const folder: FolderDef = { id: 'f1', name: 'Old', sortOrder: 'a' };
             const chatWithFolder = {
                 ...mockChat,
-                folders: { lorebooks: [folder] }
+                lorebooks: { folders: { f1: folder } }
             };
             activeChat.set(chatWithFolder);
             vi.mocked(ChatService.update).mockResolvedValue({
                 ...mockChat,
-                folders: { lorebooks: [{ ...folder, name: 'New' }] }
+                lorebooks: { folders: { f1: { ...folder, name: 'New' } } }
             });
 
             await updateChatFolder('chat-1', 'lorebooks', 'f1', { name: 'New' });
 
-            expect(get(activeChat)?.folders?.lorebooks?.[0].name).toBe('New');
+            expect(get(activeChat)?.lorebooks?.folders?.['f1']?.name).toBe('New');
         });
 
         it('should delete a chat lorebook folder', async () => {
             const folder: FolderDef = { id: 'f1', name: 'Delete Me', sortOrder: 'a' };
             const chatWithFolder = {
                 ...mockChat,
-                folders: { lorebooks: [folder] }
+                lorebooks: { folders: { f1: folder } }
             };
             activeChat.set(chatWithFolder);
             vi.mocked(ChatService.update).mockResolvedValue({
                 ...mockChat,
-                folders: { lorebooks: [] }
+                lorebooks: { folders: {} }
             });
 
             await deleteChatFolder('chat-1', 'lorebooks', 'f1');
 
-            expect(get(activeChat)?.folders?.lorebooks).toHaveLength(0);
+            expect(Object.keys(get(activeChat)?.lorebooks?.folders ?? {})).toHaveLength(0);
         });
     });
 
@@ -223,17 +231,19 @@ describe('Chat Store', () => {
         it('should move lorebook to a different folder', async () => {
             const chatWithRefs = {
                 ...mockChat,
-                lorebookRefs: [{ id: 'lb-1', sortOrder: 'a' }]
+                lorebooks: { refs: { 'lb-1': { id: 'lb-1', sortOrder: 'a' } } }
             };
             activeChat.set(chatWithRefs);
             vi.mocked(ChatService.update).mockResolvedValue({
                 ...mockChat,
-                lorebookRefs: [{ id: 'lb-1', sortOrder: 'a', folderId: 'folder-1' }]
+                lorebooks: {
+                    refs: { 'lb-1': { id: 'lb-1', sortOrder: 'a', folderId: 'folder-1' } }
+                }
             });
 
             await moveChatItem('chat-1', 'lorebooks', 'lb-1', 'folder-1');
 
-            expect(get(activeChat)?.lorebookRefs?.[0].folderId).toBe('folder-1');
+            expect(get(activeChat)?.lorebooks?.refs?.['lb-1']?.folderId).toBe('folder-1');
         });
     });
 
@@ -291,9 +301,11 @@ describe('Chat Store', () => {
             expect(CharacterService.update).toHaveBeenCalledWith(
                 'char-1',
                 expect.objectContaining({
-                    chatRefs: expect.arrayContaining([
-                        expect.objectContaining({ id: 'new-chat-id' })
-                    ])
+                    chats: expect.objectContaining({
+                        refs: expect.objectContaining({
+                            'new-chat-id': expect.objectContaining({ id: 'new-chat-id' })
+                        })
+                    })
                 })
             );
             expect(get(chats)).toContainEqual(expect.objectContaining({ id: 'new-chat-id' }));
