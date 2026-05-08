@@ -5,6 +5,7 @@ import { getAppSettings } from './settings';
 import { getChatLorebooks } from './chat';
 import { getCharacterLorebooks, getCharacterScripts } from './character';
 import { getModuleLorebooks, getModuleScripts } from './module';
+import { getActivePreset, getPresetScripts } from './preset';
 
 /**
  * Returns active module IDs for a character.
@@ -51,13 +52,15 @@ export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
 export async function getMergedScripts(chatId: string): Promise<Script[]> {
     const chat = await getChat(chatId);
     const activeModuleIds = await getActiveModuleIds(chat.characterId);
+    const activePresetId = getActivePreset()?.id;
 
-    const [charSC, ...modSCResults] = await Promise.all([
+    const [charSC, presetSC, ...modSCResults] = await Promise.all([
         getCharacterScripts(chat.characterId),
+        activePresetId ? getPresetScripts(activePresetId) : Promise.resolve([]),
         ...[...activeModuleIds].map((id) => getModuleScripts(id))
     ]);
 
     const modSC = modSCResults.flat();
 
-    return [...modSC, ...charSC];
+    return [...modSC, ...charSC, ...presetSC];
 }

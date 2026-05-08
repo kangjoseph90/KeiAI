@@ -14,8 +14,9 @@
     import PromptTab from './chatbot/PromptTab.svelte';
     import PresetsTab from './chatbot/PresetsTab.svelte';
     import CustomModelsTab from './chatbot/CustomModelsTab.svelte';
+    import ScriptsTab from './chatbot/ScriptsTab.svelte';
 
-    type Tab = 'model' | 'parameters' | 'prompt' | 'presets' | 'custom';
+    type Tab = 'model' | 'parameters' | 'prompt' | 'scripts' | 'presets' | 'custom';
     let activeTab = $state<Tab>('model');
 </script>
 
@@ -23,7 +24,7 @@
     <!-- Header with Tabs -->
     <div class="flex items-center justify-between mb-6 shrink-0">
         <div class="flex items-center gap-1 bg-muted/50 p-1 rounded-lg">
-            {#each ['model', 'parameters', 'prompt', 'presets', 'custom'] as tab (tab)}
+            {#each ['model', 'parameters', 'prompt', 'scripts', 'presets', 'custom'] as tab (tab)}
                 <button
                     class="px-4 py-1.5 text-sm font-medium rounded-md transition-colors {activeTab ===
                     tab
@@ -61,6 +62,8 @@
                     <ParametersTab preset={$activePreset!} />
                 {:else if activeTab === 'prompt'}
                     <PromptTab preset={$activePreset!} />
+                {:else if activeTab === 'scripts'}
+                    <ScriptsTab preset={$activePreset!} />
                 {:else if activeTab === 'presets'}
                     <PresetsTab />
                 {:else if activeTab === 'custom'}

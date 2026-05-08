@@ -28,7 +28,9 @@ vi.mock('$lib/adapters/db', () => ({
         getAll: vi.fn(),
         getRecord: vi.fn(),
         putRecord: vi.fn(),
-        softDeleteRecord: vi.fn()
+        softDeleteRecord: vi.fn(),
+        softDeleteByIndex: vi.fn(),
+        transaction: vi.fn((_tables, _mode, cb) => cb())
     }
 }));
 
@@ -162,10 +164,15 @@ describe('PresetService', () => {
     });
 
     describe('delete', () => {
-        it('should soft delete the record', async () => {
+        it('should soft delete the record and its owned scripts', async () => {
             vi.mocked(buffer.get).mockResolvedValue(mockRecord);
             await PresetService.delete('preset-123');
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('presets', 'preset-123');
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'scripts',
+                'ownerId',
+                'preset-123'
+            );
         });
     });
 });

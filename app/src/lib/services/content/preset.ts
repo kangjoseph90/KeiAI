@@ -6,6 +6,8 @@ import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
 import type { LLMModelConfig, LLMRole } from '$lib/types/models/llm';
+import type { EntityListConfig } from '$lib/types/refs';
+import { ScriptService } from './script';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -25,7 +27,7 @@ export type PromptBlock = PromptBlockFields & {
     enabled: boolean;
 };
 
-export interface PresetFields {
+export interface PresetContent {
     name: string;
     description: string;
     chatModel: LLMModelConfig;
@@ -36,6 +38,12 @@ export interface PresetFields {
     lorebookRatio: number;
     memoryRatio: number;
 }
+
+export interface PresetRefs {
+    scripts?: EntityListConfig;
+}
+
+export interface PresetFields extends PresetContent, PresetRefs {}
 
 export interface Preset extends PresetFields {
     id: string;
@@ -129,6 +137,10 @@ export class PresetService {
         }
     }
 
+    static async updateContent(id: string, changes: DeepPartial<PresetContent>): Promise<Preset> {
+        return this.update(id, changes);
+    }
+
     static async delete(id: string): Promise<void> {
         const { userId } = getActiveSession();
         const record = await buffer.get<PresetRecord>('presets', id);
@@ -137,8 +149,16 @@ export class PresetService {
         }
 
         try {
+            await buffer.flushTable('presets');
+            await buffer.flushTable('scripts');
+
             buffer.drop('presets', id);
-            await localDB.softDeleteRecord('presets', id);
+            await localDB.transaction(['scripts', 'presets'], 'rw', async () => {
+                await Promise.all([
+                    localDB.softDeleteByIndex('scripts', 'ownerId', id),
+                    localDB.softDeleteRecord('presets', id)
+                ]);
+            });
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete preset', error);

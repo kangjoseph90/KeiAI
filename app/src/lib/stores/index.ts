@@ -35,6 +35,7 @@ export const presets = readonly(StoreState.presets);
 export const modules = readonly(StoreState.modules);
 export const plugins = readonly(StoreState.plugins);
 export const moduleResources = readonly(StoreState.moduleResources);
+export const presetResources = readonly(StoreState.presetResources);
 export const activeCharacter = readonly(StoreState.activeCharacter);
 export const characterLorebooks = readonly(StoreState.characterLorebooks);
 export const characterScripts = readonly(StoreState.characterScripts);

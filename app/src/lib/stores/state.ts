@@ -77,7 +77,12 @@ export interface ModuleResourceEntry {
     charjs: EntityStore<CharJS>;
 }
 
+export interface PresetResourceEntry {
+    scripts: EntityStore<Script>;
+}
+
 export const moduleResources = writable(new Map<string, ModuleResourceEntry>());
+export const presetResources = writable(new Map<string, PresetResourceEntry>());
 
 // ─── Level 2 (Character Context) ────────────────────────────────────
 export const activeCharacter = writable<Character | null>(null);
