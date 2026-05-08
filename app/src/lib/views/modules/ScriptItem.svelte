@@ -13,8 +13,8 @@
         onDelete
     }: {
         item: Script;
-        onUpdate: (id: string, changes: DeepPartial<Script>) => Promise<void>;
-        onDelete: (id: string) => Promise<void>;
+        onUpdate: (id: string, changes: DeepPartial<Script>) => void | Promise<void>;
+        onDelete: (id: string) => void | Promise<void>;
     } = $props();
 
     let editing = $state(false);

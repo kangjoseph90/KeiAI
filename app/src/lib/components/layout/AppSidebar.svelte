@@ -1,263 +1,277 @@
 <script lang="ts">
-    /**
-     * AppSidebar — RisuAI-style character list sidebar.
-     * Shows all characters, clicking one opens the latest chat directly.
-     */
-    import { Settings, Plus, PanelLeftClose, PanelLeft, Search } from 'lucide-svelte';
+    import {
+        Check,
+        Edit3,
+        MessageSquare,
+        PanelLeft,
+        PanelLeftClose,
+        Plus,
+        Search,
+        Settings,
+        Trash2,
+        X
+    } from 'lucide-svelte';
+    import AssetView from '$lib/components/AssetView.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
-    import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-    import * as Avatar from '$lib/components/ui/avatar';
     import {
+        activeCharacter,
+        activeChat,
         characters,
-        activeUser,
-        userEmail,
-        createCharacter,
-        updateCharacter,
-        deleteCharacter
+        chats,
+        createChat,
+        deleteChat,
+        selectChat,
+        updateChat
     } from '$lib/stores';
+    import { setGreetings } from '$lib/managers';
     import type { RouteState } from '$lib/router';
 
-    let {
-        collapsed = false,
-        route,
-        onToggle,
-        onNavigate,
-        onOpenSettings
-    }: {
+    interface Props {
         collapsed?: boolean;
         route: RouteState;
         onToggle: () => void;
-        onNavigate: (r: RouteState) => void;
-        onOpenSettings: () => void;
-    } = $props();
-
-    let searchText = $state('');
-    let editingId = $state<string | null>(null);
-    let editingName = $state('');
-    let newCharName = $state('');
-    let showNewChar = $state(false);
-
-    let filteredCharacters = $derived(
-        searchText.trim()
-            ? $characters.filter((c) => c.name.toLowerCase().includes(searchText.toLowerCase()))
-            : $characters
-    );
-
-    async function handleSelectChar(charId: string) {
-        onNavigate({ view: 'chat', charId });
+        onNavigate: (route: RouteState) => void;
     }
 
-    async function handleCreateChar() {
-        if (!newCharName.trim()) return;
-        const char = await createCharacter({
-            name: newCharName,
-            description: 'A new character'
+    let { collapsed = false, route, onToggle, onNavigate }: Props = $props();
+
+    let chatSearch = $state('');
+    let editingChatId = $state<string | null>(null);
+    let editingChatTitle = $state('');
+
+    const filteredChats = $derived(() => {
+        const query = chatSearch.trim().toLowerCase();
+        if (!query) return $chats;
+        return $chats.filter((chat) => chat.title.toLowerCase().includes(query));
+    });
+
+    async function handleCreateChat() {
+        if (!$activeCharacter) return;
+
+        const chat = await createChat($activeCharacter.id, {
+            title: `New Chat ${$chats.length + 1}`
         });
-        newCharName = '';
-        showNewChar = false;
-        onNavigate({ view: 'chat', charId: char.id });
+        await setGreetings(chat.id, $activeCharacter.greetings);
+        await selectChat(chat.id, $activeCharacter.id);
+        onNavigate({ view: 'chat', charId: $activeCharacter.id, chatId: chat.id });
     }
 
-    async function handleRename(id: string) {
-        if (!editingName.trim()) return;
-        await updateCharacter(id, { name: editingName });
-        editingId = null;
+    function handleSelectCharacter(characterId: string) {
+        onNavigate({ view: 'chat', charId: characterId });
     }
 
-    function startEdit(id: string, name: string) {
-        editingId = id;
-        editingName = name;
+    function handleSelectChat(chatId: string) {
+        if (!$activeCharacter) return;
+        onNavigate({ view: 'chat', charId: $activeCharacter.id, chatId });
+    }
+
+    async function handleRenameChat(chatId: string) {
+        const title = editingChatTitle.trim();
+        if (!title) return;
+
+        await updateChat(chatId, { title });
+        editingChatId = null;
+        editingChatTitle = '';
+    }
+
+    async function handleDeleteChat(chatId: string) {
+        if (!$activeCharacter) return;
+
+        await deleteChat(chatId, $activeCharacter.id);
+        if ($activeChat?.id === chatId) {
+            const next = $chats.find((chat) => chat.id !== chatId);
+            if (next) {
+                await selectChat(next.id, $activeCharacter.id);
+                onNavigate({ view: 'chat', charId: $activeCharacter.id, chatId: next.id });
+            } else {
+                onNavigate({ view: 'chat', charId: $activeCharacter.id });
+            }
+        }
+    }
+
+    function startRenameChat(chatId: string, title: string) {
+        editingChatId = chatId;
+        editingChatTitle = title;
+    }
+
+    function characterInitial(name: string): string {
+        return (name.trim().charAt(0) || '?').toUpperCase();
     }
 </script>
 
-<aside
-    class="flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 {collapsed
-        ? 'w-14'
-        : 'w-64'}"
->
-    <!-- Header -->
-    <div class="flex items-center justify-between border-b border-sidebar-border px-3 py-3">
-        {#if !collapsed}
-            <span class="text-sm font-bold tracking-tight">KeiAI</span>
-        {/if}
-        <Button variant="ghost" size="sm" class="h-7 w-7 p-0" onclick={onToggle}>
-            {#if collapsed}
-                <PanelLeft class="size-4" />
-            {:else}
-                <PanelLeftClose class="size-4" />
+<aside class="flex h-full shrink-0 border-r bg-sidebar text-sidebar-foreground">
+    <div class="flex w-14 flex-col border-r border-sidebar-border bg-sidebar">
+        <div class="flex h-14 items-center justify-center border-b border-sidebar-border">
+            <button
+                class="rounded px-1.5 py-1 text-xs font-bold transition-colors hover:bg-sidebar-accent"
+                title="Home"
+                onclick={() => onNavigate({ view: 'home' })}
+            >
+                Kei
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-2 py-2">
+            <div class="flex flex-col items-center gap-2">
+                {#each $characters as character (character.id)}
+                    {@const selected = route.charId === character.id}
+                    <button
+                        class="relative flex size-10 items-center justify-center overflow-hidden rounded-md border bg-background text-xs font-semibold transition-colors {selected
+                            ? 'border-primary ring-2 ring-primary/20'
+                            : 'border-transparent hover:border-sidebar-border'}"
+                        title={character.name}
+                        onclick={() => handleSelectCharacter(character.id)}
+                    >
+                        {#if character.avatarAssetId}
+                            <AssetView
+                                id={character.avatarAssetId}
+                                alt={character.name}
+                                class="size-full object-cover"
+                            />
+                        {:else}
+                            {characterInitial(character.name)}
+                        {/if}
+                    </button>
+                {/each}
+            </div>
+        </div>
+
+        <div class="flex flex-col items-center gap-2 border-t border-sidebar-border p-2">
+            <Button
+                variant="ghost"
+                size="icon"
+                class="size-9"
+                title="Settings"
+                onclick={() => onNavigate({ view: 'settings' })}
+            >
+                <Settings class="size-4" />
+            </Button>
+            {#if $activeCharacter}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="size-9"
+                    title={collapsed ? 'Show chat list' : 'Hide chat list'}
+                    onclick={onToggle}
+                >
+                    {#if collapsed}
+                        <PanelLeft class="size-4" />
+                    {:else}
+                        <PanelLeftClose class="size-4" />
+                    {/if}
+                </Button>
             {/if}
-        </Button>
+        </div>
     </div>
 
-    {#if !collapsed}
-        <!-- Search -->
-        <div class="px-3 py-2">
-            <div class="relative">
-                <Search
-                    class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-                />
-                <Input
-                    bind:value={searchText}
-                    placeholder="Search characters..."
-                    class="h-8 pl-8 text-xs"
-                />
+    {#if !collapsed && $activeCharacter}
+        <div class="flex w-72 flex-col bg-sidebar">
+            <div class="flex h-14 items-center justify-between border-b border-sidebar-border px-3">
+                <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold">{$activeCharacter.name}</p>
+                    <p class="truncate text-[11px] text-muted-foreground">
+                        {$activeChat?.title ?? 'Select a chat'}
+                    </p>
+                </div>
+                <Button variant="ghost" size="icon" class="size-8" onclick={handleCreateChat}>
+                    <Plus class="size-4" />
+                </Button>
+            </div>
+
+            <div class="border-b border-sidebar-border p-3">
+                <div class="relative">
+                    <Search
+                        class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                    />
+                    <Input
+                        bind:value={chatSearch}
+                        placeholder="Search chats..."
+                        class="h-8 pl-8 text-xs"
+                    />
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-2">
+                <div class="flex flex-col gap-1">
+                    {#each filteredChats() as chat (chat.id)}
+                        {@const selected = route.chatId === chat.id}
+                        <div
+                            class="group rounded-md px-2 py-2 text-sm transition-colors {selected
+                                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                                : 'hover:bg-sidebar-accent/50'}"
+                        >
+                            {#if editingChatId === chat.id}
+                                <form
+                                    class="flex gap-1"
+                                    onsubmit={(event) => {
+                                        event.preventDefault();
+                                        handleRenameChat(chat.id);
+                                    }}
+                                >
+                                    <Input
+                                        bind:value={editingChatTitle}
+                                        class="h-7 flex-1 text-xs"
+                                        autofocus
+                                        onkeydown={(event) => {
+                                            if (event.key === 'Escape') {
+                                                editingChatId = null;
+                                                editingChatTitle = '';
+                                            }
+                                        }}
+                                    />
+                                    <Button type="submit" size="icon" class="size-7">
+                                        <Check class="size-3" />
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        class="size-7"
+                                        onclick={() => {
+                                            editingChatId = null;
+                                            editingChatTitle = '';
+                                        }}
+                                    >
+                                        <X class="size-3" />
+                                    </Button>
+                                </form>
+                            {:else}
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                        onclick={() => handleSelectChat(chat.id)}
+                                    >
+                                        <MessageSquare class="size-3.5 shrink-0" />
+                                        <span class="min-w-0 flex-1 truncate">
+                                            {chat.title || 'Untitled Chat'}
+                                        </span>
+                                    </button>
+                                    <button
+                                        class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                        title="Rename chat"
+                                        onclick={() =>
+                                            startRenameChat(chat.id, chat.title || 'Untitled Chat')}
+                                    >
+                                        <Edit3 class="size-3" />
+                                    </button>
+                                    <button
+                                        class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
+                                        title="Delete chat"
+                                        onclick={() => handleDeleteChat(chat.id)}
+                                    >
+                                        <Trash2 class="size-3" />
+                                    </button>
+                                </div>
+                            {/if}
+                        </div>
+                    {:else}
+                        <div class="px-3 py-8 text-center text-xs text-muted-foreground">
+                            No chats found.
+                        </div>
+                    {/each}
+                </div>
             </div>
         </div>
     {/if}
-
-    <!-- Character List -->
-    <div class="flex-1 overflow-y-auto">
-        {#if !collapsed}
-            <div class="flex flex-col gap-0.5 px-2">
-                {#each filteredCharacters as char (char.id)}
-                    {@const isActive = route.charId === char.id}
-                    <!-- svelte-ignore a11y_click_events_have_key_events -->
-                    <!-- svelte-ignore a11y_no_static_element_interactions -->
-                    <div
-                        class="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors cursor-pointer {isActive
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                            : 'hover:bg-sidebar-accent/50'}"
-                        onclick={() => handleSelectChar(char.id)}
-                    >
-                        <div class="flex-1 overflow-hidden">
-                            {#if editingId === char.id}
-                                <!-- svelte-ignore a11y_click_events_have_key_events -->
-                                <div class="flex gap-1" onclick={(e) => e.stopPropagation()}>
-                                    <Input
-                                        bind:value={editingName}
-                                        class="h-6 flex-1 text-xs"
-                                        onkeydown={(e) => {
-                                            if (e.key === 'Enter') handleRename(char.id);
-                                            if (e.key === 'Escape') editingId = null;
-                                        }}
-                                    />
-                                </div>
-                            {:else}
-                                <span class="truncate block">{char.name}</span>
-                            {/if}
-                        </div>
-
-                        <!-- Hover actions -->
-                        {#if isActive && editingId !== char.id}
-                            <div
-                                class="hidden group-hover:flex gap-0.5"
-                                onclick={(e) => e.stopPropagation()}
-                            >
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    class="h-5 w-5 p-0"
-                                    onclick={() => startEdit(char.id, char.name)}
-                                >
-                                    <span class="text-[10px]">E</span>
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    class="h-5 w-5 p-0 text-destructive"
-                                    onclick={() => deleteCharacter(char.id)}
-                                >
-                                    <span class="text-[10px]">X</span>
-                                </Button>
-                            </div>
-                        {/if}
-                    </div>
-                {/each}
-            </div>
-
-            <!-- New Character -->
-            <div class="px-2 pt-2">
-                {#if showNewChar}
-                    <form
-                        class="flex gap-1"
-                        onsubmit={(e) => {
-                            e.preventDefault();
-                            handleCreateChar();
-                        }}
-                    >
-                        <Input
-                            bind:value={newCharName}
-                            placeholder="Name..."
-                            class="h-7 flex-1 text-xs"
-                            autofocus
-                        />
-                        <Button type="submit" size="sm" class="h-7 px-2 text-xs">Create</Button>
-                    </form>
-                {:else}
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        class="w-full justify-start gap-2 text-xs text-muted-foreground"
-                        onclick={() => (showNewChar = true)}
-                    >
-                        <Plus class="size-3.5" /> New Character
-                    </Button>
-                {/if}
-            </div>
-        {:else}
-            <!-- Collapsed: just icons with tooltips -->
-            <div class="flex flex-col items-center gap-1 py-2">
-                {#each $characters.slice(0, 10) as char (char.id)}
-                    {@const isActive = route.charId === char.id}
-                    <button
-                        class="flex size-9 items-center justify-center rounded-md text-xs font-medium transition-colors {isActive
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                            : 'hover:bg-sidebar-accent/50 text-muted-foreground'}"
-                        title={char.name}
-                        onclick={() => handleSelectChar(char.id)}
-                    >
-                        {char.name.charAt(0).toUpperCase()}
-                    </button>
-                {/each}
-                <button
-                    class="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent/50"
-                    title="New Character"
-                    onclick={() => (showNewChar = true)}
-                >
-                    <Plus class="size-4" />
-                </button>
-            </div>
-        {/if}
-    </div>
-
-    <!-- Bottom Section -->
-    <div class="border-t border-sidebar-border">
-        <!-- Settings Button -->
-        <div class="px-2 py-1">
-            <Button
-                variant="ghost"
-                size="sm"
-                class="w-full justify-start gap-2 text-xs {collapsed ? 'px-0 justify-center' : ''}"
-                onclick={onOpenSettings}
-            >
-                <Settings class="size-4" />
-                {#if !collapsed}Settings{/if}
-            </Button>
-        </div>
-
-        <!-- User Profile -->
-        {#if !collapsed}
-            <div class="px-2 pb-2">
-                <div
-                    class="flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/50"
-                >
-                    <Avatar.Root class="size-7 shrink-0">
-                        <Avatar.Image src={$activeUser?.avatar} alt={$activeUser?.name ?? 'User'} />
-                        <Avatar.Fallback
-                            >{($activeUser?.name ?? 'U').charAt(0).toUpperCase()}</Avatar.Fallback
-                        >
-                    </Avatar.Root>
-                    <div class="flex flex-col overflow-hidden">
-                        <span class="text-xs font-medium truncate"
-                            >{$activeUser?.name ?? 'Local User'}</span
-                        >
-                        <span class="text-[10px] text-muted-foreground truncate"
-                            >{$userEmail ?? 'Offline'}</span
-                        >
-                    </div>
-                </div>
-            </div>
-        {/if}
-    </div>
 </aside>

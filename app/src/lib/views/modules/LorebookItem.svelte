@@ -14,8 +14,8 @@
         onDelete
     }: {
         item: Lorebook;
-        onUpdate: (id: string, changes: DeepPartial<Lorebook>) => Promise<void>;
-        onDelete: (id: string) => Promise<void>;
+        onUpdate: (id: string, changes: DeepPartial<Lorebook>) => void | Promise<void>;
+        onDelete: (id: string) => void | Promise<void>;
     } = $props();
 
     let editing = $state(false);

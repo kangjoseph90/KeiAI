@@ -15,6 +15,7 @@ import {
     type Script,
     type CharJS
 } from '$lib/services';
+import { AssetService } from '$lib/services/asset';
 import type { FolderDef, EntityListConfig } from '$lib/types/refs';
 import { clearActiveChat } from './chat';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
@@ -222,6 +223,28 @@ export async function deleteCharacterGreeting(
     return updated;
 }
 
+export async function updateCharacterAvatar(characterId: string, file: File): Promise<void> {
+    const character = await getCharacter(characterId);
+    const oldAssetId = character.avatarAssetId;
+
+    const newAssetId = await AssetService.write(file, 'resource');
+    await updateCharacter(characterId, { avatarAssetId: newAssetId });
+
+    if (oldAssetId) {
+        await AssetService.delete(oldAssetId).catch(() => {});
+    }
+}
+
+export async function removeCharacterAvatar(characterId: string): Promise<void> {
+    const character = await getCharacter(characterId);
+    const oldAssetId = character.avatarAssetId;
+
+    if (!oldAssetId) return;
+
+    await updateCharacter(characterId, { avatarAssetId: undefined });
+    await AssetService.delete(oldAssetId).catch(() => {});
+}
+
 export async function deleteCharacter(characterId: string): Promise<void> {
     const settings = await getAppSettings();
 
@@ -299,6 +322,17 @@ export async function deleteCharacterLorebook(
     }
 }
 
+export async function updateCharacterLorebook(
+    characterId: string,
+    lorebookId: string,
+    changes: DeepPartial<LorebookFields>
+): Promise<void> {
+    const updated = await LorebookService.update(lorebookId, changes);
+    if (characterId === get(activeCharacterId)) {
+        characterLorebooks.set(lorebookId, updated);
+    }
+}
+
 // ─── Character-owned Script CRUD ───────────────────────────────────
 
 export async function createCharacterScript(
@@ -348,6 +382,17 @@ export async function deleteCharacterScript(characterId: string, scriptId: strin
     }
 }
 
+export async function updateCharacterScript(
+    characterId: string,
+    scriptId: string,
+    changes: DeepPartial<ScriptFields>
+): Promise<void> {
+    const updated = await ScriptService.update(scriptId, changes);
+    if (characterId === get(activeCharacterId)) {
+        characterScripts.set(scriptId, updated);
+    }
+}
+
 // ─── Character-owned CharJS CRUD ───────────────────────────────────
 
 export async function createCharacterCharJS(
@@ -393,6 +438,17 @@ export async function deleteCharacterCharJS(characterId: string, charjsId: strin
 
     if (characterId === get(activeCharacterId)) {
         characterCharJS.delete(charjsId);
+    }
+}
+
+export async function updateCharacterCharJS(
+    characterId: string,
+    charjsId: string,
+    changes: DeepPartial<CharJSFields>
+): Promise<void> {
+    const updated = await CharJSService.update(charjsId, changes);
+    if (characterId === get(activeCharacterId)) {
+        characterCharJS.set(charjsId, updated);
     }
 }
 

@@ -3,7 +3,7 @@
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import { Plus } from 'lucide-svelte';
-    import ModuleCard from './modules/ModuleCard.svelte';
+    import ModuleCard from '../modules/ModuleCard.svelte';
 
     let newName = $state('');
 

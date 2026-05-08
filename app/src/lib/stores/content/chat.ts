@@ -278,6 +278,17 @@ export async function deleteChatLorebook(chatId: string, lorebookId: string): Pr
     }
 }
 
+export async function updateChatLorebook(
+    chatId: string,
+    lorebookId: string,
+    changes: DeepPartial<LorebookFields>
+): Promise<void> {
+    const updated = await LorebookService.update(lorebookId, changes);
+    if (chatId === get(activeChatId)) {
+        chatLorebooks.set(lorebookId, updated);
+    }
+}
+
 // ─── Chat-owned Folder & Item Management ──────────────────────
 
 export type ChatFolderType = 'lorebooks';

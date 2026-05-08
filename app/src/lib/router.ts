@@ -2,7 +2,7 @@ import { writable, derived, get } from 'svelte/store';
 
 // ─── Route Types ──────────────────────────────────────────────────────
 
-export type ViewMode = 'home' | 'chat';
+export type ViewMode = 'home' | 'chat' | 'characterStudio' | 'settings';
 
 export interface RouteState {
     view: ViewMode;
@@ -14,6 +14,8 @@ export interface RouteState {
 // #/                          → home (character not selected)
 // #/chat/{charId}             → character's active/recent chat
 // #/chat/{charId}/{chatId}    → specific chat
+// #/chat/{charId}/{chatId}/character → character studio (attached to chat)
+// #/settings                  → global settings
 
 function buildHash(route: RouteState): string {
     switch (route.view) {
@@ -21,6 +23,10 @@ function buildHash(route: RouteState): string {
             if (route.chatId) return `#/chat/${route.charId}/${route.chatId}`;
             if (route.charId) return `#/chat/${route.charId}`;
             return '#/';
+        case 'characterStudio':
+            return `#/chat/${route.charId}/${route.chatId}/character`;
+        case 'settings':
+            return '#/settings';
         default:
             return '#/';
     }
@@ -30,10 +36,21 @@ function parseHash(hash: string): RouteState {
     const path = hash.replace(/^#\//, '');
     if (!path || path === '/') return { view: 'home' };
 
+    if (path === 'settings') return { view: 'settings' };
+
     const parts = path.split('/');
     if (parts[0] === 'chat') {
-        if (parts[1] && parts[2]) return { view: 'chat', charId: parts[1], chatId: parts[2] };
-        if (parts[1]) return { view: 'chat', charId: parts[1] };
+        const charId = parts[1];
+        const chatId = parts[2];
+        const sub = parts[3];
+
+        if (charId && chatId) {
+            if (sub === 'character') {
+                return { view: 'characterStudio', charId, chatId };
+            }
+            return { view: 'chat', charId, chatId };
+        }
+        if (charId) return { view: 'chat', charId };
     }
     return { view: 'home' };
 }

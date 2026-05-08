@@ -6,29 +6,22 @@
     import {
         SendHorizontal,
         Square,
-        Plus,
-        Trash2,
         ChevronRight,
         ChevronLeft,
         MessageSquare
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { Input } from '$lib/components/ui/input';
-    import { ScrollArea } from '$lib/components/ui/scroll-area';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
     import Message from '$lib/components/Message.svelte';
+    import ChatRuntimePanel from './ChatRuntimePanel.svelte';
     import {
         activeCharacter,
         activeChat,
-        chats,
-        chatLorebooks,
         displayMessages,
         isChatRunning,
         createMessage,
         updateMessage,
         deleteMessage,
-        createChatLorebook,
-        deleteChatLorebook,
         selectChat,
         forkChat,
         appSettings,
@@ -48,8 +41,7 @@
     let newMessageText = $state('');
     let editModeId = $state<string | null>(null);
     let editMessageText = $state('');
-    let newLorebookName = $state('');
-    let lorebooksOpen = $state(false);
+    let inspectorOpen = $state(true);
     let scrollContainerEl: HTMLElement | undefined = $state();
 
     async function handleSendMessage() {
@@ -105,18 +97,6 @@
         handleSwitchChat(newChatId);
     }
 
-    async function handleAddLorebook() {
-        if (!newLorebookName.trim()) return;
-        await createChatLorebook(chatId, {
-            name: newLorebookName,
-            keys: [],
-            content: '',
-            insertionDepth: 0,
-            enabled: true
-        });
-        newLorebookName = '';
-    }
-
     function handleSwitchChat(targetChatId: string) {
         if ($activeCharacter) {
             selectChat(targetChatId, $activeCharacter.id);
@@ -150,30 +130,18 @@
             {/if}
         </div>
         <div class="flex items-center gap-1">
-            <!-- Chat Switcher -->
-            {#if $chats && $chats.length > 1}
-                <select
-                    class="h-7 rounded-md border bg-background px-2 text-xs"
-                    value={chatId}
-                    onchange={(e) => handleSwitchChat(e.currentTarget.value)}
-                >
-                    {#each $chats as c (c.id)}
-                        <option value={c.id}>{c.title || 'Untitled'}</option>
-                    {/each}
-                </select>
-            {/if}
             <Button
                 variant="ghost"
                 size="sm"
                 class="h-7 gap-1 text-xs"
-                onclick={() => (lorebooksOpen = !lorebooksOpen)}
+                onclick={() => (inspectorOpen = !inspectorOpen)}
             >
-                {#if lorebooksOpen}
+                {#if inspectorOpen}
                     <ChevronRight class="size-3" />
                 {:else}
                     <ChevronLeft class="size-3" />
                 {/if}
-                Lorebooks
+                Settings
             </Button>
         </div>
     </div>
@@ -263,39 +231,9 @@
             </div>
         </div>
 
-        <!-- Lorebooks Side Panel -->
-        {#if lorebooksOpen}
-            <div class="flex w-64 shrink-0 flex-col gap-3 border-l p-4 overflow-y-auto">
-                <h3 class="text-sm font-semibold">Chat Lorebooks</h3>
-                <div class="flex gap-2">
-                    <Input
-                        bind:value={newLorebookName}
-                        placeholder="Name"
-                        class="h-7 flex-1 text-xs"
-                    />
-                    <Button size="sm" class="h-7 gap-1" onclick={handleAddLorebook}>
-                        <Plus class="size-3" />
-                    </Button>
-                </div>
-                <div class="flex flex-col gap-1">
-                    {#each $chatLorebooks as lb (lb.id)}
-                        <div
-                            class="flex items-center justify-between rounded-md border px-2 py-1.5 text-xs"
-                        >
-                            <span class="truncate">{lb.name}</span>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                class="h-5 w-5 p-0"
-                                onclick={() => deleteChatLorebook(chatId, lb.id)}
-                            >
-                                <Trash2 class="size-3" />
-                            </Button>
-                        </div>
-                    {:else}
-                        <p class="text-xs text-muted-foreground">None yet.</p>
-                    {/each}
-                </div>
+        {#if inspectorOpen}
+            <div class="w-[420px] shrink-0">
+                <ChatRuntimePanel {chatId} />
             </div>
         {/if}
     </div>

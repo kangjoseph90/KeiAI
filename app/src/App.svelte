@@ -8,7 +8,6 @@
     import { clock } from '$lib/utils/clock';
     import { appKV } from '$lib/adapters/kv';
     import AppSidebar from '$lib/components/layout/AppSidebar.svelte';
-    import SettingsOverlay from '$lib/components/layout/SettingsOverlay.svelte';
     import {
         loadGlobalState,
         loadUser,
@@ -22,7 +21,6 @@
         activeCharacter,
         activeChat,
         chats,
-        userEmail,
         initDefaultContents,
         createChat
     } from '$lib/stores';
@@ -39,8 +37,6 @@
     let ready = $state(false);
     let errorMsg = $state('');
     let sidebarCollapsed = $state(false);
-    let settingsOpen = $state(false);
-    let manageAccountsOpen = $state(false);
     const logger = createLogger('route:page');
 
     /**
@@ -87,7 +83,16 @@
     // Restore route from URL on boot
     async function restoreRoute(initial: RouteState): Promise<void> {
         try {
-            if (initial.view === 'chat' && initial.charId) {
+            if (initial.view === 'settings') {
+                navigate(initial);
+            } else if (
+                (initial.view === 'chat' || initial.view === 'characterStudio') &&
+                initial.charId
+            ) {
+                if (initial.view === 'chat' && !initial.chatId) {
+                    await handleSelectChar(initial.charId);
+                    return;
+                }
                 await selectCharacter(initial.charId);
                 if (initial.chatId) {
                     await selectChat(initial.chatId, initial.charId);
@@ -125,12 +130,12 @@
             try {
                 if (r.view === 'home') {
                     clearActiveCharacter();
-                } else if (r.view === 'chat' && r.charId) {
-                    if ($activeCharacter?.id !== r.charId) {
+                } else if (r.view === 'chat' || r.view === 'characterStudio') {
+                    if (r.charId && $activeCharacter?.id !== r.charId) {
                         await selectCharacter(r.charId);
                     }
                     if (r.chatId && $activeChat?.id !== r.chatId) {
-                        await selectChat(r.chatId, r.charId);
+                        await selectChat(r.chatId, r.charId ?? '');
                     }
                 }
             } catch (e) {
@@ -194,36 +199,33 @@
             route={$route}
             onToggle={() => (sidebarCollapsed = !sidebarCollapsed)}
             onNavigate={(r) => {
-                if (r.view === 'chat' && r.charId) {
+                if (r.view === 'chat' && r.charId && !r.chatId) {
                     handleSelectChar(r.charId);
+                } else {
+                    navigate(r);
                 }
             }}
-            onOpenSettings={() => (settingsOpen = true)}
         />
 
         <!-- Main Content -->
         <div class="flex flex-1 flex-col overflow-hidden">
             {#if $route.view === 'chat' && $route.charId}
-                {#await import('$lib/views/ChatView.svelte') then m}
+                {#await import('$lib/views/chat/ChatView.svelte') then m}
                     <m.default chatId={$route.chatId ?? ''} />
                 {/await}
+            {:else if $route.view === 'characterStudio' && $route.charId}
+                {#await import('$lib/views/character/CharacterStudio.svelte') then m}
+                    <m.default charId={$route.charId} />
+                {/await}
+            {:else if $route.view === 'settings'}
+                {#await import('$lib/views/settings/SettingsView.svelte') then m}
+                    <m.default />
+                {/await}
             {:else}
-                <!-- Welcome / Home Screen -->
-                <div class="flex h-full flex-col items-center justify-center gap-4 text-center">
-                    <h1 class="text-2xl font-bold">Welcome to KeiAI</h1>
-                    <p class="max-w-md text-muted-foreground">
-                        Select a character from the sidebar to start chatting, or create a new one.
-                    </p>
-                </div>
+                {#await import('$lib/views/home/HomeView.svelte') then m}
+                    <m.default onSelectCharacter={handleSelectChar} />
+                {/await}
             {/if}
         </div>
-
-        <!-- Settings Overlay -->
-        <SettingsOverlay bind:open={settingsOpen} onClose={() => (settingsOpen = false)} />
-
-        <!-- Manage Accounts Dialog -->
-        {#await import('$lib/views/ManageAccountsDialog.svelte') then m}
-            <m.default bind:open={manageAccountsOpen} />
-        {/await}
     {/if}
 </main>
