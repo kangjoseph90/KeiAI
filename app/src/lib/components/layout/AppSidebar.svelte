@@ -77,6 +77,7 @@
 
     async function handleDeleteChat(chatId: string) {
         if (!$activeCharacter) return;
+        if ($chats.length <= 1) return;
 
         await deleteChat(chatId, $activeCharacter.id);
         if ($activeChat?.id === chatId) {
@@ -255,13 +256,15 @@
                                     >
                                         <Edit3 class="size-3" />
                                     </button>
-                                    <button
-                                        class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
-                                        title="Delete chat"
-                                        onclick={() => handleDeleteChat(chat.id)}
-                                    >
-                                        <Trash2 class="size-3" />
-                                    </button>
+                                    {#if $chats.length > 1}
+                                        <button
+                                            class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
+                                            title="Delete chat"
+                                            onclick={() => handleDeleteChat(chat.id)}
+                                        >
+                                            <Trash2 class="size-3" />
+                                        </button>
+                                    {/if}
                                 </div>
                             {/if}
                         </div>
