@@ -1,5 +1,7 @@
-import type { Greeting } from '$lib/services';
+import { MessageService, LorebookService, type Greeting } from '$lib/services';
 import {
+    createChat,
+    createChatLorebook,
     createMessage,
     deleteMessage,
     getCharacter,
@@ -136,4 +138,57 @@ export async function setChatVariables(
             }
         }
     });
+}
+
+// ─── Fork ──────────────────────────────────────────
+
+/**
+ * Forks a chat at a specific message, copying all history up to that point
+ * into a new thread. Includes chat-specific lorebooks.
+ */
+export async function forkChat(messageId: string): Promise<string> {
+    const forkMessage = await getMessage(messageId);
+    const originalChat = await getChat(forkMessage.chatId);
+
+    // Create new chat with metadata from original
+    const {
+        id: _id,
+        characterId: _charId,
+        lorebooks: _,
+        lastMessageId: __,
+        greetingMessageId: ___,
+        ...fieldsCopy
+    } = originalChat;
+
+    const newChat = await createChat(originalChat.characterId, {
+        ...fieldsCopy,
+        title: `${originalChat.title} (Fork)`
+    });
+
+    // Copy history up to the fork point
+    const beforeMessages = await MessageService.getMessagesBefore(
+        forkMessage.chatId,
+        forkMessage.sortOrder,
+        Number.MAX_SAFE_INTEGER
+    );
+    const allMessages = [...beforeMessages, forkMessage];
+
+    // creation using store CRUD - this ensures lastMessageId is correctly updated
+    // and stores are notified if the new chat is active.
+    for (const msg of allMessages) {
+        await createMessage(newChat.id, {
+            role: msg.role,
+            swipes: msg.swipes,
+            activeSwipeId: msg.activeSwipeId
+        });
+    }
+
+    // Copy chat-specific lorebooks
+    const lorebooks = await LorebookService.listByOwner(originalChat.id);
+    for (const lb of lorebooks) {
+        const { id: _lbId, ownerId: _ownerId, ...lbFields } = lb;
+        await createChatLorebook(newChat.id, lbFields);
+    }
+
+    return newChat.id;
 }

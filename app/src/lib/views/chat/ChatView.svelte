@@ -23,7 +23,6 @@
         updateMessage,
         deleteMessage,
         selectChat,
-        forkChat,
         appSettings,
         prepareNextSwipe
     } from '$lib/stores';
@@ -34,7 +33,7 @@
     import type { TemplateContext } from '$lib/template';
     import { navigate } from '$lib/router';
     import { tick } from 'svelte';
-    import { getChatVariables } from '$lib/managers';
+    import { getChatVariables, forkChat } from '$lib/managers';
 
     let { chatId }: { chatId: string } = $props();
 

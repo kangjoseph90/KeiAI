@@ -1,41 +1,38 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { setGreetings, getChatVariable, setChatVariable } from '$lib/managers/chat';
+import { setGreetings, getChatVariable, setChatVariable, forkChat } from '$lib/managers/chat';
 import {
-    getChat,
-    updateChat,
-    getMessage,
+    createChat,
+    createChatLorebook,
     createMessage,
-    updateMessage,
-    deleteMessage
+    deleteMessage,
+    getChat,
+    getMessage,
+    updateChat,
+    updateMessage
 } from '$lib/stores';
-import { ChatService, MessageService } from '$lib/services';
-import type { Chat, Message } from '$lib/services';
+import { LorebookService, MessageService } from '$lib/services';
+import { AppError } from '$lib/types/errors';
+import type { Chat, Message, Lorebook } from '$lib/services';
 
 // Mock Stores
 vi.mock('$lib/stores', () => ({
-    getChat: vi.fn(),
-    updateChat: vi.fn(),
-    getMessage: vi.fn(),
+    createChat: vi.fn(),
+    createChatLorebook: vi.fn(),
     createMessage: vi.fn(),
-    updateMessage: vi.fn(),
-    deleteMessage: vi.fn()
+    deleteMessage: vi.fn(),
+    getChat: vi.fn(),
+    getMessage: vi.fn(),
+    updateChat: vi.fn(),
+    updateMessage: vi.fn()
 }));
 
-// Mock Services (some managers might call services directly if needed, though they should use stores)
+// Mock Services
 vi.mock('$lib/services', () => ({
-    ChatService: {
-        update: vi.fn(),
-        get: vi.fn()
+    LorebookService: {
+        listByOwner: vi.fn()
     },
     MessageService: {
-        create: vi.fn(),
-        update: vi.fn(),
-        get: vi.fn(),
-        delete: vi.fn()
-    },
-    AuthService: {
-        isPbConnected: vi.fn(() => false),
-        onPbAuthChange: vi.fn()
+        getMessagesBefore: vi.fn()
     }
 }));
 
@@ -161,6 +158,65 @@ describe('ChatManager', () => {
                     }
                 }
             });
+        });
+    });
+
+    describe('forkChat', () => {
+        const mockMessage = {
+            id: 'msg-2',
+            chatId: 'chat-1',
+            sortOrder: 'b',
+            role: 'assistant',
+            swipes: { s1: { id: 's1', content: 'Fork me', createdAt: 2000 } },
+            activeSwipeId: 's1'
+        };
+        const mockPrevMessage = {
+            id: 'msg-1',
+            chatId: 'chat-1',
+            sortOrder: 'a',
+            role: 'user',
+            swipes: { s1: { id: 's1', content: 'Hello', createdAt: 1000 } },
+            activeSwipeId: 's1'
+        };
+        const mockLorebook = {
+            id: 'lb-1',
+            ownerId: 'chat-1',
+            keys: ['test'],
+            content: 'some content'
+        } as unknown as Lorebook;
+
+        beforeEach(() => {
+            vi.mocked(getMessage).mockResolvedValue(mockMessage as unknown as Message);
+            vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([
+                mockPrevMessage
+            ] as unknown as Message[]);
+            vi.mocked(getChat).mockResolvedValue(mockChat);
+            vi.mocked(createChat).mockResolvedValue({ ...mockChat, id: 'new-chat-id' });
+            vi.mocked(LorebookService.listByOwner).mockResolvedValue([mockLorebook]);
+            vi.mocked(createMessage).mockResolvedValue({} as unknown as Message);
+            vi.mocked(createChatLorebook).mockResolvedValue({} as unknown as Lorebook);
+        });
+
+        it('should fork chat successfully using store CRUDs', async () => {
+            const newChatId = await forkChat('msg-2');
+
+            expect(newChatId).toBe('new-chat-id');
+            // Verifies high-level store CRUDs were called instead of services directly
+            expect(createChat).toHaveBeenCalledWith(
+                'char-1',
+                expect.objectContaining({ title: 'Test Chat (Fork)' })
+            );
+            expect(createMessage).toHaveBeenCalledTimes(2);
+            expect(createChatLorebook).toHaveBeenCalledWith(
+                'new-chat-id',
+                expect.objectContaining({ content: 'some content' })
+            );
+        });
+
+        it('should throw error if message is not found (propagated from getMessage)', async () => {
+            vi.mocked(getMessage).mockRejectedValue(new AppError('NOT_FOUND', '...'));
+
+            await expect(forkChat('msg-not-found')).rejects.toThrow(AppError);
         });
     });
 });
