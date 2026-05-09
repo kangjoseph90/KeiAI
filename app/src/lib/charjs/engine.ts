@@ -108,7 +108,7 @@ function destroyInstance(key: string, instance: CharJSInstance): void {
         }
         for (const listeners of instance.eventListeners.values()) {
             for (const h of listeners) {
-                if (h.alive) h.dispose();
+                if (h.fnHandle.alive) h.fnHandle.dispose();
             }
         }
         for (const { fnHandle } of instance.macroHandlers.values()) {

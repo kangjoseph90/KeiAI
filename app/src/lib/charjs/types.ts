@@ -13,9 +13,9 @@ export interface CharJSInstance {
     allowLowLevel: boolean;
     runtime: QuickJSAsyncRuntime;
     ctx: QuickJSAsyncContext;
-    pipelineHandlers: Map<string, Array<{ order: number; fnHandle: QuickJSHandle }>>;
-    eventListeners: Map<string, QuickJSHandle[]>;
-    macroHandlers: Map<string, { fnHandle: QuickJSHandle; recursive?: boolean }>;
+    pipelineHandlers: Map<string, Array<{ id: string; order: number; fnHandle: QuickJSHandle }>>;
+    eventListeners: Map<string, Array<{ id: string; fnHandle: QuickJSHandle }>>;
+    macroHandlers: Map<string, { id: string; fnHandle: QuickJSHandle; recursive?: boolean }>;
     lastAccessed: number;
     mutex: Mutex;
 }

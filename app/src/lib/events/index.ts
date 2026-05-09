@@ -59,7 +59,7 @@ async function emitCharJSEvents(chatId: string, event: string, data?: unknown): 
         for (const listener of listeners) {
             // Fire and forget to prevent deadlock, and use setTimeout (macro-task) to prevent UI freezing
             setTimeout(() => {
-                invokeHandler(instance, listener, data ?? null).catch((err) => {
+                invokeHandler(instance, listener.fnHandle, data ?? null).catch((err) => {
                     console.error(
                         `Event '${event}' handler error for script ${instance.charjs.name}:`,
                         err

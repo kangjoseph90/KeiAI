@@ -10,6 +10,7 @@ import type { CharJSInstance } from './types';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
 import { getChatVariable, setChatVariable } from '$lib/managers';
+import { generateId } from '$lib/utils/id';
 
 export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance): void {
     const keiObj = ctx.newObject();
@@ -27,6 +28,7 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
     const onPipelineFn = ctx.newFunction('onPipeline', (...args) => {
         const [phaseHandle, fnHandle, optsHandle] = args;
         const phase = ctx.getString(phaseHandle);
+        const id = generateId();
 
         let order = 100;
         if (optsHandle) {
@@ -42,7 +44,19 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
 
         // Dup the handle so it survives past evalCodeAsync
         const dupedFn = fnHandle.dup();
-        instance.pipelineHandlers.get(phase)!.push({ order, fnHandle: dupedFn });
+        instance.pipelineHandlers.get(phase)!.push({ id, order, fnHandle: dupedFn });
+
+        // Return unregister function
+        return ctx.newFunction('unregister', () => {
+            const handlers = instance.pipelineHandlers.get(phase);
+            if (handlers) {
+                const idx = handlers.findIndex((h) => h.id === id);
+                if (idx !== -1) {
+                    const [removed] = handlers.splice(idx, 1);
+                    if (removed.fnHandle.alive) removed.fnHandle.dispose();
+                }
+            }
+        });
     });
     ctx.setProp(keiObj, 'onPipeline', onPipelineFn);
     onPipelineFn.dispose();
@@ -51,13 +65,26 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
     const onEventFn = ctx.newFunction('onEvent', (...args) => {
         const [eventHandle, fnHandle] = args;
         const event = ctx.getString(eventHandle);
+        const id = generateId();
 
         if (!instance.eventListeners.has(event)) {
             instance.eventListeners.set(event, []);
         }
 
         const dupedFn = fnHandle.dup();
-        instance.eventListeners.get(event)!.push(dupedFn);
+        instance.eventListeners.get(event)!.push({ id, fnHandle: dupedFn });
+
+        // Return unregister function
+        return ctx.newFunction('unregister', () => {
+            const listeners = instance.eventListeners.get(event);
+            if (listeners) {
+                const idx = listeners.findIndex((h) => h.id === id);
+                if (idx !== -1) {
+                    const [removed] = listeners.splice(idx, 1);
+                    if (removed.fnHandle.alive) removed.fnHandle.dispose();
+                }
+            }
+        });
     });
     ctx.setProp(keiObj, 'onEvent', onEventFn);
     onEventFn.dispose();
@@ -65,7 +92,13 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
     // ── KeiAPI.registerMacro(name, fn, opts?) ─────────────────
     const registerMacroFn = ctx.newFunction('registerMacro', (nameHandle, fnHandle, optsHandle) => {
         const name = ctx.getString(nameHandle);
+
+        // Cleanup old handler if exists
+        const old = instance.macroHandlers.get(name);
+        if (old && old.fnHandle.alive) old.fnHandle.dispose();
+
         const dupedFn = fnHandle.dup();
+        const id = generateId();
 
         let recursive: boolean | undefined;
         if (optsHandle) {
@@ -75,7 +108,16 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
             }
         }
 
-        instance.macroHandlers.set(name, { fnHandle: dupedFn, recursive });
+        instance.macroHandlers.set(name, { id, fnHandle: dupedFn, recursive });
+
+        // Return unregister function
+        return ctx.newFunction('unregister', () => {
+            const current = instance.macroHandlers.get(name);
+            if (current && current.id === id) {
+                instance.macroHandlers.delete(name);
+                if (current.fnHandle.alive) current.fnHandle.dispose();
+            }
+        });
     });
     ctx.setProp(keiObj, 'registerMacro', registerMacroFn);
     registerMacroFn.dispose();

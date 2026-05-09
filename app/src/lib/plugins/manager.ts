@@ -189,6 +189,31 @@ export class PluginManager {
             eventListeners.get(eventStr)!.push(String(fnId));
         });
 
+        broker.expose('core.offPipeline', (phase: unknown, fnId: unknown) => {
+            const phaseStr = String(phase);
+            const handlers = pipelineHandlers.get(phaseStr);
+            if (handlers) {
+                const idx = handlers.findIndex((h) => h.fnId === String(fnId));
+                if (idx !== -1) handlers.splice(idx, 1);
+            }
+        });
+
+        broker.expose('core.offEvent', (event: unknown, fnId: unknown) => {
+            const eventStr = String(event);
+            const listeners = eventListeners.get(eventStr);
+            if (listeners) {
+                const idx = listeners.indexOf(String(fnId));
+                if (idx !== -1) listeners.splice(idx, 1);
+            }
+        });
+
+        broker.expose('core.offMacro', (name: unknown, fnId: unknown) => {
+            const current = macroHandlers.get(String(name));
+            if (current && current.fnId === String(fnId)) {
+                macroHandlers.delete(String(name));
+            }
+        });
+
         broker.expose('core.onUnload', (fnId: unknown) => {
             unloadHandlers.push(String(fnId));
         });
