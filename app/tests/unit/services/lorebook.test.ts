@@ -48,10 +48,12 @@ describe('LorebookService', () => {
 
     const defaultLorebookParams = {
         name: 'Test Lore',
-        keys: ['key1', 'key2'],
+        key: 'key1, key2',
+        secondKey: '',
         content: 'Content',
-        insertionDepth: 2,
-        enabled: true
+        depth: 2,
+        disabled: false,
+        useMultipleKeys: true
     };
 
     beforeEach(() => {
@@ -84,7 +86,7 @@ describe('LorebookService', () => {
             expect(result).toHaveLength(1);
             expect(result[0].id).toBe('lb-1');
             expect(result[0].name).toBe('Test Lore');
-            expect(result[0].keys).toEqual(['key1', 'key2']);
+            expect(result[0].key).toBe('key1, key2');
         });
     });
 
@@ -126,7 +128,7 @@ describe('LorebookService', () => {
             expect(result.id).toBe('test-id');
             expect(result.ownerId).toBe('owner-1');
             expect(result.name).toBe('Custom Name');
-            expect(result.insertionDepth).toBe(0); // From defaults
+            expect(result.depth).toBe(0); // From defaults
 
             expect(localDB.putRecord).toHaveBeenCalledWith(
                 'lorebooks',
@@ -135,7 +137,7 @@ describe('LorebookService', () => {
                     ownerId: 'owner-1',
                     data: expect.objectContaining({
                         name: 'Custom Name',
-                        insertionDepth: 0
+                        depth: 0
                     })
                 })
             );

@@ -5,17 +5,29 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
+import type { LLMRole } from '$lib/types/models/llm';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface LorebookFields {
     name: string;
-    keys: string[];
+    key: string;
+    secondKey: string;
     content: string;
-    insertionDepth: number;
-    enabled: boolean;
-    regex?: string;
-    probability?: number;
+
+    depth: number;
+    order: number;
+
+    alwaysActive: boolean;
+    disabled: boolean;
+
+    role: LLMRole;
+    useRegex: boolean;
+    useMultipleKeys: boolean;
+    scanDepth?: number;
+    probability: number;
+    recursive: boolean; // triggers other lorebooks when this lorebook is activated
+    noRecursiveSearch: boolean; // prevents this lorebook from being triggered by other lorebooks
 }
 
 export interface Lorebook extends LorebookFields {
@@ -27,10 +39,19 @@ export interface Lorebook extends LorebookFields {
 
 const defaultLorebookFields: LorebookFields = {
     name: 'New Lorebook',
-    keys: [],
+    key: '',
+    secondKey: '',
     content: '',
-    insertionDepth: 0,
-    enabled: true
+    depth: 0,
+    order: 100,
+    alwaysActive: false,
+    disabled: false,
+    role: 'system',
+    useRegex: false,
+    useMultipleKeys: false,
+    probability: 100,
+    recursive: false,
+    noRecursiveSearch: false
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────

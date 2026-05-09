@@ -176,10 +176,19 @@ describe('Module Store', () => {
                 id: 'lb-1',
                 name: 'LB',
                 ownerId: 'mod-1',
-                keys: [],
+                key: '',
+                secondKey: '',
                 content: '{}',
-                insertionDepth: 0,
-                enabled: true
+                depth: 0,
+                order: 100,
+                alwaysActive: false,
+                disabled: false,
+                role: 'system',
+                useRegex: false,
+                useMultipleKeys: false,
+                probability: 100,
+                recursive: false,
+                noRecursiveSearch: false
             };
             vi.mocked(LorebookService.create).mockResolvedValue(mockLb);
             vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);

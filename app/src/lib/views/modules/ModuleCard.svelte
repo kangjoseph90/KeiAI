@@ -217,9 +217,10 @@
                             onclick={() =>
                                 createModuleLorebook(mod.id, {
                                     name: 'New Lorebook',
-                                    keys: [],
+                                    key: '',
+                                    secondKey: '',
                                     content: '',
-                                    enabled: true
+                                    disabled: false
                                 })}
                         >
                             <Plus class="size-3" /> Add

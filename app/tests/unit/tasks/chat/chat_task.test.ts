@@ -113,7 +113,7 @@ vi.mock('$lib/charjs', () => ({
     invokeHandler: vi.fn()
 }));
 
-vi.mock('$lib/llm/prompt/builder', () => ({
+vi.mock('$lib/tasks/chat/prompt', () => ({
     buildPrompt: vi.fn().mockResolvedValue([])
 }));
 
@@ -145,7 +145,7 @@ import {
 } from '$lib/stores/content/message';
 import { MessageService } from '$lib/services/content/message';
 import { getChat } from '$lib/stores';
-import { buildPrompt } from '$lib/llm/prompt/builder';
+import { buildPrompt } from '$lib/tasks/chat/prompt';
 import { selectLLMHandler } from '$lib/llm/handler';
 import type { Chat, Message } from '$lib/services';
 

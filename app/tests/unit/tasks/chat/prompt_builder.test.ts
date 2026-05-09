@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildPrompt } from '$lib/llm/prompt/builder';
+import { buildPrompt } from '$lib/tasks/chat/prompt';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
 import type { Character, Chat, Message, Preset, PromptBlock } from '$lib/services';
 import type { LLMModelConfig } from '$lib/types/models/llm';
+import type { Macro, TemplateContext } from '$lib/template';
 
 const {
     mockCollectTemplateMacros,
@@ -63,6 +64,7 @@ function makePreset(promptBlocks: Record<string, PromptBlock>): Preset {
         maxResponse: 6000,
         maxContext: 60000,
         lorebookRatio: 0.2,
+        lorebookScanDepth: 5,
         memoryRatio: 0.2
     };
 }
@@ -94,7 +96,13 @@ describe('buildPrompt', () => {
         vi.clearAllMocks();
         mockCollectTemplateMacros.mockResolvedValue(new Map());
         mockCollectPipelineHandlers.mockResolvedValue([]);
-        mockRunTemplate.mockImplementation(async (text: string) => text);
+        mockRunTemplate.mockImplementation(
+            async (text: string, ctx?: TemplateContext, macros?: ReadonlyMap<string, Macro>) => {
+                const slot = macros?.get('slot');
+                if (text === '{{slot}}' && slot) return slot.run([], ctx ?? {});
+                return text;
+            }
+        );
         mockRunPipelineHandlers.mockImplementation(
             async (_handlers: unknown[], data: string) => data
         );
@@ -245,7 +253,13 @@ describe('buildPrompt', () => {
             }
         });
 
-        mockRunTemplate.mockImplementation(async (text: string) => `template(${text})`);
+        mockRunTemplate.mockImplementation(
+            async (text: string, ctx?: TemplateContext, macros?: ReadonlyMap<string, Macro>) => {
+                const slot = macros?.get('slot');
+                const resolved = text === '{{slot}}' && slot ? await slot.run([], ctx ?? {}) : text;
+                return `template(${resolved})`;
+            }
+        );
         mockRunPipelineHandlers.mockImplementation(
             async (_handlers: unknown[], data: string) => `request(${data})`
         );

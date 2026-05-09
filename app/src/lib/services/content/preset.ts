@@ -13,13 +13,20 @@ import { ScriptService } from './script';
 
 export type PromptBlockFields =
     | { name: string; type: 'text'; role: LLMRole; content: string }
-    | { name: string; type: 'character'; role: LLMRole }
-    | { name: string; type: 'persona'; role: LLMRole }
-    | { name: string; type: 'lorebook'; role: LLMRole }
-    | { name: string; type: 'memory'; role: LLMRole }
-    | { name: string; type: 'characterNote'; role: LLMRole }
-    | { name: string; type: 'chatNote'; role: LLMRole }
-    | { name: string; type: 'history'; start?: number; end?: number };
+    | { name: string; type: 'character'; role: LLMRole; format?: string }
+    | { name: string; type: 'persona'; role: LLMRole; format?: string }
+    | {
+          name: string;
+          type: 'lorebook';
+          minDepth?: number;
+          maxDepth?: number;
+          reverseOrder?: boolean;
+          format?: string;
+      }
+    | { name: string; type: 'memory'; role: LLMRole; format?: string }
+    | { name: string; type: 'characterNote'; role: LLMRole; format?: string }
+    | { name: string; type: 'chatNote'; role: LLMRole; format?: string }
+    | { name: string; type: 'history'; start?: number; end?: number; format?: string };
 
 export type PromptBlock = PromptBlockFields & {
     id: string;
@@ -37,6 +44,7 @@ export interface PresetContent {
     maxContext: number;
     lorebookRatio: number;
     memoryRatio: number;
+    lorebookScanDepth: number;
 }
 
 export interface PresetRefs {
@@ -60,7 +68,8 @@ export const defaultPresetFields: PresetFields = {
     maxResponse: 6000,
     maxContext: 60000,
     lorebookRatio: 0.2,
-    memoryRatio: 0.2
+    memoryRatio: 0.2,
+    lorebookScanDepth: 5
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────

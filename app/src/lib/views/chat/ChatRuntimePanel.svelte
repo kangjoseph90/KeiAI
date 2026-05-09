@@ -63,10 +63,11 @@
         if (!newChatLorebookName.trim()) return;
         await createChatLorebook(chatId, {
             name: newChatLorebookName,
-            keys: [],
+            key: '',
+            secondKey: '',
             content: '',
-            insertionDepth: 0,
-            enabled: true
+            depth: 0,
+            disabled: false
         });
         newChatLorebookName = '';
     }

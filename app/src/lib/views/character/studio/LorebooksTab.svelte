@@ -20,10 +20,11 @@
         if (!newLorebookName.trim()) return;
         await onCreate({
             name: newLorebookName,
-            keys: [],
+            key: '',
+            secondKey: '',
             content: '',
-            insertionDepth: 0,
-            enabled: true
+            depth: 0,
+            disabled: false
         });
         newLorebookName = '';
     }

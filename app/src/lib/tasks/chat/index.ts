@@ -31,11 +31,11 @@ import {
     getLastMessage,
     prepareNextSwipe
 } from '$lib/stores/content/message';
-import { buildPrompt } from '../llm/prompt/builder';
-import { selectLLMHandler } from '../llm/handler';
-import { runPipeline } from '../pipeline';
-import { runTemplate } from '../template';
-import type { TemplateContext } from '../template';
+import { buildPrompt } from './prompt';
+import { selectLLMHandler } from '../../llm/handler';
+import { runPipeline } from '../../pipeline';
+import { runTemplate } from '../../template';
+import type { TemplateContext } from '../../template';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
 
