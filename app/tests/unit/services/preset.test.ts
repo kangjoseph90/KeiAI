@@ -64,7 +64,8 @@ describe('PresetService', () => {
         maxContext: 4096,
         lorebookRatio: 0.2,
         lorebookScanDepth: 5,
-        memoryRatio: 0.2
+        memoryRatio: 0.2,
+        scripts: { refs: {}, folders: {} }
     };
 
     const mockRecord: PresetRecord = {

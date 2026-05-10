@@ -9,14 +9,12 @@ import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
  * Returns app settings from store cache first, then from DB if needed.
- * Explicitly throws error if not found
+ * Ensure existence, create if needed.
  */
 export async function getAppSettings(): Promise<AppSettings> {
     const active = get(appSettings);
     if (active) return active;
-    const db = await SettingsService.get();
-    if (!db) throw new AppError('NOT_FOUND', 'Settings not found');
-    return db;
+    return SettingsService.get();
 }
 
 /**
@@ -43,13 +41,10 @@ export async function createGlobalFolder(
 ): Promise<FolderDef> {
     const settings = await getAppSettings();
 
-    const config = settings[folderType] as EntityListConfig | undefined;
-    const existingFolders = config?.folders ?? {};
-
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(existingFolders),
+        sortOrder: generateSortOrder(settings[folderType].folders),
         parentId
     };
 
@@ -66,9 +61,7 @@ export async function updateGlobalFolder(
 ): Promise<void> {
     const settings = await getAppSettings();
 
-    const config = settings[folderType] as EntityListConfig | undefined;
-    const existingFolders = config?.folders ?? {};
-    const existing = existingFolders[folderId];
+    const existing = settings[folderType].folders[folderId];
     if (!existing) return;
 
     const updated: FolderDef = { ...existing, ...changes, id: existing.id };
@@ -95,9 +88,7 @@ export async function moveGlobalItem(
 ): Promise<void> {
     const settings = await getAppSettings();
 
-    const config = settings[folderType] as EntityListConfig | undefined;
-    const refs = config?.refs ?? {};
-    const existing = refs[itemId];
+    const existing = settings[folderType].refs[itemId];
     if (!existing) return;
 
     await updateSettings({

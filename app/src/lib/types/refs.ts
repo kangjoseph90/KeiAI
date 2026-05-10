@@ -34,6 +34,6 @@ export interface AssetRef {
 
 /** Grouped ref + folder config for an entity list */
 export interface EntityListConfig<R extends OrderedRef = OrderedRef> {
-    refs?: Record<string, R>;
-    folders?: Record<string, FolderDef>;
+    refs: Record<string, R>;
+    folders: Record<string, FolderDef>;
 }

@@ -37,16 +37,14 @@ import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
  * Returns character from store cache first, then from DB if needed.
- * Explicitly throws error if not found
+ * Returns null if not found.
  */
-export async function getCharacter(characterId: string): Promise<Character> {
+export async function getCharacter(characterId: string): Promise<Character | null> {
     const active = get(activeCharacter);
     if (active?.id === characterId) return active;
     const cached = characters.get(characterId);
     if (cached) return cached;
-    const db = await CharacterService.get(characterId);
-    if (!db) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-    return db;
+    return CharacterService.get(characterId);
 }
 
 /**
@@ -59,9 +57,10 @@ export async function getCharacterLorebooks(characterId: string): Promise<Lorebo
         return get(characterLorebooks);
     }
     const char = await getCharacter(characterId);
-    const refs = char.lorebooks?.refs;
-    if (!refs) return [];
-    const results = await Promise.all(Object.keys(refs).map((id) => LorebookService.get(id)));
+    if (!char) return [];
+    const results = await Promise.all(
+        Object.keys(char.lorebooks.refs).map((id) => LorebookService.get(id))
+    );
     return results.filter((lb): lb is Lorebook => lb !== null);
 }
 
@@ -75,9 +74,10 @@ export async function getCharacterScripts(characterId: string): Promise<Script[]
         return get(characterScripts);
     }
     const char = await getCharacter(characterId);
-    const refs = char.scripts?.refs;
-    if (!refs) return [];
-    const results = await Promise.all(Object.keys(refs).map((id) => ScriptService.get(id)));
+    if (!char) return [];
+    const results = await Promise.all(
+        Object.keys(char.scripts.refs).map((id) => ScriptService.get(id))
+    );
     return results.filter((sc): sc is Script => sc !== null);
 }
 
@@ -88,25 +88,20 @@ export async function getCharacterScripts(characterId: string): Promise<Script[]
 export async function loadCharacters(): Promise<void> {
     const settings = await getAppSettings();
     const list = await CharacterService.list();
-    const refs = settings?.characters?.refs;
-    if (refs) {
-        characters.setAll(sortByRefs(list, refs));
-    } else {
-        characters.setAll(list);
-    }
+    characters.setAll(sortByRefs(list, settings.characters.refs));
 }
 
 export async function selectCharacter(characterId: string): Promise<void> {
     const character = await getCharacter(characterId);
+    if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
     activeCharacter.set(character);
 
     clearActiveChat();
     const chatList = await ChatService.listByCharacter(characterId);
-    chats.setAll(sortByRefs(chatList, character.chats?.refs ?? {}));
+    chats.setAll(sortByRefs(chatList, character.chats.refs));
 
-    const moduleRefs = character.modules?.refs ?? {};
-    const moduleIds = new Set(Object.keys(moduleRefs));
+    const moduleIds = new Set(Object.keys(character.modules.refs));
     characterModules.setAll(get(modules).filter((m) => moduleIds.has(m.id)));
 
     const [lorebooks, scripts, charjs] = await Promise.all([
@@ -115,9 +110,9 @@ export async function selectCharacter(characterId: string): Promise<void> {
         CharJSService.listByOwner(characterId)
     ]);
 
-    characterLorebooks.setAll(sortByRefs(lorebooks, character.lorebooks?.refs ?? {}));
-    characterScripts.setAll(sortByRefs(scripts, character.scripts?.refs ?? {}));
-    characterCharJS.setAll(sortByRefs(charjs, character.charjs?.refs ?? {}));
+    characterLorebooks.setAll(sortByRefs(lorebooks, character.lorebooks.refs));
+    characterScripts.setAll(sortByRefs(scripts, character.scripts.refs));
+    characterCharJS.setAll(sortByRefs(charjs, character.charjs.refs));
 }
 
 export function clearActiveCharacter(): void {
@@ -161,8 +156,7 @@ export async function createCharacter(
     const character = await CharacterService.create(fields);
 
     // Add to parent's refs
-    const refs = settings.characters?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(settings.characters.refs);
     try {
         await updateSettings({
             characters: { refs: { [character.id]: { id: character.id, sortOrder } } }
@@ -225,6 +219,7 @@ export async function deleteCharacterGreeting(
 
 export async function updateCharacterAvatar(characterId: string, file: File): Promise<void> {
     const character = await getCharacter(characterId);
+    if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
     const oldAssetId = character.avatarAssetId;
 
     const newAssetId = await AssetService.write(file, 'resource');
@@ -237,6 +232,7 @@ export async function updateCharacterAvatar(characterId: string, file: File): Pr
 
 export async function removeCharacterAvatar(characterId: string): Promise<void> {
     const character = await getCharacter(characterId);
+    if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
     const oldAssetId = character.avatarAssetId;
 
     if (!oldAssetId) return;
@@ -249,7 +245,7 @@ export async function deleteCharacter(characterId: string): Promise<void> {
     const settings = await getAppSettings();
 
     // Capture ref for potential rollback
-    const existingRef = settings.characters?.refs?.[characterId];
+    const existingRef = settings.characters.refs[characterId];
 
     // Remove from parent's refs
     await updateSettings({ characters: { refs: { [characterId]: undefined } } });
@@ -277,11 +273,11 @@ export async function createCharacterLorebook(
     fields: DeepPartial<LorebookFields>
 ): Promise<Lorebook> {
     const char = await getCharacter(characterId);
+    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
     const lb = await LorebookService.create(characterId, fields);
 
-    const refs = char.lorebooks?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(char.lorebooks.refs);
     try {
         await updateCharacter(characterId, {
             lorebooks: { refs: { [lb.id]: { id: lb.id, sortOrder } } }
@@ -303,9 +299,10 @@ export async function deleteCharacterLorebook(
     lorebookId: string
 ): Promise<void> {
     const char = await getCharacter(characterId);
+    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
     // Capture ref for potential rollback
-    const existingRef = char.lorebooks?.refs?.[lorebookId];
+    const existingRef = char.lorebooks.refs[lorebookId];
 
     // Remove from parent's refs
     await updateCharacter(characterId, { lorebooks: { refs: { [lorebookId]: undefined } } });
@@ -340,11 +337,11 @@ export async function createCharacterScript(
     fields: DeepPartial<ScriptFields>
 ): Promise<Script> {
     const char = await getCharacter(characterId);
+    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
     const sc = await ScriptService.create(characterId, fields);
 
-    const refs = char.scripts?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(char.scripts.refs);
     try {
         await updateCharacter(characterId, {
             scripts: { refs: { [sc.id]: { id: sc.id, sortOrder } } }
@@ -363,9 +360,10 @@ export async function createCharacterScript(
 
 export async function deleteCharacterScript(characterId: string, scriptId: string): Promise<void> {
     const char = await getCharacter(characterId);
+    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
     // Capture ref for potential rollback
-    const existingRef = char.scripts?.refs?.[scriptId];
+    const existingRef = char.scripts.refs[scriptId];
 
     // Remove from parent's refs
     await updateCharacter(characterId, { scripts: { refs: { [scriptId]: undefined } } });
@@ -400,10 +398,10 @@ export async function createCharacterCharJS(
     fields: DeepPartial<CharJSFields>
 ): Promise<CharJS> {
     const char = await getCharacter(characterId);
+    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
     const cjs = await CharJSService.create(characterId, fields);
 
-    const refs = char.charjs?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(char.charjs.refs);
     try {
         await updateCharacter(characterId, {
             charjs: { refs: { [cjs.id]: { id: cjs.id, sortOrder } } }
@@ -422,9 +420,10 @@ export async function createCharacterCharJS(
 
 export async function deleteCharacterCharJS(characterId: string, charjsId: string): Promise<void> {
     const char = await getCharacter(characterId);
+    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
     // Capture ref for potential rollback
-    const existingRef = char.charjs?.refs?.[charjsId];
+    const existingRef = char.charjs.refs[charjsId];
 
     // Remove from parent's refs
     await updateCharacter(characterId, { charjs: { refs: { [charjsId]: undefined } } });
@@ -463,14 +462,12 @@ export async function createCharacterFolder(
     parentId?: string
 ): Promise<FolderDef> {
     const char = await getCharacter(characterId);
-
-    const config = char[folderType] as EntityListConfig | undefined;
-    const existingFolders = config?.folders ?? {};
+    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(existingFolders),
+        sortOrder: generateSortOrder(char[folderType].folders),
         parentId
     };
 
@@ -488,10 +485,9 @@ export async function updateCharacterFolder(
     changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
     const char = await getCharacter(characterId);
+    if (!char) return;
 
-    const config = char[folderType] as EntityListConfig | undefined;
-    const existingFolders = config?.folders ?? {};
-    const existing = existingFolders[folderId];
+    const existing = char[folderType].folders[folderId];
     if (!existing) return;
 
     const updated: FolderDef = { ...existing, ...changes, id: existing.id };
@@ -519,10 +515,9 @@ export async function moveCharacterItem(
     newSortOrder?: string
 ): Promise<void> {
     const char = await getCharacter(characterId);
+    if (!char) return;
 
-    const config = char[folderType] as EntityListConfig | undefined;
-    const refs = config?.refs ?? {};
-    const existing = refs[itemId];
+    const existing = char[folderType].refs[itemId];
     if (!existing) return;
 
     await updateCharacter(characterId, {

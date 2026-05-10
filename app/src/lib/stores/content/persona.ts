@@ -9,14 +9,12 @@ import { AssetService } from '$lib/services/asset';
 
 /**
  * Returns persona from store cache first, then from DB if needed.
- * Explicitly throws error if not found
+ * Returns null if not found.
  */
-export async function getPersona(personaId: string): Promise<Persona> {
+export async function getPersona(personaId: string): Promise<Persona | null> {
     const cached = personas.get(personaId);
     if (cached) return cached;
-    const db = await PersonaService.get(personaId);
-    if (!db) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
-    return db;
+    return PersonaService.get(personaId);
 }
 
 /**
@@ -26,16 +24,12 @@ export async function getPersona(personaId: string): Promise<Persona> {
 export async function loadPersonas(): Promise<void> {
     const settings = await getAppSettings();
     const list = await PersonaService.list();
-    const refs = settings?.personas?.refs;
-    if (refs) {
-        personas.setAll(sortByRefs(list, refs));
-    } else {
-        personas.setAll(list);
-    }
+    personas.setAll(sortByRefs(list, settings.personas.refs));
 }
 
 export async function selectPersona(personaId: string): Promise<void> {
-    await getPersona(personaId);
+    const persona = await getPersona(personaId);
+    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
     await updateSettings({ personaId: personaId });
 }
 
@@ -46,8 +40,7 @@ export async function createPersona(fields: DeepPartial<PersonaFields> = {}): Pr
     const persona = await PersonaService.create(fields);
 
     // Add to parent's refs
-    const refs = settings.personas?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(settings.personas.refs);
     try {
         await updateSettings({
             personas: { refs: { [persona.id]: { id: persona.id, sortOrder } } }
@@ -81,7 +74,7 @@ export async function deletePersona(personaId: string): Promise<void> {
     const settings = await getAppSettings();
 
     // Capture ref for potential rollback
-    const existingRef = settings.personas?.refs?.[personaId];
+    const existingRef = settings.personas.refs[personaId];
 
     // If deleting the selected persona, determine a fallback
     const isDeletingSelected = settings.personaId === personaId;
@@ -111,6 +104,7 @@ export async function deletePersona(personaId: string): Promise<void> {
 
 export async function updatePersonaAvatar(personaId: string, file: File): Promise<void> {
     const persona = await getPersona(personaId);
+    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
     const oldAssetId = persona.avatarAssetId;
 
     const newAssetId = await AssetService.write(file, 'resource');
@@ -123,6 +117,7 @@ export async function updatePersonaAvatar(personaId: string, file: File): Promis
 
 export async function removePersonaAvatar(personaId: string): Promise<void> {
     const persona = await getPersona(personaId);
+    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
     const oldAssetId = persona.avatarAssetId;
 
     if (!oldAssetId) return;

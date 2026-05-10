@@ -71,7 +71,8 @@ describe('Chat Store', () => {
         id: 'chat-1',
         characterId: 'char-1',
         title: 'Test Chat',
-        chatNote: ''
+        chatNote: '',
+        lorebooks: { refs: {}, folders: {} }
     };
 
     const mockCharacter: Character = {
@@ -80,7 +81,14 @@ describe('Chat Store', () => {
         description: '',
         characterNote: '',
         greetings: {},
-        allowLowLevel: false
+        defaultVariables: {},
+        allowLowLevel: false,
+        chats: { refs: {}, folders: {} },
+        modules: { refs: {}, folders: {} },
+        lorebooks: { refs: {}, folders: {} },
+        scripts: { refs: {}, folders: {} },
+        charjs: { refs: {}, folders: {} },
+        assets: []
     };
 
     beforeEach(() => {
@@ -121,7 +129,10 @@ describe('Chat Store', () => {
             vi.mocked(ChatService.create).mockResolvedValue(mockChat);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'sort-order' } } }
+                chats: {
+                    refs: { 'chat-1': { id: 'chat-1', sortOrder: 'sort-order' } },
+                    folders: {}
+                }
             });
 
             const result = await createChat('char-1', { title: 'New Chat' });
@@ -154,13 +165,13 @@ describe('Chat Store', () => {
         it('should delete chat and remove from character refs', async () => {
             const charWithRefs = {
                 ...mockCharacter,
-                chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a' } } }
+                chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a' } }, folders: {} }
             };
             activeCharacter.set(charWithRefs);
             chats.setAll([mockChat]);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                chats: { refs: {} }
+                chats: { refs: {}, folders: {} }
             });
             vi.mocked(ChatService.delete).mockResolvedValue(undefined);
 
@@ -179,6 +190,7 @@ describe('Chat Store', () => {
             vi.mocked(ChatService.update).mockResolvedValue({
                 ...mockChat,
                 lorebooks: {
+                    refs: {},
                     folders: {
                         'new-id': { id: 'new-id', name: 'My Folder', sortOrder: 'sort-order' }
                     }
@@ -195,12 +207,12 @@ describe('Chat Store', () => {
             const folder: FolderDef = { id: 'f1', name: 'Old', sortOrder: 'a' };
             const chatWithFolder = {
                 ...mockChat,
-                lorebooks: { folders: { f1: folder } }
+                lorebooks: { refs: {}, folders: { f1: folder } }
             };
             activeChat.set(chatWithFolder);
             vi.mocked(ChatService.update).mockResolvedValue({
                 ...mockChat,
-                lorebooks: { folders: { f1: { ...folder, name: 'New' } } }
+                lorebooks: { refs: {}, folders: { f1: { ...folder, name: 'New' } } }
             });
 
             await updateChatFolder('chat-1', 'lorebooks', 'f1', { name: 'New' });
@@ -212,12 +224,12 @@ describe('Chat Store', () => {
             const folder: FolderDef = { id: 'f1', name: 'Delete Me', sortOrder: 'a' };
             const chatWithFolder = {
                 ...mockChat,
-                lorebooks: { folders: { f1: folder } }
+                lorebooks: { refs: {}, folders: { f1: folder } }
             };
             activeChat.set(chatWithFolder);
             vi.mocked(ChatService.update).mockResolvedValue({
                 ...mockChat,
-                lorebooks: { folders: {} }
+                lorebooks: { refs: {}, folders: {} }
             });
 
             await deleteChatFolder('chat-1', 'lorebooks', 'f1');
@@ -230,19 +242,20 @@ describe('Chat Store', () => {
         it('should move lorebook to a different folder', async () => {
             const chatWithRefs = {
                 ...mockChat,
-                lorebooks: { refs: { 'lb-1': { id: 'lb-1', sortOrder: 'a' } } }
+                lorebooks: { refs: { 'lb-1': { id: 'lb-1', sortOrder: 'a' } }, folders: {} }
             };
             activeChat.set(chatWithRefs);
             vi.mocked(ChatService.update).mockResolvedValue({
                 ...mockChat,
                 lorebooks: {
-                    refs: { 'lb-1': { id: 'lb-1', sortOrder: 'a', folderId: 'folder-1' } }
+                    refs: { 'lb-1': { id: 'lb-1', sortOrder: 'a', folderId: 'folder-1' } },
+                    folders: {}
                 }
             });
 
             await moveChatItem('chat-1', 'lorebooks', 'lb-1', 'folder-1');
 
-            expect(get(activeChat)?.lorebooks?.refs?.['lb-1']?.folderId).toBe('folder-1');
+            expect(get(activeChat)?.lorebooks.refs['lb-1']?.folderId).toBe('folder-1');
         });
     });
 });

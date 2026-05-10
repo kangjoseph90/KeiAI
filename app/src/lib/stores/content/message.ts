@@ -29,13 +29,11 @@ import { getChat, updateChat } from './chat';
  * then falls back to IDB if not cached.
  * Follows the same pattern as getModule(), getChat(), etc.
  */
-export async function getMessage(messageId: string): Promise<Message> {
+export async function getMessage(messageId: string): Promise<Message | null> {
     const cached = messages.get(messageId);
     if (cached) return cached;
 
-    const db = await MessageService.get(messageId);
-    if (!db) throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
-    return db;
+    return MessageService.get(messageId);
 }
 
 /**
@@ -45,16 +43,12 @@ export async function getMessage(messageId: string): Promise<Message> {
  * @returns
  */
 export async function getLastMessage(chatId: string): Promise<Message | null> {
-    // should throw if chat not found
     const chat = await getChat(chatId);
+    if (!chat) return null;
 
     if (chat.lastMessageId) {
-        try {
-            const message = await getMessage(chat.lastMessageId);
-            if (message.chatId === chatId) return message;
-        } catch {
-            // Stale lastMessageId; fall back to index lookup.
-        }
+        const message = await getMessage(chat.lastMessageId);
+        if (message && message.chatId === chatId) return message;
     }
 
     const [message] = await MessageService.getMessagesBefore(chatId, '\uffff', 1);
@@ -114,11 +108,12 @@ export async function createMessage(
     fields: DeepPartial<MessageFields> = {}
 ): Promise<Message> {
     const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
     let prevSortOrder: string | undefined = undefined;
     if (chat.lastMessageId) {
         const lastMessage = await getMessage(chat.lastMessageId);
-        prevSortOrder = lastMessage.sortOrder;
+        if (lastMessage) prevSortOrder = lastMessage.sortOrder;
     }
 
     const newMessage = await MessageService.create(chatId, fields, prevSortOrder);

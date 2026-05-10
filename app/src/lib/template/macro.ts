@@ -41,14 +41,14 @@ function collectBuiltInMacros(): Map<string, Macro> {
     addAliases(['char', 'bot', 'character'], async (_args, ctx) => {
         if (!ctx.characterId) return '';
         const character = await getCharacter(ctx.characterId);
-        return character.name;
+        return character?.name ?? '';
     });
     addAliases(['description', 'chardesc'], {
         recursive: true,
         run: async (_args, ctx) => {
             if (!ctx.characterId) return '';
             const character = await getCharacter(ctx.characterId);
-            return character.description;
+            return character?.description ?? '';
         }
     });
     addAliases(['characternote', 'charnote'], {
@@ -56,33 +56,33 @@ function collectBuiltInMacros(): Map<string, Macro> {
         run: async (_args, ctx) => {
             if (!ctx.characterId) return '';
             const character = await getCharacter(ctx.characterId);
-            return character.characterNote;
+            return character?.characterNote ?? '';
         }
     });
     add('user', async (_args, ctx) => {
         if (!ctx.personaId) return 'User';
         const persona = await getPersona(ctx.personaId);
-        return persona.name;
+        return persona?.name ?? 'User';
     });
     addAliases(['persona', 'userpersona'], {
         recursive: true,
         run: async (_args, ctx) => {
             if (!ctx.personaId) return '';
             const persona = await getPersona(ctx.personaId);
-            return persona.description;
+            return persona?.description ?? '';
         }
     });
     addAliases(['chat', 'chattitle'], async (_args, ctx) => {
         if (!ctx.chatId) return '';
         const chat = await getChat(ctx.chatId);
-        return chat.title;
+        return chat?.title ?? '';
     });
     add('chatnote', {
         recursive: true,
         run: async (_args, ctx) => {
             if (!ctx.chatId) return '';
             const chat = await getChat(ctx.chatId);
-            return chat.chatNote;
+            return chat?.chatNote ?? '';
         }
     });
     addAliases(['chatid'], (_args, ctx) => ctx.chatId ?? '');

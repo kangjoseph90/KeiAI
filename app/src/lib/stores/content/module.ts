@@ -25,14 +25,12 @@ import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
  * Returns module from store cache first, then from DB if needed.
- * Explicitly throws error if not found
+ * Returns null if not found.
  */
-export async function getModule(moduleId: string): Promise<Module> {
+export async function getModule(moduleId: string): Promise<Module | null> {
     const cached = modules.get(moduleId);
     if (cached) return cached;
-    const db = await ModuleService.get(moduleId);
-    if (!db) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
-    return db;
+    return ModuleService.get(moduleId);
 }
 
 /**
@@ -44,9 +42,10 @@ export async function getModuleLorebooks(moduleId: string): Promise<Lorebook[]> 
     const entry = get(moduleResources).get(moduleId);
     if (entry) return get(entry.lorebooks);
     const mod = await getModule(moduleId);
-    const refs = mod.lorebooks?.refs;
-    if (!refs) return [];
-    const results = await Promise.all(Object.keys(refs).map((id) => LorebookService.get(id)));
+    if (!mod) return [];
+    const results = await Promise.all(
+        Object.keys(mod.lorebooks.refs).map((id) => LorebookService.get(id))
+    );
     return results.filter((lb): lb is Lorebook => lb !== null);
 }
 
@@ -59,9 +58,10 @@ export async function getModuleScripts(moduleId: string): Promise<Script[]> {
     const entry = get(moduleResources).get(moduleId);
     if (entry) return get(entry.scripts);
     const mod = await getModule(moduleId);
-    const refs = mod.scripts?.refs;
-    if (!refs) return [];
-    const results = await Promise.all(Object.keys(refs).map((id) => ScriptService.get(id)));
+    if (!mod) return [];
+    const results = await Promise.all(
+        Object.keys(mod.scripts.refs).map((id) => ScriptService.get(id))
+    );
     return results.filter((sc): sc is Script => sc !== null);
 }
 
@@ -73,12 +73,7 @@ export async function loadModules(): Promise<void> {
     const settings = await getAppSettings();
     const mods = await ModuleService.list();
 
-    const refs = settings?.modules?.refs;
-    if (refs) {
-        modules.setAll(sortByRefs(mods, refs));
-    } else {
-        modules.setAll(mods);
-    }
+    modules.setAll(sortByRefs(mods, settings.modules.refs));
 
     const entries = await Promise.all(
         mods.map(async (mod) => {
@@ -88,11 +83,11 @@ export async function loadModules(): Promise<void> {
                 CharJSService.listByOwner(mod.id)
             ]);
             const lorebooksStore = new EntityStore<Lorebook>();
-            lorebooksStore.setAll(sortByRefs(lorebooks, mod.lorebooks?.refs ?? {}));
+            lorebooksStore.setAll(sortByRefs(lorebooks, mod.lorebooks.refs));
             const scriptsStore = new EntityStore<Script>();
-            scriptsStore.setAll(sortByRefs(scripts, mod.scripts?.refs ?? {}));
+            scriptsStore.setAll(sortByRefs(scripts, mod.scripts.refs));
             const charjsStore = new EntityStore<CharJS>();
-            charjsStore.setAll(sortByRefs(charjs, mod.charjs?.refs ?? {}));
+            charjsStore.setAll(sortByRefs(charjs, mod.charjs.refs));
             return [
                 mod.id,
                 { lorebooks: lorebooksStore, scripts: scriptsStore, charjs: charjsStore }
@@ -110,8 +105,7 @@ export async function createModule(fields: DeepPartial<ModuleFields> = {}): Prom
     const mod = await ModuleService.create(fields);
 
     // Add to parent's refs
-    const refs = settings.modules?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(settings.modules.refs);
     try {
         await updateSettings({
             modules: { refs: { [mod.id]: { id: mod.id, sortOrder, enabled: true } } }
@@ -157,7 +151,7 @@ export async function deleteModule(moduleId: string): Promise<void> {
     const settings = await getAppSettings();
 
     // Capture ref for potential rollback
-    const existingRef = settings.modules?.refs?.[moduleId];
+    const existingRef = settings.modules.refs[moduleId];
 
     // Remove from parent's refs
     await updateSettings({ modules: { refs: { [moduleId]: undefined } } });
@@ -182,8 +176,7 @@ export async function deleteModule(moduleId: string): Promise<void> {
 
 export async function setModuleEnabled(moduleId: string, enabled: boolean): Promise<void> {
     const settings = await getAppSettings();
-    const refs = settings.modules?.refs ?? {};
-    const existing = refs[moduleId];
+    const existing = settings.modules.refs[moduleId];
     if (!existing) return;
     await updateSettings({
         modules: { refs: { [moduleId]: { ...existing, enabled } } }
@@ -197,13 +190,13 @@ export async function createModuleLorebook(
     fields: DeepPartial<LorebookFields>
 ): Promise<Lorebook> {
     const mod = await getModule(moduleId);
+    if (!mod) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
 
     // Create Record in DB
     const lb = await LorebookService.create(moduleId, fields);
 
     // Update parent's refs
-    const refs = mod.lorebooks?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(mod.lorebooks.refs);
     try {
         await updateModule(moduleId, {
             lorebooks: { refs: { [lb.id]: { id: lb.id, sortOrder } } }
@@ -231,9 +224,10 @@ export async function updateModuleLorebook(
 
 export async function deleteModuleLorebook(moduleId: string, lorebookId: string): Promise<void> {
     const mod = await getModule(moduleId);
+    if (!mod) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
 
     // Capture ref for potential rollback
-    const existingRef = mod.lorebooks?.refs?.[lorebookId];
+    const existingRef = mod.lorebooks.refs[lorebookId];
 
     // Remove from parent's refs
     await updateModule(moduleId, { lorebooks: { refs: { [lorebookId]: undefined } } });
@@ -257,13 +251,13 @@ export async function createModuleScript(
     fields: DeepPartial<ScriptFields>
 ): Promise<Script> {
     const mod = await getModule(moduleId);
+    if (!mod) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
 
     // Create Record in DB
     const sc = await ScriptService.create(moduleId, fields);
 
     // Update parent's refs
-    const refs = mod.scripts?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(mod.scripts.refs);
     try {
         await updateModule(moduleId, {
             scripts: { refs: { [sc.id]: { id: sc.id, sortOrder } } }
@@ -291,9 +285,10 @@ export async function updateModuleScript(
 
 export async function deleteModuleScript(moduleId: string, scriptId: string): Promise<void> {
     const mod = await getModule(moduleId);
+    if (!mod) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
 
     // Capture ref for potential rollback
-    const existingRef = mod.scripts?.refs?.[scriptId];
+    const existingRef = mod.scripts.refs[scriptId];
 
     // Remove from parent's refs
     await updateModule(moduleId, { scripts: { refs: { [scriptId]: undefined } } });
@@ -317,11 +312,11 @@ export async function createModuleCharJS(
     fields: DeepPartial<CharJSFields>
 ): Promise<CharJS> {
     const mod = await getModule(moduleId);
+    if (!mod) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
 
     const cjs = await CharJSService.create(moduleId, fields);
 
-    const refs = mod.charjs?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(mod.charjs.refs);
     try {
         await updateModule(moduleId, {
             charjs: { refs: { [cjs.id]: { id: cjs.id, sortOrder } } }
@@ -348,9 +343,10 @@ export async function updateModuleCharJS(
 
 export async function deleteModuleCharJS(moduleId: string, charjsId: string): Promise<void> {
     const mod = await getModule(moduleId);
+    if (!mod) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
 
     // Capture ref for potential rollback
-    const existingRef = mod.charjs?.refs?.[charjsId];
+    const existingRef = mod.charjs.refs[charjsId];
 
     // Remove from parent's refs
     await updateModule(moduleId, { charjs: { refs: { [charjsId]: undefined } } });
@@ -376,14 +372,12 @@ export async function createModuleFolder(
     parentId?: string
 ): Promise<FolderDef> {
     const mod = await getModule(moduleId);
-
-    const config = mod[folderType] as EntityListConfig | undefined;
-    const existingFolders = config?.folders ?? {};
+    if (!mod) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
 
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(existingFolders),
+        sortOrder: generateSortOrder(mod[folderType].folders),
         parentId
     };
 
@@ -401,10 +395,9 @@ export async function updateModuleFolder(
     changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
     const mod = await getModule(moduleId);
+    if (!mod) return;
 
-    const config = mod[folderType] as EntityListConfig | undefined;
-    const existingFolders = config?.folders ?? {};
-    const existing = existingFolders[folderId];
+    const existing = mod[folderType].folders[folderId];
     if (!existing) return;
 
     const updated: FolderDef = { ...existing, ...changes, id: existing.id };
@@ -432,10 +425,9 @@ export async function moveModuleItem(
     newSortOrder?: string
 ): Promise<void> {
     const mod = await getModule(moduleId);
+    if (!mod) return;
 
-    const config = mod[folderType] as EntityListConfig | undefined;
-    const refs = config?.refs ?? {};
-    const existing = refs[itemId];
+    const existing = mod[folderType].refs[itemId];
     if (!existing) return;
 
     await updateModule(moduleId, {

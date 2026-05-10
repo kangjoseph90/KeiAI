@@ -30,16 +30,14 @@ import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
  * Returns chat from store cache first, then from DB if needed.
- * Explicitly throws error if not found
+ * Returns null if not found.
  */
-export async function getChat(chatId: string): Promise<Chat> {
+export async function getChat(chatId: string): Promise<Chat | null> {
     const active = get(activeChat);
     if (active?.id === chatId) return active;
     const cached = chats.get(chatId);
     if (cached) return cached;
-    const db = await ChatService.get(chatId);
-    if (!db) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
-    return db;
+    return ChatService.get(chatId);
 }
 
 /**
@@ -52,21 +50,23 @@ export async function getChatLorebooks(chatId: string): Promise<Lorebook[]> {
         return get(chatLorebooks);
     }
     const chat = await getChat(chatId);
-    const refs = chat.lorebooks?.refs;
-    if (!refs) return [];
-    const results = await Promise.all(Object.keys(refs).map((id) => LorebookService.get(id)));
+    if (!chat) return [];
+    const results = await Promise.all(
+        Object.keys(chat.lorebooks.refs).map((id) => LorebookService.get(id))
+    );
     return results.filter((lb): lb is Lorebook => lb !== null);
 }
 
 export async function selectChat(chatId: string, characterId: string): Promise<void> {
     const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
     clearActiveChat();
     activeChat.set(chat);
     await loadInitialMessages(chatId, 50);
 
     const lorebooks = await LorebookService.listByOwner(chatId);
-    chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebooks?.refs ?? {}));
+    chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebooks.refs));
 
     await updateCharacter(characterId, { lastActiveChatId: chatId });
 }
@@ -83,11 +83,11 @@ export async function createChat(
     fields: DeepPartial<ChatFields> = {}
 ): Promise<Chat> {
     const char = await getCharacter(characterId);
+    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
     const chat = await ChatService.create(characterId, fields);
 
-    const refs = char.chats?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(char.chats.refs);
     try {
         await updateCharacter(characterId, {
             chats: { refs: { [chat.id]: { id: chat.id, sortOrder } } }
@@ -125,9 +125,10 @@ export async function updateChatContent(
 
 export async function deleteChat(chatId: string, characterId: string): Promise<void> {
     const char = await getCharacter(characterId);
+    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
     // Capture ref for potential rollback
-    const existingRef = char.chats?.refs?.[chatId];
+    const existingRef = char.chats.refs[chatId];
 
     // Remove from parent's refs
     await updateCharacter(characterId, { chats: { refs: { [chatId]: undefined } } });
@@ -155,11 +156,11 @@ export async function createChatLorebook(
     fields: DeepPartial<LorebookFields>
 ): Promise<Lorebook> {
     const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
     const lb = await LorebookService.create(chatId, fields);
 
-    const refs = chat.lorebooks?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(chat.lorebooks.refs);
     try {
         await updateChat(chatId, {
             lorebooks: { refs: { [lb.id]: { id: lb.id, sortOrder } } }
@@ -178,9 +179,10 @@ export async function createChatLorebook(
 
 export async function deleteChatLorebook(chatId: string, lorebookId: string): Promise<void> {
     const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
     // Capture ref for potential rollback
-    const existingRef = chat.lorebooks?.refs?.[lorebookId];
+    const existingRef = chat.lorebooks.refs[lorebookId];
 
     // Remove from parent's refs
     await updateChat(chatId, { lorebooks: { refs: { [lorebookId]: undefined } } });
@@ -219,14 +221,12 @@ export async function createChatFolder(
     parentId?: string
 ): Promise<FolderDef> {
     const chat = await getChat(chatId);
-
-    const config = chat[folderType] as EntityListConfig | undefined;
-    const existingFolders = config?.folders ?? {};
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(existingFolders),
+        sortOrder: generateSortOrder(chat[folderType].folders),
         parentId
     };
 
@@ -244,10 +244,9 @@ export async function updateChatFolder(
     changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
     const chat = await getChat(chatId);
+    if (!chat) return;
 
-    const config = chat[folderType] as EntityListConfig | undefined;
-    const existingFolders = config?.folders ?? {};
-    const existing = existingFolders[folderId];
+    const existing = chat[folderType].folders[folderId];
     if (!existing) return;
 
     const updated: FolderDef = { ...existing, ...changes, id: existing.id };
@@ -275,10 +274,9 @@ export async function moveChatItem(
     newSortOrder?: string
 ): Promise<void> {
     const chat = await getChat(chatId);
+    if (!chat) return;
 
-    const config = chat[folderType] as EntityListConfig | undefined;
-    const refs = config?.refs ?? {};
-    const existing = refs[itemId];
+    const existing = chat[folderType].refs[itemId];
     if (!existing) return;
 
     await updateChat(chatId, {

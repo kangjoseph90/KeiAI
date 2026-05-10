@@ -48,7 +48,7 @@ export interface PresetContent {
 }
 
 export interface PresetRefs {
-    scripts?: EntityListConfig;
+    scripts: EntityListConfig;
 }
 
 export interface PresetFields extends PresetContent, PresetRefs {}
@@ -69,7 +69,8 @@ export const defaultPresetFields: PresetFields = {
     maxContext: 60000,
     lorebookRatio: 0.2,
     memoryRatio: 0.2,
-    lorebookScanDepth: 5
+    lorebookScanDepth: 5,
+    scripts: { refs: {}, folders: {} }
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────

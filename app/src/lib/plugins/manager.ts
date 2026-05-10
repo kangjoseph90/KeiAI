@@ -42,6 +42,9 @@ export class PluginManager {
         const loadPromise = (async () => {
             try {
                 const plugin = await getPlugin(pluginId);
+                if (!plugin) {
+                    throw new Error(`Plugin not found: ${pluginId}`);
+                }
                 await this.doLoadPlugin(plugin);
             } finally {
                 this.pendingLoads.delete(pluginId);
@@ -163,12 +166,13 @@ export class PluginManager {
 
         broker.expose('core.getArg', async (key: unknown) => {
             const plugin = await getPlugin(pluginId);
-            return plugin.args[String(key)];
+            return plugin?.args[String(key)];
         });
 
         broker.expose('core.setArg', async (key: unknown, val: unknown) => {
             const k = String(key);
             const plugin = await getPlugin(pluginId);
+            if (!plugin) return;
             const args = { ...plugin.args, [k]: val };
             await updatePlugin(pluginId, { args } as Parameters<typeof updatePlugin>[1]).catch(
                 console.error

@@ -17,7 +17,7 @@ export interface PersonaContent {
 
 export interface PersonaRefs {
     avatarAssetId?: string;
-    assets?: AssetRef[];
+    assets: AssetRef[];
 }
 
 export interface PersonaFields extends PersonaContent, PersonaRefs {}
@@ -30,7 +30,8 @@ export interface Persona extends PersonaFields {
 
 const defaultPersonaFields: PersonaFields = {
     name: 'New Persona',
-    description: ''
+    description: '',
+    assets: []
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -127,10 +128,8 @@ export class PersonaService {
         const fields = parseFields(record);
         const assetIds: string[] = [];
         if (fields.avatarAssetId) assetIds.push(fields.avatarAssetId);
-        if (fields.assets) {
-            for (const ref of fields.assets) {
-                assetIds.push(ref.assetId);
-            }
+        for (const ref of fields.assets) {
+            assetIds.push(ref.assetId);
         }
 
         try {

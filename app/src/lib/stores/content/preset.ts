@@ -21,16 +21,14 @@ import { generateId } from '$lib/utils/id';
 
 /**
  * Returns preset from store cache first, then from DB if needed.
- * Explicitly throws error if not found
+ * Returns null if not found.
  */
-export async function getPreset(presetId: string): Promise<Preset> {
+export async function getPreset(presetId: string): Promise<Preset | null> {
     const active = get(activePreset);
     if (active?.id === presetId) return active;
     const cached = presets.get(presetId);
     if (cached) return cached;
-    const db = await PresetService.get(presetId);
-    if (!db) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
-    return db;
+    return PresetService.get(presetId);
 }
 
 export function getActivePreset(): Preset | null {
@@ -41,9 +39,10 @@ export async function getPresetScripts(presetId: string): Promise<Script[]> {
     const entry = get(presetResources).get(presetId);
     if (entry) return get(entry.scripts);
     const preset = await getPreset(presetId);
-    const refs = preset.scripts?.refs;
-    if (!refs) return [];
-    const results = await Promise.all(Object.keys(refs).map((id) => ScriptService.get(id)));
+    if (!preset) return [];
+    const results = await Promise.all(
+        Object.keys(preset.scripts.refs).map((id) => ScriptService.get(id))
+    );
     return results.filter((sc): sc is Script => sc !== null);
 }
 
@@ -54,18 +53,13 @@ export async function getPresetScripts(presetId: string): Promise<Script[]> {
 export async function loadPresets(): Promise<void> {
     const settings = await getAppSettings();
     const list = await PresetService.list();
-    const refs = settings?.presets?.refs;
-    if (refs) {
-        presets.setAll(sortByRefs(list, refs));
-    } else {
-        presets.setAll(list);
-    }
+    presets.setAll(sortByRefs(list, settings.presets.refs));
 
     const entries = await Promise.all(
         list.map(async (preset) => {
             const scripts = await ScriptService.listByOwner(preset.id);
             const scriptsStore = new EntityStore<Script>();
-            scriptsStore.setAll(sortByRefs(scripts, preset.scripts?.refs ?? {}));
+            scriptsStore.setAll(sortByRefs(scripts, preset.scripts.refs));
             return [preset.id, { scripts: scriptsStore }] as const;
         })
     );
@@ -74,7 +68,8 @@ export async function loadPresets(): Promise<void> {
 }
 
 export async function selectPreset(presetId: string): Promise<void> {
-    await getPreset(presetId);
+    const preset = await getPreset(presetId);
+    if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
     await updateSettings({ presetId: presetId });
 }
 
@@ -85,8 +80,7 @@ export async function createPreset(fields: DeepPartial<PresetFields> = {}): Prom
     const preset = await PresetService.create(fields);
 
     // Add to parent's refs
-    const refs = settings.presets?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(settings.presets.refs);
     try {
         await updateSettings({
             presets: { refs: { [preset.id]: { id: preset.id, sortOrder } } }
@@ -134,7 +128,7 @@ export async function deletePreset(presetId: string): Promise<void> {
     const settings = await getAppSettings();
 
     // Capture ref for potential rollback
-    const existingRef = settings.presets?.refs?.[presetId];
+    const existingRef = settings.presets.refs[presetId];
 
     // Remove from parent's refs
     await updateSettings({ presets: { refs: { [presetId]: undefined } } });
@@ -207,13 +201,13 @@ export async function createPresetScript(
     fields: DeepPartial<ScriptFields>
 ): Promise<Script> {
     const preset = await getPreset(presetId);
+    if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
 
     // Create Record in DB
     const sc = await ScriptService.create(presetId, fields);
 
     // Update parent's refs
-    const refs = preset.scripts?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(preset.scripts.refs);
     try {
         await updatePreset(presetId, {
             scripts: { refs: { [sc.id]: { id: sc.id, sortOrder } } }
@@ -241,9 +235,10 @@ export async function updatePresetScript(
 
 export async function deletePresetScript(presetId: string, scriptId: string): Promise<void> {
     const preset = await getPreset(presetId);
+    if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
 
     // Capture ref for potential rollback
-    const existingRef = preset.scripts?.refs?.[scriptId];
+    const existingRef = preset.scripts.refs[scriptId];
 
     // Remove from parent's refs
     await updatePreset(presetId, { scripts: { refs: { [scriptId]: undefined } } });
@@ -268,14 +263,12 @@ export async function createPresetFolder(
     parentId?: string
 ): Promise<FolderDef> {
     const preset = await getPreset(presetId);
-
-    const config = preset.scripts ?? {};
-    const existingFolders = config.folders ?? {};
+    if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
 
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(existingFolders),
+        sortOrder: generateSortOrder(preset.scripts.folders),
         parentId
     };
 
@@ -292,10 +285,9 @@ export async function updatePresetFolder(
     changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
     const preset = await getPreset(presetId);
+    if (!preset) return;
 
-    const config = preset.scripts ?? {};
-    const existingFolders = config.folders ?? {};
-    const existing = existingFolders[folderId];
+    const existing = preset.scripts.folders[folderId];
     if (!existing) return;
 
     const updated: FolderDef = { ...existing, ...changes, id: existing.id };
@@ -318,10 +310,9 @@ export async function movePresetItem(
     newSortOrder?: string
 ): Promise<void> {
     const preset = await getPreset(presetId);
+    if (!preset) return;
 
-    const config = preset.scripts ?? {};
-    const refs = config.refs ?? {};
-    const existing = refs[itemId];
+    const existing = preset.scripts.refs[itemId];
     if (!existing) return;
 
     await updatePreset(presetId, {

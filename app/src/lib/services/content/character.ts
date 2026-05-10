@@ -21,19 +21,19 @@ export interface CharacterContent {
     description: string;
     characterNote: string;
     greetings: Record<string, Greeting>;
-    defaultVariables?: Record<string, string>;
+    defaultVariables: Record<string, string>;
     allowLowLevel: boolean;
 }
 
 export interface CharacterRefs {
     lastActiveChatId?: string;
     avatarAssetId?: string;
-    chats?: EntityListConfig;
-    modules?: EntityListConfig<ResourceRef>;
-    lorebooks?: EntityListConfig;
-    scripts?: EntityListConfig;
-    charjs?: EntityListConfig;
-    assets?: AssetRef[];
+    chats: EntityListConfig;
+    modules: EntityListConfig<ResourceRef>;
+    lorebooks: EntityListConfig;
+    scripts: EntityListConfig;
+    charjs: EntityListConfig;
+    assets: AssetRef[];
 }
 
 export interface CharacterFields extends CharacterContent, CharacterRefs {}
@@ -49,7 +49,14 @@ const defaultFields: CharacterFields = {
     description: '',
     characterNote: '',
     greetings: {},
-    allowLowLevel: false
+    defaultVariables: {},
+    allowLowLevel: false,
+    chats: { refs: {}, folders: {} },
+    modules: { refs: {}, folders: {} },
+    lorebooks: { refs: {}, folders: {} },
+    scripts: { refs: {}, folders: {} },
+    charjs: { refs: {}, folders: {} },
+    assets: []
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -143,10 +150,8 @@ export class CharacterService {
         const fields = parseFields(record);
         const assetIds: string[] = [];
         if (fields.avatarAssetId) assetIds.push(fields.avatarAssetId);
-        if (fields.assets) {
-            for (const ref of fields.assets) {
-                assetIds.push(ref.assetId);
-            }
+        for (const ref of fields.assets) {
+            assetIds.push(ref.assetId);
         }
 
         try {

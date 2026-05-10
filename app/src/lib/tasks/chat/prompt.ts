@@ -24,8 +24,8 @@ import { resolveLorebookEntries } from './lorebook';
 export interface PromptInput {
     character: Character;
     chat: Chat;
-    preset: Preset | null;
-    persona: Persona | null;
+    preset: Preset;
+    persona: Persona;
     lorebooks: Lorebook[];
     messages: PagedMessages;
     tokenizer: LLMTokenizer;
@@ -53,8 +53,7 @@ type LorebookBucketEntry = {
 // ─── Builder ──────────────────────────────────────────────────────────────────
 
 export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
-    const blocks = getEnabledPromptBlocks(input.preset?.promptBlocks ?? {});
-    if (!input.preset) return [];
+    const blocks = getEnabledPromptBlocks(input.preset.promptBlocks);
 
     const budget = createPromptBudget(input.preset);
     const result = new Map<string, PromptBlockResult>();
@@ -62,7 +61,7 @@ export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
     const templateCtx: TemplateContext = {
         ...input.context,
         characterId: input.chat.characterId,
-        personaId: input.persona?.id,
+        personaId: input.persona.id,
         chatId: input.chat.id,
         display: false,
         dryRun: false
@@ -214,17 +213,15 @@ async function buildFixedBlock(
             break;
 
         case 'persona':
-            if (input.persona) {
-                messages = makeMessage(
-                    block.role,
-                    await renderWithFormat(
-                        input.persona.description,
-                        block.format,
-                        { ...templateCtx, role: block.role },
-                        templateMacros
-                    )
-                );
-            }
+            messages = makeMessage(
+                block.role,
+                await renderWithFormat(
+                    input.persona.description,
+                    block.format,
+                    { ...templateCtx, role: block.role },
+                    templateMacros
+                )
+            );
             break;
 
         case 'chatNote':

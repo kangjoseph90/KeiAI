@@ -57,9 +57,9 @@ const logger = createLogger('store:sync');
 
 function reorderStoreByRefs<T extends { id: string }>(
     store: EntityStore<T>,
-    refs?: Record<string, OrderedRef>
+    refs: Record<string, OrderedRef>
 ): void {
-    store.setAll(sortByRefs(get(store), refs ?? {}));
+    store.setAll(sortByRefs(get(store), refs));
 }
 
 async function patchEntityStoreByIds<T extends { id: string }>(
@@ -87,11 +87,11 @@ function reorderGlobalStoresBySettings(): void {
     const settings = get(appSettings);
     if (!settings) return;
 
-    reorderStoreByRefs(characters, settings.characters?.refs);
-    reorderStoreByRefs(personas, settings.personas?.refs);
-    reorderStoreByRefs(presets, settings.presets?.refs);
-    reorderStoreByRefs(modules, settings.modules?.refs);
-    reorderStoreByRefs(plugins, settings.plugins?.refs);
+    reorderStoreByRefs(characters, settings.characters.refs);
+    reorderStoreByRefs(personas, settings.personas.refs);
+    reorderStoreByRefs(presets, settings.presets.refs);
+    reorderStoreByRefs(modules, settings.modules.refs);
+    reorderStoreByRefs(plugins, settings.plugins.refs);
 }
 
 function refreshCharacterModulesStore(): void {
@@ -101,7 +101,7 @@ function refreshCharacterModulesStore(): void {
         return;
     }
 
-    const moduleRefs = character.modules?.refs ?? {};
+    const moduleRefs = character.modules.refs;
     const activeModuleIds = new Set(Object.keys(moduleRefs));
     const selectedModules = get(modules).filter((module) => activeModuleIds.has(module.id));
 
@@ -135,9 +135,9 @@ async function backfillModuleResources(
         CharJSService.listByOwner(module.id)
     ]);
 
-    resource.lorebooks.setAll(sortByRefs(lorebooks, module.lorebooks?.refs ?? {}));
-    resource.scripts.setAll(sortByRefs(scripts, module.scripts?.refs ?? {}));
-    resource.charjs.setAll(sortByRefs(charjs, module.charjs?.refs ?? {}));
+    resource.lorebooks.setAll(sortByRefs(lorebooks, module.lorebooks.refs));
+    resource.scripts.setAll(sortByRefs(scripts, module.scripts.refs));
+    resource.charjs.setAll(sortByRefs(charjs, module.charjs.refs));
 }
 
 async function syncLorebooksByIds(ids: string[]): Promise<void> {
@@ -184,18 +184,18 @@ async function syncLorebooksByIds(ids: string[]): Promise<void> {
 
     const character = get(activeCharacter);
     if (character) {
-        reorderStoreByRefs(characterLorebooks, character.lorebooks?.refs);
+        reorderStoreByRefs(characterLorebooks, character.lorebooks.refs);
     }
 
     const chat = get(activeChat);
     if (chat) {
-        reorderStoreByRefs(chatLorebooks, chat.lorebooks?.refs);
+        reorderStoreByRefs(chatLorebooks, chat.lorebooks.refs);
     }
 
     for (const [moduleId, moduleStore] of moduleStores) {
         const module = modules.get(moduleId);
         if (!module) continue;
-        reorderStoreByRefs(moduleStore.lorebooks, module.lorebooks?.refs);
+        reorderStoreByRefs(moduleStore.lorebooks, module.lorebooks.refs);
     }
 }
 
@@ -243,13 +243,13 @@ async function syncScriptsByIds(ids: string[]): Promise<void> {
 
     const character = get(activeCharacter);
     if (character) {
-        reorderStoreByRefs(characterScripts, character.scripts?.refs);
+        reorderStoreByRefs(characterScripts, character.scripts.refs);
     }
 
     for (const [moduleId, moduleStore] of moduleStores) {
         const module = modules.get(moduleId);
         if (!module) continue;
-        reorderStoreByRefs(moduleStore.scripts, module.scripts?.refs);
+        reorderStoreByRefs(moduleStore.scripts, module.scripts.refs);
     }
 }
 
@@ -287,13 +287,13 @@ async function syncCharJSByIds(ids: string[]): Promise<void> {
 
     const character = get(activeCharacter);
     if (character) {
-        reorderStoreByRefs(characterCharJS, character.charjs?.refs);
+        reorderStoreByRefs(characterCharJS, character.charjs.refs);
     }
 
     for (const [moduleId, moduleStore] of moduleStores) {
         const module = modules.get(moduleId);
         if (!module) continue;
-        reorderStoreByRefs(moduleStore.charjs, module.charjs?.refs);
+        reorderStoreByRefs(moduleStore.charjs, module.charjs.refs);
     }
 }
 
@@ -403,9 +403,9 @@ function startDataSyncListener(): () => void {
                                 void backfillModuleResources(module, resource);
                             }
 
-                            reorderStoreByRefs(resource.lorebooks, module.lorebooks?.refs);
-                            reorderStoreByRefs(resource.scripts, module.scripts?.refs);
-                            reorderStoreByRefs(resource.charjs, module.charjs?.refs);
+                            reorderStoreByRefs(resource.lorebooks, module.lorebooks.refs);
+                            reorderStoreByRefs(resource.scripts, module.scripts.refs);
+                            reorderStoreByRefs(resource.charjs, module.charjs.refs);
                         }
 
                         refreshCharacterModulesStore();
@@ -428,10 +428,10 @@ function startDataSyncListener(): () => void {
 
                             if (detail && get(activeCharacterId) === currentCharacterId) {
                                 activeCharacter.set(detail);
-                                reorderStoreByRefs(chats, detail.chats?.refs);
-                                reorderStoreByRefs(characterLorebooks, detail.lorebooks?.refs);
-                                reorderStoreByRefs(characterScripts, detail.scripts?.refs);
-                                reorderStoreByRefs(characterCharJS, detail.charjs?.refs);
+                                reorderStoreByRefs(chats, detail.chats.refs);
+                                reorderStoreByRefs(characterLorebooks, detail.lorebooks.refs);
+                                reorderStoreByRefs(characterScripts, detail.scripts.refs);
+                                reorderStoreByRefs(characterCharJS, detail.charjs.refs);
                             } else if (get(activeCharacterId) === currentCharacterId) {
                                 clearActiveCharacter();
                             }
@@ -463,7 +463,7 @@ function startDataSyncListener(): () => void {
 
                         const character = get(activeCharacter);
                         if (character) {
-                            reorderStoreByRefs(chats, character.chats?.refs);
+                            reorderStoreByRefs(chats, character.chats.refs);
                         }
 
                         break;

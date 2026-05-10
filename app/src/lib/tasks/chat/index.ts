@@ -73,6 +73,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
             getMergedLorebooks(chatId)
         ]);
 
+        if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
         if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
         if (!settings.personaId) throw new AppError('INVALID_INPUT', 'No persona selected');
 
@@ -89,6 +90,10 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
             getPreset(settings.presetId),
             getPersona(settings.personaId)
         ]);
+
+        if (!character) throw new AppError('NOT_FOUND', `Character not found: ${chat.characterId}`);
+        if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${settings.presetId}`);
+        if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${settings.personaId}`);
 
         // ── 2. Load Prompt History ────────────────────────────────────
         const lastMessage = await messages.at(-1);
@@ -171,6 +176,10 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
         // ── 7. Finalize ─────────────────────────────────────────────
         const finalMsg = await getMessage(preparedMessage.id);
+        if (!finalMsg) {
+            setChatTaskError(chatId, 'Message not found after generation');
+            return;
+        }
         const finalSwipe = finalMsg.swipes[targetSwipeId];
         if (!finalSwipe || finalSwipe.content.length === 0) {
             setChatTaskError(chatId, 'Empty response from model');

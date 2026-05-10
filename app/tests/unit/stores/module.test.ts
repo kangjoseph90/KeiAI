@@ -84,7 +84,11 @@ describe('Module Store', () => {
         id: 'mod-1',
         name: 'Test Module',
         description: 'Description',
-        allowLowLevel: false
+        allowLowLevel: false,
+        lorebooks: { refs: {}, folders: {} },
+        scripts: { refs: {}, folders: {} },
+        charjs: { refs: {}, folders: {} },
+        assets: []
     };
 
     beforeEach(() => {
@@ -164,7 +168,7 @@ describe('Module Store', () => {
             await deleteModule('mod-1');
 
             expect(get(modules)).toHaveLength(0);
-            expect(get(appSettings)?.modules?.refs?.['mod-1']).toBeUndefined();
+            expect(get(appSettings)?.modules.refs['mod-1']).toBeUndefined();
             expect(get(moduleResources).has('mod-1')).toBe(false);
         });
     });
@@ -203,7 +207,7 @@ describe('Module Store', () => {
         it('should delete module lorebook', async () => {
             const modWithRef = {
                 ...mockModule,
-                lorebooks: { refs: { 'lb-1': { id: 'lb-1', sortOrder: 'a' } } }
+                lorebooks: { refs: { 'lb-1': { id: 'lb-1', sortOrder: 'a' } }, folders: {} }
             };
             modules.setAll([modWithRef]);
             vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);
@@ -238,7 +242,7 @@ describe('Module Store', () => {
         it('should delete module charjs', async () => {
             const modWithRef = {
                 ...mockModule,
-                charjs: { refs: { 'cjs-1': { id: 'cjs-1', sortOrder: 'a' } } }
+                charjs: { refs: { 'cjs-1': { id: 'cjs-1', sortOrder: 'a' } }, folders: {} }
             };
             modules.setAll([modWithRef]);
             vi.mocked(ModuleService.update).mockResolvedValue({} as unknown as Module);

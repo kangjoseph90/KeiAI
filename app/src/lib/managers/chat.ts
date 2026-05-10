@@ -10,6 +10,7 @@ import {
     updateChat,
     updateMessage
 } from '$lib/stores';
+import { AppError } from '$lib/types/errors';
 
 // ─── Greeting ─────────────────────────────────────
 
@@ -18,6 +19,7 @@ export async function setGreetings(
     greetings: Record<string, Greeting>
 ): Promise<void> {
     const chat = await getChat(chatId);
+    if (!chat) return;
 
     if (chat.lastMessageId && chat.lastMessageId !== chat.greetingMessageId) return;
 
@@ -79,9 +81,10 @@ export async function setGreetings(
 
 export async function getChatVariable(chatId: string, key: string): Promise<string | null> {
     const chat = await getChat(chatId);
-    if (!chat.lastMessageId) return null;
+    if (!chat || !chat.lastMessageId) return null;
 
     const lastMessage = await getMessage(chat.lastMessageId);
+    if (!lastMessage) return null;
 
     const swipe = lastMessage.swipes[lastMessage.activeSwipeId];
     if (!swipe) return null;
@@ -91,9 +94,11 @@ export async function getChatVariable(chatId: string, key: string): Promise<stri
 
 export async function setChatVariable(chatId: string, key: string, value: string): Promise<void> {
     const chat = await getChat(chatId);
-    if (!chat.lastMessageId) return;
+    if (!chat || !chat.lastMessageId) return;
 
     const lastMessage = await getMessage(chat.lastMessageId);
+    if (!lastMessage) return;
+
     const swipe = lastMessage.swipes[lastMessage.activeSwipeId];
     if (!swipe) return;
 
@@ -110,14 +115,18 @@ export async function setChatVariable(chatId: string, key: string, value: string
 
 export async function getChatVariables(chatId: string): Promise<Record<string, string>> {
     const chat = await getChat(chatId);
+    if (!chat) return {};
     const char = await getCharacter(chat.characterId);
-    if (!chat.lastMessageId) return { ...char.defaultVariables };
+    const defaults = char?.defaultVariables ?? {};
+
+    if (!chat.lastMessageId) return { ...defaults };
 
     const lastMessage = await getMessage(chat.lastMessageId);
+    if (!lastMessage) return { ...defaults };
     const swipe = lastMessage.swipes[lastMessage.activeSwipeId];
-    if (!swipe) return { ...char.defaultVariables };
+    if (!swipe) return { ...defaults };
 
-    return { ...char.defaultVariables, ...swipe.variables };
+    return { ...defaults, ...swipe.variables };
 }
 
 export async function setChatVariables(
@@ -125,9 +134,10 @@ export async function setChatVariables(
     variables: Record<string, string>
 ): Promise<void> {
     const chat = await getChat(chatId);
-    if (!chat.lastMessageId) return;
+    if (!chat || !chat.lastMessageId) return;
 
     const lastMessage = await getMessage(chat.lastMessageId);
+    if (!lastMessage) return;
     const swipe = lastMessage.swipes[lastMessage.activeSwipeId];
     if (!swipe) return;
 
@@ -148,7 +158,9 @@ export async function setChatVariables(
  */
 export async function forkChat(messageId: string): Promise<string> {
     const forkMessage = await getMessage(messageId);
+    if (!forkMessage) throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
     const originalChat = await getChat(forkMessage.chatId);
+    if (!originalChat) throw new AppError('NOT_FOUND', `Chat not found: ${forkMessage.chatId}`);
 
     // Create new chat with metadata from original
     const {

@@ -4,6 +4,7 @@ import { getChat } from '$lib/stores/content/chat';
 import { getCharacter } from '$lib/stores/content/character';
 import { getActiveModuleIds } from '$lib/stores/content/merged';
 import { getModule } from '$lib/stores/content/module';
+import type { Module } from '$lib/services';
 
 /**
  * Collect all active CharJS instances for a chat + specific mode.
@@ -18,28 +19,30 @@ export async function collectCharJSInstances(
     mode: string
 ): Promise<CharJSInstance[]> {
     const chat = await getChat(chatId);
+    if (!chat) return [];
     const character = await getCharacter(chat.characterId);
+    if (!character) return [];
     const activeModuleIds = await getActiveModuleIds(chat.characterId);
 
     const charjsRequests: Array<{ id: string; allowLowLevel: boolean }> = [];
 
-    const charjsRefs = character.charjs?.refs;
-    if (charjsRefs) {
-        const allow = character.allowLowLevel;
-        charjsRequests.push(
-            ...Object.values(charjsRefs).map((r) => ({ id: r.id, allowLowLevel: allow }))
-        );
-    }
+    charjsRequests.push(
+        ...Object.values(character.charjs.refs).map((r) => ({
+            id: r.id,
+            allowLowLevel: character.allowLowLevel
+        }))
+    );
 
-    const mods = await Promise.all([...activeModuleIds].map((id) => getModule(id)));
+    const mods = (await Promise.all([...activeModuleIds].map((id) => getModule(id)))).filter(
+        (m): m is Module => m !== null
+    );
     for (const mod of mods) {
-        const modCharjsRefs = mod.charjs?.refs;
-        if (modCharjsRefs) {
-            const allow = mod.allowLowLevel;
-            charjsRequests.push(
-                ...Object.values(modCharjsRefs).map((r) => ({ id: r.id, allowLowLevel: allow }))
-            );
-        }
+        charjsRequests.push(
+            ...Object.values(mod.charjs.refs).map((r) => ({
+                id: r.id,
+                allowLowLevel: mod.allowLowLevel
+            }))
+        );
     }
 
     const instances = await Promise.all(

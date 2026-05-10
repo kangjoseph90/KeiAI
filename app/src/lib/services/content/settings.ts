@@ -69,16 +69,16 @@ export interface AppSettingsContent {
 export interface AppSettingsRefs {
     personaId?: string;
     presetId?: string;
-    characters?: EntityListConfig;
-    personas?: EntityListConfig;
-    presets?: EntityListConfig;
-    modules?: EntityListConfig<ResourceRef>;
-    plugins?: EntityListConfig;
+    characters: EntityListConfig;
+    personas: EntityListConfig;
+    presets: EntityListConfig;
+    modules: EntityListConfig<ResourceRef>;
+    plugins: EntityListConfig;
 }
 
 export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}
 
-export const defaultSettings: AppSettingsContent = {
+export const defaultSettings: AppSettings = {
     theme: 'system',
     chat: {
         saveMessagesOnSwipe: true
@@ -210,13 +210,18 @@ export const defaultSettings: AppSettingsContent = {
     ttsProvider: 'openai',
     imagegenProvider: 'openai',
     sttProvider: 'openai',
-    rerankerProvider: 'cohere'
+    rerankerProvider: 'cohere',
+    characters: { refs: {}, folders: {} },
+    personas: { refs: {}, folders: {} },
+    presets: { refs: {}, folders: {} },
+    modules: { refs: {}, folders: {} },
+    plugins: { refs: {}, folders: {} }
 };
 
 // ─── Service ──────────────────────────────────────────────────────────
 
 function parseFields(data: Record<string, unknown>): AppSettings {
-    return deepMerge(defaultSettings as AppSettings, data as DeepPartial<AppSettings>);
+    return deepMerge(defaultSettings, data as DeepPartial<AppSettings>);
 }
 
 export class SettingsService {
@@ -225,7 +230,7 @@ export class SettingsService {
         const record = await buffer.get<SettingsRecord>('settings', userId);
 
         if (!record || record.isDeleted) {
-            return { ...defaultSettings } as AppSettings;
+            return { ...defaultSettings };
         }
 
         return parseFields(record.data);
@@ -239,9 +244,7 @@ export class SettingsService {
             const record = await buffer.get<SettingsRecord>('settings', userId);
 
             const current: AppSettings =
-                !record || record.isDeleted
-                    ? ({ ...defaultSettings } as AppSettings)
-                    : parseFields(record.data);
+                !record || record.isDeleted ? { ...defaultSettings } : parseFields(record.data);
 
             const updated: AppSettings = deepMerge(current, changes);
 

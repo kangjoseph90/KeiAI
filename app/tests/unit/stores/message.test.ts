@@ -21,7 +21,8 @@ vi.mock('$lib/services', () => ({
         update: vi.fn(),
         delete: vi.fn(),
         get: vi.fn(),
-        countByChat: vi.fn()
+        countByChat: vi.fn(),
+        countByChatBefore: vi.fn()
     },
     ChatService: {
         get: vi.fn(),
@@ -125,10 +126,11 @@ describe('Message Store', () => {
             expect(MessageService.get).toHaveBeenCalledWith('msg-1');
         });
 
-        it('should throw NOT_FOUND if not in cache and not in IDB', async () => {
+        it('should return null if not in cache and not in IDB', async () => {
             vi.mocked(MessageService.get).mockResolvedValue(null);
 
-            await expect(getMessage('missing-id')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+            const result = await getMessage('missing-id');
+            expect(result).toBeNull();
         });
     });
 

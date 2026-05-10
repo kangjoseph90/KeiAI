@@ -66,10 +66,10 @@ describe('PagedMessages', () => {
     it('reads positive and negative indexes', async () => {
         const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
 
-        await expect(paged.at(0)).resolves.toMatchObject({ id: 'msg-0' });
-        await expect(paged.at(5)).resolves.toMatchObject({ id: 'msg-5' });
-        await expect(paged.at(-1)).resolves.toMatchObject({ id: 'msg-9' });
-        await expect(paged.at(-10)).resolves.toMatchObject({ id: 'msg-0' });
+        await expect(paged.at(0)).resolves.toMatchObject({ message: { id: 'msg-0' }, index: 0 });
+        await expect(paged.at(5)).resolves.toMatchObject({ message: { id: 'msg-5' }, index: 5 });
+        await expect(paged.at(-1)).resolves.toMatchObject({ message: { id: 'msg-9' }, index: 9 });
+        await expect(paged.at(-10)).resolves.toMatchObject({ message: { id: 'msg-0' }, index: 0 });
         await expect(paged.at(10)).resolves.toBeNull();
         await expect(paged.at(-11)).resolves.toBeNull();
     });
@@ -77,9 +77,18 @@ describe('PagedMessages', () => {
     it('slices across page boundaries with negative bounds', async () => {
         const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
 
-        await expect(paged.slice(3, 8)).resolves.toEqual(messages.slice(3, 8));
-        await expect(paged.slice(-4)).resolves.toEqual(messages.slice(6));
-        await expect(paged.slice(-4, -1)).resolves.toEqual(messages.slice(6, 9));
+        const slice3_8 = await paged.slice(3, 8);
+        expect(slice3_8.map((e) => e.message)).toEqual(messages.slice(3, 8));
+        expect(slice3_8.map((e) => e.index)).toEqual([3, 4, 5, 6, 7]);
+
+        const sliceNeg4 = await paged.slice(-4);
+        expect(sliceNeg4.map((e) => e.message)).toEqual(messages.slice(6));
+        expect(sliceNeg4.map((e) => e.index)).toEqual([6, 7, 8, 9]);
+
+        const sliceNeg4_Neg1 = await paged.slice(-4, -1);
+        expect(sliceNeg4_Neg1.map((e) => e.message)).toEqual(messages.slice(6, 9));
+        expect(sliceNeg4_Neg1.map((e) => e.index)).toEqual([6, 7, 8]);
+
         await expect(paged.slice(8, 3)).resolves.toEqual([]);
     });
 

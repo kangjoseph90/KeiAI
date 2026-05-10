@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildPrompt, type PromptInput } from '$lib/tasks/chat/prompt';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
-import type { Character, Chat, Message, Preset, PromptBlock } from '$lib/services';
+import type { Character, Chat, Message, Persona, Preset, PromptBlock } from '$lib/services';
 import type { LLMModelConfig } from '$lib/types/models/llm';
 import type { Macro, TemplateContext } from '$lib/template';
 
@@ -43,14 +43,29 @@ const character: Character = {
     description: 'character',
     characterNote: 'character note',
     greetings: {},
-    allowLowLevel: false
+    defaultVariables: {},
+    allowLowLevel: false,
+    chats: { refs: {}, folders: {} },
+    modules: { refs: {}, folders: {} },
+    lorebooks: { refs: {}, folders: {} },
+    scripts: { refs: {}, folders: {} },
+    charjs: { refs: {}, folders: {} },
+    assets: []
 };
 
 const chat: Chat = {
     id: 'chat-1',
     characterId: 'char-1',
     title: 'Test Chat',
-    chatNote: 'chat note'
+    chatNote: 'chat note',
+    lorebooks: { refs: {}, folders: {} }
+};
+
+const persona: Persona = {
+    id: 'persona-1',
+    name: 'Test Persona',
+    description: 'persona description',
+    assets: []
 };
 
 function makePreset(promptBlocks: Record<string, PromptBlock>): Preset {
@@ -65,7 +80,8 @@ function makePreset(promptBlocks: Record<string, PromptBlock>): Preset {
         maxContext: 60000,
         lorebookRatio: 0.2,
         lorebookScanDepth: 5,
-        memoryRatio: 0.2
+        memoryRatio: 0.2,
+        scripts: { refs: {}, folders: {} }
     };
 }
 
@@ -159,7 +175,7 @@ describe('buildPrompt', () => {
             character,
             chat,
             preset,
-            persona: null,
+            persona,
             lorebooks: [],
             messages,
             context
@@ -194,7 +210,7 @@ describe('buildPrompt', () => {
             character,
             chat,
             preset,
-            persona: null,
+            persona,
             lorebooks: [],
             messages
         });
@@ -236,7 +252,7 @@ describe('buildPrompt', () => {
             character,
             chat,
             preset,
-            persona: null,
+            persona,
             lorebooks: [],
             messages
         });
@@ -282,7 +298,7 @@ describe('buildPrompt', () => {
             character,
             chat,
             preset,
-            persona: null,
+            persona,
             lorebooks: [],
             messages
         });
@@ -290,7 +306,7 @@ describe('buildPrompt', () => {
         expect(mockRunPipelineHandlers).toHaveBeenCalledWith([], 'template({{char}} says hi)', {
             chatId: 'chat-1',
             characterId: 'char-1',
-            personaId: undefined,
+            personaId: 'persona-1',
             messageId: 'msg-1',
             messageIndex: 0,
             role: 'user',
@@ -329,7 +345,7 @@ describe('buildPrompt', () => {
                 character,
                 chat,
                 preset,
-                persona: null,
+                persona,
                 lorebooks: [],
                 messages
             })
@@ -361,7 +377,7 @@ describe('buildPrompt', () => {
                 character,
                 chat,
                 preset,
-                persona: null,
+                persona,
                 lorebooks: [],
                 messages
             })
@@ -395,7 +411,7 @@ describe('buildPrompt', () => {
             character,
             chat,
             preset,
-            persona: null,
+            persona,
             lorebooks: [],
             messages
         });
@@ -430,7 +446,7 @@ describe('buildPrompt', () => {
                 character,
                 chat,
                 preset,
-                persona: null,
+                persona,
                 lorebooks: [],
                 messages
             })
@@ -464,7 +480,7 @@ describe('buildPrompt', () => {
                 character,
                 chat,
                 preset,
-                persona: null,
+                persona,
                 lorebooks: [],
                 messages
             })

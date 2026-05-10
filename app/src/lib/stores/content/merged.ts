@@ -13,14 +13,13 @@ import { getActivePreset, getPresetScripts } from './preset';
  */
 export async function getActiveModuleIds(characterId: string): Promise<Set<string>> {
     const [settings, char] = await Promise.all([getAppSettings(), getCharacter(characterId)]);
+    if (!char) return new Set();
 
     const ids = new Set<string>();
-    const settingsRefs = settings.modules?.refs ?? {};
-    for (const [id, r] of Object.entries(settingsRefs)) {
+    for (const [id, r] of Object.entries(settings.modules.refs)) {
         if (r.enabled) ids.add(id);
     }
-    const charRefs = char.modules?.refs ?? {};
-    for (const [id, r] of Object.entries(charRefs)) {
+    for (const [id, r] of Object.entries(char.modules.refs)) {
         if (r.enabled) ids.add(id);
     }
     return ids;
@@ -32,6 +31,7 @@ export async function getActiveModuleIds(characterId: string): Promise<Set<strin
  */
 export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
     const chat = await getChat(chatId);
+    if (!chat) return [];
     const activeModuleIds = await getActiveModuleIds(chat.characterId);
 
     const [chatLB, charLB, ...modLBResults] = await Promise.all([
@@ -51,6 +51,7 @@ export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
  */
 export async function getMergedScripts(chatId: string): Promise<Script[]> {
     const chat = await getChat(chatId);
+    if (!chat) return [];
     const activeModuleIds = await getActiveModuleIds(chat.characterId);
     const activePresetId = getActivePreset()?.id;
 

@@ -55,7 +55,11 @@ describe('ModuleService', () => {
     const defaultFields: ModuleFields = {
         name: 'Test Module',
         description: 'Test Description',
-        allowLowLevel: false
+        allowLowLevel: false,
+        lorebooks: { refs: {}, folders: {} },
+        scripts: { refs: {}, folders: {} },
+        charjs: { refs: {}, folders: {} },
+        assets: []
     };
 
     beforeEach(() => {

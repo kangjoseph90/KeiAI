@@ -145,7 +145,7 @@ describe('Settings Store', () => {
 
             await moveGlobalItem('characters', 'char-1', 'f1');
 
-            expect(get(appSettings)!.characters?.refs?.['char-1']?.folderId).toBe('f1');
+            expect(get(appSettings)!.characters.refs['char-1']?.folderId).toBe('f1');
         });
     });
 });

@@ -2,30 +2,22 @@ import { PluginService, type PluginFields, type Plugin } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import { plugins } from '../state';
 import { getAppSettings, updateSettings } from './settings';
-import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
 
 /**
  * Returns plugin from store cache first, then from DB if needed.
- * Explicitly throws error if not found
+ * Returns null if not found.
  */
-export async function getPlugin(pluginId: string): Promise<Plugin> {
+export async function getPlugin(pluginId: string): Promise<Plugin | null> {
     const cached = plugins.get(pluginId);
     if (cached) return cached;
-    const db = await PluginService.get(pluginId);
-    if (!db) throw new AppError('NOT_FOUND', `Plugin not found: ${pluginId}`);
-    return db;
+    return PluginService.get(pluginId);
 }
 
 export async function loadPlugins(): Promise<void> {
     const settings = await getAppSettings();
     const list = await PluginService.list();
-    const refs = settings?.plugins?.refs;
-    if (refs) {
-        plugins.setAll(sortByRefs(list, refs));
-    } else {
-        plugins.setAll(list);
-    }
+    plugins.setAll(sortByRefs(list, settings.plugins.refs));
 }
 
 export async function createPlugin(fields: DeepPartial<PluginFields> = {}): Promise<Plugin> {
@@ -35,8 +27,7 @@ export async function createPlugin(fields: DeepPartial<PluginFields> = {}): Prom
     const plugin = await PluginService.create(fields);
 
     // Add to parent's refs
-    const refs = settings.plugins?.refs ?? {};
-    const sortOrder = generateSortOrder(refs);
+    const sortOrder = generateSortOrder(settings.plugins.refs);
     try {
         await updateSettings({
             plugins: { refs: { [plugin.id]: { id: plugin.id, sortOrder } } }
@@ -65,7 +56,7 @@ export async function deletePlugin(pluginId: string): Promise<void> {
     const settings = await getAppSettings();
 
     // Capture ref for potential rollback
-    const existingRef = settings.plugins?.refs?.[pluginId];
+    const existingRef = settings.plugins.refs[pluginId];
 
     // Remove from parent's refs
     await updateSettings({ plugins: { refs: { [pluginId]: undefined } } });

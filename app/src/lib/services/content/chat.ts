@@ -17,7 +17,7 @@ export interface ChatContent {
 export interface ChatRefs {
     lastMessageId?: string;
     greetingMessageId?: string;
-    lorebooks?: EntityListConfig;
+    lorebooks: EntityListConfig;
 }
 
 export interface ChatFields extends ChatContent, ChatRefs {}
@@ -31,7 +31,8 @@ export interface Chat extends ChatFields {
 
 const defaultFields: ChatFields = {
     title: 'New Chat',
-    chatNote: ''
+    chatNote: '',
+    lorebooks: { refs: {}, folders: {} }
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────

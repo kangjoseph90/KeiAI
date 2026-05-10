@@ -11,10 +11,10 @@ import { AssetService } from '../asset';
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ModuleRefs {
-    lorebooks?: EntityListConfig;
-    scripts?: EntityListConfig;
-    charjs?: EntityListConfig;
-    assets?: AssetRef[];
+    lorebooks: EntityListConfig;
+    scripts: EntityListConfig;
+    charjs: EntityListConfig;
+    assets: AssetRef[];
 }
 
 export interface ModuleContent {
@@ -34,7 +34,11 @@ export interface Module extends ModuleFields {
 const defaultModuleFields: ModuleFields = {
     name: 'New Module',
     description: '',
-    allowLowLevel: false
+    allowLowLevel: false,
+    lorebooks: { refs: {}, folders: {} },
+    scripts: { refs: {}, folders: {} },
+    charjs: { refs: {}, folders: {} },
+    assets: []
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -131,10 +135,8 @@ export class ModuleService {
 
         const fields = parseFields(record);
         const assetIds: string[] = [];
-        if (fields.assets) {
-            for (const ref of fields.assets) {
-                assetIds.push(ref.assetId);
-            }
+        for (const ref of fields.assets) {
+            assetIds.push(ref.assetId);
         }
 
         try {
