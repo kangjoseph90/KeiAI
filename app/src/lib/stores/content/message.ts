@@ -17,7 +17,7 @@ import {
     type MessageSwipe,
     type MessageSwipeFields
 } from '$lib/services';
-import { messages, activeChatId } from '../state';
+import { messages, activeChatId, messageIndexes } from '../state';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
 import { getChat, updateChat } from './chat';
@@ -71,6 +71,7 @@ export async function loadInitialMessages(chatId: string, limit = 50): Promise<v
     const initialMsgs = await MessageService.getMessagesBefore(chatId, '\uffff', limit);
     if (get(activeChatId) === chatId) {
         messages.setAll(initialMsgs);
+        await refreshIndexes(chatId);
     }
 }
 
@@ -86,6 +87,7 @@ export async function loadOlderMessages(chatId: string, limit = 50): Promise<voi
         messages.batch(() => {
             for (const msg of olderMsgs) messages.set(msg.id, msg);
         });
+        await refreshIndexes(chatId);
     }
 }
 
@@ -101,6 +103,7 @@ export async function loadNewerMessages(chatId: string, limit = 50): Promise<voi
         messages.batch(() => {
             for (const msg of newerMsgs) messages.set(msg.id, msg);
         });
+        await refreshIndexes(chatId);
     }
 }
 
@@ -124,6 +127,7 @@ export async function createMessage(
     // Store update — only if still viewing this chat
     if (get(activeChatId) === chatId) {
         messages.set(newMessage.id, newMessage);
+        await refreshIndexes(chatId);
     }
 
     return newMessage;
@@ -155,6 +159,7 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
     if (get(activeChatId) !== chatId) return;
 
     messages.delete(msgId);
+    await refreshIndexes(chatId);
 }
 
 export async function createMessageSwipe(
@@ -213,4 +218,30 @@ export async function prepareNextSwipe(
         swipeId: created.swipeId,
         message: updated
     };
+}
+
+// ─── Internal Helpers ──────────────────────────────────────────────────
+
+/**
+ * Re-calculates global indexes for all currently loaded messages.
+ * Uses countByChatBefore to find the offset of the first message.
+ */
+async function refreshIndexes(chatId: string) {
+    if (get(activeChatId) !== chatId) return;
+
+    const msgs = get(messages);
+    if (msgs.length === 0) {
+        messageIndexes.set(new Map());
+        return;
+    }
+
+    // DB count of messages before the first one in our window
+    const offset = await MessageService.countByChatBefore(chatId, msgs[0].sortOrder);
+
+    const newMap = new Map<string, number>();
+    msgs.forEach((msg, i) => {
+        newMap.set(msg.id, offset + i);
+    });
+
+    messageIndexes.set(newMap);
 }

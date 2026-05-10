@@ -19,7 +19,8 @@ import {
     messages,
     chatLorebooks,
     activeCharacterId,
-    activeChatId
+    activeChatId,
+    messageIndexes
 } from '../state';
 import { loadInitialMessages } from './message';
 import { getCharacter, updateCharacter } from './character';
@@ -74,6 +75,7 @@ export function clearActiveChat(): void {
     activeChat.set(null);
     chatLorebooks.clear();
     messages.clear();
+    messageIndexes.set(new Map());
 }
 
 export async function createChat(

@@ -89,6 +89,7 @@
     let lastStatus: string | undefined;
     let lastCharacterId: string | undefined;
     let lastPersonaId: string | undefined;
+    let lastMessageIndex: number | undefined;
 
     // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -160,15 +161,14 @@
                 personaId,
                 chatId: message.chatId,
                 messageId: message.id,
+                messageIndex: message.messageIndex,
+                role: message.role,
                 display: true,
                 dryRun: true
             };
             const templateMacros = await collectTemplateMacros(templateCtx);
             const templated = await runTemplate(contentToRender, templateCtx, templateMacros);
-            const processed = await runPipeline(message.chatId, 'display', templated, {
-                messageId: message.id,
-                role: message.role
-            });
+            const processed = await runPipeline(message.chatId, 'display', templated, templateCtx);
             const rendered = await runTemplate(processed, templateCtx, templateMacros);
             const rawHtml = await parseMarkdownAsync(rendered);
             const sanitized = DOMPurify.sanitize(rawHtml as string);
@@ -226,7 +226,8 @@
             current !== lastContent ||
             status !== lastStatus ||
             characterId !== lastCharacterId ||
-            personaId !== lastPersonaId
+            personaId !== lastPersonaId ||
+            message.messageIndex !== lastMessageIndex
         ) {
             // Synchronously clear state when a fresh generation starts to prevent showing old content
             if (status === 'generating' && current === '') {
@@ -237,6 +238,7 @@
             lastStatus = status;
             lastCharacterId = characterId;
             lastPersonaId = personaId;
+            lastMessageIndex = message.messageIndex;
             refreshDisplay();
         }
     });

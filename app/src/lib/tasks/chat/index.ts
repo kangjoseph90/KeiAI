@@ -94,7 +94,8 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
         const lastMessage = await messages.at(-1);
 
         // setup variables
-        const variables = lastMessage?.swipes[lastMessage.activeSwipeId]?.variables ?? {};
+        const variables =
+            lastMessage?.message.swipes[lastMessage.message.activeSwipeId]?.variables ?? {};
         const shouldReplaceActiveSwipe =
             !settings.chat.saveMessagesOnSwipe &&
             Boolean(targetMessage.swipes[targetMessage.activeSwipeId]);
@@ -114,6 +115,16 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
         createChatTask(chatId, preparedMessage.id, controller);
 
         // ── 4. Build Prompt (pure function) ──────────────────────────────
+        const templateCtx: TemplateContext = {
+            characterId: chat.characterId,
+            personaId: persona.id,
+            chatId,
+            messageId: preparedMessage.id,
+            messageIndex: messages.length,
+            role: 'assistant',
+            display: false,
+            dryRun: false
+        };
 
         const prompt = await buildPrompt({
             character,
@@ -122,8 +133,12 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
             persona,
             lorebooks,
             messages,
-            tokenizer: preset.chatModel.tokenizer ?? 'o200k_base'
+            tokenizer: preset.chatModel.tokenizer ?? 'o200k_base',
+            context: templateCtx
         });
+
+        // ── 4.5. Run Prompt Pipeline ───────────────────────────────────
+        const pipedPrompt = await runPipeline(chatId, 'prompt', prompt, templateCtx);
 
         // ── 5. Select Handler ──────────────────────────────────────
         const handler = opts.handlerOverride ?? selectLLMHandler(preset.chatModel, settings);
@@ -134,7 +149,7 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
         // ── 6. Stream chunks → update swipe in DB ─────────────────────
         let finalContent = '';
 
-        for await (const state of handler.stream(prompt, controller.signal)) {
+        for await (const state of handler.stream(pipedPrompt, controller.signal)) {
             finalContent = state.content;
 
             await updateMessageSwipe(preparedMessage.id, targetSwipeId, {
@@ -145,19 +160,8 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
         // ── 6.5. Post-process (Output Pipeline & Side-effects) ────────────
         if (finalContent.length > 0) {
-            const templateCtx: TemplateContext = {
-                characterId: chat.characterId,
-                personaId: persona.id,
-                chatId,
-                messageId: preparedMessage.id,
-                display: false,
-                dryRun: false
-            };
-
             const templated = await runTemplate(finalContent, templateCtx);
-            const piped = await runPipeline(chatId, 'output', templated, {
-                messageId: preparedMessage.id
-            });
+            const piped = await runPipeline(chatId, 'output', templated, templateCtx);
             const processedContent = await runTemplate(piped, templateCtx);
 
             await updateMessageSwipe(preparedMessage.id, targetSwipeId, {

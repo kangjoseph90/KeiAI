@@ -106,6 +106,7 @@ export const chatScripts = new EntityStore<Script>();
 export const messages = new EntityStore<Message>({
     sortFn: (a, b) => a.sortOrder.localeCompare(b.sortOrder)
 });
+export const messageIndexes = writable(new Map<string, number>());
 
 // ─── Runtime States (Ephemeral — not persisted to DB) ─────────────────
 /**
@@ -124,19 +125,22 @@ export const isChatRunning = derived([chatTasks, activeChat], ([tasks, chat]) =>
  * Generating/error messages already exist in DB — this just marks them.
  */
 export const displayMessages = derived(
-    [messages, chatTasks, activeChat],
-    ([msgs, tasks, chat]): DisplayMessage[] => {
+    [messages, chatTasks, activeChat, messageIndexes],
+    ([msgs, tasks, chat, indexes]): DisplayMessage[] => {
         const task = chat ? tasks.get(chat.id) : undefined;
 
         return msgs.map((msg): DisplayMessage => {
+            const messageIndex = indexes.get(msg.id);
+            const base = { ...msg, messageIndex };
+
             if (task?.messageId === msg.id) {
                 return {
-                    ...msg,
+                    ...base,
                     displayStatus: task.status,
                     errorMessage: task.errorMessage
                 };
             }
-            return { ...msg, displayStatus: 'completed' as const };
+            return { ...base, displayStatus: 'completed' as const };
         });
     }
 );

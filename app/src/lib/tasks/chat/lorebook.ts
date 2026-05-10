@@ -80,12 +80,12 @@ async function buildScanHistory(input: ResolveLorebookInput): Promise<string[]> 
     const messages = await input.messages.slice(-maxScanDepth);
     const dryCtx = toDryRunContext(input.templateCtx);
     const rendered = await Promise.all(
-        messages.map((message) => {
+        messages.map(({ message, index }) => {
             const activeSwipe = message.swipes[message.activeSwipeId];
             if (!activeSwipe) return '';
             return runTemplate(
                 activeSwipe.content,
-                { ...dryCtx, messageId: message.id },
+                { ...dryCtx, messageId: message.id, messageIndex: index, role: message.role },
                 input.templateMacros
             );
         })

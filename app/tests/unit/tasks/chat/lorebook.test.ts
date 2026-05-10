@@ -42,11 +42,22 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             length: contents.length,
             slice: vi.fn().mockResolvedValue(
                 contents.map((content, i) => ({
-                    id: `msg-${i}`,
-                    role: 'user',
-                    swipes: [{ content, variables: {} }],
-                    activeSwipeId: 0,
-                    sortOrder: `order-${i}`
+                    message: {
+                        id: `msg-${i}`,
+                        role: 'user',
+                        swipes: {
+                            [`swipe-${i}`]: {
+                                id: `swipe-${i}`,
+                                content,
+                                variables: {},
+                                createdAt: 1
+                            }
+                        },
+                        activeSwipeId: `swipe-${i}`,
+                        sortOrder: `order-${i}`,
+                        chatId: 'chat-1'
+                    },
+                    index: i
                 }))
             )
         }) as unknown as PagedMessages;

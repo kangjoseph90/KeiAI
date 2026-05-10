@@ -58,17 +58,21 @@ describe('pipeline plugin handler integration', () => {
     it('collects plugin pipeline handlers from active plugin instances', async () => {
         const instance = createPluginInstance();
         mockPluginManager.getInstances.mockReturnValue([instance]);
+        const context = {
+            chatId: 'chat-1',
+            characterId: 'character-1',
+            messageId: 'message-1',
+            messageIndex: 0,
+            role: 'assistant' as const
+        };
 
         const handlers = await collectPipelineHandlers('chat-1', 'output');
-        const result = await handlers[0].run('draft', { messageId: 'message-1' });
+        const result = await handlers[0].run('draft', context);
 
         expect(handlers).toHaveLength(1);
         expect(handlers[0].id).toBe('plugin:plugin-1:transform-output:output');
         expect(handlers[0].order).toBe(25);
-        expect(instance.broker.invoke).toHaveBeenCalledWith('transform-output', [
-            'draft',
-            { messageId: 'message-1' }
-        ]);
+        expect(instance.broker.invoke).toHaveBeenCalledWith('transform-output', ['draft', context]);
         expect(result).toBe('draft:plugin');
     });
 
@@ -76,9 +80,16 @@ describe('pipeline plugin handler integration', () => {
         const instance = createPluginInstance();
         vi.mocked(instance.broker.invoke).mockResolvedValue(undefined);
         mockPluginManager.getInstances.mockReturnValue([instance]);
+        const context = {
+            chatId: 'chat-1',
+            characterId: 'character-1',
+            messageId: 'message-1',
+            messageIndex: 0,
+            role: 'assistant' as const
+        };
 
         const handlers = await collectPipelineHandlers('chat-1', 'output');
-        const result = await handlers[0].run('draft', { messageId: 'message-1' });
+        const result = await handlers[0].run('draft', context);
 
         expect(result).toBe('draft');
     });

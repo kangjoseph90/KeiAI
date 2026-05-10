@@ -29,6 +29,7 @@ export interface PromptInput {
     lorebooks: Lorebook[];
     messages: PagedMessages;
     tokenizer: LLMTokenizer;
+    context: TemplateContext;
 }
 
 type PromptBlockResult = {
@@ -59,6 +60,7 @@ export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
     const result = new Map<string, PromptBlockResult>();
     const unboundedHistoryBlocks = blocks.filter(isUnboundedHistoryBlock);
     const templateCtx: TemplateContext = {
+        ...input.context,
         characterId: input.chat.characterId,
         personaId: input.persona?.id,
         chatId: input.chat.id,
@@ -180,7 +182,11 @@ async function buildFixedBlock(
         case 'text':
             messages = makeMessage(
                 block.role,
-                await runTemplate(block.content, templateCtx, templateMacros)
+                await runTemplate(
+                    block.content,
+                    { ...templateCtx, role: block.role },
+                    templateMacros
+                )
             );
             break;
 
@@ -190,7 +196,7 @@ async function buildFixedBlock(
                 await renderWithFormat(
                     input.character.description,
                     block.format,
-                    templateCtx,
+                    { ...templateCtx, role: block.role },
                     templateMacros
                 )
             );
@@ -201,7 +207,7 @@ async function buildFixedBlock(
                 await renderWithFormat(
                     input.character.characterNote,
                     block.format,
-                    templateCtx,
+                    { ...templateCtx, role: block.role },
                     templateMacros
                 )
             );
@@ -214,7 +220,7 @@ async function buildFixedBlock(
                     await renderWithFormat(
                         input.persona.description,
                         block.format,
-                        templateCtx,
+                        { ...templateCtx, role: block.role },
                         templateMacros
                     )
                 );
@@ -227,7 +233,7 @@ async function buildFixedBlock(
                 await renderWithFormat(
                     input.chat.chatNote,
                     block.format,
-                    templateCtx,
+                    { ...templateCtx, role: block.role },
                     templateMacros
                 )
             );
@@ -236,10 +242,10 @@ async function buildFixedBlock(
         case 'history': {
             // Only bounded history gets processed here
             const slice = await input.messages.slice(block.start, block.end);
-            for (const msg of slice) {
+            for (const { message, index } of slice) {
                 const rendered = await renderHistoryMessage(
-                    msg,
-                    templateCtx,
+                    message,
+                    { ...templateCtx, messageIndex: index },
                     templateMacros,
                     requestHandlers,
                     block.format
@@ -311,7 +317,7 @@ async function buildLorebookBlocks(
         const content = await renderWithFormat(
             lorebook.content,
             block.format,
-            promptTemplateCtx,
+            { ...promptTemplateCtx, role: lorebook.role },
             templateMacros
         );
         const messages = makeMessage(lorebook.role, content);
@@ -361,12 +367,12 @@ async function buildUnboundedHistoryBlock(
     let sawRenderableMessage = false;
 
     for (let index = input.messages.length - 1; index >= 0; index -= 1) {
-        const msg = await input.messages.at(index);
-        if (!msg) continue;
+        const indexed = await input.messages.at(index);
+        if (!indexed) continue;
 
         const rendered = await renderHistoryMessage(
-            msg,
-            templateCtx,
+            indexed.message,
+            { ...templateCtx, messageIndex: indexed.index },
             templateMacros,
             requestHandlers,
             block.format
@@ -522,7 +528,8 @@ async function renderHistoryMessage(
 
     const messageCtx: TemplateContext = {
         ...templateCtx,
-        messageId: msg.id
+        messageId: msg.id,
+        role: msg.role
     };
 
     const templated = await renderWithFormat(
@@ -532,9 +539,7 @@ async function renderHistoryMessage(
         templateMacros
     );
 
-    const processed = await runPipelineHandlers(requestHandlers, templated, {
-        role: msg.role
-    });
+    const processed = await runPipelineHandlers(requestHandlers, templated, messageCtx);
 
     const content = await runTemplate(processed, messageCtx, templateMacros);
 

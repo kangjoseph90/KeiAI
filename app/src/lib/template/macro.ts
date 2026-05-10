@@ -85,6 +85,18 @@ function collectBuiltInMacros(): Map<string, Macro> {
             return chat.chatNote;
         }
     });
+    addAliases(['chatid'], (_args, ctx) => ctx.chatId ?? '');
+    addAliases(['characterid', 'charid'], (_args, ctx) => ctx.characterId ?? '');
+    addAliases(['personaid', 'userid'], (_args, ctx) => ctx.personaId ?? '');
+    addAliases(['messageid', 'msgid'], (_args, ctx) => ctx.messageId ?? '');
+    addAliases(['messageindex', 'msgindex'], (_args, ctx) =>
+        ctx.messageIndex === undefined ? '' : String(ctx.messageIndex)
+    );
+    addAliases(['role'], (_args, ctx) => ctx.role ?? '');
+    addAliases(['isuser'], (_args, ctx) => bool(ctx.role === 'user'));
+    addAliases(['isassistant', 'isbot'], (_args, ctx) => bool(ctx.role === 'assistant'));
+    addAliases(['isdisplay'], (_args, ctx) => bool(ctx.display === true));
+    addAliases(['isdryrun'], (_args, ctx) => bool(ctx.dryRun === true));
     add('time', () => formatLocalDate(new Date(), 'HH:mm:ss'));
     add('isotime', () => new Date().toISOString());
     add('isodate', () => new Date().toISOString().slice(0, 10));

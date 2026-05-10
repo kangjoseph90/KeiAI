@@ -1,9 +1,12 @@
+import type { LLMRole } from '$lib/types/models/llm';
+
 export interface TemplateContext {
     characterId?: string;
     personaId?: string;
     chatId?: string;
     messageId?: string;
     messageIndex?: number;
+    role?: LLMRole;
     display?: boolean;
     dryRun?: boolean;
 }

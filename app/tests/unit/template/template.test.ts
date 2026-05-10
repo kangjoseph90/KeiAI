@@ -175,6 +175,37 @@ describe('template', () => {
         );
     });
 
+    it('exposes template execution context macros', async () => {
+        const ctx = {
+            chatId: 'chat-1',
+            characterId: 'char-1',
+            personaId: 'persona-1',
+            messageId: 'msg-1',
+            messageIndex: 12,
+            role: 'assistant' as const,
+            display: true,
+            dryRun: true
+        };
+
+        await expect(
+            runTemplate(
+                [
+                    '{{chatid}}',
+                    '{{charid}}',
+                    '{{personaid}}',
+                    '{{msgid}}',
+                    '{{msgindex}}',
+                    '{{role}}',
+                    '{{isuser}}',
+                    '{{isbot}}',
+                    '{{isdisplay}}',
+                    '{{isdryrun}}'
+                ].join('|'),
+                ctx
+            )
+        ).resolves.toBe('chat-1|char-1|persona-1|msg-1|12|assistant|0|1|1|1');
+    });
+
     it('treats dryRun setvar as read-only', async () => {
         await expect(
             runTemplate('{{setvar::mood::happy}}', { chatId: 'chat-1', dryRun: true })

@@ -7,6 +7,11 @@ export interface PagedMessagesOptions {
     pageSize?: number;
 }
 
+export interface IndexedMessage {
+    message: Message;
+    index: number;
+}
+
 // ─── Defaults ─────────────────────────────────────────────────────────
 
 const DEFAULT_PAGE_SIZE = 32;
@@ -80,17 +85,19 @@ export class PagedMessages {
         return new PagedMessages(chatId, pageSize, length, beforeSortOrder);
     }
 
-    async at(index: number): Promise<Message | null> {
+    async at(index: number): Promise<IndexedMessage | null> {
         const resolved = normalizeIndex(index, this.length);
         if (resolved === null) return null;
 
         const pageIndex = Math.floor(resolved / this.pageSize);
         const pageOffset = resolved % this.pageSize;
         const page = await this.loadPage(pageIndex);
-        return page[pageOffset] ?? null;
+        const message = page[pageOffset] ?? null;
+
+        return message ? { message, index: resolved } : null;
     }
 
-    async slice(start?: number, end?: number): Promise<Message[]> {
+    async slice(start?: number, end?: number): Promise<IndexedMessage[]> {
         const resolvedStart = normalizeSliceBound(start, this.length, 0);
         const resolvedEnd = normalizeSliceBound(end, this.length, this.length);
         if (resolvedStart >= resolvedEnd) return [];
@@ -107,10 +114,15 @@ export class PagedMessages {
         const messages = pages.flat();
         const localStart = resolvedStart - firstPage * this.pageSize;
         const localEnd = localStart + (resolvedEnd - resolvedStart);
-        return messages.slice(localStart, localEnd);
+        const slicedMessages = messages.slice(localStart, localEnd);
+
+        return slicedMessages.map((message, offset) => ({
+            message,
+            index: resolvedStart + offset
+        }));
     }
 
-    async toArray(): Promise<Message[]> {
+    async toArray(): Promise<IndexedMessage[]> {
         return this.slice();
     }
 

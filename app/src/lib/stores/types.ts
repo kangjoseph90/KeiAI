@@ -30,5 +30,6 @@ export type DisplayMessageStatus = 'completed' | 'generating' | 'error';
 
 export interface DisplayMessage extends Message {
     displayStatus: DisplayMessageStatus;
+    messageIndex?: number;
     errorMessage?: string;
 }

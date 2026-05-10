@@ -49,13 +49,12 @@
             characterId: $activeCharacter?.id ?? $activeChat.characterId,
             personaId: $appSettings?.personaId,
             chatId,
+            role: 'user',
             display: false,
             dryRun: false
         };
         const templated = await runTemplate(newMessageText, templateCtx);
-        const piped = await runPipeline(chatId, 'input', templated, {
-            role: 'user'
-        });
+        const piped = await runPipeline(chatId, 'input', templated, templateCtx);
         const processedText = await runTemplate(piped, templateCtx);
         newMessageText = '';
 

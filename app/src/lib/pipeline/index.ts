@@ -21,6 +21,9 @@ import type {
 } from './types';
 import { isSafeMode } from '$lib/config';
 export { collectPipelineHandlers };
+import { createLogger } from '$lib/adapters/logger';
+
+const logger = createLogger('pipeline');
 
 export async function runPipeline<K extends keyof PipelinePhaseType>(
     chatId: string,
@@ -52,10 +55,33 @@ export async function runPipelineHandlers<K extends string, T>(
 ): Promise<T> {
     let result = data;
     for (const handler of handlers) {
-        const next = await handler.run(result, context);
-        if (next !== undefined) {
-            result = next;
+        try {
+            const next = await handler.run(result, context);
+            if (next !== undefined) {
+                if (isSameType(result, next)) {
+                    result = next;
+                } else {
+                    logger.warn(
+                        `Type mismatch in pipeline. Expected ${getTypeName(result)}, got ${getTypeName(next)}. Skipping update.`
+                    );
+                }
+            }
+        } catch (err) {
+            logger.error(`Error in pipeline:`, err);
         }
     }
     return result;
+}
+
+function isSameType(a: unknown, b: unknown): boolean {
+    if (Array.isArray(a)) return Array.isArray(b);
+    if (a === null) return b === null;
+    if (typeof a === 'object') return typeof b === 'object' && b !== null && !Array.isArray(b);
+    return typeof a === typeof b;
+}
+
+function getTypeName(val: unknown): string {
+    if (Array.isArray(val)) return 'array';
+    if (val === null) return 'null';
+    return typeof val;
 }
