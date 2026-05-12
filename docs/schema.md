@@ -14,39 +14,82 @@
 
 ---
 
-## 2. 관계 설계: 1:N vs N:M
+## 2. 관계 설계: 소유와 참조
 
-### 2-1. 1:N (부모 → 자식)
-
-**자식 테이블의 로컬 인덱스 컬럼**으로 표현한다.
+KeiAI의 현재 개인 채팅 모델은 다음 계층을 기준으로 한다.
 
 ```
-ChatRecord     { ..., characterId: string }   ← 로컬 평문 (인덱싱 가능)
-MessageRecord  { ..., chatId: string }         ← 로컬 평문 (인덱싱 가능)
+User
+├─ Settings
+├─ Character
+│  ├─ Lorebook
+│  ├─ Script
+│  └─ CharJS
+├─ Persona
+├─ Preset
+├─ Module
+│  ├─ Lorebook
+│  ├─ Script
+│  └─ CharJS
+├─ Plugin
+└─ Room
+   └─ Chat
+      └─ Message
 ```
 
-- **이유:** "이 캐릭터의 채팅 목록", "이 채팅방의 메시지 목록"처럼 **부모 기준으로 자식을 빠르게 쿼리**해야 하므로 DB 인덱스가 필수적이다.
-- **서버 측 원칙:** PocketBase에는 도메인 FK를 두지 않는다. 서버는 `userId`와 sync timestamp만으로 블라인드 동기화를 수행하고, `characterId`, `chatId` 같은 관계 정보는 로컬 인덱스 또는 암호화된 payload 내부에 둔다.
+### 2-1. 소유 관계 (`=>`)
 
-### 2-2. N:M (공유 자원 참조)
+소유 관계는 부모 삭제 시 자식을 함께 삭제한다. 로컬 DB에서는 고볼륨 자식만 인덱스로 찾고, 소량 자식 목록은 부모 JSON 내부의 `EntityListConfig`로 관리한다.
 
-**소비자(부모)의 JSON payload 내부**에 `EntityListConfig` Record 형태로 저장한다.
+```
+RoomRecord      { ..., data: { chats: EntityListConfig, characters: ResourceRef map } }
+ChatRecord      { ..., roomId: string, data: { personas: ResourceRef map, lorebooks: EntityListConfig } }
+MessageRecord   { ..., chatId: string, sortOrder: string }
+LorebookRecord  { ..., ownerId: string }
+ScriptRecord    { ..., ownerId: string }
+CharJSRecord    { ..., ownerId: string }
+```
+
+- `Room => Chat`: `chats.roomId` 로컬 인덱스로 빠르게 조회한다. 동시에 `room.chats`는 UI 순서/폴더를 소유한다.
+- `Chat => Message`: 메시지는 고볼륨 데이터이므로 `messages.[chatId+sortOrder]` 인덱스를 사용한다. `chat.messages` 같은 대형 ref 목록은 만들지 않는다.
+- `Character/Chat/Module => Lorebook/Script/CharJS`: 자원은 부모별 deep copy이며 `ownerId`로 cascade delete한다.
+- `Settings => Character/Persona/Preset/Module/Plugin`: 최상위 개인 자원은 `settings`의 `EntityListConfig`가 목록 순서와 폴더를 소유한다.
+
+### 2-2. 약한 참조 (`->`)
+
+참조 관계는 대상 삭제 시 cascade하지 않는다. 참조자는 ID와 순서/활성화 상태만 들고, 대상이 없으면 진입 시 조용히 정리하거나 실행에서 제외한다.
 
 ```typescript
-// ChatFields (로컬 JSON / 서버 암호화 payload 내부)
+// RoomFields
 {
-  lorebooks: {
+  characters: {
     refs: {
-      "lb_harrypotter": { id: "lb_harrypotter", sortOrder: "a0", enabled: true },
-      "lb_medieval":    { id: "lb_medieval",    sortOrder: "a1", enabled: false }
-    }
+      "char_alpha": { id: "char_alpha", sortOrder: "a0", enabled: true },
+      "char_beta":  { id: "char_beta",  sortOrder: "a1", enabled: false }
+    },
+    folders: {}
   }
+}
+
+// ChatFields
+{
+  personas: {
+    refs: {
+      "persona_main": { id: "persona_main", sortOrder: "a0", enabled: true }
+    },
+    folders: {}
+  },
+  defaultCharacterId: "char_alpha",
+  selectedCharacterId: "char_beta",
+  defaultPersonaId: "persona_main",
+  selectedPersonaId: "persona_main"
 }
 ```
 
-- **이유:** 로어북, 스크립트 같은 공유 자원은 여러 캐릭터/채팅/페르소나가 동시에 참조할 수 있다(N:M). 이를 별도 맵핑 테이블로 만들면 *"누가 무엇을 쓰는지"* 라는 메타데이터가 평문으로 노출된다.
-- **Record 구조 채택:** 배열 대신 `Record<string, Ref>`를 사용하여 deepMerge 시 키별 머지가 가능하다. 동시에 다른 키를 수정해도 덮어쓰지 않아 동기화 충돌이 감소한다.
-- **활성화 상태(`enabled`)도 함께 저장:** 같은 로어북이라도 A 채팅방에서는 켜고, B 채팅방에서는 끌 수 있어야 하므로, 참조하는 쪽에서 개별적으로 `enabled` 플래그를 관리한다.
+- `Room -> Character`: 방에 들어온 캐릭터 목록. 캐릭터 레코드는 유저 전역 자원이며 방은 참조만 보유한다.
+- `Chat -> Persona`: 채팅별 유저 참가자 목록. 전역 active persona는 없다.
+- `Character/Preset/Room/Chat -> Module`: 모듈은 실행 컨텍스트별로 켜고 끄는 공유 자원이다.
+- `MessageSwipe -> Persona/Character`: `speakerId`와 `speakerName`만 저장한다. 이 참조는 정리하지 않는다. 대상이 삭제되어도 과거 메시지는 `speakerName`으로 표시하고 기본 아바타로 degrade한다.
 
 ---
 
@@ -55,78 +98,106 @@ MessageRecord  { ..., chatId: string }         ← 로컬 평문 (인덱싱 가�
 E2EE + 로컬 퍼스트 환경에서는 서버 RDB의 `FOREIGN KEY ... ON DELETE CASCADE`에 의존하지 않는다. 대신 **Graceful Degradation (관대한 실패 처리)** 전략을 따른다.
 
 ### 원칙
-- 공유 자원(로어북, 스크립트)이 삭제되어도, 이를 참조하는 엔티티들의 payload를 일괄 수정하지 **않는다**.
-- 삭제된 참조를 만나면 **조용히 무시(Skip)**하고, 기회가 될 때(예: 설정 화면을 열었을 때) 슬쩍 정리한다 **(Self-Healing)**.
+
+- 소유 관계는 서비스 레이어가 명시적으로 cascade soft-delete한다.
+- 약한 참조는 대상 삭제 시 참조자들을 전역 스캔하지 않는다.
+- 삭제된 참조를 만나면 **조용히 무시(Skip)**하고, 진입 시점에 필요한 범위만 정리한다 **(Self-Healing)**.
+- 메시지의 `speakerId/speakerName`은 히스토리 보존 정보이므로 stale cleanup 대상이 아니다.
+
+### Self-Healing 지점
+
+| 진입점 | 정리 대상 |
+|---|---|
+| `selectRoom(roomId)` | `room.characters`, `room.chats` stale refs |
+| `selectChat(chatId)` | `chat.personas`, `selected/default persona`, `selected/default character` stale/disabled refs |
+| `removeRoomCharacter` / `setRoomCharacterEnabled(false)` | active chat의 selected/default character |
+| `removeChatPersona` / `setChatPersonaEnabled(false)` | selected/default persona |
 
 ### 이유
+
 - 삭제 시점에 모든 참조자를 일괄 로드 → 수정 → 서버 재동기화하는 것은 성능적으로 재앙적이다.
 - 고아 참조(Orphaned Reference)는 기능적 오류를 일으키지 않으며, 자연스럽게 정리된다.
-
-```typescript
-// 로딩 시 방어 코드 (Self-Healing 예시)
-const fetched = await Promise.all(Object.keys(refs).map(id => LorebookService.get(id)));
-const validIds = Object.keys(refs).filter((id, i) => fetched[i] !== null);
-// valid만 사용하고, 저장 시 자연스럽게 고아 ID가 탈락
-```
+- 메시지 히스토리는 당시의 화자 이름을 보존해야 하므로, 참조 정리보다 표시 안정성이 우선이다.
 
 ---
 
-## 4. 메모리 관리: Reference Counting
+## 4. 런타임 선택과 컨텍스트 정책
 
-채팅 세션이 활성화되면, 관련된 공유 자원(로어북, 스크립트)들이 메모리에 올라간다. 여러 소스(캐릭터, 챗, 페르소나, 모듈)가 **같은 공유 자원을 동시에 참조**할 수 있으므로, 참조 카운팅으로 생명주기를 관리한다.
+현재 선택된 캐릭터/페르소나는 채팅 레코드에 저장된다.
 
-### 메모리 데이터 타입
+- `selectedPersonaId`: 유저 메시지를 보낼 페르소나.
+- `defaultPersonaId`: 표시/템플릿의 기본 유저 컨텍스트.
+- `selectedCharacterId`: 다음 AI 응답을 생성할 캐릭터.
+- `defaultCharacterId`: input/display 템플릿과 speaker-less 컨텍스트의 기본 캐릭터.
 
-```typescript
-interface ActiveResourceEntry<T> {
-  data: T;            // 실제 데이터
-  enabled: boolean;   // 프롬프트 엔진이 실행할지 여부
-  refs: Set<string>;  // 이 자원을 물고 있는 엔티티 ID 집합
-}
+`runChat(chatId)`은 별도 `characterId` 인자를 받지 않는다. 내부에서 `chat.selectedCharacterId ?? chat.defaultCharacterId`와 `chat.selectedPersonaId ?? chat.defaultPersonaId`를 해석하고, 둘 중 하나라도 없거나 비활성 ref면 `INVALID_INPUT`으로 실패한다.
 
-const activeResources = new Map<string, ActiveResourceEntry<any>>();
-```
+파이프라인/템플릿/프롬프트는 **가장 구체적인 컨텍스트**를 사용한다.
 
-### 라이프사이클
+| 범위 | 캐릭터 컨텍스트 | 페르소나 컨텍스트 |
+|---|---|---|
+| 유저 input pipeline/template | `defaultCharacterId` | `selectedPersonaId` |
+| AI response / prompt / output | `selectedCharacterId ?? defaultCharacterId` | `selectedPersonaId ?? defaultPersonaId` |
+| assistant message display | active swipe `speakerId`가 있으면 그 캐릭터, 없으면 `defaultCharacterId` | `defaultPersonaId` |
+| user message display | `defaultCharacterId` | active swipe `speakerId`가 있으면 그 페르소나, 없으면 `defaultPersonaId` |
+| history block | 각 메시지 active swipe의 `role + speakerId + speakerName`으로 message context 주입 |
 
-| 이벤트 | 동작 |
-|---|---|
-| **캐릭터/챗/페르소나 로드** | Blob에서 참조된 자원 ID들을 추출 → Map에 없으면 DB에서 복호화하여 적재, 있으면 `refs.add(sourceId)` |
-| **토글 (켜기/끄기)** | `entry.enabled = true/false` (메모리 내 불리언 플립, DB 저장은 비동기) |
-| **캐릭터/챗/페르소나 언로드** | `refs.delete(sourceId)` → `refs.size === 0`이면 Map에서 완전 삭제 |
-
-### 핵심 원칙
-
-> **연결된 공유 자원은 전부 메모리에 올리되, 프롬프트 엔진은 `enabled === true`인 것만 실행한다.**
-
-- 로어북/스크립트는 전부 텍스트(JSON)이므로 수천 개의 항목이라 해도 수 MB 수준 → 메모리 부담 무시 가능
-- 토글 시 DB 복호화 없이 즉시 반영 → UX 체감 속도 극대화
+이 정책 덕분에 `{{char}}`, `{{user}}`, `{{description}}`, `{{userdescription}}`, `{{speaker}}`, `{{speakername}}`, `{{speakerid}}` 같은 템플릿 매크로는 실행 범위에 맞는 가장 좁은 context를 기준으로 해석된다.
 
 ---
 
-## 5. 엔티티 목록 (현재 + 확장 예정)
+## 5. 변수와 Greeting
 
-| 엔티티 | 테이블 | 로컬 인덱스 | JSON 내부 참조 |
+### 변수
+
+변수는 채팅 레코드가 아니라 **메시지 active swipe**에 저장된다.
+
+- `getChatDefaultVariables(chatId)`: room의 enabled character refs를 `sortOrder` 순서로 읽고 각 캐릭터의 `defaultVariables`를 merge한다.
+- `getChatVariables(chatId)`: default variables + 마지막 메시지 active swipe variables.
+- `getChatVariablesBefore(chatId, sortOrder)`: default variables + 해당 sortOrder 이전 메시지 active swipe variables.
+- 새 swipe 생성은 `prepareNextSwipe(message, { variables, speakerId, speakerName })`를 통해 수행한다.
+
+캐릭터 기본 변수는 "채팅 초기 시드"이며, 채팅별 기본 변수 필드는 따로 두지 않는다.
+
+### Greeting
+
+Greeting은 채팅당 하나의 assistant message로 동기화한다.
+
+- `chat.greetingMessageId`가 greeting message를 가리킨다.
+- 각 캐릭터 greeting은 같은 message 안의 swipe로 들어간다.
+- greeting swipe id는 character greeting id를 그대로 사용한다.
+- swipe에는 `speakerId`, `speakerName`, `variables`를 함께 저장한다.
+- 방의 enabled character만 greeting sync 대상이다.
+
+---
+
+## 6. 엔티티 목록
+
+| 엔티티 | 테이블 | 로컬 인덱스 | JSON 내부 소유/참조 |
 |---|---|---|---|
 | **User** | `users` | — | — |
-| **Character** | `characters` | — | `lorebooks`, `scripts`, `charjs`, `modules` |
-| **Chat** | `chats` | `characterId` | `lorebooks` |
-| **Message** | `messages` | `chatId` | (JSON 내부에 `swipes[]`, `activeSwipeIndex` 등) |
-| **Persona** | `personas` | — | — |
-| **Lorebook** | `lorebooks` | `ownerId` | (JSON 내부에 `entries[]`) |
-| **Script** | `scripts` | `ownerId` | (JSON 내부에 `rules[]`) |
-| **CharJS** | `charjs` | `ownerId` | (JSON 내부에 `code`) |
-| **Module** | `modules` | — | `lorebooks`, `scripts`, `charjs` |
-| **Plugin** | `plugins` | — | (JSON 내부에 hooks 및 args) |
-| **Prompt Preset** | `presets` | — | (JSON 내부에 프롬프트 조립 순서 등) |
 | **Settings** | `settings` | — | `characters`, `personas`, `presets`, `modules`, `plugins` |
+| **Room** | `rooms` | — | `chats`(OrderedRef), `characters`(ResourceRef) |
+| **Character** | `characters` | — | `lorebooks`, `scripts`, `charjs`, `modules` |
+| **Chat** | `chats` | `roomId` | `lorebooks`, `personas`, `selected/default persona/character ids` |
+| **Message** | `messages` | `chatId`, `[chatId+sortOrder]` | `swipes`, `activeSwipeId` |
+| **Persona** | `personas` | — | 에셋/설정 |
+| **Lorebook** | `lorebooks` | `ownerId` | `entries` |
+| **Script** | `scripts` | `ownerId` | `rules` |
+| **CharJS** | `charjs` | `ownerId` | `code` |
+| **Module** | `modules` | — | `lorebooks`, `scripts`, `charjs` |
+| **Plugin** | `plugins` | — | hooks 및 args |
+| **Prompt Preset** | `presets` | — | prompt blocks, model config, preset-owned scripts |
+| **Translation** | `translations` | `chatId`, `messageId`, `swipeId` | 번역 payload |
+| **Tool Call** | local only | `chatId`, `messageId`, `swipeId` | tool call state |
 
 ---
 
-## 6. 한 줄 요약
+## 7. 한 줄 요약
 
 ```
 로컬에는 "찾기 위한 최소한의 키"만 인덱스로 노출하고,
 서버에는 "무엇을 어떻게 쓰는지"를 전부 암호화된 Blob 안에 숨긴다.
-메모리에는 관련된 것을 전부 올려두되, 실행은 활성화된 것만 한다.
+룸은 캐릭터를 참조하고, 채팅은 페르소나를 참조하며,
+메시지는 당시의 화자 정보를 swipe에 남긴다.
 ```

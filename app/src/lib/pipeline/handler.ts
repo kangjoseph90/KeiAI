@@ -6,21 +6,24 @@ import type { PipelinePhase, PipelinePhaseType, PipelineContext, PipelineHandler
 
 export async function collectPipelineHandlers<K extends keyof PipelinePhaseType>(
     chatId: string,
-    phase: K
+    phase: K,
+    characterId?: string
 ): Promise<PipelineHandler<PipelinePhaseType[K], K>[]>;
 export async function collectPipelineHandlers<P extends string, T>(
     chatId: string,
-    phase: PipelinePhase<P>
+    phase: PipelinePhase<P>,
+    characterId?: string
 ): Promise<PipelineHandler<T, P>[]>;
 export async function collectPipelineHandlers(
     chatId: string,
-    phase: string
+    phase: string,
+    characterId?: string
 ): Promise<PipelineHandler<unknown>[]> {
     // ── 1. Regex script handlers ────────────────────────────────
-    const regexHandlers = await collectRegexHandlers(chatId, phase);
+    const regexHandlers = await collectRegexHandlers(chatId, phase, characterId);
 
     // ── 2. CharJS handlers (character + modules) ────────────────
-    const charjsHandlers = await collectCharJSHandlers(chatId, phase);
+    const charjsHandlers = await collectCharJSHandlers(chatId, phase, characterId);
 
     // ── 3. Plugin handlers ─────────────────────────────────────────
     const pluginHandlers = await collectPluginHandlers(phase);
@@ -33,9 +36,10 @@ export async function collectPipelineHandlers(
 
 async function collectRegexHandlers(
     chatId: string,
-    phase: string
+    phase: string,
+    characterId?: string
 ): Promise<PipelineHandler<unknown>[]> {
-    const scripts = await getMergedScripts(chatId);
+    const scripts = await getMergedScripts(chatId, characterId);
     return scripts
         .filter((s) => s.phase === phase)
         .map((s) => ({
@@ -56,10 +60,11 @@ async function collectRegexHandlers(
 
 async function collectCharJSHandlers(
     chatId: string,
-    phase: string
+    phase: string,
+    characterId?: string
 ): Promise<PipelineHandler<unknown>[]> {
     const handlers: PipelineHandler<unknown>[] = [];
-    const instances = await collectCharJSInstances(chatId, 'pipe', phase);
+    const instances = await collectCharJSInstances(chatId, 'pipe', phase, characterId);
 
     for (const instance of instances) {
         const registered = instance.pipelineHandlers.get(phase) ?? [];

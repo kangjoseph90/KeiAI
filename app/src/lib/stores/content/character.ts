@@ -1,7 +1,6 @@
 import { get } from 'svelte/store';
 import {
     CharacterService,
-    ChatService,
     LorebookService,
     ScriptService,
     CharJSService,
@@ -17,7 +16,6 @@ import {
 } from '$lib/services';
 import { AssetService } from '$lib/services/asset';
 import type { FolderDef, EntityListConfig } from '$lib/types/refs';
-import { clearActiveChat } from './chat';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
     characters,
@@ -26,7 +24,6 @@ import {
     characterScripts,
     characterCharJS,
     characterModules,
-    chats,
     modules,
     activeCharacterId
 } from '../state';
@@ -97,10 +94,6 @@ export async function selectCharacter(characterId: string): Promise<void> {
 
     activeCharacter.set(character);
 
-    clearActiveChat();
-    const chatList = await ChatService.listByCharacter(characterId);
-    chats.setAll(sortByRefs(chatList, character.chats.refs));
-
     const moduleIds = new Set(Object.keys(character.modules.refs));
     characterModules.setAll(get(modules).filter((m) => moduleIds.has(m.id)));
 
@@ -117,12 +110,10 @@ export async function selectCharacter(characterId: string): Promise<void> {
 
 export function clearActiveCharacter(): void {
     activeCharacter.set(null);
-    chats.clear();
     characterLorebooks.clear();
     characterScripts.clear();
     characterCharJS.clear();
     characterModules.clear();
-    clearActiveChat();
 }
 
 export async function updateCharacter(
@@ -453,7 +444,7 @@ export async function updateCharacterCharJS(
 
 // ─── Character-owned Folder & Item Management ──────────────────────
 
-export type CharacterFolderType = 'chats' | 'lorebooks' | 'scripts' | 'modules' | 'charjs';
+export type CharacterFolderType = 'lorebooks' | 'scripts' | 'modules' | 'charjs';
 
 export async function createCharacterFolder(
     characterId: string,

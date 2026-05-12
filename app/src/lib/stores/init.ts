@@ -1,9 +1,10 @@
 import { loadSettings } from './content/settings';
 import { loadModules } from './content/module';
 import { loadPlugins } from './content/plugin';
-import { loadPersonas, selectPersona } from './content/persona';
+import { loadPersonas } from './content/persona';
 import { loadPresets, selectPreset } from './content/preset';
 import { createCharacter, loadCharacters } from './content/character';
+import { addRoomCharacter, createRoom, loadRooms } from './content/room';
 import { createPersona } from './content/persona';
 import { createPreset } from './content/preset';
 
@@ -14,20 +15,23 @@ export async function loadGlobalState() {
         loadPlugins(),
         loadPersonas(),
         loadPresets(),
-        loadCharacters()
+        loadCharacters(),
+        loadRooms()
     ]);
 }
 
 /**
  * Initialize default content for a new local identity.
  * Ensures at least one persona and preset exist (delete guard requires min 1).
- * Also selects the newly created persona and preset as defaults.
+ * Also selects the newly created preset as the global default.
  */
 export async function initDefaultContents(): Promise<void> {
-    const [persona, preset] = await Promise.all([
+    const [, preset, character, room] = await Promise.all([
         createPersona(),
         createPreset(),
-        createCharacter()
+        createCharacter(),
+        createRoom()
     ]);
-    await Promise.all([selectPersona(persona.id), selectPreset(preset.id)]);
+    await addRoomCharacter(room.id, character.id);
+    await selectPreset(preset.id);
 }

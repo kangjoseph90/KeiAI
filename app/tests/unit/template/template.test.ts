@@ -157,7 +157,12 @@ describe('template', () => {
         expect(mockCollectCharJSInstances).not.toHaveBeenCalled();
 
         await collectTemplateMacros({ chatId: 'chat-1' });
-        expect(mockCollectCharJSInstances).toHaveBeenCalledWith('chat-1', 'template', 'macro');
+        expect(mockCollectCharJSInstances).toHaveBeenCalledWith(
+            'chat-1',
+            'template',
+            'macro',
+            undefined
+        );
     });
 
     it('interprets KeiAI domain macros from live stores', async () => {
@@ -182,6 +187,8 @@ describe('template', () => {
             personaId: 'persona-1',
             messageId: 'msg-1',
             messageIndex: 12,
+            speakerId: 'char-1',
+            speakerName: 'Kei',
             role: 'assistant' as const,
             display: true,
             dryRun: true
@@ -195,6 +202,9 @@ describe('template', () => {
                     '{{personaid}}',
                     '{{msgid}}',
                     '{{msgindex}}',
+                    '{{speakerid}}',
+                    '{{speaker}}',
+                    '{{speakername}}',
                     '{{role}}',
                     '{{isuser}}',
                     '{{isbot}}',
@@ -203,7 +213,7 @@ describe('template', () => {
                 ].join('|'),
                 ctx
             )
-        ).resolves.toBe('chat-1|char-1|persona-1|msg-1|12|assistant|0|1|1|1');
+        ).resolves.toBe('chat-1|char-1|persona-1|msg-1|12|char-1|Kei|Kei|assistant|0|1|1|1');
     });
 
     it('treats dryRun setvar as read-only', async () => {

@@ -1,4 +1,4 @@
-import { MessageService, LorebookService, type Greeting } from '$lib/services';
+import { MessageService, LorebookService } from '$lib/services';
 import {
     createChat,
     createChatLorebook,
@@ -7,6 +7,7 @@ import {
     getCharacter,
     getChat,
     getMessage,
+    getRoom,
     updateChat,
     updateMessage
 } from '$lib/stores';
@@ -14,24 +15,42 @@ import { AppError } from '$lib/types/errors';
 
 // ─── Greeting ─────────────────────────────────────
 
-export async function setGreetings(
-    chatId: string,
-    greetings: Record<string, Greeting>
-): Promise<void> {
+export async function syncChatGreetings(chatId: string): Promise<void> {
     const chat = await getChat(chatId);
     if (!chat) return;
 
     if (chat.lastMessageId && chat.lastMessageId !== chat.greetingMessageId) return;
 
-    const greetingIds = Object.keys(greetings);
-    const activeSwipeId = greetingIds[0] ?? '';
+    const room = await getRoom(chat.roomId);
+    if (!room) return;
+
+    const refs = Object.values(room.characters.refs)
+        .filter((ref) => ref.enabled !== false)
+        .sort((a, b) => a.sortOrder.localeCompare(b.sortOrder));
+
+    const characters = await Promise.all(refs.map((ref) => getCharacter(ref.id)));
+    const variables = await getChatDefaultVariables(chat.id);
 
     const greetingSwipes = Object.fromEntries(
-        greetingIds.map((id) => {
-            const greeting = greetings[id];
-            return [id, { id, content: greeting.content, createdAt: greeting.createdAt }];
+        characters.flatMap((character) => {
+            if (!character) return [];
+            return Object.values(character.greetings)
+                .sort((a, b) => a.createdAt - b.createdAt)
+                .map((greeting) => [
+                    greeting.id,
+                    {
+                        id: greeting.id,
+                        content: greeting.content,
+                        createdAt: greeting.createdAt,
+                        variables,
+                        speakerId: character.id,
+                        speakerName: character.name
+                    }
+                ]);
         })
     );
+    const greetingIds = Object.keys(greetingSwipes);
+    const activeSwipeId = greetingIds[0] ?? '';
 
     if (greetingIds.length === 0) {
         if (!chat.greetingMessageId) return;
@@ -57,7 +76,7 @@ export async function setGreetings(
 
             await updateMessage(greetingMessageId, {
                 swipes: swipePatch,
-                activeSwipeId: greetings[message.activeSwipeId]
+                activeSwipeId: greetingSwipes[message.activeSwipeId]
                     ? message.activeSwipeId
                     : activeSwipeId
             });
@@ -114,10 +133,9 @@ export async function setChatVariable(chatId: string, key: string, value: string
 }
 
 export async function getChatVariables(chatId: string): Promise<Record<string, string>> {
+    const defaults = await getChatDefaultVariables(chatId);
     const chat = await getChat(chatId);
-    if (!chat) return {};
-    const char = await getCharacter(chat.characterId);
-    const defaults = char?.defaultVariables ?? {};
+    if (!chat) return defaults;
 
     if (!chat.lastMessageId) return { ...defaults };
 
@@ -127,6 +145,44 @@ export async function getChatVariables(chatId: string): Promise<Record<string, s
     if (!swipe) return { ...defaults };
 
     return { ...defaults, ...swipe.variables };
+}
+
+export async function getChatVariablesBefore(
+    chatId: string,
+    beforeSortOrder: string
+): Promise<Record<string, string>> {
+    const defaults = await getChatDefaultVariables(chatId);
+    const [previousMessage] = await MessageService.getMessagesBefore(chatId, beforeSortOrder, 1);
+    if (!previousMessage) return defaults;
+
+    const swipe = previousMessage.swipes[previousMessage.activeSwipeId];
+    if (!swipe) return defaults;
+
+    return { ...defaults, ...swipe.variables };
+}
+
+export async function getChatDefaultVariables(chatId: string): Promise<Record<string, string>> {
+    const chat = await getChat(chatId);
+    if (!chat) return {};
+
+    const room = await getRoom(chat.roomId);
+    if (!room) return {};
+
+    const refs = Object.values(room.characters.refs)
+        .filter((ref) => ref.enabled !== false)
+        .sort((a, b) => a.sortOrder.localeCompare(b.sortOrder));
+
+    const entries = await Promise.all(
+        refs.map(async (ref) => [ref.id, await getCharacter(ref.id)] as const)
+    );
+
+    const variables: Record<string, string> = {};
+    for (const [, character] of entries) {
+        if (!character) continue;
+        Object.assign(variables, character.defaultVariables);
+    }
+
+    return variables;
 }
 
 export async function setChatVariables(
@@ -165,14 +221,15 @@ export async function forkChat(messageId: string): Promise<string> {
     // Create new chat with metadata from original
     const {
         id: _id,
-        characterId: _charId,
+        roomId: _roomId,
         lorebooks: _,
+        personas: _personas,
         lastMessageId: __,
         greetingMessageId: ___,
         ...fieldsCopy
     } = originalChat;
 
-    const newChat = await createChat(originalChat.characterId, {
+    const newChat = await createChat(originalChat.roomId, {
         ...fieldsCopy,
         title: `${originalChat.title} (Fork)`
     });

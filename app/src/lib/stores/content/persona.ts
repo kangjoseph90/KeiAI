@@ -1,11 +1,10 @@
-import { get } from 'svelte/store';
 import { PersonaService, type PersonaFields, type Persona } from '$lib/services/content/persona';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import { personas } from '../state';
 import { getAppSettings, updateSettings } from './settings';
-import { AppError } from '$lib/types/errors';
 import { AssetService } from '$lib/services/asset';
+import { AppError } from '$lib/types/errors';
 
 /**
  * Returns persona from store cache first, then from DB if needed.
@@ -25,12 +24,6 @@ export async function loadPersonas(): Promise<void> {
     const settings = await getAppSettings();
     const list = await PersonaService.list();
     personas.setAll(sortByRefs(list, settings.personas.refs));
-}
-
-export async function selectPersona(personaId: string): Promise<void> {
-    const persona = await getPersona(personaId);
-    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
-    await updateSettings({ personaId: personaId });
 }
 
 export async function createPersona(fields: DeepPartial<PersonaFields> = {}): Promise<Persona> {
@@ -66,25 +59,15 @@ export async function updatePersona(
 }
 
 export async function deletePersona(personaId: string): Promise<void> {
-    const currentList = get(personas);
-    if (personas.size <= 1) {
-        throw new AppError('DELETE_LAST_ITEM', 'Cannot delete the last persona.');
-    }
-
     const settings = await getAppSettings();
 
     // Capture ref for potential rollback
     const existingRef = settings.personas.refs[personaId];
 
-    // If deleting the selected persona, determine a fallback
-    const isDeletingSelected = settings.personaId === personaId;
-    const fallback = isDeletingSelected ? currentList.find((p) => p.id !== personaId) : undefined;
-
     // Remove from parent's refs
     const settingsChanges: DeepPartial<import('$lib/services').AppSettings> = {
         personas: { refs: { [personaId]: undefined } }
     };
-    if (fallback) settingsChanges.personaId = fallback.id;
     await updateSettings(settingsChanges);
 
     // Remove record from DB

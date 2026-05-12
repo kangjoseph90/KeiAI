@@ -1,6 +1,4 @@
 <script lang="ts">
-    import { setGreetings } from '$lib/managers';
-
     import './app.css';
     import { onMount, onDestroy } from 'svelte';
     import { UserService } from '$lib/services';
@@ -17,12 +15,14 @@
         stopSyncStatusTracking,
         selectCharacter,
         selectChat,
+        selectRoom,
+        clearActiveRoom,
+        clearActiveChat,
         clearActiveCharacter,
         activeCharacter,
         activeChat,
-        chats,
-        initDefaultContents,
-        createChat
+        activeRoom,
+        initDefaultContents
     } from '$lib/stores';
     import {
         route,
@@ -39,45 +39,8 @@
     let sidebarCollapsed = $state(false);
     const logger = createLogger('route:page');
 
-    /**
-     * Select a character and navigate to its latest chat.
-     * If no chat exists, create one automatically.
-     */
-    async function handleSelectChar(charId: string) {
-        try {
-            await selectCharacter(charId);
-
-            // Try to open the last active chat
-            const charData = $activeCharacter;
-            if (charData?.lastActiveChatId) {
-                try {
-                    await selectChat(charData.lastActiveChatId, charId);
-                    navigate({ view: 'chat', charId, chatId: charData.lastActiveChatId });
-                    return;
-                } catch {
-                    // lastActiveChatId may be stale, fall through
-                }
-            }
-
-            // Try the most recent chat from the loaded list
-            const chatList = $chats;
-            if (chatList && chatList.length > 0) {
-                const latestChat = chatList[0];
-                await selectChat(latestChat.id, charId);
-                navigate({ view: 'chat', charId, chatId: latestChat.id });
-                return;
-            }
-
-            // No chats exist — create one
-            const newChat = await createChat(charId, {
-                title: `Chat`
-            });
-            await setGreetings(newChat.id, $activeCharacter?.greetings ?? {});
-            await selectChat(newChat.id, charId);
-            navigate({ view: 'chat', charId, chatId: newChat.id });
-        } catch (e) {
-            logger.error('Failed to select character:', e);
-        }
+    function navigateFromHome(r: RouteState) {
+        navigate(r);
     }
 
     // Restore route from URL on boot
@@ -85,24 +48,23 @@
         try {
             if (initial.view === 'settings') {
                 navigate(initial);
-            } else if (
-                (initial.view === 'chat' || initial.view === 'characterStudio') &&
-                initial.charId
-            ) {
-                if (initial.view === 'chat' && !initial.chatId) {
-                    await handleSelectChar(initial.charId);
-                    return;
-                }
-                await selectCharacter(initial.charId);
+            } else if (initial.view === 'room' && initial.roomId) {
+                await selectRoom(initial.roomId);
                 if (initial.chatId) {
-                    await selectChat(initial.chatId, initial.charId);
+                    await selectChat(initial.chatId);
+                } else {
+                    clearActiveChat();
                 }
+                navigate(initial);
+            } else if (initial.view === 'characterStudio' && initial.charId) {
+                await selectCharacter(initial.charId);
                 navigate(initial);
             } else {
                 navigate(initial);
             }
         } catch (e) {
             logger.warn('Route restore failed, falling back to home:', e);
+            clearActiveRoom();
             clearActiveCharacter();
             navigate({ view: 'home' });
         }
@@ -118,8 +80,12 @@
         }
         if (
             prevRoute.view === r.view &&
+            prevRoute.roomId === r.roomId &&
             prevRoute.charId === r.charId &&
-            prevRoute.chatId === r.chatId
+            prevRoute.chatId === r.chatId &&
+            prevRoute.personaId === r.personaId &&
+            prevRoute.pluginId === r.pluginId &&
+            prevRoute.moduleId === r.moduleId
         ) {
             prevRoute = r;
             return;
@@ -129,13 +95,19 @@
         (async () => {
             try {
                 if (r.view === 'home') {
+                    clearActiveRoom();
                     clearActiveCharacter();
-                } else if (r.view === 'chat' || r.view === 'characterStudio') {
+                } else if (r.view === 'room') {
+                    if (r.roomId && $activeRoom?.id !== r.roomId) {
+                        await selectRoom(r.roomId);
+                    }
+                    clearActiveChat();
+                    if (r.chatId && $activeChat?.id !== r.chatId) {
+                        await selectChat(r.chatId);
+                    }
+                } else if (r.view === 'characterStudio') {
                     if (r.charId && $activeCharacter?.id !== r.charId) {
                         await selectCharacter(r.charId);
-                    }
-                    if (r.chatId && $activeChat?.id !== r.chatId) {
-                        await selectChat(r.chatId, r.charId ?? '');
                     }
                 }
             } catch (e) {
@@ -198,20 +170,14 @@
             collapsed={sidebarCollapsed}
             route={$route}
             onToggle={() => (sidebarCollapsed = !sidebarCollapsed)}
-            onNavigate={(r) => {
-                if (r.view === 'chat' && r.charId && !r.chatId) {
-                    handleSelectChar(r.charId);
-                } else {
-                    navigate(r);
-                }
-            }}
+            onNavigate={(r) => navigate(r)}
         />
 
         <!-- Main Content -->
         <div class="flex flex-1 flex-col overflow-hidden">
-            {#if $route.view === 'chat' && $route.charId}
+            {#if $route.view === 'room' && $route.roomId}
                 {#await import('$lib/views/chat/ChatView.svelte') then m}
-                    <m.default chatId={$route.chatId ?? ''} />
+                    <m.default roomId={$route.roomId} chatId={$route.chatId} />
                 {/await}
             {:else if $route.view === 'characterStudio' && $route.charId}
                 {#await import('$lib/views/character/CharacterStudio.svelte') then m}
@@ -219,11 +185,15 @@
                 {/await}
             {:else if $route.view === 'settings'}
                 {#await import('$lib/views/settings/SettingsView.svelte') then m}
-                    <m.default />
+                    <m.default
+                        personaId={$route.personaId}
+                        pluginId={$route.pluginId}
+                        moduleId={$route.moduleId}
+                    />
                 {/await}
             {:else}
                 {#await import('$lib/views/home/HomeView.svelte') then m}
-                    <m.default onSelectCharacter={handleSelectChar} />
+                    <m.default onNavigate={navigateFromHome} />
                 {/await}
             {/if}
         </div>

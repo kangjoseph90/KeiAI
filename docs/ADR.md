@@ -430,7 +430,7 @@
 
 ## 026: 즉시 영속 메시지와 Thin Task 트래커
 
-- 상태: 채택
+- 상태: 채택 (ADR 034로 변수 초기화 의미 수정)
 - 맥락: ADR 008에서 Task가 스트리밍 콘텐츠를 들고 있다가 완료 시 persist하는 구조를 채택했고, ADR 014에서 범용 RuntimeTask 아키텍처를 설계했다. 두 접근 모두 파이프라인 완료 후 메시지를 DB에 기록하는 방식이었다.
 - 문제:
   - Task가 content, thought, toolCalls를 들고 있어 파이프라인 중간에 앱이 종료되면 데이터가 날아간다.
@@ -440,7 +440,7 @@
 - 결정:
   - 즉시 영속: `runChat` 시작 시 빈 메시지를 DB에 생성. 스트리밍 청크마다 `updateMessage`로 swipe를 갱신. abort/에러 발생 시에도 이미 기록된 내용이 DB에 남는다.
   - Thin Task: `ChatTask`는 status, messageId, controller만 추적. content를 들지 않는다. `displayMessages` derived store는 DB 메시지에 status 오버레이만 추가한다. 가상 메시지/가상 swipe 생성은 없다.
-  - Variable 시스템: 각 swipe에 `variables: Record<string, string>` 저장. 새 swipe는 `deepMerge(chat.data.defaultVariables, 이전 swipe의 variables)`로 초기화. 샌드박스에서 `getVar`/`setVar`로 접근.
+  - Variable 시스템: 각 swipe에 `variables: Record<string, string>` 저장. 최초 설계에서는 `chat.data.defaultVariables`와 이전 swipe variables를 병합하려 했으나, ADR 034 이후에는 room enabled characters의 `defaultVariables`를 seed로 사용하고 이전 active swipe variables를 덮어쓴다. 샌드박스에서 `getVar`/`setVar`로 접근.
   - Reroll 단순화: `targetMessageId: string` 대신 `reroll: boolean` 플래그. 파이프라인이 `getMessagesBefore`로 마지막 메시지를 찾아 새 swipe를 추가.
 - 결과:
   - 파이프라인 중단 시 데이터 유실 없음.
@@ -633,3 +633,39 @@
   - `refs[id]` 조회 O(1).
   - 롤백이 간결: 전체 배열 백업 대신 키 하나만 복원.
 - 참고: ADR 022 (DeepPartial), ADR 027 (Record 기반 중첩 구조)
+
+---
+
+## 034: Room 중심 멀티 캐릭터/페르소나 채팅 모델
+
+- 상태: 채택
+- 맥락: 기존 모델은 `User -> Character -> Chat -> Message` 계층이었다. 이 구조는 "한 채팅 = 한 캐릭터"일 때는 단순하지만, 여러 캐릭터와 여러 페르소나가 같은 대화 공간에 등장하는 순간 `chatId`만으로 파이프라인/템플릿/스크립트 실행 컨텍스트를 결정할 수 없어진다. 또한 캐릭터 스튜디오와 채팅 화면이 강하게 결합되어, 캐릭터 자원을 편집하기 위해 항상 특정 채팅을 전제로 해야 했다.
+- 문제:
+  - 그룹 대화에서는 채팅이 캐릭터에 소유되는 것이 아니라 방(Room)에 소속되어야 한다.
+  - 유저 메시지의 화자 페르소나와 AI 응답 캐릭터는 메시지마다 달라질 수 있다.
+  - input/display/request/output 파이프라인은 실행 범위마다 필요한 "최선의 컨텍스트"가 다르다.
+  - 캐릭터/페르소나 삭제 시 모든 메시지를 전역 스캔해 참조를 정리하면 성능과 동기화 비용이 커진다.
+  - greeting은 여러 캐릭터가 있는 방에서도 한 채팅의 초기 상태로 자연스럽게 표현되어야 한다.
+- 결정:
+  - 개인 채팅 계층을 `User -> Room -> Chat -> Message`로 변경한다.
+  - `Room -> Character`는 `EntityListConfig<ResourceRef>` 약한 참조로 둔다. 캐릭터 레코드는 유저 전역 소유 자원이며, 방 삭제가 캐릭터를 삭제하지 않는다.
+  - `Chat -> Persona`는 `EntityListConfig<ResourceRef>` 약한 참조로 둔다. 전역 active persona는 제거하고, 채팅마다 selected/default persona를 저장한다.
+  - `Chat`은 `defaultCharacterId`, `selectedCharacterId`, `defaultPersonaId`, `selectedPersonaId`를 가진다.
+  - `MessageSwipe`는 `speakerId`, `speakerName`을 가진다. `role`이 `user`이면 `speakerId`는 persona id, `assistant`이면 character id로 해석한다. 별도 `speakerKind`는 두지 않는다.
+  - `runChat(chatId)`은 별도 character 인자를 받지 않고, 채팅 레코드의 `selectedCharacterId ?? defaultCharacterId`와 `selectedPersonaId ?? defaultPersonaId`를 사용한다. 없거나 disabled ref이면 실패한다.
+  - input/display/request/output 파이프라인과 템플릿은 범위별 "가장 구체적인 컨텍스트"를 주입한다.
+    - input: default character + selected persona.
+    - runChat/prompt/output: selected/default character + selected/default persona.
+    - display: 메시지가 assistant이고 active swipe에 speakerId가 있으면 그 캐릭터, user이면 그 페르소나. 없으면 default ids.
+    - history: 메시지마다 active swipe의 `role + speakerId + speakerName`으로 context를 덮어쓴다.
+  - 템플릿/파이프라인은 매 호출마다 필요한 macro/handler를 수집한다. 별도 장기 캐시된 collect 결과에 의존하지 않는다.
+  - greeting은 채팅당 하나의 assistant message로 동기화하고, 각 캐릭터 greeting은 같은 message 안의 swipe로 저장한다. greeting swipe id는 character greeting id를 그대로 사용한다.
+  - 변수는 채팅 레코드가 아니라 active swipe에 저장한다. 새 swipe는 room enabled character들의 `defaultVariables`를 sortOrder 순서로 merge한 뒤, 이전 active swipe variables를 덮어쓴 값으로 시작한다.
+  - stale weak refs는 진입 시 self-healing한다. `selectRoom`은 room의 stale character/chat refs를 정리하고, `selectChat`은 stale/disabled persona 및 selected/default ids를 정리한다. 메시지의 `speakerId/speakerName`은 히스토리 정보이므로 정리하지 않는다.
+- 결과:
+  - 한 채팅 안에서 여러 캐릭터와 여러 페르소나가 자연스럽게 공존할 수 있다.
+  - 캐릭터 스튜디오는 `character/:id` 독립 화면으로 분리되고, 룸/채팅은 약한 참조를 통해 해당 자원으로 이동한다.
+  - 파이프라인과 템플릿은 "chatId 단일 컨텍스트" 대신 호출 범위의 context를 기준으로 실행된다.
+  - 메시지 히스토리는 당시 화자 이름을 보존하므로, 캐릭터/페르소나 삭제 이후에도 표시가 안정적으로 degrade된다.
+  - 서비스/스토어 테스트는 room/chat/message/ref 정합성, selected/default 정책, greeting/variables, history context 주입을 회귀 방지 대상으로 삼는다.
+- 참고: ADR 026 (즉시 영속 메시지와 Thin Task 트래커), ADR 027 (Record 기반 중첩 구조), ADR 029 (PagedMessages), ADR 033 (EntityListConfig), docs/schema.md

@@ -26,7 +26,7 @@ import { clock } from '$lib/utils/clock';
 interface DatabaseSqlRow {
     id: string;
     userId: string | null;
-    characterId: string | null;
+    roomId: string | null;
     chatId: string | null;
     messageId: string | null;
     swipeId: string | null;
@@ -43,7 +43,7 @@ interface RecordBindingShape {
     userId?: string;
     updatedAt?: number;
     isDeleted?: boolean;
-    characterId?: string;
+    roomId?: string;
     chatId?: string;
     messageId?: string;
     swipeId?: string;
@@ -60,7 +60,7 @@ function recordToBindings<T extends BaseRecord>(record: T): DatabaseSqlRow {
     const bindings: DatabaseSqlRow = {
         id: clone.id,
         userId: clone.userId ?? null,
-        characterId: clone.characterId ?? null,
+        roomId: clone.roomId ?? null,
         chatId: clone.chatId ?? null,
         messageId: clone.messageId ?? null,
         swipeId: clone.swipeId ?? null,
@@ -80,7 +80,7 @@ function parseRecord<T>(row: DatabaseSqlRow): T {
     return {
         id: row.id,
         userId: row.userId ?? '',
-        characterId: row.characterId ?? undefined,
+        roomId: row.roomId ?? undefined,
         chatId: row.chatId ?? undefined,
         messageId: row.messageId ?? undefined,
         swipeId: row.swipeId ?? undefined,
@@ -133,7 +133,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 					CREATE TABLE IF NOT EXISTS "${table}" (
 						id TEXT PRIMARY KEY,
 						userId TEXT,
-						characterId TEXT,
+                        roomId TEXT,
 						chatId TEXT,
 						messageId TEXT,
 						swipeId TEXT,
@@ -154,7 +154,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         }
 
         // FK indices for 1:N parent→child queries
-        sql += `CREATE INDEX IF NOT EXISTS "idx_chats_characterId" ON chats (characterId);
+        sql += `CREATE INDEX IF NOT EXISTS "idx_chats_roomId" ON chats (roomId);
 `;
         sql += `CREATE INDEX IF NOT EXISTS "idx_lorebooks_ownerId" ON lorebooks (ownerId);
 `;
@@ -207,12 +207,12 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         const b = recordToBindings(record);
         await db.execute(
             `INSERT OR REPLACE INTO ${tableName}
-				(id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
+				(id, userId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
 				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
             [
                 b.id,
                 b.userId,
-                b.characterId,
+                b.roomId,
                 b.chatId,
                 b.messageId,
                 b.swipeId,
@@ -250,7 +250,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 values.push(
                     b.id,
                     b.userId,
-                    b.characterId,
+                    b.roomId,
                     b.chatId,
                     b.messageId,
                     b.swipeId,
@@ -265,7 +265,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
             await db.execute(
                 `INSERT OR REPLACE INTO ${tableName}
-					(id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
+					(id, userId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
 					VALUES ${placeholders}`,
                 values
             );
@@ -362,7 +362,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                     values.push(
                         b.id,
                         b.userId,
-                        b.characterId,
+                        b.roomId,
                         b.chatId,
                         b.messageId,
                         b.swipeId,
@@ -376,7 +376,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 }
                 await db.execute(
                     `INSERT OR REPLACE INTO ${tableName}
-	                (id, userId, characterId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
+	                (id, userId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
 	                VALUES ${placeholders}`,
                     values
                 );

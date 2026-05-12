@@ -1,7 +1,7 @@
 import { clock } from '$lib/utils/clock';
 import { getActiveSession } from '../user';
 import { localDB, type ChatRecord } from '$lib/adapters/db';
-import type { EntityListConfig } from '$lib/types/refs';
+import type { EntityListConfig, ResourceRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -17,14 +17,19 @@ export interface ChatContent {
 export interface ChatRefs {
     lastMessageId?: string;
     greetingMessageId?: string;
+    defaultPersonaId?: string;
+    defaultCharacterId?: string;
+    selectedPersonaId?: string;
+    selectedCharacterId?: string;
     lorebooks: EntityListConfig;
+    personas: EntityListConfig<ResourceRef>;
 }
 
 export interface ChatFields extends ChatContent, ChatRefs {}
 
 export interface Chat extends ChatFields {
     id: string;
-    characterId: string;
+    roomId: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────
@@ -32,7 +37,8 @@ export interface Chat extends ChatFields {
 const defaultFields: ChatFields = {
     title: 'New Chat',
     chatNote: '',
-    lorebooks: { refs: {}, folders: {} }
+    lorebooks: { refs: {}, folders: {} },
+    personas: { refs: {}, folders: {} }
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -44,13 +50,13 @@ function parseFields(record: ChatRecord): ChatFields {
 // ─── Service ──────────────────────────────────────────────────────────
 
 export class ChatService {
-    static async listByCharacter(characterId: string): Promise<Chat[]> {
+    static async listByRoom(roomId: string): Promise<Chat[]> {
         await buffer.flushTable('chats');
         const { userId } = getActiveSession();
         const records = await localDB.getByIndex<ChatRecord>(
             'chats',
-            'characterId',
-            characterId,
+            'roomId',
+            roomId,
             Number.MAX_SAFE_INTEGER
         );
 
@@ -59,7 +65,7 @@ export class ChatService {
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
-                characterId: record.characterId
+                roomId: record.roomId
             }));
     }
 
@@ -71,11 +77,11 @@ export class ChatService {
         return {
             ...parseFields(record),
             id: record.id,
-            characterId: record.characterId
+            roomId: record.roomId
         };
     }
 
-    static async create(characterId: string, fields: DeepPartial<ChatFields> = {}): Promise<Chat> {
+    static async create(roomId: string, fields: DeepPartial<ChatFields> = {}): Promise<Chat> {
         const resolved: ChatFields = deepMerge(defaultFields, fields);
 
         const { userId } = getActiveSession();
@@ -86,7 +92,7 @@ export class ChatService {
             const record: ChatRecord = {
                 id,
                 userId,
-                characterId,
+                roomId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
@@ -98,7 +104,7 @@ export class ChatService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create chat', error);
         }
 
-        return { ...resolved, id, characterId };
+        return { ...resolved, id, roomId };
     }
 
     static async update(id: string, changes: DeepPartial<ChatFields>): Promise<Chat> {
@@ -118,7 +124,7 @@ export class ChatService {
                 patch: changes as unknown as Record<string, unknown>
             });
 
-            return { ...updated, id: record.id, characterId: record.characterId };
+            return { ...updated, id: record.id, roomId: record.roomId };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update chat', error);

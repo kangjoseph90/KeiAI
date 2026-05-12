@@ -27,7 +27,7 @@
     import ToolCallGroup from './ToolCallGroup.svelte';
     import type { ToolCall } from '$lib/services/content/tool';
     import { runPipeline } from '$lib/pipeline';
-    import { collectTemplateMacros, runTemplate } from '$lib/template';
+    import { runTemplate } from '$lib/template';
     import type { TemplateContext } from '$lib/template';
     import { parseMarkdownAsync } from '$lib/markdown';
     import morphdom from 'morphdom';
@@ -87,8 +87,8 @@
     let lastContent = '';
     let renderedHtml = $state('');
     let lastStatus: string | undefined;
-    let lastCharacterId: string | undefined;
-    let lastPersonaId: string | undefined;
+    let lastDisplayCharacterId: string | undefined;
+    let lastDisplayPersonaId: string | undefined;
     let lastMessageIndex: number | undefined;
 
     // ── Derived ───────────────────────────────────────────────────────────────
@@ -105,6 +105,16 @@
 
     /** The position of the active swipe in the sorted list. */
     let swipePos = $derived(sortedSwipes.findIndex((s) => s.id === message.activeSwipeId));
+    let speakerName = $derived(
+        activeSwipe?.speakerName ?? (isUser ? 'User' : characterName || 'Assistant')
+    );
+    let speakerInitial = $derived((speakerName.trim().charAt(0) || '?').toUpperCase());
+    let displayCharacterId = $derived(
+        message.role === 'assistant' && activeSwipe?.speakerId ? activeSwipe.speakerId : characterId
+    );
+    let displayPersonaId = $derived(
+        message.role === 'user' && activeSwipe?.speakerId ? activeSwipe.speakerId : personaId
+    );
 
     // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -157,19 +167,20 @@
 
         try {
             const templateCtx: TemplateContext = {
-                characterId,
-                personaId,
+                characterId: displayCharacterId,
+                personaId: displayPersonaId,
                 chatId: message.chatId,
                 messageId: message.id,
                 messageIndex: message.messageIndex,
+                speakerId: activeSwipe?.speakerId,
+                speakerName: activeSwipe?.speakerName,
                 role: message.role,
                 display: true,
                 dryRun: true
             };
-            const templateMacros = await collectTemplateMacros(templateCtx);
-            const templated = await runTemplate(contentToRender, templateCtx, templateMacros);
+            const templated = await runTemplate(contentToRender, templateCtx);
             const processed = await runPipeline(message.chatId, 'display', templated, templateCtx);
-            const rendered = await runTemplate(processed, templateCtx, templateMacros);
+            const rendered = await runTemplate(processed, templateCtx);
             const rawHtml = await parseMarkdownAsync(rendered);
             const sanitized = DOMPurify.sanitize(rawHtml as string);
 
@@ -225,8 +236,8 @@
         if (
             current !== lastContent ||
             status !== lastStatus ||
-            characterId !== lastCharacterId ||
-            personaId !== lastPersonaId ||
+            displayCharacterId !== lastDisplayCharacterId ||
+            displayPersonaId !== lastDisplayPersonaId ||
             message.messageIndex !== lastMessageIndex
         ) {
             // Synchronously clear state when a fresh generation starts to prevent showing old content
@@ -236,8 +247,8 @@
             }
             lastContent = current;
             lastStatus = status;
-            lastCharacterId = characterId;
-            lastPersonaId = personaId;
+            lastDisplayCharacterId = displayCharacterId;
+            lastDisplayPersonaId = displayPersonaId;
             lastMessageIndex = message.messageIndex;
             refreshDisplay();
         }
@@ -252,24 +263,16 @@
 </script>
 
 <!-- Message Container -->
-<div
-    class="group flex gap-3 {isUser ? 'flex-row-reverse justify-start' : 'flex-row justify-start'}"
->
-    <!-- Avatar (Character only) -->
-    {#if !isUser}
-        <div
-            class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground"
-        >
-            {characterName.charAt(0).toUpperCase() || 'A'}
-        </div>
-    {/if}
+<div class="group flex justify-start gap-3">
+    <div
+        class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground"
+    >
+        {speakerInitial}
+    </div>
 
     <!-- Content Column -->
-    <div class="flex max-w-[75%] flex-col gap-1 {isUser ? 'items-end' : 'items-start'}">
-        <!-- Character Name -->
-        {#if !isUser && characterName}
-            <span class="text-xs font-medium text-muted-foreground">{characterName}</span>
-        {/if}
+    <div class="flex max-w-[75%] flex-col items-start gap-1">
+        <span class="text-xs font-medium text-muted-foreground">{speakerName}</span>
 
         <!-- Edit Mode -->
         {#if isEditing && message.displayStatus === 'completed'}

@@ -4,7 +4,7 @@
     import { Label } from '$lib/components/ui/label';
     import { Separator } from '$lib/components/ui/separator';
     import {
-        presetResources,
+        presetScripts,
         createPresetScript,
         updatePresetScript,
         deletePresetScript
@@ -22,12 +22,7 @@
     let currentScripts = $state<Script[]>([]);
 
     $effect(() => {
-        const entry = $presetResources.get(preset.id);
-        if (!entry) {
-            currentScripts = [];
-            return;
-        }
-        const unsub = entry.scripts.subscribe((v) => (currentScripts = v));
+        const unsub = presetScripts.subscribe((v) => (currentScripts = v));
         return unsub;
     });
 

@@ -10,14 +10,14 @@ import type { PagedMessages } from '$lib/services/content/paged_messages';
 import type { Character, Chat, Preset, Persona, Lorebook } from '$lib/services';
 import type { OpenAIChat } from '../../llm/types';
 import type { LLMRole, LLMTokenizer } from '$lib/types/models/llm';
-import { collectPipelineHandlers, runPipelineHandlers } from '$lib/pipeline';
-import { collectTemplateMacros, runTemplate } from '$lib/template';
+import { runPipeline } from '$lib/pipeline';
+import { runTemplate } from '$lib/template';
 import type { TemplateContext, Macro } from '$lib/template';
-import type { PipelineHandler } from '$lib/pipeline/types';
 import { TokenCounter } from '$lib/llm/tokenizer';
 import { AppError } from '$lib/types/errors';
 import type { Message } from '$lib/services/content/message';
 import { resolveLorebookEntries } from './lorebook';
+import { toDryRunContext, toMessageContext, toRoleContext } from './context';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
@@ -58,33 +58,13 @@ export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
     const budget = createPromptBudget(input.preset);
     const result = new Map<string, PromptBlockResult>();
     const unboundedHistoryBlocks = blocks.filter(isUnboundedHistoryBlock);
-    const templateCtx: TemplateContext = {
-        ...input.context,
-        characterId: input.chat.characterId,
-        personaId: input.persona.id,
-        chatId: input.chat.id,
-        display: false,
-        dryRun: false
-    };
 
     if (unboundedHistoryBlocks.length > 1) {
         throw new AppError('INVALID_INPUT', 'Prompt can only have one unbounded history block');
     }
 
-    const [templateMacros, requestHandlers] = await Promise.all([
-        collectTemplateMacros(templateCtx),
-        collectPipelineHandlers(input.chat.id, 'request')
-    ]);
-
     for (const block of blocks.filter(isFixedBlock)) {
-        const res = await buildFixedBlock(
-            block,
-            input,
-            templateCtx,
-            templateMacros,
-            requestHandlers,
-            input.tokenizer
-        );
+        const res = await buildFixedBlock(block, input);
 
         if (budget.used + res.tokens > budget.input) {
             throw new AppError(
@@ -100,14 +80,7 @@ export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
     const lorebookBlocks = blocks.filter(isLorebookBlock);
     if (lorebookBlocks.length > 0) {
         const blockBudget = getLorebookBudget(budget);
-        const lorebookResults = await buildLorebookBlocks(
-            lorebookBlocks,
-            input,
-            templateCtx,
-            templateMacros,
-            input.tokenizer,
-            blockBudget
-        );
+        const lorebookResults = await buildLorebookBlocks(lorebookBlocks, input, blockBudget);
         const tokens = sumBlockTokens(lorebookResults);
 
         if (tokens > blockBudget) {
@@ -125,15 +98,7 @@ export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
 
     for (const block of blocks.filter(isMemoryBlock)) {
         const blockBudget = getMemoryBudget(block, budget);
-        const res = await buildMemoryBlock(
-            block,
-            input,
-            templateCtx,
-            templateMacros,
-            requestHandlers,
-            input.tokenizer,
-            blockBudget
-        );
+        const res = await buildMemoryBlock(block, input, blockBudget);
 
         if (res.tokens > blockBudget) {
             throw new AppError(
@@ -148,15 +113,7 @@ export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
 
     for (const block of unboundedHistoryBlocks) {
         const remainingBudget = Math.max(0, budget.input - budget.used);
-        const res = await buildUnboundedHistoryBlock(
-            block,
-            input,
-            templateCtx,
-            templateMacros,
-            requestHandlers,
-            input.tokenizer,
-            remainingBudget
-        );
+        const res = await buildUnboundedHistoryBlock(block, input, remainingBudget);
 
         result.set(block.id, res);
         budget.used += res.tokens;
@@ -167,25 +124,14 @@ export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
 
 // ─── Block Builders ─────────────────────────────────────────────────────────
 
-async function buildFixedBlock(
-    block: PromptBlock,
-    input: PromptInput,
-    templateCtx: TemplateContext,
-    templateMacros: ReadonlyMap<string, Macro>,
-    requestHandlers: PipelineHandler<string, 'request'>[],
-    tokenizer: LLMTokenizer
-): Promise<PromptBlockResult> {
+async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<PromptBlockResult> {
     let messages: OpenAIChat[] = [];
 
     switch (block.type) {
         case 'text':
             messages = makeMessage(
                 block.role,
-                await runTemplate(
-                    block.content,
-                    { ...templateCtx, role: block.role },
-                    templateMacros
-                )
+                await runTemplate(block.content, toRoleContext(input.context, block.role))
             );
             break;
 
@@ -195,8 +141,8 @@ async function buildFixedBlock(
                 await renderWithFormat(
                     input.character.description,
                     block.format,
-                    { ...templateCtx, role: block.role },
-                    templateMacros
+                    toRoleContext(input.context, block.role),
+                    input.character.name
                 )
             );
             break;
@@ -206,8 +152,8 @@ async function buildFixedBlock(
                 await renderWithFormat(
                     input.character.characterNote,
                     block.format,
-                    { ...templateCtx, role: block.role },
-                    templateMacros
+                    toRoleContext(input.context, block.role),
+                    input.character.name
                 )
             );
             break;
@@ -218,8 +164,8 @@ async function buildFixedBlock(
                 await renderWithFormat(
                     input.persona.description,
                     block.format,
-                    { ...templateCtx, role: block.role },
-                    templateMacros
+                    toRoleContext(input.context, block.role),
+                    input.persona.name
                 )
             );
             break;
@@ -230,8 +176,7 @@ async function buildFixedBlock(
                 await renderWithFormat(
                     input.chat.chatNote,
                     block.format,
-                    { ...templateCtx, role: block.role },
-                    templateMacros
+                    toRoleContext(input.context, block.role)
                 )
             );
             break;
@@ -242,9 +187,8 @@ async function buildFixedBlock(
             for (const { message, index } of slice) {
                 const rendered = await renderHistoryMessage(
                     message,
-                    { ...templateCtx, messageIndex: index },
-                    templateMacros,
-                    requestHandlers,
+                    index,
+                    input.context,
                     block.format
                 );
                 if (rendered) messages.push(rendered);
@@ -253,17 +197,13 @@ async function buildFixedBlock(
         }
     }
 
-    const tokens = await countMessages(messages, tokenizer);
+    const tokens = await countMessages(messages, input.tokenizer);
     return { messages, tokens };
 }
 
 async function buildMemoryBlock(
     block: PromptBlock,
     input: PromptInput,
-    templateCtx: TemplateContext,
-    templateMacros: ReadonlyMap<string, Macro>,
-    requestHandlers: PipelineHandler<string, 'request'>[],
-    tokenizer: LLMTokenizer,
     budget: number
 ): Promise<PromptBlockResult> {
     if (budget <= 0) return { messages: [], tokens: 0 };
@@ -276,16 +216,13 @@ async function buildMemoryBlock(
             break;
     }
 
-    const tokens = await countMessages(messages, tokenizer);
+    const tokens = await countMessages(messages, input.tokenizer);
     return { messages, tokens };
 }
 
 async function buildLorebookBlocks(
     blocks: LorebookPromptBlock[],
     input: PromptInput,
-    templateCtx: TemplateContext,
-    templateMacros: ReadonlyMap<string, Macro>,
-    tokenizer: LLMTokenizer,
     budget: number
 ): Promise<Map<string, PromptBlockResult>> {
     const result = new Map<string, PromptBlockResult>(
@@ -296,15 +233,15 @@ async function buildLorebookBlocks(
 
     validateLorebookBlockRanges(blocks);
 
+    const templateCtx = toDryRunContext(input.context);
+
     const activeLorebooks = await resolveLorebookEntries({
         lorebooks: input.lorebooks,
         messages: input.messages,
         defaultScanDepth: input.preset?.lorebookScanDepth ?? 0,
-        templateCtx,
-        templateMacros
+        templateCtx
     });
 
-    const promptTemplateCtx: TemplateContext = { ...templateCtx, dryRun: true };
     let used = 0;
 
     for (const lorebook of [...activeLorebooks].sort((a, b) => b.order - a.order)) {
@@ -314,11 +251,10 @@ async function buildLorebookBlocks(
         const content = await renderWithFormat(
             lorebook.content,
             block.format,
-            { ...promptTemplateCtx, role: lorebook.role },
-            templateMacros
+            toRoleContext(templateCtx, lorebook.role)
         );
         const messages = makeMessage(lorebook.role, content);
-        const tokens = await countMessages(messages, tokenizer);
+        const tokens = await countMessages(messages, input.tokenizer);
         if (messages.length === 0 || tokens === 0) continue;
         if (used + tokens > budget) continue;
 
@@ -351,10 +287,6 @@ async function buildLorebookBlocks(
 async function buildUnboundedHistoryBlock(
     block: PromptBlock,
     input: PromptInput,
-    templateCtx: TemplateContext,
-    templateMacros: ReadonlyMap<string, Macro>,
-    requestHandlers: PipelineHandler<string, 'request'>[],
-    tokenizer: LLMTokenizer,
     remainingBudget: number
 ): Promise<PromptBlockResult> {
     if (block.type !== 'history') return { messages: [], tokens: 0 };
@@ -369,15 +301,14 @@ async function buildUnboundedHistoryBlock(
 
         const rendered = await renderHistoryMessage(
             indexed.message,
-            { ...templateCtx, messageIndex: indexed.index },
-            templateMacros,
-            requestHandlers,
+            indexed.index,
+            input.context,
             block.format
         );
         if (!rendered) continue;
 
         sawRenderableMessage = true;
-        const tokens = await countMessages([rendered], tokenizer);
+        const tokens = await countMessages([rendered], input.tokenizer);
         if (tokens > remaining) {
             if (messages.length === 0) {
                 throw new AppError(
@@ -399,7 +330,7 @@ async function buildUnboundedHistoryBlock(
         );
     }
 
-    const totalTokens = await countMessages(messages, tokenizer);
+    const totalTokens = await countMessages(messages, input.tokenizer);
     return { messages, tokens: totalTokens };
 }
 
@@ -514,34 +445,34 @@ function isDepthInRange(depth: number, block: LorebookPromptBlock): boolean {
 }
 
 async function renderHistoryMessage(
-    msg: Message,
+    message: Message,
+    messageIndex: number,
     templateCtx: TemplateContext,
-    templateMacros: ReadonlyMap<string, Macro>,
-    requestHandlers: PipelineHandler<string, 'request'>[],
     format?: string
 ): Promise<OpenAIChat | null> {
-    const activeSwipe = msg.swipes[msg.activeSwipeId];
+    const activeSwipe = message.swipes[message.activeSwipeId];
     if (!activeSwipe) return null;
 
-    const messageCtx: TemplateContext = {
-        ...templateCtx,
-        messageId: msg.id,
-        role: msg.role
-    };
+    const messageCtx = toMessageContext(message, messageIndex, templateCtx);
 
     const templated = await renderWithFormat(
         activeSwipe.content,
         format,
         messageCtx,
-        templateMacros
+        activeSwipe.speakerName
     );
 
-    const processed = await runPipelineHandlers(requestHandlers, templated, messageCtx);
+    const processed = await runPipeline(
+        templateCtx.chatId ?? message.chatId,
+        'request',
+        templated,
+        messageCtx
+    );
 
-    const content = await runTemplate(processed, messageCtx, templateMacros);
+    const content = await runTemplate(processed, messageCtx);
 
     return {
-        role: msg.role,
+        role: message.role,
         content,
         thought: activeSwipe.thought
     };
@@ -551,15 +482,19 @@ async function renderWithFormat(
     content: string,
     format: string | undefined,
     ctx: TemplateContext,
-    macros: ReadonlyMap<string, Macro>
+    name?: string
 ): Promise<string> {
-    const extendedMacros = new Map(macros);
-    extendedMacros.set('slot', {
+    const localMacros = new Map<string, Macro>();
+    localMacros.set('slot', {
         run: () => content,
         recursive: true
     });
+    localMacros.set('name', {
+        run: () => name ?? '',
+        recursive: true
+    });
 
-    return await runTemplate(format ?? '{{slot}}', ctx, extendedMacros);
+    return await runTemplate(format ?? '{{slot}}', ctx, localMacros);
 }
 
 async function countMessages(messages: OpenAIChat[], tokenizer: LLMTokenizer): Promise<number> {

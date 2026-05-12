@@ -1,7 +1,11 @@
 <script lang="ts">
     import {
         appSettings,
-        moduleResources,
+        activeModule,
+        moduleLorebooks,
+        moduleScripts,
+        moduleCharJS,
+        selectModule,
         updateModule,
         deleteModule,
         setModuleEnabled,
@@ -15,6 +19,7 @@
         updateModuleCharJS,
         deleteModuleCharJS
     } from '$lib/stores';
+    import { navigate } from '$lib/router';
     import type { Module, Lorebook, Script, CharJS } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { Button } from '$lib/components/ui/button';
@@ -24,18 +29,7 @@
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
     import { Separator } from '$lib/components/ui/separator';
-    import {
-        Check,
-        ChevronDown,
-        ChevronRight,
-        Pencil,
-        Plus,
-        Trash2,
-        X,
-        BookOpen,
-        FileCode,
-        Code
-    } from 'lucide-svelte';
+    import { ArrowLeft, BookOpen, Check, Code, FileCode, Plus, Trash2 } from 'lucide-svelte';
     import LorebookItem from './LorebookItem.svelte';
     import ScriptItem from './ScriptItem.svelte';
     import CharJSItem from './CharJSItem.svelte';
@@ -43,43 +37,38 @@
     let { mod }: { mod: Module } = $props();
 
     let enabled = $derived($appSettings?.modules.refs[mod.id]?.enabled ?? true);
-
-    let expanded = $state(false);
-    let editing = $state(false);
     let editName = $state('');
     let editDesc = $state('');
     let editAllowLowLevel = $state(false);
+    let loadedModuleId = $state<string | null>(null);
 
-    // Reactive arrays synced from nested EntityStore subscriptions
     let lorebooks = $state<Lorebook[]>([]);
     let scripts = $state<Script[]>([]);
     let charjs = $state<CharJS[]>([]);
 
     $effect(() => {
-        if (!expanded) {
-            lorebooks = [];
-            scripts = [];
-            charjs = [];
+        const current = $activeModule;
+        if (current?.id !== mod.id) {
+            void selectModule(mod.id);
             return;
         }
-        const entry = $moduleResources.get(mod.id);
-        if (!entry) return;
-        const unsubLb = entry.lorebooks.subscribe((v) => (lorebooks = v));
-        const unsubSc = entry.scripts.subscribe((v) => (scripts = v));
-        const unsubCjs = entry.charjs.subscribe((v) => (charjs = v));
+
+        if (loadedModuleId !== mod.id) {
+            loadedModuleId = mod.id;
+            editName = current.name;
+            editDesc = current.description;
+            editAllowLowLevel = current.allowLowLevel;
+        }
+
+        const unsubLb = moduleLorebooks.subscribe((v) => (lorebooks = v));
+        const unsubSc = moduleScripts.subscribe((v) => (scripts = v));
+        const unsubCjs = moduleCharJS.subscribe((v) => (charjs = v));
         return () => {
             unsubLb();
             unsubSc();
             unsubCjs();
         };
     });
-
-    function startEdit() {
-        editName = mod.name;
-        editDesc = mod.description;
-        editAllowLowLevel = mod.allowLowLevel;
-        editing = true;
-    }
 
     async function handleSaveModule() {
         if (!editName.trim()) return;
@@ -88,7 +77,12 @@
             description: editDesc,
             allowLowLevel: editAllowLowLevel
         });
-        editing = false;
+        navigate({ view: 'settings' });
+    }
+
+    async function handleDeleteModule() {
+        await deleteModule(mod.id);
+        navigate({ view: 'settings' });
     }
 
     function handleUpdateLorebook(lorebookId: string, changes: DeepPartial<Lorebook>) {
@@ -116,212 +110,174 @@
     }
 </script>
 
-<Card>
-    <CardContent class="p-4">
-        <!-- Header -->
-        <div class="flex items-center justify-between gap-3">
-            <div class="flex items-center gap-2 min-w-0">
-                <button
-                    class="p-0.5 rounded hover:bg-accent"
-                    onclick={() => {
-                        expanded = !expanded;
-                        editing = false;
-                    }}
-                >
-                    {#if expanded}
-                        <ChevronDown class="size-4" />
-                    {:else}
-                        <ChevronRight class="size-4" />
-                    {/if}
-                </button>
-                <div class="min-w-0">
-                    {#if editing}
-                        <div class="flex flex-col gap-3">
-                            <div class="space-y-1">
-                                <Label>Name</Label>
-                                <Input bind:value={editName} />
-                            </div>
-                            <div class="space-y-1">
-                                <Label>Description</Label>
-                                <Textarea bind:value={editDesc} rows={2} />
-                            </div>
-                            <label class="flex items-center gap-2 text-sm">
-                                <input type="checkbox" bind:checked={editAllowLowLevel} />
-                                Allow Low Level
-                            </label>
-                            <div class="flex gap-2">
-                                <Button size="sm" class="gap-1.5" onclick={handleSaveModule}>
-                                    <Check class="size-4" /> Save
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    class="gap-1.5"
-                                    onclick={() => (editing = false)}
-                                >
-                                    <X class="size-4" /> Cancel
-                                </Button>
-                            </div>
-                        </div>
-                    {:else}
-                        <div>
-                            <div class="flex items-center gap-2">
-                                <p class="font-medium">{mod.name || 'Unnamed'}</p>
-                                {#if !enabled}
-                                    <Badge variant="outline" class="text-xs">Disabled</Badge>
-                                {/if}
-                            </div>
-                            {#if mod.description}
-                                <p class="text-sm text-muted-foreground line-clamp-1">
-                                    {mod.description}
-                                </p>
-                            {/if}
-                        </div>
-                    {/if}
-                </div>
+<div class="flex min-h-[70vh] flex-col gap-5">
+    <div class="flex items-center justify-between gap-3">
+        <div class="flex min-w-0 items-center gap-3">
+            <Button variant="ghost" size="icon" onclick={() => navigate({ view: 'settings' })}>
+                <ArrowLeft class="size-4" />
+            </Button>
+            <div class="min-w-0">
+                <h2 class="truncate text-xl font-semibold">{mod.name}</h2>
+                <p class="text-xs text-muted-foreground">Module editor</p>
             </div>
-            {#if !editing}
-                <div class="flex gap-1 shrink-0 items-center">
-                    <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+        </div>
+        <div class="flex gap-2">
+            <Button variant="destructive" class="gap-1.5" onclick={handleDeleteModule}>
+                <Trash2 class="size-4" /> Delete
+            </Button>
+            <Button class="gap-1.5" onclick={handleSaveModule}>
+                <Check class="size-4" /> Save
+            </Button>
+        </div>
+    </div>
+
+    <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div class="space-y-5">
+            <Card>
+                <CardContent class="space-y-4 p-4">
+                    <div class="space-y-1">
+                        <Label>Name</Label>
+                        <Input bind:value={editName} />
+                    </div>
+                    <div class="space-y-1">
+                        <Label>Description</Label>
+                        <Textarea bind:value={editDesc} rows={4} />
+                    </div>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" bind:checked={editAllowLowLevel} />
+                        Allow Low Level
+                    </label>
+                </CardContent>
+            </Card>
+
+            <section class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2 text-sm font-medium">
+                        <BookOpen class="size-4" />
+                        Lorebooks
+                        <Badge variant="secondary" class="text-xs">{lorebooks.length}</Badge>
+                    </div>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        class="gap-1"
+                        onclick={() =>
+                            createModuleLorebook(mod.id, {
+                                name: 'New Lorebook',
+                                key: '',
+                                secondKey: '',
+                                content: '',
+                                disabled: false
+                            })}
+                    >
+                        <Plus class="size-3" /> Add
+                    </Button>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    {#each lorebooks as lb (lb.id)}
+                        <LorebookItem
+                            item={lb}
+                            onUpdate={handleUpdateLorebook}
+                            onDelete={handleDeleteLorebook}
+                        />
+                    {:else}
+                        <p class="text-xs text-muted-foreground">No lorebooks.</p>
+                    {/each}
+                </div>
+            </section>
+
+            <Separator />
+
+            <section class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2 text-sm font-medium">
+                        <FileCode class="size-4" />
+                        Scripts
+                        <Badge variant="secondary" class="text-xs">{scripts.length}</Badge>
+                    </div>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        class="gap-1"
+                        onclick={() =>
+                            createModuleScript(mod.id, {
+                                name: 'New Script',
+                                regex: '',
+                                replacement: '',
+                                phase: 'output',
+                                enabled: true,
+                                advanced: false,
+                                flag: 'gi',
+                                order: 0,
+                                repeat: 0
+                            })}
+                    >
+                        <Plus class="size-3" /> Add
+                    </Button>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    {#each scripts as sc (sc.id)}
+                        <ScriptItem
+                            item={sc}
+                            onUpdate={handleUpdateScript}
+                            onDelete={handleDeleteScript}
+                        />
+                    {:else}
+                        <p class="text-xs text-muted-foreground">No scripts.</p>
+                    {/each}
+                </div>
+            </section>
+
+            <Separator />
+
+            <section class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2 text-sm font-medium">
+                        <Code class="size-4" />
+                        CharJS
+                        <Badge variant="secondary" class="text-xs">{charjs.length}</Badge>
+                    </div>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        class="gap-1"
+                        onclick={() =>
+                            createModuleCharJS(mod.id, {
+                                name: 'New CharJS',
+                                code: '',
+                                enabled: true
+                            })}
+                    >
+                        <Plus class="size-3" /> Add
+                    </Button>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    {#each charjs as cjs (cjs.id)}
+                        <CharJSItem
+                            item={cjs}
+                            onUpdate={handleUpdateCharJS}
+                            onDelete={handleDeleteCharJS}
+                        />
+                    {:else}
+                        <p class="text-xs text-muted-foreground">No CharJS.</p>
+                    {/each}
+                </div>
+            </section>
+        </div>
+
+        <aside class="space-y-3">
+            <Card>
+                <CardContent class="space-y-3 p-4">
+                    <label class="flex items-center justify-between gap-3 text-sm">
+                        <span>Enabled in global settings</span>
                         <input
                             type="checkbox"
                             checked={enabled}
                             onchange={() => setModuleEnabled(mod.id, !enabled)}
                         />
                     </label>
-                    <Button size="sm" variant="outline" onclick={startEdit}>
-                        <Pencil class="size-4" />
-                    </Button>
-                    <Button size="sm" variant="destructive" onclick={() => deleteModule(mod.id)}>
-                        <Trash2 class="size-4" />
-                    </Button>
-                </div>
-            {/if}
-        </div>
-
-        <!-- Expanded: Sub-resources -->
-        {#if expanded}
-            <div class="mt-4 flex flex-col gap-4">
-                <!-- Lorebooks -->
-                <section>
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="flex items-center gap-2 text-sm font-medium">
-                            <BookOpen class="size-4" />
-                            Lorebooks
-                            <Badge variant="secondary" class="text-xs">{lorebooks.length}</Badge>
-                        </div>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            class="gap-1"
-                            onclick={() =>
-                                createModuleLorebook(mod.id, {
-                                    name: 'New Lorebook',
-                                    key: '',
-                                    secondKey: '',
-                                    content: '',
-                                    disabled: false
-                                })}
-                        >
-                            <Plus class="size-3" /> Add
-                        </Button>
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                        {#each lorebooks as lb (lb.id)}
-                            <LorebookItem
-                                item={lb}
-                                onUpdate={handleUpdateLorebook}
-                                onDelete={handleDeleteLorebook}
-                            />
-                        {/each}
-                        {#if lorebooks.length === 0}
-                            <p class="text-xs text-muted-foreground px-1">No lorebooks.</p>
-                        {/if}
-                    </div>
-                </section>
-
-                <Separator />
-
-                <!-- Scripts -->
-                <section>
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="flex items-center gap-2 text-sm font-medium">
-                            <FileCode class="size-4" />
-                            Scripts
-                            <Badge variant="secondary" class="text-xs">{scripts.length}</Badge>
-                        </div>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            class="gap-1"
-                            onclick={() =>
-                                createModuleScript(mod.id, {
-                                    name: 'New Script',
-                                    regex: '',
-                                    replacement: '',
-                                    phase: 'output',
-                                    enabled: true,
-                                    advanced: false,
-                                    flag: 'gi',
-                                    order: 0,
-                                    repeat: 0
-                                })}
-                        >
-                            <Plus class="size-3" /> Add
-                        </Button>
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                        {#each scripts as sc (sc.id)}
-                            <ScriptItem
-                                item={sc}
-                                onUpdate={handleUpdateScript}
-                                onDelete={handleDeleteScript}
-                            />
-                        {/each}
-                        {#if scripts.length === 0}
-                            <p class="text-xs text-muted-foreground px-1">No scripts.</p>
-                        {/if}
-                    </div>
-                </section>
-
-                <Separator />
-
-                <!-- CharJS -->
-                <section>
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="flex items-center gap-2 text-sm font-medium">
-                            <Code class="size-4" />
-                            CharJS
-                            <Badge variant="secondary" class="text-xs">{charjs.length}</Badge>
-                        </div>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            class="gap-1"
-                            onclick={() =>
-                                createModuleCharJS(mod.id, {
-                                    name: 'New CharJS',
-                                    code: '',
-                                    enabled: true
-                                })}
-                        >
-                            <Plus class="size-3" /> Add
-                        </Button>
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                        {#each charjs as cjs (cjs.id)}
-                            <CharJSItem
-                                item={cjs}
-                                onUpdate={handleUpdateCharJS}
-                                onDelete={handleDeleteCharJS}
-                            />
-                        {/each}
-                        {#if charjs.length === 0}
-                            <p class="text-xs text-muted-foreground px-1">No CharJS.</p>
-                        {/if}
-                    </div>
-                </section>
-            </div>
-        {/if}
-    </CardContent>
-</Card>
+                </CardContent>
+            </Card>
+        </aside>
+    </div>
+</div>

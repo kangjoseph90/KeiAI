@@ -46,15 +46,15 @@ describe('Message Store', () => {
         // Reset via messages (the EntityStore)
         messages.clear();
         chats.clear();
-        activeChat.set({ id: mockChatId, characterId: 'char-1' } as Chat);
+        activeChat.set({ id: mockChatId, roomId: 'room-1' } as Chat);
         vi.mocked(ChatService.update).mockResolvedValue({
             id: mockChatId,
-            characterId: 'char-1',
+            roomId: 'room-1',
             lastMessageId: mockMessage.id
         } as Chat);
         vi.mocked(ChatService.get).mockResolvedValue({
             id: mockChatId,
-            characterId: 'char-1',
+            roomId: 'room-1',
             lastMessageId: mockMessage.id
         } as Chat);
     });
@@ -71,7 +71,7 @@ describe('Message Store', () => {
         });
 
         it('should not update store if activeChatId has changed', async () => {
-            activeChat.set({ id: 'other-chat', characterId: 'char-1' } as Chat);
+            activeChat.set({ id: 'other-chat', roomId: 'room-1' } as Chat);
             vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([mockMessage]);
 
             await loadInitialMessages(mockChatId);
@@ -139,7 +139,7 @@ describe('Message Store', () => {
             const newMessage = { ...mockMessage, id: 'new-id' };
 
             vi.mocked(MessageService.create).mockResolvedValue(newMessage);
-            chats.setAll([{ id: mockChatId, characterId: 'char-1' } as Chat]);
+            chats.setAll([{ id: mockChatId, roomId: 'room-1' } as Chat]);
 
             await createMessage(mockChatId, {
                 swipes: { s1: { id: 's1', content: 'New message content', createdAt: Date.now() } },

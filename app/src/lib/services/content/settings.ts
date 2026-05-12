@@ -67,7 +67,6 @@ export interface AppSettingsContent {
 }
 
 export interface AppSettingsRefs {
-    personaId?: string;
     presetId?: string;
     characters: EntityListConfig;
     personas: EntityListConfig;

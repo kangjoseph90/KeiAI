@@ -113,25 +113,29 @@
   - 대상: 로어북, 스크립트는 항상 부모가 소유 (공유 시 Deep Copy).
   - 소유 트리:
     - settings → 캐릭터, 페르소나, 프리셋, 모듈, 플러그인 (최상위 노드로서 각 엔티티의 EntityListConfig 소유)
-    - 캐릭터 → 채팅(chats로 소유), 로어북, 스크립트, CharJS 단독 소유
-    - 채팅 → 로어북 단독 소유 (채팅 고유의 설정 가능)
+    - settings → 룸 (개인 채팅 공간의 최상위 컨테이너)
+    - 룸 → 채팅(chats로 소유)
+    - 채팅 → 메시지, 로어북 단독 소유 (채팅 고유의 설정 가능)
+    - 캐릭터 → 로어북, 스크립트, CharJS 단독 소유
     - 모듈 → 로어북, 스크립트, CharJS 단독 소유
     - 페르소나 → (추가 자원 소유 없음, 자체 설정과 에셋만 존재)
   - FK 및 정렬 예외 사항 (messages):
     - messages.chatId — 고볼륨 트래픽으로 인해 [chatId+sortOrder] 조합의 인덱스 추가 사용 (O(1) 쓰기 및 빠른 페이지네이션)
-    - chats.characterId — 캐릭터 삭제 시 종속된 채팅을 일괄 정리하기 위한 보조 장치
+    - chats.roomId — 룸 진입 시 채팅 목록을 빠르게 조회하기 위한 로컬 인덱스
 - 참조 관계 (N:M, Shared Reference):
   - 소비자의 암호화 Blob에 `EntityListConfig<ResourceRef>`로 참조만 보유. 삭제 영향 없음.
   - enabled 플래그: 동일 자원이라도 컨텍스트마다 개별 ON/OFF.
-  - 대상: 모듈 (프리셋과 페르소나는 직접 string ID 지정).
-  - 예: `characters.modules` (참조, ResourceRef), `characters.lorebooks` (소유, OrderedRef).
+  - 대상: 룸의 캐릭터, 채팅의 페르소나, 각 컨텍스트의 모듈.
+  - 예: `room.characters` (참조, ResourceRef), `chat.personas` (참조, ResourceRef), `characters.modules` (참조, ResourceRef), `characters.lorebooks` (소유, OrderedRef).
+  - 메시지의 `speakerId/speakerName`은 히스토리 보존용 약한 참조. 삭제된 캐릭터/페르소나라도 메시지 표시는 `speakerName`으로 유지한다.
 - 폴더 관리:
   - 자식의 소속 폴더: refs[id].folderId로 표현.
   - 폴더 정의: EntityListConfig 내부의 `folders: Record<string, FolderDef>` (이름, 색, 중첩 등). 매우 소량.
-  - 예: `settings.characters.folders`, `character.chats.folders`.
+  - 예: `settings.characters.folders`, `room.chats.folders`, `room.characters.folders`, `chat.personas.folders`.
 - 참조 무결성: Loose Coupling.
   - E2EE 환경에서는 FOREIGN KEY ON DELETE CASCADE 불가능.
   - 참조 자원 삭제 시 참조자의 Blob 일괄 수정 불필요 → Graceful Degradation + Self-Healing.
+  - self-healing 범위: `selectRoom`은 stale room refs, `selectChat`은 stale/disabled chat persona 및 selected/default ids를 정리.
   - DB에는 진실의 원천(Source of Truth)만 저장. 파생값 저장하지 않음.
 
 10. 모듈 시스템 (Module System)
@@ -295,8 +299,9 @@
 
 - 암호화 테이블 (EncryptedRecord 기반, blind sync 대상):
   - users — 특수 (인증 및 E2EE 전용 필드 보관: salt, encryptedMasterKey, recoveryAuthTokenHash 등). 사용자 계정 폭파 시 하위 테이블들 자동 삭제 되도록 `cascadeDelete` 적용 처리됨.
-  - characters — 단일 (소유: chats, lorebooks, scripts, charjs. 참조: modules. 에셋: assets)
-  - chats — 단일 (characterId 평문 FK 보유. 소유: lorebooks)
+  - rooms — 단일 (소유: chats. 참조: characters. 폴더 지원)
+  - characters — 단일 (소유: lorebooks, scripts, charjs. 참조: modules. 에셋: assets)
+  - chats — 단일 (roomId 평문 FK 보유. 소유: lorebooks. 참조: personas/modules. selected/default persona/character id 보유)
   - messages — 단일, 평문 FK: chatId ([chatId+sortOrder] 복합 인덱스, softDeleteByIndex 벌크 삭제)
   - personas — 단일 (독립된 데이터 + 에셋 보유)
   - presets — 단일
@@ -339,13 +344,17 @@
 
 - RisuAI 문제 분석:
   - Trigger와 Script 시스템이 얽혀 실행 시점 제어가 어려움. 1970줄 단일 함수에 로직이 하드코딩되어 유지보수 불가능.
-  - Svelte Store나 전역 이벤트 시스템(EventBus)에 의존하면 백그라운드 생성 도중 유저가 다른 활성 캐릭터 방으로 이동할 경우 '활성 스토어 교차 오염' 현상 발생 (A채팅방 생성 중 B캐릭터 스크립트가 실행됨).
+  - Svelte Store나 전역 이벤트 시스템(EventBus)에 의존하면 백그라운드 생성 도중 유저가 다른 룸/캐릭터 스튜디오로 이동할 경우 '활성 스토어 교차 오염' 현상 발생 (A채팅 생성 중 B컨텍스트 스크립트가 실행됨).
 - 통합 설계 원칙 (Stateless Pipeline):
   - 전체 생성 흐름은 Svelte Store(캐시)를 일절 읽지 않고, Service Layer에서 직접 DB 스냅샷을 찍어 진행 (Store 독립성).
   - 복잡한 EventBus 파이프를 없애고 명시적인 함수의 연속 호출 체인(`buildContext` → `PromptBuilder` → `runScripts` → `provider.stream`)으로 데이터 흐름 추적성 확보.
 - 컨텍스트 스냅샷 (Frozen Context):
-  - 백그라운드 호출 시점(`runChat`)에 캐릭터, 현재 채팅, 설정된 프리셋, 모듈의 로어북/스크립트 등 필요한 모든 데이터를 Service Layer에서 쿼리하여 메모리에 고정.
+  - 백그라운드 호출 시점(`runChat`)에 룸, 채팅, selected/default 캐릭터/페르소나, 설정된 프리셋, 로어북/스크립트 등 필요한 모든 데이터를 Service Layer에서 쿼리하여 메모리에 고정.
   - 유저가 화면을 이동해도 백그라운드 생성은 스냅샷 당시의 정확한 데이터(스크립트 등)만 사용하여 응답.
+- 컨텍스트 주입 원칙:
+  - input은 default character + selected persona.
+  - prompt/output은 selected/default character + selected/default persona.
+  - display와 history는 각 메시지 active swipe의 `speakerId/speakerName`을 우선 사용.
 - 스크립트 실행 분리 (Placement):
   - `input`: 유저 텍스트 전처리 (DB 저장 전)
   - `request`: 프롬프트 조립 전산물 조작 (서버 전송 전)
@@ -357,8 +366,9 @@
 - 핵심 문제: UI는 생성 방식(Streaming 여부)에 대해 전혀 알 필요가 없어야 하며, 스트리밍 중 청크마다 전체 메시지를 마크다운 파싱하면 브라우저 성능 폭발(디바운스 필요).
 - Two-Track State (이중 상태 관리):
   - 확정 메시지 (Confirmed): DB에 저장된 완성 메시지. `messages` 스토어에 평문 배열로 보유.
-  - 생성 중 메시지 (Ephemeral): LLM 스트리밍 도중의 텍스트. `generationTasks` 스토어에 chatId Map으로 보유. DB 미저장.
-  - `displayMessages` derived 스토어: 확정 메시지 모음 뒤에 현재 생성 중인 임시 메시지를 단일 리스트로 결합하여 뷰에 제공.
+  - 생성 중 메시지 (Persisted Target): LLM 스트리밍 시작 전에 빈 assistant message와 active swipe를 DB에 만든 뒤, 청크마다 해당 swipe를 갱신.
+  - `chatTasks` 스토어: chatId Map으로 status/messageId/controller만 보유. content는 들지 않음.
+  - `displayMessages` derived 스토어: DB 메시지에 task status/error overlay만 얹어 뷰에 제공.
 - Message 단일 컴포넌트:
   - UI 레이어에서는 스트리밍 버블 컴포넌트와 일반 컴포넌트를 분리하지 않고 단일 `<Message>` 컴포넌트로 처리.
   - `message.displayStatus` ('completed' | 'generating' | 'error') props 하나로 모든 UI 상태 제어. (관심사의 완벽한 분리)
@@ -367,5 +377,5 @@
   - 컴포넌트 안에서 `display` 스크립트 및 마크다운 파싱을 디바운스 적용.
   - `morphdom`을 사용한 diffDOM 교체로 이전 렌더링 결과와 비교하여 변경된 텍스트/HTML 노드만 패치해 성능 극대화.
 - 생명주기 마감 (Finalize):
-  - 스트리밍 완료 → `createMessage`(DB 영구 저장 및 확정 스토어 업데이트) → 그 직후 `clearTask`(임시 스토어 지움).
-  - 시각적으로 생성 말풍선이 일반 말풍선으로 깜빡임 없이 매끄럽게 교체됨.
+  - 스트리밍 완료 → output/template 후처리 → 최종 swipe 업데이트 → non-empty 검증 → `clearTask`.
+  - abort/에러가 발생해도 이미 DB에 생성된 메시지/스와이프가 남아 있어 데이터 유실이 없음.

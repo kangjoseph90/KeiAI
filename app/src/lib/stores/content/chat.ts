@@ -1,29 +1,29 @@
 import { get } from 'svelte/store';
 import {
     ChatService,
-    MessageService,
     LorebookService,
     type ChatFields,
     type ChatContent,
     type LorebookFields,
     type Lorebook,
     type Chat,
-    type MessageSwipe,
-    type Greeting
+    type Persona
 } from '$lib/services';
-import type { FolderDef, EntityListConfig } from '$lib/types/refs';
+import type { FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
     chats,
     activeChat,
     messages,
     chatLorebooks,
-    activeCharacterId,
     activeChatId,
+    activeRoomId,
+    chatPersonas,
     messageIndexes
 } from '../state';
 import { loadInitialMessages } from './message';
-import { getCharacter, updateCharacter } from './character';
+import { getRoom, updateRoom } from './room';
+import { getPersona } from './persona';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
@@ -57,7 +57,7 @@ export async function getChatLorebooks(chatId: string): Promise<Lorebook[]> {
     return results.filter((lb): lb is Lorebook => lb !== null);
 }
 
-export async function selectChat(chatId: string, characterId: string): Promise<void> {
+export async function selectChat(chatId: string): Promise<void> {
     const chat = await getChat(chatId);
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
@@ -65,31 +65,98 @@ export async function selectChat(chatId: string, characterId: string): Promise<v
     activeChat.set(chat);
     await loadInitialMessages(chatId, 50);
 
-    const lorebooks = await LorebookService.listByOwner(chatId);
-    chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebooks.refs));
+    const personaIds = Object.keys(chat.personas.refs);
+    const [lorebooks, personaEntries, room] = await Promise.all([
+        LorebookService.listByOwner(chatId),
+        Promise.all(personaIds.map(async (id) => [id, await getPersona(id)] as const)),
+        getRoom(chat.roomId)
+    ]);
 
-    await updateCharacter(characterId, { lastActiveChatId: chatId });
+    const stalePersonaRefs: Record<string, undefined> = {};
+    const personaList: Persona[] = [];
+    for (const [id, persona] of personaEntries) {
+        if (persona) {
+            personaList.push(persona);
+        } else {
+            stalePersonaRefs[id] = undefined;
+        }
+    }
+
+    chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebooks.refs));
+    chatPersonas.setAll(sortByRefs(personaList, chat.personas.refs));
+
+    const defaultPersonaRef = chat.defaultPersonaId
+        ? chat.personas.refs[chat.defaultPersonaId]
+        : undefined;
+    const selectedPersonaRef = chat.selectedPersonaId
+        ? chat.personas.refs[chat.selectedPersonaId]
+        : undefined;
+    const defaultCharacterRef =
+        room && chat.defaultCharacterId ? room.characters.refs[chat.defaultCharacterId] : undefined;
+    const selectedCharacterRef =
+        room && chat.selectedCharacterId
+            ? room.characters.refs[chat.selectedCharacterId]
+            : undefined;
+    const defaultPatch: DeepPartial<ChatFields> = {};
+    if (
+        chat.defaultPersonaId &&
+        (!defaultPersonaRef ||
+            defaultPersonaRef.enabled === false ||
+            chat.defaultPersonaId in stalePersonaRefs)
+    ) {
+        defaultPatch.defaultPersonaId = undefined;
+    }
+    if (
+        chat.defaultCharacterId &&
+        (!defaultCharacterRef || defaultCharacterRef.enabled === false)
+    ) {
+        defaultPatch.defaultCharacterId = undefined;
+    }
+    if (
+        chat.selectedPersonaId &&
+        (!selectedPersonaRef ||
+            selectedPersonaRef.enabled === false ||
+            chat.selectedPersonaId in stalePersonaRefs)
+    ) {
+        defaultPatch.selectedPersonaId = undefined;
+    }
+    if (
+        chat.selectedCharacterId &&
+        (!selectedCharacterRef || selectedCharacterRef.enabled === false)
+    ) {
+        defaultPatch.selectedCharacterId = undefined;
+    }
+
+    if (Object.keys(stalePersonaRefs).length > 0 || Object.keys(defaultPatch).length > 0) {
+        await updateChat(chatId, {
+            personas: { refs: stalePersonaRefs },
+            ...defaultPatch
+        });
+    }
+
+    await updateRoom(chat.roomId, { lastActiveChatId: chatId });
 }
 
 export function clearActiveChat(): void {
     activeChat.set(null);
     chatLorebooks.clear();
+    chatPersonas.clear();
     messages.clear();
     messageIndexes.set(new Map());
 }
 
 export async function createChat(
-    characterId: string,
+    roomId: string,
     fields: DeepPartial<ChatFields> = {}
 ): Promise<Chat> {
-    const char = await getCharacter(characterId);
-    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
+    const room = await getRoom(roomId);
+    if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
 
-    const chat = await ChatService.create(characterId, fields);
+    const chat = await ChatService.create(roomId, fields);
 
-    const sortOrder = generateSortOrder(char.chats.refs);
+    const sortOrder = generateSortOrder(room.chats.refs);
     try {
-        await updateCharacter(characterId, {
+        await updateRoom(roomId, {
             chats: { refs: { [chat.id]: { id: chat.id, sortOrder } } }
         });
     } catch (error) {
@@ -97,7 +164,7 @@ export async function createChat(
         throw error;
     }
 
-    if (characterId === get(activeCharacterId)) {
+    if (roomId === get(activeRoomId)) {
         chats.set(chat.id, chat);
     }
 
@@ -112,6 +179,66 @@ export async function updateChat(chatId: string, changes: DeepPartial<ChatFields
     }
 }
 
+export async function setChatSelectedPersona(chatId: string, personaId: string): Promise<void> {
+    const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+
+    const ref = chat.personas.refs[personaId];
+    if (!ref || ref.enabled === false) {
+        throw new AppError('INVALID_INPUT', `Persona is not active in this chat: ${personaId}`);
+    }
+    const persona = await getPersona(personaId);
+    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
+
+    await updateChat(chatId, {
+        selectedPersonaId: personaId
+    });
+}
+
+export async function setChatDefaultPersona(chatId: string, personaId: string): Promise<void> {
+    const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+
+    const ref = chat.personas.refs[personaId];
+    if (!ref || ref.enabled === false) {
+        throw new AppError('INVALID_INPUT', `Persona is not active in this chat: ${personaId}`);
+    }
+    const persona = await getPersona(personaId);
+    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
+
+    await updateChat(chatId, { defaultPersonaId: personaId });
+}
+
+export async function setChatSelectedCharacter(chatId: string, characterId: string): Promise<void> {
+    const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+
+    const room = await getRoom(chat.roomId);
+    if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
+    const ref = room.characters.refs[characterId];
+    if (!ref || ref.enabled === false) {
+        throw new AppError('INVALID_INPUT', `Character is not active in this room: ${characterId}`);
+    }
+
+    await updateChat(chatId, {
+        selectedCharacterId: characterId
+    });
+}
+
+export async function setChatDefaultCharacter(chatId: string, characterId: string): Promise<void> {
+    const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+
+    const room = await getRoom(chat.roomId);
+    if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
+    const ref = room.characters.refs[characterId];
+    if (!ref || ref.enabled === false) {
+        throw new AppError('INVALID_INPUT', `Character is not active in this room: ${characterId}`);
+    }
+
+    await updateChat(chatId, { defaultCharacterId: characterId });
+}
+
 export async function updateChatContent(
     chatId: string,
     changes: DeepPartial<ChatContent>
@@ -123,24 +250,24 @@ export async function updateChatContent(
     }
 }
 
-export async function deleteChat(chatId: string, characterId: string): Promise<void> {
-    const char = await getCharacter(characterId);
-    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
+export async function deleteChat(chatId: string, roomId: string): Promise<void> {
+    const room = await getRoom(roomId);
+    if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
 
     // Capture ref for potential rollback
-    const existingRef = char.chats.refs[chatId];
+    const existingRef = room.chats.refs[chatId];
 
     // Remove from parent's refs
-    await updateCharacter(characterId, { chats: { refs: { [chatId]: undefined } } });
+    await updateRoom(roomId, { chats: { refs: { [chatId]: undefined } } });
 
     try {
         await ChatService.delete(chatId);
     } catch (error) {
-        await updateCharacter(characterId, { chats: { refs: { [chatId]: existingRef } } });
+        await updateRoom(roomId, { chats: { refs: { [chatId]: existingRef } } });
         throw error;
     }
 
-    if (characterId === get(activeCharacterId)) {
+    if (roomId === get(activeRoomId)) {
         chats.delete(chatId);
     }
 
@@ -210,9 +337,80 @@ export async function updateChatLorebook(
     }
 }
 
+// ─── Chat Persona Ref CRUD ─────────────────────────────────────
+
+export async function addChatPersona(chatId: string, personaId: string): Promise<void> {
+    const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+
+    const persona = await getPersona(personaId);
+    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
+
+    const existing = chat.personas.refs[personaId];
+    const sortOrder = existing?.sortOrder ?? generateSortOrder(chat.personas.refs);
+    await updateChat(chatId, {
+        personas: {
+            refs: {
+                [personaId]: {
+                    ...existing,
+                    id: personaId,
+                    sortOrder,
+                    enabled: existing?.enabled ?? true
+                }
+            }
+        }
+    });
+
+    if (chatId === get(activeChatId)) {
+        chatPersonas.set(personaId, persona);
+    }
+}
+
+export async function removeChatPersona(chatId: string, personaId: string): Promise<void> {
+    const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+
+    await updateChat(chatId, {
+        personas: { refs: { [personaId]: undefined } },
+        ...(chat.selectedPersonaId === personaId ? { selectedPersonaId: undefined } : {}),
+        ...(chat.defaultPersonaId === personaId ? { defaultPersonaId: undefined } : {})
+    });
+
+    if (chatId === get(activeChatId)) {
+        chatPersonas.delete(personaId);
+    }
+}
+
+export async function setChatPersonaEnabled(
+    chatId: string,
+    personaId: string,
+    enabled: boolean
+): Promise<void> {
+    const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+
+    const existing = chat.personas.refs[personaId];
+    if (!existing) return;
+
+    await updateChat(chatId, {
+        personas: {
+            refs: {
+                [personaId]: {
+                    ...existing,
+                    enabled
+                }
+            }
+        },
+        ...(chat.selectedPersonaId === personaId && !enabled
+            ? { selectedPersonaId: undefined }
+            : {}),
+        ...(chat.defaultPersonaId === personaId && !enabled ? { defaultPersonaId: undefined } : {})
+    });
+}
+
 // ─── Chat-owned Folder & Item Management ──────────────────────
 
-export type ChatFolderType = 'lorebooks';
+export type ChatFolderType = 'lorebooks' | 'personas';
 
 export async function createChatFolder(
     chatId: string,

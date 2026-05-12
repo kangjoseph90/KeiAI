@@ -15,16 +15,16 @@
     import Message from '$lib/components/Message.svelte';
     import ChatRuntimePanel from './ChatRuntimePanel.svelte';
     import {
-        activeCharacter,
         activeChat,
+        activeRoom,
+        roomCharacters,
+        chatPersonas,
         displayMessages,
         isChatRunning,
         createMessage,
         updateMessage,
         deleteMessage,
-        selectChat,
-        appSettings,
-        prepareNextSwipe
+        selectChat
     } from '$lib/stores';
     import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
     import { ToolCallService } from '$lib/services/content/tool';
@@ -33,9 +33,9 @@
     import type { TemplateContext } from '$lib/template';
     import { navigate } from '$lib/router';
     import { tick } from 'svelte';
-    import { getChatVariables, forkChat } from '$lib/managers';
+    import { forkChat, getChatVariables, prepareNextSwipe, syncChatGreetings } from '$lib/managers';
 
-    let { chatId }: { chatId: string } = $props();
+    let { roomId, chatId }: { roomId: string; chatId?: string } = $props();
 
     let newMessageText = $state('');
     let editModeId = $state<string | null>(null);
@@ -43,28 +43,65 @@
     let inspectorOpen = $state(true);
     let scrollContainerEl: HTMLElement | undefined = $state();
 
+    const selectedPersona = $derived.by(() => {
+        const personaId = $activeChat?.selectedPersonaId ?? $activeChat?.defaultPersonaId;
+        if (!personaId) return null;
+        return $chatPersonas.find((persona) => persona.id === personaId) ?? null;
+    });
+
+    const defaultPersona = $derived.by(() => {
+        const personaId = $activeChat?.defaultPersonaId;
+        if (!personaId) return null;
+        return $chatPersonas.find((persona) => persona.id === personaId) ?? null;
+    });
+
+    const selectedCharacter = $derived.by(() => {
+        const characterId = $activeChat?.selectedCharacterId ?? $activeChat?.defaultCharacterId;
+        if (!characterId) return null;
+        return $roomCharacters.find((character) => character.id === characterId) ?? null;
+    });
+
+    const defaultCharacter = $derived.by(() => {
+        const characterId = $activeChat?.defaultCharacterId;
+        if (!characterId) return null;
+        return $roomCharacters.find((character) => character.id === characterId) ?? null;
+    });
+
     async function handleSendMessage() {
         if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
+        if (!selectedPersona) return;
         const templateCtx: TemplateContext = {
-            characterId: $activeCharacter?.id ?? $activeChat.characterId,
-            personaId: $appSettings?.personaId,
-            chatId,
+            characterId: defaultCharacter?.id,
+            personaId: selectedPersona.id,
+            chatId: $activeChat.id,
+            speakerId: selectedPersona.id,
+            speakerName: selectedPersona.name,
             role: 'user',
             display: false,
             dryRun: false
         };
         const templated = await runTemplate(newMessageText, templateCtx);
-        const piped = await runPipeline(chatId, 'input', templated, templateCtx);
+        const piped = await runPipeline($activeChat.id, 'input', templated, templateCtx);
         const processedText = await runTemplate(piped, templateCtx);
         newMessageText = '';
 
-        const variables = await getChatVariables(chatId);
-        const message = await createMessage(chatId, {
+        const variables = await getChatVariables($activeChat.id);
+        const message = await createMessage($activeChat.id, {
             role: 'user'
         });
 
-        await prepareNextSwipe(message, { variables, content: processedText });
-        runChat(chatId);
+        await prepareNextSwipe(message, {
+            content: processedText,
+            variables,
+            speakerId: selectedPersona.id,
+            speakerName: selectedPersona.name,
+            replaceActiveSwipe: true
+        });
+    }
+
+    function handleGenerateResponse() {
+        if (!$activeChat || !selectedCharacter || $isChatRunning) return;
+        runChat($activeChat.id);
     }
 
     async function handleUpdateMessage(id: string) {
@@ -82,7 +119,9 @@
     async function handleRegenerate() {
         // Instead of deleting and re-creating, target the existing message for reroll.
         // The task layer appends a new swipe (or replaces, based on saveMessagesOnSwipe).
-        runChat(chatId, { reroll: true });
+        if ($activeChat) {
+            runChat($activeChat.id, { reroll: true });
+        }
     }
 
     async function handleSwipe(messageId: string, newSwipeId: string) {
@@ -95,10 +134,11 @@
         handleSwitchChat(newChatId);
     }
 
-    function handleSwitchChat(targetChatId: string) {
-        if ($activeCharacter) {
-            selectChat(targetChatId, $activeCharacter.id);
-            navigate({ view: 'chat', charId: $activeCharacter.id, chatId: targetChatId });
+    async function handleSwitchChat(targetChatId: string) {
+        if ($activeRoom) {
+            await syncChatGreetings(targetChatId);
+            await selectChat(targetChatId);
+            navigate({ view: 'room', roomId: $activeRoom.id, chatId: targetChatId });
         }
     }
 
@@ -120,119 +160,159 @@
     <!-- Inline Header -->
     <div class="flex shrink-0 items-center justify-between border-b px-4 py-2">
         <div class="flex items-center gap-3">
-            {#if $activeCharacter}
-                <span class="text-sm font-semibold">{$activeCharacter.name}</span>
+            {#if $activeRoom}
+                <span class="text-sm font-semibold">{$activeRoom.name}</span>
+            {:else}
+                <span class="text-sm font-semibold">{roomId}</span>
             {/if}
             {#if $activeChat}
                 <span class="text-sm text-muted-foreground">{$activeChat.title}</span>
+            {:else if chatId}
+                <span class="text-sm text-muted-foreground">{chatId}</span>
+            {:else}
+                <span class="text-sm text-muted-foreground">No chat selected</span>
             {/if}
         </div>
         <div class="flex items-center gap-1">
-            <Button
-                variant="ghost"
-                size="sm"
-                class="h-7 gap-1 text-xs"
-                onclick={() => (inspectorOpen = !inspectorOpen)}
-            >
-                {#if inspectorOpen}
-                    <ChevronRight class="size-3" />
-                {:else}
-                    <ChevronLeft class="size-3" />
-                {/if}
-                Settings
-            </Button>
+            {#if $activeChat}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-7 gap-1 text-xs"
+                    onclick={() => (inspectorOpen = !inspectorOpen)}
+                >
+                    {#if inspectorOpen}
+                        <ChevronRight class="size-3" />
+                    {:else}
+                        <ChevronLeft class="size-3" />
+                    {/if}
+                    Settings
+                </Button>
+            {/if}
         </div>
     </div>
 
     <!-- Main Area -->
     <div class="flex flex-1 overflow-hidden">
-        <!-- Messages Column -->
-        <div class="flex flex-1 flex-col overflow-hidden">
-            <!-- Messages -->
-            <div bind:this={scrollContainerEl} class="flex-1 overflow-y-auto px-4 py-4">
-                {#if $displayMessages.length === 0}
-                    <!-- Empty State -->
-                    <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
-                        <div class="flex size-16 items-center justify-center rounded-full bg-muted">
-                            <MessageSquare class="size-7 text-muted-foreground" />
+        {#if !$activeChat}
+            <div class="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                <div class="flex size-16 items-center justify-center rounded-full bg-muted">
+                    <MessageSquare class="size-7 text-muted-foreground" />
+                </div>
+                <div>
+                    <p class="text-sm font-medium">Select or create a chat</p>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        This room is open, but no chat is selected.
+                    </p>
+                </div>
+            </div>
+        {:else}
+            <!-- Messages Column -->
+            <div class="flex flex-1 flex-col overflow-hidden">
+                <!-- Messages -->
+                <div bind:this={scrollContainerEl} class="flex-1 overflow-y-auto px-4 py-4">
+                    {#if $displayMessages.length === 0}
+                        <!-- Empty State -->
+                        <div
+                            class="flex h-full flex-col items-center justify-center gap-3 text-center"
+                        >
+                            <div
+                                class="flex size-16 items-center justify-center rounded-full bg-muted"
+                            >
+                                <MessageSquare class="size-7 text-muted-foreground" />
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium">Start a conversation</p>
+                                <p class="mt-1 text-xs text-muted-foreground">
+                                    Type a message below to begin chatting.
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <p class="text-sm font-medium">
-                                Start a conversation{#if $activeCharacter}
-                                    with {$activeCharacter.name}{/if}
-                            </p>
-                            <p class="mt-1 text-xs text-muted-foreground">
-                                Type a message below to begin chatting.
-                            </p>
+                    {:else}
+                        <div class="flex flex-col gap-4">
+                            {#each $displayMessages as msg (msg.id)}
+                                <Message
+                                    message={msg}
+                                    isEditing={editModeId === msg.id}
+                                    bind:editText={editMessageText}
+                                    characterName={defaultCharacter?.name ?? ''}
+                                    characterId={defaultCharacter?.id}
+                                    personaId={defaultPersona?.id}
+                                    onEdit={() => {
+                                        editModeId = msg.id;
+                                        // Initialize edit text from the active swipe
+                                        const activeSwipe = msg.swipes[msg.activeSwipeId];
+                                        editMessageText = activeSwipe?.content ?? '';
+                                    }}
+                                    onSave={() => handleUpdateMessage(msg.id)}
+                                    onDelete={() => deleteMessage($activeChat!.id, msg.id)}
+                                    onCancelEdit={() => (editModeId = null)}
+                                    onDismissError={() => dismissChat($activeChat!.id)}
+                                    onResolveTool={(toolCallId, decision) =>
+                                        resolveToolCall(
+                                            $activeChat!.id,
+                                            msg.id,
+                                            toolCallId,
+                                            decision
+                                        )}
+                                    onLoadDetail={(toolCallId) => ToolCallService.get(toolCallId)}
+                                    onRegenerate={() => handleRegenerate()}
+                                    onSwipe={(newSwipeId) => handleSwipe(msg.id, newSwipeId)}
+                                    onFork={() => handleFork(msg.id)}
+                                    isLastMessage={msg.id ===
+                                        $displayMessages[$displayMessages.length - 1]?.id}
+                                />
+                            {/each}
                         </div>
-                    </div>
-                {:else}
-                    <div class="flex flex-col gap-4">
-                        {#each $displayMessages as msg (msg.id)}
-                            <Message
-                                message={msg}
-                                isEditing={editModeId === msg.id}
-                                bind:editText={editMessageText}
-                                characterName={$activeCharacter?.name ?? ''}
-                                characterId={$activeCharacter?.id}
-                                personaId={$appSettings?.personaId}
-                                onEdit={() => {
-                                    editModeId = msg.id;
-                                    // Initialize edit text from the active swipe
-                                    const activeSwipe = msg.swipes[msg.activeSwipeId];
-                                    editMessageText = activeSwipe?.content ?? '';
-                                }}
-                                onSave={() => handleUpdateMessage(msg.id)}
-                                onDelete={() => deleteMessage(chatId, msg.id)}
-                                onCancelEdit={() => (editModeId = null)}
-                                onDismissError={() => dismissChat(chatId)}
-                                onResolveTool={(toolCallId, decision) =>
-                                    resolveToolCall(chatId, msg.id, toolCallId, decision)}
-                                onLoadDetail={(toolCallId) => ToolCallService.get(toolCallId)}
-                                onRegenerate={() => handleRegenerate()}
-                                onSwipe={(newSwipeId) => handleSwipe(msg.id, newSwipeId)}
-                                onFork={() => handleFork(msg.id)}
-                                isLastMessage={msg.id ===
-                                    $displayMessages[$displayMessages.length - 1]?.id}
-                            />
-                        {/each}
-                    </div>
-                {/if}
+                    {/if}
+                </div>
+
+                <!-- Message Input -->
+                <div class="flex gap-2 border-t px-4 py-3">
+                    <AutoResizeTextarea
+                        bind:value={newMessageText}
+                        onkeydown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSendMessage();
+                            }
+                        }}
+                        placeholder="Type a message... (Shift+Enter for new line)"
+                        disabled={$isChatRunning || !selectedPersona}
+                    />
+                    {#if $isChatRunning}
+                        <Button
+                            variant="destructive"
+                            class="gap-1.5 shrink-0"
+                            onclick={() => stopChat($activeChat!.id)}
+                        >
+                            <Square class="size-4" /> Stop
+                        </Button>
+                    {:else}
+                        <Button
+                            class="gap-1.5 shrink-0"
+                            onclick={handleSendMessage}
+                            disabled={!selectedPersona || !newMessageText.trim()}
+                        >
+                            <SendHorizontal class="size-4" /> Send User
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            class="gap-1.5 shrink-0"
+                            onclick={handleGenerateResponse}
+                            disabled={!selectedCharacter}
+                        >
+                            <MessageSquare class="size-4" /> Generate
+                        </Button>
+                    {/if}
+                </div>
             </div>
 
-            <!-- Message Input -->
-            <div class="flex gap-2 border-t px-4 py-3">
-                <AutoResizeTextarea
-                    bind:value={newMessageText}
-                    onkeydown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendMessage();
-                        }
-                    }}
-                    placeholder="Type a message... (Shift+Enter for new line)"
-                    disabled={$isChatRunning}
-                />
-                {#if $isChatRunning}
-                    <Button
-                        variant="destructive"
-                        class="gap-1.5 shrink-0"
-                        onclick={() => stopChat(chatId)}
-                    >
-                        <Square class="size-4" /> Stop
-                    </Button>
-                {:else}
-                    <Button class="gap-1.5 shrink-0" onclick={handleSendMessage}>
-                        <SendHorizontal class="size-4" /> Send
-                    </Button>
-                {/if}
-            </div>
-        </div>
-
-        {#if inspectorOpen}
-            <div class="w-[420px] shrink-0">
-                <ChatRuntimePanel {chatId} />
-            </div>
+            {#if inspectorOpen}
+                <div class="w-[420px] shrink-0">
+                    <ChatRuntimePanel chatId={$activeChat.id} />
+                </div>
+            {/if}
         {/if}
     </div>
 </div>

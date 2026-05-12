@@ -1,12 +1,12 @@
 import type { Lorebook, PagedMessages } from '$lib/services';
-import { runTemplate, type Macro, type TemplateContext } from '$lib/template';
+import { runTemplate, type TemplateContext } from '$lib/template';
+import { toDryRunContext, toMessageContext } from './context';
 
 export interface ResolveLorebookInput {
     lorebooks: Lorebook[];
     messages: PagedMessages;
     defaultScanDepth: number;
     templateCtx: TemplateContext;
-    templateMacros: ReadonlyMap<string, Macro>;
 }
 
 const MAX_RECURSIVE_ROUNDS = 20;
@@ -83,11 +83,7 @@ async function buildScanHistory(input: ResolveLorebookInput): Promise<string[]> 
         messages.map(({ message, index }) => {
             const activeSwipe = message.swipes[message.activeSwipeId];
             if (!activeSwipe) return '';
-            return runTemplate(
-                activeSwipe.content,
-                { ...dryCtx, messageId: message.id, messageIndex: index, role: message.role },
-                input.templateMacros
-            );
+            return runTemplate(activeSwipe.content, toMessageContext(message, index, dryCtx));
         })
     );
 
@@ -103,9 +99,7 @@ async function buildRecursiveSources(
 
     const dryCtx = toDryRunContext(input.templateCtx);
     const rendered = await Promise.all(
-        recursiveLorebooks.map((lorebook) =>
-            runTemplate(lorebook.content, dryCtx, input.templateMacros)
-        )
+        recursiveLorebooks.map((lorebook) => runTemplate(lorebook.content, dryCtx))
     );
 
     return rendered.filter((source) => source.trim().length > 0);
@@ -175,8 +169,4 @@ function passesProbability(probability: number): boolean {
     if (clamped <= 0) return false;
     if (clamped >= 100) return true;
     return Math.random() * 100 < clamped;
-}
-
-function toDryRunContext(ctx: TemplateContext): TemplateContext {
-    return { ...ctx, dryRun: true };
 }

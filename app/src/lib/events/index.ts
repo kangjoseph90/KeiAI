@@ -40,6 +40,7 @@ export async function emitEvent<E extends string>(
 
 // ── Implementation ───────────────────────────────────────────────────
 
+// TODO: get character id here
 export async function emitEvent(chatId: string, event: string, data?: unknown): Promise<void> {
     if (isSafeMode()) return;
 

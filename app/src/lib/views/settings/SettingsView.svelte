@@ -21,7 +21,7 @@
         CardDescription
     } from '$lib/components/ui/card';
     import { Separator } from '$lib/components/ui/separator';
-    import { appSettings, updateSettings, activeCharacter, activeChat } from '$lib/stores';
+    import { appSettings, updateSettings, activeRoom, activeChat } from '$lib/stores';
     import { navigate } from '$lib/router';
     import AccountSettings from './AccountSettings.svelte';
     import ProfileSettings from './ProfileSettings.svelte';
@@ -39,6 +39,21 @@
         | 'plugin'
         | 'module';
     let activeTab = $state<SettingTab>('chatbot');
+    let {
+        personaId,
+        pluginId,
+        moduleId
+    }: { personaId?: string; pluginId?: string; moduleId?: string } = $props();
+
+    $effect(() => {
+        if (personaId) {
+            activeTab = 'persona';
+        } else if (pluginId) {
+            activeTab = 'plugin';
+        } else if (moduleId) {
+            activeTab = 'module';
+        }
+    });
 
     async function handleToggleTheme() {
         const currentTheme = $appSettings?.theme === 'dark' ? 'light' : 'dark';
@@ -46,8 +61,10 @@
     }
 
     function backToChat() {
-        if ($activeCharacter && $activeChat) {
-            navigate({ view: 'chat', charId: $activeCharacter.id, chatId: $activeChat.id });
+        if ($activeRoom && $activeChat) {
+            navigate({ view: 'room', roomId: $activeRoom.id, chatId: $activeChat.id });
+        } else if ($activeRoom) {
+            navigate({ view: 'room', roomId: $activeRoom.id });
         } else {
             navigate({ view: 'home' });
         }
@@ -116,11 +133,11 @@
                             </div>
                         </div>
                     {:else if activeTab === 'persona'}
-                        <PersonasView />
+                        <PersonasView {personaId} />
                     {:else if activeTab === 'plugin'}
-                        <PluginsView />
+                        <PluginsView {pluginId} />
                     {:else if activeTab === 'module'}
-                        <ModulesView />
+                        <ModulesView {moduleId} />
                     {:else if activeTab === 'profile'}
                         <ProfileSettings />
                     {:else if activeTab === 'account'}

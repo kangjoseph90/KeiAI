@@ -12,7 +12,7 @@ export async function collectTemplateMacros(ctx: TemplateContext): Promise<Map<s
     const macros = collectBuiltInMacros();
 
     if (ctx.chatId) {
-        const charjs = await collectCharJSMacros(ctx.chatId);
+        const charjs = await collectCharJSMacros(ctx.chatId, ctx.characterId);
         for (const [name, macro] of charjs) {
             macros.set(name, macro);
         }
@@ -39,6 +39,7 @@ function collectBuiltInMacros(): Map<string, Macro> {
     addAliases(['br', 'newline'], () => '\n');
     addAliases(['blank', 'none'], () => '');
     addAliases(['char', 'bot', 'character'], async (_args, ctx) => {
+        if (ctx.role === 'assistant' && ctx.speakerName) return ctx.speakerName;
         if (!ctx.characterId) return '';
         const character = await getCharacter(ctx.characterId);
         return character?.name ?? '';
@@ -60,6 +61,7 @@ function collectBuiltInMacros(): Map<string, Macro> {
         }
     });
     add('user', async (_args, ctx) => {
+        if (ctx.role === 'user' && ctx.speakerName) return ctx.speakerName;
         if (!ctx.personaId) return 'User';
         const persona = await getPersona(ctx.personaId);
         return persona?.name ?? 'User';
@@ -88,6 +90,8 @@ function collectBuiltInMacros(): Map<string, Macro> {
     addAliases(['chatid'], (_args, ctx) => ctx.chatId ?? '');
     addAliases(['characterid', 'charid'], (_args, ctx) => ctx.characterId ?? '');
     addAliases(['personaid', 'userid'], (_args, ctx) => ctx.personaId ?? '');
+    addAliases(['speakerid'], (_args, ctx) => ctx.speakerId ?? '');
+    addAliases(['speaker', 'speakername'], (_args, ctx) => ctx.speakerName ?? '');
     addAliases(['messageid', 'msgid'], (_args, ctx) => ctx.messageId ?? '');
     addAliases(['messageindex', 'msgindex'], (_args, ctx) =>
         ctx.messageIndex === undefined ? '' : String(ctx.messageIndex)
@@ -171,9 +175,12 @@ function collectBuiltInMacros(): Map<string, Macro> {
     return macros;
 }
 
-async function collectCharJSMacros(chatId: string): Promise<Map<string, Macro>> {
+async function collectCharJSMacros(
+    chatId: string,
+    characterId?: string
+): Promise<Map<string, Macro>> {
     const macros = new Map<string, Macro>();
-    const instances = await collectCharJSInstances(chatId, 'template', 'macro');
+    const instances = await collectCharJSInstances(chatId, 'template', 'macro', characterId);
     for (const instance of instances) {
         for (const [name, entry] of instance.macroHandlers) {
             macros.set(normalizeName(name), {

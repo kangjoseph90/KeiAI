@@ -5,14 +5,18 @@
  * boundary (Sync Engine ↔ PocketBase).
  *
  * Relationship patterns:
- *   1:N — Parent's data blob holds OrderedRef[] of child IDs
- *         (order + folder managed by parent). Exception: messages use chatId FK.
- *   N:M — Consumer's data blob holds ResourceRef[] with per-context state.
+ *   1:N — Parent's data blob holds EntityListConfig<OrderedRef>
+ *         for child IDs (order + folder managed by parent).
+ *         High-volume exceptions use local FK indexes:
+ *         chats.roomId, messages.[chatId+sortOrder].
+ *   N:M — Consumer's data blob holds EntityListConfig<ResourceRef>
+ *         with per-context enabled state.
  */
 
 // ─── Table Registry ──────────────────────────────────────────────────
 
 export type TableName =
+    | 'rooms'
     | 'characters'
     | 'chats'
     | 'presets'
@@ -28,6 +32,7 @@ export type TableName =
     | 'charjs';
 
 export const SYNC_TABLES: TableName[] = [
+    'rooms',
     'characters',
     'chats',
     'presets',
@@ -85,6 +90,10 @@ export interface DataRecord extends BaseRecord {
     data: Record<string, unknown>;
 }
 
+// ─── Rooms ──────────────────────────────────────────────────────────
+
+export type RoomRecord = DataRecord;
+
 // ─── Characters ──────────────────────────────────────────────────────
 
 export type CharacterRecord = DataRecord;
@@ -92,13 +101,13 @@ export type CharacterRecord = DataRecord;
 // ─── Chats ───────────────────────────────────────────────────────────
 
 export interface ChatRecord extends DataRecord {
-    characterId: string;
+    roomId: string;
 }
 
 // ─── Messages ─────
 
 // Exception to the 1:N pattern: Messages manage their own sortOrder.
-// Since chats can easily exceed 10,000+ messages, storing an OrderedRef[] in the parent's
+// Since chats can easily exceed 10,000+ messages, storing message refs in the parent's
 // data blob would require O(n) rewrites on every single message sent.
 // Using a database index [chatId+sortOrder] ensures O(1) writes and faster pagination.
 export interface MessageRecord extends DataRecord {

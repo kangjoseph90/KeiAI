@@ -5,11 +5,12 @@
  * Logic (functions) stays in per-domain files that import from this module.
  */
 
-import { derived, writable, type Readable } from 'svelte/store';
+import { derived, writable } from 'svelte/store';
 import type {
     AppSettings,
     User,
     Character,
+    Room,
     Chat,
     Message,
     Persona,
@@ -54,6 +55,7 @@ export const isSyncLinked = derived(
 
 // ─── Level 1 (Global Lists) ─────────────────────────────────────────
 export const characters = new EntityStore<Character>();
+export const rooms = new EntityStore<Room>();
 export const personas = new EntityStore<Persona>();
 export const presets = new EntityStore<Preset>();
 export const modules = new EntityStore<Module>();
@@ -65,34 +67,12 @@ export const activePreset = derived([appSettings, presets], ([$settings, $preset
     return $presets.find((p) => p.id === id) ?? null;
 });
 
-export const activePersona = derived([appSettings, personas], ([$settings, $personas]) => {
-    const id = $settings?.personaId;
-    if (!id) return null;
-    return $personas.find((p) => p.id === id) ?? null;
-});
+// ─── Level 2 (Room Context) ─────────────────────────────────────────
+export const activeRoom = writable<Room | null>(null);
+export const activeRoomId = derived(activeRoom, (r) => r?.id);
+export const hasActiveRoom = derived(activeRoom, (r) => !!r);
 
-export interface ModuleResourceEntry {
-    lorebooks: EntityStore<Lorebook>;
-    scripts: EntityStore<Script>;
-    charjs: EntityStore<CharJS>;
-}
-
-export interface PresetResourceEntry {
-    scripts: EntityStore<Script>;
-}
-
-export const moduleResources = writable(new Map<string, ModuleResourceEntry>());
-export const presetResources = writable(new Map<string, PresetResourceEntry>());
-
-// ─── Level 2 (Character Context) ────────────────────────────────────
-export const activeCharacter = writable<Character | null>(null);
-export const activeCharacterId = derived(activeCharacter, (c) => c?.id);
-export const hasActiveCharacter = derived(activeCharacter, (c) => !!c);
-
-export const characterLorebooks = new EntityStore<Lorebook>();
-export const characterScripts = new EntityStore<Script>();
-export const characterCharJS = new EntityStore<CharJS>();
-export const characterModules = new EntityStore<Module>();
+export const roomCharacters = new EntityStore<Character>();
 export const chats = new EntityStore<Chat>();
 
 // ─── Level 3 (Chat Context) ─────────────────────────────────────────
@@ -102,11 +82,34 @@ export const hasActiveChat = derived(activeChat, (c) => !!c);
 
 export const chatLorebooks = new EntityStore<Lorebook>();
 export const chatScripts = new EntityStore<Script>();
+export const chatPersonas = new EntityStore<Persona>();
 
 export const messages = new EntityStore<Message>({
     sortFn: (a, b) => a.sortOrder.localeCompare(b.sortOrder)
 });
 export const messageIndexes = writable(new Map<string, number>());
+
+// ─── Character Studio Context───────────────────────────────────────
+export const activeCharacter = writable<Character | null>(null);
+export const activeCharacterId = derived(activeCharacter, (c) => c?.id);
+export const hasActiveCharacter = derived(activeCharacter, (c) => !!c);
+
+export const characterLorebooks = new EntityStore<Lorebook>();
+export const characterScripts = new EntityStore<Script>();
+export const characterCharJS = new EntityStore<CharJS>();
+export const characterModules = new EntityStore<Module>();
+
+// ─── Module Editing Context ──────────────────────────────────────────
+export const activeModule = writable<Module | null>(null);
+export const activeModuleId = derived(activeModule, (m) => m?.id);
+export const hasActiveModule = derived(activeModule, (m) => !!m);
+
+export const moduleLorebooks = new EntityStore<Lorebook>();
+export const moduleScripts = new EntityStore<Script>();
+export const moduleCharJS = new EntityStore<CharJS>();
+
+// ─── Selected Preset Context ──────────────────────────────────────────
+export const presetScripts = new EntityStore<Script>();
 
 // ─── Runtime States (Ephemeral — not persisted to DB) ─────────────────
 /**

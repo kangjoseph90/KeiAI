@@ -12,9 +12,8 @@ import {
 } from '$lib/services';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
-import type { FolderDef, EntityListConfig } from '$lib/types/refs';
-import { presets, activePreset, presetResources } from '../state';
-import { EntityStore } from '../entity_store';
+import type { FolderDef } from '$lib/types/refs';
+import { presets, activePreset, presetScripts } from '../state';
 import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -36,8 +35,9 @@ export function getActivePreset(): Preset | null {
 }
 
 export async function getPresetScripts(presetId: string): Promise<Script[]> {
-    const entry = get(presetResources).get(presetId);
-    if (entry) return get(entry.scripts);
+    if (get(activePreset)?.id === presetId) {
+        return get(presetScripts);
+    }
     const preset = await getPreset(presetId);
     if (!preset) return [];
     const results = await Promise.all(
@@ -55,22 +55,24 @@ export async function loadPresets(): Promise<void> {
     const list = await PresetService.list();
     presets.setAll(sortByRefs(list, settings.presets.refs));
 
-    const entries = await Promise.all(
-        list.map(async (preset) => {
-            const scripts = await ScriptService.listByOwner(preset.id);
-            const scriptsStore = new EntityStore<Script>();
-            scriptsStore.setAll(sortByRefs(scripts, preset.scripts.refs));
-            return [preset.id, { scripts: scriptsStore }] as const;
-        })
-    );
-
-    presetResources.set(new Map(entries));
+    const active = settings.presetId
+        ? list.find((preset) => preset.id === settings.presetId)
+        : null;
+    if (active) {
+        const scripts = await ScriptService.listByOwner(active.id);
+        presetScripts.setAll(sortByRefs(scripts, active.scripts.refs));
+    } else {
+        presetScripts.clear();
+    }
 }
 
 export async function selectPreset(presetId: string): Promise<void> {
     const preset = await getPreset(presetId);
     if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
     await updateSettings({ presetId: presetId });
+
+    const scripts = await ScriptService.listByOwner(presetId);
+    presetScripts.setAll(sortByRefs(scripts, preset.scripts.refs));
 }
 
 export async function createPreset(fields: DeepPartial<PresetFields> = {}): Promise<Preset> {
@@ -93,13 +95,6 @@ export async function createPreset(fields: DeepPartial<PresetFields> = {}): Prom
 
     // Update Store
     presets.set(preset.id, preset);
-    presetResources.update((map) => {
-        const m = new Map(map);
-        m.set(preset.id, {
-            scripts: new EntityStore<Script>()
-        });
-        return m;
-    });
 
     return preset;
 }
@@ -110,6 +105,9 @@ export async function updatePreset(
 ): Promise<void> {
     const updated = await PresetService.update(presetId, changes);
     presets.set(presetId, updated);
+    if (get(activePreset)?.id === presetId) {
+        presetScripts.setAll(sortByRefs(get(presetScripts), updated.scripts.refs));
+    }
 }
 
 export async function updatePresetContent(
@@ -126,6 +124,7 @@ export async function deletePreset(presetId: string): Promise<void> {
     }
 
     const settings = await getAppSettings();
+    const isActivePreset = get(activePreset)?.id === presetId;
 
     // Capture ref for potential rollback
     const existingRef = settings.presets.refs[presetId];
@@ -144,20 +143,15 @@ export async function deletePreset(presetId: string): Promise<void> {
 
     // Update Store
     presets.delete(presetId);
-    presetResources.update((map) => {
-        const m = new Map(map);
-        m.delete(presetId);
-        return m;
-    });
 
     // If deleting the active preset, select a fallback
-    const isActivePreset = get(activePreset)?.id === presetId;
     if (isActivePreset) {
         const fallback = get(presets).find((p) => p.id !== presetId);
         if (fallback) {
             await selectPreset(fallback.id);
         } else {
             await updateSettings({ presetId: undefined });
+            presetScripts.clear();
         }
     }
 }
@@ -218,8 +212,9 @@ export async function createPresetScript(
         throw error;
     }
 
-    // Update Store
-    get(presetResources).get(presetId)?.scripts.set(sc.id, sc);
+    if (get(activePreset)?.id === presetId) {
+        presetScripts.set(sc.id, sc);
+    }
 
     return sc;
 }
@@ -230,7 +225,9 @@ export async function updatePresetScript(
     changes: DeepPartial<ScriptFields>
 ): Promise<void> {
     const updated = await ScriptService.update(scriptId, changes);
-    get(presetResources).get(presetId)?.scripts.set(scriptId, updated);
+    if (get(activePreset)?.id === presetId) {
+        presetScripts.set(scriptId, updated);
+    }
 }
 
 export async function deletePresetScript(presetId: string, scriptId: string): Promise<void> {
@@ -251,8 +248,9 @@ export async function deletePresetScript(presetId: string, scriptId: string): Pr
         throw error;
     }
 
-    // Update Store
-    get(presetResources).get(presetId)?.scripts.delete(scriptId);
+    if (get(activePreset)?.id === presetId) {
+        presetScripts.delete(scriptId);
+    }
 }
 
 // ─── Preset-owned Folder & Item Management ──────────────────────

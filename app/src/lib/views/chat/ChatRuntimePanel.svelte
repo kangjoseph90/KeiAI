@@ -1,37 +1,41 @@
 <script lang="ts">
     import {
+        Pin,
         Plus,
-        Trash2,
         User,
         Settings,
         Book,
         Variable,
         ImageIcon,
-        Edit3,
         FileText,
-        ChevronRight
+        ChevronRight,
+        X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Badge } from '$lib/components/ui/badge';
-    import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import { Separator } from '$lib/components/ui/separator';
     import { Textarea } from '$lib/components/ui/textarea';
     import {
-        activeCharacter,
         activeChat,
+        addChatPersona,
+        chatPersonas,
         chatLorebooks,
         createChatLorebook,
         deleteChatLorebook,
+        personas,
+        removeChatPersona,
+        setChatDefaultPersona,
+        setChatSelectedPersona,
         updateChatContent,
         updateChatLorebook
     } from '$lib/stores';
     import { navigate } from '$lib/router';
     import { getChatVariables } from '$lib/managers';
-    import type { ChatContent, Lorebook } from '$lib/services';
+    import type { ChatContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
 
@@ -42,7 +46,13 @@
     let { chatId }: Props = $props();
 
     let newChatLorebookName = $state('');
+    let personaToAdd = $state('');
     let variables = $state<[string, string][]>([]);
+
+    const attachablePersonas = $derived(() => {
+        const attached = new Set($chatPersonas.map((persona) => persona.id));
+        return $personas.filter((persona) => !attached.has(persona.id));
+    });
 
     async function updateChat(changes: DeepPartial<ChatContent>) {
         if (!$activeChat) return;
@@ -72,14 +82,33 @@
         newChatLorebookName = '';
     }
 
-    function openCharacterStudio() {
-        if ($activeCharacter && $activeChat) {
-            navigate({
-                view: 'characterStudio',
-                charId: $activeCharacter.id,
-                chatId: $activeChat.id
-            });
-        }
+    function openPersonaSettings(personaId: string) {
+        navigate({ view: 'settings', personaId });
+    }
+
+    async function handlePersonaSelect(personaId: string) {
+        if (!$activeChat) return;
+        await setChatSelectedPersona(chatId, personaId);
+    }
+
+    async function handleSetDefaultPersona(personaId: string) {
+        if (!$activeChat) return;
+        await setChatDefaultPersona(chatId, personaId);
+    }
+
+    async function handlePersonaAdd() {
+        if (!$activeChat || !personaToAdd) return;
+        await addChatPersona(chatId, personaToAdd);
+        personaToAdd = '';
+    }
+
+    async function handlePersonaRemove(personaId: string) {
+        if (!$activeChat) return;
+        await removeChatPersona(chatId, personaId);
+    }
+
+    function initial(name: string): string {
+        return (name.trim().charAt(0) || '?').toUpperCase();
     }
 </script>
 
@@ -94,30 +123,100 @@
 
     <ScrollArea class="flex-1">
         <div class="p-4 space-y-6 pb-20">
-            <!-- Character Summary -->
-            {#if $activeCharacter}
+            <!-- Persona Summary -->
+            {#if $activeChat}
                 <section class="space-y-3">
-                    <div class="flex items-center gap-3">
-                        <div class="size-10 rounded-full overflow-hidden border bg-muted shrink-0">
-                            <AssetView
-                                id={$activeCharacter.avatarAssetId}
-                                class="size-full object-cover"
-                            />
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <h3 class="text-sm font-bold truncate">{$activeCharacter.name}</h3>
-                            <p class="text-[10px] text-muted-foreground truncate">
-                                Character Blueprint
-                            </p>
-                        </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            class="h-8 px-2 gap-1"
-                            onclick={openCharacterStudio}
+                    <Label
+                        class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"
+                    >
+                        <User class="size-3" /> Personas
+                    </Label>
+                    <div class="flex gap-1.5">
+                        <select
+                            class="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
+                            bind:value={personaToAdd}
                         >
-                            <Edit3 class="size-3" /> Studio
+                            <option value="">Add persona...</option>
+                            {#each attachablePersonas() as persona (persona.id)}
+                                <option value={persona.id}>{persona.name}</option>
+                            {/each}
+                        </select>
+                        <Button
+                            variant="secondary"
+                            size="icon"
+                            class="size-8 shrink-0"
+                            onclick={handlePersonaAdd}
+                            disabled={!personaToAdd}
+                        >
+                            <Plus class="size-4" />
                         </Button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        {#each $chatPersonas as persona (persona.id)}
+                            {@const ref = $activeChat.personas.refs[persona.id]}
+                            {@const disabled = ref?.enabled === false}
+                            {@const selected = $activeChat.selectedPersonaId === persona.id}
+                            {@const isDefault = $activeChat.defaultPersonaId === persona.id}
+                            <div class="group relative">
+                                <button
+                                    class="flex w-full min-w-0 items-center gap-2 rounded-md border bg-background p-2 text-left transition-colors {selected
+                                        ? 'border-primary ring-2 ring-primary/20'
+                                        : 'hover:bg-muted'} {disabled ? 'opacity-40' : ''}"
+                                    {disabled}
+                                    onclick={() => handlePersonaSelect(persona.id)}
+                                >
+                                    <div
+                                        class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
+                                    >
+                                        {#if persona.avatarAssetId}
+                                            <AssetView
+                                                id={persona.avatarAssetId}
+                                                alt={persona.name}
+                                                class="size-full object-cover"
+                                            />
+                                        {:else}
+                                            {initial(persona.name)}
+                                        {/if}
+                                    </div>
+                                    <div class="min-w-0">
+                                        <p class="truncate text-xs font-medium">{persona.name}</p>
+                                        <p class="truncate text-[10px] text-muted-foreground">
+                                            Persona
+                                        </p>
+                                    </div>
+                                </button>
+                                <button
+                                    class="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
+                                    title="Open persona settings"
+                                    onclick={() => openPersonaSettings(persona.id)}
+                                >
+                                    <Settings class="size-3" />
+                                </button>
+                                <button
+                                    class="absolute left-5 -top-1 flex size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity {isDefault
+                                        ? 'text-primary opacity-100'
+                                        : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
+                                    title="Set default persona"
+                                    {disabled}
+                                    onclick={() => handleSetDefaultPersona(persona.id)}
+                                >
+                                    <Pin class="size-3" />
+                                </button>
+                                <button
+                                    class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                    title="Remove from chat"
+                                    onclick={() => handlePersonaRemove(persona.id)}
+                                >
+                                    <X class="size-3" />
+                                </button>
+                            </div>
+                        {:else}
+                            <div class="col-span-2 rounded-md border border-dashed p-3 text-center">
+                                <p class="text-[10px] text-muted-foreground">
+                                    No personas attached to this chat.
+                                </p>
+                            </div>
+                        {/each}
                     </div>
                 </section>
                 <Separator />
@@ -245,9 +344,9 @@
             variant="ghost"
             size="sm"
             class="w-full justify-between text-xs font-normal text-muted-foreground group"
-            onclick={openCharacterStudio}
+            onclick={() => navigate({ view: 'settings' })}
         >
-            Open Advanced Character Editor
+            Open Settings
             <ChevronRight class="size-3 transition-transform group-hover:translate-x-0.5" />
         </Button>
     </div>

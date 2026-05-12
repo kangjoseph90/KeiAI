@@ -24,12 +24,14 @@ import type {
     ToolCallRecord,
     TranslationRecord,
     CharJSRecord,
-    DatabaseWriteOperation
+    DatabaseWriteOperation,
+    RoomRecord
 } from './types';
 import { DatabaseWriteEventEmitter } from './events';
 import { clock } from '$lib/utils/clock';
 
 class DexieStore extends Dexie {
+    rooms!: Table<RoomRecord, string>;
     characters!: Table<CharacterRecord, string>;
     chats!: Table<ChatRecord, string>;
     presets!: Table<PresetRecord, string>;
@@ -48,8 +50,9 @@ class DexieStore extends Dexie {
         super('KeiLocalDB');
 
         this.version(1).stores({
+            rooms: 'id, userId, updatedAt, isDeleted',
             characters: 'id, userId, updatedAt, isDeleted',
-            chats: 'id, userId, characterId, updatedAt, isDeleted',
+            chats: 'id, userId, roomId, updatedAt, isDeleted',
             presets: 'id, userId, updatedAt, isDeleted',
             messages: 'id, userId, chatId, [chatId+sortOrder], updatedAt, isDeleted',
             settings: 'id, userId, updatedAt, isDeleted',

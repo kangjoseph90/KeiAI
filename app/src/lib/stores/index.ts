@@ -1,9 +1,9 @@
 /**
  * Svelte Store — 3-Layer In-Memory State
  *
- * Level 1 (Global):    characters, personas, presets, modules, plugins, appSettings
- * Level 2 (Character): activeCharacter (detail), activeChats — loaded on select
- * Level 3 (Chat):      activeChat (detail), messages, chatLorebooks, chatScripts — loaded on enter
+ * Level 1 (Global):    rooms, characters, personas, presets, modules, plugins, appSettings
+ * Level 2 (Room):      activeRoom (detail), roomCharacters, chats — loaded on select
+ * Level 3 (Chat):      activeChat (detail), messages, chatLorebooks, chatPersonas — loaded on enter
  *
  * Relationship patterns:
  *   1:N (parent→child): Parent's blob holds OrderedRef[] → fetch children by ID batch
@@ -30,13 +30,19 @@ export const dataSyncStatus = readonly(StoreState.dataSyncStatus);
 export const userSyncStatus = readonly(StoreState.userSyncStatus);
 export const assetSyncStatus = readonly(StoreState.assetSyncStatus);
 export const characters = readonly(StoreState.characters);
+export const rooms = readonly(StoreState.rooms);
 export const personas = readonly(StoreState.personas);
 export const presets = readonly(StoreState.presets);
 export const modules = readonly(StoreState.modules);
 export const plugins = readonly(StoreState.plugins);
-export const moduleResources = readonly(StoreState.moduleResources);
-export const presetResources = readonly(StoreState.presetResources);
+export const activeModule = readonly(StoreState.activeModule);
+export const moduleLorebooks = readonly(StoreState.moduleLorebooks);
+export const moduleScripts = readonly(StoreState.moduleScripts);
+export const moduleCharJS = readonly(StoreState.moduleCharJS);
+export const presetScripts = readonly(StoreState.presetScripts);
 export const activeCharacter = readonly(StoreState.activeCharacter);
+export const activeRoom = readonly(StoreState.activeRoom);
+export const roomCharacters = readonly(StoreState.roomCharacters);
 export const characterLorebooks = readonly(StoreState.characterLorebooks);
 export const characterScripts = readonly(StoreState.characterScripts);
 export const characterCharJS = readonly(StoreState.characterCharJS);
@@ -44,12 +50,16 @@ export const characterModules = readonly(StoreState.characterModules);
 export const chats = readonly(StoreState.chats);
 export const activeChat = readonly(StoreState.activeChat);
 export const chatLorebooks = readonly(StoreState.chatLorebooks);
+export const chatPersonas = readonly(StoreState.chatPersonas);
 export const messages = readonly(StoreState.messages);
 export const chatTasks = readonly(StoreState.chatTasks);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
     activePreset,
-    activePersona,
+    activeModuleId,
+    hasActiveModule,
+    activeRoomId,
+    hasActiveRoom,
     activeCharacterId,
     hasActiveCharacter,
     activeChatId,
@@ -68,6 +78,7 @@ export {
 export type { DisplayMessage, DisplayMessageStatus, TaskStatus } from './types';
 
 export * from './content/settings';
+export * from './content/room';
 export * from './content/character';
 export * from './content/persona';
 export * from './content/preset';

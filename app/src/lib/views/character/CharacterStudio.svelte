@@ -15,6 +15,7 @@
     import {
         activeCharacter,
         activeChat,
+        activeRoom,
         updateCharacterContent,
         updateCharacterAvatar,
         removeCharacterAvatar,
@@ -35,7 +36,7 @@
         deleteCharacterCharJS
     } from '$lib/stores';
     import { navigate } from '$lib/router';
-    import { setGreetings } from '$lib/managers';
+    import { syncChatGreetings } from '$lib/managers';
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { CharacterContent, Lorebook, Script, CharJS } from '$lib/services';
 
@@ -68,8 +69,10 @@
     }
 
     function backToChat() {
-        if ($activeChat) {
-            navigate({ view: 'chat', charId: $activeCharacter?.id, chatId: $activeChat.id });
+        if ($activeRoom && $activeChat) {
+            navigate({ view: 'room', roomId: $activeRoom.id, chatId: $activeChat.id });
+        } else if ($activeRoom) {
+            navigate({ view: 'room', roomId: $activeRoom.id });
         } else {
             navigate({ view: 'home' });
         }
@@ -90,7 +93,7 @@
         if (!$activeCharacter) return;
         await createCharacterGreeting($activeCharacter.id, content);
         if (isChatSynced() && $activeChat) {
-            await setGreetings($activeChat.id, $activeCharacter.greetings);
+            await syncChatGreetings($activeChat.id);
         }
     }
 
@@ -98,7 +101,7 @@
         if (!$activeCharacter) return;
         await deleteCharacterGreeting($activeCharacter.id, id);
         if (isChatSynced() && $activeChat) {
-            await setGreetings($activeChat.id, $activeCharacter.greetings);
+            await syncChatGreetings($activeChat.id);
         }
     }
 
@@ -106,7 +109,7 @@
         if (!$activeCharacter) return;
         await updateCharacterGreeting($activeCharacter.id, id, content);
         if (isChatSynced() && $activeChat) {
-            await setGreetings($activeChat.id, $activeCharacter.greetings);
+            await syncChatGreetings($activeChat.id);
         }
     }
 </script>

@@ -26,9 +26,7 @@ export interface CharacterContent {
 }
 
 export interface CharacterRefs {
-    lastActiveChatId?: string;
     avatarAssetId?: string;
-    chats: EntityListConfig;
     modules: EntityListConfig<ResourceRef>;
     lorebooks: EntityListConfig;
     scripts: EntityListConfig;
@@ -51,7 +49,6 @@ const defaultFields: CharacterFields = {
     greetings: {},
     defaultVariables: {},
     allowLowLevel: false,
-    chats: { refs: {}, folders: {} },
     modules: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },
@@ -157,10 +154,6 @@ export class CharacterService {
         try {
             await Promise.all([
                 buffer.flushTable('characters'),
-                buffer.flushTable('chats'),
-                buffer.flushTable('messages'),
-                buffer.flushTable('tool_calls'),
-                buffer.flushTable('translations'),
                 buffer.flushTable('lorebooks'),
                 buffer.flushTable('scripts'),
                 buffer.flushTable('charjs')
@@ -168,45 +161,15 @@ export class CharacterService {
 
             buffer.drop('characters', id);
             await localDB.transaction(
-                [
-                    'chats',
-                    'lorebooks',
-                    'scripts',
-                    'messages',
-                    'tool_calls',
-                    'translations',
-                    'characters',
-                    'charjs'
-                ],
+                ['lorebooks', 'scripts', 'characters', 'charjs'],
                 'rw',
                 async () => {
-                    const chatIds = (
-                        await localDB.getByIndex(
-                            'chats',
-                            'characterId',
-                            id,
-                            Number.MAX_SAFE_INTEGER
-                        )
-                    ).map((c) => c.id);
-
-                    const deletePromises: Promise<void>[] = [];
-                    for (const chatId of chatIds) {
-                        deletePromises.push(
-                            localDB.softDeleteByIndex('messages', 'chatId', chatId),
-                            localDB.softDeleteByIndex('tool_calls', 'chatId', chatId),
-                            localDB.softDeleteByIndex('translations', 'chatId', chatId),
-                            localDB.softDeleteByIndex('lorebooks', 'ownerId', chatId),
-                            localDB.softDeleteByIndex('scripts', 'ownerId', chatId),
-                            localDB.softDeleteByIndex('charjs', 'ownerId', chatId)
-                        );
-                    }
-                    deletePromises.push(
-                        localDB.softDeleteByIndex('chats', 'characterId', id),
+                    const deletePromises: Promise<void>[] = [
                         localDB.softDeleteByIndex('lorebooks', 'ownerId', id),
                         localDB.softDeleteByIndex('scripts', 'ownerId', id),
                         localDB.softDeleteByIndex('charjs', 'ownerId', id),
                         localDB.softDeleteRecord('characters', id)
-                    );
+                    ];
 
                     const results = await Promise.allSettled(deletePromises);
                     const failed = results.find((r) => r.status === 'rejected');

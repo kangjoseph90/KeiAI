@@ -16,22 +16,24 @@ import type { Module } from '$lib/services';
 export async function collectCharJSInstances(
     chatId: string,
     kind: ModeKind,
-    mode: string
+    mode: string,
+    characterId?: string
 ): Promise<CharJSInstance[]> {
     const chat = await getChat(chatId);
     if (!chat) return [];
-    const character = await getCharacter(chat.characterId);
-    if (!character) return [];
-    const activeModuleIds = await getActiveModuleIds(chat.characterId);
+    const character = characterId ? await getCharacter(characterId) : null;
+    const activeModuleIds = await getActiveModuleIds(characterId);
 
     const charjsRequests: Array<{ id: string; allowLowLevel: boolean }> = [];
 
-    charjsRequests.push(
-        ...Object.values(character.charjs.refs).map((r) => ({
-            id: r.id,
-            allowLowLevel: character.allowLowLevel
-        }))
-    );
+    if (character) {
+        charjsRequests.push(
+            ...Object.values(character.charjs.refs).map((r) => ({
+                id: r.id,
+                allowLowLevel: character.allowLowLevel
+            }))
+        );
+    }
 
     const mods = (await Promise.all([...activeModuleIds].map((id) => getModule(id)))).filter(
         (m): m is Module => m !== null

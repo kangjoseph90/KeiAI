@@ -26,27 +26,17 @@ import {
     characterScripts,
     characterCharJS,
     characterModules,
-    chats,
-    activeChat,
     modules,
-    appSettings,
-    activeCharacterId
+    appSettings
 } from '$lib/stores/state';
-import {
-    CharacterService,
-    ChatService,
-    LorebookService,
-    ScriptService,
-    CharJSService,
-    SettingsService
-} from '$lib/services';
+import { CharacterService, LorebookService, ScriptService, CharJSService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { generateSortOrder } from '$lib/utils/ordering';
-import type { Character, Lorebook, Script, CharJS, Chat, AppSettings } from '$lib/services';
+import type { Character, Lorebook, Script, CharJS } from '$lib/services';
 import { makeSettings } from '../../utils';
 import { deepMerge } from '$lib/utils/defaults';
-import type { FolderDef, OrderedRef } from '$lib/types/refs';
+import type { FolderDef } from '$lib/types/refs';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
@@ -62,9 +52,6 @@ vi.mock('$lib/services', () => ({
         isPbConnected: vi.fn(() => false),
         onPbAuthChange: vi.fn()
     },
-    ChatService: {
-        listByCharacter: vi.fn()
-    },
     LorebookService: {
         create: vi.fn(),
         delete: vi.fn(),
@@ -79,10 +66,6 @@ vi.mock('$lib/services', () => ({
         create: vi.fn(),
         delete: vi.fn(),
         listByOwner: vi.fn()
-    },
-    SettingsService: {
-        get: vi.fn(),
-        update: vi.fn()
     }
 }));
 
@@ -96,20 +79,12 @@ vi.mock('$lib/utils/ordering', () => ({
     sortByRefs: vi.fn((list) => list)
 }));
 
-// Mock other stores
-vi.mock('$lib/stores/content/chat', () => ({
-    selectChat: vi.fn(),
-    clearActiveChat: vi.fn()
-}));
-
 // Mock settings store
 vi.mock('$lib/stores/content/settings', () => ({
     getAppSettings: vi.fn(),
     updateSettings: vi.fn()
 }));
 
-import { clearActiveChat } from '$lib/stores/content/chat';
-import { setGreetings } from '$lib/managers';
 import { getAppSettings, updateSettings } from '$lib/stores/content/settings';
 
 describe('Character Store', () => {
@@ -121,7 +96,6 @@ describe('Character Store', () => {
         greetings: {},
         defaultVariables: {},
         allowLowLevel: false,
-        chats: { refs: {}, folders: {} },
         modules: { refs: {}, folders: {} },
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },
@@ -133,12 +107,10 @@ describe('Character Store', () => {
         vi.clearAllMocks();
         characters.clear();
         activeCharacter.set(null);
-        activeChat.set(null);
         characterLorebooks.clear();
         characterScripts.clear();
         characterCharJS.clear();
         characterModules.clear();
-        chats.clear();
         modules.clear();
         appSettings.set(makeSettings({ theme: 'dark' }));
         vi.mocked(getAppSettings).mockResolvedValue(makeSettings({ theme: 'dark' }));
@@ -174,7 +146,6 @@ describe('Character Store', () => {
     describe('selectCharacter', () => {
         it('should set active character and load related data', async () => {
             vi.mocked(CharacterService.get).mockResolvedValue(mockCharacter);
-            vi.mocked(ChatService.listByCharacter).mockResolvedValue([]);
             vi.mocked(LorebookService.listByOwner).mockResolvedValue([]);
             vi.mocked(ScriptService.listByOwner).mockResolvedValue([]);
             vi.mocked(CharJSService.listByOwner).mockResolvedValue([]);
@@ -182,8 +153,6 @@ describe('Character Store', () => {
             await selectCharacter('char-1');
 
             expect(get(activeCharacter)).toEqual(mockCharacter);
-            expect(clearActiveChat).toHaveBeenCalled();
-            expect(get(chats)).toEqual([]);
             expect(get(characterLorebooks)).toEqual([]);
             expect(get(characterScripts)).toEqual([]);
             expect(get(characterCharJS)).toEqual([]);
@@ -199,14 +168,12 @@ describe('Character Store', () => {
     describe('clearActiveCharacter', () => {
         it('should clear all character-related stores', () => {
             activeCharacter.set(mockCharacter);
-            chats.setAll([{ id: 'chat-1' } as Chat]);
+            characterLorebooks.setAll([{ id: 'lorebook-1' } as Lorebook]);
 
             clearActiveCharacter();
 
             expect(get(activeCharacter)).toBeNull();
-            expect(get(chats)).toEqual([]);
             expect(get(characterLorebooks)).toEqual([]);
-            expect(clearActiveChat).toHaveBeenCalled();
         });
     });
 
@@ -338,7 +305,7 @@ describe('Character Store', () => {
             activeCharacter.set(mockCharacter);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                chats: {
+                lorebooks: {
                     refs: {},
                     folders: {
                         'new-id': { id: 'new-id', name: 'My Folder', sortOrder: 'sort-order' }
@@ -346,44 +313,44 @@ describe('Character Store', () => {
                 }
             });
 
-            const folder = await createCharacterFolder('char-1', 'chats', 'My Folder');
+            const folder = await createCharacterFolder('char-1', 'lorebooks', 'My Folder');
 
             expect(folder.name).toBe('My Folder');
-            expect(get(activeCharacter)?.chats?.folders?.['new-id']).toEqual(folder);
+            expect(get(activeCharacter)?.lorebooks.folders['new-id']).toEqual(folder);
         });
 
         it('should update a character folder', async () => {
             const folder: FolderDef = { id: 'f1', name: 'Old', sortOrder: 'a' };
             const charWithFolder = {
                 ...mockCharacter,
-                chats: { refs: {}, folders: { f1: folder } }
+                lorebooks: { refs: {}, folders: { f1: folder } }
             };
             activeCharacter.set(charWithFolder);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                chats: { refs: {}, folders: { f1: { ...folder, name: 'New' } } }
+                lorebooks: { refs: {}, folders: { f1: { ...folder, name: 'New' } } }
             });
 
-            await updateCharacterFolder('char-1', 'chats', 'f1', { name: 'New' });
+            await updateCharacterFolder('char-1', 'lorebooks', 'f1', { name: 'New' });
 
-            expect(get(activeCharacter)?.chats?.folders?.['f1']?.name).toBe('New');
+            expect(get(activeCharacter)?.lorebooks.folders['f1']?.name).toBe('New');
         });
 
         it('should delete a character folder', async () => {
             const folder: FolderDef = { id: 'f1', name: 'Folder', sortOrder: 'a' };
             const charWithFolder = {
                 ...mockCharacter,
-                chats: { refs: {}, folders: { f1: folder } }
+                lorebooks: { refs: {}, folders: { f1: folder } }
             };
             activeCharacter.set(charWithFolder);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                chats: { refs: {}, folders: {} }
+                lorebooks: { refs: {}, folders: {} }
             });
 
-            await deleteCharacterFolder('char-1', 'chats', 'f1');
+            await deleteCharacterFolder('char-1', 'lorebooks', 'f1');
 
-            expect(Object.keys(get(activeCharacter)?.chats?.folders ?? {})).toHaveLength(0);
+            expect(Object.keys(get(activeCharacter)?.lorebooks.folders ?? {})).toHaveLength(0);
         });
     });
 
@@ -391,20 +358,29 @@ describe('Character Store', () => {
         it('should move item to a different folder', async () => {
             const charWithRefs = {
                 ...mockCharacter,
-                chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a' } }, folders: {} }
+                lorebooks: {
+                    refs: { 'lorebook-1': { id: 'lorebook-1', sortOrder: 'a' } },
+                    folders: {}
+                }
             };
             activeCharacter.set(charWithRefs);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
-                chats: {
-                    refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a', folderId: 'folder-1' } },
+                lorebooks: {
+                    refs: {
+                        'lorebook-1': {
+                            id: 'lorebook-1',
+                            sortOrder: 'a',
+                            folderId: 'folder-1'
+                        }
+                    },
                     folders: {}
                 }
             });
 
-            await moveCharacterItem('char-1', 'chats', 'chat-1', 'folder-1');
+            await moveCharacterItem('char-1', 'lorebooks', 'lorebook-1', 'folder-1');
 
-            expect(get(activeCharacter)?.chats.refs['chat-1']?.folderId).toBe('folder-1');
+            expect(get(activeCharacter)?.lorebooks.refs['lorebook-1']?.folderId).toBe('folder-1');
         });
     });
 });

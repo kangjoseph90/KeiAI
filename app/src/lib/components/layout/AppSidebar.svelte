@@ -2,9 +2,11 @@
     import {
         Check,
         Edit3,
+        Home,
         MessageSquare,
         PanelLeft,
         PanelLeftClose,
+        Pin,
         Plus,
         Search,
         Settings,
@@ -15,17 +17,22 @@
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import {
-        activeCharacter,
         activeChat,
+        activeRoom,
+        addRoomCharacter,
         characters,
         chats,
         createChat,
         deleteChat,
-        selectChat,
+        removeRoomCharacter,
+        roomCharacters,
+        rooms,
+        setChatDefaultCharacter,
+        setChatSelectedCharacter,
         updateChat
     } from '$lib/stores';
-    import { setGreetings } from '$lib/managers';
     import type { RouteState } from '$lib/router';
+    import { syncChatGreetings } from '$lib/managers';
 
     interface Props {
         collapsed?: boolean;
@@ -37,6 +44,7 @@
     let { collapsed = false, route, onToggle, onNavigate }: Props = $props();
 
     let chatSearch = $state('');
+    let characterToAdd = $state('');
     let editingChatId = $state<string | null>(null);
     let editingChatTitle = $state('');
 
@@ -46,24 +54,54 @@
         return $chats.filter((chat) => chat.title.toLowerCase().includes(query));
     });
 
-    async function handleCreateChat() {
-        if (!$activeCharacter) return;
+    const attachableCharacters = $derived(() => {
+        const attached = new Set($roomCharacters.map((character) => character.id));
+        return $characters.filter((character) => !attached.has(character.id));
+    });
 
-        const chat = await createChat($activeCharacter.id, {
+    async function handleCreateChat() {
+        if (!$activeRoom) return;
+
+        const chat = await createChat($activeRoom.id, {
             title: `New Chat ${$chats.length + 1}`
         });
-        await setGreetings(chat.id, $activeCharacter.greetings);
-        await selectChat(chat.id, $activeCharacter.id);
-        onNavigate({ view: 'chat', charId: $activeCharacter.id, chatId: chat.id });
+        await syncChatGreetings(chat.id);
+        onNavigate({ view: 'room', roomId: $activeRoom.id, chatId: chat.id });
     }
 
-    function handleSelectCharacter(characterId: string) {
-        onNavigate({ view: 'chat', charId: characterId });
+    function handleSelectRoom(roomId: string) {
+        onNavigate({ view: 'room', roomId });
     }
 
-    function handleSelectChat(chatId: string) {
-        if (!$activeCharacter) return;
-        onNavigate({ view: 'chat', charId: $activeCharacter.id, chatId });
+    function handleOpenCharacter(characterId: string) {
+        onNavigate({ view: 'characterStudio', charId: characterId });
+    }
+
+    async function handleSelectCharacter(characterId: string) {
+        if (!$activeChat) return;
+        await setChatSelectedCharacter($activeChat.id, characterId);
+    }
+
+    async function handleSetDefaultCharacter(characterId: string) {
+        if (!$activeChat) return;
+        await setChatDefaultCharacter($activeChat.id, characterId);
+    }
+
+    async function handleAddCharacter() {
+        if (!$activeRoom || !characterToAdd) return;
+        await addRoomCharacter($activeRoom.id, characterToAdd);
+        characterToAdd = '';
+    }
+
+    async function handleRemoveCharacter(characterId: string) {
+        if (!$activeRoom) return;
+        await removeRoomCharacter($activeRoom.id, characterId);
+    }
+
+    async function handleSelectChat(chatId: string) {
+        if (!$activeRoom) return;
+        await syncChatGreetings(chatId);
+        onNavigate({ view: 'room', roomId: $activeRoom.id, chatId });
     }
 
     async function handleRenameChat(chatId: string) {
@@ -76,18 +114,11 @@
     }
 
     async function handleDeleteChat(chatId: string) {
-        if (!$activeCharacter) return;
-        if ($chats.length <= 1) return;
+        if (!$activeRoom) return;
 
-        await deleteChat(chatId, $activeCharacter.id);
+        await deleteChat(chatId, $activeRoom.id);
         if ($activeChat?.id === chatId) {
-            const next = $chats.find((chat) => chat.id !== chatId);
-            if (next) {
-                await selectChat(next.id, $activeCharacter.id);
-                onNavigate({ view: 'chat', charId: $activeCharacter.id, chatId: next.id });
-            } else {
-                onNavigate({ view: 'chat', charId: $activeCharacter.id });
-            }
+            onNavigate({ view: 'room', roomId: $activeRoom.id });
         }
     }
 
@@ -96,7 +127,7 @@
         editingChatTitle = title;
     }
 
-    function characterInitial(name: string): string {
+    function initial(name: string): string {
         return (name.trim().charAt(0) || '?').toUpperCase();
     }
 </script>
@@ -115,24 +146,25 @@
 
         <div class="flex-1 overflow-y-auto px-2 py-2">
             <div class="flex flex-col items-center gap-2">
-                {#each $characters as character (character.id)}
-                    {@const selected = route.charId === character.id}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="size-9"
+                    title="Home"
+                    onclick={() => onNavigate({ view: 'home' })}
+                >
+                    <Home class="size-4" />
+                </Button>
+                {#each $rooms as room (room.id)}
+                    {@const selected = route.roomId === room.id}
                     <button
                         class="relative flex size-10 items-center justify-center overflow-hidden rounded-md border bg-background text-xs font-semibold transition-colors {selected
                             ? 'border-primary ring-2 ring-primary/20'
                             : 'border-transparent hover:border-sidebar-border'}"
-                        title={character.name}
-                        onclick={() => handleSelectCharacter(character.id)}
+                        title={room.name}
+                        onclick={() => handleSelectRoom(room.id)}
                     >
-                        {#if character.avatarAssetId}
-                            <AssetView
-                                id={character.avatarAssetId}
-                                alt={character.name}
-                                class="size-full object-cover"
-                            />
-                        {:else}
-                            {characterInitial(character.name)}
-                        {/if}
+                        {initial(room.name)}
                     </button>
                 {/each}
             </div>
@@ -148,12 +180,12 @@
             >
                 <Settings class="size-4" />
             </Button>
-            {#if $activeCharacter}
+            {#if $activeRoom}
                 <Button
                     variant="ghost"
                     size="icon"
                     class="size-9"
-                    title={collapsed ? 'Show chat list' : 'Hide chat list'}
+                    title={collapsed ? 'Show room panel' : 'Hide room panel'}
                     onclick={onToggle}
                 >
                     {#if collapsed}
@@ -166,18 +198,107 @@
         </div>
     </div>
 
-    {#if !collapsed && $activeCharacter}
-        <div class="flex w-72 flex-col bg-sidebar">
+    {#if !collapsed && $activeRoom}
+        <div class="flex w-80 flex-col bg-sidebar">
             <div class="flex h-14 items-center justify-between border-b border-sidebar-border px-3">
                 <div class="min-w-0">
-                    <p class="truncate text-sm font-semibold">{$activeCharacter.name}</p>
+                    <p class="truncate text-sm font-semibold">{$activeRoom.name}</p>
                     <p class="truncate text-[11px] text-muted-foreground">
-                        {$activeChat?.title ?? 'Select a chat'}
+                        {$activeChat?.title ?? 'No chat selected'}
                     </p>
                 </div>
                 <Button variant="ghost" size="icon" class="size-8" onclick={handleCreateChat}>
                     <Plus class="size-4" />
                 </Button>
+            </div>
+
+            <div class="border-b border-sidebar-border p-3">
+                <div class="mb-2 flex items-center justify-between">
+                    <p class="text-[11px] font-semibold uppercase text-muted-foreground">
+                        Characters
+                    </p>
+                </div>
+                <div class="mb-2 flex gap-1.5">
+                    <select
+                        class="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
+                        bind:value={characterToAdd}
+                    >
+                        <option value="">Add character...</option>
+                        {#each attachableCharacters() as character (character.id)}
+                            <option value={character.id}>{character.name}</option>
+                        {/each}
+                    </select>
+                    <Button
+                        variant="secondary"
+                        size="icon"
+                        class="size-8 shrink-0"
+                        onclick={handleAddCharacter}
+                        disabled={!characterToAdd}
+                    >
+                        <Plus class="size-4" />
+                    </Button>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    {#each $roomCharacters as character (character.id)}
+                        {@const ref = $activeRoom.characters.refs[character.id]}
+                        {@const disabled = ref?.enabled === false}
+                        {@const selected = $activeChat?.selectedCharacterId === character.id}
+                        {@const isDefault = $activeChat?.defaultCharacterId === character.id}
+                        <div class="group relative">
+                            <button
+                                class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors {selected
+                                    ? 'border-primary ring-2 ring-primary/20'
+                                    : 'hover:bg-sidebar-accent'} {disabled ? 'opacity-40' : ''}"
+                                title={character.name}
+                                disabled={disabled || !$activeChat}
+                                onclick={() => handleSelectCharacter(character.id)}
+                            >
+                                <div
+                                    class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
+                                >
+                                    {#if character.avatarAssetId}
+                                        <AssetView
+                                            id={character.avatarAssetId}
+                                            alt={character.name}
+                                            class="size-full object-cover"
+                                        />
+                                    {:else}
+                                        {initial(character.name)}
+                                    {/if}
+                                </div>
+                                <span class="w-full truncate text-[11px]">{character.name}</span>
+                            </button>
+                            <button
+                                class="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
+                                title="Open character studio"
+                                onclick={() => handleOpenCharacter(character.id)}
+                            >
+                                <Settings class="size-3" />
+                            </button>
+                            <button
+                                class="absolute left-5 -top-1 flex size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity {isDefault
+                                    ? 'text-primary opacity-100'
+                                    : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
+                                title="Set default character"
+                                disabled={disabled || !$activeChat}
+                                onclick={() => handleSetDefaultCharacter(character.id)}
+                            >
+                                <Pin class="size-3" />
+                            </button>
+                            <button
+                                class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                title="Remove from room"
+                                onclick={() => handleRemoveCharacter(character.id)}
+                            >
+                                <X class="size-3" />
+                            </button>
+                        </div>
+                    {:else}
+                        <div class="col-span-3 rounded-md border border-dashed p-3 text-center">
+                            <p class="text-[11px] text-muted-foreground">No characters.</p>
+                        </div>
+                    {/each}
+                </div>
             </div>
 
             <div class="border-b border-sidebar-border p-3">
@@ -256,21 +377,19 @@
                                     >
                                         <Edit3 class="size-3" />
                                     </button>
-                                    {#if $chats.length > 1}
-                                        <button
-                                            class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
-                                            title="Delete chat"
-                                            onclick={() => handleDeleteChat(chat.id)}
-                                        >
-                                            <Trash2 class="size-3" />
-                                        </button>
-                                    {/if}
+                                    <button
+                                        class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
+                                        title="Delete chat"
+                                        onclick={() => handleDeleteChat(chat.id)}
+                                    >
+                                        <Trash2 class="size-3" />
+                                    </button>
                                 </div>
                             {/if}
                         </div>
                     {:else}
                         <div class="px-3 py-8 text-center text-xs text-muted-foreground">
-                            No chats found.
+                            No chats yet.
                         </div>
                     {/each}
                 </div>

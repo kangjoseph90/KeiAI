@@ -3,8 +3,7 @@ import { initDefaultContents } from '$lib/stores/init';
 
 // Mock store functions
 vi.mock('$lib/stores/content/persona', () => ({
-    createPersona: vi.fn(),
-    selectPersona: vi.fn()
+    createPersona: vi.fn()
 }));
 
 vi.mock('$lib/stores/content/preset', () => ({
@@ -16,9 +15,15 @@ vi.mock('$lib/stores/content/character', () => ({
     createCharacter: vi.fn()
 }));
 
-import { createPersona, selectPersona } from '$lib/stores/content/persona';
+vi.mock('$lib/stores/content/room', () => ({
+    createRoom: vi.fn(),
+    addRoomCharacter: vi.fn()
+}));
+
+import { createPersona } from '$lib/stores/content/persona';
 import { createPreset, selectPreset } from '$lib/stores/content/preset';
 import { createCharacter } from '$lib/stores/content/character';
+import { addRoomCharacter, createRoom } from '$lib/stores/content/room';
 
 describe('Init Store', () => {
     beforeEach(() => {
@@ -26,7 +31,8 @@ describe('Init Store', () => {
         vi.mocked(createPersona).mockResolvedValue({ id: 'persona-1' } as never);
         vi.mocked(createPreset).mockResolvedValue({ id: 'preset-1' } as never);
         vi.mocked(createCharacter).mockResolvedValue({ id: 'char-1' } as never);
-        vi.mocked(selectPersona).mockResolvedValue(undefined);
+        vi.mocked(createRoom).mockResolvedValue({ id: 'room-1' } as never);
+        vi.mocked(addRoomCharacter).mockResolvedValue(undefined);
         vi.mocked(selectPreset).mockResolvedValue(undefined);
     });
 
@@ -52,18 +58,26 @@ describe('Init Store', () => {
             expect(createCharacter).toHaveBeenCalledTimes(1);
         });
 
+        it('should call createRoom', async () => {
+            await initDefaultContents();
+
+            expect(createRoom).toHaveBeenCalledWith();
+            expect(createRoom).toHaveBeenCalledTimes(1);
+        });
+
         it('should call all create functions in parallel', async () => {
             await initDefaultContents();
 
             expect(createPersona).toHaveBeenCalled();
             expect(createPreset).toHaveBeenCalled();
             expect(createCharacter).toHaveBeenCalled();
+            expect(createRoom).toHaveBeenCalled();
         });
 
-        it('should select the created persona and preset', async () => {
+        it('should attach the created character and select the created preset', async () => {
             await initDefaultContents();
 
-            expect(selectPersona).toHaveBeenCalledWith('persona-1');
+            expect(addRoomCharacter).toHaveBeenCalledWith('room-1', 'char-1');
             expect(selectPreset).toHaveBeenCalledWith('preset-1');
         });
 

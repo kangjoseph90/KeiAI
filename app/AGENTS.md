@@ -119,18 +119,23 @@ All writable stores are declared in `stores/state.ts`. Action functions live in 
 ```
 L0 (Global):     appSettings, activeUser, pbConnected
 L1 (Workspace):  characters, personas, presets, modules, plugins
-L2 (Character):  activeCharacter, chats, characterLorebooks, characterScripts
-L3 (Chat):       activeChat, messages, chatLorebooks
+L2 (Room):       activeRoom, roomCharacters, chats
+L3 (Chat):       activeChat, messages, chatLorebooks, chatPersonas
+Studio:          activeCharacter, characterLorebooks, characterScripts, characterCharJS, characterModules
+Studio:          activeModule, moduleLorebooks, moduleScripts, moduleCharJS
 Task:            chatTasks (Map<chatId, ChatTask>) — execution state (status, error) in stores/tasks/
 ```
 
-- Leaving a level clears child stores and drops plaintext UI state from memory
+- Leaving a level clears child stores and drops plaintext UI state from memory.
+- Character/Module studio state is independent of the active room/chat route. Opening a studio loads only that resource and its owned resources.
 - `stores/index.ts` re-exports all writables as `readonly()` — UI can subscribe but never `.set()`/`.update()`
 - Action functions import writables directly from `state.ts`
 
 ### Derived Stores
 
-`displayMessages`, `isLoggedIn`, `activeCharacterId`, `activeChatId`, `allLorebooks`, `allScripts`, `activePersona`, etc. — composed from base stores.
+`displayMessages`, `isLoggedIn`, `activeRoomId`, `activeChatId`, `activeCharacterId`, `activeModuleId`, `allLorebooks`, `allScripts`, etc. — composed from base stores.
+
+There is no global `activePersona`. Persona participation and runtime selection live on the chat record (`chat.personas`, `selectedPersonaId`, `defaultPersonaId`).
 
 ### Guard Pattern in Actions
 
@@ -169,34 +174,11 @@ Every service file follows this order:
 
 ### Ownership Guards
 
-Guard functions in `services/content/guards.ts` validate cross-entity relationships:
+Weak refs are validated at the store/task boundary rather than by server FK:
 
-```typescript
-assertCharacterExists(characterId);
-assertChatOwnedByCharacter(chatId, characterId);
-assertLorebookOwnedBy(lorebookId, ownerId);
-```
-
-All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
-
----
-
-## Error Handling Philosophy
-
-| Layer   | Responsibility                                                                |
-| ------- | ----------------------------------------------------------------------------- |
-| Adapter | Throw raw/platform errors (DexieError, HttpError) — **pass-through** original |
-| Service | **Catch** & **Translate** platform errors into `AppError` with domain codes   |
-| Store   | **Propagate** service errors to caller — no internal try/catch                |
-| UI      | Catch and display user-facing messages via `getErrorMessage(error)`           |
-| Sync    | Fire-and-forget — errors logged, never surfaced to UI                         |
-
-```typescript
-// Error codes (types/errors.ts):
-// NOT_FOUND, OWNERSHIP_VIOLATION, ENCRYPTION_FAILED, DB_WRITE_FAILED,
-// SESSION_EXPIRED, NOT_AUTHENTICATED, INVALID_CREDENTIALS, ALREADY_REGISTERED,
-// INVALID_INPUT, NETWORK_ERROR, STORAGE_ERROR, ...
-```
+- `Room -> Character`: room character ref must exist and be enabled for selection/execution.
+- `Chat -> Persona`: chat persona ref must exist and be enabled for user messages.
+- Message swipe `speakerId/speakerName` is historical display data; do not self-heal or delete it.
 
 ---
 
@@ -209,7 +191,6 @@ All throw `AppError('OWNERSHIP_VIOLATION' | 'NOT_FOUND')`.
 | Combined domain type  | `*`                                                  | `Character`, `Preset`                           |
 | Service class         | `*Service` (static)                                  | `CharacterService.list()`                       |
 | Store action function | `verbNoun()`                                         | `loadCharacters()`, `selectChat()`              |
-| Guard function        | `assert*()`                                          | `assertChatOwnedByCharacter()`                  |
 | Error code            | `SCREAMING_SNAKE`                                    | `'ENCRYPTION_FAILED'`                           |
 | Shared ref types      | `OrderedRef`, `ResourceRef`, `FolderDef`, `AssetRef` | in `types/refs.ts`                              |
 | ID generation         | `generateId()`                                       | 15-char lowercase+digits, PocketBase-compatible |
@@ -327,22 +308,30 @@ Ten adapter interfaces, each with Web + Tauri implementations dispatched via `is
 
 ## Generation Pipeline
 
-`lib/tasks/chat.ts` orchestrates LLM streaming. Messages are persisted to DB immediately on creation; the ChatTask is a thin state tracker that holds no content.
+`lib/tasks/chat/index.ts` orchestrates LLM streaming. Messages are persisted to DB immediately on creation; the ChatTask is a thin state tracker that holds no content.
 
 Pipeline steps:
 
 1. Guard: prevent duplicate runs per chatId
-2. `createMessage()` — empty message in DB (unless reroll)
-3. Load context: chat, character, preset, persona, lorebooks, last 2 messages
-4. Setup variables: `deepMerge(chat.data.defaultVariables, previousSwipe.variables)` → new swipe
-5. Register ChatTask (messageId + AbortController)
-6. `buildPrompt()` — pure function (`llm/prompt/builder.ts`)
-7. Apply request-phase pipeline handlers
-8. `selectLLMHandler()` → stream chunks
-9. Per chunk: run output-phase pipeline → `updateMessage` (plaintext write queue batches these)
-10. Finalize: validate non-empty → `clearChatTask()`
-11. On abort: `clearChatTask()` (content already in DB)
-12. On error: `setChatTaskError()` — error overlay stays for user to dismiss
+2. Load chat + settings, then room.
+3. Resolve runtime ids from the chat record:
+    - character: `selectedCharacterId ?? defaultCharacterId`
+    - persona: `selectedPersonaId ?? defaultPersonaId`
+4. Validate that the character ref exists/enabled in the room and the persona ref exists/enabled in the chat.
+5. `createMessage()` — empty assistant message in DB (unless reroll).
+6. Create a `PagedMessages` view before the target message.
+7. Load character, preset, persona, and lorebooks for the resolved context.
+8. Setup variables with `getChatVariablesBefore(chatId, targetMessage.sortOrder)`.
+9. `prepareNextSwipe()` — create active swipe with `speakerId`, `speakerName`, and variables.
+10. Register ChatTask (messageId + AbortController).
+11. `buildPrompt()` — async pure prompt assembly over `PagedMessages`.
+12. Apply prompt-phase pipeline handlers with the resolved `TemplateContext`.
+13. `selectLLMHandler()` → stream chunks.
+14. Per chunk: `updateMessageSwipe()` with streamed content/thought.
+15. Final output pass: `runTemplate()` → output pipeline → `runTemplate()` → `updateMessageSwipe()`.
+16. Finalize: validate non-empty → `clearChatTask()`.
+17. On abort: `clearChatTask()` (content already in DB).
+18. On error: `setChatTaskError()` — error overlay stays for user to dismiss.
 
 ### ChatTask
 
@@ -352,9 +341,37 @@ The `displayMessages` derived store overlays task status (e.g. showing a loading
 
 ### Variable System
 
-Variables are stored per swipe as `Record<string, string>`. A new swipe inherits `deepMerge(chat.data.defaultVariables, previousSwipe.variables)`.
+Variables are stored per swipe as `Record<string, string>` to support snapshot. A new swipe starts from:
 
-The CharJS sandbox exposes `KeiAPI.getVar(key)` / `KeiAPI.setVar(key, value)`, which read and write from the last message's active swipe via `MessageService`.
+1. room enabled characters' `defaultVariables`, merged in `room.characters.refs` sort order
+2. previous active swipe variables, if applicable
+
+Use `getChatDefaultVariables()`, `getChatVariables()`, and `getChatVariablesBefore()` from `lib/managers/chat.ts`.
+
+The CharJS sandbox exposes `KeiAPI.getVar(key)` / `KeiAPI.setVar(key, value)`, which read and write from the last message's active swipe.
+
+### Prompt, Template, and Pipeline Context
+
+All prompt/template/pipeline execution uses `TemplateContext`. The default philosophy is "use the most specific context available."
+
+| Scope                   | Context rule                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| User input              | default character + selected persona                                            |
+| `runChat` prompt/output | selected/default character + selected/default persona                           |
+| Assistant display       | active swipe `speakerId` as character when present, otherwise default character |
+| User display            | active swipe `speakerId` as persona when present, otherwise default persona     |
+| History block           | per-message context from active swipe `role + speakerId + speakerName`          |
+
+`runPipeline(chatId, phase, data, ctx)` collects handlers internally from `ctx.characterId`. Lower-level collect functions may accept an explicit `characterId` for callers that need collection without execution.
+
+### Greeting System
+
+`syncChatGreetings(chatId)` keeps one assistant greeting message per chat.
+
+- `chat.greetingMessageId` points to the greeting message.
+- Each enabled room character greeting becomes one swipe in that message.
+- Greeting swipe id is the character greeting id.
+- Greeting swipes store `speakerId`, `speakerName`, and seeded variables.
 
 ### Provider-Handler Architecture — "같은 인터페이스 = 같은 클래스"
 
@@ -396,7 +413,7 @@ ID convention: `provider::modelId` for built-in (e.g. `openai::gpt-5.4`), `custo
 
 - **No `any` in pipeline** — all data is typed end-to-end
 - **Data snapshot at top** — `runChat()` loads everything before streaming starts (no mid-generation inconsistency)
-- **Pure functions** — `buildPrompt()` and `selectLLMHandler()` are synchronous, no side effects
+- **Pure boundaries** — `buildPrompt()` is async but side-effect free; `selectLLMHandler()` is synchronous and side-effect free
 - **Tasks keyed by chatId** — survive context switches, user can navigate away during generation
 
 ---
@@ -408,7 +425,7 @@ Follow the existing single-table pattern:
 1. **Schema**: Update the canonical PocketBase init schema (`pocketbase/pb_migrations/1773000000_init_keiai_schema.js`) with a blind sync table (`userId`, `encryptedData`, `encryptedDataIV`, no FK/relation). Do not add incremental migrations while the project assumes a clean database.
 2. **Adapter**: Add record types in `adapters/db/types.ts`, add table to Dexie schema in `db/web.ts`
 3. **Service**: Create `services/content/<entity>.ts` — domain types, defaults, parse helpers, static CRUD class
-4. **Shared**: Add `OrderedRef[]` to parent's data fields for 1:N, or `ResourceRef[]` for N:M
+4. **Refs**: Add `EntityListConfig<OrderedRef>` for owned child lists, or `EntityListConfig<ResourceRef>` for weak/shared refs
 5. **Store**: Add writable in `stores/state.ts`, create `stores/content/<entity>.ts` with action functions
 6. **Sync**: Register table in sync manager
 7. **Export**: Add to relevant barrel files

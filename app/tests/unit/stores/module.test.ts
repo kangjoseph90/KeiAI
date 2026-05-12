@@ -16,7 +16,7 @@ import {
     createModuleCharJS,
     deleteModuleCharJS
 } from '$lib/stores/content/module';
-import { modules, appSettings, moduleResources } from '$lib/stores/state';
+import { modules, appSettings } from '$lib/stores/state';
 import {
     ModuleService,
     LorebookService,
@@ -95,7 +95,6 @@ describe('Module Store', () => {
         vi.clearAllMocks();
         modules.clear();
         appSettings.set(makeSettings({ theme: 'dark' }));
-        moduleResources.set(new Map());
         vi.mocked(getAppSettings).mockImplementation(async () => get(appSettings)!);
         vi.mocked(updateSettings).mockImplementation(async (changes) => {
             appSettings.update((s) => (s ? deepMerge(s, changes) : s));
@@ -112,7 +111,6 @@ describe('Module Store', () => {
             await loadModules();
 
             expect(get(modules)).toEqual([mockModule]);
-            expect(get(moduleResources).has('mod-1')).toBe(true);
             expect(ModuleService.list).toHaveBeenCalled();
         });
     });
@@ -169,7 +167,6 @@ describe('Module Store', () => {
 
             expect(get(modules)).toHaveLength(0);
             expect(get(appSettings)?.modules.refs['mod-1']).toBeUndefined();
-            expect(get(moduleResources).has('mod-1')).toBe(false);
         });
     });
 

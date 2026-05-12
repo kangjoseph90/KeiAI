@@ -20,13 +20,17 @@ vi.mock('$lib/stores/tasks/chat', () => ({
 vi.mock('$lib/stores/content/message', () => ({
     createMessage: vi.fn().mockResolvedValue(undefined),
     createMessageSwipe: vi.fn(),
-    prepareNextSwipe: vi.fn(),
     updateMessage: vi.fn().mockResolvedValue(undefined),
     updateMessageSwipe: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
     deleteMessageSwipe: vi.fn(),
     getLastMessage: vi.fn(),
     getMessage: vi.fn()
+}));
+
+vi.mock('$lib/managers', () => ({
+    getChatVariablesBefore: vi.fn().mockResolvedValue({}),
+    prepareNextSwipe: vi.fn()
 }));
 
 vi.mock('$lib/services/content/tool', () => ({
@@ -57,16 +61,28 @@ vi.mock('$lib/services/content/message', () => {
 vi.mock('$lib/stores', () => ({
     getChat: vi.fn().mockResolvedValue({
         id: 'chat-1',
-        characterId: 'char-1',
+        roomId: 'room-1',
         title: 'Chat 1',
         chatNote: '',
+        selectedCharacterId: 'char-1',
+        selectedPersonaId: 'persona-1',
+        lorebooks: { refs: {}, folders: {} },
+        personas: { refs: { 'persona-1': { enabled: true, sortOrder: 'a0' } }, folders: {} }
+    }),
+    getRoom: vi.fn().mockResolvedValue({
+        id: 'room-1',
+        name: 'Room 1',
+        chats: { refs: {}, folders: {} },
+        characters: { refs: { 'char-1': { enabled: true, sortOrder: 'a0' } }, folders: {} }
+    }),
+    getCharacter: vi.fn().mockResolvedValue({
+        id: 'char-1',
+        name: 'Char 1',
+        description: '',
+        characterNote: '',
         defaultVariables: {}
     }),
-    getCharacter: vi
-        .fn()
-        .mockResolvedValue({ id: 'char-1', name: 'Char 1', description: '', characterNote: '' }),
     getAppSettings: vi.fn().mockResolvedValue({
-        personaId: 'persona-1',
         presetId: 'preset-1',
         apiKeys: {},
         chat: { saveMessagesOnSwipe: true }
@@ -83,10 +99,13 @@ vi.mock('$lib/stores', () => ({
 vi.mock('$lib/stores/content/chat', () => ({
     getChat: vi.fn().mockResolvedValue({
         id: 'chat-1',
-        characterId: 'char-1',
+        roomId: 'room-1',
         title: 'Chat 1',
         chatNote: '',
-        defaultVariables: {}
+        selectedCharacterId: 'char-1',
+        selectedPersonaId: 'persona-1',
+        lorebooks: { refs: {}, folders: {} },
+        personas: { refs: { 'persona-1': { enabled: true, sortOrder: 'a0' } }, folders: {} }
     })
 }));
 
@@ -138,15 +157,16 @@ import {
 import {
     createMessage,
     getLastMessage,
-    prepareNextSwipe,
     updateMessage,
     updateMessageSwipe,
     getMessage
 } from '$lib/stores/content/message';
+import { getChatVariablesBefore, prepareNextSwipe } from '$lib/managers';
 import { MessageService } from '$lib/services/content/message';
 import { getChat } from '$lib/stores';
 import { buildPrompt } from '$lib/tasks/chat/prompt';
 import { selectLLMHandler } from '$lib/llm/handler';
+import { runPipeline } from '$lib/pipeline';
 import type { Chat, Message } from '$lib/services';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -188,6 +208,7 @@ describe('Chat Pipeline', () => {
         vi.mocked(createMessage).mockResolvedValue(
             mockNewMessage as unknown as import('$lib/services').Message
         );
+        vi.mocked(getChatVariablesBefore).mockResolvedValue({});
         vi.mocked(prepareNextSwipe).mockResolvedValue({
             swipeId: 'swipe-new',
             message: {
@@ -198,7 +219,9 @@ describe('Chat Pipeline', () => {
                         id: 'swipe-new',
                         content: '',
                         createdAt: Date.now(),
-                        variables: {}
+                        variables: {},
+                        speakerId: 'char-1',
+                        speakerName: 'Char 1'
                     }
                 }
             } as unknown as import('$lib/services').Message
@@ -265,10 +288,37 @@ describe('Chat Pipeline', () => {
         // Should update swipe content during streaming
         expect(prepareNextSwipe).toHaveBeenCalledWith(
             expect.objectContaining({ id: 'msg-new' }),
-            expect.objectContaining({ content: '' }),
-            false
+            expect.objectContaining({
+                content: '',
+                variables: {},
+                speakerId: 'char-1',
+                speakerName: 'Char 1',
+                replaceActiveSwipe: false
+            })
         );
         expect(updateMessageSwipe).toHaveBeenCalled();
+        const promptInput = vi.mocked(buildPrompt).mock.calls[0]?.[0];
+        expect(promptInput?.context).toMatchObject({
+            characterId: 'char-1',
+            personaId: 'persona-1',
+            chatId: 'chat-1'
+        });
+        expect(promptInput?.context).not.toHaveProperty('messageId');
+        expect(promptInput?.context).not.toHaveProperty('messageIndex');
+        expect(promptInput?.context).not.toHaveProperty('role');
+        expect(promptInput?.context).not.toHaveProperty('speakerId');
+        expect(promptInput?.context).not.toHaveProperty('speakerName');
+        expect(runPipeline).toHaveBeenCalledWith(
+            mockChatId,
+            'output',
+            'Hello world',
+            expect.objectContaining({
+                characterId: 'char-1',
+                speakerId: 'char-1',
+                speakerName: 'Char 1',
+                role: 'assistant'
+            })
+        );
         // Should NOT have an error
         expect(setChatTaskError).not.toHaveBeenCalled();
         // Should clear task on success
@@ -304,6 +354,50 @@ describe('Chat Pipeline', () => {
         await runChat(mockChatId);
 
         expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Prompt error');
+    });
+
+    it('should reject generation when no character is selected or defaulted', async () => {
+        vi.mocked(getChat).mockResolvedValueOnce({
+            id: mockChatId,
+            roomId: 'room-1',
+            title: 'Mock Chat',
+            chatNote: '',
+            selectedPersonaId: 'persona-1',
+            lorebooks: { refs: {}, folders: {} },
+            personas: {
+                refs: { 'persona-1': { enabled: true, sortOrder: 'a0' } },
+                folders: {}
+            }
+        } as Chat);
+
+        await runChat(mockChatId);
+
+        expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'No character selected');
+        expect(createMessage).not.toHaveBeenCalled();
+    });
+
+    it('should reject generation when the selected persona is disabled in the chat', async () => {
+        vi.mocked(getChat).mockResolvedValueOnce({
+            id: mockChatId,
+            roomId: 'room-1',
+            title: 'Mock Chat',
+            chatNote: '',
+            selectedCharacterId: 'char-1',
+            selectedPersonaId: 'persona-1',
+            lorebooks: { refs: {}, folders: {} },
+            personas: {
+                refs: { 'persona-1': { enabled: false, sortOrder: 'a0' } },
+                folders: {}
+            }
+        } as Chat);
+
+        await runChat(mockChatId);
+
+        expect(setChatTaskError).toHaveBeenCalledWith(
+            mockChatId,
+            'Persona is not available: persona-1'
+        );
+        expect(createMessage).not.toHaveBeenCalled();
     });
 
     it('should handle empty response', async () => {
@@ -407,12 +501,17 @@ describe('Chat Pipeline', () => {
         beforeEach(() => {
             vi.mocked(getChat).mockResolvedValue({
                 id: mockChatId,
-                characterId: 'char-1',
+                roomId: 'room-1',
                 title: 'Mock Chat',
                 chatNote: '',
-                defaultVariables: {},
+                selectedCharacterId: 'char-1',
+                selectedPersonaId: 'persona-1',
                 lastMessageId: targetMessageId,
-                lorebooks: { refs: {}, folders: {} }
+                lorebooks: { refs: {}, folders: {} },
+                personas: {
+                    refs: { 'persona-1': { enabled: true, sortOrder: 'a0' } },
+                    folders: {}
+                }
             } as Chat);
             vi.mocked(MessageService.get).mockResolvedValue(mockExistingMessage as Message);
             vi.mocked(getLastMessage).mockResolvedValue(mockExistingMessage as Message);
@@ -448,8 +547,13 @@ describe('Chat Pipeline', () => {
             // Should add swipe to existing message, not create new message
             expect(prepareNextSwipe).toHaveBeenCalledWith(
                 expect.objectContaining({ id: targetMessageId }),
-                expect.objectContaining({ content: '' }),
-                false
+                expect.objectContaining({
+                    content: '',
+                    variables: {},
+                    speakerId: 'char-1',
+                    speakerName: 'Char 1',
+                    replaceActiveSwipe: false
+                })
             );
             expect(createMessage).not.toHaveBeenCalled();
         });
@@ -463,7 +567,6 @@ describe('Chat Pipeline', () => {
 
             const { getAppSettings } = await import('$lib/stores');
             vi.mocked(getAppSettings).mockResolvedValueOnce({
-                personaId: 'persona-1',
                 presetId: 'preset-1',
                 apiKeys: {},
                 chat: { saveMessagesOnSwipe: false }
@@ -487,8 +590,13 @@ describe('Chat Pipeline', () => {
 
             expect(prepareNextSwipe).toHaveBeenCalledWith(
                 expect.objectContaining({ id: targetMessageId }),
-                expect.objectContaining({ content: '' }),
-                true
+                expect.objectContaining({
+                    content: '',
+                    variables: {},
+                    speakerId: 'char-1',
+                    speakerName: 'Char 1',
+                    replaceActiveSwipe: true
+                })
             );
         });
     });

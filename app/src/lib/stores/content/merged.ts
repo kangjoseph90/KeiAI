@@ -11,16 +11,20 @@ import { getActivePreset, getPresetScripts } from './preset';
  * Returns active module IDs for a character.
  * Combines globally enabled modules and character-specific enabled modules.
  */
-export async function getActiveModuleIds(characterId: string): Promise<Set<string>> {
-    const [settings, char] = await Promise.all([getAppSettings(), getCharacter(characterId)]);
-    if (!char) return new Set();
+export async function getActiveModuleIds(characterId?: string): Promise<Set<string>> {
+    const [settings, char] = await Promise.all([
+        getAppSettings(),
+        characterId ? getCharacter(characterId) : Promise.resolve(null)
+    ]);
 
     const ids = new Set<string>();
     for (const [id, r] of Object.entries(settings.modules.refs)) {
         if (r.enabled) ids.add(id);
     }
-    for (const [id, r] of Object.entries(char.modules.refs)) {
-        if (r.enabled) ids.add(id);
+    if (char) {
+        for (const [id, r] of Object.entries(char.modules.refs)) {
+            if (r.enabled) ids.add(id);
+        }
     }
     return ids;
 }
@@ -29,14 +33,17 @@ export async function getActiveModuleIds(characterId: string): Promise<Set<strin
  * Returns merged lorebooks from chat, character, and active modules.
  * Uses store-cached getters that fall back to refs-based individual gets.
  */
-export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
+export async function getMergedLorebooks(
+    chatId: string,
+    characterId?: string
+): Promise<Lorebook[]> {
     const chat = await getChat(chatId);
     if (!chat) return [];
-    const activeModuleIds = await getActiveModuleIds(chat.characterId);
+    const activeModuleIds = await getActiveModuleIds(characterId);
 
     const [chatLB, charLB, ...modLBResults] = await Promise.all([
         getChatLorebooks(chatId),
-        getCharacterLorebooks(chat.characterId),
+        characterId ? getCharacterLorebooks(characterId) : Promise.resolve([]),
         ...[...activeModuleIds].map((id) => getModuleLorebooks(id))
     ]);
 
@@ -49,14 +56,14 @@ export async function getMergedLorebooks(chatId: string): Promise<Lorebook[]> {
  * Returns merged scripts from character and active modules.
  * Uses store-cached getters that fall back to refs-based individual gets.
  */
-export async function getMergedScripts(chatId: string): Promise<Script[]> {
+export async function getMergedScripts(chatId: string, characterId?: string): Promise<Script[]> {
     const chat = await getChat(chatId);
     if (!chat) return [];
-    const activeModuleIds = await getActiveModuleIds(chat.characterId);
+    const activeModuleIds = await getActiveModuleIds(characterId);
     const activePresetId = getActivePreset()?.id;
 
     const [charSC, presetSC, ...modSCResults] = await Promise.all([
-        getCharacterScripts(chat.characterId),
+        characterId ? getCharacterScripts(characterId) : Promise.resolve([]),
         activePresetId ? getPresetScripts(activePresetId) : Promise.resolve([]),
         ...[...activeModuleIds].map((id) => getModuleScripts(id))
     ]);

@@ -1,19 +1,13 @@
 import type { OpenAIChat } from '$lib/llm/types';
 import type { TemplateContext } from '$lib/template/types';
 
-export type PipelineContextType = {
-    [K in keyof PipelinePhaseType]: TemplateContext;
-};
-
-export type PipelineContext<K extends string = string> = K extends keyof PipelineContextType
-    ? PipelineContextType[K]
-    : Record<string, unknown>;
+export type PipelineContext = TemplateContext;
 
 export interface PipelineHandler<T, K extends string = string> {
     id: string;
     phase: K;
     order: number;
-    run(data: T, context: PipelineContext<K>): Promise<T | undefined>;
+    run(data: T, context: PipelineContext): Promise<T | undefined>;
 }
 
 export interface PipelinePhaseType {

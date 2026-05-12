@@ -16,6 +16,8 @@ export interface MessageSwipeFields {
     thought?: string;
     toolCalls?: Record<string, ToolCallInfo>;
     variables?: Record<string, string>;
+    speakerId?: string; // personaId if role is 'user', characterId if role is 'assistant'
+    speakerName?: string;
 }
 
 /**

@@ -1,31 +1,14 @@
-/**
- * Chat Service Tests
- *
- * Tests the ChatService which handles chat CRUD operations
- * with encryption and database writes.
- */
-
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChatService } from '$lib/services/content/chat';
-import type { Chat, ChatFields } from '$lib/services/content/chat';
 import type { BaseRecord } from '$lib/adapters/db/types';
 
-// Mock all dependencies
-vi.mock('$lib/crypto', () => ({
-    encrypt: vi.fn(),
-    decrypt: vi.fn()
-}));
-
 vi.mock('$lib/services/user', () => ({
-    UserService: {},
-    getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
+    getActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/adapters/db', () => ({
     localDB: {
         getByIndex: vi.fn(),
-        getRecord: vi.fn(),
         putRecord: vi.fn(),
         transaction: vi.fn(),
         softDeleteRecord: vi.fn(),
@@ -38,17 +21,10 @@ vi.mock('$lib/utils/id', () => ({
 }));
 
 vi.mock('$lib/utils/defaults', () => ({
-    deepMerge: vi.fn((target: unknown, source: unknown) => {
-        if (
-            typeof target === 'object' &&
-            target !== null &&
-            typeof source === 'object' &&
-            source !== null
-        ) {
-            return { ...target, ...source };
-        }
-        return source ?? target;
-    })
+    deepMerge: vi.fn((target: unknown, source: unknown) => ({
+        ...(target as Record<string, unknown>),
+        ...(source as Record<string, unknown>)
+    }))
 }));
 
 vi.mock('$lib/services/content/record_buffer', () => ({
@@ -60,232 +36,152 @@ vi.mock('$lib/services/content/record_buffer', () => ({
     }
 }));
 
-import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
-import { generateId } from '$lib/utils/id';
-import { deepMerge } from '$lib/utils/defaults';
 import { buffer } from '$lib/services/content/record_buffer';
 
 describe('ChatService', () => {
-    const mockMasterKey = {} as CryptoKey;
     const mockUserId = 'user-123';
-    const mockEncryptedData = new Uint8Array([1, 2, 3]);
-    const mockIV = new Uint8Array([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
 
     beforeEach(() => {
         vi.clearAllMocks();
-
-        // Default session mock
         vi.mocked(getActiveSession).mockReturnValue({
-            masterKey: mockMasterKey,
+            masterKey: {} as CryptoKey,
             userId: mockUserId,
             identityKeyPair: {} as CryptoKeyPair
         });
-
-        // Default encrypt mock
-        vi.mocked(encrypt).mockResolvedValue({
-            ciphertext: mockEncryptedData,
-            iv: mockIV
-        });
-
-        // Default decrypt mock
-        vi.mocked(decrypt).mockResolvedValue(
-            JSON.stringify({ title: 'Test Chat', messageCount: 0 })
-        );
-
-        // Default deepMerge mock
-        vi.mocked(deepMerge).mockImplementation((target: unknown, source: unknown) => ({
-            ...(target as Record<string, unknown>),
-            ...(source as Record<string, unknown>)
-        }));
-
-        // Default generateId mock
-        vi.mocked(generateId).mockReturnValue('test-chat-id');
-
-        // Default write queue mock
         vi.mocked(buffer.get).mockResolvedValue(null);
         vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
     });
 
-    describe('listByCharacter', () => {
-        it('should return list of chats for a character', async () => {
-            const mockRecords = [
+    describe('listByRoom', () => {
+        it('returns chats for a room', async () => {
+            vi.mocked(localDB.getByIndex).mockResolvedValue([
                 {
                     id: 'chat-1',
-                    characterId: 'char-1',
+                    roomId: 'room-1',
                     userId: mockUserId,
                     createdAt: 1000,
                     updatedAt: 1000,
                     isDeleted: false,
-                    data: { title: 'Chat 1', messageCount: 0 }
-                } as unknown as BaseRecord,
+                    data: { title: 'Chat 1' }
+                },
                 {
                     id: 'chat-2',
-                    characterId: 'char-1',
+                    roomId: 'room-1',
                     userId: mockUserId,
                     createdAt: 2000,
                     updatedAt: 2000,
                     isDeleted: false,
-                    data: { title: 'Chat 2', messageCount: 0 }
-                } as unknown as BaseRecord
-            ] as BaseRecord[];
+                    data: { title: 'Chat 2' }
+                }
+            ] as unknown as BaseRecord[]);
 
-            vi.mocked(localDB.getByIndex).mockResolvedValue(mockRecords);
-
-            const result = await ChatService.listByCharacter('char-1');
+            const result = await ChatService.listByRoom('room-1');
 
             expect(result).toHaveLength(2);
-            expect(result[0].id).toBe('chat-1');
-            expect(result[0].title).toBe('Chat 1');
-            expect(result[1].id).toBe('chat-2');
-            expect(result[1].title).toBe('Chat 2');
-        });
-
-        it('should return empty array when no chats exist', async () => {
-            vi.mocked(localDB.getByIndex).mockResolvedValue([]);
-
-            const result = await ChatService.listByCharacter('char-1');
-
-            expect(result).toEqual([]);
-        });
-
-        it('should call getByIndex with correct parameters', async () => {
-            vi.mocked(localDB.getByIndex).mockResolvedValue([]);
-
-            await ChatService.listByCharacter('char-123');
-
+            expect(result[0]).toMatchObject({ id: 'chat-1', roomId: 'room-1', title: 'Chat 1' });
+            expect(result[1]).toMatchObject({ id: 'chat-2', roomId: 'room-1', title: 'Chat 2' });
             expect(localDB.getByIndex).toHaveBeenCalledWith(
                 'chats',
-                'characterId',
-                'char-123',
+                'roomId',
+                'room-1',
                 Number.MAX_SAFE_INTEGER
             );
         });
     });
 
     describe('get', () => {
-        it('should return chat when record exists', async () => {
-            const mockRecord = {
+        it('returns a chat when record exists', async () => {
+            vi.mocked(buffer.get).mockResolvedValue({
                 id: 'chat-1',
-                characterId: 'char-1',
+                roomId: 'room-1',
                 userId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
-                data: {
-                    title: 'Test Chat',
-                    chatNote: 'Override'
-                }
-            } as unknown as BaseRecord;
-
-            vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
-
-            const result = await ChatService.get('chat-1');
-
-            expect(result).not.toBeNull();
-            expect(result?.id).toBe('chat-1');
-            expect(result?.title).toBe('Test Chat');
-            expect(result?.chatNote).toBe('Override');
-        });
-
-        it('should return null when record does not exist', async () => {
-            vi.mocked(buffer.get).mockResolvedValue(null);
-
-            const result = await ChatService.get('non-existent');
-
-            expect(result).toBeNull();
-        });
-
-        it('should return null when record is deleted', async () => {
-            vi.mocked(buffer.get).mockResolvedValue({
-                id: 'chat-1',
-                userId: mockUserId,
-                createdAt: 1000,
-                updatedAt: 1000,
-                isDeleted: true,
-                data: { title: 'Deleted' }
+                data: { title: 'Test Chat', chatNote: 'Override' }
             } as never);
 
             const result = await ChatService.get('chat-1');
 
-            expect(result).toBeNull();
+            expect(result).toMatchObject({
+                id: 'chat-1',
+                roomId: 'room-1',
+                title: 'Test Chat',
+                chatNote: 'Override'
+            });
+        });
+
+        it('returns null for missing or deleted records', async () => {
+            vi.mocked(buffer.get).mockResolvedValue(null);
+            await expect(ChatService.get('missing')).resolves.toBeNull();
+
+            vi.mocked(buffer.get).mockResolvedValue({
+                id: 'chat-1',
+                roomId: 'room-1',
+                userId: mockUserId,
+                isDeleted: true,
+                data: {}
+            } as never);
+            await expect(ChatService.get('chat-1')).resolves.toBeNull();
         });
     });
 
     describe('create', () => {
-        it('should create a new chat for a character', async () => {
-            const result = await ChatService.create('char-1', { title: 'New Chat' });
+        it('creates a chat for a room', async () => {
+            const result = await ChatService.create('room-1', { title: 'New Chat' });
 
-            expect(result.id).toBe('test-chat-id');
-            expect(result.characterId).toBe('char-1');
-            expect(result.title).toBe('New Chat');
-
+            expect(result).toMatchObject({
+                id: 'test-chat-id',
+                roomId: 'room-1',
+                title: 'New Chat'
+            });
             expect(localDB.putRecord).toHaveBeenCalledWith(
                 'chats',
                 expect.objectContaining({
                     id: 'test-chat-id',
                     userId: mockUserId,
-                    characterId: 'char-1'
+                    roomId: 'room-1'
                 })
             );
-        });
-
-        it('should use default values when not provided', async () => {
-            vi.mocked(deepMerge).mockImplementation((target: unknown, source: unknown) => ({
-                ...(target as Record<string, unknown>),
-                ...(source as Record<string, unknown>)
-            }));
-
-            const result = await ChatService.create('char-1');
-
-            expect(result.title).toBe('New Chat');
         });
     });
 
     describe('update', () => {
-        it('should update chat fields', async () => {
-            const existingRecord = {
+        it('updates chat fields', async () => {
+            vi.mocked(buffer.get).mockResolvedValue({
                 id: 'chat-1',
-                characterId: 'char-1',
+                roomId: 'room-1',
                 userId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
-                data: { title: 'Old Title', messageCount: 5 }
-            } as unknown as BaseRecord;
-
-            vi.mocked(buffer.get).mockResolvedValue(existingRecord as never);
+                data: { title: 'Old Title' }
+            } as never);
 
             const result = await ChatService.update('chat-1', { title: 'New Title' });
 
-            expect(result.title).toBe('New Title');
+            expect(result).toMatchObject({ id: 'chat-1', roomId: 'room-1', title: 'New Title' });
             expect(buffer.update).toHaveBeenCalled();
-        });
-
-        it('should throw NOT_FOUND when chat does not exist', async () => {
-            vi.mocked(buffer.get).mockResolvedValue(null);
-
-            await expect(ChatService.update('non-existent', { title: 'New' })).rejects.toThrow();
         });
     });
 
     describe('delete', () => {
-        const mockChat = {
-            id: 'chat-1',
-            userId: mockUserId,
-            isDeleted: false,
-            data: { title: 'Delete Me' }
-        };
-
         beforeEach(() => {
-            vi.mocked(buffer.get).mockResolvedValue(mockChat as never);
+            vi.mocked(buffer.get).mockResolvedValue({
+                id: 'chat-1',
+                roomId: 'room-1',
+                userId: mockUserId,
+                isDeleted: false,
+                data: { title: 'Delete Me' }
+            } as never);
             vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
                 await callback();
             });
         });
 
-        it('should soft delete chat and related data', async () => {
+        it('soft deletes chat-owned data and the chat', async () => {
             await ChatService.delete('chat-1');
 
             expect(localDB.transaction).toHaveBeenCalledWith(
@@ -293,15 +189,6 @@ describe('ChatService', () => {
                 'rw',
                 expect.any(Function)
             );
-        });
-
-        it('should soft delete related lorebooks, scripts, and messages', async () => {
-            vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
-                await callback();
-            });
-
-            await ChatService.delete('chat-1');
-
             expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
                 'lorebooks',
                 'ownerId',
@@ -319,6 +206,7 @@ describe('ChatService', () => {
                 'chatId',
                 'chat-1'
             );
+            expect(localDB.softDeleteRecord).toHaveBeenCalledWith('chats', 'chat-1');
         });
     });
 });

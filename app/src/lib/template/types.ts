@@ -6,6 +6,8 @@ export interface TemplateContext {
     chatId?: string;
     messageId?: string;
     messageIndex?: number;
+    speakerId?: string;
+    speakerName?: string;
     role?: LLMRole;
     display?: boolean;
     dryRun?: boolean;

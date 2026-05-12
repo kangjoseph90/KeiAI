@@ -191,30 +191,6 @@ export async function deleteMessageSwipe(messageId: string, swipeId: string): Pr
     return updated;
 }
 
-export async function prepareNextSwipe(
-    message: Message,
-    fields: MessageSwipeFields,
-    replaceActiveSwipe: boolean = false
-): Promise<{ swipeId: string; message: Message }> {
-    let current = message;
-
-    if (replaceActiveSwipe && current.activeSwipeId && current.swipes[current.activeSwipeId]) {
-        current = await deleteMessageSwipe(current.id, current.activeSwipeId);
-    }
-
-    const created = await createMessageSwipe(current.id, fields);
-    const updated = await MessageService.update(current.id, { activeSwipeId: created.swipeId });
-
-    if (get(activeChatId) === updated.chatId) {
-        messages.set(current.id, updated);
-    }
-
-    return {
-        swipeId: created.swipeId,
-        message: updated
-    };
-}
-
 // ─── Internal Helpers ──────────────────────────────────────────────────
 
 /**

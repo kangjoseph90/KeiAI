@@ -240,19 +240,14 @@ describe('WebDatabaseAdapter (Dexie)', () => {
     describe('getByIndex', () => {
         it('should get records by index value with limit', async () => {
             const records = [
-                createTestRecord({ id: 'idx-1', characterId: 'char-abc' }),
-                createTestRecord({ id: 'idx-2', characterId: 'char-abc' }),
-                createTestRecord({ id: 'idx-3', characterId: 'char-xyz' })
+                createTestRecord({ id: 'idx-1', roomId: 'room-abc' }),
+                createTestRecord({ id: 'idx-2', roomId: 'room-abc' }),
+                createTestRecord({ id: 'idx-3', roomId: 'room-xyz' })
             ];
 
             await localDB.putRecords('chats', records as ChatRecord[]);
 
-            const results = await localDB.getByIndex<ChatRecord>(
-                'chats',
-                'characterId',
-                'char-abc',
-                10
-            );
+            const results = await localDB.getByIndex<ChatRecord>('chats', 'roomId', 'room-abc', 10);
 
             expect(results).toHaveLength(2);
             expect(results[0].id).toBe('idx-1');
@@ -261,17 +256,13 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
         it('should exclude deleted records', async () => {
             const records = [
-                createTestRecord({ id: 'idx-active', characterId: 'char-123', isDeleted: false }),
-                createTestRecord({ id: 'idx-deleted', characterId: 'char-123', isDeleted: true })
+                createTestRecord({ id: 'idx-active', roomId: 'room-123', isDeleted: false }),
+                createTestRecord({ id: 'idx-deleted', roomId: 'room-123', isDeleted: true })
             ];
 
             await localDB.putRecords('chats', records as ChatRecord[]);
 
-            const results = await localDB.getByIndex<ChatRecord>(
-                'chats',
-                'characterId',
-                'char-123'
-            );
+            const results = await localDB.getByIndex<ChatRecord>('chats', 'roomId', 'room-123');
 
             expect(results).toHaveLength(1);
             expect(results[0].id).toBe('idx-active');
@@ -508,7 +499,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
         it('should support multi-table transactions', async () => {
             const charRecord = createTestRecord({ id: 'txn-char-1' });
-            const chatRecord = createTestRecord({ id: 'txn-chat-1', characterId: 'txn-char-1' });
+            const chatRecord = createTestRecord({ id: 'txn-chat-1', roomId: 'txn-room-1' });
 
             await localDB.transaction(['characters', 'chats'], 'rw', async () => {
                 await localDB.putRecord('characters', charRecord);
@@ -557,8 +548,8 @@ describe('WebDatabaseAdapter (Dexie)', () => {
     });
 
     describe('chat table', () => {
-        it('should store and retrieve chat records with characterId', async () => {
-            const record = createTestRecord({ id: 'chat-1', characterId: 'char-1' });
+        it('should store and retrieve chat records with roomId', async () => {
+            const record = createTestRecord({ id: 'chat-1', roomId: 'room-1' });
 
             await localDB.putRecord('chats', record as unknown as ChatRecord);
 

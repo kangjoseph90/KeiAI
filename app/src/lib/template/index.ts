@@ -6,9 +6,14 @@ import type { Macro, TemplateContext } from './types';
 export async function runTemplate(
     text: string,
     ctx: TemplateContext,
-    macros?: ReadonlyMap<string, Macro>
+    localMacros?: ReadonlyMap<string, Macro>
 ): Promise<string> {
-    const resolved = macros ?? (await collectTemplateMacros(ctx));
+    const resolved = await collectTemplateMacros(ctx);
+    if (localMacros) {
+        for (const [name, macro] of localMacros) {
+            resolved.set(name, macro);
+        }
+    }
     const parsed = parseTemplate(text);
     return interpretTemplate(parsed, ctx, resolved);
 }

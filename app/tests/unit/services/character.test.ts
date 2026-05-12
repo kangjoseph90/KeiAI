@@ -321,78 +321,26 @@ describe('CharacterService', () => {
             await CharacterService.delete('char-1');
 
             expect(localDB.transaction).toHaveBeenCalledWith(
-                [
-                    'chats',
-                    'lorebooks',
-                    'scripts',
-                    'messages',
-                    'tool_calls',
-                    'translations',
-                    'characters',
-                    'charjs'
-                ],
+                ['lorebooks', 'scripts', 'characters', 'charjs'],
                 'rw',
                 expect.any(Function)
             );
         });
 
-        it('should soft delete related chats', async () => {
-            const mockChats = [
-                { id: 'chat-1', characterId: 'char-1' },
-                { id: 'chat-2', characterId: 'char-1' }
-            ] as unknown as BaseRecord[];
-
-            vi.mocked(localDB.getByIndex).mockResolvedValue(mockChats);
-            vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
-                await callback();
-            });
-
-            await CharacterService.delete('char-1');
-
-            // Should call softDeleteByIndex for messages, lorebooks, scripts for each chat
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('messages', 'chatId', 'chat-1');
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('messages', 'chatId', 'chat-2');
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'tool_calls',
-                'chatId',
-                'chat-1'
-            );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'tool_calls',
-                'chatId',
-                'chat-2'
-            );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'translations',
-                'chatId',
-                'chat-1'
-            );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'translations',
-                'chatId',
-                'chat-2'
-            );
-        });
-
-        it('should soft delete related tool calls for each chat', async () => {
-            const mockChats = [{ id: 'chat-a', characterId: 'char-1' }] as unknown as BaseRecord[];
-
-            vi.mocked(localDB.getByIndex).mockResolvedValue(mockChats);
-            vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
-                await callback();
-            });
-
+        it('should soft delete character-owned resources but not room chats', async () => {
             await CharacterService.delete('char-1');
 
             expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'tool_calls',
-                'chatId',
-                'chat-a'
+                'lorebooks',
+                'ownerId',
+                'char-1'
             );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'translations',
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('scripts', 'ownerId', 'char-1');
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('charjs', 'ownerId', 'char-1');
+            expect(localDB.softDeleteByIndex).not.toHaveBeenCalledWith(
+                'messages',
                 'chatId',
-                'chat-a'
+                expect.any(String)
             );
         });
     });

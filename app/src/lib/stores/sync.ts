@@ -6,8 +6,12 @@ import {
     assetSyncStatus,
     dataSyncStatus,
     userSyncStatus,
+    activeRoomId,
     activeCharacterId,
     activeChatId,
+    rooms,
+    activeRoom,
+    roomCharacters,
     messages,
     chats,
     activeChat,
@@ -18,18 +22,25 @@ import {
     characterModules,
     chatLorebooks,
     chatScripts,
+    chatPersonas,
+    activeModule,
+    activeModuleId,
+    moduleLorebooks,
+    moduleScripts,
+    moduleCharJS,
+    activePreset,
+    presetScripts,
     characters,
     personas,
     presets,
     modules,
-    plugins,
-    moduleResources,
-    type ModuleResourceEntry
+    plugins
 } from './state';
 import { localDB } from '$lib/adapters/db';
 import {
     MessageService,
     ChatService,
+    RoomService,
     CharacterService,
     LorebookService,
     ScriptService,
@@ -37,14 +48,11 @@ import {
     PersonaService,
     PresetService,
     ModuleService,
-    PluginService,
-    type Lorebook,
-    type Script,
-    type CharJS,
-    type Module
+    PluginService
 } from '$lib/services';
 import { clearActiveCharacter } from './content/character';
 import { clearActiveChat } from './content/chat';
+import { clearActiveRoom } from './content/room';
 import { loadSettings } from './content/settings';
 import { sortByRefs } from '$lib/utils/ordering';
 import { EntityStore } from './entity_store';
@@ -108,45 +116,13 @@ function refreshCharacterModulesStore(): void {
     characterModules.setAll(sortByRefs(selectedModules, moduleRefs));
 }
 
-function ensureModuleResourceEntry(moduleId: string): ModuleResourceEntry | null {
-    const stores = get(moduleResources);
-    const existing = stores.get(moduleId);
-    if (existing) return existing;
-
-    if (!modules.has(moduleId)) return null;
-
-    const entry = {
-        lorebooks: new EntityStore<Lorebook>(),
-        scripts: new EntityStore<Script>(),
-        charjs: new EntityStore<CharJS>()
-    };
-
-    moduleResources.update((current) => new Map(current).set(moduleId, entry));
-    return entry;
-}
-
-async function backfillModuleResources(
-    module: Module,
-    resource: ModuleResourceEntry
-): Promise<void> {
-    const [lorebooks, scripts, charjs] = await Promise.all([
-        LorebookService.listByOwner(module.id),
-        ScriptService.listByOwner(module.id),
-        CharJSService.listByOwner(module.id)
-    ]);
-
-    resource.lorebooks.setAll(sortByRefs(lorebooks, module.lorebooks.refs));
-    resource.scripts.setAll(sortByRefs(scripts, module.scripts.refs));
-    resource.charjs.setAll(sortByRefs(charjs, module.charjs.refs));
-}
-
 async function syncLorebooksByIds(ids: string[]): Promise<void> {
     const entries = await Promise.all(
         ids.map(async (id) => [id, await LorebookService.get(id)] as const)
     );
     const currentCharacterId = get(activeCharacterId);
     const currentChatId = get(activeChatId);
-    const moduleStores = get(moduleResources);
+    const currentModuleId = get(activeModuleId);
 
     characterLorebooks.batch(() => {
         for (const [id, lorebook] of entries) {
@@ -166,21 +142,14 @@ async function syncLorebooksByIds(ids: string[]): Promise<void> {
         }
     });
 
-    for (const [, moduleStore] of moduleStores) {
-        moduleStore.lorebooks.batch(() => {
-            for (const [id] of entries) {
-                moduleStore.lorebooks.delete(id);
+    moduleLorebooks.batch(() => {
+        for (const [id, lorebook] of entries) {
+            moduleLorebooks.delete(id);
+            if (lorebook && currentModuleId && lorebook.ownerId === currentModuleId) {
+                moduleLorebooks.set(id, lorebook);
             }
-        });
-    }
-
-    for (const [id, lorebook] of entries) {
-        if (!lorebook) continue;
-        const moduleStore = ensureModuleResourceEntry(lorebook.ownerId);
-        if (moduleStore) {
-            moduleStore.lorebooks.set(id, lorebook);
         }
-    }
+    });
 
     const character = get(activeCharacter);
     if (character) {
@@ -192,10 +161,9 @@ async function syncLorebooksByIds(ids: string[]): Promise<void> {
         reorderStoreByRefs(chatLorebooks, chat.lorebooks.refs);
     }
 
-    for (const [moduleId, moduleStore] of moduleStores) {
-        const module = modules.get(moduleId);
-        if (!module) continue;
-        reorderStoreByRefs(moduleStore.lorebooks, module.lorebooks.refs);
+    const module = get(activeModule);
+    if (module) {
+        reorderStoreByRefs(moduleLorebooks, module.lorebooks.refs);
     }
 }
 
@@ -205,7 +173,8 @@ async function syncScriptsByIds(ids: string[]): Promise<void> {
     );
     const currentCharacterId = get(activeCharacterId);
     const currentChatId = get(activeChatId);
-    const moduleStores = get(moduleResources);
+    const currentModuleId = get(activeModuleId);
+    const currentPresetId = get(activePreset)?.id;
 
     characterScripts.batch(() => {
         for (const [id, script] of entries) {
@@ -225,31 +194,37 @@ async function syncScriptsByIds(ids: string[]): Promise<void> {
         }
     });
 
-    for (const [, moduleStore] of moduleStores) {
-        moduleStore.scripts.batch(() => {
-            for (const [id] of entries) {
-                moduleStore.scripts.delete(id);
+    moduleScripts.batch(() => {
+        for (const [id, script] of entries) {
+            moduleScripts.delete(id);
+            if (script && currentModuleId && script.ownerId === currentModuleId) {
+                moduleScripts.set(id, script);
             }
-        });
-    }
-
-    for (const [id, script] of entries) {
-        if (!script) continue;
-        const moduleStore = ensureModuleResourceEntry(script.ownerId);
-        if (moduleStore) {
-            moduleStore.scripts.set(id, script);
         }
-    }
+    });
+
+    presetScripts.batch(() => {
+        for (const [id, script] of entries) {
+            presetScripts.delete(id);
+            if (script && currentPresetId && script.ownerId === currentPresetId) {
+                presetScripts.set(id, script);
+            }
+        }
+    });
 
     const character = get(activeCharacter);
     if (character) {
         reorderStoreByRefs(characterScripts, character.scripts.refs);
     }
 
-    for (const [moduleId, moduleStore] of moduleStores) {
-        const module = modules.get(moduleId);
-        if (!module) continue;
-        reorderStoreByRefs(moduleStore.scripts, module.scripts.refs);
+    const module = get(activeModule);
+    if (module) {
+        reorderStoreByRefs(moduleScripts, module.scripts.refs);
+    }
+
+    const preset = get(activePreset);
+    if (preset) {
+        reorderStoreByRefs(presetScripts, preset.scripts.refs);
     }
 }
 
@@ -258,7 +233,7 @@ async function syncCharJSByIds(ids: string[]): Promise<void> {
         ids.map(async (id) => [id, await CharJSService.get(id)] as const)
     );
     const currentCharacterId = get(activeCharacterId);
-    const moduleStores = get(moduleResources);
+    const currentModuleId = get(activeModuleId);
 
     characterCharJS.batch(() => {
         for (const [id, charjs] of entries) {
@@ -269,31 +244,23 @@ async function syncCharJSByIds(ids: string[]): Promise<void> {
         }
     });
 
-    for (const [, moduleStore] of moduleStores) {
-        moduleStore.charjs.batch(() => {
-            for (const [id] of entries) {
-                moduleStore.charjs.delete(id);
+    moduleCharJS.batch(() => {
+        for (const [id, charjs] of entries) {
+            moduleCharJS.delete(id);
+            if (charjs && currentModuleId && charjs.ownerId === currentModuleId) {
+                moduleCharJS.set(id, charjs);
             }
-        });
-    }
-
-    for (const [id, charjs] of entries) {
-        if (!charjs) continue;
-        const moduleStore = ensureModuleResourceEntry(charjs.ownerId);
-        if (moduleStore) {
-            moduleStore.charjs.set(id, charjs);
         }
-    }
+    });
 
     const character = get(activeCharacter);
     if (character) {
         reorderStoreByRefs(characterCharJS, character.charjs.refs);
     }
 
-    for (const [moduleId, moduleStore] of moduleStores) {
-        const module = modules.get(moduleId);
-        if (!module) continue;
-        reorderStoreByRefs(moduleStore.charjs, module.charjs.refs);
+    const module = get(activeModule);
+    if (module) {
+        reorderStoreByRefs(moduleCharJS, module.charjs.refs);
     }
 }
 
@@ -365,47 +332,69 @@ function startDataSyncListener(): () => void {
                         refreshCharacterModulesStore();
                         break;
                     }
+                    case 'rooms': {
+                        const synced = await patchEntityStoreByIds(ids, rooms, RoomService.get);
+
+                        const currentRoomId = get(activeRoomId);
+                        if (currentRoomId && ids.includes(currentRoomId)) {
+                            const detail = synced.get(currentRoomId) ?? null;
+
+                            if (detail && get(activeRoomId) === currentRoomId) {
+                                activeRoom.set(detail);
+                                reorderStoreByRefs(chats, detail.chats.refs);
+                                reorderStoreByRefs(roomCharacters, detail.characters.refs);
+                            } else if (get(activeRoomId) === currentRoomId) {
+                                clearActiveRoom();
+                            }
+                        }
+                        break;
+                    }
                     case 'personas': {
                         await patchEntityStoreByIds(ids, personas, PersonaService.get);
+
+                        const chat = get(activeChat);
+                        if (chat) {
+                            await patchEntityStoreByIds(
+                                ids,
+                                chatPersonas,
+                                PersonaService.get,
+                                (persona) => persona.id in chat.personas.refs
+                            );
+                            reorderStoreByRefs(chatPersonas, chat.personas.refs);
+                        }
                         break;
                     }
                     case 'presets': {
-                        await patchEntityStoreByIds(ids, presets, PresetService.get);
+                        const synced = await patchEntityStoreByIds(ids, presets, PresetService.get);
+
+                        const preset = get(activePreset);
+                        if (preset && ids.includes(preset.id)) {
+                            const detail = synced.get(preset.id) ?? null;
+                            if (detail) {
+                                reorderStoreByRefs(presetScripts, detail.scripts.refs);
+                            } else {
+                                presetScripts.clear();
+                            }
+                        }
                         break;
                     }
                     case 'modules': {
                         const synced = await patchEntityStoreByIds(ids, modules, ModuleService.get);
 
-                        moduleResources.update((current) => {
-                            const next = new Map(current);
-                            for (const [id, module] of synced.entries()) {
-                                if (!module) {
-                                    next.delete(id);
-                                } else if (!next.has(id)) {
-                                    next.set(id, {
-                                        lorebooks: new EntityStore<Lorebook>(),
-                                        scripts: new EntityStore<Script>(),
-                                        charjs: new EntityStore<CharJS>()
-                                    });
-                                }
+                        const currentModuleId = get(activeModuleId);
+                        if (currentModuleId && ids.includes(currentModuleId)) {
+                            const detail = synced.get(currentModuleId) ?? null;
+                            if (detail && get(activeModuleId) === currentModuleId) {
+                                activeModule.set(detail);
+                                reorderStoreByRefs(moduleLorebooks, detail.lorebooks.refs);
+                                reorderStoreByRefs(moduleScripts, detail.scripts.refs);
+                                reorderStoreByRefs(moduleCharJS, detail.charjs.refs);
+                            } else if (get(activeModuleId) === currentModuleId) {
+                                activeModule.set(null);
+                                moduleLorebooks.clear();
+                                moduleScripts.clear();
+                                moduleCharJS.clear();
                             }
-                            return next;
-                        });
-
-                        const resources = get(moduleResources);
-                        for (const [id, module] of synced.entries()) {
-                            if (!module) continue;
-                            const resource = resources.get(id);
-                            if (!resource) continue;
-
-                            // Backfill resources for newly added modules to resolve sync race conditions
-                            if (ids.includes(id)) {
-                                void backfillModuleResources(module, resource);
-                            }
-
-                            reorderStoreByRefs(resource.lorebooks, module.lorebooks.refs);
-                            reorderStoreByRefs(resource.scripts, module.scripts.refs);
-                            reorderStoreByRefs(resource.charjs, module.charjs.refs);
                         }
 
                         refreshCharacterModulesStore();
@@ -422,13 +411,23 @@ function startDataSyncListener(): () => void {
                             CharacterService.get
                         );
 
+                        const room = get(activeRoom);
+                        if (room) {
+                            await patchEntityStoreByIds(
+                                ids,
+                                roomCharacters,
+                                CharacterService.get,
+                                (character) => character.id in room.characters.refs
+                            );
+                            reorderStoreByRefs(roomCharacters, room.characters.refs);
+                        }
+
                         const currentCharacterId = get(activeCharacterId);
                         if (currentCharacterId && ids.includes(currentCharacterId)) {
                             const detail = synced.get(currentCharacterId) ?? null;
 
                             if (detail && get(activeCharacterId) === currentCharacterId) {
                                 activeCharacter.set(detail);
-                                reorderStoreByRefs(chats, detail.chats.refs);
                                 reorderStoreByRefs(characterLorebooks, detail.lorebooks.refs);
                                 reorderStoreByRefs(characterScripts, detail.scripts.refs);
                                 reorderStoreByRefs(characterCharJS, detail.charjs.refs);
@@ -441,14 +440,14 @@ function startDataSyncListener(): () => void {
                         break;
                     }
                     case 'chats': {
-                        const currentCharacterId = get(activeCharacterId);
-                        if (!currentCharacterId) break;
+                        const currentRoomId = get(activeRoomId);
+                        if (!currentRoomId) break;
 
                         const synced = await patchEntityStoreByIds(
                             ids,
                             chats,
                             ChatService.get,
-                            (chat) => chat.characterId === currentCharacterId
+                            (chat) => chat.roomId === currentRoomId
                         );
 
                         const currentChatId = get(activeChatId);
@@ -461,9 +460,9 @@ function startDataSyncListener(): () => void {
                             }
                         }
 
-                        const character = get(activeCharacter);
-                        if (character) {
-                            reorderStoreByRefs(chats, character.chats.refs);
+                        const room = get(activeRoom);
+                        if (room) {
+                            reorderStoreByRefs(chats, room.chats.refs);
                         }
 
                         break;

@@ -1,4 +1,5 @@
 export * from './content/character';
+export * from './content/room';
 export * from './content/chat';
 export * from './content/message';
 export * from './content/paged_messages';

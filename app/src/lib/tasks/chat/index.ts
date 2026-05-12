@@ -18,7 +18,8 @@ import {
     getAppSettings,
     getPersona,
     getPreset,
-    getMergedLorebooks
+    getMergedLorebooks,
+    getRoom
 } from '$lib/stores';
 import type { LLMStreamHandler } from '$lib/llm/types';
 import { ToolCallService } from '$lib/services/content/tool';
@@ -28,14 +29,15 @@ import {
     createMessage,
     updateMessage,
     updateMessageSwipe,
-    getLastMessage,
-    prepareNextSwipe
+    getLastMessage
 } from '$lib/stores/content/message';
+import { getChatVariablesBefore, prepareNextSwipe } from '$lib/managers';
 import { buildPrompt } from './prompt';
 import { selectLLMHandler } from '../../llm/handler';
 import { runPipeline } from '../../pipeline';
 import { runTemplate } from '../../template';
 import type { TemplateContext } from '../../template';
+import { toMessageContext } from './context';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
 
@@ -67,15 +69,27 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
     const controller = new AbortController();
     try {
         // ── 1. Load all context ──────────────────────────────────────────
-        const [chat, settings, lorebooks] = await Promise.all([
-            getChat(chatId),
-            getAppSettings(),
-            getMergedLorebooks(chatId)
-        ]);
+        const [chat, settings] = await Promise.all([getChat(chatId), getAppSettings()]);
 
         if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
         if (!settings.presetId) throw new AppError('INVALID_INPUT', 'No preset selected');
-        if (!settings.personaId) throw new AppError('INVALID_INPUT', 'No persona selected');
+
+        const room = await getRoom(chat.roomId);
+        if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
+
+        const characterId = chat.selectedCharacterId ?? chat.defaultCharacterId;
+        if (!characterId) throw new AppError('INVALID_INPUT', 'No character selected');
+        const characterRef = room.characters.refs[characterId];
+        if (!characterRef || characterRef.enabled === false) {
+            throw new AppError('INVALID_INPUT', `Character is not available: ${characterId}`);
+        }
+
+        const personaId = chat.selectedPersonaId ?? chat.defaultPersonaId;
+        if (!personaId) throw new AppError('INVALID_INPUT', 'No persona selected');
+        const personaRef = chat.personas.refs[personaId];
+        if (!personaRef || personaRef.enabled === false) {
+            throw new AppError('INVALID_INPUT', `Persona is not available: ${personaId}`);
+        }
 
         const targetMessage = opts.reroll
             ? await getLastMessage(chatId)
@@ -85,35 +99,32 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
         if (!targetMessage) throw new AppError('INVALID_INPUT', 'Chat has no messages');
         const messages = await PagedMessages.createBefore(chatId, targetMessage.sortOrder);
 
-        const [character, preset, persona] = await Promise.all([
-            getCharacter(chat.characterId),
+        const [character, preset, persona, lorebooks] = await Promise.all([
+            getCharacter(characterId),
             getPreset(settings.presetId),
-            getPersona(settings.personaId)
+            getPersona(personaId),
+            getMergedLorebooks(chatId, characterId)
         ]);
 
-        if (!character) throw new AppError('NOT_FOUND', `Character not found: ${chat.characterId}`);
+        if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
         if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${settings.presetId}`);
-        if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${settings.personaId}`);
+        if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
 
-        // ── 2. Load Prompt History ────────────────────────────────────
-        const lastMessage = await messages.at(-1);
-
-        // setup variables
-        const variables =
-            lastMessage?.message.swipes[lastMessage.message.activeSwipeId]?.variables ?? {};
+        // ── 2. Setup variables ────────────────────────────────────
+        const variables = await getChatVariablesBefore(chatId, targetMessage.sortOrder);
         const shouldReplaceActiveSwipe =
             !settings.chat.saveMessagesOnSwipe &&
             Boolean(targetMessage.swipes[targetMessage.activeSwipeId]);
 
-        const nextSwipeFields = {
-            content: '',
-            variables: { ...character.defaultVariables, ...variables }
-        };
-
         const { swipeId: targetSwipeId, message: preparedMessage } = await prepareNextSwipe(
             targetMessage,
-            nextSwipeFields,
-            shouldReplaceActiveSwipe
+            {
+                content: '',
+                variables,
+                speakerId: character.id,
+                speakerName: character.name,
+                replaceActiveSwipe: shouldReplaceActiveSwipe
+            }
         );
 
         // ── 3. Register task ──────────────────────────────────────────
@@ -121,12 +132,9 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
         // ── 4. Build Prompt (pure function) ──────────────────────────────
         const templateCtx: TemplateContext = {
-            characterId: chat.characterId,
+            characterId,
             personaId: persona.id,
             chatId,
-            messageId: preparedMessage.id,
-            messageIndex: messages.length,
-            role: 'assistant',
             display: false,
             dryRun: false
         };
@@ -165,9 +173,10 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
 
         // ── 6.5. Post-process (Output Pipeline & Side-effects) ────────────
         if (finalContent.length > 0) {
-            const templated = await runTemplate(finalContent, templateCtx);
-            const piped = await runPipeline(chatId, 'output', templated, templateCtx);
-            const processedContent = await runTemplate(piped, templateCtx);
+            const outputCtx = toMessageContext(preparedMessage, messages.length, templateCtx);
+            const templated = await runTemplate(finalContent, outputCtx);
+            const piped = await runPipeline(chatId, 'output', templated, outputCtx);
+            const processedContent = await runTemplate(piped, outputCtx);
 
             await updateMessageSwipe(preparedMessage.id, targetSwipeId, {
                 content: processedContent

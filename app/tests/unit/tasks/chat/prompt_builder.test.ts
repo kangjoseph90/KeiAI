@@ -5,19 +5,14 @@ import type { Character, Chat, Message, Persona, Preset, PromptBlock } from '$li
 import type { LLMModelConfig } from '$lib/types/models/llm';
 import type { Macro, TemplateContext } from '$lib/template';
 
-const {
-    mockCollectTemplateMacros,
-    mockRunTemplate,
-    mockCollectPipelineHandlers,
-    mockRunPipelineHandlers,
-    mockTokenCount
-} = vi.hoisted(() => ({
-    mockCollectTemplateMacros: vi.fn(),
-    mockRunTemplate: vi.fn(),
-    mockCollectPipelineHandlers: vi.fn(),
-    mockRunPipelineHandlers: vi.fn(),
-    mockTokenCount: vi.fn()
-}));
+const { mockCollectTemplateMacros, mockRunTemplate, mockRunPipeline, mockTokenCount } = vi.hoisted(
+    () => ({
+        mockCollectTemplateMacros: vi.fn(),
+        mockRunTemplate: vi.fn(),
+        mockRunPipeline: vi.fn(),
+        mockTokenCount: vi.fn()
+    })
+);
 
 vi.mock('$lib/template', () => ({
     collectTemplateMacros: mockCollectTemplateMacros,
@@ -25,8 +20,7 @@ vi.mock('$lib/template', () => ({
 }));
 
 vi.mock('$lib/pipeline', () => ({
-    collectPipelineHandlers: mockCollectPipelineHandlers,
-    runPipelineHandlers: mockRunPipelineHandlers
+    runPipeline: mockRunPipeline
 }));
 
 vi.mock('$lib/llm/tokenizer', () => ({
@@ -85,7 +79,12 @@ function makePreset(promptBlocks: Record<string, PromptBlock>): Preset {
     };
 }
 
-function makeMessage(id: string, role: Message['role'], content: string): Message {
+function makeMessage(
+    id: string,
+    role: Message['role'],
+    content: string,
+    speaker?: { id: string; name: string }
+): Message {
     const swipeId = `${id}-swipe`;
     return {
         id,
@@ -97,7 +96,9 @@ function makeMessage(id: string, role: Message['role'], content: string): Messag
             [swipeId]: {
                 id: swipeId,
                 content,
-                createdAt: 1
+                createdAt: 1,
+                speakerId: speaker?.id,
+                speakerName: speaker?.name
             }
         }
     };
@@ -123,7 +124,6 @@ describe('buildPrompt', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockCollectTemplateMacros.mockResolvedValue(new Map());
-        mockCollectPipelineHandlers.mockResolvedValue([]);
         mockRunTemplate.mockImplementation(
             async (text: string, ctx?: TemplateContext, macros?: ReadonlyMap<string, Macro>) => {
                 const slot = macros?.get('slot');
@@ -131,8 +131,8 @@ describe('buildPrompt', () => {
                 return text;
             }
         );
-        mockRunPipelineHandlers.mockImplementation(
-            async (_handlers: unknown[], data: string) => data
+        mockRunPipeline.mockImplementation(
+            async (_chatId: string, _phase: string, data: string) => data
         );
         mockTokenCount.mockImplementation(async (text: string) => text.length);
     });
@@ -182,9 +182,7 @@ describe('buildPrompt', () => {
         });
 
         expect(slice).toHaveBeenCalledWith(-10, -1);
-        expect(mockCollectTemplateMacros).toHaveBeenCalledWith(expect.objectContaining(context));
-        expect(mockCollectPipelineHandlers).toHaveBeenCalledWith('chat-1', 'request');
-        expect(mockRunPipelineHandlers).toHaveBeenCalledTimes(2);
+        expect(mockRunPipeline).toHaveBeenCalledTimes(2);
         expect(prompt).toEqual([
             { role: 'system', content: 'rules' },
             { role: 'user', content: 'hello', thought: undefined },
@@ -290,8 +288,8 @@ describe('buildPrompt', () => {
                 return `template(${resolved})`;
             }
         );
-        mockRunPipelineHandlers.mockImplementation(
-            async (_handlers: unknown[], data: string) => `request(${data})`
+        mockRunPipeline.mockImplementation(
+            async (_chatId: string, _phase: string, data: string) => `request(${data})`
         );
 
         const prompt = await buildTestPrompt({
@@ -303,16 +301,22 @@ describe('buildPrompt', () => {
             messages
         });
 
-        expect(mockRunPipelineHandlers).toHaveBeenCalledWith([], 'template({{char}} says hi)', {
-            chatId: 'chat-1',
-            characterId: 'char-1',
-            personaId: 'persona-1',
-            messageId: 'msg-1',
-            messageIndex: 0,
-            role: 'user',
-            display: false,
-            dryRun: false
-        });
+        expect(mockRunPipeline).toHaveBeenCalledWith(
+            'chat-1',
+            'request',
+            'template({{char}} says hi)',
+            {
+                chatId: 'chat-1',
+                characterId: 'char-1',
+                messageId: 'msg-1',
+                messageIndex: 0,
+                role: 'user',
+                speakerId: undefined,
+                speakerName: undefined,
+                display: false,
+                dryRun: false
+            }
+        );
         expect(prompt).toEqual([
             {
                 role: 'user',
@@ -320,6 +324,52 @@ describe('buildPrompt', () => {
                 thought: undefined
             }
         ]);
+    });
+
+    it('injects assistant speaker context while rendering history messages', async () => {
+        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([
+            {
+                message: makeMessage('msg-1', 'assistant', '{{char}} says hi', {
+                    id: 'char-2',
+                    name: 'Beta'
+                }),
+                index: 7
+            }
+        ]);
+        const messages = { slice } as unknown as PagedMessages;
+        const preset = makePreset({
+            history: {
+                id: 'history',
+                name: 'History',
+                type: 'history',
+                start: -10,
+                sortOrder: 'a',
+                enabled: true
+            }
+        });
+
+        await buildTestPrompt({
+            character,
+            chat,
+            preset,
+            persona,
+            lorebooks: [],
+            messages
+        });
+
+        expect(mockRunPipeline).toHaveBeenCalledWith(
+            'chat-1',
+            'request',
+            '{{char}} says hi',
+            expect.objectContaining({
+                characterId: 'char-2',
+                speakerId: 'char-2',
+                speakerName: 'Beta',
+                messageId: 'msg-1',
+                messageIndex: 7,
+                role: 'assistant'
+            })
+        );
     });
 
     it('throws when required fixed blocks exceed the prompt input budget', async () => {

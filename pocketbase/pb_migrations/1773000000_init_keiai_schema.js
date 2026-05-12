@@ -101,6 +101,7 @@ migrate(
         .execute();
     }
 
+    createSyncTable("rooms");
     createSyncTable("characters");
     createSyncTable("settings");
     createSyncTable("personas");
@@ -189,6 +190,7 @@ migrate(
   (app) => {
     // DOWN — drop everything
     const tables = [
+      "rooms",
       "translations",
       "messages",
       "chats",
