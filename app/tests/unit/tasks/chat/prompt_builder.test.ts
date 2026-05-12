@@ -39,7 +39,6 @@ const character: Character = {
     greetings: {},
     defaultVariables: {},
     allowLowLevel: false,
-    chats: { refs: {}, folders: {} },
     modules: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },
@@ -49,9 +48,10 @@ const character: Character = {
 
 const chat: Chat = {
     id: 'chat-1',
-    characterId: 'char-1',
+    roomId: 'room-1',
     title: 'Test Chat',
     chatNote: 'chat note',
+    personas: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} }
 };
 

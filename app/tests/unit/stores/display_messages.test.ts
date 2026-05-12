@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import {
-    activeChat,
+    activeChatId,
     chatTasks,
     displayMessages,
     messageIndexes,
-    messages
+    messages,
+    roomChats
 } from '$lib/stores/state';
 import type { Chat, Message } from '$lib/services';
 
@@ -30,14 +31,16 @@ function makeMessage(id: string, role: Message['role']): Message {
 
 describe('displayMessages UI model', () => {
     beforeEach(() => {
-        activeChat.set(null);
+        activeChatId.set(null);
+        roomChats.clear();
         messages.clear();
         chatTasks.set(new Map());
         messageIndexes.set(new Map());
     });
 
     it('marks stored messages as completed and preserves speaker metadata', () => {
-        activeChat.set({ id: 'chat-1', roomId: 'room-1' } as Chat);
+        roomChats.set('chat-1', { id: 'chat-1', roomId: 'room-1' } as Chat);
+        activeChatId.set('chat-1');
         messages.setAll([makeMessage('msg-1', 'user'), makeMessage('msg-2', 'assistant')]);
         messageIndexes.set(
             new Map([
@@ -73,7 +76,8 @@ describe('displayMessages UI model', () => {
     });
 
     it('overlays active chat task state onto the target message only', () => {
-        activeChat.set({ id: 'chat-1', roomId: 'room-1' } as Chat);
+        roomChats.set('chat-1', { id: 'chat-1', roomId: 'room-1' } as Chat);
+        activeChatId.set('chat-1');
         messages.setAll([makeMessage('msg-1', 'user'), makeMessage('msg-2', 'assistant')]);
         chatTasks.set(
             new Map([
@@ -100,7 +104,8 @@ describe('displayMessages UI model', () => {
     });
 
     it('does not leak a task from another active chat', () => {
-        activeChat.set({ id: 'chat-2', roomId: 'room-1' } as Chat);
+        roomChats.set('chat-2', { id: 'chat-2', roomId: 'room-1' } as Chat);
+        activeChatId.set('chat-2');
         messages.setAll([makeMessage('msg-1', 'user')]);
         chatTasks.set(
             new Map([

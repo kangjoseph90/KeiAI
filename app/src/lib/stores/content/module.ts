@@ -38,7 +38,9 @@ export async function getModule(moduleId: string): Promise<Module | null> {
     if (active?.id === moduleId) return active;
     const cached = modules.get(moduleId);
     if (cached) return cached;
-    return ModuleService.get(moduleId);
+    const fetched = await ModuleService.get(moduleId);
+    if (fetched) modules.set(moduleId, fetched);
+    return fetched;
 }
 
 /**
@@ -90,7 +92,8 @@ export async function selectModule(moduleId: string): Promise<void> {
     const mod = await getModule(moduleId);
     if (!mod) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
 
-    activeModule.set(mod);
+    modules.set(mod.id, mod);
+    activeModuleId.set(mod.id);
 
     const [lorebooks, scripts, charjs] = await Promise.all([
         LorebookService.listByOwner(moduleId),
@@ -104,7 +107,7 @@ export async function selectModule(moduleId: string): Promise<void> {
 }
 
 export function clearActiveModule(): void {
-    activeModule.set(null);
+    activeModuleId.set(null);
     moduleLorebooks.clear();
     moduleScripts.clear();
     moduleCharJS.clear();
@@ -140,9 +143,6 @@ export async function updateModule(
 ): Promise<void> {
     const updated = await ModuleService.update(moduleId, changes);
     modules.set(moduleId, updated);
-    if (moduleId === get(activeModuleId)) {
-        activeModule.set(updated);
-    }
 }
 
 export async function updateModuleContent(
@@ -151,9 +151,6 @@ export async function updateModuleContent(
 ): Promise<void> {
     const updated = await ModuleService.update(moduleId, changes);
     modules.set(moduleId, updated);
-    if (moduleId === get(activeModuleId)) {
-        activeModule.set(updated);
-    }
 }
 
 export async function deleteModule(moduleId: string): Promise<void> {

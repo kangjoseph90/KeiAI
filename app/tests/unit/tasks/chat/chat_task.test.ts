@@ -67,7 +67,10 @@ vi.mock('$lib/stores', () => ({
         selectedCharacterId: 'char-1',
         selectedPersonaId: 'persona-1',
         lorebooks: { refs: {}, folders: {} },
-        personas: { refs: { 'persona-1': { enabled: true, sortOrder: 'a0' } }, folders: {} }
+        personas: {
+            refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
+            folders: {}
+        }
     }),
     getRoom: vi.fn().mockResolvedValue({
         id: 'room-1',
@@ -105,7 +108,10 @@ vi.mock('$lib/stores/content/chat', () => ({
         selectedCharacterId: 'char-1',
         selectedPersonaId: 'persona-1',
         lorebooks: { refs: {}, folders: {} },
-        personas: { refs: { 'persona-1': { enabled: true, sortOrder: 'a0' } }, folders: {} }
+        personas: {
+            refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
+            folders: {}
+        }
     })
 }));
 
@@ -365,7 +371,7 @@ describe('Chat Pipeline', () => {
             selectedPersonaId: 'persona-1',
             lorebooks: { refs: {}, folders: {} },
             personas: {
-                refs: { 'persona-1': { enabled: true, sortOrder: 'a0' } },
+                refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
                 folders: {}
             }
         } as Chat);
@@ -386,7 +392,7 @@ describe('Chat Pipeline', () => {
             selectedPersonaId: 'persona-1',
             lorebooks: { refs: {}, folders: {} },
             personas: {
-                refs: { 'persona-1': { enabled: false, sortOrder: 'a0' } },
+                refs: { 'persona-1': { id: 'persona-1', enabled: false, sortOrder: 'a0' } },
                 folders: {}
             }
         } as Chat);
@@ -509,7 +515,7 @@ describe('Chat Pipeline', () => {
                 lastMessageId: targetMessageId,
                 lorebooks: { refs: {}, folders: {} },
                 personas: {
-                    refs: { 'persona-1': { enabled: true, sortOrder: 'a0' } },
+                    refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
                     folders: {}
                 }
             } as Chat);

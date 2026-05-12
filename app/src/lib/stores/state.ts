@@ -24,6 +24,7 @@ import type {
 import type { AssetSyncStatus, SyncStatus } from '$lib/services';
 import type { DisplayMessage, ChatTask } from './types';
 import { EntityStore } from './entity_store';
+import { sortByRefs } from '$lib/utils/ordering';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
@@ -68,21 +69,47 @@ export const activePreset = derived([appSettings, presets], ([$settings, $preset
 });
 
 // ─── Level 2 (Room Context) ─────────────────────────────────────────
-export const activeRoom = writable<Room | null>(null);
-export const activeRoomId = derived(activeRoom, (r) => r?.id);
-export const hasActiveRoom = derived(activeRoom, (r) => !!r);
+export const activeRoomId = writable<string | null>(null);
+export const activeRoom = derived([activeRoomId, rooms], ([id]) =>
+    id ? (rooms.get(id) ?? null) : null
+);
+export const hasActiveRoom = derived(activeRoomId, (id) => !!id);
 
-export const roomCharacters = new EntityStore<Character>();
-export const chats = new EntityStore<Chat>();
+export const roomCharacters = derived([activeRoom, characters], ([room, chars]) => {
+    if (!room) return [];
+    const ids = new Set(
+        Object.entries(room.characters.refs)
+            .filter(([, ref]) => ref !== undefined)
+            .map(([id]) => id)
+    );
+    return sortByRefs(
+        chars.filter((character) => ids.has(character.id)),
+        room.characters.refs
+    );
+});
+export const roomChats = new EntityStore<Chat>();
 
 // ─── Level 3 (Chat Context) ─────────────────────────────────────────
-export const activeChat = writable<Chat | null>(null);
-export const activeChatId = derived(activeChat, (c) => c?.id);
-export const hasActiveChat = derived(activeChat, (c) => !!c);
+export const activeChatId = writable<string | null>(null);
+export const activeChat = derived([activeChatId, roomChats], ([id]) =>
+    id ? (roomChats.get(id) ?? null) : null
+);
+export const hasActiveChat = derived(activeChatId, (id) => !!id);
 
 export const chatLorebooks = new EntityStore<Lorebook>();
 export const chatScripts = new EntityStore<Script>();
-export const chatPersonas = new EntityStore<Persona>();
+export const chatPersonas = derived([activeChat, personas], ([chat, list]) => {
+    if (!chat) return [];
+    const ids = new Set(
+        Object.entries(chat.personas.refs)
+            .filter(([, ref]) => ref !== undefined)
+            .map(([id]) => id)
+    );
+    return sortByRefs(
+        list.filter((persona) => ids.has(persona.id)),
+        chat.personas.refs
+    );
+});
 
 export const messages = new EntityStore<Message>({
     sortFn: (a, b) => a.sortOrder.localeCompare(b.sortOrder)
@@ -90,19 +117,34 @@ export const messages = new EntityStore<Message>({
 export const messageIndexes = writable(new Map<string, number>());
 
 // ─── Character Studio Context───────────────────────────────────────
-export const activeCharacter = writable<Character | null>(null);
-export const activeCharacterId = derived(activeCharacter, (c) => c?.id);
-export const hasActiveCharacter = derived(activeCharacter, (c) => !!c);
+export const activeCharacterId = writable<string | null>(null);
+export const activeCharacter = derived([activeCharacterId, characters], ([id]) =>
+    id ? (characters.get(id) ?? null) : null
+);
+export const hasActiveCharacter = derived(activeCharacterId, (id) => !!id);
 
 export const characterLorebooks = new EntityStore<Lorebook>();
 export const characterScripts = new EntityStore<Script>();
 export const characterCharJS = new EntityStore<CharJS>();
-export const characterModules = new EntityStore<Module>();
+export const characterModules = derived([activeCharacter, modules], ([character, list]) => {
+    if (!character) return [];
+    const ids = new Set(
+        Object.entries(character.modules.refs)
+            .filter(([, ref]) => ref !== undefined)
+            .map(([id]) => id)
+    );
+    return sortByRefs(
+        list.filter((module) => ids.has(module.id)),
+        character.modules.refs
+    );
+});
 
 // ─── Module Editing Context ──────────────────────────────────────────
-export const activeModule = writable<Module | null>(null);
-export const activeModuleId = derived(activeModule, (m) => m?.id);
-export const hasActiveModule = derived(activeModule, (m) => !!m);
+export const activeModuleId = writable<string | null>(null);
+export const activeModule = derived([activeModuleId, modules], ([id]) =>
+    id ? (modules.get(id) ?? null) : null
+);
+export const hasActiveModule = derived(activeModuleId, (id) => !!id);
 
 export const moduleLorebooks = new EntityStore<Lorebook>();
 export const moduleScripts = new EntityStore<Script>();

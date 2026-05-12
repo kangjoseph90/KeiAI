@@ -4,6 +4,7 @@ import {
     LorebookService,
     ScriptService,
     CharJSService,
+    ModuleService,
     type CharacterFields,
     type CharacterContent,
     type Character,
@@ -23,8 +24,6 @@ import {
     characterLorebooks,
     characterScripts,
     characterCharJS,
-    characterModules,
-    modules,
     activeCharacterId
 } from '../state';
 import { getAppSettings, updateSettings } from './settings';
@@ -41,7 +40,9 @@ export async function getCharacter(characterId: string): Promise<Character | nul
     if (active?.id === characterId) return active;
     const cached = characters.get(characterId);
     if (cached) return cached;
-    return CharacterService.get(characterId);
+    const fetched = await CharacterService.get(characterId);
+    if (fetched) characters.set(characterId, fetched);
+    return fetched;
 }
 
 /**
@@ -92,28 +93,40 @@ export async function selectCharacter(characterId: string): Promise<void> {
     const character = await getCharacter(characterId);
     if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
-    activeCharacter.set(character);
+    characters.set(character.id, character);
+    activeCharacterId.set(character.id);
 
-    const moduleIds = new Set(Object.keys(character.modules.refs));
-    characterModules.setAll(get(modules).filter((m) => moduleIds.has(m.id)));
-
-    const [lorebooks, scripts, charjs] = await Promise.all([
+    const moduleIds = Object.keys(character.modules.refs);
+    const [lorebooks, scripts, charjs, moduleEntries] = await Promise.all([
         LorebookService.listByOwner(characterId),
         ScriptService.listByOwner(characterId),
-        CharJSService.listByOwner(characterId)
+        CharJSService.listByOwner(characterId),
+        Promise.all(moduleIds.map(async (id) => [id, await ModuleService.get(id)] as const))
     ]);
+
+    const staleModuleRefs: Record<string, undefined> = {};
+    for (const [id, mod] of moduleEntries) {
+        if (!mod) {
+            staleModuleRefs[id] = undefined;
+        }
+    }
 
     characterLorebooks.setAll(sortByRefs(lorebooks, character.lorebooks.refs));
     characterScripts.setAll(sortByRefs(scripts, character.scripts.refs));
     characterCharJS.setAll(sortByRefs(charjs, character.charjs.refs));
+
+    if (Object.keys(staleModuleRefs).length > 0) {
+        await updateCharacter(characterId, {
+            modules: { refs: staleModuleRefs }
+        });
+    }
 }
 
 export function clearActiveCharacter(): void {
-    activeCharacter.set(null);
+    activeCharacterId.set(null);
     characterLorebooks.clear();
     characterScripts.clear();
     characterCharJS.clear();
-    characterModules.clear();
 }
 
 export async function updateCharacter(
@@ -122,9 +135,6 @@ export async function updateCharacter(
 ): Promise<void> {
     const updated = await CharacterService.update(characterId, changes);
     characters.set(characterId, updated);
-    if (characterId === get(activeCharacterId)) {
-        activeCharacter.set(updated);
-    }
 }
 
 export async function updateCharacterContent(
@@ -133,9 +143,6 @@ export async function updateCharacterContent(
 ): Promise<void> {
     const updated = await CharacterService.updateContent(characterId, changes);
     characters.set(characterId, updated);
-    if (characterId === get(activeCharacterId)) {
-        activeCharacter.set(updated);
-    }
 }
 
 export async function createCharacter(
@@ -175,9 +182,6 @@ export async function createCharacterGreeting(
     );
 
     characters.set(characterId, updated);
-    if (characterId === get(activeCharacterId)) {
-        activeCharacter.set(updated);
-    }
     return { greetingId, character: updated };
 }
 
@@ -189,9 +193,6 @@ export async function updateCharacterGreeting(
     const updated = await CharacterService.updateGreeting(characterId, greetingId, content);
 
     characters.set(characterId, updated);
-    if (characterId === get(activeCharacterId)) {
-        activeCharacter.set(updated);
-    }
     return updated;
 }
 
@@ -202,9 +203,6 @@ export async function deleteCharacterGreeting(
     const updated = await CharacterService.deleteGreeting(characterId, greetingId);
 
     characters.set(characterId, updated);
-    if (characterId === get(activeCharacterId)) {
-        activeCharacter.set(updated);
-    }
     return updated;
 }
 
@@ -252,7 +250,7 @@ export async function deleteCharacter(characterId: string): Promise<void> {
 
     // Update Store
     characters.delete(characterId);
-    if (get(activeCharacter)?.id === characterId) {
+    if (get(activeCharacterId) === characterId) {
         clearActiveCharacter();
     }
 }

@@ -2,7 +2,7 @@
  * Svelte Store — 3-Layer In-Memory State
  *
  * Level 1 (Global):    rooms, characters, personas, presets, modules, plugins, appSettings
- * Level 2 (Room):      activeRoom (detail), roomCharacters, chats — loaded on select
+ * Level 2 (Room):      activeRoom (detail), roomCharacters, roomChats — loaded on select
  * Level 3 (Chat):      activeChat (detail), messages, chatLorebooks, chatPersonas — loaded on enter
  *
  * Relationship patterns:
@@ -36,19 +36,23 @@ export const presets = readonly(StoreState.presets);
 export const modules = readonly(StoreState.modules);
 export const plugins = readonly(StoreState.plugins);
 export const activeModule = readonly(StoreState.activeModule);
+export const activeModuleId = readonly(StoreState.activeModuleId);
 export const moduleLorebooks = readonly(StoreState.moduleLorebooks);
 export const moduleScripts = readonly(StoreState.moduleScripts);
 export const moduleCharJS = readonly(StoreState.moduleCharJS);
 export const presetScripts = readonly(StoreState.presetScripts);
 export const activeCharacter = readonly(StoreState.activeCharacter);
+export const activeCharacterId = readonly(StoreState.activeCharacterId);
 export const activeRoom = readonly(StoreState.activeRoom);
+export const activeRoomId = readonly(StoreState.activeRoomId);
 export const roomCharacters = readonly(StoreState.roomCharacters);
 export const characterLorebooks = readonly(StoreState.characterLorebooks);
 export const characterScripts = readonly(StoreState.characterScripts);
 export const characterCharJS = readonly(StoreState.characterCharJS);
 export const characterModules = readonly(StoreState.characterModules);
-export const chats = readonly(StoreState.chats);
+export const roomChats = readonly(StoreState.roomChats);
 export const activeChat = readonly(StoreState.activeChat);
+export const activeChatId = readonly(StoreState.activeChatId);
 export const chatLorebooks = readonly(StoreState.chatLorebooks);
 export const chatPersonas = readonly(StoreState.chatPersonas);
 export const messages = readonly(StoreState.messages);
@@ -56,13 +60,9 @@ export const chatTasks = readonly(StoreState.chatTasks);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
     activePreset,
-    activeModuleId,
     hasActiveModule,
-    activeRoomId,
     hasActiveRoom,
-    activeCharacterId,
     hasActiveCharacter,
-    activeChatId,
     hasActiveChat,
     isChatRunning,
     displayMessages,

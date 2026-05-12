@@ -21,10 +21,10 @@
         activeRoom,
         addRoomCharacter,
         characters,
-        chats,
         createChat,
         deleteChat,
         removeRoomCharacter,
+        roomChats,
         roomCharacters,
         rooms,
         setChatDefaultCharacter,
@@ -50,8 +50,8 @@
 
     const filteredChats = $derived(() => {
         const query = chatSearch.trim().toLowerCase();
-        if (!query) return $chats;
-        return $chats.filter((chat) => chat.title.toLowerCase().includes(query));
+        if (!query) return $roomChats;
+        return $roomChats.filter((chat) => chat.title.toLowerCase().includes(query));
     });
 
     const attachableCharacters = $derived(() => {
@@ -63,7 +63,7 @@
         if (!$activeRoom) return;
 
         const chat = await createChat($activeRoom.id, {
-            title: `New Chat ${$chats.length + 1}`
+            title: `New Chat ${$roomChats.length + 1}`
         });
         await syncChatGreetings(chat.id);
         onNavigate({ view: 'room', roomId: $activeRoom.id, chatId: chat.id });

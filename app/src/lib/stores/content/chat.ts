@@ -6,19 +6,17 @@ import {
     type ChatContent,
     type LorebookFields,
     type Lorebook,
-    type Chat,
-    type Persona
+    type Chat
 } from '$lib/services';
 import type { FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
-    chats,
+    roomChats,
     activeChat,
     messages,
     chatLorebooks,
     activeChatId,
     activeRoomId,
-    chatPersonas,
     messageIndexes
 } from '../state';
 import { loadInitialMessages } from './message';
@@ -35,7 +33,7 @@ import type { DeepPartial } from '$lib/utils/defaults';
 export async function getChat(chatId: string): Promise<Chat | null> {
     const active = get(activeChat);
     if (active?.id === chatId) return active;
-    const cached = chats.get(chatId);
+    const cached = roomChats.get(chatId);
     if (cached) return cached;
     return ChatService.get(chatId);
 }
@@ -62,7 +60,8 @@ export async function selectChat(chatId: string): Promise<void> {
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
     clearActiveChat();
-    activeChat.set(chat);
+    roomChats.set(chat.id, chat);
+    activeChatId.set(chat.id);
     await loadInitialMessages(chatId, 50);
 
     const personaIds = Object.keys(chat.personas.refs);
@@ -73,17 +72,13 @@ export async function selectChat(chatId: string): Promise<void> {
     ]);
 
     const stalePersonaRefs: Record<string, undefined> = {};
-    const personaList: Persona[] = [];
     for (const [id, persona] of personaEntries) {
-        if (persona) {
-            personaList.push(persona);
-        } else {
+        if (!persona) {
             stalePersonaRefs[id] = undefined;
         }
     }
 
     chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebooks.refs));
-    chatPersonas.setAll(sortByRefs(personaList, chat.personas.refs));
 
     const defaultPersonaRef = chat.defaultPersonaId
         ? chat.personas.refs[chat.defaultPersonaId]
@@ -138,9 +133,8 @@ export async function selectChat(chatId: string): Promise<void> {
 }
 
 export function clearActiveChat(): void {
-    activeChat.set(null);
+    activeChatId.set(null);
     chatLorebooks.clear();
-    chatPersonas.clear();
     messages.clear();
     messageIndexes.set(new Map());
 }
@@ -165,7 +159,7 @@ export async function createChat(
     }
 
     if (roomId === get(activeRoomId)) {
-        chats.set(chat.id, chat);
+        roomChats.set(chat.id, chat);
     }
 
     return chat;
@@ -173,10 +167,7 @@ export async function createChat(
 
 export async function updateChat(chatId: string, changes: DeepPartial<ChatFields>): Promise<void> {
     const updated = await ChatService.update(chatId, changes);
-    chats.set(chatId, updated);
-    if (chatId === get(activeChatId)) {
-        activeChat.set(updated);
-    }
+    roomChats.set(chatId, updated);
 }
 
 export async function setChatSelectedPersona(chatId: string, personaId: string): Promise<void> {
@@ -244,10 +235,7 @@ export async function updateChatContent(
     changes: DeepPartial<ChatContent>
 ): Promise<void> {
     const updated = await ChatService.update(chatId, changes);
-    chats.set(chatId, updated);
-    if (chatId === get(activeChatId)) {
-        activeChat.set(updated);
-    }
+    roomChats.set(chatId, updated);
 }
 
 export async function deleteChat(chatId: string, roomId: string): Promise<void> {
@@ -268,7 +256,7 @@ export async function deleteChat(chatId: string, roomId: string): Promise<void> 
     }
 
     if (roomId === get(activeRoomId)) {
-        chats.delete(chatId);
+        roomChats.delete(chatId);
     }
 
     if (chatId === get(activeChatId)) {
@@ -360,10 +348,6 @@ export async function addChatPersona(chatId: string, personaId: string): Promise
             }
         }
     });
-
-    if (chatId === get(activeChatId)) {
-        chatPersonas.set(personaId, persona);
-    }
 }
 
 export async function removeChatPersona(chatId: string, personaId: string): Promise<void> {
@@ -375,10 +359,6 @@ export async function removeChatPersona(chatId: string, personaId: string): Prom
         ...(chat.selectedPersonaId === personaId ? { selectedPersonaId: undefined } : {}),
         ...(chat.defaultPersonaId === personaId ? { defaultPersonaId: undefined } : {})
     });
-
-    if (chatId === get(activeChatId)) {
-        chatPersonas.delete(personaId);
-    }
 }
 
 export async function setChatPersonaEnabled(

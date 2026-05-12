@@ -14,11 +14,15 @@ import {
 } from '$lib/stores/content/room';
 import {
     activeChat,
+    activeChatId,
     activeRoom,
+    activeRoomId,
     chatLorebooks,
     chatPersonas,
-    chats,
+    characters,
     messages,
+    personas,
+    roomChats,
     roomCharacters,
     rooms
 } from '$lib/stores/state';
@@ -104,17 +108,47 @@ describe('Room Store', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         rooms.clear();
-        roomCharacters.clear();
-        chats.clear();
-        activeRoom.set(null);
-        activeChat.set(null);
+        characters.clear();
+        personas.clear();
+        roomChats.clear();
+        activeRoomId.set(null);
+        activeChatId.set(null);
         chatLorebooks.clear();
-        chatPersonas.clear();
         messages.clear();
+        characters.set(mockCharacter.id, mockCharacter);
         vi.mocked(RoomService.get).mockResolvedValue(mockRoom);
-        vi.mocked(RoomService.update).mockImplementation(
-            async (_id, changes) => ({ ...mockRoom, ...changes }) as Room
-        );
+        vi.mocked(RoomService.update).mockImplementation(async (_id, changes) => {
+            const next: Room = { ...mockRoom, ...changes } as Room;
+            if (changes.characters?.refs) {
+                next.characters = {
+                    ...mockRoom.characters,
+                    ...changes.characters,
+                    refs: { ...mockRoom.characters.refs }
+                } as Room['characters'];
+                for (const [id, ref] of Object.entries(changes.characters.refs)) {
+                    if (ref === undefined) {
+                        delete next.characters.refs[id];
+                    } else {
+                        next.characters.refs[id] = ref as Room['characters']['refs'][string];
+                    }
+                }
+            }
+            if (changes.chats?.refs) {
+                next.chats = {
+                    ...mockRoom.chats,
+                    ...changes.chats,
+                    refs: { ...mockRoom.chats.refs }
+                } as Room['chats'];
+                for (const [id, ref] of Object.entries(changes.chats.refs)) {
+                    if (ref === undefined) {
+                        delete next.chats.refs[id];
+                    } else {
+                        next.chats.refs[id] = ref as Room['chats']['refs'][string];
+                    }
+                }
+            }
+            return next;
+        });
         vi.mocked(ChatService.listByRoom).mockResolvedValue([mockChat]);
         vi.mocked(getCharacter).mockImplementation(async (id: string) =>
             id === 'char-1' ? mockCharacter : null
@@ -130,21 +164,19 @@ describe('Room Store', () => {
         expect(get(rooms)).toEqual([mockRoom]);
     });
 
-    it('selects a room and clears stale chat/character refs on entry', async () => {
+    it('selects a room and clears stale character refs on entry', async () => {
         await selectRoom('room-1');
 
         expect(get(activeRoom)).toMatchObject({
             id: 'room-1',
-            characters: { refs: { staleChar: undefined } },
-            chats: { refs: { staleChat: undefined } }
+            characters: { refs: { 'char-1': mockRoom.characters.refs['char-1'] } }
         });
-        expect(get(chats)).toEqual([mockChat]);
+        expect(get(roomChats)).toEqual([mockChat]);
         expect(get(roomCharacters)).toEqual([mockCharacter]);
         expect(RoomService.update).toHaveBeenCalledWith(
             'room-1',
             expect.objectContaining({
-                characters: { refs: { staleChar: undefined } },
-                chats: { refs: { staleChat: undefined } }
+                characters: { refs: { staleChar: undefined } }
             })
         );
     });
@@ -156,20 +188,19 @@ describe('Room Store', () => {
     });
 
     it('clears room-level and nested chat stores', () => {
-        activeRoom.set(mockRoom);
-        activeChat.set(mockChat);
-        roomCharacters.setAll([mockCharacter]);
-        chats.setAll([mockChat]);
+        rooms.set(mockRoom.id, mockRoom);
+        activeRoomId.set(mockRoom.id);
+        roomChats.setAll([mockChat]);
+        activeChatId.set(mockChat.id);
         messages.setAll([{ id: 'msg-1', chatId: 'chat-1' } as never]);
         chatLorebooks.setAll([{ id: 'lb-1' } as never]);
-        chatPersonas.setAll([{ id: 'persona-1' } as never]);
 
         clearActiveRoom();
 
         expect(get(activeRoom)).toBeNull();
         expect(get(activeChat)).toBeNull();
         expect(get(roomCharacters)).toEqual([]);
-        expect(get(chats)).toEqual([]);
+        expect(get(roomChats)).toEqual([]);
         expect(get(messages)).toEqual([]);
         expect(get(chatLorebooks)).toEqual([]);
         expect(get(chatPersonas)).toEqual([]);
@@ -189,7 +220,9 @@ describe('Room Store', () => {
     });
 
     it('adds an enabled character ref to the active room and visible character list', async () => {
-        activeRoom.set({ ...mockRoom, characters: { refs: {}, folders: {} } });
+        const roomWithoutCharacters = { ...mockRoom, characters: { refs: {}, folders: {} } };
+        rooms.set(roomWithoutCharacters.id, roomWithoutCharacters);
+        activeRoomId.set(roomWithoutCharacters.id);
         vi.mocked(RoomService.update).mockResolvedValue({
             ...mockRoom,
             characters: {
@@ -215,13 +248,15 @@ describe('Room Store', () => {
     });
 
     it('removes room character refs and clears active chat selected/default character', async () => {
-        activeRoom.set(mockRoom);
-        activeChat.set({
+        rooms.set(mockRoom.id, mockRoom);
+        activeRoomId.set(mockRoom.id);
+        const selectedChat = {
             ...mockChat,
             selectedCharacterId: 'char-1',
             defaultCharacterId: 'char-1'
-        });
-        roomCharacters.setAll([mockCharacter]);
+        };
+        roomChats.set(selectedChat.id, selectedChat);
+        activeChatId.set(selectedChat.id);
 
         await removeRoomCharacter('room-1', 'char-1');
 
@@ -236,11 +271,13 @@ describe('Room Store', () => {
     });
 
     it('disabling the active selected character clears selected/default chat ids', async () => {
-        activeChat.set({
+        const selectedChat = {
             ...mockChat,
             selectedCharacterId: 'char-1',
             defaultCharacterId: 'char-1'
-        });
+        };
+        roomChats.set(selectedChat.id, selectedChat);
+        activeChatId.set(selectedChat.id);
 
         await setRoomCharacterEnabled('room-1', 'char-1', false);
 
@@ -261,7 +298,8 @@ describe('Room Store', () => {
     });
 
     it('moves room refs between folders without touching missing refs', async () => {
-        activeRoom.set(mockRoom);
+        rooms.set(mockRoom.id, mockRoom);
+        activeRoomId.set(mockRoom.id);
 
         await moveRoomItem('room-1', 'characters', 'char-1', 'folder-1');
         await moveRoomItem('room-1', 'characters', 'missing', 'folder-1');

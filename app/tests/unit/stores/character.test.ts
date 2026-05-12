@@ -22,10 +22,10 @@ import {
 import {
     characters,
     activeCharacter,
+    activeCharacterId,
     characterLorebooks,
     characterScripts,
     characterCharJS,
-    characterModules,
     modules,
     appSettings
 } from '$lib/stores/state';
@@ -103,14 +103,18 @@ describe('Character Store', () => {
         assets: []
     };
 
+    function putActiveCharacter(character: Character): void {
+        characters.set(character.id, character);
+        activeCharacterId.set(character.id);
+    }
+
     beforeEach(() => {
         vi.clearAllMocks();
         characters.clear();
-        activeCharacter.set(null);
+        activeCharacterId.set(null);
         characterLorebooks.clear();
         characterScripts.clear();
         characterCharJS.clear();
-        characterModules.clear();
         modules.clear();
         appSettings.set(makeSettings({ theme: 'dark' }));
         vi.mocked(getAppSettings).mockResolvedValue(makeSettings({ theme: 'dark' }));
@@ -167,7 +171,7 @@ describe('Character Store', () => {
 
     describe('clearActiveCharacter', () => {
         it('should clear all character-related stores', () => {
-            activeCharacter.set(mockCharacter);
+            putActiveCharacter(mockCharacter);
             characterLorebooks.setAll([{ id: 'lorebook-1' } as Lorebook]);
 
             clearActiveCharacter();
@@ -189,7 +193,7 @@ describe('Character Store', () => {
         });
 
         it('should update active character if id matches', async () => {
-            activeCharacter.set(mockCharacter);
+            putActiveCharacter(mockCharacter);
             const updated = { ...mockCharacter, name: 'Updated Name' };
             vi.mocked(CharacterService.update).mockResolvedValue(updated);
 
@@ -251,7 +255,7 @@ describe('Character Store', () => {
 
     describe('createCharacterCharJS', () => {
         it('should create CharJS script and update store', async () => {
-            activeCharacter.set(mockCharacter);
+            putActiveCharacter(mockCharacter);
             const cjs = { id: 'cjs-1', name: 'New Script' } as CharJS;
             vi.mocked(CharJSService.create).mockResolvedValue(cjs);
             vi.mocked(CharacterService.update).mockResolvedValue({
@@ -284,7 +288,7 @@ describe('Character Store', () => {
                 ...mockCharacter,
                 charjs: { refs: { 'cjs-1': { id: 'cjs-1', sortOrder: 'a' } }, folders: {} }
             };
-            activeCharacter.set(charWithRefs);
+            putActiveCharacter(charWithRefs);
             characterCharJS.setAll([{ id: 'cjs-1' } as CharJS]);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
@@ -302,7 +306,7 @@ describe('Character Store', () => {
 
     describe('Folder Management', () => {
         it('should create a character folder', async () => {
-            activeCharacter.set(mockCharacter);
+            putActiveCharacter(mockCharacter);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
                 lorebooks: {
@@ -325,7 +329,7 @@ describe('Character Store', () => {
                 ...mockCharacter,
                 lorebooks: { refs: {}, folders: { f1: folder } }
             };
-            activeCharacter.set(charWithFolder);
+            putActiveCharacter(charWithFolder);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
                 lorebooks: { refs: {}, folders: { f1: { ...folder, name: 'New' } } }
@@ -342,7 +346,7 @@ describe('Character Store', () => {
                 ...mockCharacter,
                 lorebooks: { refs: {}, folders: { f1: folder } }
             };
-            activeCharacter.set(charWithFolder);
+            putActiveCharacter(charWithFolder);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
                 lorebooks: { refs: {}, folders: {} }
@@ -363,7 +367,7 @@ describe('Character Store', () => {
                     folders: {}
                 }
             };
-            activeCharacter.set(charWithRefs);
+            putActiveCharacter(charWithRefs);
             vi.mocked(CharacterService.update).mockResolvedValue({
                 ...mockCharacter,
                 lorebooks: {

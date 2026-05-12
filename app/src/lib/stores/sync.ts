@@ -11,18 +11,15 @@ import {
     activeChatId,
     rooms,
     activeRoom,
-    roomCharacters,
     messages,
-    chats,
+    roomChats,
     activeChat,
     activeCharacter,
     characterLorebooks,
     characterScripts,
     characterCharJS,
-    characterModules,
     chatLorebooks,
     chatScripts,
-    chatPersonas,
     activeModule,
     activeModuleId,
     moduleLorebooks,
@@ -53,6 +50,7 @@ import {
 import { clearActiveCharacter } from './content/character';
 import { clearActiveChat } from './content/chat';
 import { clearActiveRoom } from './content/room';
+import { clearActiveModule } from './content/module';
 import { loadSettings } from './content/settings';
 import { sortByRefs } from '$lib/utils/ordering';
 import { EntityStore } from './entity_store';
@@ -100,20 +98,6 @@ function reorderGlobalStoresBySettings(): void {
     reorderStoreByRefs(presets, settings.presets.refs);
     reorderStoreByRefs(modules, settings.modules.refs);
     reorderStoreByRefs(plugins, settings.plugins.refs);
-}
-
-function refreshCharacterModulesStore(): void {
-    const character = get(activeCharacter);
-    if (!character) {
-        characterModules.clear();
-        return;
-    }
-
-    const moduleRefs = character.modules.refs;
-    const activeModuleIds = new Set(Object.keys(moduleRefs));
-    const selectedModules = get(modules).filter((module) => activeModuleIds.has(module.id));
-
-    characterModules.setAll(sortByRefs(selectedModules, moduleRefs));
 }
 
 async function syncLorebooksByIds(ids: string[]): Promise<void> {
@@ -329,7 +313,6 @@ function startDataSyncListener(): () => void {
                     case 'settings': {
                         await loadSettings();
                         reorderGlobalStoresBySettings();
-                        refreshCharacterModulesStore();
                         break;
                     }
                     case 'rooms': {
@@ -340,9 +323,7 @@ function startDataSyncListener(): () => void {
                             const detail = synced.get(currentRoomId) ?? null;
 
                             if (detail && get(activeRoomId) === currentRoomId) {
-                                activeRoom.set(detail);
-                                reorderStoreByRefs(chats, detail.chats.refs);
-                                reorderStoreByRefs(roomCharacters, detail.characters.refs);
+                                reorderStoreByRefs(roomChats, detail.chats.refs);
                             } else if (get(activeRoomId) === currentRoomId) {
                                 clearActiveRoom();
                             }
@@ -351,17 +332,6 @@ function startDataSyncListener(): () => void {
                     }
                     case 'personas': {
                         await patchEntityStoreByIds(ids, personas, PersonaService.get);
-
-                        const chat = get(activeChat);
-                        if (chat) {
-                            await patchEntityStoreByIds(
-                                ids,
-                                chatPersonas,
-                                PersonaService.get,
-                                (persona) => persona.id in chat.personas.refs
-                            );
-                            reorderStoreByRefs(chatPersonas, chat.personas.refs);
-                        }
                         break;
                     }
                     case 'presets': {
@@ -385,19 +355,13 @@ function startDataSyncListener(): () => void {
                         if (currentModuleId && ids.includes(currentModuleId)) {
                             const detail = synced.get(currentModuleId) ?? null;
                             if (detail && get(activeModuleId) === currentModuleId) {
-                                activeModule.set(detail);
                                 reorderStoreByRefs(moduleLorebooks, detail.lorebooks.refs);
                                 reorderStoreByRefs(moduleScripts, detail.scripts.refs);
                                 reorderStoreByRefs(moduleCharJS, detail.charjs.refs);
                             } else if (get(activeModuleId) === currentModuleId) {
-                                activeModule.set(null);
-                                moduleLorebooks.clear();
-                                moduleScripts.clear();
-                                moduleCharJS.clear();
+                                clearActiveModule();
                             }
                         }
-
-                        refreshCharacterModulesStore();
                         break;
                     }
                     case 'plugins': {
@@ -411,23 +375,11 @@ function startDataSyncListener(): () => void {
                             CharacterService.get
                         );
 
-                        const room = get(activeRoom);
-                        if (room) {
-                            await patchEntityStoreByIds(
-                                ids,
-                                roomCharacters,
-                                CharacterService.get,
-                                (character) => character.id in room.characters.refs
-                            );
-                            reorderStoreByRefs(roomCharacters, room.characters.refs);
-                        }
-
                         const currentCharacterId = get(activeCharacterId);
                         if (currentCharacterId && ids.includes(currentCharacterId)) {
                             const detail = synced.get(currentCharacterId) ?? null;
 
                             if (detail && get(activeCharacterId) === currentCharacterId) {
-                                activeCharacter.set(detail);
                                 reorderStoreByRefs(characterLorebooks, detail.lorebooks.refs);
                                 reorderStoreByRefs(characterScripts, detail.scripts.refs);
                                 reorderStoreByRefs(characterCharJS, detail.charjs.refs);
@@ -435,8 +387,6 @@ function startDataSyncListener(): () => void {
                                 clearActiveCharacter();
                             }
                         }
-
-                        refreshCharacterModulesStore();
                         break;
                     }
                     case 'chats': {
@@ -445,7 +395,7 @@ function startDataSyncListener(): () => void {
 
                         const synced = await patchEntityStoreByIds(
                             ids,
-                            chats,
+                            roomChats,
                             ChatService.get,
                             (chat) => chat.roomId === currentRoomId
                         );
@@ -454,7 +404,7 @@ function startDataSyncListener(): () => void {
                         if (currentChatId && ids.includes(currentChatId)) {
                             const detail = synced.get(currentChatId) ?? null;
                             if (detail && get(activeChatId) === currentChatId) {
-                                activeChat.set(detail);
+                                // activeChat is derived from activeChatId + roomChats.
                             } else if (get(activeChatId) === currentChatId) {
                                 clearActiveChat();
                             }
@@ -462,7 +412,7 @@ function startDataSyncListener(): () => void {
 
                         const room = get(activeRoom);
                         if (room) {
-                            reorderStoreByRefs(chats, room.chats.refs);
+                            reorderStoreByRefs(roomChats, room.chats.refs);
                         }
 
                         break;

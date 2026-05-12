@@ -13,7 +13,9 @@ import { AppError } from '$lib/types/errors';
 export async function getPersona(personaId: string): Promise<Persona | null> {
     const cached = personas.get(personaId);
     if (cached) return cached;
-    return PersonaService.get(personaId);
+    const fetched = await PersonaService.get(personaId);
+    if (fetched) personas.set(personaId, fetched);
+    return fetched;
 }
 
 /**

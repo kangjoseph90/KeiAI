@@ -22,12 +22,14 @@ import {
 } from '$lib/stores/content/chat';
 import {
     activeChat,
-    activeRoom,
+    activeChatId,
     activeRoomId,
-    chats,
+    rooms,
+    roomChats,
     messages,
     chatLorebooks,
-    chatPersonas
+    chatPersonas,
+    personas
 } from '$lib/stores/state';
 import { ChatService, LorebookService } from '$lib/services';
 import { loadInitialMessages } from '$lib/stores/content/message';
@@ -93,14 +95,21 @@ describe('Chat Store', () => {
         personas: { refs: {}, folders: {} }
     };
 
+    function putActiveChat(chat: Chat): void {
+        roomChats.set(chat.id, chat);
+        activeChatId.set(chat.id);
+    }
+
     beforeEach(() => {
         vi.clearAllMocks();
-        chats.clear();
-        activeChat.set(null);
-        activeRoom.set(mockRoom);
+        roomChats.clear();
+        activeChatId.set(null);
+        rooms.clear();
+        rooms.set(mockRoom.id, mockRoom);
+        activeRoomId.set(mockRoom.id);
         messages.clear();
         chatLorebooks.clear();
-        chatPersonas.clear();
+        personas.clear();
         vi.mocked(getRoom).mockResolvedValue(mockRoom);
         vi.mocked(updateRoom).mockResolvedValue(undefined);
         vi.mocked(LorebookService.listByOwner).mockResolvedValue([]);
@@ -231,7 +240,7 @@ describe('Chat Store', () => {
             expect(updateRoom).toHaveBeenCalledWith('room-1', {
                 chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'sort-order' } } }
             });
-            expect(get(chats)).toContainEqual(mockChat);
+            expect(get(roomChats)).toContainEqual(mockChat);
         });
 
         it('rolls back if room update fails', async () => {
@@ -250,8 +259,8 @@ describe('Chat Store', () => {
                 chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a' } }, folders: {} }
             };
             vi.mocked(getRoom).mockResolvedValue(roomWithRefs);
-            chats.setAll([mockChat]);
-            activeChat.set(mockChat);
+            roomChats.setAll([mockChat]);
+            putActiveChat(mockChat);
             vi.mocked(ChatService.delete).mockResolvedValue(undefined);
 
             await deleteChat('chat-1', 'room-1');
@@ -259,7 +268,7 @@ describe('Chat Store', () => {
             expect(updateRoom).toHaveBeenCalledWith('room-1', {
                 chats: { refs: { 'chat-1': undefined } }
             });
-            expect(get(chats)).toHaveLength(0);
+            expect(get(roomChats)).toHaveLength(0);
             expect(get(activeChat)).toBeNull();
         });
     });
@@ -267,7 +276,8 @@ describe('Chat Store', () => {
     describe('Chat persona and character selection', () => {
         it('adds a persona ref and allows selecting/defaulting enabled personas', async () => {
             const persona = { id: 'persona-1', name: 'Persona', description: '', assets: [] };
-            activeChat.set(mockChat);
+            putActiveChat(mockChat);
+            personas.set(persona.id, persona);
             vi.mocked(getPersona).mockResolvedValue(persona);
             vi.mocked(ChatService.update).mockImplementation(
                 async (_id, changes) =>
@@ -314,7 +324,7 @@ describe('Chat Store', () => {
         });
 
         it('rejects selecting persona refs that are missing or disabled', async () => {
-            activeChat.set({
+            putActiveChat({
                 ...mockChat,
                 personas: {
                     refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a', enabled: false } },
@@ -329,7 +339,7 @@ describe('Chat Store', () => {
         });
 
         it('clears selected/default persona when removing or disabling it', async () => {
-            activeChat.set({
+            putActiveChat({
                 ...mockChat,
                 selectedPersonaId: 'persona-1',
                 defaultPersonaId: 'persona-1',
@@ -358,7 +368,7 @@ describe('Chat Store', () => {
                 })
             );
 
-            activeChat.set({
+            putActiveChat({
                 ...mockChat,
                 selectedPersonaId: 'persona-1',
                 defaultPersonaId: 'persona-1',
@@ -385,7 +395,7 @@ describe('Chat Store', () => {
         });
 
         it('allows selecting/defaulting enabled room characters and rejects disabled ones', async () => {
-            activeChat.set(mockChat);
+            putActiveChat(mockChat);
 
             await setChatSelectedCharacter('chat-1', 'char-1');
             await setChatDefaultCharacter('chat-1', 'char-1');
@@ -414,7 +424,7 @@ describe('Chat Store', () => {
 
     describe('Folder Management', () => {
         beforeEach(() => {
-            activeChat.set(mockChat);
+            putActiveChat(mockChat);
         });
 
         it('creates a chat lorebook folder', async () => {
@@ -436,7 +446,7 @@ describe('Chat Store', () => {
 
         it('updates a chat lorebook folder', async () => {
             const folder: FolderDef = { id: 'f1', name: 'Old', sortOrder: 'a' };
-            activeChat.set({
+            putActiveChat({
                 ...mockChat,
                 lorebooks: { refs: {}, folders: { f1: folder } }
             });
@@ -452,7 +462,7 @@ describe('Chat Store', () => {
 
         it('deletes a chat lorebook folder', async () => {
             const folder: FolderDef = { id: 'f1', name: 'Delete Me', sortOrder: 'a' };
-            activeChat.set({
+            putActiveChat({
                 ...mockChat,
                 lorebooks: { refs: {}, folders: { f1: folder } }
             });
@@ -469,7 +479,7 @@ describe('Chat Store', () => {
 
     describe('moveChatItem', () => {
         it('moves lorebook to a different folder', async () => {
-            activeChat.set({
+            putActiveChat({
                 ...mockChat,
                 lorebooks: { refs: { 'lb-1': { id: 'lb-1', sortOrder: 'a' } }, folders: {} }
             });
@@ -490,7 +500,7 @@ describe('Chat Store', () => {
     describe('Chat-owned lorebooks', () => {
         it('creates and registers a chat lorebook', async () => {
             const lorebook = { id: 'lb-1', ownerId: 'chat-1', name: 'LB' } as unknown as Lorebook;
-            activeChat.set(mockChat);
+            putActiveChat(mockChat);
             vi.mocked(LorebookService.create).mockResolvedValue(lorebook);
             vi.mocked(ChatService.update).mockResolvedValue({
                 ...mockChat,
@@ -507,7 +517,7 @@ describe('Chat Store', () => {
         });
 
         it('removes a chat lorebook ref and deletes the lorebook', async () => {
-            activeChat.set({
+            putActiveChat({
                 ...mockChat,
                 lorebooks: { refs: { 'lb-1': { id: 'lb-1', sortOrder: 'a' } }, folders: {} }
             });
@@ -524,10 +534,16 @@ describe('Chat Store', () => {
     });
 
     it('clearActiveChat clears chat-level stores', () => {
-        activeChat.set(mockChat);
+        personas.set('persona-1', { id: 'persona-1' } as never);
+        putActiveChat({
+            ...mockChat,
+            personas: {
+                refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a', enabled: true } },
+                folders: {}
+            }
+        });
         messages.setAll([{ id: 'msg-1', chatId: 'chat-1' } as never]);
         chatLorebooks.setAll([{ id: 'lb-1' } as never]);
-        chatPersonas.setAll([{ id: 'persona-1' } as never]);
 
         clearActiveChat();
 

@@ -4,8 +4,7 @@ import {
     ChatService,
     type Room,
     type RoomFields,
-    type RoomContent,
-    type Character
+    type RoomContent
 } from '$lib/services';
 import type { ResourceRef, FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
@@ -17,11 +16,10 @@ import {
     rooms,
     activeRoom,
     activeRoomId,
-    roomCharacters,
-    chats,
+    roomChats,
     activeChat,
+    activeChatId,
     chatLorebooks,
-    chatPersonas,
     messages,
     messageIndexes
 } from '../state';
@@ -43,7 +41,8 @@ export async function selectRoom(roomId: string): Promise<void> {
     if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
 
     clearActiveRoom();
-    activeRoom.set(room);
+    rooms.set(room.id, room);
+    activeRoomId.set(room.id);
 
     const characterIds = Object.keys(room.characters.refs);
     const [chatList, characterEntries] = await Promise.all([
@@ -52,41 +51,26 @@ export async function selectRoom(roomId: string): Promise<void> {
     ]);
 
     const staleCharacterRefs: Record<string, undefined> = {};
-    const characterList: Character[] = [];
     for (const [id, character] of characterEntries) {
-        if (character) {
-            characterList.push(character);
-        } else {
+        if (!character) {
             staleCharacterRefs[id] = undefined;
         }
     }
 
-    const staleChatRefs: Record<string, undefined> = {};
-    const actualChatIds = new Set(chatList.map((chat) => chat.id));
-    for (const id of Object.keys(room.chats.refs)) {
-        if (!actualChatIds.has(id)) {
-            staleChatRefs[id] = undefined;
-        }
-    }
+    roomChats.setAll(sortByRefs(chatList, room.chats.refs));
 
-    chats.setAll(sortByRefs(chatList, room.chats.refs));
-    roomCharacters.setAll(sortByRefs(characterList, room.characters.refs));
-
-    if (Object.keys(staleCharacterRefs).length > 0 || Object.keys(staleChatRefs).length > 0) {
+    if (Object.keys(staleCharacterRefs).length > 0) {
         await updateRoom(roomId, {
-            characters: { refs: staleCharacterRefs },
-            chats: { refs: staleChatRefs }
+            characters: { refs: staleCharacterRefs }
         });
     }
 }
 
 export function clearActiveRoom(): void {
-    activeRoom.set(null);
-    roomCharacters.clear();
-    chats.clear();
-    activeChat.set(null);
+    activeRoomId.set(null);
+    roomChats.clear();
+    activeChatId.set(null);
     chatLorebooks.clear();
-    chatPersonas.clear();
     messages.clear();
     messageIndexes.set(new Map());
 }
@@ -100,9 +84,6 @@ export async function createRoom(fields: DeepPartial<RoomFields> = {}): Promise<
 export async function updateRoom(roomId: string, changes: DeepPartial<RoomFields>): Promise<void> {
     const updated = await RoomService.update(roomId, changes);
     rooms.set(roomId, updated);
-    if (roomId === get(activeRoomId)) {
-        activeRoom.set(updated);
-    }
 }
 
 export async function updateRoomContent(
@@ -111,9 +92,6 @@ export async function updateRoomContent(
 ): Promise<void> {
     const updated = await RoomService.updateContent(roomId, changes);
     rooms.set(roomId, updated);
-    if (roomId === get(activeRoomId)) {
-        activeRoom.set(updated);
-    }
 }
 
 export async function deleteRoom(roomId: string): Promise<void> {
@@ -145,10 +123,6 @@ export async function addRoomCharacter(roomId: string, characterId: string): Pro
             }
         }
     });
-
-    if (roomId === get(activeRoomId)) {
-        roomCharacters.set(characterId, character);
-    }
 }
 
 export async function removeRoomCharacter(roomId: string, characterId: string): Promise<void> {
@@ -158,10 +132,6 @@ export async function removeRoomCharacter(roomId: string, characterId: string): 
     await updateRoom(roomId, {
         characters: { refs: { [characterId]: undefined } }
     });
-
-    if (roomId === get(activeRoomId)) {
-        roomCharacters.delete(characterId);
-    }
 
     const chat = get(activeChat);
     if (chat?.roomId === roomId && chat.selectedCharacterId === characterId) {

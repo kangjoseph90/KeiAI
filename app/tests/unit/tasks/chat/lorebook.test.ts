@@ -74,8 +74,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx,
-            templateMacros: new Map()
+            templateCtx: mockTemplateCtx
         });
 
         // Last message is 'banana', scanDepth is 1, so 'apple' should NOT be found
@@ -86,8 +85,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages: messages2,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx,
-            templateMacros: new Map()
+            templateCtx: mockTemplateCtx
         });
 
         // Last message is 'apple', so it should be found
@@ -111,8 +109,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx,
-            templateMacros: new Map()
+            templateCtx: mockTemplateCtx
         });
 
         // Round 1: A matches 'apple'
@@ -138,8 +135,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx,
-            templateMacros: new Map()
+            templateCtx: mockTemplateCtx
         });
 
         // A should be active, but B should NOT because it only looks at history
@@ -162,8 +158,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages: createMockMessages(['apple']),
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx,
-            templateMacros: new Map()
+            templateCtx: mockTemplateCtx
         });
         expect(res1).toHaveLength(0);
 
@@ -172,8 +167,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages: createMockMessages(['apple and banana']),
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx,
-            templateMacros: new Map()
+            templateCtx: mockTemplateCtx
         });
         expect(res2).toHaveLength(1);
     });
@@ -199,8 +193,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx,
-            templateMacros: new Map()
+            templateCtx: mockTemplateCtx
         });
 
         // Round 1: A matches 'apple'
@@ -219,8 +212,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx,
-            templateMacros: new Map()
+            templateCtx: mockTemplateCtx
         });
 
         expect(resolved).toHaveLength(1);
@@ -238,8 +230,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx,
-            templateMacros: new Map()
+            templateCtx: mockTemplateCtx
         });
 
         expect(resolved).toHaveLength(1);

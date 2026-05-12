@@ -9,7 +9,7 @@ import {
     deleteMessage,
     getMessage
 } from '$lib/stores/content/message';
-import { messages, chats, activeChat } from '$lib/stores/state';
+import { messages, roomChats, activeChatId } from '$lib/stores/state';
 import { MessageService, ChatService, type Message, type Chat } from '$lib/services';
 
 // Mock Services
@@ -45,8 +45,9 @@ describe('Message Store', () => {
         vi.clearAllMocks();
         // Reset via messages (the EntityStore)
         messages.clear();
-        chats.clear();
-        activeChat.set({ id: mockChatId, roomId: 'room-1' } as Chat);
+        roomChats.clear();
+        roomChats.set(mockChatId, { id: mockChatId, roomId: 'room-1' } as Chat);
+        activeChatId.set(mockChatId);
         vi.mocked(ChatService.update).mockResolvedValue({
             id: mockChatId,
             roomId: 'room-1',
@@ -71,7 +72,8 @@ describe('Message Store', () => {
         });
 
         it('should not update store if activeChatId has changed', async () => {
-            activeChat.set({ id: 'other-chat', roomId: 'room-1' } as Chat);
+            roomChats.set('other-chat', { id: 'other-chat', roomId: 'room-1' } as Chat);
+            activeChatId.set('other-chat');
             vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([mockMessage]);
 
             await loadInitialMessages(mockChatId);
@@ -139,7 +141,7 @@ describe('Message Store', () => {
             const newMessage = { ...mockMessage, id: 'new-id' };
 
             vi.mocked(MessageService.create).mockResolvedValue(newMessage);
-            chats.setAll([{ id: mockChatId, roomId: 'room-1' } as Chat]);
+            roomChats.setAll([{ id: mockChatId, roomId: 'room-1' } as Chat]);
 
             await createMessage(mockChatId, {
                 swipes: { s1: { id: 's1', content: 'New message content', createdAt: Date.now() } },

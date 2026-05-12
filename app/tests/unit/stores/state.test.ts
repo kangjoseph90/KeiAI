@@ -11,7 +11,8 @@ import {
     isLoggedIn,
     messages,
     chatTasks,
-    activeChat,
+    activeChatId,
+    roomChats,
     displayMessages,
     isChatRunning
 } from '$lib/stores/state';
@@ -35,7 +36,8 @@ describe('Global Stores', () => {
         pbConnected.set(false);
         messages.clear();
         chatTasks.set(new Map());
-        activeChat.set(null);
+        roomChats.clear();
+        activeChatId.set(null);
     });
 
     describe('Authentication State (Derived)', () => {
@@ -71,7 +73,8 @@ describe('Global Stores', () => {
     describe('Generation State (Derived)', () => {
         it('should indicate generation is running for active chat', () => {
             const chatId = 'chat-1';
-            activeChat.set({ id: chatId } as Chat);
+            roomChats.set(chatId, { id: chatId } as Chat);
+            activeChatId.set(chatId);
 
             chatTasks.set(new Map<string, ChatTask>([[chatId, makeMockTask()]]));
 
@@ -79,7 +82,8 @@ describe('Global Stores', () => {
         });
 
         it('should not indicate generation for different chat', () => {
-            activeChat.set({ id: 'chat-1' } as Chat);
+            roomChats.set('chat-1', { id: 'chat-1' } as Chat);
+            activeChatId.set('chat-1');
 
             chatTasks.set(new Map<string, ChatTask>([['chat-2', makeMockTask()]]));
 
@@ -90,7 +94,8 @@ describe('Global Stores', () => {
     describe('Display Messages (Derived)', () => {
         it('should mark generating message from DB with displayStatus', () => {
             const chatId = 'chat-1';
-            activeChat.set({ id: chatId } as Chat);
+            roomChats.set(chatId, { id: chatId } as Chat);
+            activeChatId.set(chatId);
 
             const dbMessages: Message[] = [
                 {
@@ -127,7 +132,8 @@ describe('Global Stores', () => {
 
         it('should only show DB messages if no generation task', () => {
             const chatId = 'chat-1';
-            activeChat.set({ id: chatId } as Chat);
+            roomChats.set(chatId, { id: chatId } as Chat);
+            activeChatId.set(chatId);
             messages.setAll([{ id: 'm1', swipes: {}, activeSwipeId: '' } as unknown as Message]);
             chatTasks.set(new Map());
 
@@ -139,7 +145,8 @@ describe('Global Stores', () => {
 
         it('should mark message with error status', () => {
             const chatId = 'chat-1';
-            activeChat.set({ id: chatId } as Chat);
+            roomChats.set(chatId, { id: chatId } as Chat);
+            activeChatId.set(chatId);
 
             const dbMessages: Message[] = [
                 {
