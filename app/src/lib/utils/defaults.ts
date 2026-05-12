@@ -49,10 +49,14 @@ export function deepMerge<T>(base: T, overlay?: unknown): T {
  * so callers can pass just `{ openai: { apiKey: 'key' } }` without satisfying
  * the entire provider config shape. The read-side types stay strict.
  */
-export type DeepPartial<T> = {
-    [K in keyof T]?: NonNullable<T[K]> extends unknown[]
-        ? T[K]
-        : NonNullable<T[K]> extends object
-          ? DeepPartial<NonNullable<T[K]>>
-          : T[K];
-};
+export type DeepPartial<T> = T extends object
+    ? {
+          [K in keyof T]?: unknown extends T[K]
+              ? T[K]
+              : NonNullable<T[K]> extends unknown[]
+                ? T[K]
+                : NonNullable<T[K]> extends object
+                  ? DeepPartial<NonNullable<T[K]>>
+                  : T[K];
+      }
+    : T;
