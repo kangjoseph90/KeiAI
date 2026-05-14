@@ -11,7 +11,7 @@
  * Encryption is handled by the caller (AssetService / AssetSyncEngine).
  */
 
-import type { BaseRecord, DataRecord, DatabaseMutationOrigin } from '$lib/adapters/db';
+import type { BaseRecord, DataRecord, DataScope, DatabaseMutationOrigin } from '$lib/adapters/db';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -80,8 +80,8 @@ export interface IAssetAdapter {
     /** Get an encrypted asset record by ID. */
     getAsset(id: string): Promise<AssetRecord | undefined>;
 
-    /** Get all non-deleted asset records for a user. */
-    getAllAssets(userId: string): Promise<AssetRecord[]>;
+    /** Get all non-deleted asset records for a scope. */
+    getAllAssets(scope: DataScope): Promise<AssetRecord[]>;
 
     /** Insert or update an encrypted asset record. */
     putAsset(record: AssetRecord, options?: AssetWriteOptions): Promise<void>;
@@ -93,19 +93,25 @@ export interface IAssetAdapter {
     deleteAsset(id: string, options?: AssetWriteOptions): Promise<void>;
 
     /** Get asset records updated since a given timestamp (includes deleted). */
-    getAssetsSince(userId: string, sinceUpdatedAt: number): Promise<AssetRecord[]>;
+    getAssetsSince(scope: DataScope, sinceUpdatedAt: number): Promise<AssetRecord[]>;
 
     // ── Registry (assetRegistry table) ───────────────────────────────
 
     /** Get a registry entry by asset ID. */
     getRegistry(id: string): Promise<AssetRegistryRecord | undefined>;
 
-    /** Get all active (non-deleted) registry entries for a user. */
-    getAllRegistry(userId: string): Promise<AssetRegistryRecord[]>;
+    /** Get all active (non-deleted) registry entries for a scope. */
+    getAllRegistry(scope: DataScope): Promise<AssetRegistryRecord[]>;
 
     /** Get registry entries by status, optionally filtered by kinds. */
     getRegistryByStatus(
-        userId: string,
+        scope: DataScope,
+        status: AssetStatus,
+        kinds?: AssetKind[]
+    ): Promise<AssetRegistryRecord[]>;
+
+    /** Get registry entries by status across all scopes. Used for device-local cache eviction. */
+    getAllRegistryByStatus(
         status: AssetStatus,
         kinds?: AssetKind[]
     ): Promise<AssetRegistryRecord[]>;

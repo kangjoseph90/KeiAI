@@ -2,8 +2,17 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChatService } from '$lib/services/content/chat';
 import type { BaseRecord } from '$lib/adapters/db/types';
 
-vi.mock('$lib/services/user', () => ({
-    getActiveSession: vi.fn()
+vi.mock('$lib/services/session', () => ({
+    getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
+        if (scopeType === 'user') return { scopeType: 'user', scopeId: 'user-123' };
+        return { scopeType: 'room', scopeId: 'room-123' };
+    }),
+    canAccessScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return (
+            (record.scopeType === 'user' && record.scopeId === 'user-123') ||
+            (record.scopeType === 'room' && record.scopeId === 'room-123')
+        );
+    })
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -36,7 +45,6 @@ vi.mock('$lib/services/content/record_buffer', () => ({
     }
 }));
 
-import { getActiveSession } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { buffer } from '$lib/services/content/record_buffer';
 
@@ -45,11 +53,6 @@ describe('ChatService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        vi.mocked(getActiveSession).mockReturnValue({
-            masterKey: {} as CryptoKey,
-            userId: mockUserId,
-            identityKeyPair: {} as CryptoKeyPair
-        });
         vi.mocked(buffer.get).mockResolvedValue(null);
         vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
     });
@@ -60,7 +63,8 @@ describe('ChatService', () => {
                 {
                     id: 'chat-1',
                     roomId: 'room-1',
-                    userId: mockUserId,
+                    scopeType: 'user',
+                    scopeId: mockUserId,
                     createdAt: 1000,
                     updatedAt: 1000,
                     isDeleted: false,
@@ -69,7 +73,8 @@ describe('ChatService', () => {
                 {
                     id: 'chat-2',
                     roomId: 'room-1',
-                    userId: mockUserId,
+                    scopeType: 'user',
+                    scopeId: mockUserId,
                     createdAt: 2000,
                     updatedAt: 2000,
                     isDeleted: false,
@@ -96,7 +101,8 @@ describe('ChatService', () => {
             vi.mocked(buffer.get).mockResolvedValue({
                 id: 'chat-1',
                 roomId: 'room-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
@@ -120,7 +126,8 @@ describe('ChatService', () => {
             vi.mocked(buffer.get).mockResolvedValue({
                 id: 'chat-1',
                 roomId: 'room-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 isDeleted: true,
                 data: {}
             } as never);
@@ -141,7 +148,27 @@ describe('ChatService', () => {
                 'chats',
                 expect.objectContaining({
                     id: 'test-chat-id',
-                    userId: mockUserId,
+                    scopeType: 'user',
+                    scopeId: mockUserId,
+                    roomId: 'room-1'
+                })
+            );
+        });
+
+        it('creates a room-scoped chat when requested explicitly', async () => {
+            const result = await ChatService.create('room-1', { title: 'Shared Chat' }, 'room');
+
+            expect(result).toMatchObject({
+                id: 'test-chat-id',
+                roomId: 'room-1',
+                title: 'Shared Chat'
+            });
+            expect(localDB.putRecord).toHaveBeenCalledWith(
+                'chats',
+                expect.objectContaining({
+                    id: 'test-chat-id',
+                    scopeType: 'room',
+                    scopeId: 'room-123',
                     roomId: 'room-1'
                 })
             );
@@ -153,7 +180,8 @@ describe('ChatService', () => {
             vi.mocked(buffer.get).mockResolvedValue({
                 id: 'chat-1',
                 roomId: 'room-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
@@ -172,7 +200,8 @@ describe('ChatService', () => {
             vi.mocked(buffer.get).mockResolvedValue({
                 id: 'chat-1',
                 roomId: 'room-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 isDeleted: false,
                 data: { title: 'Delete Me' }
             } as never);

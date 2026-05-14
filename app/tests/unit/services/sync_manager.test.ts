@@ -10,13 +10,17 @@ import { SyncManager } from '$lib/services/sync';
 import { DataSyncService } from '$lib/services/sync/data';
 import { UserSyncService } from '$lib/services/sync/user';
 import { AssetSyncService } from '$lib/services/sync/asset';
+import { MultiSyncService } from '$lib/services/sync/multi';
 import { appUser } from '$lib/adapters/user';
+import { appMulti } from '$lib/adapters/multi';
 import { localDB } from '$lib/adapters/db';
 import type { DatabaseWriteEventListener } from '$lib/adapters/db';
 import type { UserWriteEventListener } from '$lib/adapters/user';
+import type { MultiWriteEventListener } from '$lib/adapters/multi';
 
 let dbWriteListener: DatabaseWriteEventListener | null = null;
 let userWriteListener: UserWriteEventListener | null = null;
+let multiWriteListener: MultiWriteEventListener | null = null;
 
 // Mock dependencies with stateful spies
 vi.mock('$lib/services/sync/data', () => {
@@ -73,6 +77,17 @@ vi.mock('$lib/adapters/user', () => ({
     }
 }));
 
+vi.mock('$lib/adapters/multi', () => ({
+    appMulti: {
+        subscribeWriteEvents: vi.fn((listener: MultiWriteEventListener) => {
+            multiWriteListener = listener;
+            return () => {
+                multiWriteListener = null;
+            };
+        })
+    }
+}));
+
 vi.mock('$lib/services/sync/user', () => ({
     UserSyncService: {
         subscribeRealtime: vi.fn(async () => {}),
@@ -96,6 +111,28 @@ vi.mock('$lib/services/sync/asset', () => {
                 subscribed = false;
             }),
             pushById: vi.fn(async () => {}),
+            get isSubscribed() {
+                return subscribed;
+            },
+            set isSubscribed(v: boolean) {
+                subscribed = v;
+            }
+        }
+    };
+});
+
+vi.mock('$lib/services/sync/multi', () => {
+    let subscribed = false;
+    return {
+        MultiSyncService: {
+            syncAll: vi.fn(async () => {}),
+            subscribeRealtime: vi.fn(async () => {
+                subscribed = true;
+            }),
+            unsubscribeRealtime: vi.fn(async () => {
+                subscribed = false;
+            }),
+            handleLocalWrite: vi.fn(async () => {}),
             get isSubscribed() {
                 return subscribed;
             },
@@ -132,11 +169,17 @@ describe('SyncManager', () => {
         vi.mocked(AssetSyncService.subscribeRealtime).mockClear();
         vi.mocked(AssetSyncService.unsubscribeRealtime).mockClear();
         vi.mocked(AssetSyncService.pushById).mockClear();
+        vi.mocked(MultiSyncService.syncAll).mockClear();
+        vi.mocked(MultiSyncService.subscribeRealtime).mockClear();
+        vi.mocked(MultiSyncService.unsubscribeRealtime).mockClear();
+        vi.mocked(MultiSyncService.handleLocalWrite).mockClear();
+        (MultiSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
         (AssetSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
         vi.mocked(DataSyncService.handleLocalWrite).mockClear();
         (DataSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
         dbWriteListener = null;
         userWriteListener = null;
+        multiWriteListener = null;
     });
 
     afterEach(() => {
@@ -150,13 +193,16 @@ describe('SyncManager', () => {
 
             expect(DataSyncService.subscribeRealtime).toHaveBeenCalled();
             expect(AssetSyncService.subscribeRealtime).toHaveBeenCalled();
+            expect(MultiSyncService.subscribeRealtime).toHaveBeenCalled();
             expect(UserSyncService.subscribeRealtime).toHaveBeenCalled();
             expect(AssetSyncService.start).toHaveBeenCalledTimes(1);
+            expect(MultiSyncService.syncAll).toHaveBeenCalledTimes(1);
 
             expect(DataSyncService.syncAll).not.toHaveBeenCalled();
             vi.advanceTimersByTime(300_000);
             expect(DataSyncService.syncAll).toHaveBeenCalledTimes(1);
             expect(AssetSyncService.start).toHaveBeenCalledTimes(2);
+            expect(MultiSyncService.syncAll).toHaveBeenCalledTimes(2);
 
             expect(window.addEventListener).toHaveBeenCalledWith('online', expect.any(Function));
             expect(document.addEventListener).toHaveBeenCalledWith(
@@ -171,6 +217,7 @@ describe('SyncManager', () => {
             expect(DataSyncService.subscribeRealtime).toHaveBeenCalledTimes(1);
             expect(localDB.subscribeWriteEvents).toHaveBeenCalledTimes(1);
             expect(appUser.subscribeWriteEvents).toHaveBeenCalledTimes(1);
+            expect(appMulti.subscribeWriteEvents).toHaveBeenCalledTimes(1);
         });
     });
 
@@ -181,11 +228,33 @@ describe('SyncManager', () => {
 
             expect(DataSyncService.unsubscribeRealtime).toHaveBeenCalled();
             expect(AssetSyncService.unsubscribeRealtime).toHaveBeenCalled();
+            expect(MultiSyncService.unsubscribeRealtime).toHaveBeenCalled();
             expect(UserSyncService.unsubscribeRealtime).toHaveBeenCalled();
             expect(AssetSyncService.stop).toHaveBeenCalled();
 
             vi.advanceTimersByTime(300_000);
             expect(DataSyncService.syncAll).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('refreshRoomSync', () => {
+        it('should resubscribe room-aware sync engines when auto sync is active', async () => {
+            SyncManager.startAutoSync();
+            vi.mocked(DataSyncService.unsubscribeRealtime).mockClear();
+            vi.mocked(DataSyncService.subscribeRealtime).mockClear();
+            vi.mocked(DataSyncService.syncAll).mockClear();
+            vi.mocked(AssetSyncService.unsubscribeRealtime).mockClear();
+            vi.mocked(AssetSyncService.subscribeRealtime).mockClear();
+            vi.mocked(AssetSyncService.start).mockClear();
+
+            await SyncManager.refreshRoomSync();
+
+            expect(DataSyncService.unsubscribeRealtime).toHaveBeenCalled();
+            expect(AssetSyncService.unsubscribeRealtime).toHaveBeenCalled();
+            expect(DataSyncService.subscribeRealtime).toHaveBeenCalled();
+            expect(AssetSyncService.subscribeRealtime).toHaveBeenCalled();
+            expect(DataSyncService.syncAll).toHaveBeenCalled();
+            expect(AssetSyncService.start).toHaveBeenCalled();
         });
     });
 
@@ -203,6 +272,7 @@ describe('SyncManager', () => {
             // Force it to look disconnected
             (DataSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
             (AssetSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
+            (MultiSyncService as unknown as { isSubscribed: boolean }).isSubscribed = false;
 
             await onlineHandler();
             // We need to wait for the internal async chain
@@ -210,14 +280,17 @@ describe('SyncManager', () => {
             await Promise.resolve(); // sub 1
             await Promise.resolve(); // sub 2
             await Promise.resolve(); // sub 3
+            await Promise.resolve(); // sub 4
             await Promise.resolve(); // syncAll
             await Promise.resolve(); // pullUser
             await Promise.resolve(); // final callback
 
             expect(DataSyncService.subscribeRealtime).toHaveBeenCalledTimes(2); // once at start, once at online
             expect(AssetSyncService.subscribeRealtime).toHaveBeenCalledTimes(2); // once at start, once at online
+            expect(MultiSyncService.subscribeRealtime).toHaveBeenCalledTimes(2); // once at start, once at online
             expect(DataSyncService.syncAll).toHaveBeenCalled();
             expect(AssetSyncService.start).toHaveBeenCalledTimes(2);
+            expect(MultiSyncService.syncAll).toHaveBeenCalledTimes(2);
             expect(UserSyncService.pullUser).toHaveBeenCalled();
         });
 
@@ -239,6 +312,7 @@ describe('SyncManager', () => {
             expect(DataSyncService.subscribeRealtime).not.toHaveBeenCalled();
             expect(DataSyncService.syncAll).not.toHaveBeenCalled();
             expect(AssetSyncService.start).toHaveBeenCalledTimes(1);
+            expect(MultiSyncService.syncAll).toHaveBeenCalledTimes(1);
             expect(UserSyncService.pullUser).not.toHaveBeenCalled();
         });
 
@@ -280,6 +354,26 @@ describe('SyncManager', () => {
 
             expect(DataSyncService.handleLocalWrite).toHaveBeenCalledWith(
                 expect.objectContaining({ tableName: 'characters', ids: ['c1'] })
+            );
+        });
+
+        it('should route multi metadata writes to MultiSyncService', async () => {
+            SyncManager.startAutoSync();
+            expect(multiWriteListener).not.toBeNull();
+
+            multiWriteListener?.([
+                {
+                    tableName: 'multi_room_members',
+                    ids: ['member-1'],
+                    origin: 'local',
+                    operation: 'put'
+                }
+            ]);
+
+            await Promise.resolve();
+
+            expect(MultiSyncService.handleLocalWrite).toHaveBeenCalledWith(
+                expect.objectContaining({ tableName: 'multi_room_members', ids: ['member-1'] })
             );
         });
     });

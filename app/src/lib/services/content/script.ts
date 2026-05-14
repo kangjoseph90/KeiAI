@@ -1,6 +1,6 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession, UserService } from '../user';
-import { localDB, type ScriptRecord } from '$lib/adapters/db';
+import { canAccessScope, getSessionScope } from '../session';
+import { localDB, type DataScopeType, type ScriptRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -53,7 +53,6 @@ export class ScriptService {
     /** List scripts owned by a specific parent (character, module) */
     static async listByOwner(ownerId: string): Promise<Script[]> {
         await buffer.flushTable('scripts');
-        const { userId } = getActiveSession();
         const records = await localDB.getByIndex<ScriptRecord>(
             'scripts',
             'ownerId',
@@ -62,7 +61,7 @@ export class ScriptService {
         );
 
         return records
-            .filter((record) => record.userId === userId)
+            .filter((record) => canAccessScope(record))
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
@@ -71,9 +70,8 @@ export class ScriptService {
     }
 
     static async get(id: string): Promise<Script | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ScriptRecord>('scripts', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
         return {
             ...parseFields(record),
@@ -82,17 +80,22 @@ export class ScriptService {
         };
     }
 
-    static async create(ownerId: string, fields: DeepPartial<ScriptFields> = {}): Promise<Script> {
+    static async create(
+        ownerId: string,
+        fields: DeepPartial<ScriptFields> = {},
+        scopeType: DataScopeType = 'user'
+    ): Promise<Script> {
         const resolved: ScriptFields = deepMerge(defaultScriptFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope(scopeType);
         const id = generateId();
         const now = clock.now();
 
         try {
             const newRecord: ScriptRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 ownerId,
                 createdAt: now,
                 updatedAt: now,
@@ -109,9 +112,8 @@ export class ScriptService {
     }
 
     static async update(id: string, changes: DeepPartial<ScriptFields>): Promise<Script> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ScriptRecord>('scripts', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Script not found: ${id}`);
         }
 
@@ -133,9 +135,8 @@ export class ScriptService {
     }
 
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ScriptRecord>('scripts', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Script not found: ${id}`);
         }
 

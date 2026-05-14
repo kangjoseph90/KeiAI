@@ -1,6 +1,6 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
-import { localDB, type ChatRecord } from '$lib/adapters/db';
+import { canAccessScope, getSessionScope } from '../session';
+import { localDB, type ChatRecord, type DataScopeType } from '$lib/adapters/db';
 import type { EntityListConfig, ResourceRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
@@ -52,7 +52,6 @@ function parseFields(record: ChatRecord): ChatFields {
 export class ChatService {
     static async listByRoom(roomId: string): Promise<Chat[]> {
         await buffer.flushTable('chats');
-        const { userId } = getActiveSession();
         const records = await localDB.getByIndex<ChatRecord>(
             'chats',
             'roomId',
@@ -61,7 +60,7 @@ export class ChatService {
         );
 
         return records
-            .filter((record) => record.userId === userId)
+            .filter((record) => canAccessScope(record))
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
@@ -70,9 +69,8 @@ export class ChatService {
     }
 
     static async get(id: string): Promise<Chat | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ChatRecord>('chats', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
         return {
             ...parseFields(record),
@@ -81,17 +79,22 @@ export class ChatService {
         };
     }
 
-    static async create(roomId: string, fields: DeepPartial<ChatFields> = {}): Promise<Chat> {
+    static async create(
+        roomId: string,
+        fields: DeepPartial<ChatFields> = {},
+        scopeType: DataScopeType = 'user'
+    ): Promise<Chat> {
         const resolved: ChatFields = deepMerge(defaultFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope(scopeType);
         const id = generateId();
         const now = clock.now();
 
         try {
             const record: ChatRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 roomId,
                 createdAt: now,
                 updatedAt: now,
@@ -108,9 +111,8 @@ export class ChatService {
     }
 
     static async update(id: string, changes: DeepPartial<ChatFields>): Promise<Chat> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ChatRecord>('chats', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', 'Chat not found');
         }
 
@@ -133,9 +135,8 @@ export class ChatService {
 
     /** Cascade soft-delete: owned lorebooks, scripts, messages, then chat itself */
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ChatRecord>('chats', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Chat not found: ${id}`);
         }
 

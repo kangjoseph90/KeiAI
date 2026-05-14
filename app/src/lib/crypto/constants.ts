@@ -29,5 +29,8 @@ export const RECOVERY_FRONT_LENGTH = 12;
 /** Recovery code back half length (auth token portion) */
 export const RECOVERY_BACK_LENGTH = 12;
 
-/** ECDH named curve for identity key pairs */
-export const ECDH_CURVE = 'P-256';
+/** RSA modulus length for identity key pairs used to wrap room keys */
+export const IDENTITY_RSA_MODULUS_BITS = 4096;
+
+/** RSA public exponent for identity key pairs */
+export const IDENTITY_RSA_PUBLIC_EXPONENT = new Uint8Array([1, 0, 1]);

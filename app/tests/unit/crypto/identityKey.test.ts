@@ -1,21 +1,26 @@
 /**
  * Crypto Module Tests: identityKey.ts
  *
- * Tests ECDH P-256 identity key pair generation, export/import, and shared secret derivation.
+ * Tests RSA-OAEP identity key generation, export/import, and room key wrapping.
  * Uses real Web Crypto API (no mocking) as required for crypto tests.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
-    generateIdentityKeyPair,
-    exportPublicKey,
-    importPublicKey,
+    decryptWithIdentity,
+    encryptForIdentity,
     exportPrivateKey,
+    exportPublicKey,
+    generateIdentityKeyPair,
     importPrivateKey,
-    deriveSharedSecret
+    importPublicKey,
+    unwrapKeyWithIdentity,
+    wrapKeyForIdentity
 } from '$lib/crypto/identityKey';
+import { decrypt, encrypt } from '$lib/crypto/encryption';
 import { generateMasterKey } from '$lib/crypto/masterKey';
-import { encrypt, decrypt } from '$lib/crypto/encryption';
+
+vi.setConfig({ testTimeout: 15_000 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -26,13 +31,13 @@ async function makeKeyPair(): Promise<CryptoKeyPair> {
 
 describe('identityKey', () => {
     describe('generateIdentityKeyPair', () => {
-        it('should generate an ECDH P-256 key pair', async () => {
+        it('should generate an RSA-OAEP key pair', async () => {
             const kp = await makeKeyPair();
 
             expect(kp.publicKey).toBeInstanceOf(CryptoKey);
             expect(kp.privateKey).toBeInstanceOf(CryptoKey);
-            expect(kp.publicKey.algorithm.name).toBe('ECDH');
-            expect(kp.privateKey.algorithm.name).toBe('ECDH');
+            expect(kp.publicKey.algorithm.name).toBe('RSA-OAEP');
+            expect(kp.privateKey.algorithm.name).toBe('RSA-OAEP');
         });
 
         it('should have correct key types', async () => {
@@ -45,9 +50,8 @@ describe('identityKey', () => {
         it('should have correct usages', async () => {
             const kp = await makeKeyPair();
 
-            // Public key has no usages (only used as ECDH "public" param)
-            expect(kp.publicKey.usages).toEqual([]);
-            expect(kp.privateKey.usages).toContain('deriveKey');
+            expect(kp.publicKey.usages).toEqual(['encrypt']);
+            expect(kp.privateKey.usages).toEqual(['decrypt']);
         });
 
         it('should generate extractable keys by default', async () => {
@@ -61,13 +65,10 @@ describe('identityKey', () => {
             const kp1 = await makeKeyPair();
             const kp2 = await makeKeyPair();
 
-            // Export and compare public keys as JWK
             const jwk1 = await exportPublicKey(kp1.publicKey);
             const jwk2 = await exportPublicKey(kp2.publicKey);
 
-            // Different keys produce different JWKs
-            expect(jwk1.x).not.toBe(jwk2.x);
-            expect(jwk1.y).not.toBe(jwk2.y);
+            expect(jwk1.n).not.toBe(jwk2.n);
         });
     });
 
@@ -77,11 +78,10 @@ describe('identityKey', () => {
 
             const jwk = await exportPublicKey(kp.publicKey);
 
-            expect(jwk.kty).toBe('EC');
-            expect(jwk.crv).toBe('P-256');
-            expect(jwk.x).toBeTruthy();
-            expect(jwk.y).toBeTruthy();
-            // Public key JWK should not have private component
+            expect(jwk.kty).toBe('RSA');
+            expect(jwk.alg).toBe('RSA-OAEP-256');
+            expect(jwk.n).toBeTruthy();
+            expect(jwk.e).toBeTruthy();
             expect(jwk.d).toBeUndefined();
         });
 
@@ -93,28 +93,21 @@ describe('identityKey', () => {
 
             expect(restored).toBeInstanceOf(CryptoKey);
             expect(restored.type).toBe('public');
-            expect(restored.algorithm.name).toBe('ECDH');
+            expect(restored.algorithm.name).toBe('RSA-OAEP');
+            expect(restored.usages).toEqual(['encrypt']);
         });
 
-        it('should produce a public key that can participate in ECDH after roundtrip', async () => {
-            const alice = await makeKeyPair();
-            const bob = await makeKeyPair();
+        it('should produce a public key that can encrypt after roundtrip', async () => {
+            const kp = await makeKeyPair();
 
-            // Roundtrip Alice's public key through export → import
-            const aliceJwk = await exportPublicKey(alice.publicKey);
-            const aliceRestored = await importPublicKey(aliceJwk);
+            const jwk = await exportPublicKey(kp.publicKey);
+            const restored = await importPublicKey(jwk);
 
-            // Bob derives secret using Alice's restored public key
-            const secret1 = await deriveSharedSecret(bob.privateKey, aliceRestored);
-            // Bob derives secret using Alice's original public key
-            const secret2 = await deriveSharedSecret(bob.privateKey, alice.publicKey);
+            const data = new TextEncoder().encode('roundtrip check') as Uint8Array<ArrayBuffer>;
+            const encrypted = await encryptForIdentity(restored, data);
+            const decrypted = await decryptWithIdentity(kp.privateKey, encrypted);
 
-            // Both should encrypt the same way
-            const testData = 'roundtrip check';
-            const enc1 = await encrypt(secret1, testData);
-            const dec = await decrypt(secret2, enc1);
-
-            expect(dec).toBe(testData);
+            expect(new TextDecoder().decode(decrypted)).toBe('roundtrip check');
         });
     });
 
@@ -137,6 +130,7 @@ describe('identityKey', () => {
             expect(locked).toBeInstanceOf(CryptoKey);
             expect(locked.extractable).toBe(false);
             expect(locked.type).toBe('private');
+            expect(locked.usages).toEqual(['decrypt']);
         });
 
         it('should import private key with extractable=true for guest users', async () => {
@@ -148,25 +142,19 @@ describe('identityKey', () => {
             expect(unlocked.extractable).toBe(true);
         });
 
-        it('should produce a private key that can participate in ECDH after roundtrip', async () => {
-            const alice = await makeKeyPair();
-            const bob = await makeKeyPair();
+        it('should produce a private key that can decrypt after roundtrip', async () => {
+            const kp = await makeKeyPair();
 
-            // Roundtrip Alice's private key through export → import (non-extractable)
-            const rawAlice = await exportPrivateKey(alice.privateKey);
-            const aliceRestored = await importPrivateKey(rawAlice, false);
+            const raw = await exportPrivateKey(kp.privateKey);
+            const restored = await importPrivateKey(raw, false);
 
-            // Alice with restored private key + Bob's public key
-            const secret1 = await deriveSharedSecret(aliceRestored, bob.publicKey);
-            // Bob with his private key + Alice's original public key
-            const secret2 = await deriveSharedSecret(bob.privateKey, alice.publicKey);
+            const data = new TextEncoder().encode(
+                'private key roundtrip'
+            ) as Uint8Array<ArrayBuffer>;
+            const encrypted = await encryptForIdentity(kp.publicKey, data);
+            const decrypted = await decryptWithIdentity(restored, encrypted);
 
-            // Secrets should be equivalent (encrypt with one, decrypt with other)
-            const testData = 'ecdh private key roundtrip';
-            const enc = await encrypt(secret1, testData);
-            const dec = await decrypt(secret2, enc);
-
-            expect(dec).toBe(testData);
+            expect(new TextDecoder().decode(decrypted)).toBe('private key roundtrip');
         });
 
         it('should prevent export of non-extractable private key', async () => {
@@ -178,61 +166,59 @@ describe('identityKey', () => {
         });
     });
 
-    describe('deriveSharedSecret', () => {
-        it('should derive a non-extractable AES-256-GCM shared secret', async () => {
-            const alice = await makeKeyPair();
+    describe('encryptForIdentity / decryptWithIdentity', () => {
+        it('should encrypt bytes for another identity and decrypt with that identity', async () => {
             const bob = await makeKeyPair();
+            const data = new TextEncoder().encode('room secret') as Uint8Array<ArrayBuffer>;
 
-            const secret = await deriveSharedSecret(alice.privateKey, bob.publicKey);
+            const encrypted = await encryptForIdentity(bob.publicKey, data);
+            const decrypted = await decryptWithIdentity(bob.privateKey, encrypted);
 
-            expect(secret).toBeInstanceOf(CryptoKey);
-            expect(secret.extractable).toBe(false);
-            expect(secret.algorithm.name).toBe('AES-GCM');
-            expect(secret.usages).toContain('encrypt');
-            expect(secret.usages).toContain('decrypt');
+            expect(new TextDecoder().decode(decrypted)).toBe('room secret');
         });
 
-        it('should derive the same secret from both sides (ECDH symmetry)', async () => {
-            const alice = await makeKeyPair();
-            const bob = await makeKeyPair();
-
-            const aliceSecret = await deriveSharedSecret(alice.privateKey, bob.publicKey);
-            const bobSecret = await deriveSharedSecret(bob.privateKey, alice.publicKey);
-
-            // Secrets are equivalent if they encrypt/decrypt cross-wise
-            const plaintext = 'hello from alice';
-            const encrypted = await encrypt(aliceSecret, plaintext);
-            const decrypted = await decrypt(bobSecret, encrypted);
-
-            expect(decrypted).toBe(plaintext);
-        });
-
-        it('should derive different secrets for different key pairs', async () => {
-            const alice = await makeKeyPair();
+        it('should fail to decrypt with the wrong private key', async () => {
             const bob = await makeKeyPair();
             const charlie = await makeKeyPair();
+            const data = new TextEncoder().encode('room secret') as Uint8Array<ArrayBuffer>;
 
-            const aliceBobSecret = await deriveSharedSecret(alice.privateKey, bob.publicKey);
-            const aliceCharlieSecret = await deriveSharedSecret(
-                alice.privateKey,
-                charlie.publicKey
-            );
+            const encrypted = await encryptForIdentity(bob.publicKey, data);
 
-            // Alice–Bob secret cannot decrypt data encrypted for Alice–Charlie
-            const plaintext = 'test';
-            const encrypted = await encrypt(aliceBobSecret, plaintext);
+            await expect(decryptWithIdentity(charlie.privateKey, encrypted)).rejects.toThrow();
+        }, 15_000);
+    });
 
-            await expect(decrypt(aliceCharlieSecret, encrypted)).rejects.toThrow();
+    describe('wrapKeyForIdentity / unwrapKeyWithIdentity', () => {
+        it('should wrap an AES-GCM key for another identity and unwrap a usable key', async () => {
+            const bob = await makeKeyPair();
+            const roomKey = await generateMasterKey();
+
+            const wrapped = await wrapKeyForIdentity(bob.publicKey, roomKey);
+            const unwrapped = await unwrapKeyWithIdentity(bob.privateKey, wrapped);
+
+            const encrypted = await encrypt(roomKey, 'hello shared room');
+            const decrypted = await decrypt(unwrapped, encrypted);
+
+            expect(decrypted).toBe('hello shared room');
+        });
+
+        it('should unwrap an AES-GCM key as non-extractable', async () => {
+            const bob = await makeKeyPair();
+            const roomKey = await generateMasterKey();
+
+            const wrapped = await wrapKeyForIdentity(bob.publicKey, roomKey);
+            const unwrapped = await unwrapKeyWithIdentity(bob.privateKey, wrapped, false);
+
+            expect(unwrapped.extractable).toBe(false);
+            await expect(crypto.subtle.exportKey('raw', unwrapped)).rejects.toThrow();
         });
     });
 
     describe('full registration/login flow simulation', () => {
-        it('should complete E2EE identity key storage roundtrip (register → login)', async () => {
-            // Simulate registration: generate key pair, wrap private key with M
+        it('should complete E2EE identity key storage roundtrip (register -> login)', async () => {
             const masterKey = await generateMasterKey();
             const kp = await generateIdentityKeyPair();
 
-            // Export for server storage
             const publicKeyJwk = await exportPublicKey(kp.publicKey);
             const rawPrivate = await exportPrivateKey(kp.privateKey);
             const encryptedPrivate = await encrypt(
@@ -241,12 +227,10 @@ describe('identityKey', () => {
             );
             rawPrivate.fill(0);
 
-            // Simulate server round-trip (store and retrieve strings)
             const storedPublicKeyJson = JSON.stringify(publicKeyJwk);
             const storedPrivateCiphertext = encryptedPrivate.ciphertext;
             const storedPrivateIv = encryptedPrivate.iv;
 
-            // Simulate login: restore key pair from server fields
             const restoredPublicKey = await importPublicKey(
                 JSON.parse(storedPublicKeyJson) as JsonWebKey
             );
@@ -260,21 +244,13 @@ describe('identityKey', () => {
             const restoredPrivateKey = await importPrivateKey(restoredPrivateRaw, false);
             restoredPrivateRaw.fill(0);
 
-            // Verify restored key pair works for ECDH with a third party
-            const bob = await generateIdentityKeyPair();
-            const secretOriginal = await deriveSharedSecret(kp.privateKey, bob.publicKey);
-            const secretRestored = await deriveSharedSecret(restoredPrivateKey, restoredPublicKey);
+            const roomKey = await generateMasterKey();
+            const wrapped = await wrapKeyForIdentity(restoredPublicKey, roomKey);
+            const unwrapped = await unwrapKeyWithIdentity(restoredPrivateKey, wrapped);
+            const encrypted = await encrypt(roomKey, 'end-to-end identity key roundtrip');
+            const decrypted = await decrypt(unwrapped, encrypted);
 
-            // secretRestored (private) + bob.public should match secretOriginal
-            const secretRestoredWithBob = await deriveSharedSecret(
-                restoredPrivateKey,
-                bob.publicKey
-            );
-            const testMsg = 'end-to-end identity key roundtrip';
-            const enc = await encrypt(secretOriginal, testMsg);
-            const dec = await decrypt(secretRestoredWithBob, enc);
-
-            expect(dec).toBe(testMsg);
+            expect(decrypted).toBe('end-to-end identity key roundtrip');
         });
     });
 });

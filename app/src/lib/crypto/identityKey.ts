@@ -1,8 +1,8 @@
 /**
  * Identity Key Pair management module.
  *
- * Each user has an ECDH P-256 key pair that serves as their cryptographic identity.
- * The key pair is used for asymmetric encryption (future: Room Key exchange in multi-room).
+ * Each user has an RSA-OAEP key pair that serves as their cryptographic identity.
+ * The key pair is used to wrap Room Keys for multi-room membership.
  *
  * Key lifecycle:
  *   - Generated with the local identity on first app launch
@@ -11,19 +11,29 @@
  *   - Public key uploaded to server as plaintext JWK (intentional — needed for Room Key exchange)
  */
 
-import { ECDH_CURVE } from './constants';
+import { IDENTITY_RSA_MODULUS_BITS, IDENTITY_RSA_PUBLIC_EXPONENT } from './constants';
+import { importMasterKey } from './masterKey';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
 // ─── Key Generation ───────────────────────────────────────────────────
 
 /**
- * Generate a fresh ECDH P-256 identity key pair.
+ * Generate a fresh RSA-OAEP identity key pair.
  * Private key is extractable so it can be immediately wrapped with M and uploaded.
  * It remains extractable in the current local identity model.
  */
 export async function generateIdentityKeyPair(): Promise<CryptoKeyPair> {
-    return crypto.subtle.generateKey({ name: 'ECDH', namedCurve: ECDH_CURVE }, true, ['deriveKey']);
+    return crypto.subtle.generateKey(
+        {
+            name: 'RSA-OAEP',
+            modulusLength: IDENTITY_RSA_MODULUS_BITS,
+            publicExponent: IDENTITY_RSA_PUBLIC_EXPONENT,
+            hash: 'SHA-256'
+        },
+        true,
+        ['encrypt', 'decrypt']
+    );
 }
 
 // ─── Public Key Export / Import ──────────────────────────────────────
@@ -42,7 +52,9 @@ export async function exportPublicKey(publicKey: CryptoKey): Promise<JsonWebKey>
  * Public keys are always extractable.
  */
 export async function importPublicKey(jwk: JsonWebKey): Promise<CryptoKey> {
-    return crypto.subtle.importKey('jwk', jwk, { name: 'ECDH', namedCurve: ECDH_CURVE }, true, []);
+    return crypto.subtle.importKey('jwk', jwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, true, [
+        'encrypt'
+    ]);
 }
 
 // ─── Private Key Export / Import ─────────────────────────────────────
@@ -65,35 +77,75 @@ export async function importPrivateKey(raw: Bytes, extractable: boolean): Promis
     return crypto.subtle.importKey(
         'pkcs8',
         raw,
-        { name: 'ECDH', namedCurve: ECDH_CURVE },
+        { name: 'RSA-OAEP', hash: 'SHA-256' },
         extractable,
-        ['deriveKey']
+        ['decrypt']
     );
 }
 
-// ─── ECDH Key Agreement ───────────────────────────────────────────────
+// ─── Identity-Based Encryption / Key Wrapping ────────────────────────
 
 /**
- * Derive a shared AES-256-GCM secret from our private key and another user's public key.
+ * Encrypt bytes for another identity key.
  *
- * The derived key is non-extractable and suitable for use as a Room Key or
- * as an intermediate to wrap/unwrap a Room Key.
- *
- * Property: deriveSharedSecret(alice.private, bob.public) ===
- *           deriveSharedSecret(bob.private, alice.public)
- *
- * This function is not yet used in production — it is the primitive for
- * future multi-room Room Key exchange.
+ * RSA-OAEP can encrypt small payloads directly with the recipient's public key.
+ * For larger data, wrap an AES-GCM key and encrypt the data with that key.
  */
-export async function deriveSharedSecret(
-    myPrivateKey: CryptoKey,
-    theirPublicKey: CryptoKey
-): Promise<CryptoKey> {
-    return crypto.subtle.deriveKey(
-        { name: 'ECDH', public: theirPublicKey },
-        myPrivateKey,
-        { name: 'AES-GCM', length: 256 },
-        false, // non-extractable
-        ['encrypt', 'decrypt']
+export async function encryptForIdentity(
+    recipientPublicKey: CryptoKey,
+    data: Bytes
+): Promise<Bytes> {
+    const ciphertext = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, recipientPublicKey, data);
+    return new Uint8Array(ciphertext as ArrayBuffer);
+}
+
+/**
+ * Decrypt bytes encrypted with encryptForIdentity().
+ */
+export async function decryptWithIdentity(
+    recipientPrivateKey: CryptoKey,
+    ciphertext: Bytes
+): Promise<Bytes> {
+    const plaintext = await crypto.subtle.decrypt(
+        { name: 'RSA-OAEP' },
+        recipientPrivateKey,
+        ciphertext
     );
+    return new Uint8Array(plaintext as ArrayBuffer);
+}
+
+/**
+ * Export and wrap an AES-GCM key for another identity key.
+ *
+ * The key being wrapped must be extractable. This is suitable for room keys,
+ * which need to be shared with invited members.
+ */
+export async function wrapKeyForIdentity(
+    recipientPublicKey: CryptoKey,
+    key: CryptoKey
+): Promise<Bytes> {
+    const rawKey = new Uint8Array((await crypto.subtle.exportKey('raw', key)) as ArrayBuffer);
+
+    try {
+        return await encryptForIdentity(recipientPublicKey, rawKey);
+    } finally {
+        rawKey.fill(0);
+    }
+}
+
+/**
+ * Unwrap an AES-GCM key shared by another identity.
+ */
+export async function unwrapKeyWithIdentity(
+    recipientPrivateKey: CryptoKey,
+    ciphertext: Bytes,
+    extractable = true
+): Promise<CryptoKey> {
+    const rawKey = await decryptWithIdentity(recipientPrivateKey, ciphertext);
+
+    try {
+        return await importMasterKey(rawKey, extractable);
+    } finally {
+        rawKey.fill(0);
+    }
 }

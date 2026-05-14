@@ -1,6 +1,6 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
-import { localDB, type PersonaRecord } from '$lib/adapters/db';
+import { canAccessScope, getSessionScope } from '../session';
+import { localDB, type DataScopeType, type PersonaRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import type { AssetRef } from '$lib/types/refs';
@@ -44,10 +44,9 @@ function parseFields(record: PersonaRecord): PersonaFields {
 
 export class PersonaService {
     /** List all personas */
-    static async list(): Promise<Persona[]> {
+    static async list(scopeType: DataScopeType = 'user'): Promise<Persona[]> {
         await buffer.flushTable('personas');
-        const { userId } = getActiveSession();
-        const records = await localDB.getAll<PersonaRecord>('personas', userId);
+        const records = await localDB.getAll<PersonaRecord>('personas', getSessionScope(scopeType));
 
         return records.map((record) => ({
             ...parseFields(record),
@@ -56,9 +55,8 @@ export class PersonaService {
     }
 
     static async get(id: string): Promise<Persona | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<PersonaRecord>('personas', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
         return {
             ...parseFields(record),
@@ -67,17 +65,21 @@ export class PersonaService {
     }
 
     /** Create a persona */
-    static async create(fields: DeepPartial<PersonaFields> = {}): Promise<Persona> {
+    static async create(
+        fields: DeepPartial<PersonaFields> = {},
+        scopeType: DataScopeType = 'user'
+    ): Promise<Persona> {
         const resolved: PersonaFields = deepMerge(defaultPersonaFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope(scopeType);
         const id = generateId();
         const now = clock.now();
 
         try {
             const newRecord: PersonaRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
@@ -94,9 +96,8 @@ export class PersonaService {
 
     /** Update a persona */
     static async update(id: string, changes: DeepPartial<PersonaFields>): Promise<Persona> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<PersonaRecord>('personas', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Persona not found: ${id}`);
         }
 
@@ -119,9 +120,8 @@ export class PersonaService {
 
     /** Delete a persona */
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<PersonaRecord>('personas', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Persona not found: ${id}`);
         }
 

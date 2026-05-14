@@ -1,5 +1,5 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
+import { canAccessScope, getSessionScope } from '../session';
 import { localDB, type RoomRecord } from '$lib/adapters/db';
 import type { ResourceRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
@@ -35,7 +35,7 @@ const defaultFields: RoomFields = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function parseFields(record: RoomRecord): RoomFields {
+export function parseFields(record: RoomRecord): RoomFields {
     return deepMerge(defaultFields, record.data as DeepPartial<RoomFields>);
 }
 
@@ -44,15 +44,13 @@ function parseFields(record: RoomRecord): RoomFields {
 export class RoomService {
     static async list(): Promise<Room[]> {
         await buffer.flushTable('rooms');
-        const { userId } = getActiveSession();
-        const records = await localDB.getAll<RoomRecord>('rooms', userId);
+        const records = await localDB.getAll<RoomRecord>('rooms', getSessionScope('user'));
         return records.map((record) => ({ ...parseFields(record), id: record.id }));
     }
 
     static async get(id: string): Promise<Room | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<RoomRecord>('rooms', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
         return { ...parseFields(record), id: record.id };
     }
@@ -60,14 +58,15 @@ export class RoomService {
     static async create(fields: DeepPartial<RoomFields> = {}): Promise<Room> {
         const resolved: RoomFields = deepMerge(defaultFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope('user');
         const id = generateId();
         const now = clock.now();
 
         try {
             const record: RoomRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
@@ -83,9 +82,8 @@ export class RoomService {
     }
 
     static async update(id: string, changes: DeepPartial<RoomFields>): Promise<Room> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<RoomRecord>('rooms', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', 'Room not found');
         }
 
@@ -112,10 +110,13 @@ export class RoomService {
     }
 
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<RoomRecord>('rooms', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Room not found: ${id}`);
+        }
+
+        if (record.scopeType !== 'user') {
+            throw new AppError('INVALID_INPUT', `Cannot delete a shared room: ${id}`);
         }
 
         try {
@@ -127,7 +128,7 @@ export class RoomService {
                 buffer.flushTable('translations')
             ]);
 
-            buffer.drop('rooms', id);
+            buffer.drop('rooms', record.id);
             await localDB.transaction(
                 ['chats', 'messages', 'tool_calls', 'translations', 'rooms'],
                 'rw',

@@ -12,6 +12,7 @@ import type {
     AssetStatus,
     AssetKind
 } from './types';
+import type { DataScope } from '$lib/adapters/db';
 
 /**
  * Tauri Asset Adapter
@@ -27,7 +28,8 @@ import type {
 /** Raw shape of an asset record as stored in SQLite */
 interface AssetSqlRow {
     id: string;
-    userId: string;
+    scopeType: string;
+    scopeId: string;
     createdAt: number;
     updatedAt: number;
     isDeleted: number; // SQLite uses 0/1 for boolean
@@ -37,7 +39,8 @@ interface AssetSqlRow {
 /** Raw shape of a registry record as stored in SQLite */
 interface RegistrySqlRow {
     id: string;
-    userId: string;
+    scopeType: string;
+    scopeId: string;
     createdAt: number;
     updatedAt: number;
     isDeleted: number;
@@ -51,7 +54,8 @@ interface RegistrySqlRow {
 function assetRecordToBindings(record: AssetRecord): AssetSqlRow {
     return {
         id: record.id,
-        userId: record.userId,
+        scopeType: record.scopeType,
+        scopeId: record.scopeId,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
         isDeleted: record.isDeleted ? 1 : 0,
@@ -63,7 +67,8 @@ function assetRecordToBindings(record: AssetRecord): AssetSqlRow {
 function parseAssetRecord(row: AssetSqlRow): AssetRecord {
     return {
         id: row.id,
-        userId: row.userId,
+        scopeType: row.scopeType as AssetRecord['scopeType'],
+        scopeId: row.scopeId,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         isDeleted: row.isDeleted === 1,
@@ -75,7 +80,8 @@ function parseAssetRecord(row: AssetSqlRow): AssetRecord {
 function parseRegistryRecord(row: RegistrySqlRow): AssetRegistryRecord {
     return {
         id: row.id,
-        userId: row.userId,
+        scopeType: row.scopeType as AssetRegistryRecord['scopeType'],
+        scopeId: row.scopeId,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         isDeleted: row.isDeleted === 1,
@@ -136,21 +142,24 @@ export class TauriAssetAdapter implements IAssetAdapter {
         sql += `
             CREATE TABLE IF NOT EXISTS assets (
                 id TEXT PRIMARY KEY,
-                userId TEXT NOT NULL,
+                scopeType TEXT NOT NULL,
+                scopeId TEXT NOT NULL,
                 createdAt INTEGER NOT NULL,
                 updatedAt INTEGER NOT NULL,
                 isDeleted INTEGER NOT NULL DEFAULT 0,
                 data TEXT
             );
         `;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assets_userId ON assets (userId);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assets_scope ON assets (scopeType, scopeId);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assets_scope_updatedAt ON assets (scopeType, scopeId, updatedAt);`;
         sql += `CREATE INDEX IF NOT EXISTS idx_assets_updatedAt ON assets (updatedAt);`;
 
         // Asset registry table - device-local cache metadata + routing fields
         sql += `
             CREATE TABLE IF NOT EXISTS assetRegistry (
                 id TEXT PRIMARY KEY,
-                userId TEXT NOT NULL,
+                scopeType TEXT NOT NULL,
+                scopeId TEXT NOT NULL,
                 createdAt INTEGER NOT NULL,
                 updatedAt INTEGER NOT NULL,
                 isDeleted INTEGER NOT NULL DEFAULT 0,
@@ -160,10 +169,12 @@ export class TauriAssetAdapter implements IAssetAdapter {
                 accessedAt INTEGER NOT NULL
             );
         `;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId ON assetRegistry (userId);`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_status ON assetRegistry (userId, status);`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_status_kind ON assetRegistry (userId, status, kind);`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_userId_isDeleted ON assetRegistry (userId, isDeleted);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope ON assetRegistry (scopeType, scopeId);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope_status ON assetRegistry (scopeType, scopeId, status);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope_status_kind ON assetRegistry (scopeType, scopeId, status, kind);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope_isDeleted ON assetRegistry (scopeType, scopeId, isDeleted);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_status ON assetRegistry (status);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_status_kind ON assetRegistry (status, kind);`;
         sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_accessedAt ON assetRegistry (accessedAt);`;
 
         await db.execute(sql);
@@ -178,11 +189,11 @@ export class TauriAssetAdapter implements IAssetAdapter {
         return undefined;
     }
 
-    async getAllAssets(userId: string): Promise<AssetRecord[]> {
+    async getAllAssets(scope: DataScope): Promise<AssetRecord[]> {
         const db = await this.getDb();
         const rows = await db.select<AssetSqlRow[]>(
-            `SELECT * FROM assets WHERE userId = $1 AND isDeleted = 0 ORDER BY updatedAt ASC`,
-            [userId]
+            `SELECT * FROM assets WHERE scopeType = $1 AND scopeId = $2 AND isDeleted = 0 ORDER BY updatedAt ASC`,
+            [scope.scopeType, scope.scopeId]
         );
         return rows.map((row) => parseAssetRecord(row));
     }
@@ -192,9 +203,17 @@ export class TauriAssetAdapter implements IAssetAdapter {
         const data = assetRecordToBindings(record);
 
         await db.execute(
-            `INSERT OR REPLACE INTO assets (id, userId, createdAt, updatedAt, isDeleted, data)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [data.id, data.userId, data.createdAt, data.updatedAt, data.isDeleted, data.data]
+            `INSERT OR REPLACE INTO assets (id, scopeType, scopeId, createdAt, updatedAt, isDeleted, data)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+                data.id,
+                data.scopeType,
+                data.scopeId,
+                data.createdAt,
+                data.updatedAt,
+                data.isDeleted,
+                data.data
+            ]
         );
         this.emitWriteEvent('assets', 'put', [record.id], options);
     }
@@ -215,11 +234,11 @@ export class TauriAssetAdapter implements IAssetAdapter {
         this.emitWriteEvent('assets', 'delete', [id], options);
     }
 
-    async getAssetsSince(userId: string, sinceUpdatedAt: number): Promise<AssetRecord[]> {
+    async getAssetsSince(scope: DataScope, sinceUpdatedAt: number): Promise<AssetRecord[]> {
         const db = await this.getDb();
         const rows = await db.select<AssetSqlRow[]>(
-            `SELECT * FROM assets WHERE userId = $1 AND updatedAt > $2 ORDER BY updatedAt ASC`,
-            [userId, sinceUpdatedAt]
+            `SELECT * FROM assets WHERE scopeType = $1 AND scopeId = $2 AND updatedAt > $3 ORDER BY updatedAt ASC`,
+            [scope.scopeType, scope.scopeId, sinceUpdatedAt]
         );
         return rows.map((row) => parseAssetRecord(row));
     }
@@ -236,33 +255,54 @@ export class TauriAssetAdapter implements IAssetAdapter {
         return undefined;
     }
 
-    async getAllRegistry(userId: string): Promise<AssetRegistryRecord[]> {
+    async getAllRegistry(scope: DataScope): Promise<AssetRegistryRecord[]> {
         const db = await this.getDb();
         const rows = await db.select<RegistrySqlRow[]>(
-            `SELECT * FROM assetRegistry WHERE userId = $1 AND isDeleted = 0`,
-            [userId]
+            `SELECT * FROM assetRegistry WHERE scopeType = $1 AND scopeId = $2 AND isDeleted = 0`,
+            [scope.scopeType, scope.scopeId]
         );
         return rows.map((row) => parseRegistryRecord(row));
     }
 
     async getRegistryByStatus(
-        userId: string,
+        scope: DataScope,
         status: AssetStatus,
         kinds?: AssetKind[]
     ): Promise<AssetRegistryRecord[]> {
         const db = await this.getDb();
         if (!kinds || kinds.length === 0) {
             const rows = await db.select<RegistrySqlRow[]>(
-                `SELECT * FROM assetRegistry WHERE userId = $1 AND status = $2 AND isDeleted = 0`,
-                [userId, status]
+                `SELECT * FROM assetRegistry WHERE scopeType = $1 AND scopeId = $2 AND status = $3 AND isDeleted = 0`,
+                [scope.scopeType, scope.scopeId, status]
             );
             return rows.map((row) => parseRegistryRecord(row));
         }
 
-        const placeholders = kinds.map((_, i) => `$${i + 3}`).join(', ');
+        const placeholders = kinds.map((_, i) => `$${i + 4}`).join(', ');
         const rows = await db.select<RegistrySqlRow[]>(
-            `SELECT * FROM assetRegistry WHERE userId = $1 AND status = $2 AND isDeleted = 0 AND kind IN (${placeholders})`,
-            [userId, status, ...kinds]
+            `SELECT * FROM assetRegistry WHERE scopeType = $1 AND scopeId = $2 AND status = $3 AND isDeleted = 0 AND kind IN (${placeholders})`,
+            [scope.scopeType, scope.scopeId, status, ...kinds]
+        );
+        return rows.map((row) => parseRegistryRecord(row));
+    }
+
+    async getAllRegistryByStatus(
+        status: AssetStatus,
+        kinds?: AssetKind[]
+    ): Promise<AssetRegistryRecord[]> {
+        const db = await this.getDb();
+        if (!kinds || kinds.length === 0) {
+            const rows = await db.select<RegistrySqlRow[]>(
+                `SELECT * FROM assetRegistry WHERE status = $1 AND isDeleted = 0`,
+                [status]
+            );
+            return rows.map((row) => parseRegistryRecord(row));
+        }
+
+        const placeholders = kinds.map((_, i) => `$${i + 2}`).join(', ');
+        const rows = await db.select<RegistrySqlRow[]>(
+            `SELECT * FROM assetRegistry WHERE status = $1 AND isDeleted = 0 AND kind IN (${placeholders})`,
+            [status, ...kinds]
         );
         return rows.map((row) => parseRegistryRecord(row));
     }
@@ -271,11 +311,12 @@ export class TauriAssetAdapter implements IAssetAdapter {
         const db = await this.getDb();
 
         await db.execute(
-            `INSERT OR REPLACE INTO assetRegistry (id, userId, createdAt, updatedAt, isDeleted, kind, status, size, accessedAt)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            `INSERT OR REPLACE INTO assetRegistry (id, scopeType, scopeId, createdAt, updatedAt, isDeleted, kind, status, size, accessedAt)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [
                 record.id,
-                record.userId,
+                record.scopeType,
+                record.scopeId,
                 record.createdAt,
                 record.updatedAt,
                 record.isDeleted ? 1 : 0,

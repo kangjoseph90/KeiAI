@@ -21,7 +21,7 @@ Stores (lib/stores/)
  │  state.ts: all writable store instances  │  domain files: action functions
  ▼
 Services (lib/services/)
- │  static-method classes  │  CRUD  │  sync encryption  │  guards
+ │  static-method classes  │  CRUD  │  scope guards  │  domain invariants
  ▼
 Adapters (lib/adapters/)
  │  interface + platform impl (Web: IndexedDB/localStorage, Tauri: SQLite/FS)
@@ -68,7 +68,8 @@ Local storage is plaintext domain JSON. Synced data is encrypted client-side (AE
 
 - Master key `M` is generated with the local identity and remains extractable for sync wrapping, recovery, and device transfer
 - Local-only vs sync-linked state is derived from `UserRecord.username` and PocketBase auth validity. `syncServerUrl` is only the selected sync server setting, not the link state.
-- Use `getActiveSession()` for local identity; use `getSyncSession()` only at sync/encryption boundaries
+- Use `getActiveSession()` for local identity and `getSessionScope(scopeType)` for scoped CRUD.
+- A room session extends the active user session; it does not replace it.
 - Fresh random IV per encryption (semantic security)
 
 ### Encrypt-Decrypt-Merge Cycle
@@ -99,6 +100,7 @@ Each entity type uses one table with one local plaintext `data` payload. The sam
 - Every entity is stored in a single table (e.g., `characters`, `chats`, `presets`)
 - No split between summary and data tables — one record, one payload
 - `XxxContent` holds user-editable fields; `XxxRefs` holds structural references
+- Syncable records include `scopeType/scopeId`; user scope and room scope can coexist in the same local table.
 
 ### Relationship Model
 
@@ -167,7 +169,8 @@ Every service file follows this order:
 ```
 
 - All methods are `static async`
-- Start every method with `const { masterKey, userId } = getActiveSession()`
+- Use `getSessionScope('user')` or `getSessionScope('room')` at create/list boundaries.
+- Use `canAccessScope()` or `canAccessUserScope()` when a method loads an existing record by id.
 - Throw `AppError(code, message, cause?)` — never swallow errors
 - Pass original `cause` when wrapping lower-level exceptions
 - Sync push is always fire-and-forget: `void DataSyncService.pushRecord(...)`
@@ -285,7 +288,7 @@ Ten adapter interfaces, each with Web + Tauri implementations dispatched via `is
 
 | Adapter        | Web                  | Tauri                    | Purpose                           |
 | -------------- | -------------------- | ------------------------ | --------------------------------- |
-| `db`           | Dexie (IndexedDB)    | SQLite                   | Encrypted record storage          |
+| `db`           | Dexie (IndexedDB)    | SQLite                   | Local plaintext domain records    |
 | `kv`           | localStorage         | @tauri-apps/plugin-store | Site preferences, sync timestamps |
 | `storage`      | OPFS                 | Native FS                | Binary asset files                |
 | `user`         | IndexedDB (separate) | Keychain + IndexedDB     | User records + CryptoKey          |
@@ -422,12 +425,12 @@ ID convention: `provider::modelId` for built-in (e.g. `openai::gpt-5.4`), `custo
 
 Follow the existing single-table pattern:
 
-1. **Schema**: Update the canonical PocketBase init schema (`pocketbase/pb_migrations/1773000000_init_keiai_schema.js`) with a blind sync table (`userId`, `encryptedData`, `encryptedDataIV`, no FK/relation). Do not add incremental migrations while the project assumes a clean database.
-2. **Adapter**: Add record types in `adapters/db/types.ts`, add table to Dexie schema in `db/web.ts`
+1. **Schema**: Add the local table name to the sync `kind` allowlist if needed. PocketBase usually does not need a new domain collection because synced domain records route through `records` / `multi_room_records`.
+2. **Adapter**: Add record types in `adapters/db/types.ts`, add table to Dexie/SQLite schemas with scope indexes.
 3. **Service**: Create `services/content/<entity>.ts` — domain types, defaults, parse helpers, static CRUD class
 4. **Refs**: Add `EntityListConfig<OrderedRef>` for owned child lists, or `EntityListConfig<ResourceRef>` for weak/shared refs
 5. **Store**: Add writable in `stores/state.ts`, create `stores/content/<entity>.ts` with action functions
-6. **Sync**: Register table in sync manager
+6. **Sync**: Add the table to `SYNC_TABLES` only if it should sync through the generic records engine.
 7. **Export**: Add to relevant barrel files
 8. **Test**: Write unit tests for service + store covering success, not-found, and encryption failure paths
 

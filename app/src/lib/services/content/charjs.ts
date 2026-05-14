@@ -1,6 +1,6 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
-import { localDB, type CharJSRecord } from '$lib/adapters/db';
+import { canAccessScope, getSessionScope } from '../session';
+import { localDB, type CharJSRecord, type DataScopeType } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -39,7 +39,6 @@ export class CharJSService {
     /** List charjs scripts owned by a specific parent (character, module) */
     static async listByOwner(ownerId: string): Promise<CharJS[]> {
         await buffer.flushTable('charjs');
-        const { userId } = getActiveSession();
         const records = await localDB.getByIndex<CharJSRecord>(
             'charjs',
             'ownerId',
@@ -48,7 +47,7 @@ export class CharJSService {
         );
 
         return records
-            .filter((record) => record.userId === userId)
+            .filter((record) => canAccessScope(record))
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
@@ -57,9 +56,8 @@ export class CharJSService {
     }
 
     static async get(id: string): Promise<CharJS | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<CharJSRecord>('charjs', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
         return {
             ...parseFields(record),
@@ -68,17 +66,22 @@ export class CharJSService {
         };
     }
 
-    static async create(ownerId: string, fields: DeepPartial<CharJSFields> = {}): Promise<CharJS> {
+    static async create(
+        ownerId: string,
+        fields: DeepPartial<CharJSFields> = {},
+        scopeType: DataScopeType = 'user'
+    ): Promise<CharJS> {
         const resolved: CharJSFields = deepMerge(defaultCharJSFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope(scopeType);
         const id = generateId();
         const now = clock.now();
 
         try {
             const newRecord: CharJSRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 ownerId,
                 createdAt: now,
                 updatedAt: now,
@@ -95,9 +98,8 @@ export class CharJSService {
     }
 
     static async update(id: string, changes: DeepPartial<CharJSFields>): Promise<CharJS> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<CharJSRecord>('charjs', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `CharJS script not found: ${id}`);
         }
 
@@ -119,9 +121,8 @@ export class CharJSService {
     }
 
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<CharJSRecord>('charjs', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `CharJS script not found: ${id}`);
         }
 

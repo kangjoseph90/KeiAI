@@ -1,7 +1,7 @@
 /**
  * User Service — Local User Lifecycle
  *
- * Owns local user record persistence and the active in-memory session:
+ * Owns local user record persistence:
  * local identity creation, sync-link user saves, user field updates, local
  * deletion, active-user KV selection, and key-backed session activation.
  * PB auth, sync server selection, and page reload orchestration live above this layer.
@@ -9,8 +9,11 @@
 
 import { appUser, type UserRecord } from '$lib/adapters/user';
 export type { UserRecord };
+import { clearSession, getActiveSession, setUserSession } from './session';
+export type { MultiRoomSession, Session, UserSession } from './session';
 import { appAsset } from '$lib/adapters/asset';
 import { localDB, TABLES } from '$lib/adapters/db';
+import { appMulti } from '$lib/adapters/multi';
 import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
 import { generateMasterKey, generateIdentityKeyPair } from '$lib/crypto';
@@ -21,6 +24,7 @@ import { AppError } from '$lib/types/errors';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { pb } from '$lib/adapters/pb';
 import { PB_URL } from '$lib/config';
+import { buffer } from './content/record_buffer';
 
 export interface UserFields {
     name: string;
@@ -33,14 +37,6 @@ export interface User extends UserFields {
     id: string;
     selfHostUrl?: string;
 }
-
-export interface Session {
-    userId: string;
-    masterKey: CryptoKey;
-    identityKeyPair: CryptoKeyPair;
-}
-
-let activeSession: Session | null = null;
 
 function getDefaultAvatarUrl(seed: string): string {
     const svg = minidenticon(seed);
@@ -58,17 +54,6 @@ export function toUser(user: UserRecord): User {
     };
 }
 
-export function hasActiveSession(): boolean {
-    return activeSession !== null;
-}
-
-export function getActiveSession(): Session {
-    if (activeSession) {
-        return activeSession;
-    }
-    throw new AppError('NOT_FOUND', `Active session not found`);
-}
-
 export class UserService {
     /**
      * Persist the active user ID and activate the in-memory session.
@@ -80,14 +65,14 @@ export class UserService {
     ): Promise<void> {
         if (!userId) return this.clearActiveUser();
         const user = await appUser.getUser(userId);
-        if (!user) {
+        if (!user || user.isDeleted) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
-        activeSession = {
+        setUserSession({
             userId,
             masterKey: user.masterKey,
             identityKeyPair: user.identityKeyPair
-        };
+        });
         await appKV.set('activeUserId', userId);
         pb.baseUrl = user.selfHostUrl || PB_URL;
         if (!options.preserveAuth) {
@@ -96,7 +81,7 @@ export class UserService {
     }
 
     static async clearActiveUser(): Promise<void> {
-        activeSession = null;
+        clearSession();
         await appKV.set('activeUserId', '');
         pb.baseUrl = PB_URL;
         pb.authStore.clear();
@@ -105,7 +90,7 @@ export class UserService {
     /** Get a user view by local user ID. */
     static async getUser(userId: string): Promise<User> {
         const user = await appUser.getUser(userId);
-        if (!user) {
+        if (!user || user.isDeleted) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
         return toUser(user);
@@ -185,7 +170,7 @@ export class UserService {
         const now = clock.now();
 
         // selfHostUrl MUST be updated through migration stage, not through auth flow
-        if (existing && existing.selfHostUrl !== params.selfHostUrl) {
+        if (existing && !existing.isDeleted && existing.selfHostUrl !== params.selfHostUrl) {
             throw new AppError('INVALID_INPUT', 'selfHostUrl cannot be changed through login');
         }
 
@@ -210,7 +195,7 @@ export class UserService {
     /** Update a user view by local user ID. */
     static async updateUser(userId: string, changes: DeepPartial<UserFields>): Promise<User> {
         const user = await appUser.getUser(userId);
-        if (!user) {
+        if (!user || user.isDeleted) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
 
@@ -224,7 +209,7 @@ export class UserService {
     static async getActiveSelfHostUrl(): Promise<string | undefined> {
         const { userId } = getActiveSession();
         const user = await appUser.getUser(userId);
-        if (!user) {
+        if (!user || user.isDeleted) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
         return user.selfHostUrl;
@@ -232,7 +217,7 @@ export class UserService {
 
     static async updateSelfHostUrl(userId: string, hostUrl?: string): Promise<void> {
         const user = await appUser.getUser(userId);
-        if (!user) {
+        if (!user || user.isDeleted) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
         user.selfHostUrl = hostUrl;
@@ -258,9 +243,10 @@ export class UserService {
         await appUser.deleteUser(userId, { origin: 'sync' });
 
         // Purge all asset artifacts for this user
+        const userScope = { scopeType: 'user' as const, scopeId: userId };
         const [assets, registry] = await Promise.all([
-            appAsset.getAllAssets(userId),
-            appAsset.getAllRegistry(userId)
+            appAsset.getAllAssets(userScope),
+            appAsset.getAllRegistry(userScope)
         ]);
         const ids = new Set<string>([...assets.map((r) => r.id), ...registry.map((r) => r.id)]);
         for (const id of ids) {
@@ -272,15 +258,27 @@ export class UserService {
             await appAsset.deleteAsset(asset.id, { origin: 'sync' });
         }
 
-        const dbPromises = TABLES.map((table) => localDB.deleteByIndex(table, 'userId', userId));
-        const kvPromises = TABLES.map((table) => appKV.remove(`lastSync_${table}_${userId}`));
+        await Promise.all(TABLES.map((table) => buffer.flushTable(table)));
 
-        await Promise.all([...dbPromises, ...kvPromises]);
+        const dbPromises = TABLES.map((table) =>
+            localDB.deleteByIndex(table, 'scopeId', userId, { origin: 'sync' })
+        );
+        const kvPromises = [
+            appKV.remove(`lastSync_records_user_${userId}`),
+            appKV.remove(`lastSync_assets_user_${userId}`),
+            appKV.remove(`lastSync_multi_meta_${userId}`)
+        ];
+
+        await Promise.all([
+            ...dbPromises,
+            ...kvPromises,
+            appMulti.purgeUserLocal(userId, { origin: 'sync' })
+        ]);
 
         try {
             const { userId: currentUserId } = getActiveSession();
             if (currentUserId === userId) {
-                pb.baseUrl = PB_URL;
+                await this.clearActiveUser();
             }
         } catch (error) {
             // Ignore

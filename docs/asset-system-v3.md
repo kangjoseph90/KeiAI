@@ -63,12 +63,21 @@ plaintext  (원본 이미지, WebP 압축 후)
 
 ## 4. 서버 스키마
 
-### 4.1 assets 테이블 (데이터 동기화 대상)
+에셋은 컨텐츠 record와 마찬가지로 scope에 따라 서버 collection이 갈린다.
+
+| Scope | 서버 collection | owner field | 암호화 키 |
+|---|---|---|---|
+| `user` | `assets` | `userId` | user master key |
+| `room` | `multi_room_assets` | `roomId` | room key |
+
+두 collection의 payload 구조는 동일하다. 차이는 권한 경계와 암호화 키뿐이다.
+
+### 4.1 assets / multi_room_assets 테이블 (동기화 대상)
 
 | 필드 | 타입 | 암호화 | 설명 |
 |---|---|---|---|
 | `id` | text PK | - | UUID |
-| `userId` | text FK | - | 소유자 |
+| `userId` / `roomId` | text | - | 개인 에셋이면 `userId`, 멀티룸 에셋이면 `roomId` |
 | `createdAt` | number | - | |
 | `updatedAt` | number | - | |
 | `isDeleted` | bool | - | 소프트 삭제 |
@@ -104,6 +113,10 @@ plaintext  (원본 이미지, WebP 압축 후)
 > 클라이언트에 노출되지 않는 서버 내부 장부.
 > countLiveRefs() 쿼리 대신 이 테이블을 직접 조회하여 판단.
 > 디버깅 시 "이 유저가 어떤 hash로 쿼타를 소비하는지" 한눈에 파악 가능.
+>
+> 멀티룸 에셋의 쿼타는 현재 정책상 방장의 quota에서 차감한다. Hook은
+> `multi_room_assets.roomId -> multi_room_index.ownerUserId`로 owner를 찾고,
+> 그 owner의 `asset_usage`에 ledger를 기록한다.
 
 ### 4.4 users 테이블 (쿼타 필드 추가)
 
@@ -156,7 +169,7 @@ onRecordAfterCreateOrUpdate('assets', (e) => {
                     && !rec.get('isDeleted') && rec.get('hash')
     const oldHash = old?.get('hash')
     const newHash = rec.get('hash')
-    const userId = rec.get('userId')
+    const userId = resolveUsageOwner(rec) // assets.userId or multi_room_index.ownerUserId
 
     // 상태 변화가 없으면 no-op
     if (oldLive === newLive && oldHash === newHash) return
@@ -170,7 +183,7 @@ onRecordAfterCreateOrUpdate('assets', (e) => {
     if (newLive && (!oldLive || oldHash !== newHash)) {
         incrementUsage(userId, newHash)
     }
-})
+}, 'assets', 'multi_room_assets')
 
 function incrementUsage(userId, hash) {
     const usage = getUsage(userId, hash)
@@ -208,7 +221,10 @@ function decrementUsage(userId, hash) {
 
 **Live Ref 정의**: `status === 'remote' && isDeleted === false && hash exists`
 
-**쿼타 규칙**: 한 유저가 같은 hash를 여러 에셋에서 참조해도 **첫 번째만 차감, 마지막 해제 시 반환**.
+**쿼타 규칙**:
+- 한 owner가 같은 hash를 여러 에셋에서 참조해도 **첫 번째만 차감, 마지막 해제 시 반환**.
+- 개인 에셋 owner는 `assets.userId`.
+- 멀티룸 에셋 owner는 해당 room의 `ownerUserId`.
 
 ### 5.4 GC (주기적 크론)
 
@@ -256,10 +272,16 @@ for (const { hash } of orphans) {
 ## 6. 클라이언트 저장소 계층
 
 ```
-[assets 테이블]     SOT. PB와 E2EE 동기화. {id, hash, status, encData}
-[assetRegistry]    디바이스 종속. 동기화 안 됨. {id, size, accessedAt, isDeleted}
+[assets 테이블]     SOT. scope 기반 PB E2EE 동기화. {id, scopeType, scopeId, hash, status, encKey}
+[assetRegistry]    디바이스 종속 캐시 인덱스. {id, scopeType, scopeId, kind, status, size, accessedAt}
 [appStorage]       실제 파일 (평문). /assets/{id}
 ```
+
+로컬 에셋 테이블은 개인/멀티룸으로 나누지 않는다. `scopeType/scopeId`가 소유 경계를 나타낸다.
+
+- `scopeType='user'`: 개인 에셋. `assets` collection으로 동기화.
+- `scopeType='room'`: 멀티룸 에셋. `multi_room_assets` collection으로 동기화.
+- registry는 동기화하지 않지만 scope를 가진다. upload queue와 LRU 캐시가 같은 scope 정책으로 동작하기 위해서다.
 
 ---
 
@@ -270,11 +292,12 @@ for (const { hash } of orphans) {
 ```
 1. 전처리: WebP 변환, 리사이징
 2. 수렴 암호화: encKey, iv, ciphertext, hash 유도
-3. 로컬 저장: appStorage + assets(status:local) + registry
+3. 로컬 저장: appStorage + scoped assets(status:local) + scoped registry
 4. [로그인 시] 백그라운드:
    a. PUT /api/assets/{hash} (ciphertext 업로드)
    b. 성공 후 assets.status → remote
-   c. sync → Hook이 asset_usage 생성 + 쿼타 차감
+   c. sync → scope에 따라 assets 또는 multi_room_assets로 push
+   d. Hook이 asset_usage 생성 + 쿼타 차감
 ```
 
 ### 7.2 경량 봇 임포트 (hash+encKey만)
@@ -325,6 +348,8 @@ for (const { hash } of orphans) {
 3. registry → 삭제 큐
 4. [로그인 시] sync → Hook이 asset_usage 감소 → 마지막이면 쿼타 반환
 ```
+
+room 삭제는 room scope 에셋들을 soft delete하고 delete marker를 남긴다. room session이 닫힌 뒤에도 `AssetSyncEngine`이 marker의 room key를 사용해 `multi_room_assets` tombstone push를 완료할 수 있다.
 
 ### 7.6 LRU 캐시 방출 (웹)
 
@@ -395,10 +420,11 @@ function getCiphertextUrl(hash: string): string {
 ## 9. 서버 테이블 요약
 
 ```
-[assets]           동기화 대상. 클라이언트 SOT. {id, hash, status, encData}
-[asset_catalog]    서버 전용. 물리 파일 목록. {hash, size}
-[asset_usage]      서버 전용. 유저별 ref ledger. {userId, hash, refCount, size}
-[assetRegistry]    클라이언트 전용. 기기별 캐시. {id, size, accessedAt}
+[assets]             개인 에셋 동기화 대상. {id, userId, hash, status, encryptedData}
+[multi_room_assets]  멀티룸 에셋 동기화 대상. {id, roomId, hash, status, encryptedData}
+[asset_catalog]      서버 전용. 물리 파일 목록. {hash, size, data}
+[asset_usage]        서버 전용. owner별 ref ledger. {userId, hash, refCount, size}
+[assetRegistry]      클라이언트 전용. 기기별 캐시. {id, scopeType, scopeId, size, accessedAt}
 ```
 
 ---

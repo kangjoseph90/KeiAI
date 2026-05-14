@@ -1,163 +1,227 @@
 # KeiAI 데이터 스키마 설계 철학
 
-> E2EE(종단간 암호화) 기반 AI 롤플레잉 클라이언트의 데이터 아키텍처 원칙
+> Local-first + E2EE + 멀티 캐릭터/페르소나 + 멀티룸을 위한 현재 canonical 데이터 모델
 
 ---
 
-## 1. 저장소 구조: 단일 테이블 구조
+## 1. 핵심 원칙
 
-모든 엔티티는 **하나의 테이블**에 저장된다. 로컬 테이블은 하나의 평문 JSON 필드(`data`)를 보관하고, PocketBase 동기화 테이블은 같은 내용을 암호화한 JSON Blob(`encryptedData` + `encryptedDataIV`)을 보관한다.
+KeiAI의 로컬 DB와 서버 DB는 같은 모양을 목표로 하지 않는다.
 
-- 엔티티의 모든 데이터(목록용 메타데이터 + 상세 본문)가 단일 JSON에 포함된다.
-- 로컬에서는 평문 JSON으로 저장하고, 서버로 나갈 때만 AES-GCM으로 암호화된 JSON Blob으로 변환한다.
-- 부모 엔티티가 자식의 미리보기 데이터를 복사해서 들고 있으면 **안 된다**. 미리보기가 필요하면 항상 자식의 테이블을 쿼리한다.
+- **로컬 DB**는 앱이 빠르게 실행하기 좋은 도메인 테이블 구조를 유지한다.
+- **서버 DB**는 내용을 모르는 blind sync store로 동작한다.
+- 로컬에서는 평문 도메인 JSON을 저장하고, 서버로 나갈 때 sync engine이 암호화한다.
+- 서버는 컨텐츠 payload를 해석하지 않고, 권한/동기화/에셋 accounting에 필요한 최소 필드만 평문으로 본다.
+
+이 분리는 의도적이다.
+
+```
+Service -> Local Adapter (plaintext domain tables)
+        -> Sync Engine (scope routing + encryption)
+        -> PocketBase (opaque encrypted records)
+```
 
 ---
 
-## 2. 관계 설계: 소유와 참조
+## 2. Scope 기반 로컬 레코드
 
-KeiAI의 현재 개인 채팅 모델은 다음 계층을 기준으로 한다.
+모든 동기화 대상 로컬 레코드는 같은 기본 메타데이터를 가진다.
+
+```typescript
+export type DataScopeType = 'user' | 'room';
+
+export interface DataScope {
+    scopeType: DataScopeType;
+    scopeId: string; // userId or roomId
+}
+
+export interface BaseRecord extends DataScope {
+    id: string;
+    createdAt: number;
+    updatedAt: number;
+    isDeleted: boolean;
+}
+```
+
+- `scopeType='user'`: 개인 금고. `scopeId=userId`.
+- `scopeType='room'`: 멀티룸 공유 금고. `scopeId=roomId`.
+- 같은 로컬 테이블 안에 user scope와 room scope 레코드가 공존할 수 있다.
+- 목록 조회는 scope를 반드시 받는다. 예: `localDB.getAll('characters', scope)`.
+- 단일 ID 조회는 sync/정합성/버퍼 작업 때문에 scope를 강제하지 않을 수 있지만, 서비스 레이어는 `canAccessScope()`로 접근 가능성을 확인한다.
+
+---
+
+## 3. 로컬 도메인 테이블
+
+로컬은 도메인별 테이블을 유지한다. 개인/멀티룸을 위해 테이블을 복제하지 않는다.
+
+| 테이블 | 역할 | 주요 인덱스/필드 |
+|---|---|---|
+| `settings` | 개인 설정과 최상위 목록 | scope |
+| `rooms` | 개인 room 또는 멀티룸 room record | scope |
+| `characters` | 캐릭터 | scope |
+| `personas` | 페르소나 | scope |
+| `chats` | room에 속한 채팅 | scope, `roomId` |
+| `messages` | chat에 속한 메시지 | scope, `chatId`, `[chatId+sortOrder]` |
+| `lorebooks` | owner가 소유하는 로어북 | scope, `ownerId` |
+| `scripts` | owner가 소유하는 스크립트 | scope, `ownerId` |
+| `charjs` | owner가 소유하는 CharJS | scope, `ownerId` |
+| `modules` | 개인 모듈 | user scope |
+| `presets` | 개인 프리셋 | user scope |
+| `plugins` | 개인 플러그인 | user scope |
+| `translations` | 메시지/스와이프 번역 | scope, `chatId`, `messageId`, `swipeId` |
+| `tool_calls` | 로컬 tool call 상태 | local only |
+
+멀티룸에서도 모듈/프리셋/플러그인은 기본적으로 개인 설정을 사용한다. 멀티룸에 공유되는 컨텐츠는 room scope의 room/chat/message/character/persona/lorebook/script/charjs/asset 계열이다.
+
+---
+
+## 4. 개인 모델과 멀티룸 모델
+
+개인 모드는 전역 자원을 room/chat이 약하게 참조한다.
 
 ```
 User
 ├─ Settings
 ├─ Character
-│  ├─ Lorebook
-│  ├─ Script
-│  └─ CharJS
 ├─ Persona
-├─ Preset
-├─ Module
-│  ├─ Lorebook
-│  ├─ Script
-│  └─ CharJS
-├─ Plugin
+├─ Module / Preset / Plugin
 └─ Room
+   ├─ Room -> Character refs
    └─ Chat
+      ├─ Chat -> Persona refs
       └─ Message
 ```
 
-### 2-1. 소유 관계 (`=>`)
-
-소유 관계는 부모 삭제 시 자식을 함께 삭제한다. 로컬 DB에서는 고볼륨 자식만 인덱스로 찾고, 소량 자식 목록은 부모 JSON 내부의 `EntityListConfig`로 관리한다.
+멀티룸 모드는 room이 공유 컨텐츠의 보안 경계다.
 
 ```
-RoomRecord      { ..., data: { chats: EntityListConfig, characters: ResourceRef map } }
-ChatRecord      { ..., roomId: string, data: { personas: ResourceRef map, lorebooks: EntityListConfig } }
-MessageRecord   { ..., chatId: string, sortOrder: string }
-LorebookRecord  { ..., ownerId: string }
-ScriptRecord    { ..., ownerId: string }
-CharJSRecord    { ..., ownerId: string }
+User Session
+└─ opened Multi Room Session
+   ├─ Room key
+   ├─ Room scoped Character / Persona
+   ├─ Room scoped Chat / Message
+   ├─ Room scoped Lorebook / Script / CharJS
+   └─ Room scoped Asset
 ```
 
-- `Room => Chat`: `chats.roomId` 로컬 인덱스로 빠르게 조회한다. 동시에 `room.chats`는 UI 순서/폴더를 소유한다.
-- `Chat => Message`: 메시지는 고볼륨 데이터이므로 `messages.[chatId+sortOrder]` 인덱스를 사용한다. `chat.messages` 같은 대형 ref 목록은 만들지 않는다.
-- `Character/Chat/Module => Lorebook/Script/CharJS`: 자원은 부모별 deep copy이며 `ownerId`로 cascade delete한다.
-- `Settings => Character/Persona/Preset/Module/Plugin`: 최상위 개인 자원은 `settings`의 `EntityListConfig`가 목록 순서와 폴더를 소유한다.
+개인 캐릭터/페르소나를 멀티룸에 올릴 때는 약한 참조가 아니라 **snapshot import**를 한다. 즉 원본 개인 레코드를 복사해 새 room scope 레코드로 만든다. 이후 개인 원본과 멀티룸 사본은 독립적으로 수정된다.
 
-### 2-2. 약한 참조 (`->`)
+---
 
-참조 관계는 대상 삭제 시 cascade하지 않는다. 참조자는 ID와 순서/활성화 상태만 들고, 대상이 없으면 진입 시 조용히 정리하거나 실행에서 제외한다.
+## 5. 소유와 참조
+
+### 소유 관계
+
+소유 관계는 부모 삭제 시 서비스 레이어가 자식을 cascade soft-delete한다.
+
+| 관계 | 표현 |
+|---|---|
+| Room => Chat | `ChatRecord.roomId`, `RoomFields.chats` |
+| Chat => Message | `MessageRecord.chatId`, `[chatId+sortOrder]` |
+| Character => Lorebook/Script/CharJS | child `ownerId=characterId` |
+| Chat => Lorebook | child `ownerId=chatId` |
+| Module => Lorebook/Script/CharJS | child `ownerId=moduleId` |
+
+고볼륨 자식은 인덱스로 찾고, UI 순서/폴더는 부모 JSON의 `EntityListConfig`가 가진다.
+
+### 약한 참조
+
+약한 참조는 대상 삭제 시 cascade하지 않는다. 참조자는 id, sortOrder, enabled 정도만 들고, 대상이 없으면 진입 시 정리하거나 실행에서 제외한다.
+
+| 참조 | 의미 |
+|---|---|
+| `Room -> Character` | 방에 참여한 캐릭터 목록 |
+| `Chat -> Persona` | 채팅별 유저 페르소나 목록 |
+| `Character/Preset/Room/Chat -> Module` | 실행 컨텍스트별 모듈 활성화 |
+| `MessageSwipe -> speakerId/speakerName` | 당시 화자 히스토리 |
+
+`MessageSwipe.speakerId`는 정리하지 않는다. 대상 캐릭터/페르소나가 삭제되어도 메시지는 `speakerName`으로 표시하고 아바타만 기본값으로 degrade한다.
+
+---
+
+## 6. Room 중심 채팅 모델
+
+현재 개인 채팅 모델은 `User -> Character -> Chat -> Message`가 아니라 `User -> Room -> Chat -> Message`다.
+
+`RoomFields`:
 
 ```typescript
-// RoomFields
 {
-  characters: {
-    refs: {
-      "char_alpha": { id: "char_alpha", sortOrder: "a0", enabled: true },
-      "char_beta":  { id: "char_beta",  sortOrder: "a1", enabled: false }
-    },
-    folders: {}
-  }
-}
-
-// ChatFields
-{
-  personas: {
-    refs: {
-      "persona_main": { id: "persona_main", sortOrder: "a0", enabled: true }
-    },
-    folders: {}
-  },
-  defaultCharacterId: "char_alpha",
-  selectedCharacterId: "char_beta",
-  defaultPersonaId: "persona_main",
-  selectedPersonaId: "persona_main"
+    chats: EntityListConfig<OrderedRef>;
+    characters: EntityListConfig<ResourceRef>;
 }
 ```
 
-- `Room -> Character`: 방에 들어온 캐릭터 목록. 캐릭터 레코드는 유저 전역 자원이며 방은 참조만 보유한다.
-- `Chat -> Persona`: 채팅별 유저 참가자 목록. 전역 active persona는 없다.
-- `Character/Preset/Room/Chat -> Module`: 모듈은 실행 컨텍스트별로 켜고 끄는 공유 자원이다.
-- `MessageSwipe -> Persona/Character`: `speakerId`와 `speakerName`만 저장한다. 이 참조는 정리하지 않는다. 대상이 삭제되어도 과거 메시지는 `speakerName`으로 표시하고 기본 아바타로 degrade한다.
+`ChatFields`:
+
+```typescript
+{
+    personas: EntityListConfig<ResourceRef>;
+    lorebooks: EntityListConfig<OrderedRef>;
+    defaultCharacterId?: string;
+    selectedCharacterId?: string;
+    defaultPersonaId?: string;
+    selectedPersonaId?: string;
+    greetingMessageId?: string;
+}
+```
+
+`MessageSwipe`:
+
+```typescript
+{
+    id: string;
+    content: string;
+    speakerId?: string;
+    speakerName?: string;
+    variables?: Record<string, string>;
+}
+```
+
+- `role='user'`이면 `speakerId`는 persona id로 해석한다.
+- `role='assistant'`이면 `speakerId`는 character id로 해석한다.
+- 별도 `speakerKind`는 두지 않는다. role이 이미 그 의미를 가진다.
 
 ---
 
-## 3. 참조 무결성: 느슨한 결합 (Loose Coupling)
+## 7. 런타임 선택과 컨텍스트 정책
 
-E2EE + 로컬 퍼스트 환경에서는 서버 RDB의 `FOREIGN KEY ... ON DELETE CASCADE`에 의존하지 않는다. 대신 **Graceful Degradation (관대한 실패 처리)** 전략을 따른다.
-
-### 원칙
-
-- 소유 관계는 서비스 레이어가 명시적으로 cascade soft-delete한다.
-- 약한 참조는 대상 삭제 시 참조자들을 전역 스캔하지 않는다.
-- 삭제된 참조를 만나면 **조용히 무시(Skip)**하고, 진입 시점에 필요한 범위만 정리한다 **(Self-Healing)**.
-- 메시지의 `speakerId/speakerName`은 히스토리 보존 정보이므로 stale cleanup 대상이 아니다.
-
-### Self-Healing 지점
-
-| 진입점 | 정리 대상 |
-|---|---|
-| `selectRoom(roomId)` | `room.characters`, `room.chats` stale refs |
-| `selectChat(chatId)` | `chat.personas`, `selected/default persona`, `selected/default character` stale/disabled refs |
-| `removeRoomCharacter` / `setRoomCharacterEnabled(false)` | active chat의 selected/default character |
-| `removeChatPersona` / `setChatPersonaEnabled(false)` | selected/default persona |
-
-### 이유
-
-- 삭제 시점에 모든 참조자를 일괄 로드 → 수정 → 서버 재동기화하는 것은 성능적으로 재앙적이다.
-- 고아 참조(Orphaned Reference)는 기능적 오류를 일으키지 않으며, 자연스럽게 정리된다.
-- 메시지 히스토리는 당시의 화자 이름을 보존해야 하므로, 참조 정리보다 표시 안정성이 우선이다.
-
----
-
-## 4. 런타임 선택과 컨텍스트 정책
-
-현재 선택된 캐릭터/페르소나는 채팅 레코드에 저장된다.
+현재 선택된 페르소나/캐릭터는 채팅 레코드에 저장된다.
 
 - `selectedPersonaId`: 유저 메시지를 보낼 페르소나.
 - `defaultPersonaId`: 표시/템플릿의 기본 유저 컨텍스트.
 - `selectedCharacterId`: 다음 AI 응답을 생성할 캐릭터.
 - `defaultCharacterId`: input/display 템플릿과 speaker-less 컨텍스트의 기본 캐릭터.
 
-`runChat(chatId)`은 별도 `characterId` 인자를 받지 않는다. 내부에서 `chat.selectedCharacterId ?? chat.defaultCharacterId`와 `chat.selectedPersonaId ?? chat.defaultPersonaId`를 해석하고, 둘 중 하나라도 없거나 비활성 ref면 `INVALID_INPUT`으로 실패한다.
+`runChat(chatId)`은 별도 `characterId` 인자를 받지 않는다. 내부에서 selected/default ids를 해석하고, 필요한 값이 없거나 disabled ref이면 실패한다.
 
-파이프라인/템플릿/프롬프트는 **가장 구체적인 컨텍스트**를 사용한다.
+파이프라인/템플릿/프롬프트는 **범위에서 가장 구체적인 컨텍스트**를 사용한다.
 
 | 범위 | 캐릭터 컨텍스트 | 페르소나 컨텍스트 |
 |---|---|---|
-| 유저 input pipeline/template | `defaultCharacterId` | `selectedPersonaId` |
-| AI response / prompt / output | `selectedCharacterId ?? defaultCharacterId` | `selectedPersonaId ?? defaultPersonaId` |
-| assistant message display | active swipe `speakerId`가 있으면 그 캐릭터, 없으면 `defaultCharacterId` | `defaultPersonaId` |
-| user message display | `defaultCharacterId` | active swipe `speakerId`가 있으면 그 페르소나, 없으면 `defaultPersonaId` |
-| history block | 각 메시지 active swipe의 `role + speakerId + speakerName`으로 message context 주입 |
+| user input pipeline/template | `defaultCharacterId` | `selectedPersonaId` |
+| runChat / prompt / output | `selectedCharacterId ?? defaultCharacterId` | `selectedPersonaId ?? defaultPersonaId` |
+| assistant message display | active swipe `speakerId`, 없으면 `defaultCharacterId` | `defaultPersonaId` |
+| user message display | `defaultCharacterId` | active swipe `speakerId`, 없으면 `defaultPersonaId` |
+| history block | 각 메시지 active swipe의 `role + speakerId + speakerName`으로 context 주입 | 동일 |
 
-이 정책 덕분에 `{{char}}`, `{{user}}`, `{{description}}`, `{{userdescription}}`, `{{speaker}}`, `{{speakername}}`, `{{speakerid}}` 같은 템플릿 매크로는 실행 범위에 맞는 가장 좁은 context를 기준으로 해석된다.
+이 정책 때문에 `{{char}}`, `{{user}}`, `{{description}}`, `{{userdescription}}`, `{{name}}`, `{{speaker}}`, `{{speakername}}`, `{{speakerid}}`, `{{slot}}`은 호출 범위의 context를 기준으로 해석된다.
 
 ---
 
-## 5. 변수와 Greeting
+## 8. 변수와 Greeting
 
 ### 변수
 
-변수는 채팅 레코드가 아니라 **메시지 active swipe**에 저장된다.
+변수는 채팅 레코드가 아니라 message swipe에 저장된다.
 
-- `getChatDefaultVariables(chatId)`: room의 enabled character refs를 `sortOrder` 순서로 읽고 각 캐릭터의 `defaultVariables`를 merge한다.
-- `getChatVariables(chatId)`: default variables + 마지막 메시지 active swipe variables.
-- `getChatVariablesBefore(chatId, sortOrder)`: default variables + 해당 sortOrder 이전 메시지 active swipe variables.
-- 새 swipe 생성은 `prepareNextSwipe(message, { variables, speakerId, speakerName })`를 통해 수행한다.
+- `getChatDefaultVariables(chatId)`: room enabled character들의 `defaultVariables`를 sortOrder 순서로 merge한다.
+- `getChatVariables(chatId)`: default variables + 마지막 active swipe variables.
+- `getChatVariablesBefore(chatId, sortOrder)`: default variables + 해당 sortOrder 이전 active swipe variables.
+- `prepareNextSwipe(message, variables, replace, speakerId?, speakerName?)`가 다음 active swipe를 만든다.
 
-캐릭터 기본 변수는 "채팅 초기 시드"이며, 채팅별 기본 변수 필드는 따로 두지 않는다.
+캐릭터 기본 변수는 채팅 초기 시드다. 별도 `chatDefaultVariables` 필드는 두지 않는다.
 
 ### Greeting
 
@@ -167,37 +231,116 @@ Greeting은 채팅당 하나의 assistant message로 동기화한다.
 - 각 캐릭터 greeting은 같은 message 안의 swipe로 들어간다.
 - greeting swipe id는 character greeting id를 그대로 사용한다.
 - swipe에는 `speakerId`, `speakerName`, `variables`를 함께 저장한다.
-- 방의 enabled character만 greeting sync 대상이다.
+- room enabled character만 greeting sync 대상이다.
 
 ---
 
-## 6. 엔티티 목록
+## 9. 서버 동기화 스키마
 
-| 엔티티 | 테이블 | 로컬 인덱스 | JSON 내부 소유/참조 |
-|---|---|---|---|
-| **User** | `users` | — | — |
-| **Settings** | `settings` | — | `characters`, `personas`, `presets`, `modules`, `plugins` |
-| **Room** | `rooms` | — | `chats`(OrderedRef), `characters`(ResourceRef) |
-| **Character** | `characters` | — | `lorebooks`, `scripts`, `charjs`, `modules` |
-| **Chat** | `chats` | `roomId` | `lorebooks`, `personas`, `selected/default persona/character ids` |
-| **Message** | `messages` | `chatId`, `[chatId+sortOrder]` | `swipes`, `activeSwipeId` |
-| **Persona** | `personas` | — | 에셋/설정 |
-| **Lorebook** | `lorebooks` | `ownerId` | `entries` |
-| **Script** | `scripts` | `ownerId` | `rules` |
-| **CharJS** | `charjs` | `ownerId` | `code` |
-| **Module** | `modules` | — | `lorebooks`, `scripts`, `charjs` |
-| **Plugin** | `plugins` | — | hooks 및 args |
-| **Prompt Preset** | `presets` | — | prompt blocks, model config, preset-owned scripts |
-| **Translation** | `translations` | `chatId`, `messageId`, `swipeId` | 번역 payload |
-| **Tool Call** | local only | `chatId`, `messageId`, `swipeId` | tool call state |
+서버는 로컬 도메인 테이블을 그대로 복제하지 않는다.
+
+### 개인 컨텐츠
+
+`records`
+
+| 필드 | 설명 |
+|---|---|
+| `id` | 로컬 record id |
+| `userId` | owner user id |
+| `kind` | 로컬 테이블 이름 |
+| `createdAt`, `updatedAt`, `isDeleted` | sync metadata |
+| `encryptedData`, `encryptedDataIV` | master key로 암호화된 도메인 payload |
+
+### 멀티룸 컨텐츠
+
+`multi_room_records`
+
+| 필드 | 설명 |
+|---|---|
+| `id` | 로컬 record id |
+| `roomId` | room scope id |
+| `kind` | 로컬 테이블 이름 |
+| `createdAt`, `updatedAt`, `isDeleted` | sync metadata |
+| `encryptedData`, `encryptedDataIV` | room key로 암호화된 도메인 payload |
+
+### 멀티룸 메타
+
+`multi_room_index`
+
+| 필드 | 설명 |
+|---|---|
+| `id` | room id |
+| `ownerUserId` | 방장 user id |
+| `visibility` | `public` 또는 `private` |
+| `publicName` | 공개 검색용 이름 |
+| `createdAt`, `updatedAt`, `isDeleted` | metadata |
+
+`multi_room_members`
+
+| 필드 | 설명 |
+|---|---|
+| `id` | membership id |
+| `roomId` | room id |
+| `userId` | member user id |
+| `status` | `pending`, `accepted`, `revoked` |
+| `encryptedRoomKey` | member identity public key로 감싼 room key |
+| `createdAt`, `updatedAt`, `isDeleted` | metadata |
+
+`multi_room_index`와 `multi_room_members`는 컨텐츠가 아니라 디렉터리/권한/키 교환 메타다. room payload는 들어가지 않는다.
 
 ---
 
-## 7. 한 줄 요약
+## 10. Sync Routing
+
+Data sync는 scope를 기준으로 서버 collection과 암호화 키를 고른다.
+
+| 로컬 scope | 서버 collection | 키 |
+|---|---|---|
+| `user` | `records` | user master key |
+| `room` | `multi_room_records` | room key |
+
+Asset sync도 같은 routing을 사용한다.
+
+| 로컬 scope | 서버 collection | 키 |
+|---|---|---|
+| `user` | `assets` | user master key |
+| `room` | `multi_room_assets` | room key |
+
+Cursor는 scope별로 둔다.
 
 ```
-로컬에는 "찾기 위한 최소한의 키"만 인덱스로 노출하고,
-서버에는 "무엇을 어떻게 쓰는지"를 전부 암호화된 Blob 안에 숨긴다.
-룸은 캐릭터를 참조하고, 채팅은 페르소나를 참조하며,
-메시지는 당시의 화자 정보를 swipe에 남긴다.
+lastSync_records_user_${userId}
+lastSync_records_room_${roomId}
+lastSync_assets_user_${userId}
+lastSync_assets_room_${roomId}
+lastSync_multi_meta_${userId}
+```
+
+active user session이 있으면 user scope를 동기화한다. active room session이 있으면 room scope도 추가로 동기화한다.
+
+---
+
+## 11. 참조 무결성과 Self-Healing
+
+E2EE + local-first 환경에서는 서버 FK cascade에 기대지 않는다.
+
+- 소유 관계는 서비스 레이어가 명시적으로 cascade soft-delete한다.
+- 약한 참조는 삭제 시 전역 스캔하지 않는다.
+- stale ref는 진입 시 필요한 범위에서 조용히 정리한다.
+- 메시지 speaker 정보는 히스토리이므로 정리하지 않는다.
+
+| 진입점 | 정리 대상 |
+|---|---|
+| `selectRoom(roomId)` | room stale character/chat refs |
+| `selectChat(chatId)` | chat stale/disabled persona refs, selected/default ids |
+| character/persona ref disable/remove | 관련 selected/default ids |
+
+---
+
+## 12. 한 줄 요약
+
+```
+로컬은 실행하기 좋은 도메인 DB,
+서버는 동기화하기 좋은 blind encrypted store,
+둘 사이의 번역은 sync engine이 담당한다.
 ```

@@ -6,7 +6,8 @@ import { Semaphore } from '$lib/utils/semaphore';
 import { normalizeUrl } from '$lib/utils/url';
 import { AssetService } from './asset';
 import { SyncManager } from './sync';
-import { getActiveSession, UserService } from './user';
+import { getActiveSession } from './session';
+import { UserService } from './user';
 import { parseFields } from './asset/util';
 
 const logger = createLogger('service:migration');

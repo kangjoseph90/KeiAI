@@ -45,22 +45,48 @@ node start.js     # http://localhost:8090 — creates admin, runs migrations, st
 | `encryptedRecoveryMasterKey`  | M wrapped with Z: M(Z)                         |
 | `recoveryMasterKeyIv`         | IV for M(Z) encryption                         |
 | `recoveryAuthTokenHash`       | SHA-256 hash of recovery code back half        |
-| `identityPublicKey`           | ECDH P-256 public key JWK                      |
+| `identityPublicKey`           | RSA-OAEP public key JWK                        |
 | `encryptedIdentityPrivateKey` | Private key encrypted with M                   |
 | `identityPrivateKeyIv`        | IV for private key encryption                  |
 
-### Encrypted Tables (common shape)
-
-All user data tables share this structure:
+### Encrypted User Records
 
 ```
-id, userId (plain text), createdAt, updatedAt,
-encryptedData (text), encryptedDataIV (text), isDeleted (bool)
+records:
+id, userId (plain text), kind, createdAt, updatedAt,
+encryptedData, encryptedDataIV, isDeleted
 ```
 
-No PocketBase relation fields are used for domain ownership. Domain relationships stay in the encrypted payload unless a server feature explicitly needs a plain field.
+Domain records are routed by `kind` on sync. Domain relationships stay in the encrypted payload unless a server feature explicitly needs a plain field.
 
-Every table has a composite index on `(userId, updatedAt)` for sync queries.
+`assets` remains a separate encrypted sync table because asset hooks need plaintext `hash` and `status`.
+
+### Encrypted Multi-Room Records
+
+```
+multi_room_records:
+id, roomId, kind, createdAt, updatedAt,
+encryptedData, encryptedDataIV, isDeleted
+
+multi_room_assets:
+id, roomId, hash, status, createdAt, updatedAt,
+encryptedData, encryptedDataIV, isDeleted
+```
+
+`multi_room_records` are routed by `kind`. Access requires accepted membership in the room. `multi_room_assets` count against the room owner's asset quota through the shared asset usage ledger.
+
+### Multi-Room Metadata
+
+```
+multi_room_index:
+id (roomId), ownerUserId, visibility, publicName, createdAt, updatedAt, isDeleted
+
+multi_room_members:
+id, roomId, userId, status, encryptedRoomKey,
+createdAt, updatedAt, isDeleted
+```
+
+Membership metadata is the root for multi-room sync discovery. Room content sync is limited to the active room and accepted members.
 
 ---
 
@@ -139,7 +165,8 @@ The server never sees the raw password, Y, or M. It only stores X as a PB passwo
 PocketBase calls files in `pb_migrations/` migrations, but this project currently assumes a clean database. Treat `1773000000_init_keiai_schema.js` as the canonical schema definition.
 
 - `1773000000_init_keiai_schema.js` — Creates all encrypted collections with proper fields, auth rules, and sync indices
-- Auth rules on all encrypted tables: `userId = @request.auth.id` (users can only access their own data)
+- Personal sync auth: `userId = @request.auth.id`
+- Multi-room sync auth: accepted membership for room content; room owner for metadata writes
 - Down migration drops all tables and removes E2EE fields from users
 
 ---

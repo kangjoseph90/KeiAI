@@ -9,7 +9,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CharacterService } from '$lib/services/content/character';
 import type { Character, CharacterFields } from '$lib/services/content/character';
 import type { AppError } from '$lib/types/errors';
-import type { BaseRecord } from '$lib/adapters/db/types';
 
 // Mock all dependencies
 vi.mock('$lib/crypto', () => ({
@@ -18,9 +17,21 @@ vi.mock('$lib/crypto', () => ({
 }));
 
 vi.mock('$lib/services/user', () => ({
-    UserService: {},
+    UserService: {}
+}));
+
+vi.mock('$lib/services/session', () => ({
     getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
+    getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
+        if (scopeType === 'user') return { scopeType: 'user', scopeId: 'user-123' };
+        return { scopeType: 'room', scopeId: 'room-123' };
+    }),
+    canAccessScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return (
+            (record.scopeType === 'user' && record.scopeId === 'user-123') ||
+            (record.scopeType === 'room' && record.scopeId === 'room-123')
+        );
+    })
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -65,7 +76,7 @@ vi.mock('$lib/services/content/record_buffer', () => ({
 }));
 
 import { encrypt, decrypt } from '$lib/crypto';
-import { getActiveSession } from '$lib/services/user';
+import { getActiveSession } from '$lib/services/session';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';
@@ -120,7 +131,8 @@ describe('CharacterService', () => {
             const mockRecords = [
                 {
                     id: 'char-1',
-                    userId: mockUserId,
+                    scopeType: 'user' as const,
+                    scopeId: mockUserId,
                     createdAt: 1000,
                     updatedAt: 1000,
                     isDeleted: false,
@@ -128,7 +140,8 @@ describe('CharacterService', () => {
                 },
                 {
                     id: 'char-2',
-                    userId: mockUserId,
+                    scopeType: 'user' as const,
+                    scopeId: mockUserId,
                     createdAt: 2000,
                     updatedAt: 2000,
                     isDeleted: false,
@@ -155,12 +168,15 @@ describe('CharacterService', () => {
             expect(result).toEqual([]);
         });
 
-        it('should call getAll with correct table name and userId', async () => {
+        it('should call getAll with correct table name and user scope', async () => {
             vi.mocked(localDB.getAll).mockResolvedValue([]);
 
             await CharacterService.list();
 
-            expect(localDB.getAll).toHaveBeenCalledWith('characters', mockUserId);
+            expect(localDB.getAll).toHaveBeenCalledWith('characters', {
+                scopeType: 'user',
+                scopeId: mockUserId
+            });
         });
     });
 
@@ -168,7 +184,8 @@ describe('CharacterService', () => {
         it('should return character when record exists', async () => {
             const mockRecord = {
                 id: 'char-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
@@ -201,7 +218,8 @@ describe('CharacterService', () => {
         it('should return null when record is deleted', async () => {
             vi.mocked(buffer.get).mockResolvedValue({
                 id: 'char-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: true,
@@ -230,7 +248,8 @@ describe('CharacterService', () => {
                 'characters',
                 expect.objectContaining({
                     id: 'test-id-123',
-                    userId: mockUserId
+                    scopeType: 'user',
+                    scopeId: mockUserId
                 })
             );
         });
@@ -262,7 +281,8 @@ describe('CharacterService', () => {
         it('should update character fields', async () => {
             const existingRecord = {
                 id: 'char-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
@@ -290,7 +310,8 @@ describe('CharacterService', () => {
         it('should throw NOT_FOUND when character is deleted', async () => {
             vi.mocked(buffer.get).mockResolvedValue({
                 id: 'char-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: true,
@@ -304,7 +325,8 @@ describe('CharacterService', () => {
     describe('delete', () => {
         const mockCharacter = {
             id: 'char-1',
-            userId: mockUserId,
+            scopeType: 'user',
+            scopeId: mockUserId,
             isDeleted: false,
             data: { name: 'Delete Me' }
         };

@@ -77,9 +77,17 @@ export type DatabaseWriteEventListener = (events: DatabaseWriteEvent[]) => void;
 
 // ─── Base Types ──────────────────────────────────────────────────────
 
+export interface DataScope {
+    scopeType: DataScopeType;
+    scopeId: string;
+}
+
+export type DataScopeType = 'user' | 'room';
+
 export interface BaseRecord {
     id: string;
-    userId: string;
+    scopeType: DataScopeType;
+    scopeId: string; // userId or roomId
     createdAt: number;
     updatedAt: number;
     isDeleted: boolean;
@@ -199,7 +207,7 @@ export interface IDatabaseAdapter {
         indexValue: string[],
         options?: DatabaseWriteOptions
     ): Promise<void>;
-    getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]>;
+    getAll<T extends BaseRecord>(tableName: TableName, scope: DataScope): Promise<T[]>;
     getByIndex<T extends BaseRecord>(
         tableName: TableName,
         indexName: string,
@@ -238,7 +246,7 @@ export interface IDatabaseAdapter {
     ): Promise<number>;
     getUnsyncedChanges<T extends BaseRecord>(
         tableName: TableName,
-        userId: string,
+        scope: DataScope,
         sinceUpdatedAt: number
     ): Promise<T[]>;
     transaction<R>(tables: TableName[], mode: 'r' | 'rw', callback: () => Promise<R>): Promise<R>;

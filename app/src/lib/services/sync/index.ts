@@ -5,6 +5,7 @@
  *   sync/data.ts     - DataSyncService:    encrypted app data (characters, chats, etc.)
  *   sync/user.ts     - UserSyncService:    plaintext user display data (name, avatar)
  *   sync/asset.ts    - AssetSyncService:   asset sync (pull/push/realtime) + upload queue
+ *   sync/multi.ts    - MultiSyncService:   plaintext multi-room metadata
  *   sync/index.ts    - SyncManager:        unified lifecycle (start/stop/reconnect)
  *
  * This module has NO dependency on Svelte stores. UI refresh is driven by
@@ -14,13 +15,16 @@
 export { DataSyncService } from './data';
 export { UserSyncService } from './user';
 export { AssetSyncService } from './asset';
+export { MultiSyncService } from './multi';
 export type { SyncState, SyncProgress, SyncStatus } from './base';
 export type { AssetSyncStatus } from './asset';
 
 import { DataSyncService } from './data';
 import { UserSyncService } from './user';
 import { AssetSyncService } from './asset';
+import { MultiSyncService } from './multi';
 import { appUser } from '$lib/adapters/user';
+import { appMulti } from '$lib/adapters/multi';
 import { localDB, SYNC_TABLES } from '$lib/adapters/db';
 
 type SyncTriggerCleanup = () => void;
@@ -28,6 +32,7 @@ export type SyncTriggerContext = {
     data: typeof DataSyncService;
     user: typeof UserSyncService;
     asset: typeof AssetSyncService;
+    multi: typeof MultiSyncService;
     resubscribeAndPull: () => Promise<void>;
 };
 
@@ -47,10 +52,15 @@ export class SyncManager {
 
     private static readonly FALLBACK_POLL_INTERVAL_MS = 300_000;
 
-    private static readonly fallbackPollTrigger: SyncTriggerRegistration = ({ data, asset }) => {
+    private static readonly fallbackPollTrigger: SyncTriggerRegistration = ({
+        data,
+        asset,
+        multi
+    }) => {
         const timer = setInterval(() => {
             void data.syncAll();
             void asset.start();
+            void multi.syncAll();
         }, this.FALLBACK_POLL_INTERVAL_MS);
 
         return () => clearInterval(timer);
@@ -90,6 +100,15 @@ export class SyncManager {
         });
     };
 
+    private static readonly localMultiTrigger: SyncTriggerRegistration = ({ multi }) => {
+        return appMulti.subscribeWriteEvents((events) => {
+            for (const event of events) {
+                if (event.origin !== 'local') continue;
+                void multi.handleLocalWrite(event);
+            }
+        });
+    };
+
     private static readonly localDbTrigger: SyncTriggerRegistration = ({ data }) => {
         return localDB.subscribeWriteEvents((events) => {
             for (const event of events) {
@@ -121,6 +140,10 @@ export class SyncManager {
         void AssetSyncService.subscribeRealtime();
         void AssetSyncService.start();
 
+        // Multi-room metadata sync
+        void MultiSyncService.subscribeRealtime();
+        void MultiSyncService.syncAll();
+
         // Profile sync Realtime subscription
         void UserSyncService.subscribeRealtime();
         this.installTriggerSources();
@@ -129,6 +152,7 @@ export class SyncManager {
     static stopAutoSync(): void {
         void DataSyncService.unsubscribeRealtime();
         void AssetSyncService.unsubscribeRealtime();
+        void MultiSyncService.unsubscribeRealtime();
         void UserSyncService.unsubscribeRealtime();
         AssetSyncService.stop();
         this.clearTriggerSources();
@@ -141,7 +165,19 @@ export class SyncManager {
     static async syncAll(): Promise<void> {
         await DataSyncService.syncAll();
         await AssetSyncService.start();
+        await MultiSyncService.syncAll();
         await UserSyncService.pullUser();
+    }
+
+    static async refreshRoomSync(): Promise<void> {
+        if (!this.started) return;
+
+        await DataSyncService.unsubscribeRealtime();
+        await AssetSyncService.unsubscribeRealtime();
+        await DataSyncService.subscribeRealtime();
+        await AssetSyncService.subscribeRealtime();
+        await DataSyncService.syncAll();
+        await AssetSyncService.start();
     }
 
     static registerTriggerSource(register: SyncTriggerRegistration): () => void {
@@ -171,12 +207,16 @@ export class SyncManager {
         if (!AssetSyncService.isSubscribed) {
             await AssetSyncService.subscribeRealtime();
         }
+        if (!MultiSyncService.isSubscribed) {
+            await MultiSyncService.subscribeRealtime();
+        }
         if (!UserSyncService.isSubscribed) {
             await UserSyncService.subscribeRealtime();
         }
 
         await DataSyncService.syncAll();
         await AssetSyncService.start();
+        await MultiSyncService.syncAll();
         await UserSyncService.pullUser();
     }
 
@@ -188,6 +228,7 @@ export class SyncManager {
         this.triggerRegistrations.add(this.visibilityTrigger);
         this.triggerRegistrations.add(this.localUserTrigger);
         this.triggerRegistrations.add(this.localDbTrigger);
+        this.triggerRegistrations.add(this.localMultiTrigger);
         this.initializedBuiltInTriggers = true;
     }
 
@@ -204,6 +245,7 @@ export class SyncManager {
             data: DataSyncService,
             user: UserSyncService,
             asset: AssetSyncService,
+            multi: MultiSyncService,
             resubscribeAndPull: () => this.resubscribeAndPull()
         });
 

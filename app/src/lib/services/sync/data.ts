@@ -1,43 +1,61 @@
 /**
  * Data Sync Service
  *
- * Handles blind synchronization of application data (characters,
- * chats, messages, settings, etc.) with PocketBase.
+ * Syncs encrypted domain records between the local plaintext DB and PocketBase.
+ * The sync boundary is scope-based:
+ * - user scope uses the user master key and the `records` collection
+ * - room scope uses the active room key and the `multi_room_records` collection
  *
- * - Pull: PocketBase Realtime subscription (SSE, push-based) for live updates
- *         + paged catch-up pull on boot / reconnect (offline gap recovery)
- * - Push: event-driven, triggered from local DB write events after local mutations
- *
- * The server never decrypts or inspects any data.
- * Encryption/decryption happens ONLY at this sync boundary.
- *
- * User display data has its own sync service (UserSyncService) because it is
- * NOT E2EE and uses PB file fields, not encrypted blobs.
+ * Server records carry `kind` to route one remote collection back into local tables.
  */
 
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession, hasActiveSession } from '../user';
-import { encrypt, decrypt, toBase64, fromBase64 } from '$lib/crypto';
+import { getActiveSession, hasActiveSession } from '../session';
+import { encrypt, decrypt, toBase64, fromBase64, importMasterKey } from '$lib/crypto';
 import {
     localDB,
     type TableName,
     SYNC_TABLES,
     type BaseRecord,
     type DataRecord,
+    type DataScope,
     type DatabaseWriteEvent
 } from '$lib/adapters/db';
 import { appKV } from '$lib/adapters/kv';
+import { appMulti, type MultiRoomDeleteMarkerRecord } from '$lib/adapters/multi';
 import { BaseSyncEngine } from './base';
 import { createLogger } from '$lib/adapters/logger';
 import { isErrorCode } from '$lib/types/errors';
-import { Semaphore } from '$lib/utils/semaphore';
+import { clock } from '$lib/utils/clock';
 
 type RealtimeEvent = {
     action: string;
     record: Record<string, unknown>;
 };
 
+type RemoteCollection = 'records' | 'multi_room_records';
+
+interface SyncScope {
+    scope: DataScope;
+    key: CryptoKey;
+    collection: RemoteCollection;
+    ownerField: 'userId' | 'roomId';
+}
+
+interface LocalChange {
+    table: TableName;
+    record: DataRecord;
+}
+
+interface DecodedRemoteRecord {
+    table: TableName;
+    record: DataRecord;
+}
+
 const logger = createLogger('sync:data');
+const USER_RECORDS_COLLECTION: RemoteCollection = 'records';
+const ROOM_RECORDS_COLLECTION: RemoteCollection = 'multi_room_records';
+const MAX_DELETE_MARKER_ATTEMPTS = 5;
 
 export class DataSyncEngine extends BaseSyncEngine {
     // ─── State ────────────────────────────────────────────────────────
@@ -46,7 +64,7 @@ export class DataSyncEngine extends BaseSyncEngine {
     private pendingQueue: Array<() => Promise<void>> = [];
 
     private readonly PAGE_SIZE = 200;
-    private readonly TABLE_CONCURRENCY = 4;
+    private readonly CHUNK_SIZE = 100;
 
     constructor() {
         super();
@@ -61,13 +79,23 @@ export class DataSyncEngine extends BaseSyncEngine {
     async subscribeRealtime(): Promise<void> {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
 
-        // Ensure clean state before subscribing to avoid duplicate handlers
         await this.unsubscribeRealtime();
 
         try {
-            for (const table of SYNC_TABLES) {
-                await pb.collection(table).subscribe('*', (e) => {
-                    void this.handleRealtimeEvent(table, e as unknown as RealtimeEvent);
+            await pb.collection(USER_RECORDS_COLLECTION).subscribe('*', (e) => {
+                void this.handleRealtimeEvent(
+                    USER_RECORDS_COLLECTION,
+                    e as unknown as RealtimeEvent
+                );
+            });
+
+            const { roomId, roomKey } = getActiveSession();
+            if (roomId && roomKey) {
+                await pb.collection(ROOM_RECORDS_COLLECTION).subscribe('*', (e) => {
+                    void this.handleRealtimeEvent(
+                        ROOM_RECORDS_COLLECTION,
+                        e as unknown as RealtimeEvent
+                    );
                 });
             }
         } catch (err) {
@@ -78,9 +106,9 @@ export class DataSyncEngine extends BaseSyncEngine {
     }
 
     async unsubscribeRealtime(): Promise<void> {
-        for (const table of SYNC_TABLES) {
+        for (const collection of [USER_RECORDS_COLLECTION, ROOM_RECORDS_COLLECTION]) {
             try {
-                await pb.collection(table).unsubscribe('*');
+                await pb.collection(collection).unsubscribe('*');
             } catch {
                 /* ignore */
             }
@@ -91,52 +119,44 @@ export class DataSyncEngine extends BaseSyncEngine {
     // ─── Cursor Management ───────────────────────────────────────────
 
     /**
-     * Wipe all per-table sync cursors for a user.
-     * Call this when there is no existing local user record (fresh install or
-     * post-IDB-wipe login) so the next syncAll() fetches everything from scratch.
+     * Wipe the user-scope data cursor.
+     * Call this when there is no existing local user record so the next syncAll()
+     * fetches everything from scratch.
      */
     async resetCursors(userId: string): Promise<void> {
-        for (const table of SYNC_TABLES) {
-            await appKV.remove(`lastSync_${table}_${userId}`);
-        }
+        await appKV.remove(this.syncKey({ scopeType: 'user', scopeId: userId }));
     }
 
     // ─── Catch-up Pull (boot + fallback poll) ─────────────────────────
 
-    /**
-     * Deduplicated full pull. Called on boot and by the 5-minute fallback timer.
-     * Downloads all server-side changes since the last cursor, applies LWW, and
-     * pushes corrections for records where local is newer (written offline).
-     */
     async syncAll(): Promise<void> {
         await this.trigger();
     }
 
     protected override async performSync(): Promise<void> {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
-        const { userId } = getActiveSession();
 
         this.syncing = true;
         let firstError: unknown = null;
         let completed = 0;
+        const scopes = this.getActiveSyncScopes();
 
         try {
-            const semaphore = new Semaphore(this.TABLE_CONCURRENCY);
             const results = await Promise.allSettled(
-                SYNC_TABLES.map((table) =>
-                    semaphore.runExclusive(async () => {
-                        await this.pullTable(table, userId);
-                        completed++;
-                        this.updateStatus({
-                            progress: {
-                                completed,
-                                total: SYNC_TABLES.length,
-                                currentItemId: table
-                            }
-                        });
-                    })
-                )
+                scopes.map(async (scope) => {
+                    await this.syncScope(scope);
+                    completed++;
+                    this.updateStatus({
+                        progress: {
+                            completed,
+                            total: scopes.length,
+                            currentItemId: scope.scope.scopeId
+                        }
+                    });
+                })
             );
+
+            await this.syncRoomDeleteMarkers();
 
             for (const result of results) {
                 if (result.status === 'rejected') {
@@ -153,6 +173,29 @@ export class DataSyncEngine extends BaseSyncEngine {
         }
     }
 
+    private getActiveSyncScopes(): SyncScope[] {
+        const { userId, masterKey, roomId, roomKey } = getActiveSession();
+        const scopes: SyncScope[] = [
+            {
+                scope: { scopeType: 'user', scopeId: userId },
+                key: masterKey,
+                collection: USER_RECORDS_COLLECTION,
+                ownerField: 'userId'
+            }
+        ];
+
+        if (roomId && roomKey) {
+            scopes.push({
+                scope: { scopeType: 'room', scopeId: roomId },
+                key: roomKey,
+                collection: ROOM_RECORDS_COLLECTION,
+                ownerField: 'roomId'
+            });
+        }
+
+        return scopes;
+    }
+
     /** Flush all push tasks queued during a syncAll run. */
     private async flushPendingQueue(): Promise<void> {
         const tasks = this.pendingQueue.splice(0);
@@ -161,59 +204,72 @@ export class DataSyncEngine extends BaseSyncEngine {
         }
     }
 
-    /** Paged pull: fetches server changes since cursor in PAGE_SIZE batches. */
-    private async pullTable(tableName: TableName, userId: string): Promise<void> {
-        const syncKey = `lastSync_${tableName}_${userId}`;
+    private async syncScope(syncScope: SyncScope): Promise<void> {
+        const syncKey = this.syncKey(syncScope.scope);
         const lastSyncTime = Number.parseInt((await appKV.get(syncKey)) || '0', 10) || 0;
         let nextCursor = lastSyncTime;
         let cursorSafeToAdvance = true;
-        let page = 1;
         let syncError: unknown = null;
         let correctionError: unknown = null;
-        // Records where the local version is newer than what the server returned.
-        // Accumulated across all pages and pushed as a single batch after the pull.
-        const offlineWrites: DataRecord[] = [];
+        let page = 1;
+        const offlineWrites = new Map<string, LocalChange>();
 
         try {
             while (true) {
-                const result = await pb.collection(tableName).getList(page, this.PAGE_SIZE, {
-                    filter: pb.filter('userId = {:userId} && updatedAt >= {:since}', {
-                        userId,
-                        since: lastSyncTime
-                    }),
-                    sort: 'updatedAt'
-                });
+                const result = await pb
+                    .collection(syncScope.collection)
+                    .getList(page, this.PAGE_SIZE, {
+                        filter: pb.filter(
+                            `${syncScope.ownerField} = {:scopeId} && updatedAt >= {:since}`,
+                            {
+                                scopeId: syncScope.scope.scopeId,
+                                since: lastSyncTime
+                            }
+                        ),
+                        sort: 'updatedAt'
+                    });
 
                 if (result.items.length > 0) {
-                    const toUpsert: DataRecord[] = [];
+                    const grouped = new Map<TableName, DataRecord[]>();
 
                     const remotes = await Promise.all(
                         result.items.map((serverRecord) =>
-                            this.pbToLocalRecord(serverRecord as unknown as Record<string, unknown>)
+                            this.pbToLocalRecord(
+                                serverRecord as unknown as Record<string, unknown>,
+                                syncScope
+                            )
                         )
                     );
 
                     const pairedRecords = await Promise.all(
                         remotes.map(async (remote) => ({
                             remote,
-                            local: await localDB.getRecord<DataRecord>(tableName, remote.id)
+                            local: await localDB.getRecord<DataRecord>(
+                                remote.table,
+                                remote.record.id
+                            )
                         }))
                     );
 
                     for (const { remote, local } of pairedRecords) {
-                        const remoteAt = remote.updatedAt ?? 0;
+                        const remoteAt = remote.record.updatedAt ?? 0;
                         const localAt = local?.updatedAt ?? 0;
 
                         if (!local || remoteAt > localAt) {
-                            toUpsert.push(remote);
+                            const records = grouped.get(remote.table) ?? [];
+                            records.push(remote.record);
+                            grouped.set(remote.table, records);
                         } else if (remoteAt < localAt) {
-                            offlineWrites.push(local);
+                            offlineWrites.set(this.changeKey(remote.table, local.id), {
+                                table: remote.table,
+                                record: local
+                            });
                         }
                         nextCursor = Math.max(nextCursor, remoteAt);
                     }
 
-                    if (toUpsert.length > 0) {
-                        await localDB.putRecords(tableName, toUpsert, { origin: 'sync' });
+                    for (const [table, records] of grouped) {
+                        await localDB.putRecords(table, records, { origin: 'sync' });
                     }
                 }
 
@@ -223,25 +279,24 @@ export class DataSyncEngine extends BaseSyncEngine {
         } catch (err) {
             cursorSafeToAdvance = false;
             syncError = err;
-            logger.error(`Failed to pull ${tableName}`, err);
+            logger.error(`Failed to pull ${syncScope.collection}`, err);
         }
 
-        // Push locally-newer records (offline writes).
-        // Scan from one tick before the cursor so same-ms local writes on the
-        // cursor boundary cannot be hidden after a failed fire-and-forget push.
-        const scannedUnsynced = await localDB.getUnsyncedChanges<DataRecord>(
-            tableName,
-            userId,
+        const scannedUnsynced = await this.collectUnsyncedChanges(
+            syncScope.scope,
             lastSyncTime - 1
         );
-        const pendingPushes = new Map<string, DataRecord>();
-        for (const record of offlineWrites) pendingPushes.set(record.id, record);
-        for (const record of scannedUnsynced) pendingPushes.set(record.id, record);
-        const unsynced = [...pendingPushes.values()];
+        for (const change of scannedUnsynced) {
+            offlineWrites.set(this.changeKey(change.table, change.record.id), change);
+        }
+
+        const unsynced = [...offlineWrites.values()];
         if (unsynced.length > 0) {
             try {
-                // Throw on failure so cursorSafeToAdvance remains false if push fails
-                await this.pushBatch(tableName, unsynced, false);
+                await this.pushChanges(syncScope, unsynced, false);
+                for (const { record } of unsynced) {
+                    nextCursor = Math.max(nextCursor, record.updatedAt ?? 0);
+                }
             } catch (err) {
                 correctionError = err;
             }
@@ -260,33 +315,60 @@ export class DataSyncEngine extends BaseSyncEngine {
         }
     }
 
-    /**
-     * Push multiple records of the same table to PocketBase as a single atomic batch
-     * transaction. Uses upsert so each record is created or updated as needed.
-     * If any record in the batch fails (e.g. validation), the entire batch is rolled
-     * back by PocketBase, preserving data consistency.
-     * Default behavior keeps fire-and-forget semantics; callers can opt into throw-on-failure.
-     */
-    private async pushBatch(
-        tableName: TableName,
-        records: DataRecord[],
-        swallowErrors = true
+    // ─── Push ────────────────────────────────────────────────────────
+
+    private async collectUnsyncedChanges(
+        scope: DataScope,
+        sinceUpdatedAt: number
+    ): Promise<LocalChange[]> {
+        const changes: LocalChange[] = [];
+        for (const table of SYNC_TABLES) {
+            const records = await localDB.getUnsyncedChanges<DataRecord>(
+                table,
+                scope,
+                sinceUpdatedAt
+            );
+            for (const record of records) {
+                changes.push({ table, record });
+            }
+        }
+        return changes;
+    }
+
+    private async collectDeletedChanges(scope: DataScope): Promise<LocalChange[]> {
+        const changes = await this.collectUnsyncedChanges(scope, 0);
+        return changes.filter(({ record }) => record.isDeleted);
+    }
+
+    private async pushChanges(
+        syncScope: SyncScope,
+        changes: LocalChange[],
+        swallowErrors = true,
+        isNew = false
     ): Promise<void> {
-        const { userId: activeUserId } = getActiveSession();
-        const owned = records.filter((r) => r.userId === activeUserId);
+        const owned = changes.filter(
+            ({ record }) =>
+                record.scopeType === syncScope.scope.scopeType &&
+                record.scopeId === syncScope.scope.scopeId
+        );
         if (owned.length === 0) return;
 
-        const CHUNK_SIZE = 100;
-        for (let i = 0; i < owned.length; i += CHUNK_SIZE) {
-            const chunk = owned.slice(i, i + CHUNK_SIZE);
+        for (let i = 0; i < owned.length; i += this.CHUNK_SIZE) {
+            const chunk = owned.slice(i, i + this.CHUNK_SIZE);
             const batch = pb.createBatch();
-            for (const record of chunk) {
-                batch.collection(tableName).upsert(await this.localToPbRecord(record));
+            for (const change of chunk) {
+                const payload = await this.localToPbRecord(change.table, change.record, syncScope);
+                if (isNew) {
+                    batch.collection(syncScope.collection).create(payload);
+                } else {
+                    batch.collection(syncScope.collection).upsert(payload);
+                }
             }
+
             try {
                 await batch.send({ requestKey: null });
             } catch (err) {
-                logger.error(`Failed to push corrections batch to ${tableName}`, err);
+                logger.error(`Failed to push batch to ${syncScope.collection}`, err);
                 if (!swallowErrors) {
                     throw err;
                 }
@@ -294,77 +376,31 @@ export class DataSyncEngine extends BaseSyncEngine {
         }
     }
 
-    // ─── Realtime Event Handler ───────────────────────────────────────
-
-    /** Apply a single realtime event pushed by PocketBase. */
-    private async handleRealtimeEvent(tableName: TableName, e: RealtimeEvent): Promise<void> {
-        try {
-            if (!hasActiveSession()) return;
-            const { userId: activeUserId } = getActiveSession();
-            if (e.record.userId !== activeUserId) return;
-
-            const remote = await this.pbToLocalRecord(e.record);
-            const remoteAt = remote.updatedAt ?? 0;
-
-            // Atomic LWW check and write via transaction to avoid race conditions
-            await localDB.transaction([tableName], 'rw', async () => {
-                const local = await localDB.getRecord<DataRecord>(tableName, remote.id);
-                const localAt = local?.updatedAt ?? 0;
-
-                if (!local || remoteAt > localAt) {
-                    await localDB.putRecord(tableName, remote, { origin: 'sync' });
-                } else if (remoteAt < localAt) {
-                    // Local is newer: push back to server (background fire-and-forget)
-                    void this.pushRecord(tableName, local);
-                }
-            });
-        } catch (err) {
-            logger.error(`Realtime event error for ${tableName}`, err);
+    private async pushChangesForActiveScopes(
+        changes: LocalChange[],
+        swallowErrors = true,
+        isNew = false
+    ): Promise<void> {
+        const scopes = this.getActiveSyncScopes();
+        for (const syncScope of scopes) {
+            await this.pushChanges(syncScope, changes, swallowErrors, isNew);
         }
     }
 
-    // ─── Push API (called by service layer) ───────────────────────────
-
-    /**
-     * Push a single record to PocketBase via the batch API.
-     * - isNew = true  → create (record is guaranteed not to exist yet)
-     * - isNew = false → upsert (server creates or updates as needed)
-     * Fire-and-forget: errors are logged but never thrown.
-     */
     async pushRecord(tableName: TableName, record: BaseRecord, isNew = false): Promise<void> {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
-        const { userId: activeUserId } = getActiveSession();
-        if (record.userId !== activeUserId) return;
-
-        const payload = await this.localToPbRecord(record);
-        const batch = pb.createBatch();
-
-        if (isNew) {
-            batch.collection(tableName).create(payload);
-        } else {
-            batch.collection(tableName).upsert(payload);
-        }
-
-        try {
-            await batch.send({ requestKey: null });
-        } catch (err) {
-            logger.error(`Failed to push ${record.id} to ${tableName}`, err);
-        }
+        await this.pushChangesForActiveScopes(
+            [{ table: tableName, record: record as DataRecord }],
+            true,
+            isNew
+        );
     }
 
-    /**
-     * Read a record from local DB and push it to the server.
-     * Convenience wrapper for after softDeleteRecord() calls.
-     */
     async pushById(tableName: TableName, id: string): Promise<void> {
-        const record = await localDB.getRecord<BaseRecord>(tableName, id);
+        const record = await localDB.getRecord<DataRecord>(tableName, id);
         if (record) void this.pushRecord(tableName, record);
     }
 
-    /**
-     * Handle a local DB write event by batching all IDs into a single push.
-     * Filters out non-local origins, deletions, and non-sync tables.
-     */
     async handleLocalWrite(event: DatabaseWriteEvent): Promise<void> {
         if (event.origin !== 'local' || !SYNC_TABLES.includes(event.tableName)) return;
         if (event.operation === 'delete' || event.operation === 'deleteByIndex') return;
@@ -372,75 +408,161 @@ export class DataSyncEngine extends BaseSyncEngine {
 
         const task = () => this.pushIds(event.tableName, event.ids);
         if (this.syncing) {
-            // Defer until syncAll completes to avoid concurrent push conflicts
             this.pendingQueue.push(task);
         } else {
             void task();
         }
     }
 
-    /**
-     * Batch-push multiple record IDs in a single HTTP request.
-     * Reads all records from local DB, then sends as one PocketBase batch.
-     */
     private async pushIds(tableName: TableName, ids: string[]): Promise<void> {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
 
         const records = await Promise.all(
             ids.map((id) => localDB.getRecord<DataRecord>(tableName, id))
         );
-        const existing = records.filter((r): r is DataRecord => r !== undefined);
-        if (existing.length === 0) return;
+        const changes = records
+            .filter((record): record is DataRecord => record !== undefined)
+            .map((record) => ({ table: tableName, record }));
+        if (changes.length === 0) return;
 
-        await this.pushBatch(tableName, existing);
+        await this.pushChangesForActiveScopes(changes);
     }
 
-    /**
-     * Push all records modified at or after `sinceInclusive` across all sync tables
-     * as a single batch transaction.
-     * Called by the service layer after cascade-delete transactions.
-     */
     async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
         const { userId: activeUserId } = getActiveSession();
         if (userId !== activeUserId) return;
 
-        const allChanges: { table: TableName; record: BaseRecord }[] = [];
+        const changes = await this.collectUnsyncedChanges(
+            { scopeType: 'user', scopeId: userId },
+            sinceInclusive - 1
+        );
+        await this.pushChangesForActiveScopes(changes);
+    }
 
-        for (const table of SYNC_TABLES) {
-            const changed = await localDB.getUnsyncedChanges(table, userId, sinceInclusive - 1);
-            for (const record of changed) {
-                allChanges.push({ table, record });
+    private async syncRoomDeleteMarkers(): Promise<void> {
+        const markers = await appMulti.getDeleteMarkers();
+        for (const marker of markers) {
+            await this.syncRoomDeleteMarker(marker);
+        }
+    }
+
+    private async syncRoomDeleteMarker(marker: MultiRoomDeleteMarkerRecord): Promise<void> {
+        if (marker.attempts >= MAX_DELETE_MARKER_ATTEMPTS) return;
+
+        const scope: DataScope = { scopeType: 'room', scopeId: marker.roomId };
+        const rawRoomKey = fromBase64(marker.roomKey);
+
+        try {
+            const roomKey = await importMasterKey(rawRoomKey, true);
+            const syncScope: SyncScope = {
+                scope,
+                key: roomKey,
+                collection: ROOM_RECORDS_COLLECTION,
+                ownerField: 'roomId'
+            };
+            const changes = await this.collectDeletedChanges(scope);
+            if (changes.length > 0) {
+                await this.pushChanges(syncScope, changes, false);
             }
+            if (marker.assetDone) {
+                await appMulti.deleteDeleteMarker(marker.roomId);
+            } else {
+                await appMulti.saveDeleteMarker({
+                    ...marker,
+                    dataDone: true,
+                    updatedAt: clock.now(),
+                    lastError: undefined
+                });
+            }
+        } catch (error) {
+            await appMulti.saveDeleteMarker({
+                ...marker,
+                attempts: marker.attempts + 1,
+                updatedAt: clock.now(),
+                lastError: error instanceof Error ? error.message : String(error)
+            });
+        } finally {
+            rawRoomKey.fill(0);
+        }
+    }
+
+    // ─── Realtime Event Handler ───────────────────────────────────────
+
+    private async handleRealtimeEvent(
+        collection: RemoteCollection,
+        e: RealtimeEvent
+    ): Promise<void> {
+        try {
+            if (!hasActiveSession()) return;
+            const syncScope = this.getRealtimeScope(collection, e.record);
+            if (!syncScope) return;
+
+            const remote = await this.pbToLocalRecord(e.record, syncScope);
+            const remoteAt = remote.record.updatedAt ?? 0;
+
+            await localDB.transaction([remote.table], 'rw', async () => {
+                const local = await localDB.getRecord<DataRecord>(remote.table, remote.record.id);
+                const localAt = local?.updatedAt ?? 0;
+
+                if (!local || remoteAt > localAt) {
+                    await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
+                } else if (remoteAt < localAt) {
+                    void this.pushRecord(remote.table, local);
+                }
+            });
+        } catch (err) {
+            logger.error(`Realtime event error for ${collection}`, err);
+        }
+    }
+
+    private getRealtimeScope(
+        collection: RemoteCollection,
+        record: Record<string, unknown>
+    ): SyncScope | null {
+        const { userId, masterKey, roomId, roomKey } = getActiveSession();
+
+        if (collection === USER_RECORDS_COLLECTION) {
+            if (record.userId !== userId) return null;
+            return {
+                scope: { scopeType: 'user', scopeId: userId },
+                key: masterKey,
+                collection,
+                ownerField: 'userId'
+            };
         }
 
-        if (allChanges.length === 0) return;
-
-        const CHUNK_SIZE = 100;
-        for (let i = 0; i < allChanges.length; i += CHUNK_SIZE) {
-            const chunk = allChanges.slice(i, i + CHUNK_SIZE);
-            const batch = pb.createBatch();
-            for (const { table, record } of chunk) {
-                batch.collection(table).upsert(await this.localToPbRecord(record));
-            }
-            try {
-                await batch.send();
-            } catch (err) {
-                logger.error('Failed to push recent writes batch', err);
-            }
-        }
+        if (!roomId || !roomKey || record.roomId !== roomId) return null;
+        return {
+            scope: { scopeType: 'room', scopeId: roomId },
+            key: roomKey,
+            collection,
+            ownerField: 'roomId'
+        };
     }
 
     // ─── Serialization ────────────────────────────────────────────────
 
-    private async localToPbRecord(record: BaseRecord): Promise<Record<string, unknown>> {
-        const { masterKey } = getActiveSession();
-        const { id, userId, createdAt, updatedAt, isDeleted, ...rest } = record;
-        const { ciphertext, iv } = await encrypt(masterKey, JSON.stringify(rest));
+    private async localToPbRecord(
+        table: TableName,
+        record: BaseRecord,
+        syncScope: SyncScope
+    ): Promise<Record<string, unknown>> {
+        const {
+            id,
+            scopeId: _scopeId,
+            scopeType: _scopeType,
+            createdAt,
+            updatedAt,
+            isDeleted,
+            ...rest
+        } = record;
+        const { ciphertext, iv } = await encrypt(syncScope.key, JSON.stringify(rest));
 
         return {
             id,
-            userId,
+            [syncScope.ownerField]: syncScope.scope.scopeId,
+            kind: table,
             createdAt,
             updatedAt,
             isDeleted,
@@ -449,21 +571,43 @@ export class DataSyncEngine extends BaseSyncEngine {
         };
     }
 
-    private async pbToLocalRecord(pbRecord: Record<string, unknown>): Promise<DataRecord> {
-        const { masterKey } = getActiveSession();
+    private async pbToLocalRecord(
+        pbRecord: Record<string, unknown>,
+        syncScope: SyncScope
+    ): Promise<DecodedRemoteRecord> {
+        const table = this.toTableName(pbRecord.kind);
         const encData = fromBase64(pbRecord.encryptedData as string);
         const encIV = fromBase64(pbRecord.encryptedDataIV as string);
-        const json = await decrypt(masterKey, { ciphertext: encData, iv: encIV });
+        const json = await decrypt(syncScope.key, { ciphertext: encData, iv: encIV });
         const payload = JSON.parse(json) as Record<string, unknown>;
 
         return {
-            ...payload,
-            id: pbRecord.id as string,
-            userId: pbRecord.userId as string,
-            createdAt: this.normalizeTimestamp(pbRecord.createdAt, pbRecord.created),
-            updatedAt: this.normalizeTimestamp(pbRecord.updatedAt, pbRecord.updated),
-            isDeleted: Boolean(pbRecord.isDeleted)
-        } as DataRecord;
+            table,
+            record: {
+                ...payload,
+                id: pbRecord.id as string,
+                scopeType: syncScope.scope.scopeType,
+                scopeId: syncScope.scope.scopeId,
+                createdAt: this.normalizeTimestamp(pbRecord.createdAt, pbRecord.created),
+                updatedAt: this.normalizeTimestamp(pbRecord.updatedAt, pbRecord.updated),
+                isDeleted: Boolean(pbRecord.isDeleted)
+            } as unknown as DataRecord
+        };
+    }
+
+    private toTableName(kind: unknown): TableName {
+        if (typeof kind === 'string' && SYNC_TABLES.includes(kind as TableName)) {
+            return kind as TableName;
+        }
+        throw new Error(`Unknown synced record kind: ${String(kind)}`);
+    }
+
+    private syncKey(scope: DataScope): string {
+        return `lastSync_records_${scope.scopeType}_${scope.scopeId}`;
+    }
+
+    private changeKey(table: TableName, id: string): string {
+        return `${table}:${id}`;
     }
 
     protected override isAuthError(error: unknown): boolean {

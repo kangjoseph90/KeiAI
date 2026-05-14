@@ -1,14 +1,14 @@
 /**
  * Asset Sync Engine — KeiAI v3
  *
- * Syncs logical asset metadata and uploads local plaintext cache entries as
- * deterministic ciphertext. Registry is a device-local cache index only.
+ * Syncs logical asset metadata by scope and uploads local plaintext cache
+ * entries as deterministic ciphertext. Registry is a device-local cache index.
  */
 
 import { clock } from '$lib/utils/clock';
 import { pb } from '$lib/adapters/pb';
-import { encrypt, decrypt, toBase64, fromBase64 } from '$lib/crypto';
-import { getActiveSession, hasActiveSession } from '../user';
+import { encrypt, decrypt, toBase64, fromBase64, importMasterKey } from '$lib/crypto';
+import { getActiveSession, hasActiveSession } from '../session';
 import {
     appAsset,
     type AssetFields,
@@ -17,6 +17,8 @@ import {
     type AssetRegistryRecord,
     type AssetStatus
 } from '$lib/adapters/asset';
+import type { DataScope } from '$lib/adapters/db';
+import { appMulti, type MultiRoomDeleteMarkerRecord } from '$lib/adapters/multi';
 import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
 import { AppError, isErrorCode } from '$lib/types/errors';
@@ -24,6 +26,7 @@ import { BaseSyncEngine, type SyncStatus } from './base';
 import { createLogger } from '$lib/adapters/logger';
 import { encryptConvergentAsset, parseFields } from '../asset/util';
 import { uploadAsset } from '../asset/remote';
+import { Semaphore } from '$lib/utils/semaphore';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -31,6 +34,15 @@ type RealtimeEvent = {
     action: string;
     record: Record<string, unknown>;
 };
+
+type AssetCollection = 'assets' | 'multi_room_assets';
+
+interface AssetSyncScope {
+    scope: DataScope;
+    key: CryptoKey;
+    collection: AssetCollection;
+    ownerField: 'userId' | 'roomId';
+}
 
 interface EncryptedAssetPayload {
     kind: AssetKind;
@@ -45,7 +57,11 @@ export interface AssetSyncStatus extends SyncStatus {
 // ─── Constants ───────────────────────────────────────────────────────
 
 const PAGE_SIZE = 200;
-const SYNC_KEY_PREFIX = 'lastSync_assets_';
+const CHUNK_SIZE = 100;
+const UPLOAD_CONCURRENCY = 3;
+const MAX_DELETE_MARKER_ATTEMPTS = 5;
+const USER_ASSETS_COLLECTION: AssetCollection = 'assets';
+const ROOM_ASSETS_COLLECTION: AssetCollection = 'multi_room_assets';
 const logger = createLogger('sync:asset');
 
 // ─── Engine ──────────────────────────────────────────────────────────
@@ -91,67 +107,117 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
 
         await this.unsubscribeRealtime();
-        await pb.collection('assets').subscribe('*', (event) => {
-            void this.handleRealtimeEvent(event as unknown as RealtimeEvent);
+        await pb.collection(USER_ASSETS_COLLECTION).subscribe('*', (event) => {
+            void this.handleRealtimeEvent(
+                USER_ASSETS_COLLECTION,
+                event as unknown as RealtimeEvent
+            );
         });
+
+        const { roomId, roomKey } = getActiveSession();
+        if (roomId && roomKey) {
+            await pb.collection(ROOM_ASSETS_COLLECTION).subscribe('*', (event) => {
+                void this.handleRealtimeEvent(
+                    ROOM_ASSETS_COLLECTION,
+                    event as unknown as RealtimeEvent
+                );
+            });
+        }
+
         this.subscribed = true;
     }
 
     async unsubscribeRealtime(): Promise<void> {
-        try {
-            await pb.collection('assets').unsubscribe('*');
-        } catch {
-            // Already unsubscribed or offline.
+        for (const collection of [USER_ASSETS_COLLECTION, ROOM_ASSETS_COLLECTION]) {
+            try {
+                await pb.collection(collection).unsubscribe('*');
+            } catch {
+                // Already unsubscribed or offline.
+            }
         }
         this.subscribed = false;
     }
 
     async resetCursors(userId: string): Promise<void> {
-        await appKV.remove(`${SYNC_KEY_PREFIX}${userId}`);
+        await appKV.remove(this.syncKey({ scopeType: 'user', scopeId: userId }));
     }
 
     protected override async performSync(): Promise<void> {
         if (!pb.authStore.isValid || !hasActiveSession()) return;
-        const { userId } = getActiveSession();
+        const scopes = this.getActiveSyncScopes();
 
         this.abortController = new AbortController();
 
-        await this.pullAssets(userId);
+        for (const scope of scopes) {
+            await this.syncScope(scope);
+            if (this.abortController.signal.aborted) return;
+        }
+
+        await this.processUploadQueue(scopes);
         if (this.abortController.signal.aborted) return;
 
-        await this.processUploadQueue(userId);
+        await this.syncRoomDeleteMarkers();
 
         this.currentAssetId = null;
         this.updateStatus({ currentAssetId: undefined, pendingCount: 0, progress: undefined });
     }
 
-    // ── Pull (Server → Local) ─────────────────────────────────────────
+    private getActiveSyncScopes(): AssetSyncScope[] {
+        const { userId, masterKey, roomId, roomKey } = getActiveSession();
+        const scopes: AssetSyncScope[] = [
+            {
+                scope: { scopeType: 'user', scopeId: userId },
+                key: masterKey,
+                collection: USER_ASSETS_COLLECTION,
+                ownerField: 'userId'
+            }
+        ];
 
-    private async pullAssets(userId: string): Promise<void> {
-        const syncKey = `${SYNC_KEY_PREFIX}${userId}`;
+        if (roomId && roomKey) {
+            scopes.push({
+                scope: { scopeType: 'room', scopeId: roomId },
+                key: roomKey,
+                collection: ROOM_ASSETS_COLLECTION,
+                ownerField: 'roomId'
+            });
+        }
+
+        return scopes;
+    }
+
+    // ── Scope Sync ───────────────────────────────────────────────────
+
+    private async syncScope(syncScope: AssetSyncScope): Promise<void> {
+        const syncKey = this.syncKey(syncScope.scope);
         const lastSyncTime = Number.parseInt((await appKV.get(syncKey)) || '0', 10) || 0;
         let nextCursor = lastSyncTime;
         let cursorSafeToAdvance = true;
         let page = 1;
         let syncError: unknown = null;
         let correctionError: unknown = null;
-        const offlineWrites: AssetRecord[] = [];
+        const offlineWrites = new Map<string, AssetRecord>();
 
         try {
             while (true) {
                 if (this.abortController?.signal.aborted) break;
 
-                const result = await pb.collection('assets').getList(page, PAGE_SIZE, {
-                    filter: pb.filter('userId = {:userId} && updatedAt >= {:since}', {
-                        userId,
-                        since: lastSyncTime
-                    }),
+                const result = await pb.collection(syncScope.collection).getList(page, PAGE_SIZE, {
+                    filter: pb.filter(
+                        `${syncScope.ownerField} = {:scopeId} && updatedAt >= {:since}`,
+                        {
+                            scopeId: syncScope.scope.scopeId,
+                            since: lastSyncTime
+                        }
+                    ),
                     sort: 'updatedAt'
                 });
 
                 const remotes = await Promise.all(
                     result.items.map((record) =>
-                        this.pbToLocalRecord(record as unknown as Record<string, unknown>)
+                        this.pbToLocalRecord(
+                            record as unknown as Record<string, unknown>,
+                            syncScope
+                        )
                     )
                 );
 
@@ -164,7 +230,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
                         await appAsset.putAsset(remote, { origin: 'sync' });
                         await this.evictLocalCacheIfRemoteChanged(local, remote);
                     } else if (localAt > remoteAt) {
-                        offlineWrites.push(local);
+                        offlineWrites.set(local.id, local);
                     }
                     nextCursor = Math.max(nextCursor, remoteAt);
                 }
@@ -175,17 +241,20 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
         } catch (error) {
             cursorSafeToAdvance = false;
             syncError = error;
-            logger.error('Failed to pull assets', error);
+            logger.error(`Failed to pull ${syncScope.collection}`, error);
         }
 
-        const scannedUnsynced = await appAsset.getAssetsSince(userId, lastSyncTime - 1);
-        const pendingPushes = new Map<string, AssetRecord>();
-        for (const record of offlineWrites) pendingPushes.set(record.id, record);
-        for (const record of scannedUnsynced) pendingPushes.set(record.id, record);
+        const scannedUnsynced = await appAsset.getAssetsSince(syncScope.scope, lastSyncTime - 1);
+        for (const record of scannedUnsynced) {
+            offlineWrites.set(record.id, record);
+        }
 
-        if (pendingPushes.size > 0) {
+        if (offlineWrites.size > 0) {
             try {
-                await this.pushBatch([...pendingPushes.values()], false);
+                await this.pushBatch(syncScope, [...offlineWrites.values()], false);
+                for (const record of offlineWrites.values()) {
+                    nextCursor = Math.max(nextCursor, record.updatedAt ?? 0);
+                }
             } catch (error) {
                 correctionError = error;
             }
@@ -226,13 +295,16 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
     // ── Realtime ─────────────────────────────────────────────────────
 
-    private async handleRealtimeEvent(event: RealtimeEvent): Promise<void> {
+    private async handleRealtimeEvent(
+        collection: AssetCollection,
+        event: RealtimeEvent
+    ): Promise<void> {
         try {
             if (!hasActiveSession()) return;
-            const { userId: activeUserId } = getActiveSession();
-            if (event.record.userId !== activeUserId) return;
+            const syncScope = this.getRealtimeScope(collection, event.record);
+            if (!syncScope) return;
 
-            const remote = await this.pbToLocalRecord(event.record);
+            const remote = await this.pbToLocalRecord(event.record, syncScope);
             const remoteAt = remote.updatedAt ?? 0;
             let shouldEvict = false;
 
@@ -255,8 +327,33 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
                 ]);
             }
         } catch (error) {
-            logger.error('Realtime event error', error);
+            logger.error(`Realtime event error for ${collection}`, error);
         }
+    }
+
+    private getRealtimeScope(
+        collection: AssetCollection,
+        record: Record<string, unknown>
+    ): AssetSyncScope | null {
+        const { userId, masterKey, roomId, roomKey } = getActiveSession();
+
+        if (collection === USER_ASSETS_COLLECTION) {
+            if (record.userId !== userId) return null;
+            return {
+                scope: { scopeType: 'user', scopeId: userId },
+                key: masterKey,
+                collection,
+                ownerField: 'userId'
+            };
+        }
+
+        if (!roomId || !roomKey || record.roomId !== roomId) return null;
+        return {
+            scope: { scopeType: 'room', scopeId: roomId },
+            key: roomKey,
+            collection,
+            ownerField: 'roomId'
+        };
     }
 
     private didRemoteChangeBytes(local: AssetRecord | undefined, remote: AssetRecord): boolean {
@@ -276,42 +373,38 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
             return;
         }
 
-        const { userId: activeUserId } = getActiveSession();
-        if (record.userId !== activeUserId) return;
-
-        const payload = await this.localToPbRecord(record);
-        const batch = pb.createBatch();
-
-        if (isNew) {
-            batch.collection('assets').create(payload);
-        } else {
-            batch.collection('assets').upsert(payload);
-        }
-
-        try {
-            await batch.send({ requestKey: null });
-        } catch (error) {
-            logger.error(`Failed to push ${record.id}`, error);
-            if (throwOnError) throw error;
+        for (const syncScope of this.getActiveSyncScopes()) {
+            if (this.belongsToScope(record, syncScope.scope)) {
+                await this.pushBatch(syncScope, [record], !throwOnError, isNew);
+                return;
+            }
         }
     }
 
-    private async pushBatch(records: AssetRecord[], swallowErrors = true): Promise<void> {
-        const { userId: activeUserId } = getActiveSession();
-        const owned = records.filter((r) => r.userId === activeUserId);
+    private async pushBatch(
+        syncScope: AssetSyncScope,
+        records: AssetRecord[],
+        swallowErrors = true,
+        isNew = false
+    ): Promise<void> {
+        const owned = records.filter((record) => this.belongsToScope(record, syncScope.scope));
         if (owned.length === 0) return;
 
-        const CHUNK_SIZE = 100;
         for (let i = 0; i < owned.length; i += CHUNK_SIZE) {
             const chunk = owned.slice(i, i + CHUNK_SIZE);
             const batch = pb.createBatch();
             for (const record of chunk) {
-                batch.collection('assets').upsert(await this.localToPbRecord(record));
+                const payload = await this.localToPbRecord(record, syncScope);
+                if (isNew) {
+                    batch.collection(syncScope.collection).create(payload);
+                } else {
+                    batch.collection(syncScope.collection).upsert(payload);
+                }
             }
             try {
                 await batch.send({ requestKey: null });
             } catch (error) {
-                logger.error('Failed to push batch', error);
+                logger.error(`Failed to push batch to ${syncScope.collection}`, error);
                 if (!swallowErrors) throw error;
             }
         }
@@ -327,53 +420,80 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
         const { userId: activeUserId } = getActiveSession();
         if (userId !== activeUserId) return;
 
-        const changed = await appAsset.getAssetsSince(userId, sinceInclusive - 1);
-        if (changed.length === 0) return;
+        const syncScope = this.getActiveSyncScopes().find(
+            (scope) => scope.scope.scopeType === 'user'
+        );
+        if (!syncScope) return;
 
-        void this.pushBatch(changed);
+        const changed = await appAsset.getAssetsSince(syncScope.scope, sinceInclusive - 1);
+        await this.pushBatch(syncScope, changed);
     }
 
     // ── Upload Queue ─────────────────────────────────────────────────
 
-    private async processUploadQueue(userId: string): Promise<void> {
-        const pending = await appAsset.getRegistryByStatus(userId, 'local');
+    private async processUploadQueue(scopes: AssetSyncScope[]): Promise<void> {
+        const pendingGroups = await Promise.all(
+            scopes.map(async (syncScope) => ({
+                syncScope,
+                entries: await appAsset.getRegistryByStatus(syncScope.scope, 'local')
+            }))
+        );
+        const pending = pendingGroups.flatMap(({ syncScope, entries }) =>
+            entries.map((entry) => ({ syncScope, entry }))
+        );
+
         this.updateStatus({ pendingCount: pending.length, progress: undefined });
         if (pending.length === 0) return;
 
-        for (const [index, entry] of pending.entries()) {
-            if (this.abortController?.signal.aborted) break;
+        const semaphore = new Semaphore(UPLOAD_CONCURRENCY);
+        let completed = 0;
+        let fatalError: unknown = null;
 
-            this.currentAssetId = entry.id;
-            this.updateStatus({
-                currentAssetId: entry.id,
-                progress: {
-                    completed: index,
-                    total: pending.length,
-                    currentItemId: entry.id
-                }
-            });
+        await Promise.all(
+            pending.map((item) =>
+                semaphore.runExclusive(async () => {
+                    if (fatalError || this.abortController?.signal.aborted) return;
 
-            try {
-                await this.uploadOne(entry);
-                this.updateStatus({
-                    pendingCount: Math.max(pending.length - (index + 1), 0),
-                    progress: {
-                        completed: index + 1,
-                        total: pending.length,
-                        currentItemId: entry.id
+                    this.currentAssetId = item.entry.id;
+                    this.updateStatus({
+                        currentAssetId: item.entry.id,
+                        progress: {
+                            completed,
+                            total: pending.length,
+                            currentItemId: item.entry.id
+                        }
+                    });
+
+                    try {
+                        await this.uploadOne(item.entry, item.syncScope);
+                    } catch (error) {
+                        if (this.isQuotaError(error) || this.isAuthError(error)) {
+                            fatalError = error;
+                            this.abortController?.abort();
+                            return;
+                        }
+                        logger.error(`Failed to sync asset ${item.entry.id}:`, error);
+                    } finally {
+                        completed++;
+                        this.updateStatus({
+                            pendingCount: Math.max(pending.length - completed, 0),
+                            progress: {
+                                completed,
+                                total: pending.length,
+                                currentItemId: item.entry.id
+                            }
+                        });
                     }
-                });
-            } catch (error) {
-                if (this.isQuotaError(error)) throw error;
-                if (this.isAuthError(error)) throw error;
-                logger.error(`Failed to sync asset ${entry.id}:`, error);
-            }
-        }
+                })
+            )
+        );
+
+        if (fatalError) throw fatalError;
     }
 
-    private async uploadOne(entry: AssetRegistryRecord): Promise<void> {
+    private async uploadOne(entry: AssetRegistryRecord, syncScope: AssetSyncScope): Promise<void> {
         const asset = await appAsset.getAsset(entry.id);
-        if (!asset || asset.isDeleted) {
+        if (!asset || asset.isDeleted || !this.belongsToScope(asset, syncScope.scope)) {
             await appAsset.deleteRegistry(entry.id).catch(() => undefined);
             return;
         }
@@ -404,7 +524,7 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
         };
 
         await appAsset.putAsset(updated);
-        await this.pushRecord(updated, false, true);
+        await this.pushBatch(syncScope, [updated], false);
         await this.putRegistryFromAsset(entry, nextFields, plaintext.length);
     }
 
@@ -437,20 +557,73 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
         });
     }
 
+    // ── Delete Markers ───────────────────────────────────────────────
+
+    private async syncRoomDeleteMarkers(): Promise<void> {
+        const markers = await appMulti.getDeleteMarkers();
+        for (const marker of markers) {
+            await this.syncRoomDeleteMarker(marker);
+        }
+    }
+
+    private async syncRoomDeleteMarker(marker: MultiRoomDeleteMarkerRecord): Promise<void> {
+        if (marker.attempts >= MAX_DELETE_MARKER_ATTEMPTS) return;
+
+        const scope: DataScope = { scopeType: 'room', scopeId: marker.roomId };
+        const rawRoomKey = fromBase64(marker.roomKey);
+
+        try {
+            const roomKey = await importMasterKey(rawRoomKey, true);
+            const syncScope: AssetSyncScope = {
+                scope,
+                key: roomKey,
+                collection: ROOM_ASSETS_COLLECTION,
+                ownerField: 'roomId'
+            };
+            const changes = (await appAsset.getAssetsSince(scope, 0)).filter(
+                (record) => record.isDeleted
+            );
+            if (changes.length > 0) {
+                await this.pushBatch(syncScope, changes, false);
+            }
+            if (marker.dataDone) {
+                await appMulti.deleteDeleteMarker(marker.roomId);
+            } else {
+                await appMulti.saveDeleteMarker({
+                    ...marker,
+                    assetDone: true,
+                    updatedAt: clock.now(),
+                    lastError: undefined
+                });
+            }
+        } catch (error) {
+            await appMulti.saveDeleteMarker({
+                ...marker,
+                attempts: marker.attempts + 1,
+                updatedAt: clock.now(),
+                lastError: error instanceof Error ? error.message : String(error)
+            });
+        } finally {
+            rawRoomKey.fill(0);
+        }
+    }
+
     // ── Serialization ────────────────────────────────────────────────
 
-    private async localToPbRecord(record: AssetRecord): Promise<Record<string, unknown>> {
-        const { masterKey } = getActiveSession();
+    private async localToPbRecord(
+        record: AssetRecord,
+        syncScope: AssetSyncScope
+    ): Promise<Record<string, unknown>> {
         const fields = parseFields(record);
         const payload: EncryptedAssetPayload = {
             kind: fields.kind,
             encKey: fields.encKey
         };
-        const { ciphertext, iv } = await encrypt(masterKey, JSON.stringify(payload));
+        const { ciphertext, iv } = await encrypt(syncScope.key, JSON.stringify(payload));
 
         return {
             id: record.id,
-            userId: record.userId,
+            [syncScope.ownerField]: syncScope.scope.scopeId,
             createdAt: record.createdAt,
             updatedAt: record.updatedAt,
             isDeleted: record.isDeleted,
@@ -461,11 +634,13 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
         };
     }
 
-    private async pbToLocalRecord(pbRecord: Record<string, unknown>): Promise<AssetRecord> {
-        const { masterKey } = getActiveSession();
+    private async pbToLocalRecord(
+        pbRecord: Record<string, unknown>,
+        syncScope: AssetSyncScope
+    ): Promise<AssetRecord> {
         const encData = fromBase64(pbRecord.encryptedData as string);
         const encIV = fromBase64(pbRecord.encryptedDataIV as string);
-        const json = await decrypt(masterKey, { ciphertext: encData, iv: encIV });
+        const json = await decrypt(syncScope.key, { ciphertext: encData, iv: encIV });
         const payload = JSON.parse(json) as EncryptedAssetPayload;
 
         const fields: AssetFields = {
@@ -477,12 +652,21 @@ export class AssetSyncEngine extends BaseSyncEngine<AssetSyncStatus> {
 
         return {
             id: pbRecord.id as string,
-            userId: pbRecord.userId as string,
+            scopeType: syncScope.scope.scopeType,
+            scopeId: syncScope.scope.scopeId,
             createdAt: this.normalizeTimestamp(pbRecord.createdAt, pbRecord.created),
             updatedAt: this.normalizeTimestamp(pbRecord.updatedAt, pbRecord.updated),
             isDeleted: Boolean(pbRecord.isDeleted),
             data: fields as unknown as Record<string, unknown>
         };
+    }
+
+    private belongsToScope(record: AssetRecord, scope: DataScope): boolean {
+        return record.scopeType === scope.scopeType && record.scopeId === scope.scopeId;
+    }
+
+    private syncKey(scope: DataScope): string {
+        return `lastSync_assets_${scope.scopeType}_${scope.scopeId}`;
     }
 
     protected override isQuotaError(error: unknown): boolean {

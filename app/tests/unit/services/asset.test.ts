@@ -3,9 +3,21 @@ import { AssetService } from '$lib/services/asset';
 import type { AssetRecord, AssetRegistryRecord } from '$lib/adapters/asset';
 
 vi.mock('$lib/services/user', () => ({
-    UserService: {},
+    UserService: {}
+}));
+
+vi.mock('$lib/services/session', () => ({
     getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
+    getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
+        if (scopeType === 'user') return { scopeType: 'user', scopeId: 'user-123' };
+        return { scopeType: 'room', scopeId: 'room-123' };
+    }),
+    canAccessScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return (
+            (record.scopeType === 'user' && record.scopeId === 'user-123') ||
+            (record.scopeType === 'room' && record.scopeId === 'room-123')
+        );
+    })
 }));
 
 vi.mock('$lib/adapters/asset', () => ({
@@ -16,7 +28,8 @@ vi.mock('$lib/adapters/asset', () => ({
         getRegistry: vi.fn(),
         putRegistry: vi.fn(),
         deleteRegistry: vi.fn(),
-        getRegistryByStatus: vi.fn()
+        getRegistryByStatus: vi.fn(),
+        getAllRegistryByStatus: vi.fn()
     }
 }));
 
@@ -59,7 +72,7 @@ vi.mock('$lib/services/sync/asset', () => ({
     }
 }));
 
-import { getActiveSession } from '$lib/services/user';
+import { getActiveSession } from '$lib/services/session';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
 import { sha256 } from '$lib/crypto';
@@ -79,7 +92,8 @@ describe('AssetService', () => {
 
     const mockRecord: AssetRecord = {
         id: 'asset-123',
-        userId: mockUserId,
+        scopeType: 'user',
+        scopeId: mockUserId,
         createdAt: 1000,
         updatedAt: 1000,
         isDeleted: false,
@@ -93,7 +107,8 @@ describe('AssetService', () => {
 
     const mockRegistry: AssetRegistryRecord = {
         id: 'asset-123',
-        userId: mockUserId,
+        scopeType: 'user',
+        scopeId: mockUserId,
         createdAt: 1000,
         updatedAt: 1000,
         isDeleted: false,
@@ -118,6 +133,7 @@ describe('AssetService', () => {
         vi.mocked(appAsset.putRegistry).mockResolvedValue(undefined);
         vi.mocked(appAsset.deleteRegistry).mockResolvedValue(undefined);
         vi.mocked(appAsset.getRegistryByStatus).mockResolvedValue([]);
+        vi.mocked(appAsset.getAllRegistryByStatus).mockResolvedValue([]);
 
         vi.mocked(appStorage.write).mockResolvedValue(undefined);
         vi.mocked(appStorage.delete).mockResolvedValue(undefined);
@@ -152,7 +168,8 @@ describe('AssetService', () => {
         expect(appAsset.putAsset).toHaveBeenCalledWith(
             expect.objectContaining({
                 id: 'asset-123',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 data: expect.objectContaining({
                     kind: 'resource',
                     status: 'local',
@@ -172,7 +189,10 @@ describe('AssetService', () => {
     });
 
     it('creates lightweight remote metadata without writing local storage', async () => {
-        const id = await AssetService.write(null, 'resource', 'hash-123', 'enc-key');
+        const id = await AssetService.write(null, 'resource', {
+            hash: 'hash-123',
+            encKey: 'enc-key'
+        });
 
         expect(id).toBe('asset-123');
         expect(appStorage.write).not.toHaveBeenCalled();

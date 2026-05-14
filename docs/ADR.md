@@ -170,7 +170,7 @@
 - 맥락: 현재 KeiAI는 단일 사용자의 암호화 세션(Master Key M)에 의존한다. 하지만 향후 '멀티 유저 룸(다중 접속 채팅)' 기능을 추가하려면 사용자 간에 안전하게 '방 키(Room Key)'를 교환할 수 있는 기능이 필요하다.
 - 문제: 나중에 멀티플레이 기능을 구현할 때 비대칭 키를 도입하면, 기존에 가입한 유저들은 공개키가 서버에 없다. 이 경우 다른 유저가 해당 유저를 그룹 채팅에 초대하려면, 상대방이 먼저 로그인해서 키를 생성하고 업로드하기를 기다려야 하는 심각한 UX 병목(Migration Headache)이 발생한다.
 - 결정:
-  - 회원가입(Link Account) 시점에 즉시 비대칭 키 쌍(ECDH 등)을 생성.
+  - 회원가입(Link Account) 시점에 즉시 비대칭 키 쌍(RSA-OAEP)을 생성.
   - `Identity Public Key`: 평문으로 서버에 저장 (누구나 조회하여 이 유저를 초대할 수 있게 함).
   - `Identity Private Key`: 사용자의 Master Key(`M`)로 암호화하여 서버에 저장 (사용자가 다른 기기에서 복구할 수 있게 함).
 - 결과: 지금 당장 멀티 유저 기능을 구현하지 않더라도, 모든 유저가 '초대 가능한 상태'가 되어 향후 기능 확장 시 데이터 마이그레이션이나 유저의 추가 액션 없이 즉시 다중 접속 기능을 활성화할 수 있다.
@@ -669,3 +669,96 @@
   - 메시지 히스토리는 당시 화자 이름을 보존하므로, 캐릭터/페르소나 삭제 이후에도 표시가 안정적으로 degrade된다.
   - 서비스/스토어 테스트는 room/chat/message/ref 정합성, selected/default 정책, greeting/variables, history context 주입을 회귀 방지 대상으로 삼는다.
 - 참고: ADR 026 (즉시 영속 메시지와 Thin Task 트래커), ADR 027 (Record 기반 중첩 구조), ADR 029 (PagedMessages), ADR 033 (EntityListConfig), docs/schema.md
+
+---
+
+## 035: 로컬 Scope 기반 컨텐츠 DB와 서버 Generic Encrypted Records
+
+- 상태: 채택
+- 맥락: 멀티 유저 룸을 도입하려면 개인 컨텐츠(`user` 소유)와 멀티룸 컨텐츠(`room` 소유)를 동시에 다뤄야 한다. 초기 검토에서는 로컬 DB에도 `multi_characters`, `multi_chats`, `multi_messages`처럼 별도 멀티 테이블을 추가하는 방식을 고려했다.
+- 문제:
+  - 로컬 테이블을 개인/멀티로 나누면 `MessageService`, `PagedMessages`, `RecordBuffer`, 템플릿/파이프라인, 변수/greeting 로직이 모두 local/multi 분기를 알아야 한다.
+  - 특히 메시지 페이지네이션과 record buffer는 같은 도메인 연산을 두 테이블에 대해 반복해야 하므로 코드량과 테스트 부담이 크게 늘어난다.
+  - 반대로 서버 측은 zero-knowledge sync 저장소이므로, 도메인별 테이블(`characters`, `messages`, `lorebooks` 등)을 그대로 유지할 필요가 약하다. 서버는 권한과 동기화 메타만 알면 되고, 실제 도메인 payload는 암호문 blob이다.
+- 대안 검토:
+  - 로컬/서버 모두 도메인별 local/multi 테이블 분리 → 권한 경계는 명확하지만 클라이언트 도메인 코드가 폭발한다.
+  - 로컬/서버 모두 단일 generic records 테이블 → 서버는 단순하지만 로컬 도메인 쿼리, 페이지네이션, 인덱싱이 불편하다.
+  - 로컬은 도메인 테이블 유지 + scope 격리, 서버는 generic encrypted records → 로컬 실행성과 서버 blind sync 모델을 각각 최적화할 수 있다.
+- 결정:
+  - 로컬 DB는 도메인별 테이블(`characters`, `rooms`, `chats`, `messages`, `lorebooks`, `scripts`, `charjs`, `assets` 등)을 유지하되, 모든 동기화 대상 레코드의 기본 메타데이터를 scope 기반 `BaseRecord`로 통일한다.
+    ```typescript
+    export type DataScopeType = 'user' | 'room';
+
+    export interface BaseRecord {
+        id: string;
+        scopeType: DataScopeType;
+        scopeId: string; // userId or roomId
+        createdAt: number;
+        updatedAt: number;
+        isDeleted: boolean;
+    }
+    ```
+  - 개인 컨텐츠는 `scopeType='user'`, `scopeId=userId`로 저장한다.
+  - 멀티룸 컨텐츠는 `scopeType='room'`, `scopeId=roomId`로 저장한다.
+  - 서비스/스토어/프롬프트/파이프라인은 호출자가 요청한 scope의 로컬 도메인 DB를 본다. `PagedMessages`와 `RecordBuffer`는 local/multi 테이블 분기를 알지 않고 scope 필터만 사용한다.
+  - 멀티룸에서 개인 캐릭터/페르소나/자원을 사용하려면 약한 참조가 아니라 snapshot import를 수행한다. import된 레코드는 새 id와 `scopeType='room'`, `scopeId=roomId`를 가진 독립 컨텐츠가 된다.
+  - 서버 sync 저장소는 도메인별 테이블 대신 generic encrypted record 테이블을 사용한다.
+    ```text
+    records
+      id, userId, kind, updatedAt, isDeleted, encryptedData, encryptedDataIV
+
+    multi_room_records
+      id, roomId, kind, updatedAt, isDeleted, encryptedData, encryptedDataIV
+    ```
+  - sync engine은 로컬 레코드의 `scopeType`을 기준으로 암호화 키와 서버 테이블을 선택한다.
+    - `scopeType='user'`: master key `M`으로 암호화하고 `records`에 push/pull한다.
+    - `scopeType='room'`: active room key로 암호화하고 `multi_room_records`에 push/pull한다.
+  - 서버의 멀티룸 권한은 `multi_room_records.roomId`와 `multi_room_members`의 accepted membership으로 검사한다. 개인 records는 기존처럼 `userId === auth.id`를 기준으로 검사한다.
+  - `multi_room_index`와 `multi_room_members`는 컨텐츠가 아니라 디렉터리/권한/키 교환 메타이므로 별도 테이블로 유지한다.
+  - 에셋도 같은 `BaseRecord` 소유 모델을 사용한다. 개인 에셋은 `scopeType='user'`, 멀티룸 에셋은 `scopeType='room'`이다.
+  - 다만 에셋은 서버 generic content records에 포함하지 않는다. 에셋은 blob 저장, upload queue, registry, hash/status 라이프사이클이 있으므로 별도 asset adapter/sync 모델을 유지한다. 서버도 `assets`와 `multi_room_assets`를 둔다.
+- 결과:
+  - 로컬 실행 계층은 개인 모드와 멀티룸 모드를 같은 도메인 서비스, 같은 페이지네이션, 같은 buffer 위에서 실행할 수 있다.
+  - 서버는 도메인 구조를 알지 않는 generic encrypted sync store가 되며, 새 컨텐츠 타입 추가 시 서버 schema 변경이 줄어든다.
+  - sync engine은 암호화 경계, 서버 스키마 변환 경계, scope 라우팅 경계가 되어 더 무거워진다. 대신 이 복잡도를 sync 한 곳에 모으고, 서비스/스토어/UI가 서버 테이블과 암호화 방식을 모르게 한다.
+  - 모든 로컬 컨텐츠 쿼리는 scope 필터를 반드시 포함해야 한다. 이를 누락하면 다른 유저 또는 다른 room의 데이터가 섞일 수 있으므로, 어댑터 API 차원에서 scope-aware 쿼리를 강제해야 한다.
+  - 로컬 DB shape와 서버 DB shape가 의도적으로 달라진다. 로컬은 실행하기 좋은 도메인 DB, 서버는 동기화하기 좋은 blind encrypted store로 본다.
+- 참고: ADR 029 (PagedMessages), ADR 030 (로컬 평문 저장소와 동기화 경계 암호화), ADR 031 (로컬 정체성 기반 계정 시스템 v2), ADR 032 (Asset System v3), ADR 034 (Room 중심 멀티 캐릭터/페르소나 채팅 모델)
+
+---
+
+## 036: Scope 기반 동기화 라우팅과 멀티룸 메타 동기화
+
+- 상태: 채택
+- 맥락: ADR 035로 로컬 컨텐츠 레코드는 `scopeType/scopeId`를 가지게 되었고, 서버는 개인 컨텐츠와 멀티룸 컨텐츠를 서로 다른 encrypted collection에 저장한다. 기존 동기화 엔진은 "로컬 테이블 = 서버 테이블"과 "테이블별 cursor"를 가정했기 때문에 scope 기반 라우팅과 맞지 않았다.
+- 문제:
+  - 같은 로컬 테이블(`characters`, `messages`, `assets`) 안에 user scope와 room scope 레코드가 공존한다.
+  - 서버는 개인 컨텐츠를 `records/assets`, 룸 컨텐츠를 `multi_room_records/multi_room_assets`에 저장한다.
+  - 동기화 cursor가 테이블별이면 scope 전환 시 cursor 의미가 흐려지고, 여러 로컬 테이블을 하나의 서버 collection으로 push/pull하기 어렵다.
+  - 룸 삭제는 room session이 닫힌 뒤에도 tombstone push가 필요하다. 이때 room key는 메모리 session에 없을 수 있다.
+- 결정:
+  - `DataSyncEngine`은 로컬 `SYNC_TABLES` 전체를 scope별로 수집한 뒤, 서버 collection 하나로 라우팅한다.
+    - user scope: `records`, key = user master key.
+    - room scope: `multi_room_records`, key = room key.
+  - 서버 record에는 `kind` 필드를 둔다. pull 시 `kind`를 기준으로 로컬 도메인 테이블에 분배한다.
+  - cursor는 테이블별이 아니라 scope별로 둔다.
+    - `lastSync_records_user_${userId}`
+    - `lastSync_records_room_${roomId}`
+    - `lastSync_assets_user_${userId}`
+    - `lastSync_assets_room_${roomId}`
+  - active user session은 항상 user scope를 동기화한다. active room session이 있으면 room scope도 추가로 동기화한다.
+  - `AssetSyncEngine`도 같은 scope routing을 따른다. 다만 upload queue, registry, storage blob 라이프사이클이 있으므로 data sync와 분리된 엔진으로 유지한다.
+    - user scope: `assets`
+    - room scope: `multi_room_assets`
+  - `MultiSyncEngine`은 컨텐츠가 아닌 plaintext room metadata만 동기화한다.
+    - `multi_room_index`: room directory/search/owner metadata.
+    - `multi_room_members`: membership status와 public-key-wrapped room key.
+    - cursor: `lastSync_multi_meta_${userId}`.
+  - room session 변화(`openRoom`, `closeRoom`, room create/delete/leave`) 후에는 room-aware sync engines(Data/Asset)의 realtime subscription을 갱신하고 즉시 pull/push를 시도한다.
+  - room deletion은 `MultiRoomDeleteMarkerRecord`로 표현한다. 삭제 호출 시 room key를 로컬 marker에 저장하고 room scope 레코드/에셋을 soft delete한다. Data/Asset sync가 각각 tombstone push를 완료하면 `dataDone/assetDone`을 표시하고, 둘 다 완료되면 marker를 제거한다. 실패 marker는 무한 재시도하지 않도록 최대 시도 횟수를 둔다.
+- 결과:
+  - 서비스 레이어는 서버 collection 이름과 암호화 키 선택을 몰라도 된다.
+  - sync engine이 암호화 경계, scope routing 경계, 서버 스키마 변환 경계를 책임진다.
+  - 개인 데이터와 멀티룸 데이터가 로컬에서는 같은 도메인 모델로 동작하고, 서버에서는 권한/키 경계에 맞게 분리된다.
+  - 멀티룸 메타데이터는 plaintext이지만, room content와 asset payload는 room key로 암호화된다.
+- 참고: ADR 030, ADR 032, ADR 035, docs/schema.md, docs/asset-system-v3.md

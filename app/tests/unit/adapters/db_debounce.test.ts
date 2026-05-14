@@ -19,11 +19,14 @@ Dexie.dependencies.IDBKeyRange = FDBKeyRange as unknown as typeof IDBKeyRange;
 // Now we can import WebDatabaseAdapter
 import { WebDatabaseAdapter } from '$lib/adapters/db/web';
 
+const userScope = { scopeType: 'user' as const, scopeId: 'user-123' };
+
 function createTestRecord(id: string, overrides: Partial<DataRecord> = {}): DataRecord {
     const now = Date.now();
     return {
         id,
-        userId: 'user-123',
+        scopeType: userScope.scopeType,
+        scopeId: userScope.scopeId,
         createdAt: now,
         updatedAt: now,
         isDeleted: false,
@@ -99,20 +102,22 @@ describe('WebDatabaseAdapter (Immediate writes)', () => {
     });
 
     it('should return indexed query results immediately after putRecord', async () => {
-        const rec = createTestRecord('db-6', { userId: 'sync-user' });
+        const syncScope = { scopeType: 'user' as const, scopeId: 'sync-user' };
+        const rec = createTestRecord('db-6', { scopeId: syncScope.scopeId });
         await localDB.putRecord('settings', rec);
-        const changes = await localDB.getUnsyncedChanges('settings', 'sync-user', 0);
+        const changes = await localDB.getUnsyncedChanges('settings', syncScope, 0);
 
         expect(changes.length).toBe(1);
         expect(changes[0].id).toBe('db-6');
     });
 
     it('should isolate persisted objects from caller-side mutation', async () => {
-        const rec = createTestRecord('db-7', { updatedAt: 100, userId: 'copy-user' });
+        const copyScope = { scopeType: 'user' as const, scopeId: 'copy-user' };
+        const rec = createTestRecord('db-7', { updatedAt: 100, scopeId: copyScope.scopeId });
         await localDB.putRecord('settings', rec);
 
         rec.updatedAt = 999;
-        const changes = await localDB.getUnsyncedChanges('settings', 'copy-user', 0);
+        const changes = await localDB.getUnsyncedChanges('settings', copyScope, 0);
         expect(changes[0]?.updatedAt).toBe(100);
     });
 });

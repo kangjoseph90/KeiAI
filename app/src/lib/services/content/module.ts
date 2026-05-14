@@ -1,5 +1,5 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
+import { canAccessUserScope, getSessionScope } from '../session';
 import { localDB, type ModuleRecord } from '$lib/adapters/db';
 import type { AssetRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
@@ -52,8 +52,7 @@ function parseFields(record: ModuleRecord): ModuleFields {
 export class ModuleService {
     static async list(): Promise<Module[]> {
         await buffer.flushTable('modules');
-        const { userId } = getActiveSession();
-        const records = await localDB.getAll<ModuleRecord>('modules', userId);
+        const records = await localDB.getAll<ModuleRecord>('modules', getSessionScope('user'));
 
         return records.map((record) => ({
             ...parseFields(record),
@@ -62,9 +61,8 @@ export class ModuleService {
     }
 
     static async get(id: string): Promise<Module | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ModuleRecord>('modules', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessUserScope(record)) return null;
 
         return {
             ...parseFields(record),
@@ -75,14 +73,15 @@ export class ModuleService {
     static async create(fields: DeepPartial<ModuleFields> = {}): Promise<Module> {
         const resolved: ModuleFields = deepMerge(defaultModuleFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope('user');
         const id = generateId();
         const now = clock.now();
 
         try {
             const newRecord: ModuleRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
@@ -98,9 +97,8 @@ export class ModuleService {
     }
 
     static async update(id: string, changes: DeepPartial<ModuleFields>): Promise<Module> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ModuleRecord>('modules', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessUserScope(record)) {
             throw new AppError('NOT_FOUND', `Module not found: ${id}`);
         }
 
@@ -127,9 +125,8 @@ export class ModuleService {
     }
 
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ModuleRecord>('modules', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessUserScope(record)) {
             throw new AppError('NOT_FOUND', `Module not found: ${id}`);
         }
 

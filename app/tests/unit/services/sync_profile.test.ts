@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UserSyncService } from '$lib/services/sync/user';
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession, hasActiveSession } from '$lib/services/user';
+import { getActiveSession, hasActiveSession } from '$lib/services/session';
 import { appUser } from '$lib/adapters/user';
 import type { RecordModel } from 'pocketbase';
 import type { User } from '$lib/services';
@@ -28,9 +28,12 @@ vi.mock('$lib/adapters/pb', () => ({
 
 vi.mock('$lib/services/user', () => ({
     UserService: {},
-    getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn(),
     toUser: vi.fn((u) => u)
+}));
+
+vi.mock('$lib/services/session', () => ({
+    getActiveSession: vi.fn(),
+    hasActiveSession: vi.fn()
 }));
 
 vi.mock('$lib/adapters/user', () => ({

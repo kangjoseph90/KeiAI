@@ -18,6 +18,7 @@ import type {
     AssetStatus,
     AssetKind
 } from './types';
+import type { DataScope } from '$lib/adapters/db';
 import { clock } from '$lib/utils/clock';
 
 class AssetDexie extends Dexie {
@@ -27,9 +28,9 @@ class AssetDexie extends Dexie {
     constructor() {
         super('KeiAssets');
         this.version(1).stores({
-            assets: 'id, userId, updatedAt, isDeleted',
+            assets: 'id, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
             assetRegistry:
-                'id, userId, [userId+status], [userId+status+kind], [userId+isDeleted], accessedAt'
+                'id, [scopeType+scopeId], [scopeType+scopeId+status], [scopeType+scopeId+status+kind], [scopeType+scopeId+isDeleted], status, [status+kind], accessedAt'
         });
     }
 }
@@ -67,10 +68,10 @@ export class WebAssetAdapter implements IAssetAdapter {
         return assetDB.assets.get(id);
     }
 
-    async getAllAssets(userId: string): Promise<AssetRecord[]> {
+    async getAllAssets(scope: DataScope): Promise<AssetRecord[]> {
         return assetDB.assets
-            .where('userId')
-            .equals(userId)
+            .where('[scopeType+scopeId]')
+            .equals([scope.scopeType, scope.scopeId])
             .filter((record) => !record.isDeleted)
             .sortBy('updatedAt');
     }
@@ -97,10 +98,10 @@ export class WebAssetAdapter implements IAssetAdapter {
         this.emitWriteEvent('assets', 'delete', [id], options);
     }
 
-    async getAssetsSince(userId: string, sinceUpdatedAt: number): Promise<AssetRecord[]> {
+    async getAssetsSince(scope: DataScope, sinceUpdatedAt: number): Promise<AssetRecord[]> {
         return assetDB.assets
-            .where('userId')
-            .equals(userId)
+            .where('[scopeType+scopeId]')
+            .equals([scope.scopeType, scope.scopeId])
             .filter((record) => record.updatedAt > sinceUpdatedAt)
             .sortBy('updatedAt');
     }
@@ -111,32 +112,52 @@ export class WebAssetAdapter implements IAssetAdapter {
         return assetDB.assetRegistry.get(id);
     }
 
-    async getAllRegistry(userId: string): Promise<AssetRegistryRecord[]> {
+    async getAllRegistry(scope: DataScope): Promise<AssetRegistryRecord[]> {
         return assetDB.assetRegistry
-            .where('userId')
-            .equals(userId)
+            .where('[scopeType+scopeId]')
+            .equals([scope.scopeType, scope.scopeId])
             .filter((record) => !record.isDeleted)
             .toArray();
     }
 
     async getRegistryByStatus(
-        userId: string,
+        scope: DataScope,
         status: AssetStatus,
         kinds?: AssetKind[]
     ): Promise<AssetRegistryRecord[]> {
         if (!kinds || kinds.length === 0) {
             return assetDB.assetRegistry
-                .where('[userId+status]')
-                .equals([userId, status])
+                .where('[scopeType+scopeId+status]')
+                .equals([scope.scopeType, scope.scopeId, status])
                 .filter((r) => !r.isDeleted)
                 .toArray();
         }
 
-        const keys = kinds.map((k) => [userId, status, k]);
+        const keys = kinds.map((k) => [scope.scopeType, scope.scopeId, status, k]);
         return assetDB.assetRegistry
-            .where('[userId+status+kind]')
+            .where('[scopeType+scopeId+status+kind]')
             .anyOf(keys)
             .filter((r) => !r.isDeleted)
+            .toArray();
+    }
+
+    async getAllRegistryByStatus(
+        status: AssetStatus,
+        kinds?: AssetKind[]
+    ): Promise<AssetRegistryRecord[]> {
+        if (!kinds || kinds.length === 0) {
+            return assetDB.assetRegistry
+                .where('status')
+                .equals(status)
+                .filter((record) => !record.isDeleted)
+                .toArray();
+        }
+
+        const keys = kinds.map((kind) => [status, kind]);
+        return assetDB.assetRegistry
+            .where('[status+kind]')
+            .anyOf(keys)
+            .filter((record) => !record.isDeleted)
             .toArray();
     }
 

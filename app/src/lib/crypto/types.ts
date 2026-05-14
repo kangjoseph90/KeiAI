@@ -63,6 +63,6 @@ export interface DerivedKeys {
 
 /** User identity key pair for asymmetric encryption (Room Key exchange in multi-room) */
 export interface IdentityKeyPair {
-    publicKey: CryptoKey; // ECDH P-256 public key (extractable, stored as JWK on server)
-    privateKey: CryptoKey; // ECDH P-256 private key (extractable in the local identity model)
+    publicKey: CryptoKey; // RSA-OAEP public key (extractable, stored as JWK on server)
+    privateKey: CryptoKey; // RSA-OAEP private key (extractable in the local identity model)
 }

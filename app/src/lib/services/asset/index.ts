@@ -13,11 +13,12 @@ import {
     type AssetRegistryRecord,
     type AssetStatus
 } from '$lib/adapters/asset';
+import type { DataScopeType } from '$lib/adapters/db';
 import { appStorage } from '$lib/adapters/storage';
 import { clock } from '$lib/utils/clock';
 import { generateId } from '$lib/utils/id';
 import { AppError } from '$lib/types/errors';
-import { getActiveSession } from '../user';
+import { canAccessScope, getSessionScope } from '../session';
 import { AssetSyncService } from '../sync/asset';
 import type { AssetKind } from './types';
 import { CACHE_HIGH_WATERMARK, CACHE_LOW_WATERMARK } from './types';
@@ -37,15 +38,16 @@ async function setRegistry(
     id: string,
     size: number,
     kind: AssetKind,
-    status: AssetStatus
+    status: AssetStatus,
+    scope: ReturnType<typeof getSessionScope>
 ): Promise<AssetRegistryRecord> {
-    const { userId } = getActiveSession();
     const now = clock.now();
     const existing = await appAsset.getRegistry(id);
 
     const record: AssetRegistryRecord = {
         id,
-        userId,
+        scopeType: existing?.scopeType ?? scope.scopeType,
+        scopeId: existing?.scopeId ?? scope.scopeId,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
         isDeleted: false,
@@ -60,9 +62,8 @@ async function setRegistry(
 }
 
 async function touchRegistry(id: string): Promise<void> {
-    const { userId } = getActiveSession();
     const existing = await appAsset.getRegistry(id);
-    if (!existing || existing.isDeleted || existing.userId !== userId) return;
+    if (!existing || existing.isDeleted || !canAccessScope(existing)) return;
 
     await appAsset.putRegistry({
         ...existing,
@@ -80,9 +81,8 @@ async function getStorageSize(id: string): Promise<number> {
 }
 
 async function syncRegistryIndex(id: string, kind: AssetKind, status: AssetStatus): Promise<void> {
-    const { userId } = getActiveSession();
     const existing = await appAsset.getRegistry(id);
-    if (!existing || existing.isDeleted || existing.userId !== userId) return;
+    if (!existing || existing.isDeleted || !canAccessScope(existing)) return;
     if (existing.kind === kind && existing.status === status) return;
 
     await appAsset.putRegistry({
@@ -95,9 +95,8 @@ async function syncRegistryIndex(id: string, kind: AssetKind, status: AssetStatu
 
 // ─── Asset Table Helpers ─────────────────────────────────────────────
 async function updateAssetFields(id: string, changes: Partial<AssetFields>): Promise<AssetRecord> {
-    const { userId } = getActiveSession();
     const asset = await appAsset.getAsset(id);
-    if (!asset || asset.isDeleted || asset.userId !== userId) {
+    if (!asset || asset.isDeleted || !canAccessScope(asset)) {
         throw new AppError('NOT_FOUND', `Asset ${id} not found`);
     }
 
@@ -126,15 +125,13 @@ export class AssetService {
      * @returns true if the asset is now available locally, false if it failed.
      */
     static load(id: string): Promise<boolean> {
-        const { userId } = getActiveSession();
-        const pendingKey = `${userId}:${id}`;
-        const pending = AssetService.pendingLoads.get(pendingKey);
+        const pending = AssetService.pendingLoads.get(id);
         if (pending) return pending;
 
         const promise = AssetService.loadImpl(id).finally(() => {
-            AssetService.pendingLoads.delete(pendingKey);
+            AssetService.pendingLoads.delete(id);
         });
-        AssetService.pendingLoads.set(pendingKey, promise);
+        AssetService.pendingLoads.set(id, promise);
         return promise;
     }
 
@@ -148,15 +145,18 @@ export class AssetService {
     }
 
     private static async loadImpl(id: string): Promise<boolean> {
-        const { userId } = getActiveSession();
         const asset = await appAsset.getAsset(id);
-        if (!asset || asset.isDeleted || asset.userId !== userId) return false;
+        if (!asset || asset.isDeleted || !canAccessScope(asset)) return false;
 
         const fields = parseFields(asset);
         const storagePath = `assets/${id}`;
 
         if (await appStorage.exists(storagePath)) {
-            await setRegistry(id, await getStorageSize(id), fields.kind, fields.status);
+            const size = await getStorageSize(id);
+            await setRegistry(id, size, fields.kind, fields.status, {
+                scopeType: asset.scopeType,
+                scopeId: asset.scopeId
+            });
             await touchRegistry(id);
             return true;
         }
@@ -176,7 +176,10 @@ export class AssetService {
 
         await appStorage.write(storagePath, plaintext);
         try {
-            await setRegistry(id, plaintext.length, fields.kind, fields.status);
+            await setRegistry(id, plaintext.length, fields.kind, fields.status, {
+                scopeType: asset.scopeType,
+                scopeId: asset.scopeId
+            });
         } catch (error) {
             await appStorage.delete(storagePath).catch(() => undefined);
             throw error;
@@ -189,10 +192,14 @@ export class AssetService {
     static async write(
         file: File | null,
         kind: AssetKind,
-        hash?: string,
-        encKey?: string
+        options: {
+            scopeType?: DataScopeType;
+            hash?: string;
+            encKey?: string;
+        } = {}
     ): Promise<string> {
-        const { userId } = getActiveSession();
+        const { scopeType = 'user', hash, encKey } = options;
+        const scope = getSessionScope(scopeType);
 
         if (!file && (!hash || !encKey)) {
             throw new AppError('INVALID_INPUT', 'Either file or hash+encKey must be provided');
@@ -224,7 +231,8 @@ export class AssetService {
 
         const record: AssetRecord = {
             id,
-            userId,
+            scopeType: scope.scopeType,
+            scopeId: scope.scopeId,
             createdAt: now,
             updatedAt: now,
             isDeleted: false,
@@ -239,7 +247,7 @@ export class AssetService {
 
         await appStorage.write(`assets/${id}`, plaintext);
         try {
-            await setRegistry(id, plaintext.length, fields.kind, fields.status);
+            await setRegistry(id, plaintext.length, fields.kind, fields.status, scope);
             await appAsset.putAsset(record);
         } catch (error) {
             await Promise.all([
@@ -257,9 +265,8 @@ export class AssetService {
     }
 
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const asset = await appAsset.getAsset(id);
-        if (!asset || asset.isDeleted || asset.userId !== userId) {
+        if (!asset || asset.isDeleted || !canAccessScope(asset)) {
             throw new AppError('NOT_FOUND', `Asset ${id} not found`);
         }
 
@@ -283,9 +290,8 @@ export class AssetService {
     static async markLocalBatch(ids: string[]): Promise<void> {
         await appAsset.transaction(['assets', 'assetRegistry'], 'rw', async () => {
             for (const id of ids) {
-                const { userId } = getActiveSession();
                 const asset = await appAsset.getAsset(id);
-                if (!asset || asset.isDeleted || asset.userId !== userId) {
+                if (!asset || asset.isDeleted || !canAccessScope(asset)) {
                     throw new AppError('NOT_FOUND', `Asset ${id} not found`);
                 }
 
@@ -308,8 +314,7 @@ export class AssetService {
     static async evictCache(): Promise<void> {
         if (AssetService.isEvictionPaused) return;
 
-        const { userId } = getActiveSession();
-        const remoteAssets = await appAsset.getRegistryByStatus(userId, 'remote');
+        const remoteAssets = await appAsset.getAllRegistryByStatus('remote');
 
         const totalSize = remoteAssets.reduce((sum, record) => sum + record.size, 0);
         if (totalSize <= CACHE_HIGH_WATERMARK) return;
@@ -335,7 +340,10 @@ export class AssetService {
     }
 
     static async getAllAssets(userId: string): Promise<AssetRecord[]> {
-        return await appAsset.getAllAssets(userId);
+        return await appAsset.getAllAssets({
+            scopeType: 'user',
+            scopeId: userId
+        });
     }
 
     static stopEviction(): void {

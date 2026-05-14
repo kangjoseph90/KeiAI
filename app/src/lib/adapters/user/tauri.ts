@@ -361,17 +361,17 @@ export class TauriUserAdapter implements IUserAdapter {
         const publicKey = await crypto.subtle.importKey(
             'jwk',
             idKeys.publicKeyJwk,
-            { name: 'ECDH', namedCurve: 'P-256' },
+            { name: 'RSA-OAEP', hash: 'SHA-256' },
             true,
-            []
+            ['encrypt']
         );
 
         const privateKey = await crypto.subtle.importKey(
             'pkcs8',
             idKeys.rawPrivateKey.buffer as ArrayBuffer,
-            { name: 'ECDH', namedCurve: 'P-256' },
+            { name: 'RSA-OAEP', hash: 'SHA-256' },
             true,
-            ['deriveKey']
+            ['decrypt']
         );
 
         return {

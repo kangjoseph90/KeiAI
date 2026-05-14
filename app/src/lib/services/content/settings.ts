@@ -1,5 +1,5 @@
-import { getActiveSession } from '../user';
-import { localDB, type SettingsRecord } from '$lib/adapters/db';
+import { getActiveSession, getSessionScope } from '../session';
+import type { SettingsRecord } from '$lib/adapters/db';
 import type { ResourceRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
@@ -238,6 +238,7 @@ export class SettingsService {
     /** Partial update – read-modify-write with merge */
     static async update(changes: DeepPartial<AppSettings>): Promise<AppSettings> {
         const { userId } = getActiveSession();
+        const scope = getSessionScope('user');
 
         try {
             const record = await buffer.get<SettingsRecord>('settings', userId);
@@ -251,7 +252,8 @@ export class SettingsService {
                 tableName: 'settings',
                 record: {
                     id: userId,
-                    userId,
+                    scopeType: scope.scopeType,
+                    scopeId: scope.scopeId,
                     createdAt: record?.createdAt ?? clock.now(),
                     updatedAt: clock.now(),
                     isDeleted: false,

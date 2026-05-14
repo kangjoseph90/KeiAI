@@ -1,5 +1,5 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
+import { canAccessUserScope, getSessionScope } from '../session';
 import { localDB, type PresetRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
@@ -84,16 +84,14 @@ function parseFields(record: PresetRecord): PresetFields {
 export class PresetService {
     static async list(): Promise<Preset[]> {
         await buffer.flushTable('presets');
-        const { userId } = getActiveSession();
-        const records = await localDB.getAll<PresetRecord>('presets', userId);
+        const records = await localDB.getAll<PresetRecord>('presets', getSessionScope('user'));
 
         return records.map((record) => ({ ...parseFields(record), id: record.id }));
     }
 
     static async get(id: string): Promise<Preset | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<PresetRecord>('presets', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessUserScope(record)) return null;
 
         return { ...parseFields(record), id: record.id };
     }
@@ -101,14 +99,15 @@ export class PresetService {
     static async create(fields: DeepPartial<PresetFields> = {}): Promise<Preset> {
         const resolved: PresetFields = deepMerge(defaultPresetFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope('user');
         const id = generateId();
         const now = clock.now();
 
         try {
             const record: PresetRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
@@ -124,9 +123,8 @@ export class PresetService {
     }
 
     static async update(id: string, changes: DeepPartial<PresetFields>): Promise<Preset> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<PresetRecord>('presets', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessUserScope(record)) {
             throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
         }
 
@@ -152,9 +150,8 @@ export class PresetService {
     }
 
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<PresetRecord>('presets', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessUserScope(record)) {
             throw new AppError('NOT_FOUND', `Preset not found: ${id}`);
         }
 

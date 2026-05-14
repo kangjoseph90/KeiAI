@@ -1,5 +1,5 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
+import { canAccessUserScope, getSessionScope } from '../session';
 import { localDB, type PluginRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
@@ -43,8 +43,7 @@ function parseFields(record: PluginRecord): PluginFields {
 export class PluginService {
     static async list(): Promise<Plugin[]> {
         await buffer.flushTable('plugins');
-        const { userId } = getActiveSession();
-        const records = await localDB.getAll<PluginRecord>('plugins', userId);
+        const records = await localDB.getAll<PluginRecord>('plugins', getSessionScope('user'));
 
         return records.map((record) => ({
             ...parseFields(record),
@@ -53,9 +52,8 @@ export class PluginService {
     }
 
     static async get(id: string): Promise<Plugin | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<PluginRecord>('plugins', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessUserScope(record)) return null;
 
         return {
             ...parseFields(record),
@@ -66,14 +64,15 @@ export class PluginService {
     static async create(fields: DeepPartial<PluginFields> = {}): Promise<Plugin> {
         const resolved: PluginFields = deepMerge(defaultPluginFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope('user');
         const id = generateId();
         const now = clock.now();
 
         try {
             const newRecord: PluginRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
@@ -89,9 +88,8 @@ export class PluginService {
     }
 
     static async update(id: string, changes: DeepPartial<PluginFields>): Promise<Plugin> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<PluginRecord>('plugins', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessUserScope(record)) {
             throw new AppError('NOT_FOUND', `Plugin not found: ${id}`);
         }
 
@@ -113,9 +111,8 @@ export class PluginService {
     }
 
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<PluginRecord>('plugins', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessUserScope(record)) {
             throw new AppError('NOT_FOUND', `Plugin not found: ${id}`);
         }
 

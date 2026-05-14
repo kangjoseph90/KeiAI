@@ -16,7 +16,7 @@
 앱 최초 실행
 ├─ UUID 생성 (nanoid)          ← 유저의 영구 식별자
 ├─ M 생성 (AES-256-GCM)       ← 동기화 데이터 암호화 키
-└─ Identity Key Pair 생성      ← ECDH P-256, 미래 Room Key 교환용
+└─ Identity Key Pair 생성      ← RSA-OAEP, 미래 Room Key wrapping용
     (공개키 + 비밀키)
 
 → 즉시 앱 사용 가능 (게스트 모드)
@@ -36,7 +36,7 @@
 
 | 속성     |                        값                         |
 | -------- | :-----------------------------------------------: |
-| 알고리즘 |                    ECDH P-256                     |
+| 알고리즘 |                    RSA-OAEP SHA-256               |
 | 공개키   | 서버에 평문 저장 (타 유저가 Room Key 교환에 사용) |
 | 비밀키   |           서버에 M으로 암호화하여 저장            |
 | 용도     |           미래 멀티 룸의 Room Key 교환            |
@@ -254,7 +254,7 @@ interface UserRecord {
   updatedAt: number;
   isDeleted: boolean;
   masterKey: CryptoKey; // M (항상 extractable)
-  identityKeyPair: CryptoKeyPair; // ECDH P-256
+  identityKeyPair: CryptoKeyPair; // RSA-OAEP
   syncServerUrl?: string; // 계정 작업 대상 서버. 연결 상태 자체가 아님
 }
 ```

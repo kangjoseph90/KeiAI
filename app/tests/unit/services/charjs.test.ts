@@ -11,10 +11,17 @@ import type { BaseRecord } from '$lib/adapters/db/types';
 import { AppError } from '$lib/types/errors';
 
 // Mock dependencies
-vi.mock('$lib/services/user', () => ({
-    UserService: {},
-    getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
+vi.mock('$lib/services/session', () => ({
+    getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
+        if (scopeType === 'user') return { scopeType: 'user', scopeId: 'user-123' };
+        return { scopeType: 'room', scopeId: 'room-123' };
+    }),
+    canAccessScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return (
+            (record.scopeType === 'user' && record.scopeId === 'user-123') ||
+            (record.scopeType === 'room' && record.scopeId === 'room-123')
+        );
+    })
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -40,7 +47,6 @@ vi.mock('$lib/services/content/record_buffer', () => ({
     }
 }));
 
-import { getActiveSession } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { buffer } from '$lib/services/content/record_buffer';
 
@@ -57,12 +63,6 @@ describe('CharJSService', () => {
         vi.clearAllMocks();
         vi.mocked(buffer.get).mockResolvedValue(null);
         vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
-
-        vi.mocked(getActiveSession).mockReturnValue({
-            userId: mockUserId,
-            masterKey: {} as CryptoKey,
-            identityKeyPair: {} as CryptoKeyPair
-        });
     });
 
     describe('listByOwner', () => {
@@ -70,7 +70,8 @@ describe('CharJSService', () => {
             const mockRecords = [
                 {
                     id: 'c-1',
-                    userId: mockUserId,
+                    scopeType: 'user',
+                    scopeId: mockUserId,
                     ownerId: 'owner-1',
                     data: defaultCharJSParams
                 } as unknown as BaseRecord
@@ -91,7 +92,8 @@ describe('CharJSService', () => {
         it('should return charjs detail', async () => {
             const mockRecord = {
                 id: 'c-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultCharJSParams
@@ -131,6 +133,8 @@ describe('CharJSService', () => {
                 'charjs',
                 expect.objectContaining({
                     id: 'test-id',
+                    scopeType: 'user',
+                    scopeId: mockUserId,
                     ownerId: 'owner-1',
                     data: expect.objectContaining({
                         name: 'Custom Name',
@@ -145,7 +149,8 @@ describe('CharJSService', () => {
         it('should update and merge existing fields via write queue', async () => {
             const mockRecord = {
                 id: 'c-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultCharJSParams
@@ -174,7 +179,8 @@ describe('CharJSService', () => {
         it('should soft delete the charjs script', async () => {
             const mockRecord = {
                 id: 'c-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultCharJSParams

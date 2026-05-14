@@ -2,8 +2,17 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { RoomService } from '$lib/services/content/room';
 import type { BaseRecord } from '$lib/adapters/db/types';
 
-vi.mock('$lib/services/user', () => ({
-    getActiveSession: vi.fn()
+vi.mock('$lib/services/session', () => ({
+    getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
+        if (scopeType === 'user') return { scopeType: 'user', scopeId: 'user-123' };
+        return { scopeType: 'room', scopeId: 'room-123' };
+    }),
+    canAccessScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return (
+            (record.scopeType === 'user' && record.scopeId === 'user-123') ||
+            (record.scopeType === 'room' && record.scopeId === 'room-123')
+        );
+    })
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -37,7 +46,6 @@ vi.mock('$lib/services/content/record_buffer', () => ({
     }
 }));
 
-import { getActiveSession } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { buffer } from '$lib/services/content/record_buffer';
 
@@ -46,11 +54,6 @@ describe('RoomService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        vi.mocked(getActiveSession).mockReturnValue({
-            masterKey: {} as CryptoKey,
-            userId: mockUserId,
-            identityKeyPair: {} as CryptoKeyPair
-        });
         vi.mocked(buffer.get).mockResolvedValue(null);
         vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
     });
@@ -59,13 +62,15 @@ describe('RoomService', () => {
         vi.mocked(localDB.getAll).mockResolvedValue([
             {
                 id: 'room-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 isDeleted: false,
                 data: { name: 'Room 1' }
             },
             {
                 id: 'room-2',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 isDeleted: false,
                 data: {}
             }
@@ -73,7 +78,10 @@ describe('RoomService', () => {
 
         const rooms = await RoomService.list();
 
-        expect(localDB.getAll).toHaveBeenCalledWith('rooms', mockUserId);
+        expect(localDB.getAll).toHaveBeenCalledWith('rooms', {
+            scopeType: 'user',
+            scopeId: mockUserId
+        });
         expect(rooms[0]).toMatchObject({
             id: 'room-1',
             name: 'Room 1',
@@ -83,13 +91,14 @@ describe('RoomService', () => {
         expect(rooms[1]).toMatchObject({ id: 'room-2', name: 'New Room' });
     });
 
-    it('returns null for missing, deleted, or foreign rooms', async () => {
+    it('returns null for missing, deleted, or inaccessible rooms', async () => {
         vi.mocked(buffer.get).mockResolvedValue(null);
         await expect(RoomService.get('missing')).resolves.toBeNull();
 
         vi.mocked(buffer.get).mockResolvedValue({
             id: 'room-1',
-            userId: mockUserId,
+            scopeType: 'user',
+            scopeId: mockUserId,
             isDeleted: true,
             data: {}
         } as never);
@@ -97,11 +106,27 @@ describe('RoomService', () => {
 
         vi.mocked(buffer.get).mockResolvedValue({
             id: 'room-1',
-            userId: 'other-user',
+            scopeType: 'user',
+            scopeId: 'other-user',
             isDeleted: false,
             data: {}
         } as never);
         await expect(RoomService.get('room-1')).resolves.toBeNull();
+    });
+
+    it('allows reading accessible room-scoped rooms', async () => {
+        vi.mocked(buffer.get).mockResolvedValue({
+            id: 'room-1',
+            scopeType: 'room',
+            scopeId: 'room-123',
+            isDeleted: false,
+            data: { name: 'Multi Room' }
+        } as never);
+
+        await expect(RoomService.get('room-1')).resolves.toMatchObject({
+            id: 'room-1',
+            name: 'Multi Room'
+        });
     });
 
     it('creates a room owned by the active user', async () => {
@@ -117,7 +142,8 @@ describe('RoomService', () => {
             'rooms',
             expect.objectContaining({
                 id: 'room-new',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 data: expect.objectContaining({ name: 'New Project' })
             })
         );
@@ -126,7 +152,8 @@ describe('RoomService', () => {
     it('updates room fields through the record buffer', async () => {
         vi.mocked(buffer.get).mockResolvedValue({
             id: 'room-1',
-            userId: mockUserId,
+            scopeType: 'user',
+            scopeId: mockUserId,
             isDeleted: false,
             data: { name: 'Old Room' }
         } as never);
@@ -142,10 +169,43 @@ describe('RoomService', () => {
         );
     });
 
+    it('updates accessible room-scoped rooms', async () => {
+        vi.mocked(buffer.get).mockResolvedValue({
+            id: 'room-1',
+            scopeType: 'room',
+            scopeId: 'room-123',
+            isDeleted: false,
+            data: { name: 'Old Multi Room' }
+        } as never);
+
+        const updated = await RoomService.update('room-1', { name: 'New Multi Room' });
+
+        expect(updated).toMatchObject({ id: 'room-1', name: 'New Multi Room' });
+        expect(buffer.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                tableName: 'rooms',
+                patch: { name: 'New Multi Room' }
+            })
+        );
+    });
+
+    it('does not delete room-scoped rooms through the personal room service path', async () => {
+        vi.mocked(buffer.get).mockResolvedValue({
+            id: 'room-1',
+            scopeType: 'room',
+            scopeId: 'room-123',
+            isDeleted: false,
+            data: { name: 'Multi Room' }
+        } as never);
+
+        await expect(RoomService.delete('room-1')).rejects.toThrow();
+    });
+
     it('cascade soft-deletes room chats and chat-owned runtime data', async () => {
         vi.mocked(buffer.get).mockResolvedValue({
             id: 'room-1',
-            userId: mockUserId,
+            scopeType: 'user',
+            scopeId: mockUserId,
             isDeleted: false,
             data: { name: 'Delete Me' }
         } as never);

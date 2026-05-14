@@ -1,13 +1,33 @@
 🏛️ E2EE + BYOK AI 채팅 앱 핵심 아키텍처 설계도 (Local-First 기반)
 
+> 현재 canonical 데이터/동기화 설계는 `docs/schema.md`, `docs/ADR.md`의 ADR 034-036, `docs/asset-system-v3.md`를 우선한다.
+> 이 문서는 제품 철학과 큰 그림을 담되, 구현 세부는 해당 문서들이 기준이다.
+
+0. 현재 데이터/동기화 아키텍처 스냅샷
+
+- 로컬 DB는 평문 도메인 테이블이다. 서버로 나갈 때만 sync engine이 master key 또는 room key로 암호화한다.
+- 모든 동기화 대상 로컬 record는 `scopeType/scopeId`를 가진다.
+  - `user/userId`: 개인 금고.
+  - `room/roomId`: 멀티룸 공유 금고.
+- 서버는 도메인별 테이블을 모른다.
+  - 개인 컨텐츠: `records`.
+  - 멀티룸 컨텐츠: `multi_room_records`.
+  - 개인 에셋: `assets`.
+  - 멀티룸 에셋: `multi_room_assets`.
+  - 멀티룸 메타: `multi_room_index`, `multi_room_members`.
+- sync engine은 scope routing, 암호화/복호화, 서버 generic record와 로컬 도메인 테이블 간 변환을 책임진다.
+- room session은 user session을 대체하지 않는다. user session 위에 optional `roomId/roomKey`가 붙는다.
+- 멀티룸에 개인 캐릭터/페르소나를 올릴 때는 weak ref가 아니라 snapshot import로 room scope 사본을 만든다.
+
 1. 로컬-퍼스트 (Local-First) 및 게스트 모드 아키텍처
 
 - 오프라인 우선 진행: 앱을 켜면 서버 연결 여부와 상관없이 먼저 'Guest ID'와 메모리용 '마스터 키(M)'를 로컬에서 즉시 발급 (IndexedDB 저장). 유저는 로그인 없이 즉각 앱 사용 가능.
 - 서버 연동 (Link Account): 이후 유저가 가입(로그인)을 결심하면, 아래의 인증 흐름을 통해 그동안 게스트로 썼던 폰의 마스터 키 M을 서버용 패키지로 포장하여 서버에 업로드 연동함.
 - 데이터 레이어 분리:
-  1. Local DB (Storage Layer): Dexie(웹) 중심. Tauri 환경에서는 캐시 휘발에 대비해 `Dexie(주) + SQLite(메타데이터 미러) + Stronghold(게스트 로컬 마스터키 백업)`의 강력한 3중 폴백 아키텍처 적용. 일반 데이터는 무조건 AES-GCM으로 암호화된 Byte Array 형태로만 저장 및 조회.
-  2. Svelte Store (In-Memory Layer): 평문 변환 및 처리를 담당. 3계층(Global, Active Character, Active Chat)으로 나뉘며 방을 벗어나면 평문은 Garbage Collect 됨.
-  3. UI / Prompt Engine: 스토어에 복호화되어 있는 JSON 데이터를 자유롭게 조작(정규식, 삽입 등). 로컬 DB 조작은 의식하지 않음.
+  1. Local DB (Storage Layer): Dexie(웹) / SQLite(Tauri) 중심. 일반 도메인 데이터는 로컬에서 평문 JSON으로 저장된다. E2EE 경계는 sync engine이다.
+  2. User DB: 유저 identity, master key, identity key pair를 별도 저장한다. Tauri 환경에서는 IndexedDB + SQLite mirror + Stronghold 백업으로 복원력을 확보한다.
+  3. Svelte Store (In-Memory Layer): 서비스 레이어가 읽어온 평문 도메인 객체를 화면 상태로 보유한다. 스토어는 persistence/security boundary가 아니다.
+  4. UI / Prompt Engine: 서비스/스토어가 제공한 도메인 객체를 사용한다. 서버 스키마와 암호화 방식은 모른다.
 
 2. 키 생성 및 인증 (Authentication & Key Derivation)
 
@@ -56,10 +76,12 @@
   - `GET /api/recovery-bundle/{email}`: 계정 복구를 위해 복구 키 묶음(M(Z))을 반환하는 엔드포인트.
   - `POST /api/recover-account/{email}`: 아날로그 복구 키 인증을 거쳐 서버의 비밀번호와 M(Y)를 리셋하는 엔드포인트 (Constant-Time 해시 비교 및 Rate Limit 적용).
 - 블라인드 동기화 춤 (Blind Sync Dance):
-  - 로컬 DB와 포켓베이스 DB의 테이블 스키마는 동일(BaseRecord 형태).
-  - [업로드/Push]: 오프라인에 쌓인 `lastSyncTime` 이후의 암호문 바이트 배열들을 서버에 그대로 Upsert.
-  - [다운로드/Pull]: 타 기기에서 업로드된 서버의 최신 암호문들을 가져와 로컬 DB 덮어쓰기 (LWW: Last-Write-Wins 기반).
-  - `Realtime Subscription` 웹소켓을 활용해 클라이언트 간 즉시 푸시/알림 가능.
+  - 로컬 DB와 포켓베이스 DB의 테이블 스키마는 의도적으로 다르다.
+  - 로컬은 도메인 테이블, 서버는 generic encrypted records다.
+  - [업로드/Push]: scope별 변경분을 모아 `records` 또는 `multi_room_records`에 암호화 payload로 upsert한다.
+  - [다운로드/Pull]: 서버 generic record를 scope key로 복호화하고, `kind`를 기준으로 로컬 도메인 테이블에 분배한다.
+  - cursor는 테이블별이 아니라 scope별이다.
+  - `Realtime Subscription`은 user scope와 현재 열린 room scope에 대해 유지한다.
 - 스케일업 전략 (단계별 확장):
   - 1단계 (파일 외부 위임): 오라클 디스크가 꽉 차기 시작하면, PocketBase 관리자 설정에서 `Use S3 storage`를 켜고 Cloudflare R2(또는 Backblaze B2)를 연결. 무거운 이미지 파일들이 오라클을 거치지 않고 외부 스토리지로 빠짐.
   - 2단계 (BYOD 위임): BYOD를 통해 헤비 유저의 암호화 데이터 동기화를 유저 본인의 구글 드라이브/WebDAV로 넘겨 서버 부하를 유저에게 분산.
@@ -168,71 +190,32 @@
 
 12. 에셋 시스템 (Asset System)
 
-- 핵심 원칙: E2EE 세계(암호화 + blind sync)와 에셋 세계(평문 바이너리 + 스토리지)는 완전히 분리. 둘 사이는 오직 UUID 문자열 참조로만 연결.
-- 에셋 분류 체계:
-  - 프라이빗 에셋 (Private): 유저 개인 소유 에셋. 캐릭터 아바타, 배경, 감정 이미지 등.
-    - Local-First: 로컬 스토리지(OPFS 또는 Tauri FS)에 평문 바이너리로 저장. 오프라인에서도 즉시 렌더링.
-    - 동기화(Sync): 로그인 시 E2EE 암호화하여 오브젝트 스토리지에 업로드. 파일명은 HMAC-SHA256(MasterKey, UUID)로 은닉 (Blind Hash). 용량 제한 있음.
-    - 용량 제한: 무료 유저에게 총 동기화 용량 제한 (예: 50MB). 초과 시 동기화만 중지, 로컬 작동은 정상.
-  - 인레이 에셋 (Inlay): 채팅 중 생성되는 에셋. 유저 업로드 사진, AI 생성 이미지 등.
-    - 기본 동기화 OFF: 로컬 스토리지에만 평문 저장.
-    - 설정에서 동기화 ON 시: 프라이빗 에셋과 동일 취급 (E2EE + Blind Hash → 오브젝트 스토리지). 동기화 용량을 소모함.
-    - 삭제하지 않음: 인레이 에셋은 별도의 갤러리 브라우저 UI를 통해 유저가 직접 감상 및 수동 관리.
-  - 퍼블릭 에셋 (Public): Hub(커뮤니티)에 공개된 에셋. CDN(Cloudflare R2)에 평문으로 저장.
-    - 생성 경로: 유저가 Hub에 봇/모듈을 공유할 때 프라이빗 에셋이 퍼블릭으로 전환 (CDN 업로드).
-    - 소비 방식: 다른 유저가 Hub에서 다운로드 시 CDN remoteUrl을 <img src>에 직접 바인딩. 바이너리를 로컬에 복사하지 않음 (Thin Client).
-    - CDN 파일명 = SHA-256(원본 바이너리). 크로스 유저 중복 제거 가능.
-    - 영구 유지: 한번 CDN에 올라간 퍼블릭 에셋은 영구 보존.
-- ID 체계:
-  - 모든 에셋의 로컬 ID = UUID. 셋 다 같은 체계를 쓰므로 엔티티(캐릭터 등)는 종류에 관계없이 assetId: string 하나만 보유.
-  - 서버 파일명(프라이빗/인레이): UUID 그대로 사용. UUID는 내용과 무관한 랜덤 문자열이므로 별도 변환 없이도 프라이버시 완벽 보장.
-  - CDN 파일명(퍼블릭): SHA-256(바이너리). 크로스 유저 중복 제거용.
-- 에셋 테이블 (assets, EncryptedRecord):
-  - 모든 종류(프라이빗/인레이/퍼블릭)를 단일 테이블에 저장. Blind Sync 대상.
-  - id: UUID.
-  - encryptedData 내부: kind ('private' | 'inlay' | 'public'), mimeType, remoteUrl?.
-    - remoteUrl이 없으면 → 아직 로컬 전용 에셋.
-    - private/inlay의 remoteUrl → 암호화 오브젝트 스토리지 경로 (`/{userId}/{uuid}`).
-    - public의 remoteUrl → CDN URL (평문).
-- 에셋 상태 (두 가지):
-  - 로컬 에셋: remoteUrl 없음. 로컬 스토리지에만 존재. 절대 evict 불가.
-  - 리모트 에셋: remoteUrl 있음. 로컬 스토리지는 LRU 캐시. evict 가능.
-- 에셋 스토리지 (IStorageAdapter):
-  - 영속 에셋 + 리모트 에셋 캐시를 구분 없이 같은 위치에 저장.
-  - 파일 조회 키 = UUID.
-- 캐시 레지스트리 (로컬 전용, 동기화 안 함):
-  - {uuid, lastAccessedAt, size} 형태의 경량 테이블 또는 K-V Store.
-  - 캐시 레지스트리에 있는 것만 evict 대상. 없는 것 = 영속 에셋 = 절대 삭제 불가.
-  - LRU Watermark 전략: 총 캐시 > High Watermark(예: 500MB) → lastAccessedAt 오름차순으로 Low Watermark(예: 400MB)까지 삭제.
-- 전환 규칙:
-  - 프라이빗 → 퍼블릭: 가능 (Hub 공유 시).
-    - SHA-256(바이너리) 계산 → CDN 업로드 (이미 있으면 스킵).
-    - 에셋 레코드 업데이트: kind → 'public', remoteUrl → CDN URL. UUID는 그대로 유지 (ID 변경 없음!).
-    - 로컬 스토리지 바이너리 삭제 → 캐시 레지스트리에 등록 → evict 가능 → 동기화 용량 회수.
-  - 퍼블릭 → 프라이빗: 불가. 한번 공개된 에셋은 CDN에 영구 유지.
-  - 인레이 → 퍼블릭: 불가. 인레이는 보트가 아닌 유저 개인의 채팅 콘테츠에 속한 에셋이다. 옵션은 프라이빗 오브젝트 스토리지에 암호화하여 동기화할 수 있는가 여부이다.
-- 에셋 삭제:
-  - 프라이빗: 소유 엔티티(캐릭터, 페르소나 등) 삭제 시 매니페스트의 UUID 목록으로 cascaed 삭제. 로컬 스토리지에서도 즉시 하드 삭제 (용량 확보).
-  - 인레이: 삭제하지 않는다. 갤러리 브라우저에서 수동 관리.
-  - 퍼블릭: CDN에 영구 보관. 삭제 없음.
-- 에셋 참조 패턴:
-  - 직접 참조 (ID): avatarAssetId 등 엔티티가 직접 로드하는 필드. 항상 UUID.
-  - 이름 기반 참조: AssetEntry[] 매니페스트로 name → assetId(UUID) 매핑. AI/스크립트가 {{asset::이름}} 형태로 호출.
-  - 인레이 참조: 메시지 텍스트에 {{inlay::uuid}} 형태. 채팅 내 이미지.
-- 런타임 에셋 로딩:
-  - 로컬 스토리지에 있으면: IStorageAdapter.getRenderUrl(uuid) → 로컬 URL 렌더링. 캐시 레지스트리 lastAccessedAt 갱신.
-  - 로컬에 없고 remoteUrl 있으면:
-    - private/inlay: remoteUrl에서 암호화 Blob 다운로드 → 복호화 → 스토리지 저장 + 캐시 레지스트리 등록 → 렌더링.
-    - public: CDN remoteUrl을 <img src>에 직접 바인딩. 다운로드 없음. 브라우저 캐시 사용.
-- 동기화 저장소 분리:
-  - 퍼블릭 에셋 → Cloudflare R2 + CDN (Egress 무료, 대량 조회에 최적).
-  - 프라이빗/인레이 에셋 → PB 서버 디스크 (초기) 또는 Backblaze B2 (스케일 시). CDN 불필요.
-- BYOD (Bring Your Own Drive):
-  - 유저 개인 클라우드 스토리지(구글 드라이브, WebDAV, S3 호환) 연동 옵션.
-  - E2EE 암호화 + Blind Hash된 Blob을 유저의 개인 드라이브에 직접 동기화.
-  - 운영자 서버 비용 제로, 유저 무제한 용량. 궁극의 프라이버시 보장.
-- 게스트 모드: 퍼블릭 에셋은 CDN URL로 사용 가능. 프라이빗/인레이는 로컬 전용. 동기화 불가.
-- 로그인 모드: 프라이빗 에셋 동기화 활성화 (용량 제한). 프라이빗 → 퍼블릭 전환 가능.
+- 핵심 원칙: 에셋은 논리 메타데이터, 로컬 캐시, 서버 물리 blob을 분리한다.
+- 모든 에셋은 암호화된다. public/private 승급 모델은 폐기하고, kind는 `resource | inlay`로 단순화한다.
+- 수렴 암호화를 사용한다.
+  - 같은 plaintext → 같은 ciphertext → 같은 hash.
+  - 서버는 ciphertext hash로 dedup한다.
+  - 복호화 키(`encKey`)는 encrypted asset metadata 안에 저장된다.
+- 로컬 구조:
+  - `assets`: 논리 에셋 SOT. `scopeType/scopeId`, `kind`, `status`, `hash`, `encKey`를 가진다.
+  - `assetRegistry`: 디바이스 로컬 캐시/upload queue 인덱스. 동기화하지 않는다.
+  - `IStorageAdapter`: 실제 평문 캐시 파일. 키는 asset id.
+- 서버 구조:
+  - `assets`: user scope asset metadata.
+  - `multi_room_assets`: room scope asset metadata.
+  - `asset_catalog`: ciphertext 물리 파일 catalog.
+  - `asset_usage`: owner별 ref/quota ledger.
+- 상태:
+  - `local`: 이 기기에는 plaintext가 있고, 서버 catalog에 아직 업로드되지 않은 상태.
+  - `remote`: 서버 catalog 또는 원격 source에서 ciphertext를 다시 얻을 수 있는 상태.
+- 동기화:
+  - user scope asset은 master key로 암호화해 `assets`로 push/pull한다.
+  - room scope asset은 room key로 암호화해 `multi_room_assets`로 push/pull한다.
+  - upload queue는 registry에서 `status=local`인 항목을 찾아 ciphertext를 업로드한 뒤, 논리 asset record를 `remote`로 갱신한다.
+- 쿼타:
+  - 개인 에셋은 해당 user의 quota를 사용한다.
+  - 멀티룸 에셋은 room owner의 quota를 사용한다.
+- 자세한 스펙은 `docs/asset-system-v3.md`를 기준으로 한다.
 
 13. 허브 & 익스포트 전략 (Hub & Export Strategy)
 
@@ -286,39 +269,44 @@
   - 에셋 삭제 및 Hub 공유(용량 회수): 가능.
   - 클라이언트 안내: "동기화 용량 초과. 새 에셋의 동기화가 일시 중지되었습니다. [후원으로 용량 확대] [Hub에 공유하여 용량 확보]"
 
-1.  멀티 채팅방 확장 (Multi-User Room — 미래)
+15. 멀티룸 시스템 (Multi-User Room)
 
-- 핵심 원칙: "개인 금고(Personal Vault)"와 "공유 방(Shared Room)"은 완전히 다른 보안 도메인. 유저의 명시적 행위(업로드)를 통해서만 데이터가 경계를 넘어감.
-- 보안 모델: Room Key 방식 (Signal Sender Keys, Matrix Megolm 유사).
-  - 방 생성자가 Room Key 생성 → 참가자의 공개키로 Room Key를 암호화하여 전달.
-  - 방 안의 모든 데이터(메시지, 공유 봇)는 Room Key로 암호화. 서버는 Room Key를 모름.
-- Room Key 저장: 기존 E2EE 철학에 따라 EncryptedRecord로 저장 (roomKeys 테이블, FK: roomId). MasterKey로 암호화 → blind sync 대상.
-- 개인 자산 공유 흐름: 유저가 "이 캐릭터를 방에 올릴게" → 로컬 금고에서 복호화 → Room Key로 재암호화 → 서버에 업로드. 원본은 그대로 보존 (사본 격리).
+- 핵심 원칙: "개인 금고"와 "공유 방"은 다른 보안 도메인이다. 하지만 로컬 실행 모델은 같은 도메인 테이블과 같은 서비스 패턴을 사용한다.
+- 보안 모델: Room Key 방식.
+  - 방 생성자가 Room Key를 생성한다.
+  - 각 멤버의 identity public key로 Room Key를 감싸 `multi_room_members.encryptedRoomKey`에 저장한다.
+  - 방 안의 컨텐츠와 에셋 메타는 Room Key로 암호화한다. 서버는 Room Key를 모른다.
+- 메타 모델:
+  - `multi_room_index`: room discovery, owner, visibility, publicName.
+  - `multi_room_members`: membership status, encrypted room key.
+  - 두 테이블은 컨텐츠가 아니라 권한/키 교환 메타이며 평문이다.
+- 컨텐츠 모델:
+  - 멀티룸 room/chat/message/character/persona/lorebook/script/charjs는 기존 로컬 도메인 테이블에 `scopeType='room'`, `scopeId=roomId`로 저장된다.
+  - 서버에는 `multi_room_records`로 동기화된다.
+  - 개인 자원을 방에 올리는 행위는 snapshot import다. 원본은 그대로 보존되고, 방 안에는 독립 사본이 생긴다.
+- 삭제 모델:
+  - room 삭제는 로컬 room scope record/asset을 soft delete하고 delete marker를 남긴다.
+  - Data/Asset sync가 tombstone push를 완료하면 marker가 정리된다.
 
 16. 전체 테이블 목록 (Table Registry)
 
-- 암호화 테이블 (EncryptedRecord 기반, blind sync 대상):
-  - users — 특수 (인증 및 E2EE 전용 필드 보관: salt, encryptedMasterKey, recoveryAuthTokenHash 등). 사용자 계정 폭파 시 하위 테이블들 자동 삭제 되도록 `cascadeDelete` 적용 처리됨.
-  - rooms — 단일 (소유: chats. 참조: characters. 폴더 지원)
-  - characters — 단일 (소유: lorebooks, scripts, charjs. 참조: modules. 에셋: assets)
-  - chats — 단일 (roomId 평문 FK 보유. 소유: lorebooks. 참조: personas/modules. selected/default persona/character id 보유)
-  - messages — 단일, 평문 FK: chatId ([chatId+sortOrder] 복합 인덱스, softDeleteByIndex 벌크 삭제)
-  - personas — 단일 (독립된 데이터 + 에셋 보유)
-  - presets — 단일
-  - modules — 단일 (소유: lorebooks, scripts, charjs. 폴더 지원)
-  - plugins — 단일 (내장 hooks 및 샌드박스 설정)
-  - lorebooks — 단일 (부모 소유, Deep Copy)
-  - scripts — 단일 (부모 소유, Deep Copy)
-  - settings — 단일 (최상위 엔티티 관리: characters, personas, presets, modules, plugins — 각각 EntityListConfig)
-  - roomKeys — 단일, FK: roomId (미래)
-- 에셋 테이블 (단일 테이블, Blind Sync 대상 ✅):
-  - assets — kind: private/inlay/public. ID = UUID. encryptedData 내부에 kind, mimeType, remoteUrl? 저장.
-    - remoteUrl 없음 → 로컬 전용. remoteUrl 있음 → 리모트(캐시 가능).
-    - private/inlay의 remoteUrl: 오브젝트 스토리지 경로 (파일명 = HMAC-SHA256(MasterKey, UUID), Blind Hash).
-    - public의 remoteUrl: CDN URL (평문).
-- 에셋 스토리지 및 캐시 (로컬 전용, 동기화 X):
-  - IStorageAdapter — 영속 에셋 + 리모트 에셋 캐시를 구분 없이 같은 위치에 저장. 키 = UUID.
-  - 캐시 레지스트리 — {uuid, lastAccessedAt, size}. 여기 등록된 것만 LRU evict 대상. 없으면 영속 에셋.
+- 로컬 도메인 테이블:
+  - `settings`, `rooms`, `characters`, `personas`, `chats`, `messages`, `lorebooks`, `scripts`, `charjs`, `modules`, `presets`, `plugins`, `translations`, `tool_calls`.
+  - `tool_calls`는 local only.
+  - 나머지 sync 대상 테이블은 `scopeType/scopeId`를 가진다.
+- 서버 동기화 테이블:
+  - `users`: 인증, master key wrapping, identity key backup, profile, quota.
+  - `records`: user scope generic encrypted content.
+  - `multi_room_records`: room scope generic encrypted content.
+  - `assets`: user scope encrypted asset metadata.
+  - `multi_room_assets`: room scope encrypted asset metadata.
+  - `multi_room_index`: room discovery/owner metadata.
+  - `multi_room_members`: membership/key exchange metadata.
+  - `asset_catalog`: physical encrypted blob catalog.
+  - `asset_usage`: owner별 asset ref/quota ledger.
+- 에셋 스토리지 및 캐시:
+  - `IStorageAdapter`: 실제 평문 캐시 파일. 키는 asset id.
+  - `assetRegistry`: 로컬 전용 캐시/upload queue 인덱스. `scopeType/scopeId`, `kind`, `status`, `size`, `accessedAt`을 가진다.
 
 17. 인프라 구성 전략 (Zero-Cost Stack)
 

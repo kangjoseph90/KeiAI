@@ -6,7 +6,6 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PersonaService, type PersonaFields } from '$lib/services/content/persona';
-import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB, type PersonaRecord } from '$lib/adapters/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
@@ -18,10 +17,17 @@ vi.mock('$lib/crypto', () => ({
     decrypt: vi.fn()
 }));
 
-vi.mock('$lib/services/user', () => ({
-    UserService: {},
-    getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
+vi.mock('$lib/services/session', () => ({
+    getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
+        if (scopeType === 'user') return { scopeType: 'user', scopeId: 'user-123' };
+        return { scopeType: 'room', scopeId: 'room-123' };
+    }),
+    canAccessScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return (
+            (record.scopeType === 'user' && record.scopeId === 'user-123') ||
+            (record.scopeType === 'room' && record.scopeId === 'room-123')
+        );
+    })
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -48,7 +54,6 @@ vi.mock('$lib/services/content/record_buffer', () => ({
 
 describe('PersonaService', () => {
     const mockUserId = 'user-123';
-    const mockMasterKey = {} as CryptoKey;
     const mockNow = 1710000000000;
 
     const basePersonaFields: PersonaFields = {
@@ -59,7 +64,8 @@ describe('PersonaService', () => {
 
     const mockRecord: PersonaRecord = {
         id: 'persona-123',
-        userId: mockUserId,
+        scopeType: 'user',
+        scopeId: mockUserId,
         createdAt: mockNow,
         updatedAt: mockNow,
         isDeleted: false,
@@ -73,13 +79,6 @@ describe('PersonaService', () => {
         vi.mocked(buffer.get).mockResolvedValue(null);
         vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
         buffer.drop('personas', 'persona-123');
-
-        // Default session mock
-        vi.mocked(getActiveSession).mockReturnValue({
-            userId: mockUserId,
-            masterKey: mockMasterKey,
-            identityKeyPair: {} as CryptoKeyPair
-        });
 
         // Default crypto mocks
         vi.mocked(encrypt).mockResolvedValue({
@@ -120,7 +119,14 @@ describe('PersonaService', () => {
         it('should create a persona', async () => {
             const result = await PersonaService.create({ name: 'New' });
             expect(result.name).toBe('New');
-            expect(localDB.putRecord).toHaveBeenCalled();
+            expect(localDB.putRecord).toHaveBeenCalledWith(
+                'personas',
+                expect.objectContaining({
+                    id: 'persona-123',
+                    scopeType: 'user',
+                    scopeId: mockUserId
+                })
+            );
         });
     });
 

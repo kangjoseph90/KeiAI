@@ -6,7 +6,6 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PresetService, type PresetFields } from '$lib/services/content/preset';
-import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB, type PresetRecord } from '$lib/adapters/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
@@ -17,10 +16,20 @@ vi.mock('$lib/crypto', () => ({
     decrypt: vi.fn()
 }));
 
-vi.mock('$lib/services/user', () => ({
-    UserService: {},
-    getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
+vi.mock('$lib/services/session', () => ({
+    getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
+        if (scopeType === 'user') return { scopeType: 'user', scopeId: 'user-123' };
+        return { scopeType: 'room', scopeId: 'room-123' };
+    }),
+    canAccessScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return (
+            (record.scopeType === 'user' && record.scopeId === 'user-123') ||
+            (record.scopeType === 'room' && record.scopeId === 'room-123')
+        );
+    }),
+    canAccessUserScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return record.scopeType === 'user' && record.scopeId === 'user-123';
+    })
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -51,7 +60,6 @@ import { buffer } from '$lib/services/content/record_buffer';
 
 describe('PresetService', () => {
     const mockUserId = 'user-123';
-    const mockMasterKey = {} as CryptoKey;
     const mockNow = 1710000000000;
 
     const mockFields: PresetFields = {
@@ -70,7 +78,8 @@ describe('PresetService', () => {
 
     const mockRecord: PresetRecord = {
         id: 'preset-123',
-        userId: mockUserId,
+        scopeType: 'user',
+        scopeId: mockUserId,
         createdAt: mockNow,
         updatedAt: mockNow,
         isDeleted: false,
@@ -83,12 +92,6 @@ describe('PresetService', () => {
         vi.setSystemTime(mockNow);
         vi.mocked(buffer.get).mockResolvedValue(null);
         vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
-
-        vi.mocked(getActiveSession).mockReturnValue({
-            userId: mockUserId,
-            masterKey: mockMasterKey,
-            identityKeyPair: {} as CryptoKeyPair
-        });
 
         vi.mocked(encrypt).mockResolvedValue({
             ciphertext: new Uint8Array([0]),
@@ -106,7 +109,10 @@ describe('PresetService', () => {
 
             expect(result).toHaveLength(1);
             expect(result[0].name).toBe(mockFields.name);
-            expect(localDB.getAll).toHaveBeenCalledWith('presets', mockUserId);
+            expect(localDB.getAll).toHaveBeenCalledWith('presets', {
+                scopeType: 'user',
+                scopeId: mockUserId
+            });
         });
     });
 
@@ -138,7 +144,8 @@ describe('PresetService', () => {
                 'presets',
                 expect.objectContaining({
                     id: 'preset-123',
-                    userId: mockUserId
+                    scopeType: 'user',
+                    scopeId: mockUserId
                 })
             );
         });

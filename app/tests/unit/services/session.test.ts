@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getActiveSession, hasActiveSession, UserService } from '$lib/services/user';
+import { getActiveSession, hasActiveSession } from '$lib/services/session';
+import { UserService } from '$lib/services/user';
 
 vi.mock('$lib/adapters/user', () => ({
     appUser: {
@@ -12,6 +13,12 @@ vi.mock('$lib/adapters/kv', () => ({
         set: vi.fn(),
         get: vi.fn(),
         remove: vi.fn()
+    }
+}));
+
+vi.mock('$lib/adapters/multi', () => ({
+    appMulti: {
+        purgeUserLocal: vi.fn()
     }
 }));
 

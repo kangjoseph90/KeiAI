@@ -11,10 +11,17 @@ import type { MessageFields } from '$lib/services/content/message';
 import type { BaseRecord } from '$lib/adapters/db/types';
 
 // Mock all dependencies
-vi.mock('$lib/services/user', () => ({
-    UserService: {},
-    getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
+vi.mock('$lib/services/session', () => ({
+    getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
+        if (scopeType === 'user') return { scopeType: 'user', scopeId: 'user-123' };
+        return { scopeType: 'room', scopeId: 'room-123' };
+    }),
+    canAccessScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return (
+            (record.scopeType === 'user' && record.scopeId === 'user-123') ||
+            (record.scopeType === 'room' && record.scopeId === 'room-123')
+        );
+    })
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -64,7 +71,6 @@ vi.mock('$lib/services/content/record_buffer', () => ({
     }
 }));
 
-import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { generateKeyBetween } from 'fractional-indexing';
@@ -89,13 +95,6 @@ describe('MessageService', () => {
         vi.mocked(buffer.get).mockResolvedValue(null);
         vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
 
-        // Default session mock
-        vi.mocked(getActiveSession).mockReturnValue({
-            masterKey: {} as CryptoKey,
-            userId: mockUserId,
-            identityKeyPair: {} as CryptoKeyPair
-        });
-
         // Default generateId mock
         vi.mocked(generateId).mockReturnValue('test-msg-id');
 
@@ -114,7 +113,8 @@ describe('MessageService', () => {
                     id: 'msg-2',
                     chatId: 'chat-1',
                     sortOrder: 'a1',
-                    userId: mockUserId,
+                    scopeType: 'user',
+                    scopeId: mockUserId,
                     createdAt: 2000,
                     updatedAt: 2000,
                     isDeleted: false,
@@ -124,7 +124,8 @@ describe('MessageService', () => {
                     id: 'msg-1',
                     chatId: 'chat-1',
                     sortOrder: 'a0',
-                    userId: mockUserId,
+                    scopeType: 'user',
+                    scopeId: mockUserId,
                     createdAt: 1000,
                     updatedAt: 1000,
                     isDeleted: false,
@@ -148,7 +149,8 @@ describe('MessageService', () => {
                 id: 'msg-1',
                 chatId: 'chat-1',
                 sortOrder: 'a0',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
@@ -180,6 +182,37 @@ describe('MessageService', () => {
             expect(result.sortOrder).toBe('a0');
 
             expect(generateKeyBetween).toHaveBeenCalledWith(null, null);
+            expect(localDB.putRecord).toHaveBeenCalledWith(
+                'messages',
+                expect.objectContaining({
+                    id: 'test-msg-id',
+                    scopeType: 'user',
+                    scopeId: mockUserId,
+                    chatId: 'chat-1'
+                })
+            );
+        });
+
+        it('should create a room-scoped message when requested explicitly', async () => {
+            vi.mocked(generateKeyBetween).mockReturnValue('a0');
+
+            const result = await MessageService.create(
+                'chat-1',
+                makeFields('Hi shared'),
+                undefined,
+                'room'
+            );
+
+            expect(result.id).toBe('test-msg-id');
+            expect(localDB.putRecord).toHaveBeenCalledWith(
+                'messages',
+                expect.objectContaining({
+                    id: 'test-msg-id',
+                    scopeType: 'room',
+                    scopeId: 'room-123',
+                    chatId: 'chat-1'
+                })
+            );
         });
     });
 
@@ -189,7 +222,8 @@ describe('MessageService', () => {
                 id: 'msg-1',
                 chatId: 'chat-1',
                 sortOrder: 'a0',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 1000,
                 updatedAt: 1000,
                 isDeleted: false,
@@ -212,7 +246,8 @@ describe('MessageService', () => {
             id: 'msg-1',
             chatId: 'chat-1',
             sortOrder: 'a0',
-            userId: mockUserId,
+            scopeType: 'user',
+            scopeId: mockUserId,
             createdAt: 1000,
             updatedAt: 1000,
             isDeleted: false,

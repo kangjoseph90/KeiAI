@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getActiveSession, UserService } from '$lib/services/user';
+import { getActiveSession } from '$lib/services/session';
+import { UserService } from '$lib/services/user';
 
 const mockMasterKey = {} as CryptoKey;
 const mockIdentityKeyPair = {} as CryptoKeyPair;
@@ -35,15 +36,28 @@ vi.mock('$lib/adapters/asset', () => ({
     appAsset: {
         getAllAssets: vi.fn(() => Promise.resolve([])),
         getAllRegistry: vi.fn(() => Promise.resolve([])),
-        deleteRegistry: vi.fn(),
+        deleteAsset: vi.fn(() => Promise.resolve()),
+        deleteRegistry: vi.fn(() => Promise.resolve()),
         putAsset: vi.fn()
     }
 }));
+vi.mock('$lib/adapters/multi', () => ({
+    appMulti: {
+        purgeUserLocal: vi.fn()
+    }
+}));
 vi.mock('$lib/adapters/db', () => ({
-    localDB: { deleteByIndex: vi.fn() },
+    localDB: {
+        deleteByIndex: vi.fn(),
+        subscribeWriteEvents: vi.fn(() => vi.fn())
+    },
     TABLES: []
 }));
-vi.mock('$lib/adapters/storage', () => ({ appStorage: { delete: vi.fn() } }));
+vi.mock('$lib/adapters/storage', () => ({
+    appStorage: {
+        delete: vi.fn(() => Promise.resolve())
+    }
+}));
 
 import { appUser } from '$lib/adapters/user';
 import { appKV } from '$lib/adapters/kv';

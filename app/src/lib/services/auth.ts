@@ -32,7 +32,8 @@ import {
     wrapMasterKey,
     type RecoveryBundle
 } from '$lib/crypto';
-import { getActiveSession, UserService } from './user';
+import { UserService } from './user';
+import { getActiveSession } from './session';
 import { AssetSyncService, DataSyncService, SyncManager } from './sync';
 import { AppError } from '$lib/types/errors';
 import { createLogger } from '$lib/adapters/logger';

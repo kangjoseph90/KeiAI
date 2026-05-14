@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { getActiveSession, UserService } from '$lib/services/user';
+import { UserService } from '$lib/services/user';
 import type { UserRecord } from '$lib/adapters/user';
 
 // Mock all dependencies

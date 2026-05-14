@@ -98,7 +98,10 @@ vi.mock('$lib/services/user', () => ({
         getUser: vi.fn(),
         setActiveUser: vi.fn(() => Promise.resolve()),
         restoreOrCreateUser: vi.fn()
-    },
+    }
+}));
+
+vi.mock('$lib/services/session', () => ({
     getActiveSession: vi.fn(() => ({
         userId: 'user-123',
         masterKey: {} as CryptoKey,
@@ -117,7 +120,7 @@ vi.mock('$lib/services/sync', () => ({
 }));
 
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession, UserService } from '$lib/services/user';
+import { UserService } from '$lib/services/user';
 
 describe('AuthService', () => {
     beforeEach(() => {

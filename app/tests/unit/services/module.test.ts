@@ -13,10 +13,20 @@ vi.mock('$lib/crypto', () => ({
     decrypt: vi.fn()
 }));
 
-vi.mock('$lib/services/user', () => ({
-    UserService: {},
-    getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
+vi.mock('$lib/services/session', () => ({
+    getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
+        if (scopeType === 'user') return { scopeType: 'user', scopeId: 'user-123' };
+        return { scopeType: 'room', scopeId: 'room-123' };
+    }),
+    canAccessScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return (
+            (record.scopeType === 'user' && record.scopeId === 'user-123') ||
+            (record.scopeType === 'room' && record.scopeId === 'room-123')
+        );
+    }),
+    canAccessUserScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return record.scopeType === 'user' && record.scopeId === 'user-123';
+    })
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -44,14 +54,11 @@ vi.mock('$lib/services/content/record_buffer', () => ({
 }));
 
 import { encrypt, decrypt } from '$lib/crypto';
-import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { buffer } from '$lib/services/content/record_buffer';
 
 describe('ModuleService', () => {
     const mockUserId = 'user-123';
-    const mockMasterKey = {} as CryptoKey;
-
     const defaultFields: ModuleFields = {
         name: 'Test Module',
         description: 'Test Description',
@@ -67,12 +74,6 @@ describe('ModuleService', () => {
         vi.mocked(buffer.get).mockResolvedValue(null);
         vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
 
-        vi.mocked(getActiveSession).mockReturnValue({
-            userId: mockUserId,
-            masterKey: mockMasterKey,
-            identityKeyPair: {} as CryptoKeyPair
-        });
-
         vi.mocked(encrypt).mockResolvedValue({
             ciphertext: new Uint8Array([1, 2, 3]),
             iv: new Uint8Array([4, 5, 6])
@@ -86,7 +87,8 @@ describe('ModuleService', () => {
             const mockRecords: ModuleRecord[] = [
                 {
                     id: 'mod-1',
-                    userId: mockUserId,
+                    scopeType: 'user',
+                    scopeId: mockUserId,
                     createdAt: 100,
                     updatedAt: 100,
                     isDeleted: false,
@@ -104,7 +106,10 @@ describe('ModuleService', () => {
             expect(result).toHaveLength(1);
             expect(result[0].id).toBe('mod-1');
             expect(result[0].name).toBe('Test Module');
-            expect(localDB.getAll).toHaveBeenCalledWith('modules', mockUserId);
+            expect(localDB.getAll).toHaveBeenCalledWith('modules', {
+                scopeType: 'user',
+                scopeId: mockUserId
+            });
         });
     });
 
@@ -112,7 +117,8 @@ describe('ModuleService', () => {
         it('should return decrypted module detail', async () => {
             const mockRecord: ModuleRecord = {
                 id: 'mod-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,
@@ -142,7 +148,14 @@ describe('ModuleService', () => {
 
             expect(result.id).toBe('test-module-id');
             expect(result.name).toBe('New Module');
-            expect(localDB.putRecord).toHaveBeenCalled();
+            expect(localDB.putRecord).toHaveBeenCalledWith(
+                'modules',
+                expect.objectContaining({
+                    id: 'test-module-id',
+                    scopeType: 'user',
+                    scopeId: mockUserId
+                })
+            );
         });
 
         it('should throw AppError on failure', async () => {
@@ -155,7 +168,8 @@ describe('ModuleService', () => {
         it('should update and merge module fields', async () => {
             const mockRecord: ModuleRecord = {
                 id: 'mod-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,
@@ -176,7 +190,8 @@ describe('ModuleService', () => {
         it('should delete module and its contents in a transaction', async () => {
             const mockRecord: ModuleRecord = {
                 id: 'mod-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,

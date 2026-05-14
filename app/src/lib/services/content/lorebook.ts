@@ -1,6 +1,6 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
-import { localDB, type LorebookRecord } from '$lib/adapters/db';
+import { canAccessScope, getSessionScope } from '../session';
+import { localDB, type DataScopeType, type LorebookRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -66,7 +66,6 @@ export class LorebookService {
     /** List lorebooks owned by a specific parent (character, chat, module) */
     static async listByOwner(ownerId: string): Promise<Lorebook[]> {
         await buffer.flushTable('lorebooks');
-        const { userId } = getActiveSession();
         const records = await localDB.getByIndex<LorebookRecord>(
             'lorebooks',
             'ownerId',
@@ -74,7 +73,7 @@ export class LorebookService {
             Number.MAX_SAFE_INTEGER
         );
         return records
-            .filter((record) => record.userId === userId)
+            .filter((record) => canAccessScope(record))
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
@@ -83,9 +82,8 @@ export class LorebookService {
     }
 
     static async get(id: string): Promise<Lorebook | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<LorebookRecord>('lorebooks', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
         return {
             ...parseFields(record),
@@ -96,18 +94,20 @@ export class LorebookService {
 
     static async create(
         ownerId: string,
-        fields: DeepPartial<LorebookFields> = {}
+        fields: DeepPartial<LorebookFields> = {},
+        scopeType: DataScopeType = 'user'
     ): Promise<Lorebook> {
         const resolved: LorebookFields = deepMerge(defaultLorebookFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope(scopeType);
         const id = generateId();
         const now = clock.now();
 
         try {
             const newRecord: LorebookRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 ownerId,
                 createdAt: now,
                 updatedAt: now,
@@ -124,9 +124,8 @@ export class LorebookService {
     }
 
     static async update(id: string, changes: DeepPartial<LorebookFields>): Promise<Lorebook> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<LorebookRecord>('lorebooks', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Lorebook not found: ${id}`);
         }
 
@@ -148,9 +147,8 @@ export class LorebookService {
     }
 
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<LorebookRecord>('lorebooks', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Lorebook not found: ${id}`);
         }
 

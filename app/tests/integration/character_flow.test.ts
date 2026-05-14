@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CharacterService } from '$lib/services/content/character';
 import { LorebookService } from '$lib/services/content/lorebook';
-import { getActiveSession } from '$lib/services';
+import { setUserSession, clearSession } from '$lib/services';
 import { encrypt, decrypt } from '$lib/crypto';
 import { localDB, type TableName } from '$lib/adapters/db';
 import { buffer } from '$lib/services/content/record_buffer';
@@ -19,14 +19,7 @@ vi.mock('$lib/crypto', () => ({
     decrypt: vi.fn()
 }));
 
-vi.mock('$lib/services/user', async (importOriginal) => {
-    const actual = (await importOriginal()) as typeof import('$lib/services/user');
-    return {
-        ...actual,
-        getActiveSession: vi.fn(),
-        hasActiveSession: vi.fn()
-    };
-});
+// Session will be managed via setUserSession/clearSession in beforeEach/afterEach
 
 vi.mock('$lib/services/sync', () => ({
     DataSyncService: {
@@ -54,8 +47,8 @@ describe('Character Flow Integration', () => {
         // Use a unique userId per test for isolation
         const uniqueUserId = `user-${Math.random()}`;
 
-        // Mock session
-        vi.mocked(getActiveSession).mockReturnValue({
+        // Set session
+        setUserSession({
             userId: uniqueUserId,
             masterKey: mockMasterKey,
             identityKeyPair: {} as CryptoKeyPair

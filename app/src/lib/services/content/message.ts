@@ -1,6 +1,6 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
-import { localDB, type MessageRecord } from '$lib/adapters/db';
+import { canAccessScope, getSessionScope } from '../session';
+import { localDB, type DataScopeType, type MessageRecord } from '$lib/adapters/db';
 import { generateKeyBetween } from 'fractional-indexing';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
@@ -71,7 +71,6 @@ export class MessageService {
         offset = 0
     ): Promise<Message[]> {
         await buffer.flushTable('messages');
-        const { userId } = getActiveSession();
         const records = await localDB.getRecordsBackward<MessageRecord>(
             'messages',
             '[chatId+sortOrder]',
@@ -86,7 +85,7 @@ export class MessageService {
         records.reverse();
 
         return records
-            .filter((record) => record.userId === userId)
+            .filter((record) => canAccessScope(record))
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
@@ -102,7 +101,6 @@ export class MessageService {
         offset = 0
     ): Promise<Message[]> {
         await buffer.flushTable('messages');
-        const { userId } = getActiveSession();
 
         const records = await localDB.getRecordsForward<MessageRecord>(
             'messages',
@@ -114,7 +112,7 @@ export class MessageService {
         );
 
         return records
-            .filter((record) => record.userId === userId)
+            .filter((record) => canAccessScope(record))
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
@@ -124,9 +122,8 @@ export class MessageService {
     }
 
     static async get(id: string): Promise<Message | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<MessageRecord>('messages', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
         return {
             ...parseFields(record),
@@ -140,11 +137,12 @@ export class MessageService {
     static async create(
         chatId: string,
         fields: DeepPartial<MessageFields> = {},
-        prevSortOrder?: string
+        prevSortOrder?: string,
+        scopeType: DataScopeType = 'user'
     ): Promise<Message> {
         const resolved: MessageFields = deepMerge(defaultMessageFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope(scopeType);
         const id = generateId();
         const now = clock.now();
 
@@ -155,7 +153,8 @@ export class MessageService {
         try {
             const newRecord: MessageRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 chatId,
                 sortOrder,
                 createdAt: now,
@@ -174,9 +173,8 @@ export class MessageService {
 
     /** Update a message */
     static async update(id: string, changes: DeepPartial<MessageFields>): Promise<Message> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<MessageRecord>('messages', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Message not found: ${id}`);
         }
 
@@ -204,9 +202,8 @@ export class MessageService {
 
     /** Soft-delete a message */
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<MessageRecord>('messages', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Message not found: ${id}`);
         }
 
@@ -299,18 +296,16 @@ export class MessageService {
 
     static async countByChat(chatId: string): Promise<number> {
         // create and delete bypasses the write queue - doesn't need to flush the queue
-        const { userId } = getActiveSession();
         const records = await localDB.getByIndex<MessageRecord>(
             'messages',
             'chatId',
             chatId,
             Number.MAX_SAFE_INTEGER
         );
-        return records.filter((record) => record.userId === userId).length;
+        return records.filter((record) => canAccessScope(record)).length;
     }
 
     static async countByChatBefore(chatId: string, beforeSortOrder: string): Promise<number> {
-        const { userId } = getActiveSession();
         const records = await localDB.getRecordsForward<MessageRecord>(
             'messages',
             '[chatId+sortOrder]',
@@ -318,6 +313,6 @@ export class MessageService {
             [chatId, beforeSortOrder],
             Number.MAX_SAFE_INTEGER
         );
-        return records.filter((record) => record.userId === userId).length;
+        return records.filter((record) => canAccessScope(record)).length;
     }
 }

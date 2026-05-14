@@ -1,6 +1,6 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
-import { localDB, type CharacterRecord } from '$lib/adapters/db';
+import { canAccessScope, getSessionScope } from '../session';
+import { localDB, type CharacterRecord, type DataScopeType } from '$lib/adapters/db';
 import type { OrderedRef, ResourceRef, AssetRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
@@ -65,32 +65,37 @@ function parseFields(record: CharacterRecord): CharacterFields {
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class CharacterService {
-    static async list(): Promise<Character[]> {
+    static async list(scopeType: DataScopeType = 'user'): Promise<Character[]> {
         await buffer.flushTable('characters');
-        const { userId } = getActiveSession();
-        const records = await localDB.getAll<CharacterRecord>('characters', userId);
+        const records = await localDB.getAll<CharacterRecord>(
+            'characters',
+            getSessionScope(scopeType)
+        );
         return records.map((record) => ({ ...parseFields(record), id: record.id }));
     }
 
     static async get(id: string): Promise<Character | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<CharacterRecord>('characters', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
         return { ...parseFields(record), id: record.id };
     }
 
-    static async create(fields: DeepPartial<CharacterFields> = {}): Promise<Character> {
+    static async create(
+        fields: DeepPartial<CharacterFields> = {},
+        scopeType: DataScopeType = 'user'
+    ): Promise<Character> {
         const resolved: CharacterFields = deepMerge(defaultFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope(scopeType);
         const id = generateId();
         const now = clock.now();
 
         try {
             const record: CharacterRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
@@ -106,9 +111,8 @@ export class CharacterService {
     }
 
     static async update(id: string, changes: DeepPartial<CharacterFields>): Promise<Character> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<CharacterRecord>('characters', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', 'Character not found');
         }
 
@@ -138,9 +142,8 @@ export class CharacterService {
     }
 
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<CharacterRecord>('characters', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Character not found: ${id}`);
         }
 

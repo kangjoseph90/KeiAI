@@ -75,7 +75,7 @@ export interface UserRecord {
     updatedAt: number;
     isDeleted: boolean;
     masterKey: CryptoKey; // The live CryptoKey object
-    identityKeyPair: CryptoKeyPair; // ECDH P-256 key pair for asymmetric operations (multi-room)
+    identityKeyPair: CryptoKeyPair; // RSA-OAEP key pair for asymmetric operations (multi-room)
 
     selfHostUrl?: string; // Selected sync server for account operations; not link state
     username?: string; // Login alias on the current sync server

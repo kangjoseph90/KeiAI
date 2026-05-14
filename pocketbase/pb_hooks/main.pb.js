@@ -579,9 +579,33 @@ function findAssetCatalog(app, hash) {
   }
 }
 
+function findMultiRoomIndex(app, roomId) {
+  try {
+    return app.findRecordById("multi_room_index", roomId);
+  } catch (_) {
+    return null;
+  }
+}
+
+function getAssetUsageUserId(app, record) {
+  var collectionName = "";
+  try {
+    collectionName = record.collection().name;
+  } catch (_) {}
+
+  if (collectionName === "multi_room_assets") {
+    var roomId = record.getString("roomId");
+    var room = findMultiRoomIndex(app, roomId);
+    return room ? room.getString("ownerUserId") : "";
+  }
+
+  return record.getString("userId");
+}
+
 function incrementUsage(userId, hash) {
   var getNumberField = $app.store().get("getNumberField");
   var now = Date.now();
+  if (!userId || !hash) return;
 
   $app.runInTransaction(function (txApp) {
     var usage = findAssetUsage(txApp, userId, hash);
@@ -618,6 +642,7 @@ function incrementUsage(userId, hash) {
 function decrementUsage(userId, hash) {
   var getNumberField = $app.store().get("getNumberField");
   var now = Date.now();
+  if (!userId || !hash) return;
 
   $app.runInTransaction(function (txApp) {
     var usage = findAssetUsage(txApp, userId, hash);
@@ -646,15 +671,18 @@ function handleAssetRefTransition(record, oldRecord) {
   var newLive = isLiveAssetRef(record);
   var oldHash = oldLive ? oldRecord.getString("hash").toLowerCase() : "";
   var newHash = newLive ? record.getString("hash").toLowerCase() : "";
+  var oldUserId = oldLive ? getAssetUsageUserId($app, oldRecord) : "";
+  var newUserId = newLive ? getAssetUsageUserId($app, record) : "";
 
-  if (oldLive === newLive && oldHash === newHash) return;
-
-  var userId = record.getString("userId");
-  if (oldLive && (!newLive || oldHash !== newHash)) {
-    decrementUsage(userId, oldHash);
+  if (oldLive === newLive && oldHash === newHash && oldUserId === newUserId) {
+    return;
   }
-  if (newLive && (!oldLive || oldHash !== newHash)) {
-    incrementUsage(userId, newHash);
+
+  if (oldLive && (!newLive || oldHash !== newHash || oldUserId !== newUserId)) {
+    decrementUsage(oldUserId, oldHash);
+  }
+  if (newLive && (!oldLive || oldHash !== newHash || oldUserId !== newUserId)) {
+    incrementUsage(newUserId, newHash);
   }
 }
 
@@ -665,6 +693,14 @@ onRecordAfterCreateSuccess((e) => {
 onRecordAfterUpdateSuccess((e) => {
   handleAssetRefTransition(e.record, e.record.original());
 }, "assets");
+
+onRecordAfterCreateSuccess((e) => {
+  handleAssetRefTransition(e.record, null);
+}, "multi_room_assets");
+
+onRecordAfterUpdateSuccess((e) => {
+  handleAssetRefTransition(e.record, e.record.original());
+}, "multi_room_assets");
 
 // ─── 6. Asset Garbage Collection ────────────────────────────────────
 

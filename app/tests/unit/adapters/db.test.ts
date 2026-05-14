@@ -31,6 +31,8 @@ Dexie.dependencies.IDBKeyRange = FDBKeyRange as unknown as typeof IDBKeyRange;
 // Now we can import WebDatabaseAdapter
 import { WebDatabaseAdapter } from '$lib/adapters/db/web';
 
+const userScope = { scopeType: 'user' as const, scopeId: 'user-123' };
+
 // Helper to create a test record (with data field)
 function createTestRecord(
     overrides: Partial<DataRecord> & Record<string, unknown> = {}
@@ -38,7 +40,8 @@ function createTestRecord(
     const now = Date.now();
     return {
         id: `test-${now}`,
-        userId: 'user-123',
+        scopeType: userScope.scopeType,
+        scopeId: userScope.scopeId,
         createdAt: now,
         updatedAt: now,
         isDeleted: false,
@@ -71,7 +74,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             expect(retrieved).toBeDefined();
             expect(retrieved?.id).toBe('test-1');
-            expect(retrieved?.userId).toBe('user-123');
+            expect(retrieved?.scopeId).toBe('user-123');
         });
 
         it('should return undefined for non-existent record', async () => {
@@ -126,17 +129,17 @@ describe('WebDatabaseAdapter (Dexie)', () => {
     describe('deleteByIndex', () => {
         it('should delete records by index value', async () => {
             const records = [
-                createTestRecord({ id: 'del-1', userId: 'user-to-delete' }),
-                createTestRecord({ id: 'del-2', userId: 'user-to-delete' }),
-                createTestRecord({ id: 'del-3', userId: 'keep-user' })
-            ];
+                createTestRecord({ id: 'del-1', roomId: 'room-to-delete' }),
+                createTestRecord({ id: 'del-2', roomId: 'room-to-delete' }),
+                createTestRecord({ id: 'del-3', roomId: 'keep-room' })
+            ] as ChatRecord[];
 
-            await localDB.putRecords('settings', records);
-            await localDB.deleteByIndex('settings', 'userId', 'user-to-delete');
+            await localDB.putRecords('chats', records);
+            await localDB.deleteByIndex('chats', 'roomId', 'room-to-delete');
 
-            const r1 = await localDB.getRecord<BaseRecord>('settings', 'del-1');
-            const r2 = await localDB.getRecord<BaseRecord>('settings', 'del-2');
-            const r3 = await localDB.getRecord<BaseRecord>('settings', 'del-3');
+            const r1 = await localDB.getRecord<BaseRecord>('chats', 'del-1');
+            const r2 = await localDB.getRecord<BaseRecord>('chats', 'del-2');
+            const r3 = await localDB.getRecord<BaseRecord>('chats', 'del-3');
 
             expect(r1).toBeUndefined();
             expect(r2).toBeUndefined();
@@ -171,15 +174,15 @@ describe('WebDatabaseAdapter (Dexie)', () => {
     describe('softDeleteByIndex', () => {
         it('should mark multiple records as deleted by index', async () => {
             const records = [
-                createTestRecord({ id: 'soft-1', userId: 'target-user', isDeleted: false }),
-                createTestRecord({ id: 'soft-2', userId: 'target-user', isDeleted: false })
-            ];
+                createTestRecord({ id: 'soft-1', roomId: 'target-room', isDeleted: false }),
+                createTestRecord({ id: 'soft-2', roomId: 'target-room', isDeleted: false })
+            ] as ChatRecord[];
 
-            await localDB.putRecords('settings', records);
-            await localDB.softDeleteByIndex('settings', 'userId', 'target-user');
+            await localDB.putRecords('chats', records);
+            await localDB.softDeleteByIndex('chats', 'roomId', 'target-room');
 
-            const r1 = await localDB.getRecord<BaseRecord>('settings', 'soft-1');
-            const r2 = await localDB.getRecord<BaseRecord>('settings', 'soft-2');
+            const r1 = await localDB.getRecord<BaseRecord>('chats', 'soft-1');
+            const r2 = await localDB.getRecord<BaseRecord>('chats', 'soft-2');
 
             expect(r1?.isDeleted).toBe(true);
             expect(r2?.isDeleted).toBe(true);
@@ -188,16 +191,16 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
     describe('getAll', () => {
         it('should get all records for a user', async () => {
-            const testUserId = `test-user-${Date.now()}`;
+            const testScope = { scopeType: 'user' as const, scopeId: `test-user-${Date.now()}` };
             const records = [
-                createTestRecord({ id: 'all-1', userId: testUserId }),
-                createTestRecord({ id: 'all-2', userId: testUserId }),
-                createTestRecord({ id: 'all-3', userId: 'other-user' })
+                createTestRecord({ id: 'all-1', scopeId: testScope.scopeId }),
+                createTestRecord({ id: 'all-2', scopeId: testScope.scopeId }),
+                createTestRecord({ id: 'all-3', scopeId: 'other-user' })
             ];
 
             await localDB.putRecords('settings', records);
 
-            const results = await localDB.getAll<BaseRecord>('settings', testUserId);
+            const results = await localDB.getAll<BaseRecord>('settings', testScope);
 
             expect(results).toHaveLength(2);
             expect(results.map((r) => r.id)).toContain('all-1');
@@ -205,31 +208,31 @@ describe('WebDatabaseAdapter (Dexie)', () => {
         });
 
         it('should exclude deleted records', async () => {
-            const testUserId = `test-user-${Date.now()}`;
+            const testScope = { scopeType: 'user' as const, scopeId: `test-user-${Date.now()}` };
             const records = [
-                createTestRecord({ id: 'active', userId: testUserId, isDeleted: false }),
-                createTestRecord({ id: 'deleted', userId: testUserId, isDeleted: true })
+                createTestRecord({ id: 'active', scopeId: testScope.scopeId, isDeleted: false }),
+                createTestRecord({ id: 'deleted', scopeId: testScope.scopeId, isDeleted: true })
             ];
 
             await localDB.putRecords('settings', records);
 
-            const results = await localDB.getAll<BaseRecord>('settings', testUserId);
+            const results = await localDB.getAll<BaseRecord>('settings', testScope);
 
             expect(results).toHaveLength(1);
             expect(results[0].id).toBe('active');
         });
 
         it('should sort by updatedAt descending', async () => {
-            const testUserId = `test-user-${Date.now()}`;
+            const testScope = { scopeType: 'user' as const, scopeId: `test-user-${Date.now()}` };
             const records = [
-                createTestRecord({ id: 'old', userId: testUserId, updatedAt: 1000 }),
-                createTestRecord({ id: 'new', userId: testUserId, updatedAt: 2000 }),
-                createTestRecord({ id: 'newest', userId: testUserId, updatedAt: 3000 })
+                createTestRecord({ id: 'old', scopeId: testScope.scopeId, updatedAt: 1000 }),
+                createTestRecord({ id: 'new', scopeId: testScope.scopeId, updatedAt: 2000 }),
+                createTestRecord({ id: 'newest', scopeId: testScope.scopeId, updatedAt: 3000 })
             ];
 
             await localDB.putRecords('settings', records);
 
-            const results = await localDB.getAll<BaseRecord>('settings', testUserId);
+            const results = await localDB.getAll<BaseRecord>('settings', testScope);
 
             expect(results[0].id).toBe('newest');
             expect(results[1].id).toBe('new');
@@ -429,21 +432,25 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
     describe('getUnsyncedChanges', () => {
         it('should get records modified since timestamp', async () => {
-            const testUserId = `test-user-${Date.now()}`;
+            const testScope = { scopeType: 'user' as const, scopeId: `test-user-${Date.now()}` };
             const now = Date.now();
             const old = now - 10000;
             const recent = now - 1000;
 
             const records = [
-                createTestRecord({ id: 'old-rec', userId: testUserId, updatedAt: old }),
-                createTestRecord({ id: 'recent-rec', userId: testUserId, updatedAt: recent })
+                createTestRecord({ id: 'old-rec', scopeId: testScope.scopeId, updatedAt: old }),
+                createTestRecord({
+                    id: 'recent-rec',
+                    scopeId: testScope.scopeId,
+                    updatedAt: recent
+                })
             ];
 
             await localDB.putRecords('settings', records);
 
             const results = await localDB.getUnsyncedChanges<BaseRecord>(
                 'settings',
-                testUserId,
+                testScope,
                 now - 5000
             );
 
@@ -452,11 +459,11 @@ describe('WebDatabaseAdapter (Dexie)', () => {
         });
 
         it('should include records with updatedAt equal to threshold', async () => {
-            const testUserId = `test-user-${Date.now()}`;
+            const testScope = { scopeType: 'user' as const, scopeId: `test-user-${Date.now()}` };
             const now = Date.now();
             const record = createTestRecord({
                 id: 'edge-rec',
-                userId: testUserId,
+                scopeId: testScope.scopeId,
                 updatedAt: now - 5000
             });
 
@@ -464,7 +471,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             const results = await localDB.getUnsyncedChanges<BaseRecord>(
                 'settings',
-                testUserId,
+                testScope,
                 now - 5000
             );
 

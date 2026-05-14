@@ -9,6 +9,7 @@ import type {
     IDatabaseAdapter,
     TableName,
     BaseRecord,
+    DataScope,
     DatabaseWriteEventListener,
     DatabaseWriteOptions,
     CharacterRecord,
@@ -50,22 +51,31 @@ class DexieStore extends Dexie {
         super('KeiLocalDB');
 
         this.version(1).stores({
-            rooms: 'id, userId, updatedAt, isDeleted',
-            characters: 'id, userId, updatedAt, isDeleted',
-            chats: 'id, userId, roomId, updatedAt, isDeleted',
-            presets: 'id, userId, updatedAt, isDeleted',
-            messages: 'id, userId, chatId, [chatId+sortOrder], updatedAt, isDeleted',
-            settings: 'id, userId, updatedAt, isDeleted',
-            personas: 'id, userId, updatedAt, isDeleted',
-            lorebooks: 'id, userId, ownerId, updatedAt, isDeleted',
-            scripts: 'id, userId, ownerId, updatedAt, isDeleted',
-            modules: 'id, userId, updatedAt, isDeleted',
-            plugins: 'id, userId, updatedAt, isDeleted',
+            rooms: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+            characters:
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+            chats: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+roomId], [scopeType+scopeId+updatedAt], roomId, updatedAt, isDeleted',
+            presets:
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+            messages:
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+updatedAt], chatId, [chatId+sortOrder], updatedAt, isDeleted',
+            settings:
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+            personas:
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+            lorebooks:
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted',
+            scripts:
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted',
+            modules:
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
+            plugins:
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
             tool_calls:
-                'id, userId, chatId, messageId, swipeId, [messageId+swipeId], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+messageId], chatId, messageId, swipeId, [messageId+swipeId], updatedAt, isDeleted',
             translations:
-                'id, userId, chatId, messageId, swipeId, [messageId+swipeId], updatedAt, isDeleted',
-            charjs: 'id, userId, ownerId, updatedAt, isDeleted'
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+messageId], chatId, messageId, swipeId, [messageId+swipeId], updatedAt, isDeleted',
+            charjs: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted'
         });
     }
 }
@@ -204,11 +214,11 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         );
     }
 
-    async getAll<T extends BaseRecord>(tableName: TableName, userId: string): Promise<T[]> {
+    async getAll<T extends BaseRecord>(tableName: TableName, scope: DataScope): Promise<T[]> {
         await this.flush();
         return (await this.getTable<T>(tableName)
-            .where('userId')
-            .equals(userId)
+            .where('[scopeType+scopeId]')
+            .equals([scope.scopeType, scope.scopeId])
             .filter((record: T) => !record.isDeleted)
             .sortBy('updatedAt')
             .then((results) => results.reverse())) as T[];
@@ -301,13 +311,13 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
 
     async getUnsyncedChanges<T extends BaseRecord>(
         tableName: TableName,
-        userId: string,
+        scope: DataScope,
         sinceUpdatedAt: number
     ): Promise<T[]> {
         await this.flush();
         return (await this.getTable<T>(tableName)
-            .where('userId')
-            .equals(userId)
+            .where('[scopeType+scopeId]')
+            .equals([scope.scopeType, scope.scopeId])
             .filter((record: T) => (record.updatedAt ?? 0) >= sinceUpdatedAt)
             .toArray()) as T[];
     }

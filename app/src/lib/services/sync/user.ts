@@ -15,7 +15,7 @@
  */
 
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession, hasActiveSession } from '../user';
+import { getActiveSession, hasActiveSession } from '../session';
 import { toUser, type User } from '../user';
 import { appUser } from '$lib/adapters/user';
 import { BaseSyncEngine } from './base';

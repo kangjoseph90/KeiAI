@@ -13,10 +13,20 @@ vi.mock('$lib/crypto', () => ({
     decrypt: vi.fn()
 }));
 
-vi.mock('$lib/services/user', () => ({
-    UserService: {},
-    getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
+vi.mock('$lib/services/session', () => ({
+    getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
+        if (scopeType === 'user') return { scopeType: 'user', scopeId: 'user-123' };
+        return { scopeType: 'room', scopeId: 'room-123' };
+    }),
+    canAccessScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return (
+            (record.scopeType === 'user' && record.scopeId === 'user-123') ||
+            (record.scopeType === 'room' && record.scopeId === 'room-123')
+        );
+    }),
+    canAccessUserScope: vi.fn((record: { scopeType: string; scopeId: string }) => {
+        return record.scopeType === 'user' && record.scopeId === 'user-123';
+    })
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -42,14 +52,11 @@ vi.mock('$lib/utils/id', () => ({
 }));
 
 import { encrypt, decrypt } from '$lib/crypto';
-import { getActiveSession, UserService } from '$lib/services/user';
 import { localDB } from '$lib/adapters/db';
 import { buffer } from '$lib/services/content/record_buffer';
 
 describe('PluginService', () => {
     const mockUserId = 'user-123';
-    const mockMasterKey = {} as CryptoKey;
-
     const defaultFields: PluginFields = {
         name: 'Test Plugin',
         description: 'Desc',
@@ -64,12 +71,6 @@ describe('PluginService', () => {
         vi.mocked(buffer.get).mockResolvedValue(null);
         vi.mocked(buffer.flushTable).mockResolvedValue(undefined);
 
-        vi.mocked(getActiveSession).mockReturnValue({
-            userId: mockUserId,
-            masterKey: mockMasterKey,
-            identityKeyPair: {} as CryptoKeyPair
-        });
-
         vi.mocked(encrypt).mockResolvedValue({
             ciphertext: new Uint8Array([7, 8, 9]),
             iv: new Uint8Array([10, 11, 12])
@@ -83,7 +84,8 @@ describe('PluginService', () => {
             const mockRecords: PluginRecord[] = [
                 {
                     id: 'p-1',
-                    userId: mockUserId,
+                    scopeType: 'user',
+                    scopeId: mockUserId,
                     createdAt: 100,
                     updatedAt: 100,
                     isDeleted: false,
@@ -106,7 +108,8 @@ describe('PluginService', () => {
         it('should return decrypted plugin', async () => {
             const mockRecord: PluginRecord = {
                 id: 'p-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,
@@ -126,7 +129,14 @@ describe('PluginService', () => {
             const result = await PluginService.create({ name: 'New Plugin' });
 
             expect(result.id).toBe('test-plugin-id');
-            expect(localDB.putRecord).toHaveBeenCalled();
+            expect(localDB.putRecord).toHaveBeenCalledWith(
+                'plugins',
+                expect.objectContaining({
+                    id: 'test-plugin-id',
+                    scopeType: 'user',
+                    scopeId: mockUserId
+                })
+            );
         });
     });
 
@@ -134,7 +144,8 @@ describe('PluginService', () => {
         it('should update and merge plugin fields', async () => {
             const mockRecord: PluginRecord = {
                 id: 'p-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,
@@ -155,7 +166,8 @@ describe('PluginService', () => {
         it('should soft delete a plugin', async () => {
             const mockRecord: PluginRecord = {
                 id: 'p-1',
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,

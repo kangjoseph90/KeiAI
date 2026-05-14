@@ -1,6 +1,6 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
-import { localDB, type TranslationRecord } from '$lib/adapters/db';
+import { canAccessScope, getSessionScope } from '../session';
+import { localDB, type DataScopeType, type TranslationRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -32,7 +32,6 @@ function parseFields(record: TranslationRecord): TranslationFields {
 export class TranslationService {
     static async listByMessageSwipe(messageId: string, swipeId: string): Promise<Translation[]> {
         await buffer.flushTable('translations');
-        const { userId } = getActiveSession();
         const records = await localDB.getByCompoundIndex<TranslationRecord>(
             'translations',
             '[messageId+swipeId]',
@@ -40,7 +39,7 @@ export class TranslationService {
             Number.MAX_SAFE_INTEGER
         );
         return records
-            .filter((record) => record.userId === userId)
+            .filter((record) => canAccessScope(record))
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
@@ -51,9 +50,8 @@ export class TranslationService {
     }
 
     static async get(id: string): Promise<Translation | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<TranslationRecord>('translations', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
         return {
             ...parseFields(record),
@@ -68,18 +66,20 @@ export class TranslationService {
         chatId: string,
         messageId: string,
         swipeId: string,
-        fields: DeepPartial<TranslationFields> = {}
+        fields: DeepPartial<TranslationFields> = {},
+        scopeType: DataScopeType = 'user'
     ): Promise<Translation> {
         const resolved: TranslationFields = deepMerge(defaultTranslationFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope(scopeType);
         const id = generateId();
         const now = clock.now();
 
         try {
             const newRecord: TranslationRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 chatId,
                 messageId,
                 swipeId,
@@ -98,9 +98,8 @@ export class TranslationService {
     }
 
     static async update(id: string, changes: DeepPartial<TranslationFields>): Promise<Translation> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<TranslationRecord>('translations', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Translation not found: ${id}`);
         }
 
@@ -128,9 +127,8 @@ export class TranslationService {
     }
 
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<TranslationRecord>('translations', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Translation not found: ${id}`);
         }
 

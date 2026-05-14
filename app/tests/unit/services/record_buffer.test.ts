@@ -20,7 +20,8 @@ vi.mock('$lib/adapters/db', () => ({
 function makeRecord(overrides: Partial<DataRecord> = {}): DataRecord {
     return {
         id: 'msg-1',
-        userId: 'user-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         createdAt: 100,
         updatedAt: 100,
         isDeleted: false,
@@ -102,7 +103,7 @@ describe('recordBuffer', () => {
 
         const cached = await buffer.get<DataRecord>('messages', 'msg-1');
         expect(cached).toEqual(record);
-        expect(cached?.userId).toBe('user-1');
+        expect(cached?.scopeId).toBe('user-1');
         expect(cached?.createdAt).toBe(100);
     });
 

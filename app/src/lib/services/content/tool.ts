@@ -1,6 +1,6 @@
 import { clock } from '$lib/utils/clock';
-import { getActiveSession } from '../user';
-import { localDB, type ToolCallRecord } from '$lib/adapters/db';
+import { canAccessScope, getSessionScope } from '../session';
+import { localDB, type DataScopeType, type ToolCallRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -66,7 +66,6 @@ export class ToolCallService {
     /** List tool calls for a specific swipe */
     static async listByMessageSwipe(messageId: string, swipeId: string): Promise<ToolCall[]> {
         await buffer.flushTable('tool_calls');
-        const { userId } = getActiveSession();
         const records = await localDB.getByCompoundIndex<ToolCallRecord>(
             'tool_calls',
             '[messageId+swipeId]',
@@ -74,7 +73,7 @@ export class ToolCallService {
             Number.MAX_SAFE_INTEGER
         );
         return records
-            .filter((record) => record.userId === userId)
+            .filter((record) => canAccessScope(record))
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
@@ -85,9 +84,8 @@ export class ToolCallService {
     }
 
     static async get(id: string): Promise<ToolCall | null> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ToolCallRecord>('tool_calls', id);
-        if (!record || record.isDeleted || record.userId !== userId) return null;
+        if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
         return {
             ...parseFields(record),
@@ -102,18 +100,20 @@ export class ToolCallService {
         chatId: string,
         messageId: string,
         swipeId: string,
-        fields: DeepPartial<ToolCallFields> = {}
+        fields: DeepPartial<ToolCallFields> = {},
+        scopeType: DataScopeType = 'user'
     ): Promise<ToolCall> {
         const resolved: ToolCallFields = deepMerge(defaultToolCallFields, fields);
 
-        const { userId } = getActiveSession();
+        const scope = getSessionScope(scopeType);
         const id = generateId();
         const now = clock.now();
 
         try {
             const newRecord: ToolCallRecord = {
                 id,
-                userId,
+                scopeType: scope.scopeType,
+                scopeId: scope.scopeId,
                 chatId,
                 messageId,
                 swipeId,
@@ -132,9 +132,8 @@ export class ToolCallService {
     }
 
     static async update(id: string, changes: DeepPartial<ToolCallFields>): Promise<ToolCall> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ToolCallRecord>('tool_calls', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Tool call not found: ${id}`);
         }
 
@@ -162,9 +161,8 @@ export class ToolCallService {
     }
 
     static async delete(id: string): Promise<void> {
-        const { userId } = getActiveSession();
         const record = await buffer.get<ToolCallRecord>('tool_calls', id);
-        if (!record || record.isDeleted || record.userId !== userId) {
+        if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Tool call not found: ${id}`);
         }
 

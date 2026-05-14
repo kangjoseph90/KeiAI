@@ -12,10 +12,16 @@ vi.mock('$lib/crypto', () => ({
     decrypt: vi.fn()
 }));
 
-vi.mock('$lib/services/user', () => ({
-    UserService: {},
-    getActiveSession: vi.fn(),
-    hasActiveSession: vi.fn()
+vi.mock('$lib/services/session', () => ({
+    getActiveSession: vi.fn(() => ({
+        userId: 'user-123',
+        masterKey: {} as CryptoKey,
+        identityKeyPair: {} as CryptoKeyPair
+    })),
+    getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
+        if (scopeType === 'user') return { scopeType: 'user', scopeId: 'user-123' };
+        return { scopeType: 'room', scopeId: 'room-123' };
+    })
 }));
 
 vi.mock('$lib/adapters/db', () => ({
@@ -35,13 +41,11 @@ vi.mock('$lib/services/content/record_buffer', () => ({
 }));
 
 import { encrypt, decrypt } from '$lib/crypto';
-import { getActiveSession, UserService } from '$lib/services/user';
 import { buffer } from '$lib/services/content/record_buffer';
 import { makeSettings } from '../../utils';
 
 describe('SettingsService', () => {
     const mockUserId = 'user-123';
-    const mockMasterKey = {} as CryptoKey;
     const mockNow = 1710000000000;
 
     const mockSettings: AppSettings = makeSettings({
@@ -53,12 +57,6 @@ describe('SettingsService', () => {
         vi.clearAllMocks();
         vi.useFakeTimers();
         vi.setSystemTime(mockNow);
-
-        vi.mocked(getActiveSession).mockReturnValue({
-            userId: mockUserId,
-            masterKey: mockMasterKey,
-            identityKeyPair: {} as CryptoKeyPair
-        });
 
         vi.mocked(encrypt).mockResolvedValue({
             ciphertext: new Uint8Array([13, 14, 15]),
@@ -72,7 +70,8 @@ describe('SettingsService', () => {
         it('should return decrypted settings for the user', async () => {
             const mockRecord: SettingsRecord = {
                 id: mockUserId,
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,
@@ -99,7 +98,8 @@ describe('SettingsService', () => {
         it('should return defaults when record is empty', async () => {
             vi.mocked(buffer.get).mockResolvedValue({
                 id: mockUserId,
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 100,
                 updatedAt: 100,
                 isDeleted: false,
@@ -116,7 +116,8 @@ describe('SettingsService', () => {
         it('should perform read-modify-write merge update', async () => {
             const mockRecord: SettingsRecord = {
                 id: mockUserId,
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 100,
                 updatedAt: 110,
                 isDeleted: false,
@@ -134,7 +135,8 @@ describe('SettingsService', () => {
         it('should preserve createdAt across consecutive queued updates', async () => {
             const mockRecord: SettingsRecord = {
                 id: mockUserId,
-                userId: mockUserId,
+                scopeType: 'user',
+                scopeId: mockUserId,
                 createdAt: 100,
                 updatedAt: 110,
                 isDeleted: false,
