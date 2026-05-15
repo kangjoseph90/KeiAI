@@ -61,6 +61,7 @@ export const characterModules = readonly(StoreState.characterModules);
 export const roomChats = readonly(StoreState.roomChats);
 export const activeChat = readonly(StoreState.activeChat);
 export const activeChatId = readonly(StoreState.activeChatId);
+export const chatSelections = readonly(StoreState.chatSelections);
 export const chatLorebooks = readonly(StoreState.chatLorebooks);
 export const chatPersonas = readonly(StoreState.chatPersonas);
 export const messages = readonly(StoreState.messages);

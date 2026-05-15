@@ -57,8 +57,12 @@ const logger = createLogger('task:chat');
  * Fire-and-forget from the UI — all state is communicated through
  * the runtime task store and message store.
  */
-export async function runChat(chatId: string, options?: RunChatOptions): Promise<void> {
-    const opts = options ?? {};
+export async function runChat(
+    chatId: string,
+    characterId: string,
+    personaId: string,
+    opts: RunChatOptions = {}
+): Promise<void> {
     // ── 0. Guard: Prevent duplicate runs ─────────────────────────────
     const existing = getChatTask(chatId);
     if (existing) {
@@ -77,15 +81,11 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
         const room = await getRoom(chat.roomId);
         if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
 
-        const characterId = chat.selectedCharacterId ?? chat.defaultCharacterId;
-        if (!characterId) throw new AppError('INVALID_INPUT', 'No character selected');
         const characterRef = room.characters.refs[characterId];
         if (!characterRef || characterRef.enabled === false) {
             throw new AppError('INVALID_INPUT', `Character is not available: ${characterId}`);
         }
 
-        const personaId = chat.selectedPersonaId ?? chat.defaultPersonaId;
-        if (!personaId) throw new AppError('INVALID_INPUT', 'No persona selected');
         const personaRef = chat.personas.refs[personaId];
         if (!personaRef || personaRef.enabled === false) {
             throw new AppError('INVALID_INPUT', `Persona is not available: ${personaId}`);
@@ -215,6 +215,8 @@ export async function runChat(chatId: string, options?: RunChatOptions): Promise
  */
 export async function resolveToolCall(
     chatId: string,
+    characterId: string,
+    personaId: string,
     messageId: string,
     toolCallId: string,
     decision: 'approve' | 'reject'
@@ -257,7 +259,7 @@ export async function resolveToolCall(
     if (hasOtherPending) return;
 
     // Resume with tool execution result
-    await runChat(chatId);
+    await runChat(chatId, characterId, personaId);
 }
 
 // ─── Controls ─────────────────────────────────────────────────────────────────

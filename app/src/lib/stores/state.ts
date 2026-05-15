@@ -112,6 +112,11 @@ export const activeChat = derived([activeChatId, roomChats], ([id]) =>
 );
 export const hasActiveChat = derived(activeChatId, (id) => !!id);
 
+export const chatSelections = writable<{
+    characterId?: string;
+    personaId?: string;
+} | null>(null);
+
 export const chatLorebooks = new EntityStore<Lorebook>();
 export const chatScripts = new EntityStore<Script>();
 export const chatPersonas = derived(

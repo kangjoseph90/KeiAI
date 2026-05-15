@@ -29,6 +29,7 @@ import {
     messages,
     chatLorebooks,
     chatPersonas,
+    chatSelections,
     personas
 } from '$lib/stores/state';
 import { ChatService, LorebookService } from '$lib/services';
@@ -75,6 +76,16 @@ vi.mock('$lib/utils/ordering', () => ({
     sortByRefs: vi.fn((list) => list)
 }));
 
+vi.mock('$lib/adapters/cache', () => ({
+    createCache: () => ({
+        get: vi.fn(),
+        set: vi.fn(),
+        delete: vi.fn(),
+        load: vi.fn().mockResolvedValue(undefined),
+        flush: vi.fn().mockResolvedValue(undefined)
+    })
+}));
+
 describe('Chat Store', () => {
     const mockRoom: Room = {
         id: 'room-1',
@@ -114,9 +125,14 @@ describe('Chat Store', () => {
         messages.clear();
         chatLorebooks.clear();
         personas.clear();
+        chatSelections.set(null);
         vi.mocked(getRoom).mockResolvedValue(mockRoom);
         vi.mocked(updateRoom).mockResolvedValue(undefined);
         vi.mocked(LorebookService.listByOwner).mockResolvedValue([]);
+        vi.mocked(ChatService.update).mockImplementation(async (chatId, changes) => {
+            const current = roomChats.get(chatId) ?? mockChat;
+            return { ...current, ...changes } as Chat;
+        });
     });
 
     describe('selectChat', () => {
@@ -125,7 +141,7 @@ describe('Chat Store', () => {
 
             await selectChat('chat-1');
 
-            expect(get(activeChat)).toEqual(mockChat);
+            expect(get(activeChat)?.id).toBe(mockChat.id);
             expect(loadInitialMessages).toHaveBeenCalledWith('chat-1', 50);
             expect(get(chatLorebooks)).toEqual([]);
             expect(updateRoom).toHaveBeenCalledWith('room-1', { lastActiveChatId: 'chat-1' });
@@ -134,7 +150,6 @@ describe('Chat Store', () => {
         it('cleans stale persona refs on select', async () => {
             const chat: Chat = {
                 ...mockChat,
-                selectedPersonaId: 'persona-missing',
                 defaultPersonaId: 'persona-missing',
                 personas: {
                     refs: {
@@ -149,31 +164,22 @@ describe('Chat Store', () => {
             };
             vi.mocked(ChatService.get).mockResolvedValue(chat);
             vi.mocked(getPersona).mockResolvedValue(null);
-            vi.mocked(ChatService.update).mockResolvedValue({
-                ...chat,
-                selectedPersonaId: undefined,
-                defaultPersonaId: undefined,
-                personas: { refs: {}, folders: {} }
-            });
 
             await selectChat('chat-1');
 
+            // First call: stale ref cleanup
             expect(ChatService.update).toHaveBeenCalledWith(
                 'chat-1',
                 expect.objectContaining({
-                    personas: { refs: { 'persona-missing': undefined } },
-                    selectedPersonaId: undefined,
-                    defaultPersonaId: undefined
+                    personas: { refs: { 'persona-missing': undefined } }
                 })
             );
         });
 
-        it('cleans disabled selected/default refs on select', async () => {
+        it('cleans disabled default refs on select', async () => {
             const chat: Chat = {
                 ...mockChat,
-                selectedPersonaId: 'persona-1',
                 defaultPersonaId: 'persona-1',
-                selectedCharacterId: 'char-disabled',
                 defaultCharacterId: 'char-disabled',
                 personas: {
                     refs: {
@@ -210,9 +216,7 @@ describe('Chat Store', () => {
             });
             vi.mocked(ChatService.update).mockResolvedValue({
                 ...chat,
-                selectedPersonaId: undefined,
                 defaultPersonaId: undefined,
-                selectedCharacterId: undefined,
                 defaultCharacterId: undefined
             });
 
@@ -221,9 +225,7 @@ describe('Chat Store', () => {
             expect(ChatService.update).toHaveBeenCalledWith(
                 'chat-1',
                 expect.objectContaining({
-                    selectedPersonaId: undefined,
                     defaultPersonaId: undefined,
-                    selectedCharacterId: undefined,
                     defaultCharacterId: undefined
                 })
             );
@@ -311,7 +313,7 @@ describe('Chat Store', () => {
             );
 
             await addChatPersona('chat-1', 'persona-1');
-            await setChatSelectedPersona('chat-1', 'persona-1');
+            setChatSelectedPersona('chat-1', 'persona-1');
             await setChatDefaultPersona('chat-1', 'persona-1');
 
             expect(ChatService.update).toHaveBeenCalledWith(
@@ -327,16 +329,14 @@ describe('Chat Store', () => {
                     }
                 })
             );
-            expect(ChatService.update).toHaveBeenCalledWith('chat-1', {
-                selectedPersonaId: 'persona-1'
-            });
+            expect(get(chatSelections)?.personaId).toBe('persona-1');
             expect(ChatService.update).toHaveBeenCalledWith('chat-1', {
                 defaultPersonaId: 'persona-1'
             });
             expect(get(chatPersonas)).toContainEqual(persona);
         });
 
-        it('rejects selecting persona refs that are missing or disabled', async () => {
+        it('rejects defaulting persona refs that are missing or disabled', async () => {
             putActiveChat({
                 ...mockChat,
                 personas: {
@@ -345,51 +345,42 @@ describe('Chat Store', () => {
                 }
             });
 
-            await expect(setChatSelectedPersona('chat-1', 'persona-1')).rejects.toThrow(AppError);
             await expect(setChatDefaultPersona('chat-1', 'persona-missing')).rejects.toThrow(
                 AppError
             );
         });
 
-        it('clears selected/default persona when removing or disabling it', async () => {
+        it('clears default persona when removing or disabling it', async () => {
             putActiveChat({
                 ...mockChat,
-                selectedPersonaId: 'persona-1',
                 defaultPersonaId: 'persona-1',
                 personas: {
                     refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a', enabled: true } },
                     folders: {}
                 }
             });
-            vi.mocked(ChatService.update).mockImplementation(
-                async (_id, changes) =>
-                    ({
-                        ...mockChat,
-                        ...changes,
-                        personas: { refs: {}, folders: {} }
-                    }) as Chat
-            );
+            chatSelections.set({ personaId: 'persona-1' });
 
             await removeChatPersona('chat-1', 'persona-1');
 
             expect(ChatService.update).toHaveBeenCalledWith(
                 'chat-1',
                 expect.objectContaining({
-                    personas: { refs: { 'persona-1': undefined } },
-                    selectedPersonaId: undefined,
-                    defaultPersonaId: undefined
+                    personas: { refs: { 'persona-1': undefined } }
                 })
             );
+            expect(get(chatSelections)?.personaId).toBeUndefined();
 
             putActiveChat({
                 ...mockChat,
-                selectedPersonaId: 'persona-1',
                 defaultPersonaId: 'persona-1',
                 personas: {
                     refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a', enabled: true } },
                     folders: {}
                 }
             });
+            chatSelections.set({ personaId: 'persona-1' });
+            vi.mocked(ChatService.update).mockClear();
 
             await setChatPersonaEnabled('chat-1', 'persona-1', false);
 
@@ -400,22 +391,19 @@ describe('Chat Store', () => {
                         refs: {
                             'persona-1': expect.objectContaining({ enabled: false })
                         }
-                    },
-                    selectedPersonaId: undefined,
-                    defaultPersonaId: undefined
+                    }
                 })
             );
+            expect(get(chatSelections)?.personaId).toBeUndefined();
         });
 
-        it('allows selecting/defaulting enabled room characters and rejects disabled ones', async () => {
+        it('allows selecting/defaulting enabled room characters and rejects disabled defaults', async () => {
             putActiveChat(mockChat);
 
-            await setChatSelectedCharacter('chat-1', 'char-1');
+            setChatSelectedCharacter('chat-1', 'char-1');
             await setChatDefaultCharacter('chat-1', 'char-1');
 
-            expect(ChatService.update).toHaveBeenCalledWith('chat-1', {
-                selectedCharacterId: 'char-1'
-            });
+            expect(get(chatSelections)?.characterId).toBe('char-1');
             expect(ChatService.update).toHaveBeenCalledWith('chat-1', {
                 defaultCharacterId: 'char-1'
             });
@@ -428,7 +416,6 @@ describe('Chat Store', () => {
                 }
             });
 
-            await expect(setChatSelectedCharacter('chat-1', 'char-1')).rejects.toThrow(AppError);
             await expect(setChatDefaultCharacter('chat-1', 'char-missing')).rejects.toThrow(
                 AppError
             );

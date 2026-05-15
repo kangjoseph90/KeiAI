@@ -17,6 +17,7 @@
     import {
         activeChat,
         activeRoom,
+        chatSelections,
         roomCharacters,
         chatPersonas,
         displayMessages,
@@ -44,7 +45,7 @@
     let scrollContainerEl: HTMLElement | undefined = $state();
 
     const selectedPersona = $derived.by(() => {
-        const personaId = $activeChat?.selectedPersonaId ?? $activeChat?.defaultPersonaId;
+        const personaId = $chatSelections?.personaId ?? $activeChat?.defaultPersonaId;
         if (!personaId) return null;
         return $chatPersonas.find((persona) => persona.id === personaId) ?? null;
     });
@@ -56,7 +57,7 @@
     });
 
     const selectedCharacter = $derived.by(() => {
-        const characterId = $activeChat?.selectedCharacterId ?? $activeChat?.defaultCharacterId;
+        const characterId = $chatSelections?.characterId ?? $activeChat?.defaultCharacterId;
         if (!characterId) return null;
         return $roomCharacters.find((character) => character.id === characterId) ?? null;
     });
@@ -100,8 +101,8 @@
     }
 
     function handleGenerateResponse() {
-        if (!$activeChat || !selectedCharacter || $isChatRunning) return;
-        runChat($activeChat.id);
+        if (!$activeChat || !selectedCharacter || !selectedPersona || $isChatRunning) return;
+        runChat($activeChat.id, selectedCharacter.id, selectedPersona.id);
     }
 
     async function handleUpdateMessage(id: string) {
@@ -119,8 +120,8 @@
     async function handleRegenerate() {
         // Instead of deleting and re-creating, target the existing message for reroll.
         // The task layer appends a new swipe (or replaces, based on saveMessagesOnSwipe).
-        if ($activeChat) {
-            runChat($activeChat.id, { reroll: true });
+        if ($activeChat && selectedCharacter && selectedPersona) {
+            runChat($activeChat.id, selectedCharacter.id, selectedPersona.id, { reroll: true });
         }
     }
 
@@ -251,6 +252,8 @@
                                     onResolveTool={(toolCallId, decision) =>
                                         resolveToolCall(
                                             $activeChat!.id,
+                                            selectedCharacter!.id,
+                                            selectedPersona!.id,
                                             msg.id,
                                             toolCallId,
                                             decision

@@ -28,7 +28,7 @@ import {
 } from '$lib/stores/state';
 import { ChatService, RoomService } from '$lib/services';
 import { getCharacter } from '$lib/stores/content/character';
-import { updateChat } from '$lib/stores/content/chat';
+import { updateChat, resolveChatSelections } from '$lib/stores/content/chat';
 import { AppError } from '$lib/types/errors';
 import type { Character, Chat, Room } from '$lib/services';
 
@@ -51,7 +51,8 @@ vi.mock('$lib/stores/content/character', () => ({
 }));
 
 vi.mock('$lib/stores/content/chat', () => ({
-    updateChat: vi.fn()
+    updateChat: vi.fn(),
+    resolveChatSelections: vi.fn().mockResolvedValue(undefined)
 }));
 
 vi.mock('$lib/utils/id', () => ({
@@ -253,12 +254,11 @@ describe('Room Store', () => {
         expect(get(roomCharacters)).toContainEqual(mockCharacter);
     });
 
-    it('removes room character refs and clears active chat selected/default character', async () => {
+    it('removes room character refs and resolves chat selections', async () => {
         rooms.set(mockRoom.id, mockRoom);
         activeRoomId.set(mockRoom.id);
         const selectedChat = {
             ...mockChat,
-            selectedCharacterId: 'char-1',
             defaultCharacterId: 'char-1'
         };
         roomChats.set(selectedChat.id, selectedChat);
@@ -269,17 +269,12 @@ describe('Room Store', () => {
         expect(RoomService.update).toHaveBeenCalledWith('room-1', {
             characters: { refs: { 'char-1': undefined } }
         });
-        expect(get(roomCharacters)).toEqual([]);
-        expect(updateChat).toHaveBeenCalledWith('chat-1', {
-            selectedCharacterId: undefined,
-            defaultCharacterId: undefined
-        });
+        expect(resolveChatSelections).toHaveBeenCalledWith('chat-1');
     });
 
-    it('disabling the active selected character clears selected/default chat ids', async () => {
+    it('disabling a character resolves chat selections', async () => {
         const selectedChat = {
             ...mockChat,
-            selectedCharacterId: 'char-1',
             defaultCharacterId: 'char-1'
         };
         roomChats.set(selectedChat.id, selectedChat);
@@ -297,10 +292,7 @@ describe('Room Store', () => {
                 }
             })
         );
-        expect(updateChat).toHaveBeenCalledWith('chat-1', {
-            selectedCharacterId: undefined,
-            defaultCharacterId: undefined
-        });
+        expect(resolveChatSelections).toHaveBeenCalledWith('chat-1');
     });
 
     it('moves room refs between folders without touching missing refs', async () => {

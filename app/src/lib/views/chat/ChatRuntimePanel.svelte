@@ -24,6 +24,7 @@
         addChatPersona,
         chatPersonas,
         chatLorebooks,
+        chatSelections,
         createChatLorebook,
         deleteChatLorebook,
         isMultiRoom,
@@ -158,7 +159,7 @@
                         {#each $chatPersonas as persona (persona.id)}
                             {@const ref = $activeChat.personas.refs[persona.id]}
                             {@const disabled = ref?.enabled === false}
-                            {@const selected = $activeChat.selectedPersonaId === persona.id}
+                            {@const selected = $chatSelections?.personaId === persona.id}
                             {@const isDefault = $activeChat.defaultPersonaId === persona.id}
                             <div class="group relative">
                                 <button

@@ -13,6 +13,7 @@ import type { DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { getCharacter } from './character';
+import { resolveChatSelections } from './chat';
 import {
     rooms,
     multiRooms,
@@ -23,6 +24,7 @@ import {
     activeChat,
     activeChatId,
     chatLorebooks,
+    chatSelections,
     messages,
     messageIndexes,
     multiRoomCharacters,
@@ -87,6 +89,7 @@ export function clearActiveRoom(): void {
     multiRoomCharacters.clear();
     multiRoomPersonas.clear();
     activeChatId.set(null);
+    chatSelections.set(null);
     chatLorebooks.clear();
     messages.clear();
     messageIndexes.set(new Map());
@@ -151,6 +154,14 @@ export async function addRoomCharacter(roomId: string, characterId: string): Pro
             }
         }
     });
+
+    const activeId = get(activeChatId);
+    if (activeId) {
+        const activeC = get(activeChat);
+        if (activeC?.roomId === roomId) {
+            await resolveChatSelections(activeId);
+        }
+    }
 }
 
 export async function removeRoomCharacter(roomId: string, characterId: string): Promise<void> {
@@ -161,16 +172,12 @@ export async function removeRoomCharacter(roomId: string, characterId: string): 
         characters: { refs: { [characterId]: undefined } }
     });
 
-    const chat = get(activeChat);
-    if (chat?.roomId === roomId && chat.selectedCharacterId === characterId) {
-        await import('./chat').then(({ updateChat }) =>
-            updateChat(chat.id, {
-                selectedCharacterId: undefined,
-                ...(chat.defaultCharacterId === characterId
-                    ? { defaultCharacterId: undefined }
-                    : {})
-            })
-        );
+    const activeId = get(activeChatId);
+    if (activeId) {
+        const activeC = get(activeChat);
+        if (activeC?.roomId === roomId) {
+            await resolveChatSelections(activeId);
+        }
     }
 }
 
@@ -196,16 +203,12 @@ export async function setRoomCharacterEnabled(
         }
     });
 
-    const chat = get(activeChat);
-    if (chat?.roomId === roomId && chat.selectedCharacterId === characterId && !enabled) {
-        await import('./chat').then(({ updateChat }) =>
-            updateChat(chat.id, {
-                selectedCharacterId: undefined,
-                ...(chat.defaultCharacterId === characterId
-                    ? { defaultCharacterId: undefined }
-                    : {})
-            })
-        );
+    const activeId = get(activeChatId);
+    if (activeId) {
+        const activeC = get(activeChat);
+        if (activeC?.roomId === roomId) {
+            await resolveChatSelections(activeId);
+        }
     }
 }
 

@@ -127,10 +127,6 @@ export async function selectMultiRoom(roomId: string): Promise<void> {
     }
 }
 
-export function clearActiveMultiRoom(): void {
-    clearActiveRoom();
-}
-
 export async function createMultiRoom(fields: CreateMultiRoomParams): Promise<Room> {
     const room = await MultiRoomService.createRoom({
         visibility: fields.visibility,

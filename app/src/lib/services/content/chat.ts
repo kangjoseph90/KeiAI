@@ -19,8 +19,6 @@ export interface ChatRefs {
     greetingMessageId?: string;
     defaultPersonaId?: string;
     defaultCharacterId?: string;
-    selectedPersonaId?: string;
-    selectedCharacterId?: string;
     lorebooks: EntityListConfig;
     personas: EntityListConfig<ResourceRef>;
 }

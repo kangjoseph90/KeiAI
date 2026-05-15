@@ -21,6 +21,7 @@
         activeRoom,
         addRoomCharacter,
         characters,
+        chatSelections,
         createChat,
         deleteChat,
         isMultiRoom,
@@ -245,7 +246,7 @@
                     {#each $roomCharacters as character (character.id)}
                         {@const ref = $activeRoom.characters.refs[character.id]}
                         {@const disabled = ref?.enabled === false}
-                        {@const selected = $activeChat?.selectedCharacterId === character.id}
+                        {@const selected = $chatSelections?.characterId === character.id}
                         {@const isDefault = $activeChat?.defaultCharacterId === character.id}
                         <div class="group relative">
                             <button

@@ -64,8 +64,8 @@ vi.mock('$lib/stores', () => ({
         roomId: 'room-1',
         title: 'Chat 1',
         chatNote: '',
-        selectedCharacterId: 'char-1',
-        selectedPersonaId: 'persona-1',
+        defaultCharacterId: 'char-1',
+        defaultPersonaId: 'persona-1',
         lorebooks: { refs: {}, folders: {} },
         personas: {
             refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
@@ -105,8 +105,8 @@ vi.mock('$lib/stores/content/chat', () => ({
         roomId: 'room-1',
         title: 'Chat 1',
         chatNote: '',
-        selectedCharacterId: 'char-1',
-        selectedPersonaId: 'persona-1',
+        defaultCharacterId: 'char-1',
+        defaultPersonaId: 'persona-1',
         lorebooks: { refs: {}, folders: {} },
         personas: {
             refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
@@ -169,7 +169,7 @@ import {
 } from '$lib/stores/content/message';
 import { getChatVariablesBefore, prepareNextSwipe } from '$lib/managers';
 import { MessageService } from '$lib/services/content/message';
-import { getChat } from '$lib/stores';
+import { getChat, getRoom } from '$lib/stores';
 import { buildPrompt } from '$lib/tasks/chat/prompt';
 import { selectLLMHandler } from '$lib/llm/handler';
 import { runPipeline } from '$lib/pipeline';
@@ -283,7 +283,7 @@ describe('Chat Pipeline', () => {
                 }) as Message
         );
 
-        await runChat(mockChatId, { handlerOverride: mockHandler });
+        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: mockHandler });
 
         // Should create message in DB immediately
         expect(createMessage).toHaveBeenCalled();
@@ -348,7 +348,7 @@ describe('Chat Pipeline', () => {
         vi.mocked(getChatTask).mockReturnValue(makeMockTask());
 
         // Attempt run while one is active
-        await runChat(mockChatId, { handlerOverride: foreverHandler });
+        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: foreverHandler });
 
         // Should not have created a new task
         expect(createChatTask).not.toHaveBeenCalled();
@@ -359,34 +359,31 @@ describe('Chat Pipeline', () => {
             throw new Error('Prompt error');
         });
 
-        await runChat(mockChatId);
+        await runChat(mockChatId, 'char-1', 'persona-1');
 
         expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Prompt error');
     });
 
-    it('should reject generation when no character is selected or defaulted', async () => {
-        vi.mocked(getChat).mockResolvedValueOnce({
-            id: mockChatId,
-            roomId: 'room-1',
+    it('should reject generation when the character ref is missing in room', async () => {
+        vi.mocked(getRoom).mockResolvedValueOnce({
+            id: 'room-1',
             scopeType: 'user',
             scopeId: 'user-1',
-            title: 'Mock Chat',
-            chatNote: '',
-            selectedPersonaId: 'persona-1',
-            lorebooks: { refs: {}, folders: {} },
-            personas: {
-                refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
-                folders: {}
-            }
-        } as Chat);
+            name: 'Room 1',
+            chats: { refs: {}, folders: {} },
+            characters: { refs: {}, folders: {} }
+        });
 
-        await runChat(mockChatId);
+        await runChat(mockChatId, 'char-missing', 'persona-1');
 
-        expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'No character selected');
+        expect(setChatTaskError).toHaveBeenCalledWith(
+            mockChatId,
+            'Character is not available: char-missing'
+        );
         expect(createMessage).not.toHaveBeenCalled();
     });
 
-    it('should reject generation when the selected persona is disabled in the chat', async () => {
+    it('should reject generation when the persona ref is disabled in the chat', async () => {
         vi.mocked(getChat).mockResolvedValueOnce({
             id: mockChatId,
             roomId: 'room-1',
@@ -394,8 +391,7 @@ describe('Chat Pipeline', () => {
             scopeId: 'user-1',
             title: 'Mock Chat',
             chatNote: '',
-            selectedCharacterId: 'char-1',
-            selectedPersonaId: 'persona-1',
+            defaultCharacterId: 'char-1',
             lorebooks: { refs: {}, folders: {} },
             personas: {
                 refs: { 'persona-1': { id: 'persona-1', enabled: false, sortOrder: 'a0' } },
@@ -403,7 +399,7 @@ describe('Chat Pipeline', () => {
             }
         } as Chat);
 
-        await runChat(mockChatId);
+        await runChat(mockChatId, 'char-1', 'persona-1');
 
         expect(setChatTaskError).toHaveBeenCalledWith(
             mockChatId,
@@ -427,7 +423,7 @@ describe('Chat Pipeline', () => {
             activeSwipeId: 'swipe-new'
         } as unknown as import('$lib/services').Message);
 
-        await runChat(mockChatId, { handlerOverride: mockHandler });
+        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: mockHandler });
 
         expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Empty response from model');
         expect(clearChatTask).not.toHaveBeenCalled();
@@ -441,7 +437,7 @@ describe('Chat Pipeline', () => {
             })
         };
 
-        await runChat(mockChatId, { handlerOverride: mockHandler });
+        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: mockHandler });
 
         expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
     });
@@ -454,7 +450,7 @@ describe('Chat Pipeline', () => {
             })
         };
 
-        await runChat(mockChatId, { handlerOverride: mockHandler });
+        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: mockHandler });
 
         expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Network fail');
         expect(clearChatTask).not.toHaveBeenCalled();
@@ -467,7 +463,7 @@ describe('Chat Pipeline', () => {
             })
         };
 
-        await runChat(mockChatId, { handlerOverride: mockHandler });
+        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: mockHandler });
 
         expect(selectLLMHandler).not.toHaveBeenCalled();
         expect(createChatTask).toHaveBeenCalledWith(
@@ -486,7 +482,7 @@ describe('Chat Pipeline', () => {
 
         vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
 
-        await runChat(mockChatId);
+        await runChat(mockChatId, 'char-1', 'persona-1');
 
         expect(selectLLMHandler).toHaveBeenCalled();
     });
@@ -520,8 +516,8 @@ describe('Chat Pipeline', () => {
                 scopeId: 'user-1',
                 title: 'Mock Chat',
                 chatNote: '',
-                selectedCharacterId: 'char-1',
-                selectedPersonaId: 'persona-1',
+                defaultCharacterId: 'char-1',
+                defaultPersonaId: 'persona-1',
                 lastMessageId: targetMessageId,
                 lorebooks: { refs: {}, folders: {} },
                 personas: {
@@ -558,7 +554,10 @@ describe('Chat Pipeline', () => {
                     activeSwipeId: 'swipe-new'
                 } as unknown as import('$lib/services').Message);
 
-            await runChat(mockChatId, { handlerOverride: mockHandler, reroll: true });
+            await runChat(mockChatId, 'char-1', 'persona-1', {
+                handlerOverride: mockHandler,
+                reroll: true
+            });
 
             // Should add swipe to existing message, not create new message
             expect(prepareNextSwipe).toHaveBeenCalledWith(
@@ -602,7 +601,10 @@ describe('Chat Pipeline', () => {
                 activeSwipeId: 'swipe-new'
             } as unknown as import('$lib/services').Message);
 
-            await runChat(mockChatId, { handlerOverride: mockHandler, reroll: true });
+            await runChat(mockChatId, 'char-1', 'persona-1', {
+                handlerOverride: mockHandler,
+                reroll: true
+            });
 
             expect(prepareNextSwipe).toHaveBeenCalledWith(
                 expect.objectContaining({ id: targetMessageId }),

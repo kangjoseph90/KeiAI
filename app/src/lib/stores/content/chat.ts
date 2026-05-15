@@ -17,7 +17,10 @@ import {
     chatLorebooks,
     activeChatId,
     activeRoomId,
-    messageIndexes
+    chatSelections,
+    messageIndexes,
+    roomCharacters,
+    chatPersonas
 } from '../state';
 import { loadInitialMessages } from './message';
 import { getRoom, updateRoom } from './room';
@@ -25,6 +28,16 @@ import { getPersona } from './persona';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
+import { createCache } from '$lib/adapters/cache';
+
+/**
+ * Cache for chat selections
+ * Chat selection is stored separately from the chat record to support multi-room scenarios
+ */
+const chatSelectionCache = createCache<{ characterId?: string; personaId?: string }>(
+    'chat-sel',
+    100
+);
 
 /**
  * Returns chat from store cache first, then from DB if needed.
@@ -55,6 +68,77 @@ export async function getChatLorebooks(chatId: string): Promise<Lorebook[]> {
     return results.filter((lb): lb is Lorebook => lb !== null);
 }
 
+/**
+ * Resolves the active chat's selections (default character and persona).
+ * Ensures that the default and selected characters/personas are valid
+ */
+export async function resolveChatSelections(chatId: string): Promise<void> {
+    const chat = await getChat(chatId);
+    if (!chat) return;
+
+    const room = await getRoom(chat.roomId);
+    if (!room) return;
+
+    // 1. Get first enabled character/persona IDs
+    const charRefs = Object.values(room.characters.refs).filter((r) => r !== undefined);
+    const sortedChars = [...charRefs].sort((a, b) => a.sortOrder.localeCompare(b.sortOrder));
+    const firstEnabledCharId = sortedChars.find((r) => r.enabled !== false)?.id;
+
+    const personaRefs = Object.values(chat.personas.refs).filter((r) => r !== undefined);
+    const sortedPersonas = [...personaRefs].sort((a, b) => a.sortOrder.localeCompare(b.sortOrder));
+    const firstEnabledPersonaId = sortedPersonas.find((r) => r.enabled !== false)?.id;
+
+    // 2. Validate/Update Defaults
+    const patch: DeepPartial<ChatFields> = {};
+
+    const defaultCharRef = chat.defaultCharacterId
+        ? room.characters.refs[chat.defaultCharacterId]
+        : undefined;
+    if (!defaultCharRef || defaultCharRef.enabled === false) {
+        if (chat.defaultCharacterId !== firstEnabledCharId) {
+            patch.defaultCharacterId = firstEnabledCharId;
+        }
+    }
+
+    const defaultPersonaRef = chat.defaultPersonaId
+        ? chat.personas.refs[chat.defaultPersonaId]
+        : undefined;
+    if (!defaultPersonaRef || defaultPersonaRef.enabled === false) {
+        if (chat.defaultPersonaId !== firstEnabledPersonaId) {
+            patch.defaultPersonaId = firstEnabledPersonaId;
+        }
+    }
+
+    if (Object.keys(patch).length > 0) {
+        await updateChat(chatId, patch);
+    }
+
+    // 3. Resolve Selection (if active)
+    if (chatId === get(activeChatId)) {
+        const currentChat = get(activeChat) ?? chat; // Get potentially updated chat
+        const cached = chatSelectionCache.get(chatId);
+        const currentSel = get(chatSelections);
+
+        const selCharId = currentSel?.characterId ?? cached?.characterId;
+        const selPersonaId = currentSel?.personaId ?? cached?.personaId;
+
+        const charRef = selCharId ? room.characters.refs[selCharId] : undefined;
+        const personaRef = selPersonaId ? currentChat.personas.refs[selPersonaId] : undefined;
+
+        const isCharValid = charRef !== undefined && charRef.enabled !== false;
+        const isPersonaValid = personaRef !== undefined && personaRef.enabled !== false;
+
+        const finalCharId = isCharValid ? selCharId : currentChat.defaultCharacterId;
+        const finalPersonaId = isPersonaValid ? selPersonaId : currentChat.defaultPersonaId;
+
+        if (finalCharId !== currentSel?.characterId || finalPersonaId !== currentSel?.personaId) {
+            const newSelection = { characterId: finalCharId, personaId: finalPersonaId };
+            chatSelections.set(newSelection);
+            chatSelectionCache.set(chatId, newSelection);
+        }
+    }
+}
+
 export async function selectChat(chatId: string): Promise<void> {
     const chat = await getChat(chatId);
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
@@ -65,10 +149,9 @@ export async function selectChat(chatId: string): Promise<void> {
     await loadInitialMessages(chatId, 50);
 
     const personaIds = Object.keys(chat.personas.refs);
-    const [lorebooks, personaEntries, room] = await Promise.all([
+    const [lorebooks, personaEntries] = await Promise.all([
         LorebookService.listByOwner(chatId),
-        Promise.all(personaIds.map(async (id) => [id, await getPersona(id)] as const)),
-        getRoom(chat.roomId)
+        Promise.all(personaIds.map(async (id) => [id, await getPersona(id)] as const))
     ]);
 
     const stalePersonaRefs: Record<string, undefined> = {};
@@ -80,60 +163,20 @@ export async function selectChat(chatId: string): Promise<void> {
 
     chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebooks.refs));
 
-    const defaultPersonaRef = chat.defaultPersonaId
-        ? chat.personas.refs[chat.defaultPersonaId]
-        : undefined;
-    const selectedPersonaRef = chat.selectedPersonaId
-        ? chat.personas.refs[chat.selectedPersonaId]
-        : undefined;
-    const defaultCharacterRef =
-        room && chat.defaultCharacterId ? room.characters.refs[chat.defaultCharacterId] : undefined;
-    const selectedCharacterRef =
-        room && chat.selectedCharacterId
-            ? room.characters.refs[chat.selectedCharacterId]
-            : undefined;
-    const defaultPatch: DeepPartial<ChatFields> = {};
-    if (
-        chat.defaultPersonaId &&
-        (!defaultPersonaRef ||
-            defaultPersonaRef.enabled === false ||
-            chat.defaultPersonaId in stalePersonaRefs)
-    ) {
-        defaultPatch.defaultPersonaId = undefined;
-    }
-    if (
-        chat.defaultCharacterId &&
-        (!defaultCharacterRef || defaultCharacterRef.enabled === false)
-    ) {
-        defaultPatch.defaultCharacterId = undefined;
-    }
-    if (
-        chat.selectedPersonaId &&
-        (!selectedPersonaRef ||
-            selectedPersonaRef.enabled === false ||
-            chat.selectedPersonaId in stalePersonaRefs)
-    ) {
-        defaultPatch.selectedPersonaId = undefined;
-    }
-    if (
-        chat.selectedCharacterId &&
-        (!selectedCharacterRef || selectedCharacterRef.enabled === false)
-    ) {
-        defaultPatch.selectedCharacterId = undefined;
-    }
-
-    if (Object.keys(stalePersonaRefs).length > 0 || Object.keys(defaultPatch).length > 0) {
+    if (Object.keys(stalePersonaRefs).length > 0) {
         await updateChat(chatId, {
-            personas: { refs: stalePersonaRefs },
-            ...defaultPatch
+            personas: { refs: stalePersonaRefs }
         });
     }
+
+    await resolveChatSelections(chatId);
 
     await updateRoom(chat.roomId, { lastActiveChatId: chatId });
 }
 
 export function clearActiveChat(): void {
     activeChatId.set(null);
+    chatSelections.set(null);
     chatLorebooks.clear();
     messages.clear();
     messageIndexes.set(new Map());
@@ -170,20 +213,18 @@ export async function updateChat(chatId: string, changes: DeepPartial<ChatFields
     roomChats.set(chatId, updated);
 }
 
-export async function setChatSelectedPersona(chatId: string, personaId: string): Promise<void> {
-    const chat = await getChat(chatId);
-    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+export function setChatSelectedPersona(chatId: string, personaId: string): void {
+    if (get(activeChatId) !== chatId) return;
+    chatSelections.update((current) => ({ ...current, personaId }));
+    const selection = get(chatSelections);
+    if (selection) chatSelectionCache.set(chatId, selection);
+}
 
-    const ref = chat.personas.refs[personaId];
-    if (!ref || ref.enabled === false) {
-        throw new AppError('INVALID_INPUT', `Persona is not active in this chat: ${personaId}`);
-    }
-    const persona = await getPersona(personaId);
-    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
-
-    await updateChat(chatId, {
-        selectedPersonaId: personaId
-    });
+export function setChatSelectedCharacter(chatId: string, characterId: string): void {
+    if (get(activeChatId) !== chatId) return;
+    chatSelections.update((current) => ({ ...current, characterId }));
+    const selection = get(chatSelections);
+    if (selection) chatSelectionCache.set(chatId, selection);
 }
 
 export async function setChatDefaultPersona(chatId: string, personaId: string): Promise<void> {
@@ -198,22 +239,6 @@ export async function setChatDefaultPersona(chatId: string, personaId: string): 
     if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
 
     await updateChat(chatId, { defaultPersonaId: personaId });
-}
-
-export async function setChatSelectedCharacter(chatId: string, characterId: string): Promise<void> {
-    const chat = await getChat(chatId);
-    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
-
-    const room = await getRoom(chat.roomId);
-    if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
-    const ref = room.characters.refs[characterId];
-    if (!ref || ref.enabled === false) {
-        throw new AppError('INVALID_INPUT', `Character is not active in this room: ${characterId}`);
-    }
-
-    await updateChat(chatId, {
-        selectedCharacterId: characterId
-    });
 }
 
 export async function setChatDefaultCharacter(chatId: string, characterId: string): Promise<void> {
@@ -254,6 +279,8 @@ export async function deleteChat(chatId: string, roomId: string): Promise<void> 
         await updateRoom(roomId, { chats: { refs: { [chatId]: existingRef } } });
         throw error;
     }
+
+    chatSelectionCache.delete(chatId);
 
     if (roomId === get(activeRoomId)) {
         roomChats.delete(chatId);
@@ -348,6 +375,8 @@ export async function addChatPersona(chatId: string, personaId: string): Promise
             }
         }
     });
+
+    await resolveChatSelections(chatId);
 }
 
 export async function removeChatPersona(chatId: string, personaId: string): Promise<void> {
@@ -355,10 +384,10 @@ export async function removeChatPersona(chatId: string, personaId: string): Prom
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
     await updateChat(chatId, {
-        personas: { refs: { [personaId]: undefined } },
-        ...(chat.selectedPersonaId === personaId ? { selectedPersonaId: undefined } : {}),
-        ...(chat.defaultPersonaId === personaId ? { defaultPersonaId: undefined } : {})
+        personas: { refs: { [personaId]: undefined } }
     });
+
+    await resolveChatSelections(chatId);
 }
 
 export async function setChatPersonaEnabled(
@@ -380,12 +409,10 @@ export async function setChatPersonaEnabled(
                     enabled
                 }
             }
-        },
-        ...(chat.selectedPersonaId === personaId && !enabled
-            ? { selectedPersonaId: undefined }
-            : {}),
-        ...(chat.defaultPersonaId === personaId && !enabled ? { defaultPersonaId: undefined } : {})
+        }
     });
+
+    await resolveChatSelections(chatId);
 }
 
 // ─── Chat-owned Folder & Item Management ──────────────────────
