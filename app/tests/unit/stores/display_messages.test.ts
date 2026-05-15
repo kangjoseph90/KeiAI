@@ -14,6 +14,8 @@ function makeMessage(id: string, role: Message['role']): Message {
     return {
         id,
         chatId: 'chat-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         role,
         sortOrder: id,
         activeSwipeId: 'swipe-1',

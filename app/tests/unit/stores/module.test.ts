@@ -175,6 +175,8 @@ describe('Module Store', () => {
             modules.setAll([mockModule]);
             const mockLb: Lorebook = {
                 id: 'lb-1',
+                scopeType: 'user',
+                scopeId: 'user-1',
                 name: 'LB',
                 ownerId: 'mod-1',
                 key: '',
@@ -221,6 +223,8 @@ describe('Module Store', () => {
             modules.setAll([mockModule]);
             const mockCjs: CharJS = {
                 id: 'cjs-1',
+                scopeType: 'user',
+                scopeId: 'user-1',
                 name: 'New Script',
                 ownerId: 'mod-1',
                 code: '',

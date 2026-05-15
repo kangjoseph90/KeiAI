@@ -15,6 +15,8 @@ describe('MessageManager', () => {
     const baseMessage: Message = {
         id: 'msg-1',
         chatId: 'chat-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         role: 'assistant',
         sortOrder: 'a',
         activeSwipeId: 'old-swipe',

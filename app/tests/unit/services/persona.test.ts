@@ -97,6 +97,8 @@ describe('PersonaService', () => {
             expect(result).toHaveLength(1);
             expect(result[0]).toEqual({
                 id: 'persona-123',
+                scopeType: 'user',
+                scopeId: 'user-123',
                 ...basePersonaFields
             });
         });

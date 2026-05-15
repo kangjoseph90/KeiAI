@@ -2,6 +2,7 @@ import { get } from 'svelte/store';
 import {
     RoomService,
     ChatService,
+    MultiRoomService,
     type Room,
     type RoomFields,
     type RoomContent
@@ -14,6 +15,8 @@ import { generateId } from '$lib/utils/id';
 import { getCharacter } from './character';
 import {
     rooms,
+    multiRooms,
+    isMultiRoom,
     activeRoom,
     activeRoomId,
     roomChats,
@@ -21,7 +24,9 @@ import {
     activeChatId,
     chatLorebooks,
     messages,
-    messageIndexes
+    messageIndexes,
+    multiRoomCharacters,
+    multiRoomPersonas
 } from '../state';
 
 export async function getRoom(roomId: string): Promise<Room | null> {
@@ -29,6 +34,8 @@ export async function getRoom(roomId: string): Promise<Room | null> {
     if (active?.id === roomId) return active;
     const cached = rooms.get(roomId);
     if (cached) return cached;
+    const cachedMulti = multiRooms.get(roomId);
+    if (cachedMulti) return cachedMulti;
     return RoomService.get(roomId);
 }
 
@@ -39,8 +46,12 @@ export async function loadRooms(): Promise<void> {
 export async function selectRoom(roomId: string): Promise<void> {
     const room = await getRoom(roomId);
     if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
+    if (room.scopeType === 'room') {
+        throw new AppError('INVALID_INPUT', `Cannot select multi room with selectRoom: ${roomId}`);
+    }
 
     clearActiveRoom();
+    isMultiRoom.set(false);
     rooms.set(room.id, room);
     activeRoomId.set(room.id);
 
@@ -67,8 +78,14 @@ export async function selectRoom(roomId: string): Promise<void> {
 }
 
 export function clearActiveRoom(): void {
+    if (get(isMultiRoom)) {
+        MultiRoomService.closeRoom();
+    }
+    isMultiRoom.set(false);
     activeRoomId.set(null);
     roomChats.clear();
+    multiRoomCharacters.clear();
+    multiRoomPersonas.clear();
     activeChatId.set(null);
     chatLorebooks.clear();
     messages.clear();
@@ -83,7 +100,11 @@ export async function createRoom(fields: DeepPartial<RoomFields> = {}): Promise<
 
 export async function updateRoom(roomId: string, changes: DeepPartial<RoomFields>): Promise<void> {
     const updated = await RoomService.update(roomId, changes);
-    rooms.set(roomId, updated);
+    if (multiRooms.get(roomId) || (get(isMultiRoom) && get(activeRoomId) === roomId)) {
+        multiRooms.set(roomId, updated);
+    } else {
+        rooms.set(roomId, updated);
+    }
 }
 
 export async function updateRoomContent(
@@ -91,10 +112,17 @@ export async function updateRoomContent(
     changes: DeepPartial<RoomContent>
 ): Promise<void> {
     const updated = await RoomService.updateContent(roomId, changes);
-    rooms.set(roomId, updated);
+    if (multiRooms.get(roomId) || (get(isMultiRoom) && get(activeRoomId) === roomId)) {
+        multiRooms.set(roomId, updated);
+    } else {
+        rooms.set(roomId, updated);
+    }
 }
 
 export async function deleteRoom(roomId: string): Promise<void> {
+    if (multiRooms.get(roomId)) {
+        throw new AppError('INVALID_INPUT', `Cannot delete multi room with deleteRoom: ${roomId}`);
+    }
     await RoomService.delete(roomId);
     rooms.delete(roomId);
     if (roomId === get(activeRoomId)) {

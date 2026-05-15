@@ -19,6 +19,7 @@ import { AuthService, MigrationService, UserService, type MigrationOptions } fro
 import { SyncManager } from '$lib/services/sync';
 import { loadUser } from './user';
 import { clearActiveCharacter } from './content/character';
+import { clearActivePersona } from './content/persona';
 import { loadGlobalState } from './init';
 
 // ─── PB Connection State ─────────────────────────────────────────────
@@ -41,6 +42,7 @@ async function refreshAfterLogin(): Promise<void> {
     SyncManager.startAutoSync();
     await SyncManager.syncAll();
     clearActiveCharacter();
+    clearActivePersona();
     await loadGlobalState();
 }
 

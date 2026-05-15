@@ -31,6 +31,9 @@ export const userSyncStatus = readonly(StoreState.userSyncStatus);
 export const assetSyncStatus = readonly(StoreState.assetSyncStatus);
 export const characters = readonly(StoreState.characters);
 export const rooms = readonly(StoreState.rooms);
+export const multiRooms = readonly(StoreState.multiRooms);
+export const multiRoomMetas = readonly(StoreState.multiRoomMetas);
+export const multiRoomMembers = readonly(StoreState.multiRoomMembers);
 export const personas = readonly(StoreState.personas);
 export const presets = readonly(StoreState.presets);
 export const modules = readonly(StoreState.modules);
@@ -43,9 +46,14 @@ export const moduleCharJS = readonly(StoreState.moduleCharJS);
 export const presetScripts = readonly(StoreState.presetScripts);
 export const activeCharacter = readonly(StoreState.activeCharacter);
 export const activeCharacterId = readonly(StoreState.activeCharacterId);
+export const activePersona = readonly(StoreState.activePersona);
+export const activePersonaId = readonly(StoreState.activePersonaId);
 export const activeRoom = readonly(StoreState.activeRoom);
 export const activeRoomId = readonly(StoreState.activeRoomId);
+export const isMultiRoom = readonly(StoreState.isMultiRoom);
 export const roomCharacters = readonly(StoreState.roomCharacters);
+export const multiRoomCharacters = readonly(StoreState.multiRoomCharacters);
+export const multiRoomPersonas = readonly(StoreState.multiRoomPersonas);
 export const characterLorebooks = readonly(StoreState.characterLorebooks);
 export const characterScripts = readonly(StoreState.characterScripts);
 export const characterCharJS = readonly(StoreState.characterCharJS);
@@ -63,6 +71,7 @@ export {
     hasActiveModule,
     hasActiveRoom,
     hasActiveCharacter,
+    hasActivePersona,
     hasActiveChat,
     isChatRunning,
     displayMessages,
@@ -79,6 +88,7 @@ export type { DisplayMessage, DisplayMessageStatus, TaskStatus } from './types';
 
 export * from './content/settings';
 export * from './content/room';
+export * from './content/multi';
 export * from './content/character';
 export * from './content/persona';
 export * from './content/preset';

@@ -38,6 +38,8 @@ export interface CharacterFields extends CharacterContent, CharacterRefs {}
 
 export interface Character extends CharacterFields {
     id: string;
+    scopeType: DataScopeType;
+    scopeId: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────
@@ -71,14 +73,24 @@ export class CharacterService {
             'characters',
             getSessionScope(scopeType)
         );
-        return records.map((record) => ({ ...parseFields(record), id: record.id }));
+        return records.map((record) => ({
+            ...parseFields(record),
+            id: record.id,
+            scopeType: record.scopeType,
+            scopeId: record.scopeId
+        }));
     }
 
     static async get(id: string): Promise<Character | null> {
         const record = await buffer.get<CharacterRecord>('characters', id);
         if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
-        return { ...parseFields(record), id: record.id };
+        return {
+            ...parseFields(record),
+            id: record.id,
+            scopeType: record.scopeType,
+            scopeId: record.scopeId
+        };
     }
 
     static async create(
@@ -107,7 +119,7 @@ export class CharacterService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create character', error);
         }
 
-        return { ...resolved, id };
+        return { ...resolved, id, scopeType: scope.scopeType, scopeId: scope.scopeId };
     }
 
     static async update(id: string, changes: DeepPartial<CharacterFields>): Promise<Character> {
@@ -126,7 +138,12 @@ export class CharacterService {
                 patch: changes as unknown as Record<string, unknown>
             });
 
-            return { ...updated, id: record.id };
+            return {
+                ...updated,
+                id: record.id,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
+            };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update character', error);

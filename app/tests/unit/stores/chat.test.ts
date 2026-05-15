@@ -78,6 +78,8 @@ vi.mock('$lib/utils/ordering', () => ({
 describe('Chat Store', () => {
     const mockRoom: Room = {
         id: 'room-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         name: 'Test Room',
         chats: { refs: {}, folders: {} },
         characters: {
@@ -89,6 +91,8 @@ describe('Chat Store', () => {
     const mockChat: Chat = {
         id: 'chat-1',
         roomId: 'room-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         title: 'Test Chat',
         chatNote: '',
         lorebooks: { refs: {}, folders: {} },
@@ -185,6 +189,8 @@ describe('Chat Store', () => {
             vi.mocked(ChatService.get).mockResolvedValue(chat);
             vi.mocked(getPersona).mockResolvedValue({
                 id: 'persona-1',
+                scopeType: 'user',
+                scopeId: 'user-1',
                 name: 'Persona',
                 description: '',
                 assets: []
@@ -275,7 +281,14 @@ describe('Chat Store', () => {
 
     describe('Chat persona and character selection', () => {
         it('adds a persona ref and allows selecting/defaulting enabled personas', async () => {
-            const persona = { id: 'persona-1', name: 'Persona', description: '', assets: [] };
+            const persona = {
+                id: 'persona-1',
+                scopeType: 'user' as const,
+                scopeId: 'user-1',
+                name: 'Persona',
+                description: '',
+                assets: []
+            };
             putActiveChat(mockChat);
             personas.set(persona.id, persona);
             vi.mocked(getPersona).mockResolvedValue(persona);

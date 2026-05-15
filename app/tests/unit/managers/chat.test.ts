@@ -49,6 +49,8 @@ vi.mock('$lib/services', () => ({
 describe('ChatManager', () => {
     const mockRoom: Room = {
         id: 'room-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         name: 'Test Room',
         chats: { refs: {}, folders: {} },
         characters: {
@@ -62,6 +64,8 @@ describe('ChatManager', () => {
     const mockChat: Chat = {
         id: 'chat-1',
         roomId: 'room-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         title: 'Test Chat',
         chatNote: '',
         lorebooks: { refs: {}, folders: {} },
@@ -69,6 +73,8 @@ describe('ChatManager', () => {
     };
     const charOne: Character = {
         id: 'char-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         name: 'Alpha',
         description: '',
         characterNote: '',
@@ -175,6 +181,8 @@ describe('ChatManager', () => {
             const existingMessage = {
                 id: 'msg-1',
                 chatId: 'chat-1',
+                scopeType: 'user',
+                scopeId: 'user-1',
                 sortOrder: 'a0',
                 role: 'assistant',
                 swipes: { greet2: { id: 'greet2', content: 'Old', createdAt: 2 } },
@@ -236,6 +244,8 @@ describe('ChatManager', () => {
         const lastMessage = {
             id: 'msg-last',
             chatId: 'chat-1',
+            scopeType: 'user',
+            scopeId: 'user-1',
             sortOrder: 'b',
             role: 'assistant',
             swipes: {

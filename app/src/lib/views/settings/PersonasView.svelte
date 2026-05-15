@@ -5,7 +5,10 @@
         updatePersona,
         deletePersona,
         updatePersonaAvatar,
-        removePersonaAvatar
+        removePersonaAvatar,
+        activePersona,
+        activeChat,
+        activeRoom
     } from '$lib/stores';
     import { navigate } from '$lib/router';
     import { Button } from '$lib/components/ui/button';
@@ -26,7 +29,11 @@
     let loadedPersonaId = $state<string | null>(null);
 
     const selectedPersona = $derived(
-        personaId ? ($personas.find((persona) => persona.id === personaId) ?? null) : null
+        personaId
+            ? $activePersona?.id === personaId
+                ? $activePersona
+                : ($personas.find((persona) => persona.id === personaId) ?? null)
+            : null
     );
 
     $effect(() => {
@@ -42,18 +49,28 @@
         if (!name) return;
         const persona = await createPersona({ name, description: '' });
         newName = '';
-        navigate({ view: 'settings', personaId: persona.id });
+        navigate({ view: 'personaStudio', personaId: persona.id });
     }
 
     async function handleSave(id: string) {
         if (!editName.trim()) return;
         await updatePersona(id, { name: editName, description: editDescription });
-        navigate({ view: 'settings' });
+        backToContext();
     }
 
     async function handleDelete(id: string) {
         await deletePersona(id);
-        navigate({ view: 'settings' });
+        backToContext();
+    }
+
+    function backToContext() {
+        if ($activeRoom && $activeChat) {
+            navigate({ view: 'room', roomId: $activeRoom.id, chatId: $activeChat.id });
+        } else if ($activeRoom) {
+            navigate({ view: 'room', roomId: $activeRoom.id });
+        } else {
+            navigate({ view: 'home' });
+        }
     }
 
     async function handleAvatarUpload(event: Event) {
@@ -80,7 +97,7 @@
     <div class="flex min-h-[70vh] flex-col gap-5">
         <div class="flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">
-                <Button variant="ghost" size="icon" onclick={() => navigate({ view: 'settings' })}>
+                <Button variant="ghost" size="icon" onclick={backToContext}>
                     <ArrowLeft class="size-4" />
                 </Button>
                 <div class="min-w-0">
@@ -162,7 +179,7 @@
 {:else if personaId}
     <div class="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
         <p class="text-sm text-muted-foreground">Persona not found.</p>
-        <Button variant="outline" onclick={() => navigate({ view: 'settings' })}>Back</Button>
+        <Button variant="outline" onclick={backToContext}>Back</Button>
     </div>
 {:else}
     <div class="flex flex-col gap-4">
@@ -184,7 +201,8 @@
                     <CardContent class="flex items-center justify-between gap-3 p-4">
                         <button
                             class="flex min-w-0 flex-1 items-center gap-3 text-left"
-                            onclick={() => navigate({ view: 'settings', personaId: persona.id })}
+                            onclick={() =>
+                                navigate({ view: 'personaStudio', personaId: persona.id })}
                         >
                             <AssetView
                                 id={persona.avatarAssetId}
@@ -209,7 +227,7 @@
                                 size="sm"
                                 variant="outline"
                                 onclick={() =>
-                                    navigate({ view: 'settings', personaId: persona.id })}
+                                    navigate({ view: 'personaStudio', personaId: persona.id })}
                             >
                                 <Pencil class="size-4" />
                             </Button>

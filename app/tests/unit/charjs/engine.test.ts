@@ -5,6 +5,8 @@ import { CharJSService, type CharJS } from '$lib/services/content/charjs';
 const CHARJS_BASIC: CharJS = {
     id: 'script1',
     ownerId: 'owner1',
+    scopeType: 'user',
+    scopeId: 'user-1',
     name: '1',
     enabled: true,
     code: ''
@@ -12,6 +14,8 @@ const CHARJS_BASIC: CharJS = {
 const CHARJS_WITH_HANDLER: CharJS = {
     id: 'script2',
     ownerId: 'owner1',
+    scopeType: 'user',
+    scopeId: 'user-1',
     name: '2',
     enabled: true,
     code: `KeiAPI.onPipeline('display', (data) => data + '_processed');`
@@ -19,6 +23,8 @@ const CHARJS_WITH_HANDLER: CharJS = {
 const CHARJS_MULTI_HANDLER: CharJS = {
     id: 'script3',
     ownerId: 'owner1',
+    scopeType: 'user',
+    scopeId: 'user-1',
     name: '3',
     enabled: true,
     code: `
@@ -62,6 +68,8 @@ describe('Engine Pool', () => {
             DB.set('empty_ws', {
                 id: 'empty_ws',
                 ownerId: 'o',
+                scopeType: 'user',
+                scopeId: 'user-1',
                 name: '',
                 enabled: true,
                 code: '   \n\t  '
@@ -143,6 +151,8 @@ describe('Engine Pool', () => {
             DB.set('multi_mode', {
                 id: 'multi_mode',
                 ownerId: 'o',
+                scopeType: 'user',
+                scopeId: 'user-1',
                 name: '',
                 enabled: true,
                 code: `
@@ -227,6 +237,8 @@ describe('Engine Pool', () => {
             DB.set('error_script', {
                 id: 'error_script',
                 ownerId: 'o',
+                scopeType: 'user',
+                scopeId: 'user-1',
                 name: '',
                 enabled: true,
                 code: `KeiAPI.onPipeline('display', (data) => { throw new Error('boom'); });`
@@ -247,6 +259,8 @@ describe('Engine Pool', () => {
             DB.set('mutex_script', {
                 id: 'mutex_script',
                 ownerId: 'o',
+                scopeType: 'user',
+                scopeId: 'user-1',
                 name: '',
                 enabled: true,
                 code: `KeiAPI.onPipeline('display', (data) => data + '_done');`

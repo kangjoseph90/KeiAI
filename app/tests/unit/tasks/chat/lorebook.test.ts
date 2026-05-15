@@ -34,7 +34,9 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
         probability: 100,
         recursive: false,
         noRecursiveSearch: false,
-        ...overrides
+        ...overrides,
+        scopeType: 'user',
+        scopeId: 'user-1'
     });
 
     const createMockMessages = (contents: string[]): PagedMessages =>

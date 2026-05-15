@@ -180,6 +180,8 @@ import type { Chat, Message } from '$lib/services';
 const mockNewMessage = {
     id: 'msg-new',
     chatId: 'chat-1',
+    scopeType: 'user',
+    scopeId: 'user-1',
     role: 'assistant',
     swipes: {},
     activeSwipeId: '',
@@ -366,6 +368,8 @@ describe('Chat Pipeline', () => {
         vi.mocked(getChat).mockResolvedValueOnce({
             id: mockChatId,
             roomId: 'room-1',
+            scopeType: 'user',
+            scopeId: 'user-1',
             title: 'Mock Chat',
             chatNote: '',
             selectedPersonaId: 'persona-1',
@@ -386,6 +390,8 @@ describe('Chat Pipeline', () => {
         vi.mocked(getChat).mockResolvedValueOnce({
             id: mockChatId,
             roomId: 'room-1',
+            scopeType: 'user',
+            scopeId: 'user-1',
             title: 'Mock Chat',
             chatNote: '',
             selectedCharacterId: 'char-1',
@@ -490,6 +496,8 @@ describe('Chat Pipeline', () => {
         const mockExistingMessage = {
             id: targetMessageId,
             chatId: mockChatId,
+            scopeType: 'user',
+            scopeId: 'user-1',
             role: 'assistant',
             swipes: {
                 'swipe-new': {
@@ -508,6 +516,8 @@ describe('Chat Pipeline', () => {
             vi.mocked(getChat).mockResolvedValue({
                 id: mockChatId,
                 roomId: 'room-1',
+                scopeType: 'user',
+                scopeId: 'user-1',
                 title: 'Mock Chat',
                 chatNote: '',
                 selectedCharacterId: 'char-1',

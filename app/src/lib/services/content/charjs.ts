@@ -17,6 +17,8 @@ export interface CharJSFields {
 export interface CharJS extends CharJSFields {
     id: string;
     ownerId: string;
+    scopeType: DataScopeType;
+    scopeId: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────
@@ -51,7 +53,9 @@ export class CharJSService {
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
-                ownerId: record.ownerId
+                ownerId: record.ownerId,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
             }));
     }
 
@@ -62,7 +66,9 @@ export class CharJSService {
         return {
             ...parseFields(record),
             id: record.id,
-            ownerId: record.ownerId
+            ownerId: record.ownerId,
+            scopeType: record.scopeType,
+            scopeId: record.scopeId
         };
     }
 
@@ -94,7 +100,7 @@ export class CharJSService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create charjs script', error);
         }
 
-        return { ...resolved, id, ownerId };
+        return { ...resolved, id, ownerId, scopeType: scope.scopeType, scopeId: scope.scopeId };
     }
 
     static async update(id: string, changes: DeepPartial<CharJSFields>): Promise<CharJS> {
@@ -113,7 +119,13 @@ export class CharJSService {
                 patch: changes as unknown as Record<string, unknown>
             });
 
-            return { ...updated, id: record.id, ownerId: record.ownerId };
+            return {
+                ...updated,
+                id: record.id,
+                ownerId: record.ownerId,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
+            };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update charjs script', error);

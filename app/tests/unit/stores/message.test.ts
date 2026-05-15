@@ -35,6 +35,8 @@ describe('Message Store', () => {
     const mockMessage: Message = {
         id: 'msg-1',
         chatId: mockChatId,
+        scopeType: 'user',
+        scopeId: 'user-1',
         role: 'user',
         swipes: { s1: { id: 's1', content: 'Hello', createdAt: 1000 } },
         activeSwipeId: 's1',
@@ -46,7 +48,7 @@ describe('Message Store', () => {
         // Reset via messages (the EntityStore)
         messages.clear();
         roomChats.clear();
-        roomChats.set(mockChatId, { id: mockChatId, roomId: 'room-1' } as Chat);
+        roomChats.set(mockChatId, { id: mockChatId, roomId: 'room-1', scopeType: 'user' } as Chat);
         activeChatId.set(mockChatId);
         vi.mocked(ChatService.update).mockResolvedValue({
             id: mockChatId,
@@ -141,7 +143,7 @@ describe('Message Store', () => {
             const newMessage = { ...mockMessage, id: 'new-id' };
 
             vi.mocked(MessageService.create).mockResolvedValue(newMessage);
-            roomChats.setAll([{ id: mockChatId, roomId: 'room-1' } as Chat]);
+            roomChats.setAll([{ id: mockChatId, roomId: 'room-1', scopeType: 'user' } as Chat]);
 
             await createMessage(mockChatId, {
                 swipes: { s1: { id: 's1', content: 'New message content', createdAt: Date.now() } },
@@ -152,7 +154,8 @@ describe('Message Store', () => {
             expect(MessageService.create).toHaveBeenCalledWith(
                 mockChatId,
                 expect.any(Object),
-                undefined
+                undefined,
+                'user'
             );
             expect(ChatService.update).toHaveBeenCalledWith(mockChatId, {
                 lastMessageId: newMessage.id

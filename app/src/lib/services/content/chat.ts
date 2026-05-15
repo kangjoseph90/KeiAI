@@ -30,6 +30,8 @@ export interface ChatFields extends ChatContent, ChatRefs {}
 export interface Chat extends ChatFields {
     id: string;
     roomId: string;
+    scopeType: DataScopeType;
+    scopeId: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────
@@ -64,7 +66,9 @@ export class ChatService {
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
-                roomId: record.roomId
+                roomId: record.roomId,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
             }));
     }
 
@@ -75,7 +79,9 @@ export class ChatService {
         return {
             ...parseFields(record),
             id: record.id,
-            roomId: record.roomId
+            roomId: record.roomId,
+            scopeType: record.scopeType,
+            scopeId: record.scopeId
         };
     }
 
@@ -107,7 +113,7 @@ export class ChatService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create chat', error);
         }
 
-        return { ...resolved, id, roomId };
+        return { ...resolved, id, roomId, scopeType: scope.scopeType, scopeId: scope.scopeId };
     }
 
     static async update(id: string, changes: DeepPartial<ChatFields>): Promise<Chat> {
@@ -126,7 +132,13 @@ export class ChatService {
                 patch: changes as unknown as Record<string, unknown>
             });
 
-            return { ...updated, id: record.id, roomId: record.roomId };
+            return {
+                ...updated,
+                id: record.id,
+                roomId: record.roomId,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
+            };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update chat', error);

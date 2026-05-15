@@ -66,6 +66,8 @@ vi.mock('$lib/utils/ordering', () => ({
 describe('Room Store', () => {
     const mockRoom: Room = {
         id: 'room-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         name: 'Room 1',
         chats: {
             refs: {
@@ -85,6 +87,8 @@ describe('Room Store', () => {
     const mockChat: Chat = {
         id: 'chat-1',
         roomId: 'room-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         title: 'Chat 1',
         chatNote: '',
         lorebooks: { refs: {}, folders: {} },
@@ -92,6 +96,8 @@ describe('Room Store', () => {
     };
     const mockCharacter: Character = {
         id: 'char-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         name: 'Character 1',
         description: '',
         characterNote: '',

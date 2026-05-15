@@ -16,6 +16,8 @@ function makeMessage(index: number): Message {
     return {
         id: `msg-${index}`,
         chatId: 'chat-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         sortOrder: `a${index}`,
         role: 'user',
         activeSwipeId: swipeId,

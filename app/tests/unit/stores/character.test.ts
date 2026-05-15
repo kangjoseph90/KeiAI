@@ -90,6 +90,8 @@ import { getAppSettings, updateSettings } from '$lib/stores/content/settings';
 describe('Character Store', () => {
     const mockCharacter: Character = {
         id: 'char-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         name: 'Test Character',
         description: 'Description',
         characterNote: '',

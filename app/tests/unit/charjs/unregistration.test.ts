@@ -5,6 +5,8 @@ import { CharJSService, type CharJS } from '$lib/services/content/charjs';
 const CHARJS_UNREG: CharJS = {
     id: 'unreg_test',
     ownerId: 'owner1',
+    scopeType: 'user',
+    scopeId: 'user-1',
     name: 'Unregistration Test',
     enabled: true,
     code: `
@@ -118,6 +120,8 @@ describe('CharJS Unregistration', () => {
         DB.set('overwrite_macro', {
             id: 'overwrite_macro',
             ownerId: 'o',
+            scopeType: 'user',
+            scopeId: 'user-1',
             name: '',
             enabled: true,
             code: `

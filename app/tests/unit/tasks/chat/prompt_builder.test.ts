@@ -33,6 +33,8 @@ const model: LLMModelConfig = { id: 'mock::default', provider: 'mock', parameter
 
 const character: Character = {
     id: 'char-1',
+    scopeType: 'user',
+    scopeId: 'user-1',
     name: 'Test Character',
     description: 'character',
     characterNote: 'character note',
@@ -49,6 +51,8 @@ const character: Character = {
 const chat: Chat = {
     id: 'chat-1',
     roomId: 'room-1',
+    scopeType: 'user',
+    scopeId: 'user-1',
     title: 'Test Chat',
     chatNote: 'chat note',
     personas: { refs: {}, folders: {} },
@@ -57,6 +61,8 @@ const chat: Chat = {
 
 const persona: Persona = {
     id: 'persona-1',
+    scopeType: 'user',
+    scopeId: 'user-1',
     name: 'Test Persona',
     description: 'persona description',
     assets: []
@@ -89,6 +95,8 @@ function makeMessage(
     return {
         id,
         chatId: 'chat-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         sortOrder: id,
         role,
         activeSwipeId: swipeId,

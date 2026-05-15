@@ -180,7 +180,12 @@ export class MultiRoomService {
         setMultiRoomSession({ roomId, roomKey });
         void SyncManager.refreshRoomSync();
 
-        return { ...parseRoomFields(roomRecord), id: roomId };
+        return {
+            ...parseRoomFields(roomRecord),
+            id: roomId,
+            scopeType: roomRecord.scopeType,
+            scopeId: roomRecord.scopeId
+        };
     }
 
     static async openRoom(roomId: string): Promise<MultiRoom> {
@@ -236,7 +241,12 @@ export class MultiRoomService {
                     record.scopeId === record.id
                 )
             )
-            .map((record) => ({ ...parseRoomFields(record), id: record.id }))
+            .map((record) => ({
+                ...parseRoomFields(record),
+                id: record.id,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
+            }))
             .sort((a, b) => a.name.localeCompare(b.name));
     }
 

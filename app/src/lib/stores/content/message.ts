@@ -65,7 +65,7 @@ export async function loadInitialMessages(chatId: string, limit = 50): Promise<v
     const initialMsgs = await MessageService.getMessagesBefore(chatId, '\uffff', limit);
     if (get(activeChatId) === chatId) {
         messages.setAll(initialMsgs);
-        await refreshIndexes(chatId);
+        await refreshMessageIndexes(chatId);
     }
 }
 
@@ -81,7 +81,7 @@ export async function loadOlderMessages(chatId: string, limit = 50): Promise<voi
         messages.batch(() => {
             for (const msg of olderMsgs) messages.set(msg.id, msg);
         });
-        await refreshIndexes(chatId);
+        await refreshMessageIndexes(chatId);
     }
 }
 
@@ -97,7 +97,7 @@ export async function loadNewerMessages(chatId: string, limit = 50): Promise<voi
         messages.batch(() => {
             for (const msg of newerMsgs) messages.set(msg.id, msg);
         });
-        await refreshIndexes(chatId);
+        await refreshMessageIndexes(chatId);
     }
 }
 
@@ -116,13 +116,13 @@ export async function createMessage(
         if (lastMessage) prevSortOrder = lastMessage.sortOrder;
     }
 
-    const newMessage = await MessageService.create(chatId, fields, prevSortOrder);
+    const newMessage = await MessageService.create(chatId, fields, prevSortOrder, chat.scopeType);
     await updateChat(chatId, { lastMessageId: newMessage.id });
 
     // Store update — only if still viewing this chat
     if (get(activeChatId) === chatId) {
         messages.set(newMessage.id, newMessage);
-        await refreshIndexes(chatId);
+        await refreshMessageIndexes(chatId);
     }
 
     return newMessage;
@@ -154,7 +154,7 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
     if (get(activeChatId) !== chatId) return;
 
     messages.delete(msgId);
-    await refreshIndexes(chatId);
+    await refreshMessageIndexes(chatId);
 }
 
 export async function createMessageSwipe(
@@ -197,7 +197,7 @@ export async function deleteMessageSwipe(messageId: string, swipeId: string): Pr
  * Re-calculates global indexes for all currently loaded messages.
  * Uses countByChatBefore to find the offset of the first message.
  */
-async function refreshIndexes(chatId: string) {
+export async function refreshMessageIndexes(chatId: string): Promise<void> {
     if (get(activeChatId) !== chatId) return;
 
     const msgs = get(messages);

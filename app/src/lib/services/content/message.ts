@@ -41,6 +41,8 @@ export interface Message extends MessageFields {
     id: string;
     chatId: string;
     sortOrder: string;
+    scopeType: DataScopeType;
+    scopeId: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────
@@ -90,7 +92,9 @@ export class MessageService {
                 ...parseFields(record),
                 id: record.id,
                 chatId: record.chatId,
-                sortOrder: record.sortOrder
+                sortOrder: record.sortOrder,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
             }));
     }
 
@@ -117,7 +121,9 @@ export class MessageService {
                 ...parseFields(record),
                 id: record.id,
                 chatId: record.chatId,
-                sortOrder: record.sortOrder
+                sortOrder: record.sortOrder,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
             }));
     }
 
@@ -129,7 +135,9 @@ export class MessageService {
             ...parseFields(record),
             id: record.id,
             chatId: record.chatId,
-            sortOrder: record.sortOrder
+            sortOrder: record.sortOrder,
+            scopeType: record.scopeType,
+            scopeId: record.scopeId
         };
     }
 
@@ -168,7 +176,14 @@ export class MessageService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create message', error);
         }
 
-        return { ...resolved, id, chatId, sortOrder };
+        return {
+            ...resolved,
+            id,
+            chatId,
+            sortOrder,
+            scopeType: scope.scopeType,
+            scopeId: scope.scopeId
+        };
     }
 
     /** Update a message */
@@ -192,7 +207,9 @@ export class MessageService {
                 ...updated,
                 id: record.id,
                 chatId: record.chatId,
-                sortOrder: record.sortOrder
+                sortOrder: record.sortOrder,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
             };
         } catch (error) {
             if (error instanceof AppError) throw error;

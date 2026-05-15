@@ -9,17 +9,18 @@
     import {
         loadGlobalState,
         loadUser,
-        startUserTracking,
-        stopUserTracking,
         startSyncStatusTracking,
         stopSyncStatusTracking,
         selectCharacter,
+        selectPersona,
         selectChat,
         selectRoom,
         clearActiveRoom,
         clearActiveChat,
         clearActiveCharacter,
+        clearActivePersona,
         activeCharacter,
+        activePersona,
         activeChat,
         activeRoom,
         initDefaultContents
@@ -59,6 +60,9 @@
             } else if (initial.view === 'characterStudio' && initial.charId) {
                 await selectCharacter(initial.charId);
                 navigate(initial);
+            } else if (initial.view === 'personaStudio' && initial.personaId) {
+                await selectPersona(initial.personaId);
+                navigate(initial);
             } else {
                 navigate(initial);
             }
@@ -66,6 +70,7 @@
             logger.warn('Route restore failed, falling back to home:', e);
             clearActiveRoom();
             clearActiveCharacter();
+            clearActivePersona();
             navigate({ view: 'home' });
         }
     }
@@ -97,6 +102,7 @@
                 if (r.view === 'home') {
                     clearActiveRoom();
                     clearActiveCharacter();
+                    clearActivePersona();
                 } else if (r.view === 'room') {
                     if (r.roomId && $activeRoom?.id !== r.roomId) {
                         await selectRoom(r.roomId);
@@ -108,6 +114,10 @@
                 } else if (r.view === 'characterStudio') {
                     if (r.charId && $activeCharacter?.id !== r.charId) {
                         await selectCharacter(r.charId);
+                    }
+                } else if (r.view === 'personaStudio') {
+                    if (r.personaId && $activePersona?.id !== r.personaId) {
+                        await selectPersona(r.personaId);
                     }
                 }
             } catch (e) {
@@ -129,7 +139,6 @@
                 await initDefaultContents();
             }
             await loadUser();
-            startUserTracking();
             await loadGlobalState();
             SyncManager.startAutoSync();
             await SyncManager.syncAll();
@@ -145,7 +154,6 @@
 
     onDestroy(() => {
         SyncManager.stopAutoSync();
-        stopUserTracking();
         stopSyncStatusTracking();
         _cleanupHash?.();
     });
@@ -183,13 +191,13 @@
                 {#await import('$lib/views/character/CharacterStudio.svelte') then m}
                     <m.default charId={$route.charId} />
                 {/await}
+            {:else if $route.view === 'personaStudio' && $route.personaId}
+                {#await import('$lib/views/persona/PersonaStudio.svelte') then m}
+                    <m.default personaId={$route.personaId} />
+                {/await}
             {:else if $route.view === 'settings'}
                 {#await import('$lib/views/settings/SettingsView.svelte') then m}
-                    <m.default
-                        personaId={$route.personaId}
-                        pluginId={$route.pluginId}
-                        moduleId={$route.moduleId}
-                    />
+                    <m.default pluginId={$route.pluginId} moduleId={$route.moduleId} />
                 {/await}
             {:else}
                 {#await import('$lib/views/home/HomeView.svelte') then m}

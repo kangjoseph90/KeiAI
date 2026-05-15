@@ -146,7 +146,7 @@ export async function createChat(
     const room = await getRoom(roomId);
     if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
 
-    const chat = await ChatService.create(roomId, fields);
+    const chat = await ChatService.create(roomId, fields, room.scopeType);
 
     const sortOrder = generateSortOrder(room.chats.refs);
     try {
@@ -273,7 +273,7 @@ export async function createChatLorebook(
     const chat = await getChat(chatId);
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
-    const lb = await LorebookService.create(chatId, fields);
+    const lb = await LorebookService.create(chatId, fields, chat.scopeType);
 
     const sortOrder = generateSortOrder(chat.lorebooks.refs);
     try {

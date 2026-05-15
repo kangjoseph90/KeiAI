@@ -6,7 +6,6 @@
         Cpu,
         Palette,
         RefreshCw,
-        UserCircle,
         Puzzle,
         Package
     } from 'lucide-svelte';
@@ -26,29 +25,15 @@
     import AccountSettings from './AccountSettings.svelte';
     import ProfileSettings from './ProfileSettings.svelte';
     import ChatBotSettings from './ChatBotSettings.svelte';
-    import PersonasView from './PersonasView.svelte';
     import PluginsView from './PluginsView.svelte';
     import ModulesView from './ModulesView.svelte';
 
-    type SettingTab =
-        | 'profile'
-        | 'account'
-        | 'chatbot'
-        | 'display'
-        | 'persona'
-        | 'plugin'
-        | 'module';
+    type SettingTab = 'profile' | 'account' | 'chatbot' | 'display' | 'plugin' | 'module';
     let activeTab = $state<SettingTab>('chatbot');
-    let {
-        personaId,
-        pluginId,
-        moduleId
-    }: { personaId?: string; pluginId?: string; moduleId?: string } = $props();
+    let { pluginId, moduleId }: { pluginId?: string; moduleId?: string } = $props();
 
     $effect(() => {
-        if (personaId) {
-            activeTab = 'persona';
-        } else if (pluginId) {
+        if (pluginId) {
             activeTab = 'plugin';
         } else if (moduleId) {
             activeTab = 'module';
@@ -72,7 +57,6 @@
 
     const tabs = [
         { id: 'chatbot', label: 'AI Engine', icon: Cpu },
-        { id: 'persona', label: 'Personas', icon: UserCircle },
         { id: 'plugin', label: 'Plugins', icon: Puzzle },
         { id: 'module', label: 'Global Modules', icon: Package },
         { id: 'profile', label: 'My Profile', icon: User },
@@ -132,8 +116,6 @@
                                 <ChatBotSettings />
                             </div>
                         </div>
-                    {:else if activeTab === 'persona'}
-                        <PersonasView {personaId} />
                     {:else if activeTab === 'plugin'}
                         <PluginsView {pluginId} />
                     {:else if activeTab === 'module'}

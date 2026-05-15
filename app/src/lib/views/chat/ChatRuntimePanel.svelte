@@ -83,7 +83,7 @@
     }
 
     function openPersonaSettings(personaId: string) {
-        navigate({ view: 'settings', personaId });
+        navigate({ view: 'personaStudio', personaId });
     }
 
     async function handlePersonaSelect(personaId: string) {

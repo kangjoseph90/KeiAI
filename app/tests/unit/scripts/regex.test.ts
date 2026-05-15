@@ -6,6 +6,8 @@ describe('applyRegexScript', () => {
     const baseScript: Script = {
         id: 'test-script',
         ownerId: 'owner-1',
+        scopeType: 'user',
+        scopeId: 'user-1',
         type: 'regex',
         name: 'Test Regex',
         regex: 'apple',

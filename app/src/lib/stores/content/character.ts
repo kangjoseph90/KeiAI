@@ -20,11 +20,14 @@ import type { FolderDef, EntityListConfig } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
     characters,
+    multiRoomCharacters,
+    isMultiRoom,
     activeCharacter,
     characterLorebooks,
     characterScripts,
     characterCharJS,
-    activeCharacterId
+    activeCharacterId,
+    activeRoomId
 } from '../state';
 import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
@@ -40,8 +43,16 @@ export async function getCharacter(characterId: string): Promise<Character | nul
     if (active?.id === characterId) return active;
     const cached = characters.get(characterId);
     if (cached) return cached;
+    const cachedMulti = multiRoomCharacters.get(characterId);
+    if (cachedMulti?.scopeId === get(activeRoomId)) return cachedMulti;
     const fetched = await CharacterService.get(characterId);
-    if (fetched) characters.set(characterId, fetched);
+    if (fetched) {
+        if (fetched.scopeType === 'user') {
+            characters.set(characterId, fetched);
+        } else if (fetched.scopeId === get(activeRoomId)) {
+            multiRoomCharacters.set(characterId, fetched);
+        }
+    }
     return fetched;
 }
 
@@ -93,7 +104,11 @@ export async function selectCharacter(characterId: string): Promise<void> {
     const character = await getCharacter(characterId);
     if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
-    characters.set(character.id, character);
+    if (character.scopeType === 'user') {
+        characters.set(character.id, character);
+    } else if (character.scopeId === get(activeRoomId)) {
+        multiRoomCharacters.set(character.id, character);
+    }
     activeCharacterId.set(character.id);
 
     const moduleIds = Object.keys(character.modules.refs);
@@ -134,7 +149,11 @@ export async function updateCharacter(
     changes: DeepPartial<CharacterFields>
 ): Promise<void> {
     const updated = await CharacterService.update(characterId, changes);
-    characters.set(characterId, updated);
+    if (updated.scopeType === 'user') {
+        characters.set(characterId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomCharacters.set(characterId, updated);
+    }
 }
 
 export async function updateCharacterContent(
@@ -142,12 +161,22 @@ export async function updateCharacterContent(
     changes: DeepPartial<CharacterContent>
 ): Promise<void> {
     const updated = await CharacterService.updateContent(characterId, changes);
-    characters.set(characterId, updated);
+    if (updated.scopeType === 'user') {
+        characters.set(characterId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomCharacters.set(characterId, updated);
+    }
 }
 
 export async function createCharacter(
     fields: DeepPartial<CharacterFields> = {}
 ): Promise<Character> {
+    if (get(isMultiRoom)) {
+        const character = await CharacterService.create(fields, 'room');
+        multiRoomCharacters.set(character.id, character);
+        return character;
+    }
+
     const settings = await getAppSettings();
 
     // Create record in DB
@@ -181,7 +210,11 @@ export async function createCharacterGreeting(
         content
     );
 
-    characters.set(characterId, updated);
+    if (updated.scopeType === 'user') {
+        characters.set(characterId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomCharacters.set(characterId, updated);
+    }
     return { greetingId, character: updated };
 }
 
@@ -192,7 +225,11 @@ export async function updateCharacterGreeting(
 ): Promise<Character> {
     const updated = await CharacterService.updateGreeting(characterId, greetingId, content);
 
-    characters.set(characterId, updated);
+    if (updated.scopeType === 'user') {
+        characters.set(characterId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomCharacters.set(characterId, updated);
+    }
     return updated;
 }
 
@@ -202,7 +239,11 @@ export async function deleteCharacterGreeting(
 ): Promise<Character> {
     const updated = await CharacterService.deleteGreeting(characterId, greetingId);
 
-    characters.set(characterId, updated);
+    if (updated.scopeType === 'user') {
+        characters.set(characterId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomCharacters.set(characterId, updated);
+    }
     return updated;
 }
 
@@ -211,7 +252,9 @@ export async function updateCharacterAvatar(characterId: string, file: File): Pr
     if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
     const oldAssetId = character.avatarAssetId;
 
-    const newAssetId = await AssetService.write(file, 'resource');
+    const newAssetId = await AssetService.write(file, 'resource', {
+        scopeType: character.scopeType
+    });
     await updateCharacter(characterId, { avatarAssetId: newAssetId });
 
     if (oldAssetId) {
@@ -231,6 +274,16 @@ export async function removeCharacterAvatar(characterId: string): Promise<void> 
 }
 
 export async function deleteCharacter(characterId: string): Promise<void> {
+    const character = await getCharacter(characterId);
+    if (character?.scopeType === 'room') {
+        await CharacterService.delete(characterId);
+        multiRoomCharacters.delete(characterId);
+        if (get(activeCharacterId) === characterId) {
+            clearActiveCharacter();
+        }
+        return;
+    }
+
     const settings = await getAppSettings();
 
     // Capture ref for potential rollback
@@ -264,7 +317,7 @@ export async function createCharacterLorebook(
     const char = await getCharacter(characterId);
     if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
-    const lb = await LorebookService.create(characterId, fields);
+    const lb = await LorebookService.create(characterId, fields, char.scopeType);
 
     const sortOrder = generateSortOrder(char.lorebooks.refs);
     try {
@@ -328,7 +381,7 @@ export async function createCharacterScript(
     const char = await getCharacter(characterId);
     if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
-    const sc = await ScriptService.create(characterId, fields);
+    const sc = await ScriptService.create(characterId, fields, char.scopeType);
 
     const sortOrder = generateSortOrder(char.scripts.refs);
     try {
@@ -388,7 +441,7 @@ export async function createCharacterCharJS(
 ): Promise<CharJS> {
     const char = await getCharacter(characterId);
     if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-    const cjs = await CharJSService.create(characterId, fields);
+    const cjs = await CharJSService.create(characterId, fields, char.scopeType);
 
     const sortOrder = generateSortOrder(char.charjs.refs);
     try {

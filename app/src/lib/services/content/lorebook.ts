@@ -33,6 +33,8 @@ export interface LorebookFields {
 export interface Lorebook extends LorebookFields {
     id: string;
     ownerId: string;
+    scopeType: DataScopeType;
+    scopeId: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────
@@ -77,7 +79,9 @@ export class LorebookService {
             .map((record) => ({
                 ...parseFields(record),
                 id: record.id,
-                ownerId: record.ownerId
+                ownerId: record.ownerId,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
             }));
     }
 
@@ -88,7 +92,9 @@ export class LorebookService {
         return {
             ...parseFields(record),
             id: record.id,
-            ownerId: record.ownerId
+            ownerId: record.ownerId,
+            scopeType: record.scopeType,
+            scopeId: record.scopeId
         };
     }
 
@@ -120,7 +126,7 @@ export class LorebookService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create lorebook', error);
         }
 
-        return { ...resolved, id, ownerId };
+        return { ...resolved, id, ownerId, scopeType: scope.scopeType, scopeId: scope.scopeId };
     }
 
     static async update(id: string, changes: DeepPartial<LorebookFields>): Promise<Lorebook> {
@@ -139,7 +145,13 @@ export class LorebookService {
                 patch: changes as unknown as Record<string, unknown>
             });
 
-            return { ...updated, id: record.id, ownerId: record.ownerId };
+            return {
+                ...updated,
+                id: record.id,
+                ownerId: record.ownerId,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
+            };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update lorebook', error);

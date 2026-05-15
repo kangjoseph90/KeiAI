@@ -1,38 +1,4 @@
 import { get } from 'svelte/store';
-import { AssetSyncService, DataSyncService, UserSyncService } from '$lib/services/sync';
-import type { SyncStatus } from '$lib/services/sync/base';
-import {
-    appSettings,
-    assetSyncStatus,
-    dataSyncStatus,
-    userSyncStatus,
-    activeRoomId,
-    activeCharacterId,
-    activeChatId,
-    rooms,
-    activeRoom,
-    messages,
-    roomChats,
-    activeChat,
-    activeCharacter,
-    characterLorebooks,
-    characterScripts,
-    characterCharJS,
-    chatLorebooks,
-    chatScripts,
-    activeModule,
-    activeModuleId,
-    moduleLorebooks,
-    moduleScripts,
-    moduleCharJS,
-    activePreset,
-    presetScripts,
-    characters,
-    personas,
-    presets,
-    modules,
-    plugins
-} from './state';
 import { localDB } from '$lib/adapters/db';
 import {
     MessageService,
@@ -45,49 +11,56 @@ import {
     PersonaService,
     PresetService,
     ModuleService,
-    PluginService
+    PluginService,
+    type Character,
+    type Persona,
+    type Room
 } from '$lib/services';
-import { clearActiveCharacter } from './content/character';
-import { clearActiveChat } from './content/chat';
-import { clearActiveRoom } from './content/room';
-import { clearActiveModule } from './content/module';
-import { loadSettings } from './content/settings';
-import { sortByRefs } from '$lib/utils/ordering';
-import { EntityStore } from './entity_store';
-import type { OrderedRef } from '$lib/types/refs';
 import { createLogger } from '$lib/adapters/logger';
+import {
+    activeCharacter,
+    activeCharacterId,
+    activeChat,
+    activeChatId,
+    activeModule,
+    activeModuleId,
+    activePreset,
+    activePersonaId,
+    activeRoom,
+    activeRoomId,
+    appSettings,
+    characterCharJS,
+    characterLorebooks,
+    characterScripts,
+    characters,
+    chatLorebooks,
+    chatScripts,
+    messages,
+    moduleCharJS,
+    moduleLorebooks,
+    moduleScripts,
+    modules,
+    multiRoomCharacters,
+    multiRoomPersonas,
+    multiRooms,
+    personas,
+    plugins,
+    presetScripts,
+    presets,
+    roomChats,
+    rooms
+} from '../state';
+import { clearActiveCharacter } from '../content/character';
+import { clearActiveChat } from '../content/chat';
+import { clearActiveRoom } from '../content/room';
+import { clearActiveModule } from '../content/module';
+import { clearActivePersona } from '../content/persona';
+import { refreshMessageIndexes } from '../content/message';
+import { loadSettings } from '../content/settings';
+import { patchEntityStoreByIds, reorderStoreByRefs } from './shared';
 
-let stopTracking: (() => void) | null = null;
-let stopDataListener: (() => void) | null = null;
-const logger = createLogger('store:sync');
-
-function reorderStoreByRefs<T extends { id: string }>(
-    store: EntityStore<T>,
-    refs: Record<string, OrderedRef>
-): void {
-    store.setAll(sortByRefs(get(store), refs));
-}
-
-async function patchEntityStoreByIds<T extends { id: string }>(
-    ids: string[],
-    store: EntityStore<T>,
-    loadById: (id: string) => Promise<T | null>,
-    isRelevant?: (item: T) => boolean
-): Promise<Map<string, T | null>> {
-    const entries = await Promise.all(ids.map(async (id) => [id, await loadById(id)] as const));
-
-    store.batch(() => {
-        for (const [id, item] of entries) {
-            if (!item || (isRelevant && !isRelevant(item))) {
-                store.delete(id);
-            } else {
-                store.set(id, item);
-            }
-        }
-    });
-
-    return new Map(entries);
-}
+let stopDataStoreSyncListener: (() => void) | null = null;
+const logger = createLogger('store:sync:data');
 
 function reorderGlobalStoresBySettings(): void {
     const settings = get(appSettings);
@@ -98,6 +71,101 @@ function reorderGlobalStoresBySettings(): void {
     reorderStoreByRefs(presets, settings.presets.refs);
     reorderStoreByRefs(modules, settings.modules.refs);
     reorderStoreByRefs(plugins, settings.plugins.refs);
+}
+
+function syncScopedRoomStore(id: string, room: Room | null): void {
+    if (!room) {
+        rooms.delete(id);
+        multiRooms.delete(id);
+        return;
+    }
+
+    if (room.scopeType === 'room') {
+        if (room.scopeId === get(activeRoomId)) {
+            multiRooms.set(room.id, room);
+        }
+        rooms.delete(room.id);
+        return;
+    }
+
+    rooms.set(room.id, room);
+    multiRooms.delete(room.id);
+}
+
+function syncScopedCharacterStore(id: string, character: Character | null): void {
+    if (!character) {
+        characters.delete(id);
+        multiRoomCharacters.delete(id);
+        return;
+    }
+
+    if (character.scopeType === 'room') {
+        if (character.scopeId === get(activeRoomId)) {
+            multiRoomCharacters.set(character.id, character);
+        } else {
+            multiRoomCharacters.delete(character.id);
+        }
+        characters.delete(character.id);
+        return;
+    }
+
+    characters.set(character.id, character);
+    multiRoomCharacters.delete(character.id);
+}
+
+function syncScopedPersonaStore(id: string, persona: Persona | null): void {
+    if (!persona) {
+        personas.delete(id);
+        multiRoomPersonas.delete(id);
+        return;
+    }
+
+    if (persona.scopeType === 'room') {
+        if (persona.scopeId === get(activeRoomId)) {
+            multiRoomPersonas.set(persona.id, persona);
+        } else {
+            multiRoomPersonas.delete(persona.id);
+        }
+        personas.delete(persona.id);
+        return;
+    }
+
+    personas.set(persona.id, persona);
+    multiRoomPersonas.delete(persona.id);
+}
+
+async function syncRoomsByIds(ids: string[]): Promise<Map<string, Room | null>> {
+    const entries = await Promise.all(
+        ids.map(async (id) => [id, await RoomService.get(id)] as const)
+    );
+
+    for (const [id, room] of entries) {
+        syncScopedRoomStore(id, room);
+    }
+
+    return new Map(entries);
+}
+
+async function syncCharactersByIds(ids: string[]): Promise<Map<string, Character | null>> {
+    const entries = await Promise.all(
+        ids.map(async (id) => [id, await CharacterService.get(id)] as const)
+    );
+
+    for (const [id, character] of entries) {
+        syncScopedCharacterStore(id, character);
+    }
+
+    return new Map(entries);
+}
+
+async function syncPersonasByIds(ids: string[]): Promise<void> {
+    const entries = await Promise.all(
+        ids.map(async (id) => [id, await PersonaService.get(id)] as const)
+    );
+
+    for (const [id, persona] of entries) {
+        syncScopedPersonaStore(id, persona);
+    }
 }
 
 async function syncLorebooksByIds(ids: string[]): Promise<void> {
@@ -136,19 +204,13 @@ async function syncLorebooksByIds(ids: string[]): Promise<void> {
     });
 
     const character = get(activeCharacter);
-    if (character) {
-        reorderStoreByRefs(characterLorebooks, character.lorebooks.refs);
-    }
+    if (character) reorderStoreByRefs(characterLorebooks, character.lorebooks.refs);
 
     const chat = get(activeChat);
-    if (chat) {
-        reorderStoreByRefs(chatLorebooks, chat.lorebooks.refs);
-    }
+    if (chat) reorderStoreByRefs(chatLorebooks, chat.lorebooks.refs);
 
     const module = get(activeModule);
-    if (module) {
-        reorderStoreByRefs(moduleLorebooks, module.lorebooks.refs);
-    }
+    if (module) reorderStoreByRefs(moduleLorebooks, module.lorebooks.refs);
 }
 
 async function syncScriptsByIds(ids: string[]): Promise<void> {
@@ -197,19 +259,13 @@ async function syncScriptsByIds(ids: string[]): Promise<void> {
     });
 
     const character = get(activeCharacter);
-    if (character) {
-        reorderStoreByRefs(characterScripts, character.scripts.refs);
-    }
+    if (character) reorderStoreByRefs(characterScripts, character.scripts.refs);
 
     const module = get(activeModule);
-    if (module) {
-        reorderStoreByRefs(moduleScripts, module.scripts.refs);
-    }
+    if (module) reorderStoreByRefs(moduleScripts, module.scripts.refs);
 
     const preset = get(activePreset);
-    if (preset) {
-        reorderStoreByRefs(presetScripts, preset.scripts.refs);
-    }
+    if (preset) reorderStoreByRefs(presetScripts, preset.scripts.refs);
 }
 
 async function syncCharJSByIds(ids: string[]): Promise<void> {
@@ -238,74 +294,24 @@ async function syncCharJSByIds(ids: string[]): Promise<void> {
     });
 
     const character = get(activeCharacter);
-    if (character) {
-        reorderStoreByRefs(characterCharJS, character.charjs.refs);
-    }
+    if (character) reorderStoreByRefs(characterCharJS, character.charjs.refs);
 
     const module = get(activeModule);
-    if (module) {
-        reorderStoreByRefs(moduleCharJS, module.charjs.refs);
-    }
+    if (module) reorderStoreByRefs(moduleCharJS, module.charjs.refs);
 }
 
-export function startSyncStatusTracking(): void {
-    if (stopTracking) return;
+export function startDataStoreSync(): void {
+    if (stopDataStoreSyncListener) return;
 
-    const unsubscribers = [
-        DataSyncService.subscribeStatus((status: SyncStatus) => {
-            dataSyncStatus.set(status);
-        }),
-        UserSyncService.subscribeStatus((status) => {
-            userSyncStatus.set(status);
-        }),
-        AssetSyncService.subscribeStatus((status) => {
-            assetSyncStatus.set(status);
-        })
-    ];
-
-    if (!stopDataListener) {
-        stopDataListener = startDataSyncListener();
-    }
-
-    stopTracking = () => {
-        for (const unsubscribe of unsubscribers) {
-            unsubscribe();
-        }
-
-        dataSyncStatus.set({ state: 'idle' });
-        userSyncStatus.set({ state: 'idle' });
-        assetSyncStatus.set({ state: 'idle', pendingCount: 0 });
-        stopTracking = null;
-
-        if (stopDataListener) {
-            stopDataListener();
-            stopDataListener = null;
-        }
-    };
-}
-
-export function stopSyncStatusTracking(): void {
-    stopTracking?.();
-}
-
-/**
- * Listens to local DB write events coming from the Sync layer ("origin: 'sync'").
- * Partially or globally reloads Svelte stores to reflect new synced data.
- */
-function startDataSyncListener(): () => void {
-    return localDB.subscribeWriteEvents(async (events) => {
-        // Deduplicate events by table name
+    stopDataStoreSyncListener = localDB.subscribeWriteEvents(async (events) => {
         const mergedEvents: Record<string, string[]> = {};
         for (const event of events) {
             if (event.origin !== 'sync') continue;
-            if (!mergedEvents[event.tableName]) {
-                mergedEvents[event.tableName] = [];
-            }
+            mergedEvents[event.tableName] ??= [];
             mergedEvents[event.tableName].push(...event.ids);
         }
 
         for (const [tableName, allIds] of Object.entries(mergedEvents)) {
-            // Deduplicate IDs within each table
             const ids = Array.from(new Set(allIds));
 
             try {
@@ -316,12 +322,10 @@ function startDataSyncListener(): () => void {
                         break;
                     }
                     case 'rooms': {
-                        const synced = await patchEntityStoreByIds(ids, rooms, RoomService.get);
-
+                        const synced = await syncRoomsByIds(ids);
                         const currentRoomId = get(activeRoomId);
                         if (currentRoomId && ids.includes(currentRoomId)) {
                             const detail = synced.get(currentRoomId) ?? null;
-
                             if (detail && get(activeRoomId) === currentRoomId) {
                                 reorderStoreByRefs(roomChats, detail.chats.refs);
                             } else if (get(activeRoomId) === currentRoomId) {
@@ -331,12 +335,21 @@ function startDataSyncListener(): () => void {
                         break;
                     }
                     case 'personas': {
-                        await patchEntityStoreByIds(ids, personas, PersonaService.get);
+                        await syncPersonasByIds(ids);
+                        const currentPersonaId = get(activePersonaId);
+                        if (currentPersonaId && ids.includes(currentPersonaId)) {
+                            const detail =
+                                personas.get(currentPersonaId) ??
+                                multiRoomPersonas.get(currentPersonaId) ??
+                                null;
+                            if (!detail && get(activePersonaId) === currentPersonaId) {
+                                clearActivePersona();
+                            }
+                        }
                         break;
                     }
                     case 'presets': {
                         const synced = await patchEntityStoreByIds(ids, presets, PresetService.get);
-
                         const preset = get(activePreset);
                         if (preset && ids.includes(preset.id)) {
                             const detail = synced.get(preset.id) ?? null;
@@ -350,7 +363,6 @@ function startDataSyncListener(): () => void {
                     }
                     case 'modules': {
                         const synced = await patchEntityStoreByIds(ids, modules, ModuleService.get);
-
                         const currentModuleId = get(activeModuleId);
                         if (currentModuleId && ids.includes(currentModuleId)) {
                             const detail = synced.get(currentModuleId) ?? null;
@@ -369,16 +381,10 @@ function startDataSyncListener(): () => void {
                         break;
                     }
                     case 'characters': {
-                        const synced = await patchEntityStoreByIds(
-                            ids,
-                            characters,
-                            CharacterService.get
-                        );
-
+                        const synced = await syncCharactersByIds(ids);
                         const currentCharacterId = get(activeCharacterId);
                         if (currentCharacterId && ids.includes(currentCharacterId)) {
                             const detail = synced.get(currentCharacterId) ?? null;
-
                             if (detail && get(activeCharacterId) === currentCharacterId) {
                                 reorderStoreByRefs(characterLorebooks, detail.lorebooks.refs);
                                 reorderStoreByRefs(characterScripts, detail.scripts.refs);
@@ -403,37 +409,32 @@ function startDataSyncListener(): () => void {
                         const currentChatId = get(activeChatId);
                         if (currentChatId && ids.includes(currentChatId)) {
                             const detail = synced.get(currentChatId) ?? null;
-                            if (detail && get(activeChatId) === currentChatId) {
-                                // activeChat is derived from activeChatId + roomChats.
-                            } else if (get(activeChatId) === currentChatId) {
+                            if (!detail && get(activeChatId) === currentChatId) {
                                 clearActiveChat();
                             }
                         }
 
                         const room = get(activeRoom);
-                        if (room) {
-                            reorderStoreByRefs(roomChats, room.chats.refs);
-                        }
-
+                        if (room) reorderStoreByRefs(roomChats, room.chats.refs);
                         break;
                     }
                     case 'messages': {
                         const currentChatId = get(activeChatId);
-                        if (currentChatId) {
-                            const msgs = await Promise.all(ids.map((id) => MessageService.get(id)));
+                        if (!currentChatId) break;
 
-                            messages.batch(() => {
-                                for (let i = 0; i < ids.length; i++) {
-                                    const id = ids[i];
-                                    const msg = msgs[i];
-                                    if (!msg || msg.chatId !== currentChatId) {
-                                        messages.delete(id);
-                                    } else {
-                                        messages.set(id, msg);
-                                    }
+                        const msgs = await Promise.all(ids.map((id) => MessageService.get(id)));
+                        messages.batch(() => {
+                            for (let i = 0; i < ids.length; i++) {
+                                const id = ids[i];
+                                const msg = msgs[i];
+                                if (!msg || msg.chatId !== currentChatId) {
+                                    messages.delete(id);
+                                } else {
+                                    messages.set(id, msg);
                                 }
-                            });
-                        }
+                            }
+                        });
+                        await refreshMessageIndexes(currentChatId);
                         break;
                     }
                     case 'lorebooks': {
@@ -449,9 +450,14 @@ function startDataSyncListener(): () => void {
                         break;
                     }
                 }
-            } catch (err) {
-                logger.warn(`Error handling synced table ${tableName}`, err);
+            } catch (error) {
+                logger.warn(`Error handling synced table ${tableName}`, error);
             }
         }
     });
+}
+
+export function stopDataStoreSync(): void {
+    stopDataStoreSyncListener?.();
+    stopDataStoreSyncListener = null;
 }

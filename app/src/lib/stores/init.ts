@@ -7,6 +7,7 @@ import { createCharacter, loadCharacters } from './content/character';
 import { addRoomCharacter, createRoom, loadRooms } from './content/room';
 import { createPersona } from './content/persona';
 import { createPreset } from './content/preset';
+import { loadMultiRooms } from './content/multi';
 
 export async function loadGlobalState() {
     await loadSettings();
@@ -16,7 +17,8 @@ export async function loadGlobalState() {
         loadPersonas(),
         loadPresets(),
         loadCharacters(),
-        loadRooms()
+        loadRooms(),
+        loadMultiRooms()
     ]);
 }
 

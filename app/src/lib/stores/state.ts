@@ -19,7 +19,9 @@ import type {
     Plugin,
     Lorebook,
     Script,
-    CharJS
+    CharJS,
+    MultiRoom,
+    MultiRoomMember
 } from '$lib/services';
 import type { AssetSyncStatus, SyncStatus } from '$lib/services';
 import type { DisplayMessage, ChatTask } from './types';
@@ -57,6 +59,11 @@ export const isSyncLinked = derived(
 // ─── Level 1 (Global Lists) ─────────────────────────────────────────
 export const characters = new EntityStore<Character>();
 export const rooms = new EntityStore<Room>();
+export const multiRooms = new EntityStore<Room>();
+export const multiRoomMetas = new EntityStore<MultiRoom>({
+    sortFn: (a, b) => b.updatedAt - a.updatedAt
+});
+export const multiRoomMembers = writable(new Map<string, MultiRoomMember[]>());
 export const personas = new EntityStore<Persona>();
 export const presets = new EntityStore<Preset>();
 export const modules = new EntityStore<Module>();
@@ -69,24 +76,33 @@ export const activePreset = derived([appSettings, presets], ([$settings, $preset
 });
 
 // ─── Level 2 (Room Context) ─────────────────────────────────────────
+export const isMultiRoom = writable(false);
 export const activeRoomId = writable<string | null>(null);
-export const activeRoom = derived([activeRoomId, rooms], ([id]) =>
-    id ? (rooms.get(id) ?? null) : null
+export const activeRoom = derived(
+    [activeRoomId, rooms, multiRooms, isMultiRoom],
+    ([id, , , multi]) => (id ? ((multi ? multiRooms.get(id) : rooms.get(id)) ?? null) : null)
 );
 export const hasActiveRoom = derived(activeRoomId, (id) => !!id);
 
-export const roomCharacters = derived([activeRoom, characters], ([room, chars]) => {
-    if (!room) return [];
-    const ids = new Set(
-        Object.entries(room.characters.refs)
-            .filter(([, ref]) => ref !== undefined)
-            .map(([id]) => id)
-    );
-    return sortByRefs(
-        chars.filter((character) => ids.has(character.id)),
-        room.characters.refs
-    );
-});
+export const multiRoomCharacters = new EntityStore<Character>();
+export const multiRoomPersonas = new EntityStore<Persona>();
+
+export const roomCharacters = derived(
+    [activeRoom, characters, multiRoomCharacters, isMultiRoom],
+    ([room, chars, multiChars, multi]) => {
+        if (!room) return [];
+        const source = multi ? multiChars : chars;
+        const ids = new Set(
+            Object.entries(room.characters.refs)
+                .filter(([, ref]) => ref !== undefined)
+                .map(([id]) => id)
+        );
+        return sortByRefs(
+            source.filter((character) => ids.has(character.id)),
+            room.characters.refs
+        );
+    }
+);
 export const roomChats = new EntityStore<Chat>();
 
 // ─── Level 3 (Chat Context) ─────────────────────────────────────────
@@ -98,18 +114,22 @@ export const hasActiveChat = derived(activeChatId, (id) => !!id);
 
 export const chatLorebooks = new EntityStore<Lorebook>();
 export const chatScripts = new EntityStore<Script>();
-export const chatPersonas = derived([activeChat, personas], ([chat, list]) => {
-    if (!chat) return [];
-    const ids = new Set(
-        Object.entries(chat.personas.refs)
-            .filter(([, ref]) => ref !== undefined)
-            .map(([id]) => id)
-    );
-    return sortByRefs(
-        list.filter((persona) => ids.has(persona.id)),
-        chat.personas.refs
-    );
-});
+export const chatPersonas = derived(
+    [activeChat, personas, multiRoomPersonas, isMultiRoom],
+    ([chat, list, multiList, multi]) => {
+        if (!chat) return [];
+        const source = multi ? multiList : list;
+        const ids = new Set(
+            Object.entries(chat.personas.refs)
+                .filter(([, ref]) => ref !== undefined)
+                .map(([id]) => id)
+        );
+        return sortByRefs(
+            source.filter((persona) => ids.has(persona.id)),
+            chat.personas.refs
+        );
+    }
+);
 
 export const messages = new EntityStore<Message>({
     sortFn: (a, b) => a.sortOrder.localeCompare(b.sortOrder)
@@ -118,8 +138,9 @@ export const messageIndexes = writable(new Map<string, number>());
 
 // ─── Character Studio Context───────────────────────────────────────
 export const activeCharacterId = writable<string | null>(null);
-export const activeCharacter = derived([activeCharacterId, characters], ([id]) =>
-    id ? (characters.get(id) ?? null) : null
+export const activeCharacter = derived(
+    [activeCharacterId, characters, multiRoomCharacters],
+    ([id]) => (id ? (characters.get(id) ?? multiRoomCharacters.get(id) ?? null) : null)
 );
 export const hasActiveCharacter = derived(activeCharacterId, (id) => !!id);
 
@@ -138,6 +159,13 @@ export const characterModules = derived([activeCharacter, modules], ([character,
         character.modules.refs
     );
 });
+
+// ─── Persona Studio Context─────────────────────────────────────────
+export const activePersonaId = writable<string | null>(null);
+export const activePersona = derived([activePersonaId, personas, multiRoomPersonas], ([id]) =>
+    id ? (personas.get(id) ?? multiRoomPersonas.get(id) ?? null) : null
+);
+export const hasActivePersona = derived(activePersonaId, (id) => !!id);
 
 // ─── Module Editing Context ──────────────────────────────────────────
 export const activeModuleId = writable<string | null>(null);

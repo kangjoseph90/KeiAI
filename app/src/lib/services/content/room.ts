@@ -1,6 +1,6 @@
 import { clock } from '$lib/utils/clock';
 import { canAccessScope, getSessionScope } from '../session';
-import { localDB, type RoomRecord } from '$lib/adapters/db';
+import { localDB, type DataScopeType, type RoomRecord } from '$lib/adapters/db';
 import type { ResourceRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
@@ -23,6 +23,8 @@ export interface RoomFields extends RoomContent, RoomRefs {}
 
 export interface Room extends RoomFields {
     id: string;
+    scopeType: DataScopeType;
+    scopeId: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────
@@ -45,14 +47,24 @@ export class RoomService {
     static async list(): Promise<Room[]> {
         await buffer.flushTable('rooms');
         const records = await localDB.getAll<RoomRecord>('rooms', getSessionScope('user'));
-        return records.map((record) => ({ ...parseFields(record), id: record.id }));
+        return records.map((record) => ({
+            ...parseFields(record),
+            id: record.id,
+            scopeType: record.scopeType,
+            scopeId: record.scopeId
+        }));
     }
 
     static async get(id: string): Promise<Room | null> {
         const record = await buffer.get<RoomRecord>('rooms', id);
         if (!record || record.isDeleted || !canAccessScope(record)) return null;
 
-        return { ...parseFields(record), id: record.id };
+        return {
+            ...parseFields(record),
+            id: record.id,
+            scopeType: record.scopeType,
+            scopeId: record.scopeId
+        };
     }
 
     static async create(fields: DeepPartial<RoomFields> = {}): Promise<Room> {
@@ -78,7 +90,7 @@ export class RoomService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create room', error);
         }
 
-        return { ...resolved, id };
+        return { ...resolved, id, scopeType: scope.scopeType, scopeId: scope.scopeId };
     }
 
     static async update(id: string, changes: DeepPartial<RoomFields>): Promise<Room> {
@@ -97,7 +109,12 @@ export class RoomService {
                 patch: changes as unknown as Record<string, unknown>
             });
 
-            return { ...updated, id: record.id };
+            return {
+                ...updated,
+                id: record.id,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
+            };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update room', error);

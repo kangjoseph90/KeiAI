@@ -24,6 +24,8 @@ export interface PersonaFields extends PersonaContent, PersonaRefs {}
 
 export interface Persona extends PersonaFields {
     id: string;
+    scopeType: DataScopeType;
+    scopeId: string;
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────
@@ -50,7 +52,9 @@ export class PersonaService {
 
         return records.map((record) => ({
             ...parseFields(record),
-            id: record.id
+            id: record.id,
+            scopeType: record.scopeType,
+            scopeId: record.scopeId
         }));
     }
 
@@ -60,7 +64,9 @@ export class PersonaService {
 
         return {
             ...parseFields(record),
-            id: record.id
+            id: record.id,
+            scopeType: record.scopeType,
+            scopeId: record.scopeId
         };
     }
 
@@ -91,7 +97,7 @@ export class PersonaService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create persona', error);
         }
 
-        return { ...resolved, id };
+        return { ...resolved, id, scopeType: scope.scopeType, scopeId: scope.scopeId };
     }
 
     /** Update a persona */
@@ -111,7 +117,12 @@ export class PersonaService {
                 patch: changes as unknown as Record<string, unknown>
             });
 
-            return { ...updated, id: record.id };
+            return {
+                ...updated,
+                id: record.id,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
+            };
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update persona', error);

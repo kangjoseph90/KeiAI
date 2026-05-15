@@ -1,20 +1,39 @@
+import { get } from 'svelte/store';
 import { PersonaService, type PersonaFields, type Persona } from '$lib/services/content/persona';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
-import { personas } from '../state';
+import {
+    activePersona,
+    activePersonaId,
+    activeRoomId,
+    isMultiRoom,
+    multiRoomPersonas,
+    personas
+} from '../state';
 import { getAppSettings, updateSettings } from './settings';
 import { AssetService } from '$lib/services/asset';
 import { AppError } from '$lib/types/errors';
+import type { AppSettings } from '$lib/services';
 
 /**
  * Returns persona from store cache first, then from DB if needed.
  * Returns null if not found.
  */
 export async function getPersona(personaId: string): Promise<Persona | null> {
+    const active = get(activePersona);
+    if (active?.id === personaId) return active;
     const cached = personas.get(personaId);
     if (cached) return cached;
+    const cachedMulti = multiRoomPersonas.get(personaId);
+    if (cachedMulti?.scopeId === get(activeRoomId)) return cachedMulti;
     const fetched = await PersonaService.get(personaId);
-    if (fetched) personas.set(personaId, fetched);
+    if (fetched) {
+        if (fetched.scopeType === 'user') {
+            personas.set(personaId, fetched);
+        } else if (fetched.scopeId === get(activeRoomId)) {
+            multiRoomPersonas.set(personaId, fetched);
+        }
+    }
     return fetched;
 }
 
@@ -28,7 +47,29 @@ export async function loadPersonas(): Promise<void> {
     personas.setAll(sortByRefs(list, settings.personas.refs));
 }
 
+export async function selectPersona(personaId: string): Promise<void> {
+    const persona = await getPersona(personaId);
+    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
+
+    if (persona.scopeType === 'user') {
+        personas.set(persona.id, persona);
+    } else if (persona.scopeId === get(activeRoomId)) {
+        multiRoomPersonas.set(persona.id, persona);
+    }
+    activePersonaId.set(persona.id);
+}
+
+export function clearActivePersona(): void {
+    activePersonaId.set(null);
+}
+
 export async function createPersona(fields: DeepPartial<PersonaFields> = {}): Promise<Persona> {
+    if (get(isMultiRoom)) {
+        const persona = await PersonaService.create(fields, 'room');
+        multiRoomPersonas.set(persona.id, persona);
+        return persona;
+    }
+
     const settings = await getAppSettings();
 
     // Create Record in DB
@@ -57,17 +98,31 @@ export async function updatePersona(
     changes: DeepPartial<PersonaFields>
 ): Promise<void> {
     const updated = await PersonaService.update(personaId, changes);
-    personas.set(personaId, updated);
+    if (updated.scopeType === 'user') {
+        personas.set(personaId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomPersonas.set(personaId, updated);
+    }
 }
 
 export async function deletePersona(personaId: string): Promise<void> {
+    const persona = await getPersona(personaId);
+    if (persona?.scopeType === 'room') {
+        await PersonaService.delete(personaId);
+        multiRoomPersonas.delete(personaId);
+        if (get(activePersonaId) === personaId) {
+            clearActivePersona();
+        }
+        return;
+    }
+
     const settings = await getAppSettings();
 
     // Capture ref for potential rollback
     const existingRef = settings.personas.refs[personaId];
 
     // Remove from parent's refs
-    const settingsChanges: DeepPartial<import('$lib/services').AppSettings> = {
+    const settingsChanges: DeepPartial<AppSettings> = {
         personas: { refs: { [personaId]: undefined } }
     };
     await updateSettings(settingsChanges);
@@ -85,6 +140,9 @@ export async function deletePersona(personaId: string): Promise<void> {
 
     // Update Store
     personas.delete(personaId);
+    if (get(activePersonaId) === personaId) {
+        clearActivePersona();
+    }
 }
 
 export async function updatePersonaAvatar(personaId: string, file: File): Promise<void> {
@@ -92,7 +150,9 @@ export async function updatePersonaAvatar(personaId: string, file: File): Promis
     if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
     const oldAssetId = persona.avatarAssetId;
 
-    const newAssetId = await AssetService.write(file, 'resource');
+    const newAssetId = await AssetService.write(file, 'resource', {
+        scopeType: persona.scopeType
+    });
     await updatePersona(personaId, { avatarAssetId: newAssetId });
 
     if (oldAssetId) {
