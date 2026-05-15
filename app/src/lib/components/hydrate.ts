@@ -6,6 +6,7 @@ const MAX_RETRIES = 2;
 
 export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => {
     const loaded = new WeakMap<HTMLImageElement, { assetId: string; url: string }>();
+    const urlCache = new Map<string, string>();
     const loading = new Set<HTMLImageElement>();
     const retryCounts = new WeakMap<HTMLImageElement, number>();
     const ownedUrls = new Set<string>();
@@ -31,7 +32,9 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
         const cached = loaded.get(img);
         if (cached && cached.assetId !== assetId) {
             loaded.delete(img);
-            releaseUrl(cached.url);
+            if (!urlCache.has(cached.assetId)) {
+                releaseUrl(cached.url);
+            }
             img.removeAttribute('src');
         }
 
@@ -39,6 +42,17 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
             if (img.getAttribute('src') !== cached.url) {
                 img.src = cached.url;
             }
+            observer.unobserve(img);
+            return;
+        }
+
+        const cachedUrl = urlCache.get(assetId);
+        if (cachedUrl) {
+            bindRecovery(img);
+            img.src = cachedUrl;
+            img.dataset.keiaiAssetState = 'loaded';
+            loaded.set(img, { assetId, url: cachedUrl });
+            ownedUrls.add(cachedUrl);
             observer.unobserve(img);
             return;
         }
@@ -63,6 +77,7 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
             img.dataset.keiaiAssetState = 'loaded';
             ownedUrls.add(url);
             loaded.set(img, { assetId, url });
+            urlCache.set(assetId, url);
             observer.unobserve(img);
         } catch {
             if (!destroyed && img.isConnected && img.dataset.keiaiAssetId === assetId) {
@@ -83,10 +98,11 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
 
             const retryCount = retryCounts.get(img) ?? 0;
             if (retryCount >= MAX_RETRIES) {
-                const cached = loaded.get(img);
-                if (cached) {
-                    loaded.delete(img);
-                    releaseUrl(cached.url);
+                const stale = loaded.get(img);
+                loaded.delete(img);
+                if (stale) {
+                    urlCache.delete(stale.assetId);
+                    releaseUrl(stale.url);
                 }
                 img.removeAttribute('src');
                 img.dataset.keiaiAssetState = 'error';
@@ -94,11 +110,7 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
             }
 
             retryCounts.set(img, retryCount + 1);
-            const cached = loaded.get(img);
-            if (cached) {
-                loaded.delete(img);
-                releaseUrl(cached.url);
-            }
+            loaded.delete(img);
             img.removeAttribute('src');
             img.dataset.keiaiAssetState = 'loading';
             void hydrate(img);
@@ -135,6 +147,7 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
                 void AssetService.revokeUrl(url);
             }
             ownedUrls.clear();
+            urlCache.clear();
         }
     };
 

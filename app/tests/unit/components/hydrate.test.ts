@@ -94,7 +94,7 @@ describe('hydrateAssets', () => {
         expect(AssetService.revokeUrl).toHaveBeenCalledWith('blob:asset-1');
     });
 
-    it('retries at most twice when the image errors after hydration', async () => {
+    it('reuses cached URL on error retry and cleans up after MAX_RETRIES', async () => {
         vi.mocked(AssetService.read).mockResolvedValue('blob:asset-2');
 
         const node = document.createElement('div');
@@ -109,22 +109,21 @@ describe('hydrateAssets', () => {
         await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
 
         const originalLoadCount = vi.mocked(AssetService.read).mock.calls.length;
-        img.dispatchEvent(new Event('error'));
-        await vi.waitFor(() =>
-            expect(vi.mocked(AssetService.read).mock.calls.length).toBeGreaterThan(
-                originalLoadCount
-            )
-        );
-        img.dispatchEvent(new Event('error'));
-        await vi.waitFor(() =>
-            expect(vi.mocked(AssetService.read).mock.calls.length).toBeGreaterThan(
-                originalLoadCount + 1
-            )
-        );
-        img.dispatchEvent(new Event('error'));
 
-        expect(vi.mocked(AssetService.read).mock.calls.length).toBeLessThanOrEqual(
-            originalLoadCount + 2
-        );
+        // Error retries reuse cached URL — no additional read() calls
+        img.dispatchEvent(new Event('error'));
+        await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
+        img.dispatchEvent(new Event('error'));
+        await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
+
+        // Third error exceeds MAX_RETRIES → error state, urlCache evicted
+        img.dispatchEvent(new Event('error'));
+        await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('error'));
+
+        // read() was called only once (initial load, no retries via read)
+        expect(vi.mocked(AssetService.read).mock.calls.length).toBe(originalLoadCount);
+
+        // Evicted URL is revoked
+        expect(AssetService.revokeUrl).toHaveBeenCalledWith('blob:asset-2');
     });
 });
