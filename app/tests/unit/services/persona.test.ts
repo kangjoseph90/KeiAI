@@ -59,7 +59,7 @@ describe('PersonaService', () => {
     const basePersonaFields: PersonaFields = {
         name: 'Test Persona',
         description: 'Test Description',
-        assets: []
+        assets: { refs: {}, folders: {} }
     };
 
     const mockRecord: PersonaRecord = {

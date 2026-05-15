@@ -45,7 +45,7 @@ const character: Character = {
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },
     charjs: { refs: {}, folders: {} },
-    assets: []
+    assets: { refs: {}, folders: {} }
 };
 
 const chat: Chat = {
@@ -65,7 +65,7 @@ const persona: Persona = {
     scopeId: 'user-1',
     name: 'Test Persona',
     description: 'persona description',
-    assets: []
+    assets: { refs: {}, folders: {} }
 };
 
 function makePreset(promptBlocks: Record<string, PromptBlock>): Preset {

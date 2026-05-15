@@ -27,9 +27,8 @@ export interface FolderDef {
 }
 
 /** Name-based asset reference for dynamic resolution (e.g., manifest system, AI scripts) */
-export interface AssetRef {
+export interface AssetRef extends OrderedRef {
     name: string; // Logical name (e.g., 'avatar', 'happy', 'background_night')
-    assetId: string; // The UUID of the asset
 }
 
 /** Grouped ref + folder config for an entity list */

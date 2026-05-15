@@ -26,7 +26,7 @@
         </CardHeader>
         <CardContent>
             <p class="text-sm text-muted-foreground mb-4">
-                Character currently uses {(character.assets ?? []).length} explicit asset references.
+                Character currently uses {Object.keys(character.assets.refs).length} explicit asset references.
             </p>
             <div class="grid grid-cols-4 gap-4 sm:grid-cols-6 md:grid-cols-8">
                 {#if character.avatarAssetId}

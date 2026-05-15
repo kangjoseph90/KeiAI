@@ -14,7 +14,7 @@ export interface ModuleRefs {
     lorebooks: EntityListConfig;
     scripts: EntityListConfig;
     charjs: EntityListConfig;
-    assets: AssetRef[];
+    assets: EntityListConfig<AssetRef>;
 }
 
 export interface ModuleContent {
@@ -38,7 +38,7 @@ const defaultModuleFields: ModuleFields = {
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },
     charjs: { refs: {}, folders: {} },
-    assets: []
+    assets: { refs: {}, folders: {} }
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -131,10 +131,7 @@ export class ModuleService {
         }
 
         const fields = parseFields(record);
-        const assetIds: string[] = [];
-        for (const ref of fields.assets) {
-            assetIds.push(ref.assetId);
-        }
+        const assetIds = Object.keys(fields.assets.refs);
 
         try {
             await Promise.all([

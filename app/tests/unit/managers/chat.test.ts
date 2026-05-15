@@ -85,7 +85,7 @@ describe('ChatManager', () => {
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },
         charjs: { refs: {}, folders: {} },
-        assets: []
+        assets: { refs: {}, folders: {} }
     };
     const charTwo: Character = {
         ...charOne,

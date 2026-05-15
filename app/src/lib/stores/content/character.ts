@@ -16,6 +16,8 @@ import {
     type CharJS
 } from '$lib/services';
 import { AssetService } from '$lib/services/asset';
+import { importCharacterFromKei, type KeiCharacterPackageV1 } from '$lib/porters/character';
+import type { DataScopeType } from '$lib/adapters/db';
 import type { FolderDef, EntityListConfig } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
@@ -33,6 +35,12 @@ import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
+
+export interface ImportCharacterPackageOptions {
+    scopeType?: DataScopeType;
+    allowLightAssets?: boolean;
+    select?: boolean;
+}
 
 /**
  * Returns character from store cache first, then from DB if needed.
@@ -196,6 +204,47 @@ export async function createCharacter(
 
     // Update store
     characters.set(character.id, character);
+    return character;
+}
+
+export async function importCharacterPackage(
+    pkg: KeiCharacterPackageV1,
+    options: {
+        allowLightAssets?: boolean;
+        select?: boolean;
+    } = {}
+): Promise<Character> {
+    const scopeType = get(isMultiRoom) ? 'room' : 'user';
+    const characterId = await importCharacterFromKei(pkg, {
+        scopeType,
+        allowLightAssets: options.allowLightAssets
+    });
+
+    const character = await CharacterService.get(characterId);
+    if (!character) {
+        throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
+    }
+
+    if (character.scopeType === 'user') {
+        const settings = await getAppSettings();
+        const sortOrder = generateSortOrder(settings.characters.refs);
+        try {
+            await updateSettings({
+                characters: { refs: { [character.id]: { id: character.id, sortOrder } } }
+            });
+        } catch (error) {
+            await CharacterService.delete(character.id);
+            throw error;
+        }
+        characters.set(character.id, character);
+    } else if (character.scopeId === get(activeRoomId)) {
+        multiRoomCharacters.set(character.id, character);
+    }
+
+    if (options.select) {
+        await selectCharacter(character.id);
+    }
+
     return character;
 }
 

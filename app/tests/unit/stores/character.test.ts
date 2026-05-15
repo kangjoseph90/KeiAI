@@ -102,7 +102,7 @@ describe('Character Store', () => {
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },
         charjs: { refs: {}, folders: {} },
-        assets: []
+        assets: { refs: {}, folders: {} }
     };
 
     function putActiveCharacter(character: Character): void {

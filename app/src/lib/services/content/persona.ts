@@ -3,7 +3,7 @@ import { canAccessScope, getSessionScope } from '../session';
 import { localDB, type DataScopeType, type PersonaRecord } from '$lib/adapters/db';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
-import type { AssetRef } from '$lib/types/refs';
+import type { AssetRef, EntityListConfig } from '$lib/types/refs';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
 import { AssetService } from '../asset';
@@ -17,7 +17,7 @@ export interface PersonaContent {
 
 export interface PersonaRefs {
     avatarAssetId?: string;
-    assets: AssetRef[];
+    assets: EntityListConfig<AssetRef>;
 }
 
 export interface PersonaFields extends PersonaContent, PersonaRefs {}
@@ -33,7 +33,7 @@ export interface Persona extends PersonaFields {
 const defaultPersonaFields: PersonaFields = {
     name: 'New Persona',
     description: '',
-    assets: []
+    assets: { refs: {}, folders: {} }
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -139,9 +139,7 @@ export class PersonaService {
         const fields = parseFields(record);
         const assetIds: string[] = [];
         if (fields.avatarAssetId) assetIds.push(fields.avatarAssetId);
-        for (const ref of fields.assets) {
-            assetIds.push(ref.assetId);
-        }
+        assetIds.push(...Object.keys(fields.assets.refs));
 
         try {
             buffer.drop('personas', id);

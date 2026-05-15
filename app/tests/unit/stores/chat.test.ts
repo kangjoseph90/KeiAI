@@ -193,7 +193,7 @@ describe('Chat Store', () => {
                 scopeId: 'user-1',
                 name: 'Persona',
                 description: '',
-                assets: []
+                assets: { refs: {}, folders: {} }
             });
             vi.mocked(getRoom).mockResolvedValue({
                 ...mockRoom,
@@ -287,7 +287,7 @@ describe('Chat Store', () => {
                 scopeId: 'user-1',
                 name: 'Persona',
                 description: '',
-                assets: []
+                assets: { refs: {}, folders: {} }
             };
             putActiveChat(mockChat);
             personas.set(persona.id, persona);

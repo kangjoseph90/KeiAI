@@ -144,6 +144,20 @@ export class AssetService {
         return appStorage.getRenderUrl(`assets/${id}`);
     }
 
+    static async getFields(id: string): Promise<AssetFields> {
+        const asset = await appAsset.getAsset(id);
+        if (!asset || asset.isDeleted || !canAccessScope(asset)) {
+            throw new AppError('NOT_FOUND', `Asset ${id} not found`);
+        }
+        return parseFields(asset);
+    }
+
+    static async readBytes(id: string): Promise<Uint8Array | null> {
+        const success = await AssetService.load(id);
+        if (!success) return null;
+        return appStorage.read(`assets/${id}`);
+    }
+
     private static async loadImpl(id: string): Promise<boolean> {
         const asset = await appAsset.getAsset(id);
         if (!asset || asset.isDeleted || !canAccessScope(asset)) return false;

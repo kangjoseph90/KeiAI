@@ -31,7 +31,7 @@ export interface CharacterRefs {
     lorebooks: EntityListConfig;
     scripts: EntityListConfig;
     charjs: EntityListConfig;
-    assets: AssetRef[];
+    assets: EntityListConfig<AssetRef>;
 }
 
 export interface CharacterFields extends CharacterContent, CharacterRefs {}
@@ -55,7 +55,7 @@ const defaultFields: CharacterFields = {
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },
     charjs: { refs: {}, folders: {} },
-    assets: []
+    assets: { refs: {}, folders: {} }
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -167,9 +167,7 @@ export class CharacterService {
         const fields = parseFields(record);
         const assetIds: string[] = [];
         if (fields.avatarAssetId) assetIds.push(fields.avatarAssetId);
-        for (const ref of fields.assets) {
-            assetIds.push(ref.assetId);
-        }
+        assetIds.push(...Object.keys(fields.assets.refs));
 
         try {
             await Promise.all([
