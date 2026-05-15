@@ -13,6 +13,7 @@ import {
     type CharJSFields,
     type CharJS
 } from '$lib/services';
+import { importModuleFromKei, type KeiModulePackageV1 } from '$lib/porters/module';
 import type { FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
@@ -133,6 +134,42 @@ export async function createModule(fields: DeepPartial<ModuleFields> = {}): Prom
 
     // Update Store
     modules.set(mod.id, mod);
+
+    return mod;
+}
+
+export async function importModulePackage(
+    pkg: KeiModulePackageV1,
+    options: {
+        allowLightAssets?: boolean;
+        select?: boolean;
+    } = {}
+): Promise<Module> {
+    const moduleId = await importModuleFromKei(pkg, {
+        allowLightAssets: options.allowLightAssets
+    });
+
+    const mod = await ModuleService.get(moduleId);
+    if (!mod) {
+        throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
+    }
+
+    const settings = await getAppSettings();
+    const sortOrder = generateSortOrder(settings.modules.refs);
+    try {
+        await updateSettings({
+            modules: { refs: { [mod.id]: { id: mod.id, sortOrder, enabled: true } } }
+        });
+    } catch (error) {
+        await ModuleService.delete(mod.id);
+        throw error;
+    }
+
+    modules.set(mod.id, mod);
+
+    if (options.select) {
+        await selectModule(mod.id);
+    }
 
     return mod;
 }

@@ -1,65 +1,18 @@
 import { CharacterService, CharJSService, LorebookService, ScriptService } from '$lib/services';
-import { AssetService } from '$lib/services/asset';
-import type { AssetRef, EntityListConfig, FolderDef, OrderedRef } from '$lib/types/refs';
+import type { AssetRef } from '$lib/types/refs';
 import { AppError } from '$lib/types/errors';
-import type { KeiAssetPayload, KeiCharacterPackageV1, KeiCharacterPayload } from './types';
+import type { KeiCharacterPackageV1, KeiCharacterPayload } from './types';
+import {
+    createPortableIdMap,
+    exportAsset,
+    exportEntityList,
+    type KeiPackageExportMode
+} from '../utils';
 
-export type KeiCharacterExportMode = 'light' | 'baked';
+export type KeiCharacterExportMode = KeiPackageExportMode;
 
 export interface ExportCharacterOptions {
     mode?: KeiCharacterExportMode;
-}
-
-function createIdAllocator(prefix: string): () => string {
-    let next = 0;
-    return () => `${prefix}_${next++}`;
-}
-
-function mapById(ids: string[], prefix: string): Record<string, string> {
-    const allocate = createIdAllocator(prefix);
-    const map: Record<string, string> = {};
-    for (const id of ids) {
-        map[id] = allocate();
-    }
-    return map;
-}
-
-function mapFolders(folders: Record<string, FolderDef>, prefix: string): Record<string, string> {
-    return mapById(Object.keys(folders), prefix);
-}
-
-function exportEntityList<R extends OrderedRef>(
-    list: EntityListConfig<R>,
-    idMap: Record<string, string>,
-    folderPrefix: string
-): EntityListConfig<R> {
-    const folderMap = mapFolders(list.folders, folderPrefix);
-    const refs: Record<string, R> = {};
-    const folders: Record<string, FolderDef> = {};
-
-    for (const [id, ref] of Object.entries(list.refs)) {
-        const nextId = idMap[id];
-        if (!nextId) {
-            throw new AppError('INVALID_INPUT', `Missing package id mapping: ${id}`);
-        }
-        refs[nextId] = {
-            ...ref,
-            id: nextId,
-            ...(ref.folderId ? { folderId: folderMap[ref.folderId] } : {})
-        };
-    }
-
-    for (const [id, folder] of Object.entries(list.folders)) {
-        const nextId = folderMap[id];
-        if (!nextId) continue;
-        folders[nextId] = {
-            ...folder,
-            id: nextId,
-            ...(folder.parentId ? { parentId: folderMap[folder.parentId] } : {})
-        };
-    }
-
-    return { refs, folders };
 }
 
 function collectAssetIds(character: KeiCharacterPayload): string[] {
@@ -69,30 +22,6 @@ function collectAssetIds(character: KeiCharacterPayload): string[] {
         ids.add(id);
     }
     return [...ids];
-}
-
-async function exportAsset(
-    id: string,
-    portableId: string,
-    mode: KeiCharacterExportMode
-): Promise<KeiAssetPayload> {
-    const fields = await AssetService.getFields(id);
-    const payload: KeiAssetPayload = {
-        id: portableId,
-        hash: fields.hash,
-        encKey: fields.encKey
-    };
-
-    if (mode === 'light' && fields.status === 'remote') {
-        return payload;
-    }
-
-    const data = await AssetService.readBytes(id);
-    if (!data) {
-        throw new AppError('NOT_FOUND', `Asset bytes not found: ${id}`);
-    }
-
-    return { ...payload, data };
 }
 
 export async function exportCharacterToKei(
@@ -112,21 +41,21 @@ export async function exportCharacterToKei(
         CharJSService.listByOwner(characterId)
     ]);
 
-    const lorebookMap = mapById(
+    const lorebookMap = createPortableIdMap(
         lorebooks.map((item) => item.id),
         'lorebook'
     );
-    const scriptMap = mapById(
+    const scriptMap = createPortableIdMap(
         scripts.map((item) => item.id),
         'script'
     );
-    const charjsMap = mapById(
+    const charjsMap = createPortableIdMap(
         charjs.map((item) => item.id),
         'charjs'
     );
 
     const assetIds = collectAssetIds(character);
-    const assetMap = mapById(assetIds, 'asset');
+    const assetMap = createPortableIdMap(assetIds, 'asset');
 
     const portableCharacter: KeiCharacterPayload = {
         name: character.name,

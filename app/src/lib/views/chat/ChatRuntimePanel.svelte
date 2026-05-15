@@ -26,6 +26,8 @@
         chatLorebooks,
         createChatLorebook,
         deleteChatLorebook,
+        isMultiRoom,
+        multiRoomPersonas,
         personas,
         removeChatPersona,
         setChatDefaultPersona,
@@ -51,7 +53,8 @@
 
     const attachablePersonas = $derived(() => {
         const attached = new Set($chatPersonas.map((persona) => persona.id));
-        return $personas.filter((persona) => !attached.has(persona.id));
+        const source = $isMultiRoom ? $multiRoomPersonas : $personas;
+        return source.filter((persona) => !attached.has(persona.id));
     });
 
     async function updateChat(changes: DeepPartial<ChatContent>) {

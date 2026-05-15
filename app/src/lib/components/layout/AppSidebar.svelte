@@ -23,6 +23,8 @@
         characters,
         createChat,
         deleteChat,
+        isMultiRoom,
+        multiRoomCharacters,
         removeRoomCharacter,
         roomChats,
         roomCharacters,
@@ -56,7 +58,8 @@
 
     const attachableCharacters = $derived(() => {
         const attached = new Set($roomCharacters.map((character) => character.id));
-        return $characters.filter((character) => !attached.has(character.id));
+        const source = $isMultiRoom ? $multiRoomCharacters : $characters;
+        return source.filter((character) => !attached.has(character.id));
     });
 
     async function handleCreateChat() {

@@ -10,6 +10,7 @@ import {
     type Script,
     type PresetContent
 } from '$lib/services';
+import { importPresetFromKei, type KeiPresetPackageV1 } from '$lib/porters/preset';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import type { FolderDef } from '$lib/types/refs';
@@ -95,6 +96,39 @@ export async function createPreset(fields: DeepPartial<PresetFields> = {}): Prom
 
     // Update Store
     presets.set(preset.id, preset);
+
+    return preset;
+}
+
+export async function importPresetPackage(
+    pkg: KeiPresetPackageV1,
+    options: {
+        select?: boolean;
+    } = {}
+): Promise<Preset> {
+    const presetId = await importPresetFromKei(pkg);
+
+    const preset = await PresetService.get(presetId);
+    if (!preset) {
+        throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
+    }
+
+    const settings = await getAppSettings();
+    const sortOrder = generateSortOrder(settings.presets.refs);
+    try {
+        await updateSettings({
+            presets: { refs: { [preset.id]: { id: preset.id, sortOrder } } }
+        });
+    } catch (error) {
+        await PresetService.delete(preset.id);
+        throw error;
+    }
+
+    presets.set(preset.id, preset);
+
+    if (options.select) {
+        await selectPreset(preset.id);
+    }
 
     return preset;
 }

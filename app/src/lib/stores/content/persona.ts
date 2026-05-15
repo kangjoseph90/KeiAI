@@ -1,5 +1,6 @@
 import { get } from 'svelte/store';
 import { PersonaService, type PersonaFields, type Persona } from '$lib/services/content/persona';
+import { importPersonaFromKei, type KeiPersonaPackageV1 } from '$lib/porters/persona';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import {
@@ -89,6 +90,47 @@ export async function createPersona(fields: DeepPartial<PersonaFields> = {}): Pr
 
     // Update Store
     personas.set(persona.id, persona);
+
+    return persona;
+}
+
+export async function importPersonaPackage(
+    pkg: KeiPersonaPackageV1,
+    options: {
+        allowLightAssets?: boolean;
+        select?: boolean;
+    } = {}
+): Promise<Persona> {
+    const scopeType = get(isMultiRoom) ? 'room' : 'user';
+    const personaId = await importPersonaFromKei(pkg, {
+        scopeType,
+        allowLightAssets: options.allowLightAssets
+    });
+
+    const persona = await PersonaService.get(personaId);
+    if (!persona) {
+        throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
+    }
+
+    if (persona.scopeType === 'user') {
+        const settings = await getAppSettings();
+        const sortOrder = generateSortOrder(settings.personas.refs);
+        try {
+            await updateSettings({
+                personas: { refs: { [persona.id]: { id: persona.id, sortOrder } } }
+            });
+        } catch (error) {
+            await PersonaService.delete(persona.id);
+            throw error;
+        }
+        personas.set(persona.id, persona);
+    } else if (persona.scopeId === get(activeRoomId)) {
+        multiRoomPersonas.set(persona.id, persona);
+    }
+
+    if (options.select) {
+        await selectPersona(persona.id);
+    }
 
     return persona;
 }
