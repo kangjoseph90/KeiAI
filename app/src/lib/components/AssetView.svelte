@@ -27,6 +27,7 @@
     let visible = $state(false);
     let retryCount = 0;
     let ownedUrl: string | null = null;
+    let requestedAssetId: string | null = null;
     const MAX_RETRIES = 2;
 
     // ── Lazy visibility tracking ─────────────────────────────────────
@@ -49,6 +50,7 @@
 
     // ── Load only when visible + id is set ───────────────────────────
     function loadAsset(assetId: string) {
+        requestedAssetId = assetId;
         loading = true;
         error = false;
 
@@ -78,18 +80,21 @@
     }
 
     $effect(() => {
-        // Reset state immediately when ID changes
-        setUrl(null);
-        loading = false;
-        error = false;
-        retryCount = 0;
+        const assetId = id ?? null;
 
-        if (!id) return;
+        if (!assetId) {
+            requestedAssetId = null;
+            resetAssetState();
+            return;
+        }
 
         // Wait until the element is visible in the viewport
         if (!visible) return;
 
-        loadAsset(id);
+        if (requestedAssetId === assetId) return;
+
+        resetAssetState();
+        loadAsset(assetId);
     });
 
     // ── Recovery: img onerror fires when a revoked URL breaks ────────
@@ -109,6 +114,13 @@
         }
         ownedUrl = nextUrl;
         url = nextUrl;
+    }
+
+    function resetAssetState(): void {
+        setUrl(null);
+        loading = false;
+        error = false;
+        retryCount = 0;
     }
 
     onDestroy(() => {
