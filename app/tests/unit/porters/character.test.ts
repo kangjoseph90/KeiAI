@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-    exportCharacterToKei,
-    importCharacterFromKei,
+    exportCharacterPackage,
+    importCharacterPackage,
+    readCharacterFile,
+    writeCharacterFile,
     type KeiCharacterPackageV1
 } from '$lib/porters/character';
 import { classifyAsset } from '$lib/porters/types';
+import { writeRisuModule } from '$lib/porters/character/module';
+import { unzip, zip } from '$lib/utils/zip';
 import { AssetService } from '$lib/services/asset';
 import {
     CharacterService,
@@ -161,7 +165,7 @@ describe('character porters', () => {
         }));
         vi.mocked(AssetService.readBytes).mockResolvedValue(new Uint8Array([1, 2, 3]));
 
-        const pkg = await exportCharacterToKei('char-real', { mode: 'light' });
+        const pkg = await exportCharacterPackage('char-real', 'light');
 
         expect(pkg.kind).toBe('keiai.character');
         expect(pkg.character.greetings.greet_1?.id).toBe('greet_1');
@@ -180,12 +184,328 @@ describe('character porters', () => {
         expect('modules' in pkg.character).toBe(false);
     });
 
+    it('writes CCv3 PNG, CharX, and KeiChar files from a package', async () => {
+        vi.mocked(CharacterService.get).mockResolvedValue(character);
+        vi.mocked(LorebookService.listByOwner).mockResolvedValue([lorebook]);
+        vi.mocked(ScriptService.listByOwner).mockResolvedValue([script]);
+        vi.mocked(CharJSService.listByOwner).mockResolvedValue([charjs]);
+        vi.mocked(AssetService.getFields).mockImplementation(async (id) => ({
+            kind: 'resource',
+            status: 'local',
+            hash: `${id}-hash`,
+            encKey: `${id}-key`
+        }));
+        vi.mocked(AssetService.readBytes).mockResolvedValue(new Uint8Array([1, 2, 3]));
+
+        const pkg = await exportCharacterPackage('char-real', 'baked');
+        const png = await writeCharacterFile(pkg, { kind: 'ccv3', format: 'png' });
+        const charx = await writeCharacterFile(pkg, { kind: 'ccv3', format: 'charx' });
+        const keichar = await writeCharacterFile(pkg, { kind: 'keichar', assetMode: 'baked' });
+
+        const charxEntries = await unzip(charx);
+        const keicharEntries = await unzip(keichar);
+        const pngRoundTrip = await readCharacterFile(new File([png.slice()], 'character.png'));
+        const charxRoundTrip = await readCharacterFile(
+            new File([charx.slice()], 'character.charx')
+        );
+        const charxCard = JSON.parse(new TextDecoder().decode(charxEntries['card.json'])) as {
+            data: { character_book: { entries: Array<{ content: string }> } };
+        };
+
+        expect(png.slice(0, 8)).toEqual(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]));
+        expect(charxEntries['card.json']).toBeTruthy();
+        expect(charxEntries['module.risum']).toBeTruthy();
+        expect(charxEntries['assets/x-risu-asset/images/Extra.bin']).toBeTruthy();
+        expect(keicharEntries['package.json']).toBeTruthy();
+        expect(keicharEntries['assets/asset_0.bin']).toBeTruthy();
+        expect(pngRoundTrip.assets.find((asset) => asset.id === 'asset_0')?.data).toEqual(
+            new Uint8Array([1, 2, 3])
+        );
+        expect(pngRoundTrip.character.avatarAssetId).toBe('asset_0');
+        expect(charxRoundTrip.charjs[0]).toEqual(
+            expect.objectContaining({ id: 'charjs_0', name: 'CharJS', code: 'return input;' })
+        );
+        expect(charxRoundTrip.character.charjs.refs.charjs_0?.id).toBe('charjs_0');
+        expect(charxCard.data.character_book.entries[0]?.content).toContain('@@depth 1\n');
+        expect(charxCard.data.character_book.entries[0]?.content).toContain('@@unrecursive\n');
+    });
+
+    it('uses generated ids for greetings imported from CCv3 cards', async () => {
+        const file = new File(
+            [
+                JSON.stringify({
+                    spec: 'chara_card_v3',
+                    spec_version: '3.0',
+                    data: {
+                        name: 'Card',
+                        description: '',
+                        personality: '',
+                        scenario: '',
+                        first_mes: 'Hello',
+                        alternate_greetings: ['Hi again'],
+                        mes_example: '',
+                        creator_notes: '',
+                        system_prompt: '',
+                        post_history_instructions: '',
+                        tags: [],
+                        creator: '',
+                        character_version: '',
+                        extensions: {},
+                        group_only_greetings: []
+                    }
+                })
+            ],
+            'card.json',
+            { type: 'application/json' }
+        );
+
+        const pkg = await readCharacterFile(file);
+        const greetingIds = Object.keys(pkg.character.greetings);
+
+        expect(greetingIds).toHaveLength(2);
+        expect(greetingIds).not.toContain('greeting_0');
+        expect(greetingIds.every((id) => /^[a-z0-9]{15}$/.test(id))).toBe(true);
+        expect(pkg.character.greetings[greetingIds[0]]?.id).toBe(greetingIds[0]);
+    });
+
+    it('imports CCv3 cards without optional extension fields', async () => {
+        const file = new File(
+            [
+                JSON.stringify({
+                    spec: 'chara_card_v3',
+                    spec_version: '3.0',
+                    data: {
+                        name: 'Card',
+                        description: '',
+                        personality: '',
+                        scenario: '',
+                        first_mes: '',
+                        mes_example: '',
+                        creator_notes: '',
+                        system_prompt: '',
+                        post_history_instructions: '',
+                        creator: '',
+                        character_version: ''
+                    }
+                })
+            ],
+            'card.json',
+            { type: 'application/json' }
+        );
+
+        await expect(readCharacterFile(file)).resolves.toEqual(
+            expect.objectContaining({ kind: 'keiai.character' })
+        );
+    });
+
+    it('keeps Risu script order from the imported script list', async () => {
+        const file = new File(
+            [
+                JSON.stringify({
+                    spec: 'chara_card_v3',
+                    spec_version: '3.0',
+                    data: {
+                        name: 'Card',
+                        description: '',
+                        personality: '',
+                        scenario: '',
+                        first_mes: '',
+                        alternate_greetings: [],
+                        mes_example: '',
+                        creator_notes: '',
+                        system_prompt: '',
+                        post_history_instructions: '',
+                        tags: [],
+                        creator: '',
+                        character_version: '',
+                        extensions: {
+                            risuai: {
+                                customScripts: [
+                                    { comment: 'First', in: 'a', out: 'b', type: 'editinput' },
+                                    { comment: 'Second', in: 'c', out: 'd', type: 'disabled' }
+                                ]
+                            }
+                        },
+                        group_only_greetings: []
+                    }
+                })
+            ],
+            'card.json',
+            { type: 'application/json' }
+        );
+
+        const pkg = await readCharacterFile(file);
+
+        expect(pkg.scripts[0]).toEqual(
+            expect.objectContaining({ name: 'First', order: 0, phase: 'input', enabled: true })
+        );
+        expect(pkg.scripts[1]).toEqual(
+            expect.objectContaining({ name: 'Second', order: 1, phase: 'display', enabled: false })
+        );
+    });
+
+    it('does not clear card scripts when a Risu CharX module has no scripts', async () => {
+        const card = {
+            spec: 'chara_card_v3',
+            spec_version: '3.0',
+            data: {
+                name: 'Card',
+                description: '',
+                personality: '',
+                scenario: '',
+                first_mes: '',
+                alternate_greetings: [],
+                mes_example: '',
+                creator_notes: '',
+                system_prompt: '',
+                post_history_instructions: '',
+                tags: [],
+                creator: '',
+                character_version: '',
+                extensions: {
+                    risuai: {
+                        customScripts: [{ comment: 'Card Script', in: 'a', out: 'b' }]
+                    }
+                },
+                group_only_greetings: []
+            }
+        };
+        const charx = zip({
+            'card.json': new TextEncoder().encode(JSON.stringify(card)),
+            'module.risum': writeRisuModule({
+                lorebook: [{ key: 'module-key', comment: 'Module Lore', content: 'Module lore' }]
+            })
+        });
+
+        const pkg = await readCharacterFile(new File([charx.slice()], 'module.charx'));
+
+        expect(pkg.scripts[0]).toEqual(expect.objectContaining({ name: 'Card Script' }));
+        expect(pkg.lorebooks[0]).toEqual(expect.objectContaining({ name: 'Module Lore' }));
+    });
+
+    it('converts Risu lorebook decorators into Kei lorebook fields', async () => {
+        const file = new File(
+            [
+                JSON.stringify({
+                    spec: 'chara_card_v3',
+                    spec_version: '3.0',
+                    data: {
+                        name: 'Card',
+                        description: '',
+                        personality: '',
+                        scenario: '',
+                        first_mes: '',
+                        alternate_greetings: [],
+                        mes_example: '',
+                        creator_notes: '',
+                        system_prompt: '',
+                        post_history_instructions: '',
+                        character_book: {
+                            extensions: {},
+                            entries: [
+                                {
+                                    keys: ['key'],
+                                    content:
+                                        '@@depth 3\n@@role user\n@@scan_depth 7\n@@probability 25\n@@recursive\n@@no_recursive_search\nLore',
+                                    extensions: {},
+                                    enabled: true,
+                                    insertion_order: 42,
+                                    use_regex: true,
+                                    name: 'Decorated'
+                                }
+                            ]
+                        },
+                        tags: [],
+                        creator: '',
+                        character_version: '',
+                        extensions: {},
+                        group_only_greetings: []
+                    }
+                })
+            ],
+            'card.json',
+            { type: 'application/json' }
+        );
+
+        const pkg = await readCharacterFile(file);
+
+        expect(pkg.lorebooks[0]).toEqual(
+            expect.objectContaining({
+                name: 'Decorated',
+                content: 'Lore',
+                depth: 3,
+                role: 'user',
+                scanDepth: 7,
+                probability: 25,
+                recursive: true,
+                noRecursiveSearch: true,
+                order: 42,
+                useRegex: true
+            })
+        );
+    });
+
+    it('imports lorebooks from Risu CharX module files', async () => {
+        const card = {
+            spec: 'chara_card_v3',
+            spec_version: '3.0',
+            data: {
+                name: 'Card',
+                description: '',
+                personality: '',
+                scenario: '',
+                first_mes: '',
+                alternate_greetings: [],
+                mes_example: '',
+                creator_notes: '',
+                system_prompt: '',
+                post_history_instructions: '',
+                tags: [],
+                creator: '',
+                character_version: '',
+                extensions: {},
+                group_only_greetings: []
+            }
+        };
+        const charx = zip({
+            'card.json': new TextEncoder().encode(JSON.stringify(card)),
+            'module.risum': writeRisuModule({
+                lorebook: [
+                    {
+                        key: 'module-key',
+                        secondkey: 'other-key',
+                        selective: true,
+                        insertorder: 77,
+                        comment: 'Module Lore',
+                        content: '@@depth 2\nModule lore',
+                        useRegex: true
+                    }
+                ]
+            })
+        });
+
+        const pkg = await readCharacterFile(new File([charx.slice()], 'module.charx'));
+
+        expect(pkg.lorebooks[0]).toEqual(
+            expect.objectContaining({
+                name: 'Module Lore',
+                key: 'module-key',
+                secondKey: 'other-key',
+                useMultipleKeys: true,
+                order: 77,
+                content: 'Module lore',
+                depth: 2,
+                useRegex: true
+            })
+        );
+    });
+
     it('rejects light assets unless explicitly allowed', async () => {
         const pkg = makePackage({
             assets: [{ id: 'asset_0', hash: 'hash', encKey: 'key' }]
         });
 
-        await expect(importCharacterFromKei(pkg, { allowLightAssets: false })).rejects.toThrow(
+        await expect(importCharacterPackage(pkg, { allowLightAssets: false })).rejects.toThrow(
             'Light asset import is disabled'
         );
         expect(AssetService.write).not.toHaveBeenCalled();
@@ -199,7 +519,7 @@ describe('character porters', () => {
             ]
         });
 
-        await expect(importCharacterFromKei(pkg, { allowLightAssets: true })).rejects.toThrow(
+        await expect(importCharacterPackage(pkg, { allowLightAssets: true })).rejects.toThrow(
             'Broken asset payload'
         );
         expect(AssetService.write).not.toHaveBeenCalled();
@@ -227,7 +547,7 @@ describe('character porters', () => {
         vi.mocked(CharJSService.create).mockResolvedValue({ ...charjs, id: 'charjs-new' });
         vi.mocked(CharacterService.update).mockResolvedValue({ ...character, id: 'char-new' });
 
-        const characterId = await importCharacterFromKei(pkg, { scopeType: 'room' });
+        const characterId = await importCharacterPackage(pkg, { scopeType: 'room' });
         const update = vi.mocked(CharacterService.update).mock.calls[0]?.[1];
 
         expect(characterId).toBe('char-new');

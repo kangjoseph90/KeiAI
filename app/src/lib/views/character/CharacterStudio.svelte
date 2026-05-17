@@ -7,7 +7,8 @@
         Book,
         Code,
         Image as ImageIcon,
-        Settings2
+        Settings2,
+        Download
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
@@ -36,7 +37,11 @@
         deleteCharacterCharJS
     } from '$lib/stores';
     import { navigate } from '$lib/router';
-    import { syncChatGreetings } from '$lib/managers';
+    import {
+        exportCharacterFile,
+        syncChatGreetings,
+        type ExportCharacterFileRequest
+    } from '$lib/managers';
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { CharacterContent, Lorebook, Script, CharJS } from '$lib/services';
 
@@ -56,7 +61,9 @@
     let { charId }: Props = $props();
 
     type Tab = 'profile' | 'greetings' | 'prompt' | 'lorebooks' | 'scripts' | 'assets' | 'advanced';
+    type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
     let activeTab = $state<Tab>('profile');
+    let exporting = $state<ExportButton | null>(null);
 
     const isChatSynced = $derived(() => {
         if (!$activeChat) return false;
@@ -112,6 +119,16 @@
             await syncChatGreetings($activeChat.id);
         }
     }
+
+    async function handleExport(id: ExportButton, request: ExportCharacterFileRequest) {
+        if (!$activeCharacter || exporting) return;
+        exporting = id;
+        try {
+            await exportCharacterFile($activeCharacter.id, request);
+        } finally {
+            exporting = null;
+        }
+    }
 </script>
 
 <div class="flex flex-col h-full bg-background">
@@ -135,6 +152,52 @@
 
         <div class="flex items-center gap-2">
             <Badge variant="outline" class="font-mono text-[10px]">ID: {charId}</Badge>
+            <Button
+                variant="outline"
+                size="sm"
+                class="gap-1.5"
+                disabled={!$activeCharacter || exporting !== null}
+                onclick={() => handleExport('ccv3-png', { kind: 'ccv3', format: 'png' })}
+                title="Export Character Card V3 PNG"
+            >
+                <Download class="size-3.5" />
+                CCv3 PNG
+            </Button>
+            <Button
+                variant="outline"
+                size="sm"
+                class="gap-1.5"
+                disabled={!$activeCharacter || exporting !== null}
+                onclick={() => handleExport('ccv3-charx', { kind: 'ccv3', format: 'charx' })}
+                title="Export Character Card V3 CharX"
+            >
+                <Download class="size-3.5" />
+                CharX
+            </Button>
+            <Button
+                variant="outline"
+                size="sm"
+                class="gap-1.5"
+                disabled={!$activeCharacter || exporting !== null}
+                onclick={() =>
+                    handleExport('keichar-light', { kind: 'keichar', assetMode: 'light' })}
+                title="Export KeiChar light archive"
+            >
+                <Download class="size-3.5" />
+                Kei Light
+            </Button>
+            <Button
+                variant="outline"
+                size="sm"
+                class="gap-1.5"
+                disabled={!$activeCharacter || exporting !== null}
+                onclick={() =>
+                    handleExport('keichar-baked', { kind: 'keichar', assetMode: 'baked' })}
+                title="Export KeiChar baked archive"
+            >
+                <Download class="size-3.5" />
+                Kei Baked
+            </Button>
             <Button variant="outline" size="sm" class="gap-1.5" onclick={backToChat}>
                 Close Studio
             </Button>

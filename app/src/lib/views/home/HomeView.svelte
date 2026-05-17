@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { DoorOpen, Plus, Search, Sparkles, UserRound } from 'lucide-svelte';
+    import { DoorOpen, Import, Plus, Search, Sparkles, UserRound } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
@@ -14,6 +14,7 @@
         rooms,
         selectMultiRoom
     } from '$lib/stores';
+    import { importCharacterFile } from '$lib/managers';
     import type { RouteState } from '$lib/router';
 
     interface Props {
@@ -29,6 +30,7 @@
     let creatingMultiRoom = $state(false);
     let creatingCharacter = $state(false);
     let creatingPersona = $state(false);
+    let importingCharacter = $state(false);
     let roomName = $state('');
     let multiRoomName = $state('');
     let characterName = $state('');
@@ -98,6 +100,24 @@
         characterName = '';
         creatingCharacter = false;
         onNavigate({ view: 'characterStudio', charId: character.id });
+    }
+
+    async function handleImportCharacter(event: Event) {
+        const input = event.currentTarget as HTMLInputElement;
+        const file = input.files?.[0];
+        input.value = '';
+        if (!file || importingCharacter) return;
+
+        importingCharacter = true;
+        try {
+            const character = await importCharacterFile(file, {
+                allowLightAssets: false,
+                select: true
+            });
+            onNavigate({ view: 'characterStudio', charId: character.id });
+        } finally {
+            importingCharacter = false;
+        }
     }
 
     async function handleCreatePersona() {
@@ -191,10 +211,29 @@
                         <Button type="submit">Create</Button>
                     </form>
                 {:else}
-                    <Button class="gap-2" onclick={() => (creatingCharacter = true)}>
-                        <Plus class="size-4" />
-                        New Character
-                    </Button>
+                    <div class="flex gap-2">
+                        <Button
+                            variant="outline"
+                            class="gap-2"
+                            disabled={importingCharacter}
+                            onclick={() =>
+                                document.getElementById('character-import-input')?.click()}
+                        >
+                            <Import class="size-4" />
+                            Import
+                        </Button>
+                        <Button class="gap-2" onclick={() => (creatingCharacter = true)}>
+                            <Plus class="size-4" />
+                            New Character
+                        </Button>
+                        <input
+                            id="character-import-input"
+                            type="file"
+                            class="hidden"
+                            accept=".json,.png,.charx,.jpg,.jpeg,.keichar"
+                            onchange={handleImportCharacter}
+                        />
+                    </div>
                 {/if}
             {:else if creatingPersona}
                 <form

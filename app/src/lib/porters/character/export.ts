@@ -9,11 +9,10 @@ import {
     type KeiPackageExportMode
 } from '../utils';
 
-export type KeiCharacterExportMode = KeiPackageExportMode;
-
-export interface ExportCharacterOptions {
-    mode?: KeiCharacterExportMode;
-}
+export type CharacterCardV3Format = 'png' | 'charx';
+export type CharacterFileExport =
+    | { kind: 'ccv3'; format: CharacterCardV3Format }
+    | { kind: 'keichar'; assetMode: KeiPackageExportMode };
 
 function collectAssetIds(character: KeiCharacterPayload): string[] {
     const ids = new Set<string>();
@@ -24,12 +23,10 @@ function collectAssetIds(character: KeiCharacterPayload): string[] {
     return [...ids];
 }
 
-export async function exportCharacterToKei(
+export async function exportCharacterPackage(
     characterId: string,
-    options: ExportCharacterOptions = {}
+    assetMode: KeiPackageExportMode
 ): Promise<KeiCharacterPackageV1> {
-    const mode = options.mode ?? 'light';
-
     const character = await CharacterService.get(characterId);
     if (!character) {
         throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
@@ -72,7 +69,7 @@ export async function exportCharacterToKei(
     };
 
     const assetPayloads = await Promise.all(
-        assetIds.map((id) => exportAsset(id, assetMap[id], mode))
+        assetIds.map((id) => exportAsset(id, assetMap[id], assetMode))
     );
 
     return {

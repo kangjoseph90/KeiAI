@@ -5,6 +5,13 @@ export interface KeiAssetPayload {
     encKey?: string;
 }
 
+export interface SerializedKeiAssetPayload {
+    id: string;
+    path?: string;
+    hash?: string;
+    encKey?: string;
+}
+
 export type KeiAssetPayloadKind = 'baked' | 'light' | 'broken';
 
 export function classifyAsset(asset: KeiAssetPayload): KeiAssetPayloadKind {
@@ -12,7 +19,7 @@ export function classifyAsset(asset: KeiAssetPayload): KeiAssetPayloadKind {
     const hasHash = !!asset.hash;
     const hasEncKey = !!asset.encKey;
 
-    if (hasData && hasHash && hasEncKey) return 'baked';
+    if (hasData) return 'baked';
     if (!hasData && hasHash && hasEncKey) return 'light';
     return 'broken';
 }

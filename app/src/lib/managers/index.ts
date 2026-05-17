@@ -6,5 +6,6 @@
  */
 
 export * from './chat';
+export * from './character';
 export * from './message';
 export * from './multi';

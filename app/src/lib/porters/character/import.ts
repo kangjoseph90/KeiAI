@@ -15,7 +15,7 @@ function assertPackage(pkg: KeiCharacterPackageV1): void {
     }
 }
 
-export async function importCharacterFromKei(
+export async function importCharacterPackage(
     pkg: KeiCharacterPackageV1,
     options: ImportCharacterOptions = {}
 ): Promise<string> {

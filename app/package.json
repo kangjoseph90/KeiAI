@@ -79,6 +79,7 @@
         "comlink": "^4.4.2",
         "dexie": "^4.3.0",
         "dompurify": "^3.3.3",
+        "fflate": "^0.8.3",
         "fractional-indexing": "^3.2.0",
         "highlight.js": "^11.11.1",
         "json5": "^2.2.3",

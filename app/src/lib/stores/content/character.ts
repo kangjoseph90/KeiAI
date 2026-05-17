@@ -16,7 +16,10 @@ import {
     type CharJS
 } from '$lib/services';
 import { AssetService } from '$lib/services/asset';
-import { importCharacterFromKei, type KeiCharacterPackageV1 } from '$lib/porters/character';
+import {
+    importCharacterPackage as importCharacterPackageToDb,
+    type KeiCharacterPackageV1
+} from '$lib/porters/character';
 import type { DataScopeType } from '$lib/adapters/db';
 import type { FolderDef, EntityListConfig } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
@@ -215,7 +218,7 @@ export async function importCharacterPackage(
     } = {}
 ): Promise<Character> {
     const scopeType = get(isMultiRoom) ? 'room' : 'user';
-    const characterId = await importCharacterFromKei(pkg, {
+    const characterId = await importCharacterPackageToDb(pkg, {
         scopeType,
         allowLightAssets: options.allowLightAssets
     });

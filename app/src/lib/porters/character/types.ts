@@ -1,5 +1,5 @@
 import type { CharacterFields, CharJSFields, LorebookFields, ScriptFields } from '$lib/services';
-import type { KeiAssetPayload } from '../types';
+import type { KeiAssetPayload, SerializedKeiAssetPayload } from '../types';
 
 export interface KeiCharacterPackageV1 {
     version: 1;
@@ -15,3 +15,7 @@ export type KeiCharacterPayload = Omit<CharacterFields, 'modules'>;
 export type KeiLorebookPayload = LorebookFields & { id: string };
 export type KeiScriptPayload = ScriptFields & { id: string };
 export type KeiCharJSPayload = CharJSFields & { id: string };
+
+export interface SerializedKeiCharacterPackageV1 extends Omit<KeiCharacterPackageV1, 'assets'> {
+    assets: SerializedKeiAssetPayload[];
+}
