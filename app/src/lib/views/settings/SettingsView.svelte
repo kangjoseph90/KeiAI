@@ -65,7 +65,7 @@
     ] as const;
 </script>
 
-<div class="flex flex-col h-full bg-background">
+<div class="flex h-full min-h-0 flex-col bg-background">
     <!-- Settings Header -->
     <header class="flex items-center justify-between px-6 py-4 border-b shrink-0">
         <div class="flex items-center gap-4">
@@ -82,7 +82,7 @@
         <Button variant="outline" size="sm" onclick={backToChat}>Done</Button>
     </header>
 
-    <div class="flex flex-1 overflow-hidden">
+    <div class="flex min-h-0 flex-1 overflow-hidden">
         <!-- Sidebar Navigation -->
         <nav class="w-64 border-r bg-muted/30 p-4 flex flex-col gap-1 shrink-0">
             {#each tabs as tab (tab.id)}
@@ -100,8 +100,8 @@
         </nav>
 
         <!-- Main Workspace -->
-        <main class="flex-1 flex flex-col overflow-hidden bg-background">
-            <ScrollArea class="flex-1">
+        <main class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+            <ScrollArea class="min-h-0 flex-1">
                 <div class="max-w-4xl mx-auto p-8 space-y-8">
                     {#if activeTab === 'chatbot'}
                         <div class="space-y-6">

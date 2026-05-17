@@ -20,7 +20,7 @@
     let activeTab = $state<Tab>('model');
 </script>
 
-<div class="flex flex-col h-full overflow-hidden">
+<div class="flex h-full min-h-0 flex-col overflow-hidden">
     <!-- Header with Tabs -->
     <div class="flex items-center justify-between mb-6 shrink-0">
         <div class="flex items-center gap-1 bg-muted/50 p-1 rounded-lg">
@@ -54,7 +54,7 @@
             </div>
         </div>
     {:else}
-        <ScrollArea class="flex-1 -mr-4 pr-4">
+        <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
             <div class="flex flex-col gap-6 pb-8">
                 {#if activeTab === 'model'}
                     <ModelTab preset={$activePreset!} />

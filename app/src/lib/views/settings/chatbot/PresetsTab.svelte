@@ -1,19 +1,36 @@
 <script lang="ts">
-    import { Trash2, Plus } from 'lucide-svelte';
+    import { Download, Trash2, Plus, Upload } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
     import { Separator } from '$lib/components/ui/separator';
     import { Badge } from '$lib/components/ui/badge';
     import { presets, activePreset, selectPreset, createPreset, deletePreset } from '$lib/stores';
+    import { exportPresetFile, importPresetFile } from '$lib/managers/preset';
+    import type { PresetFileExport } from '$lib/porters/preset';
 
     let newPresetName = $state('');
+    let importInput = $state<HTMLInputElement>();
+    let exportFormat = $state<'risup' | 'keipreset'>('risup');
 
     async function handleCreatePreset() {
         if (!newPresetName.trim()) return;
         const preset = await createPreset({ name: newPresetName });
         await selectPreset(preset.id);
         newPresetName = '';
+    }
+
+    async function handleImport(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const file = target.files?.[0];
+        if (!file) return;
+        await importPresetFile(file, { select: true });
+        target.value = '';
+    }
+
+    function presetExportRequest(): PresetFileExport {
+        if (exportFormat === 'keipreset') return { kind: 'keipreset' };
+        return { kind: 'risu', format: exportFormat };
     }
 </script>
 
@@ -27,6 +44,16 @@
             <Button onclick={handleCreatePreset} class="gap-1.5">
                 <Plus class="size-4" /> Create
             </Button>
+            <Button variant="outline" class="gap-1.5" onclick={() => importInput?.click()}>
+                <Upload class="size-4" /> Import
+            </Button>
+            <input
+                bind:this={importInput}
+                type="file"
+                accept=".risup,.risupreset,.keipreset,.json"
+                class="hidden"
+                onchange={handleImport}
+            />
         </div>
 
         <Separator />
@@ -55,6 +82,22 @@
                         {:else}
                             <Badge>Active</Badge>
                         {/if}
+                        <select
+                            bind:value={exportFormat}
+                            class="h-8 rounded-md border bg-background px-2 text-xs"
+                            aria-label="Preset export format"
+                        >
+                            <option value="risup">Risu .risup</option>
+                            <option value="keipreset">Kei .keipreset</option>
+                        </select>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onclick={() => exportPresetFile(preset.id, presetExportRequest())}
+                            aria-label="Export preset"
+                        >
+                            <Download class="size-4" />
+                        </Button>
                         <Button
                             size="sm"
                             variant="ghost"

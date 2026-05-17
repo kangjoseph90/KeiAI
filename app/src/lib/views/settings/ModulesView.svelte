@@ -11,12 +11,16 @@
     import { Input } from '$lib/components/ui/input';
     import { Card, CardContent } from '$lib/components/ui/card';
     import { Badge } from '$lib/components/ui/badge';
-    import { Pencil, Plus, Trash2 } from 'lucide-svelte';
+    import { Download, Pencil, Plus, Trash2, Upload } from 'lucide-svelte';
     import ModuleCard from '../modules/ModuleCard.svelte';
+    import { exportModuleFile, importModuleFile } from '$lib/managers/module';
+    import type { ModuleFileExport } from '$lib/porters/module';
 
     let { moduleId }: { moduleId?: string } = $props();
 
     let newName = $state('');
+    let importInput = $state<HTMLInputElement>();
+    let exportFormat = $state<'risum' | 'keimodule'>('risum');
 
     const selectedModule = $derived(
         moduleId ? ($modules.find((mod) => mod.id === moduleId) ?? null) : null
@@ -28,6 +32,20 @@
         const mod = await createModule({ name, description: '' });
         newName = '';
         navigate({ view: 'settings', moduleId: mod.id });
+    }
+
+    async function handleImport(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const file = target.files?.[0];
+        if (!file) return;
+        const mod = await importModuleFile(file, { select: true });
+        target.value = '';
+        navigate({ view: 'settings', moduleId: mod.id });
+    }
+
+    function moduleExportRequest(): ModuleFileExport {
+        if (exportFormat === 'keimodule') return { kind: 'keimodule' };
+        return { kind: 'risu', format: exportFormat };
     }
 </script>
 
@@ -50,6 +68,16 @@
             <Button class="gap-1.5" onclick={handleCreate}>
                 <Plus class="size-4" /> Create
             </Button>
+            <Button variant="outline" class="gap-1.5" onclick={() => importInput?.click()}>
+                <Upload class="size-4" /> Import
+            </Button>
+            <input
+                bind:this={importInput}
+                type="file"
+                accept=".risum,.keimodule,.json"
+                class="hidden"
+                onchange={handleImport}
+            />
         </div>
 
         <div class="flex flex-col gap-2">
@@ -87,6 +115,21 @@
                                 onclick={() => navigate({ view: 'settings', moduleId: mod.id })}
                             >
                                 <Pencil class="size-4" />
+                            </Button>
+                            <select
+                                bind:value={exportFormat}
+                                class="h-8 rounded-md border bg-background px-2 text-xs"
+                                aria-label="Module export format"
+                            >
+                                <option value="risum">Risu .risum</option>
+                                <option value="keimodule">Kei .keimodule</option>
+                            </select>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onclick={() => exportModuleFile(mod.id, moduleExportRequest())}
+                            >
+                                <Download class="size-4" />
                             </Button>
                             <Button
                                 size="sm"

@@ -131,7 +131,7 @@
     }
 </script>
 
-<div class="flex flex-col h-full bg-background">
+<div class="flex h-full min-h-0 flex-col bg-background">
     <!-- Studio Header -->
     <header class="flex items-center justify-between px-6 py-4 border-b shrink-0">
         <div class="flex items-center gap-4">
@@ -204,7 +204,7 @@
         </div>
     </header>
 
-    <div class="flex flex-1 overflow-hidden">
+    <div class="flex min-h-0 flex-1 overflow-hidden">
         <!-- Sidebar Navigation -->
         <nav class="w-64 border-r bg-muted/30 p-4 flex flex-col gap-1 shrink-0">
             {#each tabs as tab (tab.id)}
@@ -222,13 +222,13 @@
         </nav>
 
         <!-- Main Workspace -->
-        <main class="flex-1 flex flex-col overflow-hidden">
+        <main class="flex min-h-0 flex-1 flex-col overflow-hidden">
             {#if !$activeCharacter}
                 <div class="flex flex-1 items-center justify-center">
                     <p class="text-muted-foreground">Loading character data...</p>
                 </div>
             {:else}
-                <ScrollArea class="flex-1">
+                <ScrollArea class="min-h-0 flex-1">
                     <div class="max-w-4xl mx-auto p-8">
                         {#if activeTab === 'profile'}
                             <ProfileTab

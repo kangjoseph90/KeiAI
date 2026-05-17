@@ -15,7 +15,11 @@ export interface RisuModule {
     trigger?: unknown[];
     regex?: RisuRegexScript[];
     lorebook?: RisuInternalLorebook[];
+    assets?: RisuModuleAsset[];
+    assetData?: Uint8Array[];
 }
+
+export type RisuModuleAsset = [name: string, path: string, extension: string];
 
 export interface RisuInternalLorebook {
     key: string;
@@ -45,14 +49,37 @@ export function readRisuModule(bytes: Uint8Array): RisuModule {
     if (!isRecord(parsed) || parsed.type !== 'risuModule' || !isRecord(parsed.module)) {
         throw new AppError('INVALID_INPUT', 'Invalid Risu module');
     }
-    return parsed.module as unknown as RisuModule;
+    const module = parsed.module as unknown as RisuModule;
+    const assetData: Uint8Array[] = [];
+
+    while (state.offset < bytes.length) {
+        const marker = readByte(bytes, state);
+        if (marker === 0) break;
+        if (marker !== 1) {
+            throw new AppError('INVALID_INPUT', 'Invalid Risu module asset marker');
+        }
+
+        const assetLength = readUint32LE(bytes, state);
+        assetData.push(decodeRPack(readBytes(bytes, state, assetLength)));
+    }
+
+    if (assetData.length > 0) module.assetData = assetData;
+    return module;
 }
 
 export function writeRisuModule(module: RisuModule): Uint8Array {
+    const assetData = module.assetData ?? [];
+    const mainModule: RisuModule = {
+        ...module,
+        ...(module.assets
+            ? { assets: module.assets.map((asset) => [asset[0], '', asset[2]] as RisuModuleAsset) }
+            : {}),
+        assetData: undefined
+    };
     const body = TEXT_ENCODER.encode(
         JSON.stringify(
             {
-                module,
+                module: mainModule,
                 type: 'risuModule'
             },
             null,
@@ -60,14 +87,24 @@ export function writeRisuModule(module: RisuModule): Uint8Array {
         )
     );
     const encoded = encodeRPack(body);
-    const output = new Uint8Array(1 + 1 + 4 + encoded.length + 1);
+    const encodedAssets = assetData.map(encodeRPack);
+    const assetLength = encodedAssets.reduce((sum, asset) => sum + 1 + 4 + asset.length, 0);
+    const output = new Uint8Array(1 + 1 + 4 + encoded.length + assetLength + 1);
     let offset = 0;
     output[offset++] = RISU_MODULE_MAGIC;
     output[offset++] = RISU_MODULE_VERSION;
     writeUint32LE(output, offset, encoded.length);
     offset += 4;
     output.set(encoded, offset);
-    output[offset + encoded.length] = 0;
+    offset += encoded.length;
+    for (const asset of encodedAssets) {
+        output[offset++] = 1;
+        writeUint32LE(output, offset, asset.length);
+        offset += 4;
+        output.set(asset, offset);
+        offset += asset.length;
+    }
+    output[offset] = 0;
     return output;
 }
 

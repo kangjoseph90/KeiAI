@@ -17,7 +17,19 @@
     import { Card, CardContent } from '$lib/components/ui/card';
     import { Label } from '$lib/components/ui/label';
     import AssetView from '$lib/components/AssetView.svelte';
-    import { ArrowLeft, Check, Pencil, Plus, Trash2, X, User, Upload } from 'lucide-svelte';
+    import {
+        ArrowLeft,
+        Check,
+        Download,
+        Pencil,
+        Plus,
+        Trash2,
+        X,
+        User,
+        Upload
+    } from 'lucide-svelte';
+    import { exportPersonaFile, importPersonaFile } from '$lib/managers/persona';
+    import type { PersonaFileExport } from '$lib/porters/persona';
 
     let { personaId }: { personaId?: string } = $props();
 
@@ -26,6 +38,8 @@
     let editDescription = $state('');
     let uploading = $state(false);
     let fileInputRef = $state<HTMLInputElement>();
+    let importInput = $state<HTMLInputElement>();
+    let exportFormat = $state<'png' | 'keipersona'>('png');
     let loadedPersonaId = $state<string | null>(null);
 
     const selectedPersona = $derived(
@@ -49,6 +63,15 @@
         if (!name) return;
         const persona = await createPersona({ name, description: '' });
         newName = '';
+        navigate({ view: 'personaStudio', personaId: persona.id });
+    }
+
+    async function handleImport(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const file = target.files?.[0];
+        if (!file) return;
+        const persona = await importPersonaFile(file, { select: true });
+        target.value = '';
         navigate({ view: 'personaStudio', personaId: persona.id });
     }
 
@@ -90,6 +113,11 @@
     async function handleRemoveAvatar() {
         if (!selectedPersona) return;
         await removePersonaAvatar(selectedPersona.id);
+    }
+
+    function personaExportRequest(): PersonaFileExport {
+        if (exportFormat === 'keipersona') return { kind: 'keipersona' };
+        return { kind: 'risu', format: 'png' };
     }
 </script>
 
@@ -193,6 +221,16 @@
             <Button class="gap-1.5" onclick={handleCreate}>
                 <Plus class="size-4" /> Create
             </Button>
+            <Button variant="outline" class="gap-1.5" onclick={() => importInput?.click()}>
+                <Upload class="size-4" /> Import
+            </Button>
+            <input
+                bind:this={importInput}
+                type="file"
+                accept=".png,.keipersona"
+                class="hidden"
+                onchange={handleImport}
+            />
         </div>
 
         <div class="flex flex-col gap-2">
@@ -222,7 +260,7 @@
                                 {/if}
                             </div>
                         </button>
-                        <div class="flex shrink-0 gap-1">
+                        <div class="flex shrink-0 items-center gap-1">
                             <Button
                                 size="sm"
                                 variant="outline"
@@ -230,6 +268,22 @@
                                     navigate({ view: 'personaStudio', personaId: persona.id })}
                             >
                                 <Pencil class="size-4" />
+                            </Button>
+                            <select
+                                bind:value={exportFormat}
+                                class="h-8 rounded-md border bg-background px-2 text-xs"
+                                aria-label="Persona export format"
+                            >
+                                <option value="png">Risu .png</option>
+                                <option value="keipersona">Kei .keipersona</option>
+                            </select>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onclick={() =>
+                                    exportPersonaFile(persona.id, personaExportRequest())}
+                            >
+                                <Download class="size-4" />
                             </Button>
                             <Button
                                 size="sm"

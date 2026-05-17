@@ -6,6 +6,7 @@ import {
     type CharacterFileExport
 } from '$lib/porters/character';
 import type { Character } from '$lib/services';
+import { downloadBytes, sanitizeFileName } from '$lib/utils/file';
 
 export type ExportCharacterFileRequest = CharacterFileExport;
 
@@ -49,19 +50,4 @@ function exportExtension(request: ExportCharacterFileRequest): string {
 function exportMimeType(request: ExportCharacterFileRequest): string {
     if (request.kind === 'ccv3' && request.format === 'png') return 'image/png';
     return 'application/zip';
-}
-
-function downloadBytes(bytes: Uint8Array, fileName: string, mimeType: string): void {
-    const blob = new Blob([bytes.slice()], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = fileName;
-    anchor.click();
-    URL.revokeObjectURL(url);
-}
-
-function sanitizeFileName(value: string): string {
-    // eslint-disable-next-line no-control-regex
-    return value.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/, '') || 'character';
 }

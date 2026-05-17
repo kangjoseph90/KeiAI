@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { ArrowLeft, IdCard, Trash2, Upload, User, UserRound } from 'lucide-svelte';
+    import { ArrowLeft, Download, IdCard, Trash2, Upload, User, UserRound } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import {
         Card,
@@ -24,10 +24,14 @@
         updatePersonaAvatar
     } from '$lib/stores';
     import { navigate } from '$lib/router';
+    import { exportPersonaFile, importPersonaFile } from '$lib/managers/persona';
+    import type { PersonaFileExport } from '$lib/porters/persona';
 
     let { personaId }: { personaId: string } = $props();
 
     let avatarInput = $state<HTMLInputElement>();
+    let personaInput = $state<HTMLInputElement>();
+    let exportFormat = $state<'png' | 'keipersona'>('png');
 
     function backToContext() {
         if ($activeRoom && $activeChat) {
@@ -53,9 +57,23 @@
         await deletePersona($activePersona.id);
         backToContext();
     }
+
+    async function handleImportPersona(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const file = target.files?.[0];
+        if (!file) return;
+        const persona = await importPersonaFile(file, { select: true });
+        target.value = '';
+        navigate({ view: 'personaStudio', personaId: persona.id });
+    }
+
+    function personaExportRequest(): PersonaFileExport {
+        if (exportFormat === 'keipersona') return { kind: 'keipersona' };
+        return { kind: 'risu', format: 'png' };
+    }
 </script>
 
-<div class="flex h-full flex-col bg-background">
+<div class="flex h-full min-h-0 flex-col bg-background">
     <header class="flex shrink-0 items-center justify-between border-b px-6 py-4">
         <div class="flex items-center gap-4">
             <Button variant="ghost" size="icon" onclick={backToContext} title="Back">
@@ -75,6 +93,41 @@
 
         <div class="flex items-center gap-2">
             <Badge variant="outline" class="font-mono text-[10px]">ID: {personaId}</Badge>
+            <Button
+                variant="outline"
+                size="sm"
+                class="gap-1.5"
+                onclick={() => personaInput?.click()}
+            >
+                <Upload class="size-4" />
+                Import
+            </Button>
+            <input
+                bind:this={personaInput}
+                type="file"
+                accept=".png,.keipersona"
+                class="hidden"
+                onchange={handleImportPersona}
+            />
+            <select
+                bind:value={exportFormat}
+                class="h-8 rounded-md border bg-background px-2 text-xs"
+                aria-label="Persona export format"
+            >
+                <option value="png">Risu .png</option>
+                <option value="keipersona">Kei .keipersona</option>
+            </select>
+            <Button
+                variant="outline"
+                size="sm"
+                class="gap-1.5"
+                disabled={!$activePersona}
+                onclick={() =>
+                    $activePersona && exportPersonaFile($activePersona.id, personaExportRequest())}
+            >
+                <Download class="size-4" />
+                Export
+            </Button>
             <Button variant="destructive" size="sm" class="gap-1.5" onclick={handleDelete}>
                 <Trash2 class="size-4" />
                 Delete
@@ -83,7 +136,7 @@
         </div>
     </header>
 
-    <div class="flex flex-1 overflow-hidden">
+    <div class="flex min-h-0 flex-1 overflow-hidden">
         <nav class="flex w-64 shrink-0 flex-col gap-1 border-r bg-muted/30 p-4">
             <button
                 class="flex items-center gap-3 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm"
@@ -93,13 +146,13 @@
             </button>
         </nav>
 
-        <main class="flex flex-1 flex-col overflow-hidden">
+        <main class="flex min-h-0 flex-1 flex-col overflow-hidden">
             {#if !$activePersona}
                 <div class="flex flex-1 items-center justify-center">
                     <p class="text-muted-foreground">Loading persona data...</p>
                 </div>
             {:else}
-                <ScrollArea class="flex-1">
+                <ScrollArea class="min-h-0 flex-1">
                     <div class="mx-auto max-w-4xl p-8">
                         <section class="space-y-6">
                             <Card>

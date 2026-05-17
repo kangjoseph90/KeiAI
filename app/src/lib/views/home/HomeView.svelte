@@ -15,6 +15,7 @@
         selectMultiRoom
     } from '$lib/stores';
     import { importCharacterFile } from '$lib/managers';
+    import { importPersonaFile } from '$lib/managers/persona';
     import type { RouteState } from '$lib/router';
 
     interface Props {
@@ -31,6 +32,7 @@
     let creatingCharacter = $state(false);
     let creatingPersona = $state(false);
     let importingCharacter = $state(false);
+    let importingPersona = $state(false);
     let roomName = $state('');
     let multiRoomName = $state('');
     let characterName = $state('');
@@ -117,6 +119,21 @@
             onNavigate({ view: 'characterStudio', charId: character.id });
         } finally {
             importingCharacter = false;
+        }
+    }
+
+    async function handleImportPersona(event: Event) {
+        const input = event.currentTarget as HTMLInputElement;
+        const file = input.files?.[0];
+        input.value = '';
+        if (!file || importingPersona) return;
+
+        importingPersona = true;
+        try {
+            const persona = await importPersonaFile(file, { select: true });
+            onNavigate({ view: 'personaStudio', personaId: persona.id });
+        } finally {
+            importingPersona = false;
         }
     }
 
@@ -247,10 +264,28 @@
                     <Button type="submit">Create</Button>
                 </form>
             {:else}
-                <Button class="gap-2" onclick={() => (creatingPersona = true)}>
-                    <Plus class="size-4" />
-                    New Persona
-                </Button>
+                <div class="flex gap-2">
+                    <Button
+                        variant="outline"
+                        class="gap-2"
+                        disabled={importingPersona}
+                        onclick={() => document.getElementById('persona-import-input')?.click()}
+                    >
+                        <Import class="size-4" />
+                        Import
+                    </Button>
+                    <Button class="gap-2" onclick={() => (creatingPersona = true)}>
+                        <Plus class="size-4" />
+                        New Persona
+                    </Button>
+                    <input
+                        id="persona-import-input"
+                        type="file"
+                        class="hidden"
+                        accept=".png,.keipersona"
+                        onchange={handleImportPersona}
+                    />
+                </div>
             {/if}
         </div>
     </header>

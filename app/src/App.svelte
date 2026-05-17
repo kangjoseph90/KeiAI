@@ -182,7 +182,7 @@
         />
 
         <!-- Main Content -->
-        <div class="flex flex-1 flex-col overflow-hidden">
+        <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
             {#if $route.view === 'room' && $route.roomId}
                 {#await import('$lib/views/chat/ChatView.svelte') then m}
                     <m.default roomId={$route.roomId} chatId={$route.chatId} />
