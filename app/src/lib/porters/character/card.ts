@@ -1,8 +1,11 @@
 import type { LLMRole } from '$lib/types/models/llm';
-import type { KeiCharacterPackageV1, KeiLorebookPayload, KeiScriptPayload } from './types';
-import type { CardAsset, CharacterBookEntry, CharacterCardV3, RisuRegexScript } from './ccv3';
-import { addRisuLorebookDecorators } from './lorebook';
+import type { KeiCharacterPackageV1 } from './types';
+import type { CardAsset, CharacterCardV3 } from './ccv3';
 import { bytesToBase64, toKeiPackageJson } from './package';
+import { keiLorebookToRisuCardEntry, keiLorebookToRisuInternal } from '../risu/lorebook';
+import { keiScriptToRisu } from '../risu/script';
+import { sanitizeFileName } from '$lib/utils/file';
+import { writeDefaultVariables } from '../utils';
 
 export type CardAssetUriMode = 'data' | 'png' | 'charx';
 
@@ -31,7 +34,7 @@ export function keiPackageToCard(
             character_book: {
                 extensions: {},
                 recursive_scanning: false,
-                entries: pkg.lorebooks.map(lorebookToCardEntry)
+                entries: pkg.lorebooks.map(keiLorebookToRisuCardEntry)
             },
             assets: pkg.assets
                 .filter((asset) => asset.data)
@@ -41,9 +44,9 @@ export function keiPackageToCard(
             character_version: '',
             extensions: {
                 risuai: {
-                    customScripts: pkg.scripts.map(scriptToRisuRegex),
+                    customScripts: pkg.scripts.map(keiScriptToRisu),
                     triggerscript: [],
-                    defaultVariables: defaultVariablesString(pkg.character.defaultVariables),
+                    defaultVariables: writeDefaultVariables(pkg.character.defaultVariables),
                     lowLevelAccess: pkg.character.allowLowLevel
                 },
                 keiai: toKeiPackageJson(pkg, {
@@ -61,22 +64,8 @@ export function keiPackageToRisuModule(pkg: KeiCharacterPackageV1) {
         description: `Module for ${pkg.character.name || 'Imported Character'}`,
         id: 'keiai_export_module',
         trigger: [],
-        regex: pkg.scripts.map(scriptToRisuRegex),
-        lorebook: pkg.lorebooks.map((lorebook) => ({
-            key: lorebook.key,
-            secondkey: lorebook.secondKey,
-            insertorder: lorebook.order,
-            comment: lorebook.name,
-            content: addRisuLorebookDecorators(lorebook),
-            mode: lorebook.useMultipleKeys
-                ? 'multiple'
-                : lorebook.alwaysActive
-                  ? 'constant'
-                  : 'normal',
-            alwaysActive: lorebook.alwaysActive,
-            selective: lorebook.useMultipleKeys,
-            useRegex: lorebook.useRegex
-        }))
+        regex: pkg.scripts.map(keiScriptToRisu),
+        lorebook: pkg.lorebooks.map(keiLorebookToRisuInternal)
     };
 }
 
@@ -86,7 +75,9 @@ export function assetPath(pkg: KeiCharacterPackageV1, assetId: string): string {
     const ext = assetExt(asset?.data);
     const type = isAvatar ? 'icon' : 'x-risu-asset';
     const media = ext === 'mp3' || ext === 'wav' || ext === 'ogg' ? 'audio' : 'images';
-    const name = isAvatar ? 'main' : safeName(pkg.character.assets.refs[assetId]?.name || assetId);
+    const name = isAvatar
+        ? 'main'
+        : sanitizeFileName(pkg.character.assets.refs[assetId]?.name || assetId);
     return `assets/${type}/${media}/${name}.${ext}`;
 }
 
@@ -115,59 +106,6 @@ function assetUri(pkg: KeiCharacterPackageV1, assetId: string, uriMode: CardAsse
     const asset = pkg.assets.find((item) => item.id === assetId);
     const ext = assetExt(asset?.data);
     return asset?.data ? `data:${mimeType(ext)};base64,${bytesToBase64(asset.data)}` : '';
-}
-
-function lorebookToCardEntry(lorebook: KeiLorebookPayload): CharacterBookEntry {
-    return {
-        keys: splitKeys(lorebook.key),
-        secondary_keys: lorebook.useMultipleKeys ? splitKeys(lorebook.secondKey) : undefined,
-        content: addRisuLorebookDecorators(lorebook),
-        extensions: {},
-        enabled: !lorebook.disabled,
-        insertion_order: lorebook.order,
-        use_regex: lorebook.useRegex,
-        constant: lorebook.alwaysActive,
-        selective: lorebook.useMultipleKeys,
-        name: lorebook.name,
-        comment: lorebook.name,
-        mode: lorebook.useMultipleKeys ? 'multiple' : lorebook.alwaysActive ? 'constant' : 'normal'
-    };
-}
-
-function scriptToRisuRegex(script: KeiScriptPayload): RisuRegexScript {
-    return {
-        comment: script.name,
-        in: script.regex,
-        out: script.replacement,
-        type: script.enabled ? scriptPhase(script.phase) : 'disabled',
-        flag: script.advanced ? script.flag : 'g',
-        ableFlag: script.advanced
-    };
-}
-
-function scriptPhase(phase: KeiScriptPayload['phase']): string {
-    if (phase === 'input') return 'editinput';
-    if (phase === 'request') return 'editprocess';
-    if (phase === 'output') return 'editoutput';
-    return 'editdisplay';
-}
-
-function defaultVariablesString(vars: Record<string, string>): string {
-    return Object.entries(vars)
-        .map(([key, value]) => `${key}=${value}`)
-        .join('\n');
-}
-
-function splitKeys(value: string): string[] {
-    return value
-        .split(',')
-        .map((key) => key.trim())
-        .filter(Boolean);
-}
-
-function safeName(value: string): string {
-    // eslint-disable-next-line no-control-regex
-    return value.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/, '') || 'asset';
 }
 
 function assetExt(bytes: Uint8Array | undefined): string {

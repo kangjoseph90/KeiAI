@@ -81,6 +81,9 @@ function makePreset(promptBlocks: Record<string, PromptBlock>): Preset {
         lorebookRatio: 0.2,
         lorebookScanDepth: 5,
         memoryRatio: 0.2,
+        defaultVariables: {},
+        globalVariables: {},
+        customToggles: {},
         scripts: { refs: {}, folders: {} }
     };
 }

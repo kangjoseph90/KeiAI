@@ -2,8 +2,22 @@ import { compressSync, decompressSync } from 'fflate';
 import { decode, encode } from 'msgpackr';
 import type { LLMRole } from '$lib/types/models/llm';
 import { AppError } from '$lib/types/errors';
-import { decodeRPack, encodeRPack } from '../character/rpack';
+import type { PresetCustomToggle } from '$lib/services';
+import { generateId } from '$lib/utils/id';
+import type { RisuRegexScript } from '../risu/script';
+import { decodeRPack, encodeRPack } from '../risu/rpack';
+import { keiScriptToRisu, risuScriptToKei } from '../risu/script';
 import type { KeiPresetPackageV1 } from './types';
+import {
+    isRecord,
+    normalizeCharacterMacros,
+    readDefaultVariables,
+    refs,
+    sortOrder,
+    writeDefaultVariables
+} from '../utils';
+
+import { compareSortOrder } from '../../utils/ordering';
 
 const TEXT_ENCODER = new TextEncoder();
 const RISU_PRESET_KEY = 'risupreset';
@@ -46,6 +60,9 @@ interface RisuPreset {
     promptPreprocess?: boolean;
     bias?: [string, number][];
     formatingOrder?: string[];
+    regex?: RisuRegexScript[];
+    customPromptTemplateToggle?: string;
+    templateDefaultVariables?: string;
 }
 
 export async function readRisuPreset(
@@ -93,6 +110,13 @@ export function readRisuPresetJson(value: unknown): KeiPresetPackageV1 {
 function risuPresetToKeiPreset(risu: RisuPreset): KeiPresetPackageV1 {
     const promptItems = readPromptItems(risu);
     const hasPostEverything = promptItems.some((item) => item.type === 'postEverything');
+    const temperature = readRisuPercent(risu.temperature);
+    const frequencyPenalty = readRisuPercent(risu.frequencyPenalty);
+    const presencePenalty = readRisuPercent(risu.PresensePenalty);
+    const topP = readRisuDisabledNumber(risu.top_p);
+    const scripts = (risu.regex ?? []).map(risuScriptToKei);
+    const customToggles = readRisuCustomToggles(risu.customPromptTemplateToggle ?? '');
+    const globalVariables = initializeRisuToggleVariables(customToggles);
     const promptBlocks = Object.fromEntries(
         promptItems
             .map((item, index) => risuPromptToKeiBlock(item, index, hasPostEverything))
@@ -118,14 +142,10 @@ function risuPresetToKeiPreset(risu: RisuPreset): KeiPresetPackageV1 {
                 id: risu.aiModel ?? 'openai::gpt-5.4',
                 provider: 'openai',
                 parameters: {
-                    ...(risu.temperature != null ? { temperature: risu.temperature / 100 } : {}),
-                    ...(risu.frequencyPenalty != null
-                        ? { frequency_penalty: risu.frequencyPenalty / 100 }
-                        : {}),
-                    ...(risu.PresensePenalty != null
-                        ? { presence_penalty: risu.PresensePenalty / 100 }
-                        : {}),
-                    ...(risu.top_p != null ? { top_p: risu.top_p } : {})
+                    ...(temperature != null ? { temperature } : {}),
+                    ...(frequencyPenalty != null ? { frequency_penalty: frequencyPenalty } : {}),
+                    ...(presencePenalty != null ? { presence_penalty: presencePenalty } : {}),
+                    ...(topP != null ? { top_p: topP } : {})
                 }
             },
             auxModel: {
@@ -134,14 +154,17 @@ function risuPresetToKeiPreset(risu: RisuPreset): KeiPresetPackageV1 {
                 parameters: {}
             },
             promptBlocks,
-            maxResponse: risu.maxResponse ?? 300,
-            maxContext: risu.maxContext ?? 4000,
+            maxResponse: readRisuDisabledNumber(risu.maxResponse) ?? 300,
+            maxContext: readRisuDisabledNumber(risu.maxContext) ?? 4000,
             lorebookRatio: 0.2,
             memoryRatio: 0.2,
             lorebookScanDepth: 5,
-            scripts: { refs: {}, folders: {} }
+            defaultVariables: readDefaultVariables(risu.templateDefaultVariables),
+            globalVariables,
+            customToggles,
+            scripts: refs(scripts)
         },
-        scripts: []
+        scripts
     };
 }
 
@@ -163,12 +186,74 @@ function keiPresetToRisuPreset(pkg: KeiPresetPackageV1): RisuPreset {
         promptPreprocess: false,
         bias: [],
         formatingOrder: [],
+        regex: pkg.scripts.map(keiScriptToRisu),
+        customPromptTemplateToggle: writeRisuCustomToggles(pkg.preset.customToggles),
+        templateDefaultVariables: writeDefaultVariables(pkg.preset.defaultVariables),
         promptTemplate: Object.values(pkg.preset.promptBlocks)
-            .sort((a, b) => a.sortOrder.localeCompare(b.sortOrder))
+            .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder))
             .filter((block) => block.enabled)
             .map(keiBlockToRisuPrompt),
         keiai: pkg
     };
+}
+
+function readRisuCustomToggles(value: string): Record<string, PresetCustomToggle> {
+    const lines = value.split(/\r?\n/);
+    return Object.fromEntries(
+        lines
+            .map((line, index): PresetCustomToggle | null => {
+                const id = generateId();
+                const [key, label, type, optionText] = line.split('=');
+                if (
+                    type === 'group' ||
+                    type === 'groupEnd' ||
+                    type === 'caption' ||
+                    type === 'divider'
+                ) {
+                    return { id, sortOrder: sortOrder(index), key, label, type };
+                }
+                if (!key || !label) return null;
+                if (type === 'select') {
+                    return {
+                        id,
+                        sortOrder: sortOrder(index),
+                        key,
+                        label,
+                        type,
+                        options: optionText?.split(',').map((item) => item.trim()) ?? []
+                    };
+                }
+                if (type === 'text' || type === 'textarea')
+                    return { id, sortOrder: sortOrder(index), key, label, type };
+                return { id, sortOrder: sortOrder(index), key, label, type: 'checkbox' };
+            })
+            .filter((toggle): toggle is PresetCustomToggle => toggle !== null)
+            .map((toggle) => [toggle.id, toggle])
+    );
+}
+
+function writeRisuCustomToggles(toggles: Record<string, PresetCustomToggle>): string {
+    return Object.values(toggles)
+        .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder))
+        .map((toggle) => {
+            if (toggle.type === 'checkbox') return `${toggle.key}=${toggle.label}`;
+            if (toggle.type === 'select')
+                return `${toggle.key}=${toggle.label}=select=${toggle.options.join(',')}`;
+            return `${toggle.key ?? ''}=${toggle.label ?? ''}=${toggle.type}`;
+        })
+        .join('\n');
+}
+
+function initializeRisuToggleVariables(
+    toggles: Record<string, PresetCustomToggle>
+): Record<string, string> {
+    const variables: Record<string, string> = {};
+    for (const toggle of Object.values(toggles)) {
+        if (!('key' in toggle) || !toggle.key) continue;
+        variables[`toggle_${toggle.key}`] =
+            toggle.type === 'select' ? '0' : toggle.type === 'checkbox' ? '0' : '';
+    }
+    return variables;
 }
 
 function readPromptItems(risu: RisuPreset): RisuPromptItem[] {
@@ -192,14 +277,14 @@ function risuPromptToKeiBlock(item: RisuPromptItem, index: number, hasPostEveryt
             name,
             type: 'character' as const,
             role: 'system' as LLMRole,
-            format: item.innerFormat
+            format: optionalFormat(item.innerFormat)
         };
     if (item.type === 'persona')
         return {
             name,
             type: 'persona' as const,
             role: 'system' as LLMRole,
-            format: item.innerFormat
+            format: optionalFormat(item.innerFormat)
         };
     if (item.type === 'lorebook') {
         return {
@@ -216,14 +301,14 @@ function risuPromptToKeiBlock(item: RisuPromptItem, index: number, hasPostEveryt
             name,
             type: 'memory' as const,
             role: 'system' as LLMRole,
-            format: item.innerFormat
+            format: optionalFormat(item.innerFormat)
         };
     if (item.type === 'authornote')
         return {
             name,
             type: 'chatNote' as const,
             role: 'system' as LLMRole,
-            format: item.innerFormat
+            format: optionalFormat(item.innerFormat)
         };
     if (item.type === 'chatML' || item.type === 'cache') return null;
     if (item.type === 'chat') {
@@ -239,14 +324,14 @@ function risuPromptToKeiBlock(item: RisuPromptItem, index: number, hasPostEveryt
             name,
             type: 'characterNote' as const,
             role: risuRoleToKei(item.role),
-            format: item.text
+            format: optionalFormat(item.text)
         };
     }
     return {
         name,
         type: 'text' as const,
         role: risuRoleToKei('role' in item ? item.role : undefined),
-        content: 'text' in item ? (item.text ?? '') : ''
+        content: 'text' in item ? normalizeCharacterMacros(item.text ?? '') : ''
     };
 }
 
@@ -312,6 +397,21 @@ function readPercent(value: unknown, fallback: number): number {
     return typeof value === 'number' ? value * 100 : fallback;
 }
 
+function readRisuPercent(value: unknown): number | undefined {
+    if (typeof value !== 'number' || value === -1000) return undefined;
+    return value / 100;
+}
+
+function readRisuDisabledNumber(value: unknown): number | undefined {
+    if (typeof value !== 'number' || value === -1000) return undefined;
+    return value;
+}
+
+function optionalFormat(value: string | undefined): string | undefined {
+    const normalized = normalizeCharacterMacros(value ?? '');
+    return normalized.trim() ? normalized : undefined;
+}
+
 async function encrypt(data: Uint8Array, keyText: string): Promise<ArrayBuffer> {
     const key = await cryptoKey(keyText);
     return crypto.subtle.encrypt({ name: 'AES-GCM', iv: new Uint8Array(12) }, key, data.slice());
@@ -329,12 +429,4 @@ async function cryptoKey(value: string): Promise<CryptoKey> {
 
 function isKeiPresetPackage(value: unknown): value is KeiPresetPackageV1 {
     return isRecord(value) && value.version === 1 && value.kind === 'keiai.preset';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function sortOrder(index: number): string {
-    return index.toString().padStart(6, '0');
 }

@@ -157,6 +157,22 @@
     let lastRenderTime = 0;
     let renderTimeout: ReturnType<typeof setTimeout> | null = null;
     const RENDER_THROTTLE_MS = 150;
+    const STYLE_BLOCK_REGEX = /<style\b[^>]*>[\s\S]*?<\/style>/gi;
+
+    function protectHtmlStyles(value: string): { text: string; styles: string[] } {
+        const styles: string[] = [];
+        const text = value.replace(STYLE_BLOCK_REGEX, (style) => {
+            const index = styles.push(style) - 1;
+            return `\n<!--kei-style-${index}-->\n`;
+        });
+        return { text, styles };
+    }
+
+    function restoreHtmlStyles(value: string, styles: string[]): string {
+        return value.replace(/<!--kei-style-(\d+)-->/g, (_, index: string) => {
+            return styles[Number(index)] ?? '';
+        });
+    }
 
     async function executeRender(contentToRender: string) {
         if (pendingRefresh) {
@@ -178,11 +194,17 @@
                 display: true,
                 dryRun: true
             };
-            const templated = await runTemplate(contentToRender, templateCtx);
+            // Do not render display macros before display pipeline
+            const templated = await runTemplate(contentToRender, {
+                ...templateCtx,
+                display: false
+            });
             const processed = await runPipeline(message.chatId, 'display', templated, templateCtx);
             const rendered = await runTemplate(processed, templateCtx);
-            const rawHtml = await parseMarkdownAsync(rendered);
-            const sanitized = DOMPurify.sanitize(rawHtml as string);
+            const protectedHtml = protectHtmlStyles(rendered);
+            const rawHtml = await parseMarkdownAsync(protectedHtml.text);
+            const restoredHtml = restoreHtmlStyles(rawHtml as string, protectedHtml.styles);
+            const sanitized = DOMPurify.sanitize(restoredHtml, { ADD_TAGS: ['style'] });
 
             // Update states atomically
             displayContent = rendered;

@@ -23,6 +23,9 @@ export async function importPresetFromKei(pkg: KeiPresetPackageV1): Promise<stri
         lorebookRatio: pkg.preset.lorebookRatio,
         memoryRatio: pkg.preset.memoryRatio,
         lorebookScanDepth: pkg.preset.lorebookScanDepth,
+        defaultVariables: { ...pkg.preset.defaultVariables },
+        globalVariables: { ...pkg.preset.globalVariables },
+        customToggles: structuredClone(pkg.preset.customToggles),
         scripts: { refs: {}, folders: {} }
     });
 

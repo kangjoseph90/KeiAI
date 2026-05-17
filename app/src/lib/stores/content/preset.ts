@@ -6,6 +6,8 @@ import {
     type Preset,
     type PromptBlock,
     type PromptBlockFields,
+    type PresetCustomToggle,
+    type PresetCustomToggleFields,
     type ScriptFields,
     type Script,
     type PresetContent
@@ -70,17 +72,26 @@ export async function loadPresets(): Promise<void> {
 export async function selectPreset(presetId: string): Promise<void> {
     const preset = await getPreset(presetId);
     if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
+    const resolved = await resolveGlobalVariables(preset.id, preset);
     await updateSettings({ presetId: presetId });
 
     const scripts = await ScriptService.listByOwner(presetId);
-    presetScripts.setAll(sortByRefs(scripts, preset.scripts.refs));
+    presetScripts.setAll(sortByRefs(scripts, resolved.scripts.refs));
 }
 
 export async function createPreset(fields: DeepPartial<PresetFields> = {}): Promise<Preset> {
     const settings = await getAppSettings();
+    const baseGlobals = getActivePreset()?.globalVariables ?? {};
 
     // Create Record in DB
-    const preset = await PresetService.create(fields);
+    const preset = await PresetService.create({
+        ...fields,
+        globalVariables: {
+            ...baseGlobals,
+            ...(fields.globalVariables ?? {})
+        }
+    });
+    const resolvedPreset = await resolveGlobalVariables(preset.id, preset);
 
     // Add to parent's refs
     const sortOrder = generateSortOrder(settings.presets.refs);
@@ -95,9 +106,9 @@ export async function createPreset(fields: DeepPartial<PresetFields> = {}): Prom
     }
 
     // Update Store
-    presets.set(preset.id, preset);
+    presets.set(resolvedPreset.id, resolvedPreset);
 
-    return preset;
+    return resolvedPreset;
 }
 
 export async function importPresetPackage(
@@ -106,7 +117,17 @@ export async function importPresetPackage(
         select?: boolean;
     } = {}
 ): Promise<Preset> {
-    const presetId = await importPresetFromKei(pkg);
+    const baseGlobals = getActivePreset()?.globalVariables ?? {};
+    const presetId = await importPresetFromKei({
+        ...pkg,
+        preset: {
+            ...pkg.preset,
+            globalVariables: {
+                ...baseGlobals,
+                ...pkg.preset.globalVariables
+            }
+        }
+    });
 
     const preset = await PresetService.get(presetId);
     if (!preset) {
@@ -124,13 +145,14 @@ export async function importPresetPackage(
         throw error;
     }
 
-    presets.set(preset.id, preset);
+    const resolvedPreset = await resolveGlobalVariables(preset.id, preset);
+    presets.set(resolvedPreset.id, resolvedPreset);
 
     if (options.select) {
-        await selectPreset(preset.id);
+        await selectPreset(resolvedPreset.id);
     }
 
-    return preset;
+    return resolvedPreset;
 }
 
 export async function updatePreset(
@@ -150,6 +172,27 @@ export async function updatePresetContent(
 ): Promise<void> {
     const updated = await PresetService.updateContent(presetId, changes);
     presets.set(presetId, updated);
+}
+
+export async function resolveGlobalVariables(
+    presetId: string,
+    preset: Preset | null = null
+): Promise<Preset> {
+    const current = preset ?? (await getPreset(presetId));
+    if (!current) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
+
+    const globalVariables = { ...current.globalVariables };
+    for (const toggle of Object.values(current.customToggles)) {
+        if (!('key' in toggle) || !toggle.key) continue;
+        const key = `toggle_${toggle.key}`;
+        if (globalVariables[key] !== undefined) continue;
+        globalVariables[key] =
+            toggle.type === 'select' ? '0' : toggle.type === 'checkbox' ? '0' : '';
+    }
+
+    const updated = await PresetService.updateContent(presetId, { globalVariables });
+    presets.set(presetId, updated);
+    return updated;
 }
 
 export async function deletePreset(presetId: string): Promise<void> {
@@ -219,6 +262,31 @@ export async function deletePromptBlock(presetId: string, blockId: string): Prom
     const updated = await PresetService.deleteBlock(presetId, blockId);
 
     // Update Store
+    presets.set(presetId, updated);
+}
+
+export async function createPresetCustomToggle(
+    presetId: string,
+    fields: DeepPartial<PresetCustomToggleFields> & { sortOrder: string }
+): Promise<string> {
+    const { toggleId, preset } = await PresetService.createCustomToggle(presetId, fields);
+    const updated = await resolveGlobalVariables(presetId, preset);
+    presets.set(presetId, updated);
+    return toggleId;
+}
+
+export async function updatePresetCustomToggle(
+    presetId: string,
+    toggleId: string,
+    changes: DeepPartial<PresetCustomToggle>
+): Promise<void> {
+    const preset = await PresetService.updateCustomToggle(presetId, toggleId, changes);
+    const updated = await resolveGlobalVariables(presetId, preset);
+    presets.set(presetId, updated);
+}
+
+export async function deletePresetCustomToggle(presetId: string, toggleId: string): Promise<void> {
+    const updated = await PresetService.deleteCustomToggle(presetId, toggleId);
     presets.set(presetId, updated);
 }
 

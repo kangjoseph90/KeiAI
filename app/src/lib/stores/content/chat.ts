@@ -9,7 +9,7 @@ import {
     type Chat
 } from '$lib/services';
 import type { FolderDef } from '$lib/types/refs';
-import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
+import { compareSortOrder, generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
     roomChats,
     activeChat,
@@ -81,11 +81,13 @@ export async function resolveChatSelections(chatId: string): Promise<void> {
 
     // 1. Get first enabled character/persona IDs
     const charRefs = Object.values(room.characters.refs).filter((r) => r !== undefined);
-    const sortedChars = [...charRefs].sort((a, b) => a.sortOrder.localeCompare(b.sortOrder));
+    const sortedChars = [...charRefs].sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder));
     const firstEnabledCharId = sortedChars.find((r) => r.enabled !== false)?.id;
 
     const personaRefs = Object.values(chat.personas.refs).filter((r) => r !== undefined);
-    const sortedPersonas = [...personaRefs].sort((a, b) => a.sortOrder.localeCompare(b.sortOrder));
+    const sortedPersonas = [...personaRefs].sort((a, b) =>
+        compareSortOrder(a.sortOrder, b.sortOrder)
+    );
     const firstEnabledPersonaId = sortedPersonas.find((r) => r.enabled !== false)?.id;
 
     // 2. Validate/Update Defaults

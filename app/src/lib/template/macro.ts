@@ -7,6 +7,7 @@ import { getCharacter } from '$lib/stores/content/character';
 import { getPersona } from '$lib/stores/content/persona';
 import { getChat } from '$lib/stores/content/chat';
 import { getChatVariable, setChatVariable } from '$lib/managers/chat';
+import { getGlobalVariable } from '$lib/managers/preset';
 
 export async function collectTemplateMacros(ctx: TemplateContext): Promise<Map<string, Macro>> {
     const macros = collectBuiltInMacros();
@@ -147,6 +148,10 @@ function collectBuiltInMacros(): Map<string, Macro> {
     add('getvar', async ([key], ctx) => {
         if (!ctx.chatId || !key) return '';
         return (await getChatVariable(ctx.chatId, key)) ?? '';
+    });
+    add('getglobalvar', async ([key]) => {
+        if (!key) return '';
+        return (await getGlobalVariable(key)) ?? 'null';
     });
     add('setvar', async ([key, value], ctx) => {
         if (!ctx.chatId || !key || ctx.dryRun) return '';

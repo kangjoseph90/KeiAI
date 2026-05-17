@@ -1,15 +1,20 @@
 <script lang="ts">
-    import { Plus } from 'lucide-svelte';
+    import { GripVertical, Plus, Trash2 } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { Label } from '$lib/components/ui/label';
     import { Separator } from '$lib/components/ui/separator';
+    import { Textarea } from '$lib/components/ui/textarea';
     import {
         presetScripts,
         createPresetScript,
         updatePresetScript,
-        deletePresetScript
+        deletePresetScript,
+        updatePresetContent,
+        createPresetCustomToggle,
+        updatePresetCustomToggle,
+        deletePresetCustomToggle
     } from '$lib/stores';
-    import type { Preset, Script } from '$lib/services';
+    import type { Preset, PresetCustomToggle, Script } from '$lib/services';
+    import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
     import ScriptItem from '../../modules/ScriptItem.svelte';
 
     interface Props {
@@ -26,12 +31,151 @@
         return unsub;
     });
 
+    const sortedToggles = $derived(() =>
+        sortByRefs(Object.values(preset.customToggles), preset.customToggles)
+    );
+
     async function handleAddScript() {
         await createPresetScript(preset.id, { name: 'New Script' });
+    }
+
+    async function handleAddToggle() {
+        await createPresetCustomToggle(preset.id, {
+            key: 'new_toggle',
+            label: 'New Toggle',
+            type: 'checkbox',
+            sortOrder: generateSortOrder(
+                Object.fromEntries(
+                    Object.values(preset.customToggles).map((toggle) => [
+                        toggle.id,
+                        { id: toggle.id, sortOrder: toggle.sortOrder }
+                    ])
+                )
+            )
+        });
+    }
+
+    async function moveToggle(id: string, direction: 'up' | 'down') {
+        const toggles = sortedToggles();
+        const index = toggles.findIndex((toggle) => toggle.id === id);
+        if (index === -1) return;
+
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= toggles.length) return;
+
+        const current = toggles[index];
+        const target = toggles[targetIndex];
+        await updatePresetCustomToggle(preset.id, current.id, { sortOrder: target.sortOrder });
+        await updatePresetCustomToggle(preset.id, target.id, { sortOrder: current.sortOrder });
+    }
+
+    function updateToggleType(toggle: PresetCustomToggle, type: PresetCustomToggle['type']) {
+        const base = { type };
+        if (type === 'select') {
+            updatePresetCustomToggle(preset.id, toggle.id, { ...base, options: ['Option'] });
+            return;
+        }
+        updatePresetCustomToggle(preset.id, toggle.id, base);
     }
 </script>
 
 <div class="flex flex-col gap-6">
+    <div class="space-y-2">
+        <h4 class="text-sm font-medium">Custom Toggles</h4>
+        <div class="flex flex-col gap-2 rounded-md border p-2">
+            {#each sortedToggles() as toggle (toggle.id)}
+                <div class="flex flex-col gap-2 border-b pb-2 last:border-0 last:pb-0">
+                    <div class="flex items-center gap-2">
+                        <div class="flex flex-col">
+                            <button
+                                class="flex size-4 items-center justify-center rounded hover:bg-muted"
+                                onclick={() => moveToggle(toggle.id, 'up')}
+                                aria-label="Move toggle up"
+                            >
+                                <GripVertical class="size-3 rotate-90 text-muted-foreground" />
+                            </button>
+                            <button
+                                class="flex size-4 items-center justify-center rounded hover:bg-muted"
+                                onclick={() => moveToggle(toggle.id, 'down')}
+                                aria-label="Move toggle down"
+                            >
+                                <GripVertical class="size-3 -rotate-90 text-muted-foreground" />
+                            </button>
+                        </div>
+                        <input
+                            class="h-8 w-1/4 rounded-md border bg-background px-2 text-xs"
+                            value={'key' in toggle ? (toggle.key ?? '') : ''}
+                            placeholder="key"
+                            oninput={(event) =>
+                                updatePresetCustomToggle(preset.id, toggle.id, {
+                                    key: event.currentTarget.value
+                                })}
+                        />
+                        <input
+                            class="h-8 flex-1 rounded-md border bg-background px-2 text-xs"
+                            value={toggle.label ?? ''}
+                            placeholder="label"
+                            oninput={(event) =>
+                                updatePresetCustomToggle(preset.id, toggle.id, {
+                                    label: event.currentTarget.value
+                                })}
+                        />
+                        <select
+                            class="h-8 w-28 rounded-md border bg-background px-2 text-xs"
+                            value={toggle.type}
+                            onchange={(event) =>
+                                updateToggleType(
+                                    toggle,
+                                    event.currentTarget.value as PresetCustomToggle['type']
+                                )}
+                        >
+                            <option value="checkbox">Checkbox</option>
+                            <option value="select">Select</option>
+                            <option value="text">Text</option>
+                            <option value="textarea">Textarea</option>
+                            <option value="caption">Caption</option>
+                            <option value="divider">Divider</option>
+                            <option value="group">Group</option>
+                            <option value="groupEnd">Group End</option>
+                        </select>
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            class="text-destructive hover:text-destructive"
+                            onclick={() => deletePresetCustomToggle(preset.id, toggle.id)}
+                            aria-label="Delete toggle"
+                        >
+                            <Trash2 class="size-4" />
+                        </Button>
+                    </div>
+                    {#if toggle.type === 'select'}
+                        <div class="flex items-center gap-2 pl-6">
+                            <span class="text-[10px] text-muted-foreground shrink-0">Options:</span>
+                            <input
+                                class="h-8 flex-1 rounded-md border bg-background px-2 text-xs"
+                                value={toggle.options.join(',')}
+                                placeholder="Option A,Option B"
+                                oninput={(event) =>
+                                    updatePresetCustomToggle(preset.id, toggle.id, {
+                                        options: event.currentTarget.value
+                                            .split(',')
+                                            .map((item) => item.trim())
+                                    })}
+                            />
+                        </div>
+                    {/if}
+                </div>
+            {:else}
+                <p class="py-6 text-center text-xs text-muted-foreground">No custom toggles.</p>
+            {/each}
+            <Button size="sm" variant="outline" class="h-8 gap-1.5" onclick={handleAddToggle}>
+                <Plus class="size-3.5" /> Add Toggle
+            </Button>
+        </div>
+    </div>
+
+    <Separator />
+
     <div class="flex items-center justify-between">
         <h4 class="text-sm font-medium">Post-processing Scripts</h4>
         <Button size="sm" variant="outline" class="h-8 gap-1.5" onclick={handleAddScript}>

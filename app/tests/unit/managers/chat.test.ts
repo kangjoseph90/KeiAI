@@ -29,6 +29,7 @@ vi.mock('$lib/stores', () => ({
     createChatLorebook: vi.fn(),
     createMessage: vi.fn(),
     deleteMessage: vi.fn(),
+    getActivePreset: vi.fn(),
     getCharacter: vi.fn(),
     getChat: vi.fn(),
     getMessage: vi.fn(),

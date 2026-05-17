@@ -1,8 +1,10 @@
-import type { LorebookFields, ScriptFields } from '$lib/services';
+import type { LorebookFields } from '$lib/services';
 import { generateId } from '$lib/utils/id';
-import type { CharacterBookEntry, CharacterCardV3, RisuRegexScript } from './ccv3';
-import { readRisuLorebookDecorators } from './lorebook';
+import type { CharacterBookEntry, CharacterCardV3 } from './ccv3';
 import { fromKeiPackageJson, base64ToBytes } from './package';
+import { readRisuLorebookDecorators } from '../risu/lorebook';
+import { risuScriptToKei } from '../risu/script';
+import { normalizeCharacterMacros, readDefaultVariables, sortOrder } from '../utils';
 import type {
     KeiCharacterPackageV1,
     KeiCharacterPayload,
@@ -22,7 +24,7 @@ interface ImportedRisuCharacter {
     defaultVariables: Record<string, string>;
     allowLowLevel: boolean;
     lorebooks: LorebookFields[];
-    scripts: ScriptFields[];
+    scripts: KeiScriptPayload[];
     assets: ImportedRisuAsset[];
 }
 
@@ -65,20 +67,20 @@ function readRisuCharacter(
 
     return {
         name: data.name,
-        description: normalize(data.description),
-        personality: normalize(data.personality),
-        scenario: normalize(data.scenario),
-        firstMessage: normalize(data.first_mes),
-        alternateGreetings: data.alternate_greetings.map(normalize),
-        systemPrompt: normalize(data.system_prompt),
-        postHistoryInstructions: normalize(data.post_history_instructions),
+        description: normalizeCharacterMacros(data.description),
+        personality: normalizeCharacterMacros(data.personality),
+        scenario: normalizeCharacterMacros(data.scenario),
+        firstMessage: normalizeCharacterMacros(data.first_mes),
+        alternateGreetings: data.alternate_greetings.map(normalizeCharacterMacros),
+        systemPrompt: normalizeCharacterMacros(data.system_prompt),
+        postHistoryInstructions: normalizeCharacterMacros(data.post_history_instructions),
         defaultVariables: readDefaultVariables(risuai.defaultVariables),
         allowLowLevel: risuai.lowLevelAccess ?? false,
         lorebooks: (data.character_book?.entries ?? []).map((entry, index) =>
             cardLorebookToFields(entry, index)
         ),
         scripts: (risuai.customScripts ?? []).map((script, index) =>
-            risuScriptToFields(script, index)
+            risuScriptToKei(script, index)
         ),
         assets
     };
@@ -93,12 +95,7 @@ function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPac
             ...lorebook
         })
     );
-    const scripts = risu.scripts.map(
-        (script, index): KeiScriptPayload => ({
-            id: portableId('script', index),
-            ...script
-        })
-    );
+    const scripts = risu.scripts;
 
     const character: KeiCharacterPayload = {
         name: risu.name || 'Imported Character',
@@ -205,8 +202,8 @@ function cardLorebookToFields(entry: CharacterBookEntry, index: number): Loreboo
         name: entry.name ?? entry.comment ?? `Lorebook ${index + 1}`,
         key: entry.keys.join(', '),
         secondKey: entry.secondary_keys?.join(', ') ?? '',
-        content: normalize(entry.content),
-        depth: 0,
+        content: normalizeCharacterMacros(entry.content),
+        depth: 1,
         order: entry.insertion_order,
         alwaysActive: entry.constant ?? false,
         disabled: !entry.enabled,
@@ -219,49 +216,6 @@ function cardLorebookToFields(entry: CharacterBookEntry, index: number): Loreboo
     });
 }
 
-function risuScriptToFields(script: RisuRegexScript, index: number): ScriptFields {
-    return {
-        type: 'regex',
-        name: script.comment ?? 'Script',
-        regex: script.in ?? '',
-        replacement: script.out ?? '',
-        phase: risuScriptPhase(script.type),
-        flag: script.flag ?? 'g',
-        advanced: script.ableFlag ?? false,
-        order: index,
-        repeat: 1,
-        enabled: script.type !== 'disabled'
-    };
-}
-
-function risuScriptPhase(type: string | undefined): ScriptFields['phase'] {
-    if (type === 'editinput') return 'input';
-    if (type === 'editprocess') return 'request';
-    if (type === 'editoutput') return 'output';
-    return 'display';
-}
-
-function readDefaultVariables(value: string | undefined): Record<string, string> {
-    if (!value) return {};
-    const variables: Record<string, string> = {};
-    for (const line of value.split(/\r?\n/)) {
-        const index = line.indexOf('=');
-        if (index <= 0) continue;
-        variables[line.slice(0, index).trim()] = line.slice(index + 1);
-    }
-    return variables;
-}
-
-function normalize(content: string): string {
-    return content
-        .replace(/<\s*(char|bot)\s*>/gi, '{{char}}')
-        .replace(/<\s*user\s*>/gi, '{{user}}');
-}
-
 function portableId(prefix: string, index: number): string {
     return `${prefix}_${index}`;
-}
-
-function sortOrder(index: number): string {
-    return index.toString().padStart(6, '0');
 }

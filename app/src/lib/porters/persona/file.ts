@@ -1,7 +1,8 @@
 import { AppError } from '$lib/types/errors';
-import { isPng, readPng, writePngTextChunks } from '$lib/utils/png';
+import { imageToPng, isPng, readPng, writePngTextChunks } from '$lib/utils/png';
 import { unzip, zip } from '$lib/utils/zip';
 import { base64ToBytes, bytesToBase64 } from '../character/package';
+import { normalizeCharacterMacros } from '../utils';
 import type { KeiPersonaPackageV1 } from './types';
 
 const TEXT_ENCODER = new TextEncoder();
@@ -51,7 +52,7 @@ async function readRisuPersonaPng(bytes: Uint8Array): Promise<KeiPersonaPackageV
         kind: 'keiai.persona',
         persona: {
             name: card.name,
-            description: card.personaPrompt,
+            description: normalizeCharacterMacros(card.personaPrompt),
             avatarAssetId: 'asset_0',
             assets: { refs: {}, folders: {} }
         },
@@ -73,27 +74,6 @@ async function writeRisuPersonaPng(pkg: KeiPersonaPackageV1): Promise<Uint8Array
         [{ key: 'persona', value: bytesToBase64(TEXT_ENCODER.encode(JSON.stringify(card))) }],
         ['persona']
     );
-}
-
-async function imageToPng(bytes: Uint8Array): Promise<Uint8Array | null> {
-    if (isPng(bytes)) return bytes;
-    if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return null;
-
-    const bitmap = await createImageBitmap(new Blob([bytes.slice()])).catch(() => null);
-    if (!bitmap) return null;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(bitmap, 0, 0);
-
-    const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob(resolve, 'image/png');
-    });
-    if (!blob) return null;
-    return new Uint8Array(await blob.arrayBuffer());
 }
 
 async function readKeiPersona(bytes: Uint8Array): Promise<KeiPersonaPackageV1> {

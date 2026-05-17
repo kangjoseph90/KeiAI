@@ -7,7 +7,7 @@ import {
     type KeiCharacterPackageV1
 } from '$lib/porters/character';
 import { classifyAsset } from '$lib/porters/types';
-import { writeRisuModule } from '$lib/porters/character/module';
+import { writeRisuModule } from '$lib/porters/risu/module';
 import { unzip, zip } from '$lib/utils/zip';
 import { AssetService } from '$lib/services/asset';
 import {

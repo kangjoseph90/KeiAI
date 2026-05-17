@@ -73,6 +73,9 @@ describe('PresetService', () => {
         lorebookRatio: 0.2,
         lorebookScanDepth: 5,
         memoryRatio: 0.2,
+        defaultVariables: {},
+        globalVariables: {},
+        customToggles: {},
         scripts: { refs: {}, folders: {} }
     };
 

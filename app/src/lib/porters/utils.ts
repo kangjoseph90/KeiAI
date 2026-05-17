@@ -3,9 +3,56 @@ import { AssetService } from '$lib/services/asset';
 import type { EntityListConfig, FolderDef, OrderedRef } from '$lib/types/refs';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import { generateKeyBetween } from 'fractional-indexing';
 import { classifyAsset, type KeiAssetPayload } from './types';
 
 export type KeiPackageExportMode = 'light' | 'baked';
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+const SORT_ORDER_KEYS: string[] = [];
+
+export function sortOrder(index: number): string {
+    while (SORT_ORDER_KEYS.length <= index) {
+        const previous = SORT_ORDER_KEYS.at(-1) ?? null;
+        SORT_ORDER_KEYS.push(generateKeyBetween(previous, null));
+    }
+    return SORT_ORDER_KEYS[index];
+}
+
+export function refs<T extends { id: string }>(items: T[]): EntityListConfig {
+    return {
+        refs: Object.fromEntries(
+            items.map((item, index) => [item.id, { id: item.id, sortOrder: sortOrder(index) }])
+        ),
+        folders: {}
+    };
+}
+
+export function readDefaultVariables(value: string | undefined): Record<string, string> {
+    if (!value) return {};
+    const variables: Record<string, string> = {};
+    for (const line of value.split(/\r?\n/)) {
+        const index = line.indexOf('=');
+        if (index <= 0) continue;
+        variables[line.slice(0, index).trim()] = line.slice(index + 1);
+    }
+    return variables;
+}
+
+export function writeDefaultVariables(vars: Record<string, string>): string {
+    return Object.entries(vars)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+}
+
+export function normalizeCharacterMacros(content: string): string {
+    return content
+        .replace(/<\s*(char|bot)\s*>/gi, '{{char}}')
+        .replace(/<\s*user\s*>/gi, '{{user}}');
+}
 
 export function createPortableIdMap(ids: string[], prefix: string): Record<string, string> {
     let next = 0;

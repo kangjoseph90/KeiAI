@@ -44,7 +44,7 @@ const defaultLorebookFields: LorebookFields = {
     key: '',
     secondKey: '',
     content: '',
-    depth: 0,
+    depth: 1,
     order: 100,
     alwaysActive: false,
     disabled: false,

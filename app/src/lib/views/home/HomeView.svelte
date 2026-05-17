@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { DoorOpen, Import, Plus, Search, Sparkles, UserRound } from 'lucide-svelte';
+    import { DoorOpen, Import, Plus, Search, Sparkles, Trash2, UserRound } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
@@ -9,6 +9,8 @@
         createMultiRoom,
         createPersona,
         createRoom,
+        deleteCharacter,
+        deletePersona,
         multiRooms,
         personas,
         rooms,
@@ -122,6 +124,11 @@
         }
     }
 
+    async function handleDeleteCharacter(characterId: string, name: string) {
+        if (!confirm(`Delete character "${name}"?`)) return;
+        await deleteCharacter(characterId);
+    }
+
     async function handleImportPersona(event: Event) {
         const input = event.currentTarget as HTMLInputElement;
         const file = input.files?.[0];
@@ -135,6 +142,11 @@
         } finally {
             importingPersona = false;
         }
+    }
+
+    async function handleDeletePersona(personaId: string, name: string) {
+        if (!confirm(`Delete persona "${name}"?`)) return;
+        await deletePersona(personaId);
     }
 
     async function handleCreatePersona() {
@@ -476,41 +488,66 @@
                 {:else}
                     <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {#each filteredCharacters() as character (character.id)}
-                            <button
+                            <div
                                 class="flex min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
-                                onclick={() =>
-                                    onNavigate({ view: 'characterStudio', charId: character.id })}
                             >
                                 <div class="flex w-full items-center gap-3">
-                                    <div
-                                        class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
+                                    <button
+                                        class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                                        onclick={() =>
+                                            onNavigate({
+                                                view: 'characterStudio',
+                                                charId: character.id
+                                            })}
                                     >
-                                        {#if character.avatarAssetId}
-                                            <AssetView
-                                                id={character.avatarAssetId}
-                                                alt={character.name}
-                                                class="size-full object-cover"
-                                            />
-                                        {:else}
-                                            {initial(character.name)}
-                                        {/if}
-                                    </div>
-                                    <div class="min-w-0">
-                                        <h2 class="truncate text-sm font-semibold">
-                                            {character.name}
-                                        </h2>
-                                        <p class="mt-0.5 truncate text-xs text-muted-foreground">
-                                            {character.description || 'No description'}
-                                        </p>
-                                    </div>
+                                        <div
+                                            class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
+                                        >
+                                            {#if character.avatarAssetId}
+                                                <AssetView
+                                                    id={character.avatarAssetId}
+                                                    alt={character.name}
+                                                    class="size-full object-cover"
+                                                />
+                                            {:else}
+                                                {initial(character.name)}
+                                            {/if}
+                                        </div>
+                                        <div class="min-w-0">
+                                            <h2 class="truncate text-sm font-semibold">
+                                                {character.name}
+                                            </h2>
+                                            <p
+                                                class="mt-0.5 truncate text-xs text-muted-foreground"
+                                            >
+                                                {character.description || 'No description'}
+                                            </p>
+                                        </div>
+                                    </button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        class="shrink-0 text-muted-foreground hover:text-destructive"
+                                        title="Delete character"
+                                        aria-label={`Delete character ${character.name}`}
+                                        onclick={() =>
+                                            handleDeleteCharacter(character.id, character.name)}
+                                    >
+                                        <Trash2 class="size-4" />
+                                    </Button>
                                 </div>
-                                <div
+                                <button
                                     class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                    onclick={() =>
+                                        onNavigate({
+                                            view: 'characterStudio',
+                                            charId: character.id
+                                        })}
                                 >
                                     <UserRound class="size-3.5" />
                                     Open studio
-                                </div>
-                            </button>
+                                </button>
+                            </div>
                         {:else}
                             <div
                                 class="col-span-full rounded-lg border border-dashed p-10 text-center"
@@ -541,44 +578,63 @@
             {:else}
                 <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {#each filteredPersonas() as persona (persona.id)}
-                        <button
+                        <div
                             class="flex min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
-                            onclick={() =>
-                                onNavigate({
-                                    view: 'personaStudio',
-                                    personaId: persona.id
-                                })}
                         >
                             <div class="flex w-full items-center gap-3">
-                                <div
-                                    class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
+                                <button
+                                    class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                                    onclick={() =>
+                                        onNavigate({
+                                            view: 'personaStudio',
+                                            personaId: persona.id
+                                        })}
                                 >
-                                    {#if persona.avatarAssetId}
-                                        <AssetView
-                                            id={persona.avatarAssetId}
-                                            alt={persona.name}
-                                            class="size-full object-cover"
-                                        />
-                                    {:else}
-                                        {initial(persona.name)}
-                                    {/if}
-                                </div>
-                                <div class="min-w-0">
-                                    <h2 class="truncate text-sm font-semibold">
-                                        {persona.name}
-                                    </h2>
-                                    <p class="mt-0.5 truncate text-xs text-muted-foreground">
-                                        {persona.description || 'No description'}
-                                    </p>
-                                </div>
+                                    <div
+                                        class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
+                                    >
+                                        {#if persona.avatarAssetId}
+                                            <AssetView
+                                                id={persona.avatarAssetId}
+                                                alt={persona.name}
+                                                class="size-full object-cover"
+                                            />
+                                        {:else}
+                                            {initial(persona.name)}
+                                        {/if}
+                                    </div>
+                                    <div class="min-w-0">
+                                        <h2 class="truncate text-sm font-semibold">
+                                            {persona.name}
+                                        </h2>
+                                        <p class="mt-0.5 truncate text-xs text-muted-foreground">
+                                            {persona.description || 'No description'}
+                                        </p>
+                                    </div>
+                                </button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    class="shrink-0 text-muted-foreground hover:text-destructive"
+                                    title="Delete persona"
+                                    aria-label={`Delete persona ${persona.name}`}
+                                    onclick={() => handleDeletePersona(persona.id, persona.name)}
+                                >
+                                    <Trash2 class="size-4" />
+                                </Button>
                             </div>
-                            <div
+                            <button
                                 class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                onclick={() =>
+                                    onNavigate({
+                                        view: 'personaStudio',
+                                        personaId: persona.id
+                                    })}
                             >
                                 <UserRound class="size-3.5" />
                                 Open studio
-                            </div>
-                        </button>
+                            </button>
+                        </div>
                     {:else}
                         <div class="col-span-full rounded-lg border border-dashed p-10 text-center">
                             <p class="text-sm text-muted-foreground">No personas found.</p>

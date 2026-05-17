@@ -41,6 +41,9 @@ describe('preset porters', () => {
         lorebookRatio: 0.2,
         memoryRatio: 0.2,
         lorebookScanDepth: 5,
+        defaultVariables: {},
+        globalVariables: {},
+        customToggles: {},
         scripts: {
             refs: { script_real: { id: 'script_real', sortOrder: 'a' } },
             folders: {}
@@ -139,6 +142,9 @@ function makePackage(overrides: Partial<KeiPresetPackageV1> = {}): KeiPresetPack
             lorebookRatio: 0.3,
             memoryRatio: 0.3,
             lorebookScanDepth: 10,
+            defaultVariables: {},
+            globalVariables: {},
+            customToggles: {},
             scripts: {
                 refs: { script_0: { id: 'script_0', sortOrder: 'a' } },
                 folders: {}

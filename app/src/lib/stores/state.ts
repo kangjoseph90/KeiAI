@@ -26,7 +26,7 @@ import type {
 import type { AssetSyncStatus, SyncStatus } from '$lib/services';
 import type { DisplayMessage, ChatTask } from './types';
 import { EntityStore } from './entity_store';
-import { sortByRefs } from '$lib/utils/ordering';
+import { compareSortOrder, sortByRefs } from '$lib/utils/ordering';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
@@ -137,7 +137,7 @@ export const chatPersonas = derived(
 );
 
 export const messages = new EntityStore<Message>({
-    sortFn: (a, b) => a.sortOrder.localeCompare(b.sortOrder)
+    sortFn: (a, b) => compareSortOrder(a.sortOrder, b.sortOrder)
 });
 export const messageIndexes = writable(new Map<string, number>());
 

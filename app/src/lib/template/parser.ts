@@ -102,10 +102,16 @@ export function parseTemplate(text: string): Template {
             continue;
         }
 
-        const closeName = normalizeName(parsed.name);
         const frame = stack.at(-1);
 
-        if (!frame || frame.name !== closeName) {
+        if (!frame) {
+            pushText(current(), tag.raw);
+            cursor = tag.end;
+            continue;
+        }
+
+        const closeName = normalizeName(parsed.name);
+        if (closeName && frame.name !== closeName) {
             pushText(current(), tag.raw);
             cursor = tag.end;
             continue;

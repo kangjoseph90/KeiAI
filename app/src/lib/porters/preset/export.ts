@@ -27,6 +27,9 @@ export async function exportPresetToKei(presetId: string): Promise<KeiPresetPack
         lorebookRatio: preset.lorebookRatio,
         memoryRatio: preset.memoryRatio,
         lorebookScanDepth: preset.lorebookScanDepth,
+        defaultVariables: { ...preset.defaultVariables },
+        globalVariables: { ...preset.globalVariables },
+        customToggles: structuredClone(preset.customToggles),
         scripts: exportEntityList(preset.scripts, scriptMap, 'script_folder')
     };
 

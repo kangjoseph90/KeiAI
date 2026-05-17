@@ -1,5 +1,6 @@
 import { AppError } from '$lib/types/errors';
 import {
+    imageToPng,
     isPng,
     readPng,
     writePngTextChunks,
@@ -61,24 +62,5 @@ async function basePngFor(pkg: KeiCharacterPackageV1): Promise<Uint8Array> {
         : undefined;
     if (!avatar) return EMPTY_PNG;
     if (isPng(avatar)) return avatar;
-    return (await convertImageToPng(avatar)) ?? EMPTY_PNG;
-}
-
-async function convertImageToPng(bytes: Uint8Array): Promise<Uint8Array | null> {
-    if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return null;
-    const bitmap = await createImageBitmap(new Blob([bytes.slice()])).catch(() => null);
-    if (!bitmap) return null;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(bitmap, 0, 0);
-
-    const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob(resolve, 'image/png');
-    });
-    if (!blob) return null;
-    return new Uint8Array(await blob.arrayBuffer());
+    return (await imageToPng(avatar)) ?? EMPTY_PNG;
 }

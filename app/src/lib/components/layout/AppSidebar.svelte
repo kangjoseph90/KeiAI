@@ -18,6 +18,7 @@
     import { Input } from '$lib/components/ui/input';
     import {
         activeChat,
+        activePreset,
         activeRoom,
         addRoomCharacter,
         characters,
@@ -34,8 +35,10 @@
         setChatSelectedCharacter,
         updateChat
     } from '$lib/stores';
+    import { setGlobalVariable } from '$lib/managers';
     import type { RouteState } from '$lib/router';
     import { syncChatGreetings } from '$lib/managers';
+    import { compareSortOrder } from '$lib/utils/ordering';
 
     interface Props {
         collapsed?: boolean;
@@ -124,6 +127,10 @@
         if ($activeChat?.id === chatId) {
             onNavigate({ view: 'room', roomId: $activeRoom.id });
         }
+    }
+
+    async function handleToggleChange(key: string, value: string) {
+        await setGlobalVariable(`toggle_${key}`, value);
     }
 
     function startRenameChat(chatId: string, title: string) {
@@ -398,6 +405,100 @@
                     {/each}
                 </div>
             </div>
+
+            {#if $activePreset && Object.keys($activePreset.customToggles).length > 0}
+                <div class="max-h-56 overflow-y-auto border-t border-sidebar-border p-3">
+                    <p class="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
+                        Toggles
+                    </p>
+                    <div class="flex flex-col gap-2">
+                        {#each Object.values($activePreset.customToggles).sort( (a, b) => compareSortOrder(a.sortOrder, b.sortOrder) ) as toggle (toggle.id)}
+                            {#if toggle.type === 'caption'}
+                                <p class="text-[11px] text-muted-foreground">{toggle.label}</p>
+                            {:else if toggle.type === 'divider'}
+                                <div class="flex items-center gap-2 py-1">
+                                    {#if toggle.label}
+                                        <span class="text-[10px] text-muted-foreground"
+                                            >{toggle.label}</span
+                                        >
+                                    {/if}
+                                    <div class="h-px flex-1 bg-sidebar-border"></div>
+                                </div>
+                            {:else if toggle.type === 'group' || toggle.type === 'groupEnd'}
+                                {#if toggle.type === 'group' && toggle.label}
+                                    <p class="pt-1 text-[11px] font-medium">{toggle.label}</p>
+                                {/if}
+                            {:else if toggle.type === 'select'}
+                                <label class="flex items-center justify-between gap-2 text-xs">
+                                    <span class="truncate">{toggle.label}</span>
+                                    <select
+                                        class="h-7 w-32 rounded-md border bg-background px-2 text-xs"
+                                        value={$activePreset.globalVariables[
+                                            `toggle_${toggle.key}`
+                                        ] ?? '0'}
+                                        onchange={(event) =>
+                                            handleToggleChange(
+                                                toggle.key,
+                                                event.currentTarget.value
+                                            )}
+                                    >
+                                        {#each toggle.options as option, optionIndex (optionIndex)}
+                                            <option value={String(optionIndex)}>{option}</option>
+                                        {/each}
+                                    </select>
+                                </label>
+                            {:else if toggle.type === 'text'}
+                                <label class="flex items-center justify-between gap-2 text-xs">
+                                    <span class="truncate">{toggle.label}</span>
+                                    <Input
+                                        class="h-7 w-32 text-xs"
+                                        value={$activePreset.globalVariables[
+                                            `toggle_${toggle.key}`
+                                        ] ?? ''}
+                                        oninput={(event) =>
+                                            handleToggleChange(
+                                                toggle.key,
+                                                event.currentTarget.value
+                                            )}
+                                    />
+                                </label>
+                            {:else if toggle.type === 'textarea'}
+                                <label class="flex flex-col gap-1 text-xs">
+                                    <span class="truncate">{toggle.label}</span>
+                                    <textarea
+                                        class="min-h-16 rounded-md border bg-background px-2 py-1 text-xs"
+                                        value={$activePreset.globalVariables[
+                                            `toggle_${toggle.key}`
+                                        ] ?? ''}
+                                        oninput={(event) =>
+                                            handleToggleChange(
+                                                toggle.key,
+                                                event.currentTarget.value
+                                            )}
+                                    ></textarea>
+                                </label>
+                            {:else if toggle.key}
+                                {@const toggleKey = toggle.key}
+                                <label class="flex items-center gap-2 text-xs">
+                                    <input
+                                        type="checkbox"
+                                        class="size-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                                        checked={$activePreset.globalVariables[
+                                            `toggle_${toggleKey}`
+                                        ] === '1'}
+                                        onchange={(event) =>
+                                            handleToggleChange(
+                                                toggleKey,
+                                                event.currentTarget.checked ? '1' : '0'
+                                            )}
+                                    />
+                                    <span class="truncate">{toggle.label}</span>
+                                </label>
+                            {/if}
+                        {/each}
+                    </div>
+                </div>
+            {/if}
         </div>
     {/if}
 </aside>

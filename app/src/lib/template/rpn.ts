@@ -11,6 +11,7 @@ const operators: Record<string, Operator> = {
     '||': { precedence: 1, associativity: 'left', arity: 2, run: (a, b = 0) => (a || b ? 1 : 0) },
     '&&': { precedence: 2, associativity: 'left', arity: 2, run: (a, b = 0) => (a && b ? 1 : 0) },
     '==': { precedence: 3, associativity: 'left', arity: 2, run: (a, b = 0) => (a === b ? 1 : 0) },
+    '=': { precedence: 3, associativity: 'left', arity: 2, run: (a, b = 0) => (a === b ? 1 : 0) },
     '!=': { precedence: 3, associativity: 'left', arity: 2, run: (a, b = 0) => (a !== b ? 1 : 0) },
     '<': { precedence: 4, associativity: 'left', arity: 2, run: (a, b = 0) => (a < b ? 1 : 0) },
     '>': { precedence: 4, associativity: 'left', arity: 2, run: (a, b = 0) => (a > b ? 1 : 0) },

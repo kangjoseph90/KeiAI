@@ -2,7 +2,7 @@ import { AppError } from '$lib/types/errors';
 import { unzip, zip, type ZipInput } from '$lib/utils/zip';
 import { assetPath, keiPackageToCard, keiPackageToRisuModule } from './card';
 import { parseCharacterCardV3, type CharacterBookEntry } from './ccv3';
-import { readRisuModule, writeRisuModule, type RisuInternalLorebook } from './module';
+import { readRisuModule, writeRisuModule, type RisuInternalLorebook } from '../risu/module';
 import { cardToKeiPackage } from './risu';
 import type { KeiCharacterPackageV1 } from './types';
 

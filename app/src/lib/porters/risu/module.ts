@@ -1,6 +1,6 @@
 import { AppError } from '$lib/types/errors';
-import { isRecord } from '$lib/utils/record';
-import type { RisuRegexScript } from './ccv3';
+import { isRecord } from '../utils';
+import type { RisuRegexScript } from './script';
 import { decodeRPack, encodeRPack } from './rpack';
 
 const TEXT_ENCODER = new TextEncoder();

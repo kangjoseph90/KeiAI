@@ -130,7 +130,7 @@ describe('LorebookService', () => {
             expect(result.id).toBe('test-id');
             expect(result.ownerId).toBe('owner-1');
             expect(result.name).toBe('Custom Name');
-            expect(result.depth).toBe(0); // From defaults
+            expect(result.depth).toBe(1); // From defaults
 
             expect(localDB.putRecord).toHaveBeenCalledWith(
                 'lorebooks',
@@ -141,7 +141,7 @@ describe('LorebookService', () => {
                     ownerId: 'owner-1',
                     data: expect.objectContaining({
                         name: 'Custom Name',
-                        depth: 0
+                        depth: 1
                     })
                 })
             );

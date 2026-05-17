@@ -150,6 +150,9 @@ describe('template', () => {
         await expect(interpretTemplate(parseTemplate('{{? 2 + 3 * 4}}'), {}, macros)).resolves.toBe(
             '14'
         );
+        await expect(interpretTemplate(parseTemplate('{{? 2 = 2}}'), {}, macros)).resolves.toBe(
+            '1'
+        );
     });
 
     it('collects charjs macros only when chatId is present', async () => {
@@ -237,6 +240,13 @@ describe('template', () => {
         const template = parseTemplate(
             '{{#if::0}}no{{:elif::{{? 2>1}}}}yes{{:else}}fallback{{/if}}'
         );
+
+        await expect(interpretTemplate(template, {}, macros)).resolves.toBe('yes');
+    });
+
+    it('accepts anonymous block close tags for Risu compatibility', async () => {
+        const macros = await collectTemplateMacros({});
+        const template = parseTemplate('{{#if::1}}yes{{/}}');
 
         await expect(interpretTemplate(template, {}, macros)).resolves.toBe('yes');
     });

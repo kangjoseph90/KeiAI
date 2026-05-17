@@ -18,6 +18,7 @@ import { AppError } from '$lib/types/errors';
 import type { Message } from '$lib/services/content/message';
 import { resolveLorebookEntries } from './lorebook';
 import { toDryRunContext, toMessageContext, toRoleContext } from './context';
+import { compareSortOrder } from '$lib/utils/ordering';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
@@ -345,7 +346,7 @@ function flattenBlocks(
     result: ReadonlyMap<string, PromptBlockResult>
 ): OpenAIChat[] {
     return [...blocks]
-        .sort((a, b) => a.sortOrder.localeCompare(b.sortOrder))
+        .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder))
         .flatMap((block) => result.get(block.id)?.messages ?? []);
 }
 
@@ -494,7 +495,8 @@ async function renderWithFormat(
         recursive: true
     });
 
-    return await runTemplate(format ?? '{{slot}}', ctx, localMacros);
+    const resolvedFormat = format?.trim() ? format : '{{slot}}';
+    return await runTemplate(resolvedFormat, ctx, localMacros);
 }
 
 async function countMessages(messages: OpenAIChat[], tokenizer: LLMTokenizer): Promise<number> {

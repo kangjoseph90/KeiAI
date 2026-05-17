@@ -1,9 +1,11 @@
 import { MessageService, LorebookService } from '$lib/services';
+import { compareSortOrder } from '$lib/utils/ordering';
 import {
     createChat,
     createChatLorebook,
     createMessage,
     deleteMessage,
+    getActivePreset,
     getCharacter,
     getChat,
     getMessage,
@@ -26,7 +28,7 @@ export async function syncChatGreetings(chatId: string): Promise<void> {
 
     const refs = Object.values(room.characters.refs)
         .filter((ref) => ref.enabled !== false)
-        .sort((a, b) => a.sortOrder.localeCompare(b.sortOrder));
+        .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder));
 
     const characters = await Promise.all(refs.map((ref) => getCharacter(ref.id)));
     const variables = await getChatDefaultVariables(chat.id);
@@ -99,6 +101,9 @@ export async function syncChatGreetings(chatId: string): Promise<void> {
 // ─── Variables ──────────────────────────────────────
 
 export async function getChatVariable(chatId: string, key: string): Promise<string | null> {
+    const variables = await getChatVariables(chatId);
+    if (variables[key] !== undefined) return variables[key];
+
     const chat = await getChat(chatId);
     if (!chat || !chat.lastMessageId) return null;
 
@@ -170,13 +175,13 @@ export async function getChatDefaultVariables(chatId: string): Promise<Record<st
 
     const refs = Object.values(room.characters.refs)
         .filter((ref) => ref.enabled !== false)
-        .sort((a, b) => a.sortOrder.localeCompare(b.sortOrder));
+        .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder));
 
     const entries = await Promise.all(
         refs.map(async (ref) => [ref.id, await getCharacter(ref.id)] as const)
     );
 
-    const variables: Record<string, string> = {};
+    const variables: Record<string, string> = { ...(getActivePreset()?.defaultVariables ?? {}) };
     for (const [, character] of entries) {
         if (!character) continue;
         Object.assign(variables, character.defaultVariables);

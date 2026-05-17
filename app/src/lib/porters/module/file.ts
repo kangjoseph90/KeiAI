@@ -1,6 +1,7 @@
 import { AppError } from '$lib/types/errors';
 import { unzip, zip } from '$lib/utils/zip';
 import type { KeiModulePackageV1 } from './types';
+import { isRecord } from '../utils';
 import {
     keiPackageToRisuModule,
     readRisuModulePackage,
@@ -89,8 +90,4 @@ function packageJson(pkg: KeiModulePackageV1): unknown {
             ...(asset.encKey ? { encKey: asset.encKey } : {})
         }))
     };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

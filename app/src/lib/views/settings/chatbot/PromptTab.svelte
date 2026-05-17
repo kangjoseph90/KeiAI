@@ -7,7 +7,7 @@
     import { Label } from '$lib/components/ui/label';
     import { createPromptBlock, updatePromptBlock, deletePromptBlock } from '$lib/stores';
     import { type LLMRole } from '$lib/types/models/llm';
-    import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateSortOrder, compareSortOrder } from '$lib/utils/ordering';
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { Preset, PromptBlock, PromptBlockFields } from '$lib/services/content/preset';
 
@@ -19,7 +19,7 @@
 
     const sortedBlocks = $derived(() => {
         return Object.values(preset.promptBlocks).sort((a, b) =>
-            a.sortOrder.localeCompare(b.sortOrder)
+            compareSortOrder(a.sortOrder, b.sortOrder)
         );
     });
 

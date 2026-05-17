@@ -1,5 +1,6 @@
 import { AppError } from '$lib/types/errors';
-import { isRecord } from '$lib/utils/record';
+import { isRecord } from '../utils';
+import type { RisuRegexScript } from '../risu/script';
 import type { SerializedKeiCharacterPackageV1 } from './types';
 
 export interface CharacterCardV3 {
@@ -40,15 +41,6 @@ export interface RisuExtension {
     defaultVariables?: string;
     lowLevelAccess?: boolean;
     [key: string]: unknown;
-}
-
-export interface RisuRegexScript {
-    comment?: string;
-    in?: string;
-    out?: string;
-    type?: string;
-    flag?: string;
-    ableFlag?: boolean;
 }
 
 export interface CharacterBook {
