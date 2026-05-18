@@ -13,6 +13,7 @@
         type LLMProvider,
         type LLMModelConfig
     } from '$lib/types/models/llm';
+    import { pluginManager } from '$lib/plugins';
     import type { AppSettings } from '$lib/services/content/settings';
     import type { DeepPartial } from '$lib/utils/defaults';
 
@@ -36,12 +37,24 @@
         'openrouter',
         'transformers',
         'mock',
-        'custom'
+        'custom',
+        'plugin'
     ];
 
     function getModelsForProvider(provider: LLMProvider) {
         if (provider === 'custom') {
             return $appSettings?.custom?.llm?.models || [];
+        }
+        if (provider === 'plugin') {
+            const allModels = pluginManager
+                .getInstances()
+                .flatMap((instance) => [...instance.llmProviders.values()].map((p) => p.model));
+            const seen: Record<string, boolean> = {};
+            return allModels.filter((model) => {
+                if (seen[model.id]) return false;
+                seen[model.id] = true;
+                return true;
+            });
         }
         return BUILT_IN_LLM_MODELS.filter((m) => m.provider === provider);
     }
@@ -101,7 +114,7 @@
             </div>
         </div>
 
-        {#if config.provider && !['mock', 'transformers', 'custom'].includes(config.provider)}
+        {#if config.provider && !['mock', 'transformers', 'custom', 'plugin'].includes(config.provider)}
             <Separator />
             <div class="flex flex-col gap-1.5">
                 <Label class="flex items-center justify-between">

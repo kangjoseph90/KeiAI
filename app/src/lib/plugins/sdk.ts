@@ -138,7 +138,7 @@ export const guestSDK = String.raw`
                     return;
                 }
     
-                const result = await fn(...request.args);
+                const result = await fn(...request.args, channel.signal);
                 if (result && typeof result[Symbol.asyncIterator] === 'function') {
                     for await (const chunk of result) {
                         channel.send({ type: 'rpc_yield', data: chunk });
@@ -237,7 +237,24 @@ export const guestSDK = String.raw`
             const p = broker.invoke('core.onUnload', [fnId]);
             registrations.push(p);
         },
-        emitEvent: (chatId, event, data) => broker.fire('core.emitEvent', [chatId, event, data])
+        emitEvent: (chatId, event, data) => broker.fire('core.emitEvent', [chatId, event, data]),
+        addLLMProvider: (modelId, fn, opts = {}) => {
+            const fnId = 'llm_' + Date.now() + '_' + Math.random();
+            broker.expose(fnId, (messages, config, signal) => {
+                return fn(messages, signal, config);
+            });
+            const p = broker.invoke('core.addLLMProvider', [modelId, fnId, { tokenizer: opts.tokenizer, name: opts.name }]);
+            registrations.push(p);
+            return async () => {
+                try {
+                    await broker.invoke('core.removeLLMProvider', [modelId, fnId]);
+                } catch (e) {
+                    // Ignore transport errors during unload
+                } finally {
+                    broker.unexpose(fnId);
+                }
+            };
+        }
     };
     
     window.__KeiPluginBootDone = async () => {

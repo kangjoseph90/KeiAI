@@ -70,6 +70,7 @@ function createPluginInstance(): PluginInstance {
         pipelineHandlers: new Map(),
         eventListeners: new Map(),
         macroHandlers: new Map([['char', { fnId: 'plugin-char' }]]),
+        llmProviders: new Map(),
         unloadHandlers: []
     };
 }

@@ -25,8 +25,7 @@
         baseUrl: '',
         apiKey: '',
         handler: 'openai_compatible',
-        tokenizer: 'o200k_base',
-        flags: ['streaming']
+        tokenizer: 'o200k_base'
     });
 
     const handlers: LLMHandler[] = ['openai_compatible', 'anthropic', 'google'];
@@ -53,8 +52,7 @@
             name: newModel.name.trim(),
             modelId: newModel.modelId.trim(),
             baseUrl: newModel.baseUrl.trim(),
-            provider: 'custom',
-            flags: newModel.flags || ['streaming']
+            provider: 'custom'
         } as CustomLLMModel;
 
         if (editingModelId) {
@@ -97,8 +95,7 @@
             baseUrl: '',
             apiKey: '',
             handler: 'openai_compatible',
-            tokenizer: 'o200k_base',
-            flags: ['streaming']
+            tokenizer: 'o200k_base'
         };
     }
 </script>

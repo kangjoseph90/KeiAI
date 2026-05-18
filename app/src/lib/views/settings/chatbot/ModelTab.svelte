@@ -7,6 +7,7 @@
         type LLMModelConfig,
         type LLMModelBase
     } from '$lib/types/models/llm';
+    import { pluginManager } from '$lib/plugins';
     import type { Preset } from '$lib/services/content/preset';
 
     interface Props {
@@ -20,6 +21,11 @@
 
         if (provider === 'custom') {
             model = $appSettings?.custom?.llm?.models.find((m) => m.id === modelId);
+        } else if (provider === 'plugin') {
+            model = pluginManager
+                .getInstances()
+                .flatMap((instance) => [...instance.llmProviders.values()].map((p) => p.model))
+                .find((m) => m.id === modelId);
         } else {
             model = BUILT_IN_LLM_MODELS.find((m) => m.id === modelId);
         }

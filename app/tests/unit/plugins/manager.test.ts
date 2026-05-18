@@ -22,6 +22,7 @@ function createInstance(pluginId: string): PluginInstance {
         pipelineHandlers: new Map(),
         eventListeners: new Map(),
         macroHandlers: new Map(),
+        llmProviders: new Map(),
         unloadHandlers: []
     };
 }

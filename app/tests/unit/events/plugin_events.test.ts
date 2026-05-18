@@ -37,6 +37,7 @@ function createPluginInstance(): PluginInstance {
             ['other:event', ['other-listener']]
         ]),
         macroHandlers: new Map(),
+        llmProviders: new Map(),
         unloadHandlers: []
     };
 }

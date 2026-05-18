@@ -12,6 +12,7 @@ import { OpenAILLMStreamHandler } from '$lib/llm/handlers/openai';
 import { TransformersLLMStreamHandler } from '$lib/llm/handlers/transformers';
 import { AnthropicLLMStreamHandler } from '$lib/llm/handlers/anthropic';
 import { GoogleLLMStreamHandler } from '$lib/llm/handlers/google';
+import { PluginLLMStreamHandler } from '$lib/llm/handlers/plugin';
 import type { AppSettings } from '$lib/services';
 import { createLogger } from '$lib/adapters/logger';
 import {
@@ -19,9 +20,10 @@ import {
     type LLMModel,
     type BuiltInLLMModel,
     type CustomLLMModel,
-    BUILT_IN_LLM_MODELS,
-    type LLMParameter
+    type PluginLLMModel,
+    BUILT_IN_LLM_MODELS
 } from '$lib/types/models/llm';
+import { pluginManager } from '$lib/plugins';
 
 const logger = createLogger('llm:handler');
 
@@ -45,8 +47,33 @@ export function selectLLMHandler(
         return selectCustomHandler(model, settings);
     }
 
+    // Plugin models: dispatch by plugin handler
+    if (model.provider === 'plugin') {
+        return selectPluginHandler(model, modelConfig);
+    }
+
     // Built-in models: dispatch by provider
     return selectBuiltInHandler(model, modelConfig, settings);
+}
+
+function selectPluginHandler(
+    model: PluginLLMModel,
+    modelConfig: LLMModelConfig
+): LLMStreamHandler | null {
+    for (const instance of pluginManager.getInstances()) {
+        const providerDef = instance.llmProviders.get(model.modelId);
+        if (providerDef) {
+            return new PluginLLMStreamHandler(
+                {
+                    modelId: model.modelId,
+                    parameters: modelConfig.parameters
+                },
+                instance,
+                providerDef.fnId
+            );
+        }
+    }
+    return null;
 }
 
 function selectBuiltInHandler(
@@ -58,7 +85,6 @@ function selectBuiltInHandler(
         case 'openai': {
             return new OpenAILLMStreamHandler({
                 modelId: model.modelId,
-                flags: model.flags,
                 parameters: modelConfig.parameters,
                 apiKey: settings.openai.apiKey,
                 baseUrl: 'https://api.openai.com/v1'
@@ -68,7 +94,6 @@ function selectBuiltInHandler(
         case 'anthropic': {
             return new AnthropicLLMStreamHandler({
                 modelId: model.modelId,
-                flags: model.flags,
                 parameters: modelConfig.parameters,
                 apiKey: settings.anthropic.apiKey,
                 baseUrl: 'https://api.anthropic.com/v1'
@@ -78,7 +103,6 @@ function selectBuiltInHandler(
         case 'deepseek': {
             return new OpenAILLMStreamHandler({
                 modelId: model.modelId,
-                flags: model.flags,
                 parameters: modelConfig.parameters,
                 apiKey: settings.deepseek.apiKey,
                 baseUrl: 'https://api.deepseek.com'
@@ -88,7 +112,6 @@ function selectBuiltInHandler(
         case 'google': {
             return new GoogleLLMStreamHandler({
                 modelId: model.modelId,
-                flags: model.flags,
                 parameters: modelConfig.parameters,
                 apiKey: settings.google.apiKey,
                 baseUrl: 'https://generativelanguage.googleapis.com/v1beta'
@@ -98,7 +121,6 @@ function selectBuiltInHandler(
         case 'mistral': {
             return new OpenAILLMStreamHandler({
                 modelId: model.modelId,
-                flags: model.flags,
                 parameters: modelConfig.parameters,
                 apiKey: settings.mistral.apiKey,
                 baseUrl: 'https://api.mistral.ai/v1'
@@ -108,7 +130,6 @@ function selectBuiltInHandler(
         case 'openrouter': {
             return new OpenAILLMStreamHandler({
                 modelId: model.modelId,
-                flags: model.flags,
                 parameters: modelConfig.parameters,
                 apiKey: settings.openrouter.apiKey,
                 baseUrl: 'https://openrouter.ai/api/v1'
@@ -118,7 +139,6 @@ function selectBuiltInHandler(
         case 'transformers': {
             return new TransformersLLMStreamHandler({
                 modelId: model.modelId,
-                flags: model.flags,
                 parameters: modelConfig.parameters
             });
         }
@@ -140,7 +160,6 @@ function selectCustomHandler(
         case 'openai_compatible':
             return new OpenAILLMStreamHandler({
                 modelId: model.modelId,
-                flags: model.flags,
                 apiKey: model.apiKey,
                 baseUrl: model.baseUrl
             });
@@ -148,7 +167,6 @@ function selectCustomHandler(
         case 'anthropic':
             return new AnthropicLLMStreamHandler({
                 modelId: model.modelId,
-                flags: model.flags,
                 apiKey: model.apiKey,
                 baseUrl: model.baseUrl
             });
@@ -156,7 +174,6 @@ function selectCustomHandler(
         case 'google':
             return new GoogleLLMStreamHandler({
                 modelId: model.modelId,
-                flags: model.flags,
                 apiKey: model.apiKey,
                 baseUrl: model.baseUrl
             });
@@ -176,6 +193,14 @@ function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel |
         return settings.custom.llm.models?.find((m: CustomLLMModel) => m.id === config.id);
     }
 
+    // Plugin models
+    if (config.provider === 'plugin') {
+        return pluginManager
+            .getInstances()
+            .flatMap((instance) => [...instance.llmProviders.values()].map((p) => p.model))
+            .find((m) => m.id === config.id);
+    }
+
     // Dynamic models
     if (config.provider === 'openrouter' || config.provider === 'transformers') {
         return {
@@ -183,9 +208,7 @@ function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel |
             name: config.id,
             modelId: config.id,
             provider: config.provider,
-            tokenizer: config.tokenizer ?? 'o200k_base',
-            flags: [],
-            parameters: Object.keys(config.parameters) as LLMParameter[]
+            tokenizer: config.tokenizer ?? 'o200k_base'
         } as BuiltInLLMModel;
     }
 

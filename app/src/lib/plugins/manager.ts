@@ -5,6 +5,7 @@ import type { Plugin } from '$lib/services/content/plugin';
 import { getPlugin, updatePlugin } from '$lib/stores/content/plugin';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
+import type { PluginLLMModel, LLMTokenizer } from '$lib/types/models/llm';
 
 const logger = createLogger('plugins:manager');
 const PLUGIN_READY_TIMEOUT_MS = 5_000;
@@ -18,6 +19,7 @@ export interface PluginInstance {
     pipelineHandlers: Map<string, Array<{ fnId: string; order: number }>>;
     eventListeners: Map<string, string[]>;
     macroHandlers: Map<string, { fnId: string; recursive?: boolean }>;
+    llmProviders: Map<string, { fnId: string; model: PluginLLMModel }>;
     unloadHandlers: string[];
 }
 
@@ -61,7 +63,14 @@ export class PluginManager {
     private doLoadPlugin(plugin: Plugin): Promise<void> {
         return new Promise((resolve, reject) => {
             const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
+            iframe.style.position = 'absolute';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            iframe.style.opacity = '0';
+            iframe.style.pointerEvents = 'none';
+            iframe.style.left = '-9999px';
+            iframe.style.top = '0';
             iframe.sandbox.add('allow-scripts');
 
             const encodedPluginCode = JSON.stringify(plugin.code).replace(/</g, '\\u003C');
@@ -104,6 +113,7 @@ export class PluginManager {
                 pipelineHandlers: new Map(),
                 eventListeners: new Map(),
                 macroHandlers: new Map(),
+                llmProviders: new Map(),
                 unloadHandlers: []
             };
 
@@ -230,6 +240,30 @@ export class PluginManager {
             emitEvent(String(chatId), String(event), data).catch((error: unknown) => {
                 logger.error(`Plugin event emit failed:`, error);
             });
+        });
+
+        broker.expose('core.addLLMProvider', (modelId: unknown, fnId: unknown, opts: unknown) => {
+            const mId = String(modelId);
+            const fId = String(fnId);
+            const options = (opts || {}) as { tokenizer?: LLMTokenizer; name?: string };
+
+            const model: PluginLLMModel = {
+                id: `plugin::${mId}`,
+                name: options.name || mId,
+                modelId: mId,
+                provider: 'plugin',
+                tokenizer: options.tokenizer || 'o200k_base'
+            };
+
+            instance.llmProviders.set(mId, { fnId: fId, model });
+        });
+
+        broker.expose('core.removeLLMProvider', (modelId: unknown, fnId: unknown) => {
+            const mId = String(modelId);
+            const current = instance.llmProviders.get(mId);
+            if (current && current.fnId === String(fnId)) {
+                instance.llmProviders.delete(mId);
+            }
         });
     }
 

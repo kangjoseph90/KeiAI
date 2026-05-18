@@ -44,6 +44,7 @@ function createPluginInstance(): PluginInstance {
         ]),
         eventListeners: new Map(),
         macroHandlers: new Map(),
+        llmProviders: new Map(),
         unloadHandlers: []
     };
 }

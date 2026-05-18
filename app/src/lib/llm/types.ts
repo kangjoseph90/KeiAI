@@ -7,8 +7,7 @@
 
 import type { ToolCallRequest } from '$lib/services/content/tool';
 import type { RetryOptions } from '$lib/adapters/http/types';
-import type { LLMFlags, LLMParameter } from '$lib/types/models/llm';
-import type { LLMRole } from '$lib/types/models/llm';
+import type { LLMParameter, LLMRole } from '$lib/types/models/llm';
 
 // ─── Stream Content ──────────────────────────────────────────────────────────
 
@@ -44,7 +43,6 @@ export interface OpenAIChat {
  */
 export interface LLMStreamHandlerConfig {
     modelId: string;
-    flags?: LLMFlags[];
     parameters?: Partial<Record<LLMParameter, number | string | boolean>>;
 }
 
@@ -55,6 +53,12 @@ export interface LLMStreamHandlerConfig {
 export interface RemoteLLMHandlerConfig extends LLMStreamHandlerConfig {
     baseUrl: string;
     apiKey?: string;
+    useProxy?: boolean;
+    retry?: RetryOptions;
+    timeout?: number;
+}
+
+export interface PluginLLMHandlerConfig extends LLMStreamHandlerConfig {
     useProxy?: boolean;
     retry?: RetryOptions;
     timeout?: number;

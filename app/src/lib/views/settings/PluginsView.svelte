@@ -9,7 +9,8 @@
     import { Card, CardContent } from '$lib/components/ui/card';
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
-    import { ArrowLeft, Check, Pencil, Plus, Trash2, X } from 'lucide-svelte';
+    import { ArrowLeft, Check, Pencil, Plus, Trash2, X, Play, Square } from 'lucide-svelte';
+    import { pluginManager } from '$lib/plugins';
 
     let { pluginId }: { pluginId?: string } = $props();
 
@@ -21,6 +22,20 @@
     let editEnabled = $state(false);
     let editArgs = $state<[string, string][]>([]);
     let loadedPluginId = $state<string | null>(null);
+
+    let loadedPluginIds = $state<string[]>(
+        pluginManager.getInstances().map((inst) => inst.pluginId)
+    );
+
+    async function handleLoad(id: string) {
+        await pluginManager.loadPlugin(id);
+        loadedPluginIds = pluginManager.getInstances().map((inst) => inst.pluginId);
+    }
+
+    async function handleUnload(id: string) {
+        await pluginManager.unloadPlugin(id);
+        loadedPluginIds = pluginManager.getInstances().map((inst) => inst.pluginId);
+    }
 
     const selectedPlugin = $derived(
         pluginId ? ($plugins.find((plugin) => plugin.id === pluginId) ?? null) : null
@@ -250,7 +265,26 @@
                                 </p>
                             {/if}
                         </button>
-                        <div class="flex shrink-0 gap-1">
+                        <div class="flex shrink-0 gap-1.5 items-center">
+                            {#if loadedPluginIds.includes(plugin.id)}
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    class="h-9 gap-1 text-xs"
+                                    onclick={() => handleUnload(plugin.id)}
+                                >
+                                    <Square class="size-3.5 fill-current" /> Unload
+                                </Button>
+                            {:else}
+                                <Button
+                                    size="sm"
+                                    variant="default"
+                                    class="h-9 gap-1 text-xs"
+                                    onclick={() => handleLoad(plugin.id)}
+                                >
+                                    <Play class="size-3.5 fill-current" /> Load
+                                </Button>
+                            {/if}
                             <Button
                                 size="sm"
                                 variant="outline"
