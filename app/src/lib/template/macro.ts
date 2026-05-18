@@ -8,6 +8,9 @@ import { getPersona } from '$lib/stores/content/persona';
 import { getChat } from '$lib/stores/content/chat';
 import { getChatVariable, setChatVariable } from '$lib/managers/chat';
 import { getGlobalVariable } from '$lib/managers/preset';
+import { createLogger } from '$lib/adapters/logger';
+
+const logger = createLogger('template:macro');
 
 export async function collectTemplateMacros(ctx: TemplateContext): Promise<Map<string, Macro>> {
     const macros = collectBuiltInMacros();
@@ -209,8 +212,13 @@ function collectPluginMacros(): Map<string, Macro> {
             macros.set(normalizeName(name), {
                 recursive: entry.recursive,
                 run: async (args, macroCtx) => {
-                    const result = await instance.broker.invoke(entry.fnId, [args, macroCtx]);
-                    return typeof result === 'string' ? result : String(result ?? '');
+                    try {
+                        const result = await instance.broker.invoke(entry.fnId, [args, macroCtx]);
+                        return typeof result === 'string' ? result : String(result ?? '');
+                    } catch (error) {
+                        logger.error(`Error executing plugin macro [${name}]:`, error);
+                        return '';
+                    }
                 }
             });
         }

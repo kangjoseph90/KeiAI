@@ -59,8 +59,11 @@ export class RPCBroker {
                 channel.send({ type: 'rpc_return', data: result });
             }
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            channel.abort(`RPC Execution Error: ${message}`);
+            const errObj =
+                error instanceof Error
+                    ? { name: error.name, message: error.message, stack: error.stack }
+                    : { name: 'Error', message: String(error) };
+            channel.send({ type: 'rpc_error', error: errObj });
         } finally {
             channel.close();
         }
@@ -82,6 +85,14 @@ export class RPCBroker {
 
             if (result.type === 'rpc_return') {
                 return result.data as T;
+            }
+            if (result.type === 'rpc_error') {
+                const err = new Error(result.error.message);
+                const pluginName =
+                    typeof result.error.name === 'string' ? result.error.name : 'Error';
+                err.name = `PluginError[${pluginName}]`;
+                err.stack = result.error.stack;
+                throw err;
             }
 
             throw new Error(`Expected rpc_return but got ${result.type}`);
@@ -123,6 +134,13 @@ export class RPCBroker {
                     yield msg.data as T;
                 } else if (msg.type === 'rpc_return') {
                     return msg.data as T;
+                } else if (msg.type === 'rpc_error') {
+                    const err = new Error(msg.error.message);
+                    const pluginName =
+                        typeof msg.error.name === 'string' ? msg.error.name : 'Error';
+                    err.name = `PluginError[${pluginName}]`;
+                    err.stack = msg.error.stack;
+                    throw err;
                 }
             }
         } finally {

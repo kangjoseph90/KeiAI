@@ -148,7 +148,10 @@ export const guestSDK = String.raw`
                     channel.send({ type: 'rpc_return', data: result });
                 }
             } catch (error) {
-                channel.abort(error instanceof Error ? error.message : String(error));
+                const errObj = error instanceof Error
+                    ? { name: error.name, message: error.message, stack: error.stack }
+                    : { name: 'Error', message: String(error) };
+                channel.send({ type: 'rpc_error', error: errObj });
             } finally {
                 channel.close();
             }
