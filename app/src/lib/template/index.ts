@@ -18,7 +18,7 @@ export async function runTemplate(
     return interpretTemplate(parsed, ctx, resolved);
 }
 
-export { collectTemplateMacros } from './macro';
+export { collectTemplateMacros, createDryRunMacros } from './macro';
 export { interpretTemplate, parseTemplate };
 export type {
     BlockNode,

@@ -47,7 +47,7 @@ async function interpretMacro(
     const args = await Promise.all(node.args.map((arg) => interpret(arg, ctx, macros, depth)));
 
     if (!macro) {
-        return serializeMacro(node.name, args);
+        return node.raw ?? serializeMacro(node.name, args);
     }
 
     const value = await macro.run(args, ctx);

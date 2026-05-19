@@ -6,10 +6,6 @@ export function toRoleContext(ctx: TemplateContext, role: LLMRole): TemplateCont
     return { ...ctx, role };
 }
 
-export function toDryRunContext(ctx: TemplateContext): TemplateContext {
-    return { ...ctx, dryRun: true };
-}
-
 export function toMessageContext(
     message: Message,
     messageIndex: number,

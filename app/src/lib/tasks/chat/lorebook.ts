@@ -1,6 +1,6 @@
 import type { Lorebook, PagedMessages } from '$lib/services';
-import { runTemplate, type TemplateContext } from '$lib/template';
-import { toDryRunContext, toMessageContext } from './context';
+import { runTemplate, createDryRunMacros, type TemplateContext } from '$lib/template';
+import { toMessageContext } from './context';
 
 export interface ResolveLorebookInput {
     lorebooks: Lorebook[];
@@ -78,12 +78,16 @@ async function buildScanHistory(input: ResolveLorebookInput): Promise<string[]> 
     if (maxScanDepth <= 0) return [];
 
     const messages = await input.messages.slice(-maxScanDepth);
-    const dryCtx = toDryRunContext(input.templateCtx);
+    const dryRunMacros = createDryRunMacros();
     const rendered = await Promise.all(
         messages.map(({ message, index }) => {
             const activeSwipe = message.swipes[message.activeSwipeId];
             if (!activeSwipe) return '';
-            return runTemplate(activeSwipe.content, toMessageContext(message, index, dryCtx));
+            return runTemplate(
+                activeSwipe.content,
+                toMessageContext(message, index, input.templateCtx),
+                dryRunMacros
+            );
         })
     );
 
@@ -97,9 +101,11 @@ async function buildRecursiveSources(
     const recursiveLorebooks = lorebooks.filter((lorebook) => lorebook.recursive);
     if (recursiveLorebooks.length === 0) return [];
 
-    const dryCtx = toDryRunContext(input.templateCtx);
+    const dryRunMacros = createDryRunMacros();
     const rendered = await Promise.all(
-        recursiveLorebooks.map((lorebook) => runTemplate(lorebook.content, dryCtx))
+        recursiveLorebooks.map((lorebook) =>
+            runTemplate(lorebook.content, input.templateCtx, dryRunMacros)
+        )
     );
 
     return rendered.filter((source) => source.trim().length > 0);

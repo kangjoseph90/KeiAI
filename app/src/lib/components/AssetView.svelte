@@ -99,8 +99,8 @@
 
     // ── Recovery: img onerror fires when a revoked URL breaks ────────
     function handleImgError() {
+        setUrl(null);
         if (!id || retryCount >= MAX_RETRIES) {
-            setUrl(null);
             error = true;
             return;
         }

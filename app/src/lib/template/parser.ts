@@ -50,7 +50,8 @@ export function parseTemplate(text: string): Template {
             current().push({
                 type: 'macro',
                 name: normalizeName(parsed.name),
-                args: parsed.args.map(parseTemplate)
+                args: parsed.args.map(parseTemplate),
+                raw: tag.raw
             });
             cursor = tag.end;
             continue;

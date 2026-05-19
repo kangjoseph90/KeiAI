@@ -103,8 +103,6 @@ function collectBuiltInMacros(): Map<string, Macro> {
     addAliases(['role'], (_args, ctx) => ctx.role ?? '');
     addAliases(['isuser'], (_args, ctx) => bool(ctx.role === 'user'));
     addAliases(['isassistant', 'isbot'], (_args, ctx) => bool(ctx.role === 'assistant'));
-    addAliases(['isdisplay'], (_args, ctx) => bool(ctx.display === true));
-    addAliases(['isdryrun'], (_args, ctx) => bool(ctx.dryRun === true));
     add('time', () => formatLocalDate(new Date(), 'HH:mm:ss'));
     add('isotime', () => new Date().toISOString());
     add('isodate', () => new Date().toISOString().slice(0, 10));
@@ -157,27 +155,15 @@ function collectBuiltInMacros(): Map<string, Macro> {
         return (await getGlobalVariable(key)) ?? 'null';
     });
     add('setvar', async ([key, value], ctx) => {
-        if (!ctx.chatId || !key || ctx.dryRun) return '';
+        if (!ctx.chatId || !key) return '';
         await setChatVariable(ctx.chatId, key, value ?? '');
         return '';
     });
     add('addvar', async ([key, amount], ctx) => {
-        if (!ctx.chatId || !key || ctx.dryRun) return '';
+        if (!ctx.chatId || !key) return '';
         const current = toNumber((await getChatVariable(ctx.chatId, key)) ?? '0');
         await setChatVariable(ctx.chatId, key, String(current + toNumber(amount)));
         return '';
-    });
-    addAliases(['img', 'image'], ([assetId], ctx) => {
-        if (!assetId) return '';
-        if (!ctx.display) return `{{img::${assetId}}}`;
-        return [
-            '<img',
-            ` data-keiai-asset-id="${escapeHtmlAttribute(assetId)}"`,
-            ' alt=""',
-            ' loading="lazy"',
-            ' decoding="async"',
-            ' />'
-        ].join('');
     });
 
     return macros;
@@ -269,4 +255,18 @@ function formatLocalDate(date: Date, format: string): string {
         (result, [token, value]) => result.replaceAll(token, value),
         format
     );
+}
+
+export function createDryRunMacros(overrides?: ReadonlyMap<string, Macro>): Map<string, Macro> {
+    const dryRunMacros = new Map<string, Macro>([
+        ['setvar', { run: () => '' }],
+        ['addvar', { run: () => '' }]
+    ]);
+
+    if (overrides) {
+        for (const [key, value] of overrides) {
+            dryRunMacros.set(key, value);
+        }
+    }
+    return dryRunMacros;
 }

@@ -6,15 +6,14 @@ import type { TemplateContext } from '$lib/template';
 
 // Mock dependencies
 vi.mock('$lib/template', () => ({
-    runTemplate: vi.fn((content) => content)
+    runTemplate: vi.fn((content) => content),
+    createDryRunMacros: vi.fn(() => new Map())
 }));
 
 describe('Lorebook Resolver (resolveLorebookEntries)', () => {
     const mockTemplateCtx: TemplateContext = {
         characterId: 'char-1',
-        chatId: 'chat-1',
-        display: false,
-        dryRun: true
+        chatId: 'chat-1'
     };
 
     const createMockLorebook = (overrides: Partial<Lorebook>): Lorebook => ({

@@ -66,6 +66,7 @@ export const chatLorebooks = readonly(StoreState.chatLorebooks);
 export const chatPersonas = readonly(StoreState.chatPersonas);
 export const messages = readonly(StoreState.messages);
 export const chatTasks = readonly(StoreState.chatTasks);
+export const chatAssetsMap = readonly(StoreState.chatAssetsMap);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
     activePreset,

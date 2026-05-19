@@ -16,7 +16,8 @@ const { mockCollectTemplateMacros, mockRunTemplate, mockRunPipeline, mockTokenCo
 
 vi.mock('$lib/template', () => ({
     collectTemplateMacros: mockCollectTemplateMacros,
-    runTemplate: mockRunTemplate
+    runTemplate: mockRunTemplate,
+    createDryRunMacros: vi.fn(() => new Map())
 }));
 
 vi.mock('$lib/pipeline', () => ({
@@ -120,9 +121,7 @@ function buildTestPrompt(
 ) {
     const defaultContext: TemplateContext = {
         characterId: character.id,
-        chatId: chat.id,
-        display: false,
-        dryRun: false
+        chatId: chat.id
     };
     return buildPrompt({
         ...input,
@@ -177,9 +176,7 @@ describe('buildPrompt', () => {
 
         const context: TemplateContext = {
             characterId: 'char-1',
-            chatId: 'chat-1',
-            display: false,
-            dryRun: false
+            chatId: 'chat-1'
         };
 
         const prompt = await buildTestPrompt({
@@ -323,9 +320,7 @@ describe('buildPrompt', () => {
                 messageIndex: 0,
                 role: 'user',
                 speakerId: undefined,
-                speakerName: undefined,
-                display: false,
-                dryRun: false
+                speakerName: undefined
             }
         );
         expect(prompt).toEqual([

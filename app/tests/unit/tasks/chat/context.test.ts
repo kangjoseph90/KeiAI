@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { toDryRunContext, toMessageContext, toRoleContext } from '$lib/tasks/chat/context';
+import { toMessageContext, toRoleContext } from '$lib/tasks/chat/context';
 import type { Message } from '$lib/services';
 import type { TemplateContext } from '$lib/template';
 
 const baseContext: TemplateContext = {
     chatId: 'chat-1',
     characterId: 'char-default',
-    personaId: 'persona-default',
-    display: false,
-    dryRun: false
+    personaId: 'persona-default'
 };
 
 function makeMessage(role: Message['role'], speakerId?: string, speakerName?: string): Message {
@@ -74,16 +72,11 @@ describe('chat task context helpers', () => {
         });
     });
 
-    it('derives role and dry-run contexts without dropping ids', () => {
+    it('derives role contexts without dropping ids', () => {
         expect(toRoleContext(baseContext, 'assistant')).toMatchObject({
             characterId: 'char-default',
             personaId: 'persona-default',
             role: 'assistant'
-        });
-        expect(toDryRunContext(baseContext)).toMatchObject({
-            characterId: 'char-default',
-            personaId: 'persona-default',
-            dryRun: true
         });
     });
 });

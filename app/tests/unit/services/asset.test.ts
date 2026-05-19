@@ -120,6 +120,7 @@ describe('AssetService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        AssetService.clear();
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
             masterKey: {} as CryptoKey,

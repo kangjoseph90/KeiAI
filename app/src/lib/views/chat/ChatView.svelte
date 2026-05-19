@@ -77,9 +77,7 @@
             chatId: $activeChat.id,
             speakerId: selectedPersona.id,
             speakerName: selectedPersona.name,
-            role: 'user',
-            display: false,
-            dryRun: false
+            role: 'user'
         };
         const templated = await runTemplate(newMessageText, templateCtx);
         const piped = await runPipeline($activeChat.id, 'input', templated, templateCtx);

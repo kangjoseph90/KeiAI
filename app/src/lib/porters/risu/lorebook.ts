@@ -52,7 +52,7 @@ export function risuInternalLorebookToKei(
         secondKey: lorebook.secondkey ?? '',
         content: normalizeCharacterMacros(lorebook.content ?? ''),
         depth: 1,
-        order: lorebook.insertorder ?? index,
+        order: lorebook.insertorder ?? 100,
         alwaysActive: lorebook.alwaysActive ?? false,
         disabled: false,
         role: 'system',

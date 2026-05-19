@@ -25,15 +25,20 @@
     } from 'lucide-svelte';
     import { onDestroy } from 'svelte';
     import ToolCallGroup from './ToolCallGroup.svelte';
+    import AssetView from './AssetView.svelte';
     import type { ToolCall } from '$lib/services/content/tool';
     import { runPipeline } from '$lib/pipeline';
-    import { runTemplate } from '$lib/template';
+    import { runTemplate, createDryRunMacros } from '$lib/template';
     import type { TemplateContext } from '$lib/template';
     import { parseMarkdownAsync } from '$lib/markdown';
     import morphdom from 'morphdom';
     import DOMPurify from 'dompurify';
     import type { Action } from 'svelte/action';
     import { hydrateAssets } from '$lib/components/hydrate';
+    import { SvelteMap } from 'svelte/reactivity';
+    import { chatAssetsMap, roomCharacters, chatPersonas, modules } from '$lib/stores';
+    import { createAssetMacros, type RawAssetUrlCache } from '$lib/template/assets';
+    import { AssetService } from '$lib/services/asset';
 
     // ── Props ─────────────────────────────────────────────────────────────────
 
@@ -91,6 +96,8 @@
     let lastDisplayPersonaId: string | undefined;
     let lastMessageIndex: number | undefined;
 
+    const rawAssetUrlCache: RawAssetUrlCache = new SvelteMap();
+
     // ── Derived ───────────────────────────────────────────────────────────────
 
     let isUser = $derived(message.role === 'user');
@@ -115,6 +122,15 @@
     let displayPersonaId = $derived(
         message.role === 'user' && activeSwipe?.speakerId ? activeSwipe.speakerId : personaId
     );
+    let speakerAvatarId = $derived.by(() => {
+        if (isUser) {
+            const persona = $chatPersonas.find((p) => p.id === displayPersonaId);
+            return persona?.avatarAssetId;
+        } else {
+            const character = $roomCharacters.find((c) => c.id === displayCharacterId);
+            return character?.avatarAssetId;
+        }
+    });
 
     // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -190,21 +206,35 @@
                 messageIndex: message.messageIndex,
                 speakerId: activeSwipe?.speakerId,
                 speakerName: activeSwipe?.speakerName,
-                role: message.role,
-                display: true,
-                dryRun: true
+                role: message.role
             };
             // Do not render display macros before display pipeline
-            const templated = await runTemplate(contentToRender, {
-                ...templateCtx,
-                display: false
-            });
+            const dryRunMacros = createDryRunMacros();
+            const templated = await runTemplate(contentToRender, templateCtx, dryRunMacros);
             const processed = await runPipeline(message.chatId, 'display', templated, templateCtx);
-            const rendered = await runTemplate(processed, templateCtx);
+
+            const selfId = message.role === 'user' ? displayPersonaId : displayCharacterId;
+            const opponentId = message.role === 'user' ? displayCharacterId : displayPersonaId;
+
+            const ownerIds = Array.from(
+                new Set([
+                    selfId,
+                    opponentId,
+                    ...$roomCharacters.map((c) => c.id),
+                    ...$chatPersonas.map((p) => p.id),
+                    ...$modules.map((m) => m.id)
+                ])
+            ).filter((id): id is string => !!id);
+            const assetMacros = createAssetMacros($chatAssetsMap, ownerIds, rawAssetUrlCache);
+            const rendered = await runTemplate(processed, templateCtx, assetMacros);
             const protectedHtml = protectHtmlStyles(rendered);
             const rawHtml = await parseMarkdownAsync(protectedHtml.text);
             const restoredHtml = restoreHtmlStyles(rawHtml as string, protectedHtml.styles);
-            const sanitized = DOMPurify.sanitize(restoredHtml, { ADD_TAGS: ['style'] });
+            const sanitized = DOMPurify.sanitize(restoredHtml, {
+                ADD_TAGS: ['style'],
+                ALLOWED_URI_REGEXP:
+                    /^(?:(?:https?|mailto|tel|data|blob):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i
+            });
 
             // Update states atomically
             displayContent = rendered;
@@ -281,15 +311,23 @@
             clearTimeout(renderTimeout);
             renderTimeout = null;
         }
+        for (const url of rawAssetUrlCache.values()) {
+            if (url) void AssetService.revokeUrl(url);
+        }
+        rawAssetUrlCache.clear();
     });
 </script>
 
 <!-- Message Container -->
 <div class="group flex justify-start gap-3">
     <div
-        class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground"
+        class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground overflow-hidden"
     >
-        {speakerInitial}
+        {#if speakerAvatarId}
+            <AssetView id={speakerAvatarId} alt={speakerName} class="size-full object-cover" />
+        {:else}
+            {speakerInitial}
+        {/if}
     </div>
 
     <!-- Content Column -->

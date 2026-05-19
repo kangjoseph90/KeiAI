@@ -27,6 +27,8 @@ import type { AssetSyncStatus, SyncStatus } from '$lib/services';
 import type { DisplayMessage, ChatTask } from './types';
 import { EntityStore } from './entity_store';
 import { compareSortOrder, sortByRefs } from '$lib/utils/ordering';
+import type { EntityListConfig, AssetRef } from '$lib/types/refs';
+import { normalizeAssetName, type AssetNameIndex } from '$lib/template/assets';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
@@ -220,5 +222,42 @@ export const displayMessages = derived(
             }
             return { ...base, displayStatus: 'completed' as const };
         });
+    }
+);
+
+// ─── Asset Helper & Derived Store ─────────────────────────────────────
+
+/**
+ * Derived store mapping: Map<OwnerId, Map<NormalizedName, string[]>>
+ * Merges asset refs from active modules, room characters, and chat personas.
+ */
+export const chatAssetsMap = derived(
+    [modules, roomCharacters, chatPersonas],
+    ([$modules, $roomCharacters, $chatPersonas]): AssetNameIndex => {
+        const resolverMap: AssetNameIndex = new Map();
+
+        const addEntityAssets = (ownerId: string, assetsConfig?: EntityListConfig<AssetRef>) => {
+            if (!assetsConfig?.refs) return;
+            const ownerMap = new Map<string, string[]>();
+            for (const ref of Object.values(assetsConfig.refs)) {
+                if (ref?.name && ref?.id) {
+                    const normalized = normalizeAssetName(ref.name);
+                    if (normalized) {
+                        const list = ownerMap.get(normalized) ?? [];
+                        list.push(ref.id);
+                        ownerMap.set(normalized, list);
+                    }
+                }
+            }
+            if (ownerMap.size > 0) {
+                resolverMap.set(ownerId, ownerMap);
+            }
+        };
+
+        for (const module of $modules) addEntityAssets(module.id, module.assets);
+        for (const char of $roomCharacters) addEntityAssets(char.id, char.assets);
+        for (const persona of $chatPersonas) addEntityAssets(persona.id, persona.assets);
+
+        return resolverMap;
     }
 );

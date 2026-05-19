@@ -134,9 +134,7 @@ export async function runChat(
         const templateCtx: TemplateContext = {
             characterId,
             personaId: persona.id,
-            chatId,
-            display: false,
-            dryRun: false
+            chatId
         };
 
         const prompt = await buildPrompt({

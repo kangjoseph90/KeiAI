@@ -11,13 +11,13 @@ import type { Character, Chat, Preset, Persona, Lorebook } from '$lib/services';
 import type { OpenAIChat } from '../../llm/types';
 import type { LLMRole, LLMTokenizer } from '$lib/types/models/llm';
 import { runPipeline } from '$lib/pipeline';
-import { runTemplate } from '$lib/template';
+import { runTemplate, createDryRunMacros } from '$lib/template';
 import type { TemplateContext, Macro } from '$lib/template';
 import { TokenCounter } from '$lib/llm/tokenizer';
 import { AppError } from '$lib/types/errors';
 import type { Message } from '$lib/services/content/message';
 import { resolveLorebookEntries } from './lorebook';
-import { toDryRunContext, toMessageContext, toRoleContext } from './context';
+import { toMessageContext, toRoleContext } from './context';
 import { compareSortOrder } from '$lib/utils/ordering';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
@@ -127,12 +127,17 @@ export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
 
 async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<PromptBlockResult> {
     let messages: OpenAIChat[] = [];
+    const dryRunMacros = createDryRunMacros();
 
     switch (block.type) {
         case 'text':
             messages = makeMessage(
                 block.role,
-                await runTemplate(block.content, toRoleContext(input.context, block.role))
+                await runTemplate(
+                    block.content,
+                    toRoleContext(input.context, block.role),
+                    dryRunMacros
+                )
             );
             break;
 
@@ -143,7 +148,8 @@ async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<
                     input.character.description,
                     block.format,
                     toRoleContext(input.context, block.role),
-                    input.character.name
+                    input.character.name,
+                    dryRunMacros
                 )
             );
             break;
@@ -154,7 +160,8 @@ async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<
                     input.character.characterNote,
                     block.format,
                     toRoleContext(input.context, block.role),
-                    input.character.name
+                    input.character.name,
+                    dryRunMacros
                 )
             );
             break;
@@ -166,7 +173,8 @@ async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<
                     input.persona.description,
                     block.format,
                     toRoleContext(input.context, block.role),
-                    input.persona.name
+                    input.persona.name,
+                    dryRunMacros
                 )
             );
             break;
@@ -177,7 +185,9 @@ async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<
                 await renderWithFormat(
                     input.chat.chatNote,
                     block.format,
-                    toRoleContext(input.context, block.role)
+                    toRoleContext(input.context, block.role),
+                    undefined,
+                    dryRunMacros
                 )
             );
             break;
@@ -234,13 +244,11 @@ async function buildLorebookBlocks(
 
     validateLorebookBlockRanges(blocks);
 
-    const templateCtx = toDryRunContext(input.context);
-
     const activeLorebooks = await resolveLorebookEntries({
         lorebooks: input.lorebooks,
         messages: input.messages,
         defaultScanDepth: input.preset?.lorebookScanDepth ?? 0,
-        templateCtx
+        templateCtx: input.context
     });
 
     let used = 0;
@@ -249,10 +257,13 @@ async function buildLorebookBlocks(
         const block = blocks.find((candidate) => isDepthInRange(lorebook.depth, candidate));
         if (!block) continue;
 
+        const dryRunMacros = createDryRunMacros();
         const content = await renderWithFormat(
             lorebook.content,
             block.format,
-            toRoleContext(templateCtx, lorebook.role)
+            toRoleContext(input.context, lorebook.role),
+            undefined,
+            dryRunMacros
         );
         const messages = makeMessage(lorebook.role, content);
         const tokens = await countMessages(messages, input.tokenizer);
@@ -455,12 +466,14 @@ async function renderHistoryMessage(
     if (!activeSwipe) return null;
 
     const messageCtx = toMessageContext(message, messageIndex, templateCtx);
+    const dryRunMacros = createDryRunMacros();
 
     const templated = await renderWithFormat(
         activeSwipe.content,
         format,
         messageCtx,
-        activeSwipe.speakerName
+        activeSwipe.speakerName,
+        dryRunMacros
     );
 
     const processed = await runPipeline(
@@ -470,7 +483,7 @@ async function renderHistoryMessage(
         messageCtx
     );
 
-    const content = await runTemplate(processed, messageCtx);
+    const content = await runTemplate(processed, messageCtx, dryRunMacros);
 
     return {
         role: message.role,
@@ -483,9 +496,10 @@ async function renderWithFormat(
     content: string,
     format: string | undefined,
     ctx: TemplateContext,
-    name?: string
+    name?: string,
+    overrides?: ReadonlyMap<string, Macro>
 ): Promise<string> {
-    const localMacros = new Map<string, Macro>();
+    const localMacros = new Map<string, Macro>(overrides);
     localMacros.set('slot', {
         run: () => content,
         recursive: true

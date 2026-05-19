@@ -9,8 +9,6 @@ export interface TemplateContext {
     speakerId?: string;
     speakerName?: string;
     role?: LLMRole;
-    display?: boolean;
-    dryRun?: boolean;
 }
 
 export type Template = TemplateNode[];
@@ -26,6 +24,7 @@ export interface MacroNode {
     type: 'macro';
     name: string;
     args: Template[];
+    raw?: string;
 }
 
 export interface BlockNode {

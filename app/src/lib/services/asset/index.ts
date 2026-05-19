@@ -119,6 +119,16 @@ export class AssetService {
     private static evictionTimer: ReturnType<typeof setTimeout> | null = null;
     private static readonly EVICTION_DEBOUNCE_MS = 5_000;
 
+    private static readonly urlCache = new Map<
+        string,
+        {
+            url?: string;
+            refs: number;
+            promise?: Promise<string | null>;
+        }
+    >();
+    private static readonly assetIdByUrl = new Map<string, string>();
+
     /**
      * Loads an asset into local appStorage without returning a render URL.
      * Useful for prefetching or migration prepare steps.
@@ -139,9 +149,46 @@ export class AssetService {
      * Loads an asset and returns its renderable URL.
      */
     static async read(id: string): Promise<string | null> {
-        const success = await AssetService.load(id);
-        if (!success) return null;
-        return appStorage.getRenderUrl(`assets/${id}`);
+        let entry = AssetService.urlCache.get(id);
+
+        if (entry) {
+            if (entry.url) {
+                entry.refs++;
+                return entry.url;
+            }
+            if (entry.promise) {
+                const url = await entry.promise;
+                if (url) {
+                    entry.refs++;
+                }
+                return url;
+            }
+        }
+
+        const promise = (async () => {
+            const success = await AssetService.load(id);
+            if (!success) return null;
+            return appStorage.getRenderUrl(`assets/${id}`);
+        })();
+
+        entry = { refs: 0, promise };
+        AssetService.urlCache.set(id, entry);
+
+        try {
+            const url = await promise;
+            if (url) {
+                entry.url = url;
+                entry.refs++;
+                AssetService.assetIdByUrl.set(url, id);
+            } else {
+                AssetService.urlCache.delete(id);
+            }
+            entry.promise = undefined;
+            return url;
+        } catch (err) {
+            AssetService.urlCache.delete(id);
+            throw err;
+        }
     }
 
     static async getFields(id: string): Promise<AssetFields> {
@@ -293,6 +340,13 @@ export class AssetService {
         void AssetSyncService.start();
     }
 
+    /** Clears all in-memory URL caches and pending loads. Mainly for tests. */
+    static clear(): void {
+        AssetService.urlCache.clear();
+        AssetService.assetIdByUrl.clear();
+        AssetService.pendingLoads.clear();
+    }
+
     static async markRemote(id: string): Promise<AssetRecord> {
         return updateAssetFields(id, { status: 'remote' });
     }
@@ -322,7 +376,21 @@ export class AssetService {
     }
 
     static async revokeUrl(url: string): Promise<void> {
-        await appStorage.revokeRenderUrl(url);
+        const id = AssetService.assetIdByUrl.get(url);
+        if (!id) {
+            await appStorage.revokeRenderUrl(url);
+            return;
+        }
+
+        const entry = AssetService.urlCache.get(id);
+        if (!entry) return;
+
+        entry.refs--;
+        if (entry.refs <= 0) {
+            AssetService.urlCache.delete(id);
+            AssetService.assetIdByUrl.delete(url);
+            await appStorage.revokeRenderUrl(url);
+        }
     }
 
     static async evictCache(): Promise<void> {

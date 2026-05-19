@@ -3,8 +3,14 @@ import {
     collectTemplateMacros,
     interpretTemplate,
     parseTemplate,
-    runTemplate
+    runTemplate,
+    createDryRunMacros
 } from '$lib/template';
+import {
+    createAssetMacros,
+    type AssetNameIndex,
+    type RawAssetUrlCache
+} from '$lib/template/assets';
 import type { PluginInstance } from '$lib/plugins/manager';
 
 const {
@@ -109,7 +115,7 @@ describe('template', () => {
     it('parses text and simple macro nodes', () => {
         expect(parseTemplate('hello {{char}}')).toEqual([
             { type: 'text', value: 'hello ' },
-            { type: 'macro', name: 'char', args: [] }
+            { type: 'macro', name: 'char', args: [], raw: '{{char}}' }
         ]);
     });
 
@@ -123,11 +129,13 @@ describe('template', () => {
                         {
                             type: 'macro',
                             name: 'getvar',
-                            args: [[{ type: 'text', value: 'flag' }]]
+                            args: [[{ type: 'text', value: 'flag' }]],
+                            raw: '{{getvar::flag}}'
                         },
                         { type: 'text', value: '==1' }
                     ]
-                ]
+                ],
+                raw: '{{? {{getvar::flag}}==1}}'
             }
         ]);
     });
@@ -193,9 +201,7 @@ describe('template', () => {
             messageIndex: 12,
             speakerId: 'char-1',
             speakerName: 'Kei',
-            role: 'assistant' as const,
-            display: true,
-            dryRun: true
+            role: 'assistant' as const
         };
 
         await expect(
@@ -211,18 +217,17 @@ describe('template', () => {
                     '{{speakername}}',
                     '{{role}}',
                     '{{isuser}}',
-                    '{{isbot}}',
-                    '{{isdisplay}}',
-                    '{{isdryrun}}'
+                    '{{isbot}}'
                 ].join('|'),
                 ctx
             )
-        ).resolves.toBe('chat-1|char-1|persona-1|msg-1|12|char-1|Kei|Kei|assistant|0|1|1|1');
+        ).resolves.toBe('chat-1|char-1|persona-1|msg-1|12|char-1|Kei|Kei|assistant|0|1');
     });
 
     it('treats dryRun setvar as read-only', async () => {
+        const dryRunMacros = createDryRunMacros();
         await expect(
-            runTemplate('{{setvar::mood::happy}}', { chatId: 'chat-1', dryRun: true })
+            runTemplate('{{setvar::mood::happy}}', { chatId: 'chat-1' }, dryRunMacros)
         ).resolves.toBe('');
         expect(mockSetChatVariable).not.toHaveBeenCalled();
     });
@@ -252,15 +257,21 @@ describe('template', () => {
         await expect(interpretTemplate(template, {}, macros)).resolves.toBe('yes');
     });
 
-    it('renders img macros as lazy asset placeholders in display mode', async () => {
-        await expect(runTemplate('{{img::asset-"<&>}}', { display: true })).resolves.toBe(
-            '<img data-keiai-asset-id="asset-&quot;&lt;&amp;&gt;" alt="" loading="lazy" decoding="async" />'
+    it('renders img macros when asset macros are injected', async () => {
+        const assetMap: AssetNameIndex = new Map([['char-1', new Map([['avatar', ['asset-1']]])]]);
+        const cache: RawAssetUrlCache = new Map();
+        const macros = createAssetMacros(assetMap, ['char-1'], cache);
+        await expect(runTemplate('{{img::avatar}}', {}, macros)).resolves.toBe(
+            '<img data-keiai-asset-id="asset-1" data-keiai-asset-name="avatar" alt="" loading="lazy" decoding="async" />'
         );
     });
 
-    it('leaves img macros untouched outside display mode', async () => {
-        await expect(runTemplate('{{img::asset-1}}', { display: false })).resolves.toBe(
-            '{{img::asset-1}}'
+    it('renders inlay macros directly using asset ID', async () => {
+        const assetMap: AssetNameIndex = new Map();
+        const cache: RawAssetUrlCache = new Map();
+        const macros = createAssetMacros(assetMap, [], cache);
+        await expect(runTemplate('{{inlay::asset-direct-id}}', {}, macros)).resolves.toBe(
+            '<img data-keiai-asset-id="asset-direct-id" alt="" loading="lazy" decoding="async" />'
         );
     });
 
