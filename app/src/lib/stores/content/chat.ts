@@ -145,7 +145,9 @@ export async function selectChat(chatId: string): Promise<void> {
     const chat = await getChat(chatId);
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
-    clearActiveChat();
+    chatSelections.set(null);
+    chatLorebooks.clear();
+    messageIndexes.set(new Map());
     roomChats.set(chat.id, chat);
     activeChatId.set(chat.id);
     await loadInitialMessages(chatId, 50);

@@ -17,7 +17,7 @@ import {
     type MessageSwipe,
     type MessageSwipeFields
 } from '$lib/services';
-import { messages, activeChatId, messageIndexes } from '../state';
+import { messages, activeChatId, messageIndexes, activeChat } from '../state';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
 import { getChat, updateChat } from './chat';
@@ -69,9 +69,9 @@ export async function loadInitialMessages(chatId: string, limit = 50): Promise<v
     }
 }
 
-export async function loadOlderMessages(chatId: string, limit = 50): Promise<void> {
+export async function loadOlderMessages(chatId: string, limit = 50): Promise<number> {
     const msgs = get(messages);
-    if (msgs.length === 0) return;
+    if (msgs.length === 0) return 0;
 
     const oldestCursor = msgs[0].sortOrder;
     const olderMsgs = await MessageService.getMessagesBefore(chatId, oldestCursor, limit);
@@ -82,12 +82,15 @@ export async function loadOlderMessages(chatId: string, limit = 50): Promise<voi
             for (const msg of olderMsgs) messages.set(msg.id, msg);
         });
         await refreshMessageIndexes(chatId);
+        return olderMsgs.length;
     }
+
+    return 0;
 }
 
-export async function loadNewerMessages(chatId: string, limit = 50): Promise<void> {
+export async function loadNewerMessages(chatId: string, limit = 50): Promise<number> {
     const msgs = get(messages);
-    if (msgs.length === 0) return;
+    if (msgs.length === 0) return 0;
 
     const newestCursor = msgs[msgs.length - 1].sortOrder;
     const newerMsgs = await MessageService.getMessagesAfter(chatId, newestCursor, limit);
@@ -98,7 +101,67 @@ export async function loadNewerMessages(chatId: string, limit = 50): Promise<voi
             for (const msg of newerMsgs) messages.set(msg.id, msg);
         });
         await refreshMessageIndexes(chatId);
+        return newerMsgs.length;
     }
+
+    return 0;
+}
+
+export async function dropOlderMessages(chatId: string, count: number): Promise<void> {
+    if (count <= 0 || get(activeChatId) !== chatId) return;
+
+    const ids = get(messages)
+        .slice(0, count)
+        .map((msg) => msg.id);
+    if (ids.length === 0) return;
+
+    messages.batch(() => {
+        for (const id of ids) messages.delete(id);
+    });
+    await refreshMessageIndexes(chatId);
+}
+
+export async function dropNewerMessages(chatId: string, count: number): Promise<void> {
+    if (count <= 0 || get(activeChatId) !== chatId) return;
+
+    const ids = get(messages)
+        .slice(-count)
+        .map((msg) => msg.id);
+    if (ids.length === 0) return;
+
+    messages.batch(() => {
+        for (const id of ids) messages.delete(id);
+    });
+    await refreshMessageIndexes(chatId);
+}
+
+export function shouldSyncMessage(chatId: string, msg: Message): boolean {
+    if (get(activeChatId) !== chatId) return false;
+    if (msg.chatId !== chatId) return false;
+
+    const list = get(messages);
+    const first = list[0];
+    const last = list.at(-1);
+    const chat = get(activeChat);
+
+    if (!first || !last) return true;
+
+    // Existing visible window
+    if (first.sortOrder <= msg.sortOrder && msg.sortOrder <= last.sortOrder) {
+        return true;
+    }
+
+    // Chat synced first: new tail message is known by id
+    if (chat?.lastMessageId === msg.id) {
+        return true;
+    }
+
+    // Window was tail before this message appeared
+    if (chat?.lastMessageId === last.id && msg.sortOrder > last.sortOrder) {
+        return true;
+    }
+
+    return false;
 }
 
 // ─── CRUD ──────────────────────────────────────────────────────────────
@@ -117,13 +180,15 @@ export async function createMessage(
     }
 
     const newMessage = await MessageService.create(chatId, fields, prevSortOrder, chat.scopeType);
-    await updateChat(chatId, { lastMessageId: newMessage.id });
 
     // Store update — only if still viewing this chat
-    if (get(activeChatId) === chatId) {
+    // Update message store before updating chat - shouldSyncMessage relies on lastMessageId
+    if (shouldSyncMessage(chatId, newMessage)) {
         messages.set(newMessage.id, newMessage);
         await refreshMessageIndexes(chatId);
     }
+
+    await updateChat(chatId, { lastMessageId: newMessage.id });
 
     return newMessage;
 }
@@ -136,9 +201,9 @@ export async function updateMessage(
     const updated = await MessageService.update(msgId, changes);
 
     // Store update — only if still viewing this chat
-    if (get(activeChatId) !== updated.chatId) return;
-
-    messages.set(msgId, updated);
+    if (shouldSyncMessage(updated.chatId, updated)) {
+        messages.set(msgId, updated);
+    }
 }
 
 export async function deleteMessage(chatId: string, msgId: string): Promise<void> {
@@ -163,9 +228,10 @@ export async function createMessageSwipe(
 ): Promise<{ swipeId: string; message: Message }> {
     const { swipeId, message: updated } = await MessageService.createSwipe(messageId, fields);
 
-    if (get(activeChatId) === updated.chatId) {
+    if (shouldSyncMessage(updated.chatId, updated)) {
         messages.set(messageId, updated);
     }
+
     return { swipeId, message: updated };
 }
 
@@ -176,18 +242,20 @@ export async function updateMessageSwipe(
 ): Promise<Message> {
     const updated = await MessageService.updateSwipe(messageId, swipeId, changes);
 
-    if (get(activeChatId) === updated.chatId) {
+    if (shouldSyncMessage(updated.chatId, updated)) {
         messages.set(messageId, updated);
     }
+
     return updated;
 }
 
 export async function deleteMessageSwipe(messageId: string, swipeId: string): Promise<Message> {
     const updated = await MessageService.deleteSwipe(messageId, swipeId);
 
-    if (get(activeChatId) === updated.chatId) {
+    if (shouldSyncMessage(updated.chatId, updated)) {
         messages.set(messageId, updated);
     }
+
     return updated;
 }
 

@@ -55,7 +55,7 @@ import { clearActiveChat } from '../content/chat';
 import { clearActiveRoom } from '../content/room';
 import { clearActiveModule } from '../content/module';
 import { clearActivePersona } from '../content/persona';
-import { refreshMessageIndexes } from '../content/message';
+import { refreshMessageIndexes, shouldSyncMessage } from '../content/message';
 import { loadSettings } from '../content/settings';
 import { patchEntityStoreByIds, reorderStoreByRefs } from './shared';
 
@@ -427,9 +427,9 @@ export function startDataStoreSync(): void {
                             for (let i = 0; i < ids.length; i++) {
                                 const id = ids[i];
                                 const msg = msgs[i];
-                                if (!msg || msg.chatId !== currentChatId) {
+                                if (!msg) {
                                     messages.delete(id);
-                                } else {
+                                } else if (shouldSyncMessage(currentChatId, msg)) {
                                     messages.set(id, msg);
                                 }
                             }

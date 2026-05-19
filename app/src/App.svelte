@@ -107,9 +107,10 @@
                     if (r.roomId && $activeRoom?.id !== r.roomId) {
                         await selectRoom(r.roomId);
                     }
-                    clearActiveChat();
                     if (r.chatId && $activeChat?.id !== r.chatId) {
                         await selectChat(r.chatId);
+                    } else if (!r.chatId) {
+                        clearActiveChat();
                     }
                 } else if (r.view === 'characterStudio') {
                     if (r.charId && $activeCharacter?.id !== r.charId) {

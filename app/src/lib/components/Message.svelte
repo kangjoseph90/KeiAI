@@ -23,7 +23,7 @@
         Copy,
         RefreshCw
     } from 'lucide-svelte';
-    import { onDestroy } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import ToolCallGroup from './ToolCallGroup.svelte';
     import AssetView from './AssetView.svelte';
     import type { ToolCall } from '$lib/services/content/tool';
@@ -86,6 +86,8 @@
 
     let thoughtExpanded = $state(false);
     let copied = $state(false);
+    let messageEl: HTMLDivElement | undefined = $state();
+    let isRenderVisible = $state(false);
 
     // Render pipeline internals
     let displayContent = $state('');
@@ -95,6 +97,8 @@
     let lastDisplayCharacterId: string | undefined;
     let lastDisplayPersonaId: string | undefined;
     let lastMessageIndex: number | undefined;
+    let renderDirty = true;
+    let visibilityObserver: IntersectionObserver | null = null;
 
     const rawAssetUrlCache: RawAssetUrlCache = new SvelteMap();
 
@@ -252,6 +256,12 @@
     function refreshDisplay() {
         const currentContent = activeSwipe?.content ?? '';
 
+        if (!isRenderVisible) {
+            renderDirty = true;
+            return;
+        }
+        renderDirty = false;
+
         // If completely done or error, render immediately without throttling
         if (message.displayStatus !== 'generating') {
             if (renderTimeout) {
@@ -302,11 +312,32 @@
             lastDisplayCharacterId = displayCharacterId;
             lastDisplayPersonaId = displayPersonaId;
             lastMessageIndex = message.messageIndex;
+            renderDirty = true;
             refreshDisplay();
         }
     });
 
+    onMount(() => {
+        if (!messageEl || typeof IntersectionObserver === 'undefined') {
+            isRenderVisible = true;
+            refreshDisplay();
+            return;
+        }
+
+        visibilityObserver = new IntersectionObserver(
+            ([entry]) => {
+                isRenderVisible = entry?.isIntersecting ?? false;
+                if (isRenderVisible && renderDirty) {
+                    refreshDisplay();
+                }
+            },
+            { rootMargin: '800px 0px' }
+        );
+        visibilityObserver.observe(messageEl);
+    });
+
     onDestroy(() => {
+        visibilityObserver?.disconnect();
         if (renderTimeout) {
             clearTimeout(renderTimeout);
             renderTimeout = null;
@@ -319,7 +350,7 @@
 </script>
 
 <!-- Message Container -->
-<div class="group flex justify-start gap-3">
+<div bind:this={messageEl} class="group flex justify-start gap-3">
     <div
         class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground overflow-hidden"
     >
@@ -408,7 +439,7 @@
                     <span class="flex items-center gap-1.5 text-muted-foreground">
                         <Loader2 class="size-3 animate-spin" /> Thinking...
                     </span>
-                {:else}
+                {:else if renderedHtml || isRenderVisible}
                     <div
                         use:morphHtml={renderedHtml}
                         use:hydrateAssets={renderedHtml}
@@ -416,6 +447,8 @@
                             ? '**:text-primary-foreground prose-invert'
                             : 'dark:prose-invert'}"
                     ></div>
+                {:else}
+                    <div class="min-h-5"></div>
                 {/if}
             </div>
 

@@ -8,7 +8,8 @@
         Square,
         ChevronRight,
         ChevronLeft,
-        MessageSquare
+        MessageSquare,
+        ArrowDown
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
@@ -25,7 +26,11 @@
         createMessage,
         updateMessage,
         deleteMessage,
-        selectChat
+        selectChat,
+        loadOlderMessages,
+        loadNewerMessages,
+        dropOlderMessages,
+        dropNewerMessages
     } from '$lib/stores';
     import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
     import { ToolCallService } from '$lib/services/content/tool';
@@ -33,16 +38,108 @@
     import { runTemplate } from '$lib/template';
     import type { TemplateContext } from '$lib/template';
     import { navigate } from '$lib/router';
+    import { createLogger } from '$lib/adapters/logger';
     import { tick } from 'svelte';
     import { forkChat, getChatVariables, prepareNextSwipe, syncChatGreetings } from '$lib/managers';
 
     let { roomId, chatId }: { roomId: string; chatId?: string } = $props();
 
+    const logger = createLogger('view:chat');
     let newMessageText = $state('');
     let editModeId = $state<string | null>(null);
     let editMessageText = $state('');
     let inspectorOpen = $state(true);
     let scrollContainerEl: HTMLElement | undefined = $state();
+    let isLoadingOlder = $state(false);
+    let isLoadingNewer = $state(false);
+    let showScrollToBottom = $state(false);
+    let hasMoreOlder = $state(true);
+    let hasMoreNewer = $state(false);
+
+    const MESSAGE_PAGE_SIZE = 30;
+    const MESSAGE_WINDOW_SIZE = 120;
+
+    // Reset exhaustion flag when active chat changes
+    $effect(() => {
+        const _ = $activeChat?.id;
+        hasMoreOlder = true;
+        hasMoreNewer = false;
+    });
+
+    async function handleScroll() {
+        if (!scrollContainerEl || !$activeChat) return;
+
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainerEl;
+
+        // Show scroll-to-bottom button if we are more than 300px away from bottom
+        showScrollToBottom = scrollHeight - scrollTop - clientHeight > 300;
+
+        // Load older messages if we scroll to the top (within 30px) and have more
+        if (scrollTop < 30 && !isLoadingOlder && hasMoreOlder) {
+            isLoadingOlder = true;
+            const prevHeight = scrollHeight;
+
+            try {
+                const loaded = await loadOlderMessages($activeChat.id, MESSAGE_PAGE_SIZE);
+                await tick();
+
+                if (loaded === 0) {
+                    hasMoreOlder = false;
+                }
+
+                if (scrollContainerEl) {
+                    scrollContainerEl.scrollTop = scrollContainerEl.scrollHeight - prevHeight;
+                }
+
+                const overflow = $displayMessages.length - MESSAGE_WINDOW_SIZE;
+                if (overflow > 0) {
+                    await dropNewerMessages($activeChat.id, overflow);
+                    hasMoreNewer = true;
+                }
+            } catch (err) {
+                logger.error('Failed to load older messages:', err);
+            } finally {
+                isLoadingOlder = false;
+            }
+        } else if (
+            scrollHeight - scrollTop - clientHeight < 30 &&
+            !isLoadingNewer &&
+            hasMoreNewer
+        ) {
+            isLoadingNewer = true;
+
+            try {
+                const loaded = await loadNewerMessages($activeChat.id, MESSAGE_PAGE_SIZE);
+                await tick();
+
+                if (loaded === 0) {
+                    hasMoreNewer = false;
+                }
+
+                const overflow = $displayMessages.length - MESSAGE_WINDOW_SIZE;
+                if (overflow > 0) {
+                    await dropOlderMessages($activeChat.id, overflow);
+                    hasMoreOlder = true;
+                }
+
+                await tick();
+                scrollToBottom();
+            } catch (err) {
+                logger.error('Failed to load newer messages:', err);
+            } finally {
+                isLoadingNewer = false;
+            }
+        }
+    }
+
+    function scrollToBottom() {
+        if (scrollContainerEl) {
+            scrollContainerEl.scrollTo({
+                top: scrollContainerEl.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+    }
 
     const selectedPersona = $derived.by(() => {
         const personaId = $chatSelections?.personaId ?? $activeChat?.defaultPersonaId;
@@ -141,17 +238,19 @@
         }
     }
 
+    let lastMessageCount = 0;
+
     // Auto-scroll to bottom when new messages arrive
     $effect(() => {
         const msgs = $displayMessages;
-        if (msgs.length > 0) {
-            // Scroll after DOM update
+        if (msgs.length > lastMessageCount && !isLoadingOlder) {
             tick().then(() => {
                 if (scrollContainerEl) {
                     scrollContainerEl.scrollTop = scrollContainerEl.scrollHeight;
                 }
             });
         }
+        lastMessageCount = msgs.length;
     });
 </script>
 
@@ -207,9 +306,13 @@
             </div>
         {:else}
             <!-- Messages Column -->
-            <div class="flex flex-1 flex-col overflow-hidden">
+            <div class="flex flex-1 flex-col overflow-hidden relative">
                 <!-- Messages -->
-                <div bind:this={scrollContainerEl} class="flex-1 overflow-y-auto px-4 py-4">
+                <div
+                    bind:this={scrollContainerEl}
+                    onscroll={handleScroll}
+                    class="flex-1 overflow-y-auto px-4 py-4"
+                >
                     {#if $displayMessages.length === 0}
                         <!-- Empty State -->
                         <div
@@ -229,6 +332,13 @@
                         </div>
                     {:else}
                         <div class="flex flex-col gap-4">
+                            {#if isLoadingOlder}
+                                <div class="flex justify-center py-2 shrink-0">
+                                    <span class="text-xs text-muted-foreground animate-pulse"
+                                        >Loading older messages...</span
+                                    >
+                                </div>
+                            {/if}
                             {#each $displayMessages as msg (msg.id)}
                                 <Message
                                     message={msg}
@@ -267,6 +377,21 @@
                         </div>
                     {/if}
                 </div>
+
+                <!-- Scroll to Bottom Button -->
+                {#if showScrollToBottom}
+                    <div class="absolute bottom-20 right-6 z-10">
+                        <Button
+                            variant="secondary"
+                            size="icon"
+                            class="rounded-full shadow-md bg-background/80 backdrop-blur border size-10 hover:bg-accent flex items-center justify-center transition-opacity"
+                            onclick={scrollToBottom}
+                            aria-label="Scroll to bottom"
+                        >
+                            <ArrowDown class="size-5" />
+                        </Button>
+                    </div>
+                {/if}
 
                 <!-- Message Input -->
                 <div class="flex gap-2 border-t px-4 py-3">
