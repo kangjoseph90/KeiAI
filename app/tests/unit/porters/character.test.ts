@@ -25,7 +25,8 @@ vi.mock('$lib/services', () => ({
     CharacterService: {
         get: vi.fn(),
         create: vi.fn(),
-        update: vi.fn()
+        update: vi.fn(),
+        delete: vi.fn()
     },
     LorebookService: {
         listByOwner: vi.fn(),
@@ -45,7 +46,8 @@ vi.mock('$lib/services/asset', () => ({
     AssetService: {
         getFields: vi.fn(),
         readBytes: vi.fn(),
-        write: vi.fn()
+        write: vi.fn(),
+        delete: vi.fn()
     }
 }));
 
@@ -568,6 +570,71 @@ describe('character porters', () => {
         expect(update?.scripts?.refs?.['script-new']?.id).toBe('script-new');
         expect(update?.charjs?.refs?.['charjs-new']?.id).toBe('charjs-new');
         expect(update?.assets?.refs?.['asset-new']?.name).toBe('Avatar');
+    });
+
+    it('retries write operations on failure up to maxAttempts', async () => {
+        const pkg = makePackage({
+            assets: [
+                { id: 'asset_0', data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' }
+            ]
+        });
+
+        let attempts = 0;
+        vi.mocked(AssetService.write).mockImplementation(async () => {
+            attempts++;
+            if (attempts === 1) {
+                throw new Error('Transient error');
+            }
+            return 'asset-new';
+        });
+
+        vi.mocked(CharacterService.create).mockResolvedValue({
+            ...character,
+            id: 'char-new',
+            avatarAssetId: undefined,
+            lorebooks: { refs: {}, folders: {} },
+            scripts: { refs: {}, folders: {} },
+            charjs: { refs: {}, folders: {} },
+            assets: { refs: {}, folders: {} }
+        });
+        vi.mocked(LorebookService.create).mockResolvedValue({ ...lorebook, id: 'lorebook-new' });
+        vi.mocked(ScriptService.create).mockResolvedValue({ ...script, id: 'script-new' });
+        vi.mocked(CharJSService.create).mockResolvedValue({ ...charjs, id: 'charjs-new' });
+        vi.mocked(CharacterService.update).mockResolvedValue({ ...character, id: 'char-new' });
+
+        const characterId = await importCharacterPackage(pkg, { scopeType: 'room' });
+
+        expect(characterId).toBe('char-new');
+        expect(attempts).toBe(2);
+    });
+
+    it('rolls back created character and assets if database operations fail during import', async () => {
+        const pkg = makePackage({
+            assets: [
+                { id: 'asset_0', data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' }
+            ]
+        });
+
+        vi.mocked(AssetService.write).mockResolvedValue('asset-new');
+        vi.mocked(CharacterService.create).mockResolvedValue({
+            ...character,
+            id: 'char-new',
+            avatarAssetId: undefined,
+            lorebooks: { refs: {}, folders: {} },
+            scripts: { refs: {}, folders: {} },
+            charjs: { refs: {}, folders: {} },
+            assets: { refs: {}, folders: {} }
+        });
+        vi.mocked(LorebookService.create).mockRejectedValue(new Error('DB write failed'));
+        vi.mocked(CharacterService.delete).mockResolvedValue(undefined as never);
+        vi.mocked(AssetService.delete).mockResolvedValue(undefined as never);
+
+        await expect(importCharacterPackage(pkg, { scopeType: 'room' })).rejects.toThrow(
+            'DB write failed'
+        );
+
+        expect(CharacterService.delete).toHaveBeenCalledWith('char-new');
+        expect(AssetService.delete).toHaveBeenCalledWith('asset-new');
     });
 });
 

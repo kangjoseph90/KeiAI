@@ -4,7 +4,10 @@ import type { EntityListConfig, FolderDef, OrderedRef } from '$lib/types/refs';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { generateKeyBetween } from 'fractional-indexing';
+import { Semaphore } from '$lib/utils/semaphore';
 import { classifyAsset, type KeiAssetPayload } from './types';
+
+const IMPORT_CONCURRENCY = 4;
 
 export type KeiPackageExportMode = 'light' | 'baked';
 
@@ -178,23 +181,59 @@ export async function importAssets(
         }
     }
 
-    for (const asset of assets) {
-        const kind = classifyAsset(asset);
-        if (kind === 'light') {
-            map[asset.id] = await AssetService.write(null, 'resource', {
-                scopeType,
-                hash: asset.hash,
-                encKey: asset.encKey
-            });
-            continue;
+    const createdIds: string[] = [];
+    const semaphore = new Semaphore(IMPORT_CONCURRENCY);
+    try {
+        const results = await Promise.allSettled(
+            assets.map((asset) =>
+                semaphore.runExclusive(async () => {
+                    const maxAttempts = 3;
+                    let lastError: unknown;
+                    const kind = classifyAsset(asset);
+                    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                        try {
+                            let mappedId: string;
+                            if (kind === 'light') {
+                                mappedId = await AssetService.write(null, 'resource', {
+                                    scopeType,
+                                    hash: asset.hash,
+                                    encKey: asset.encKey
+                                });
+                            } else {
+                                const bytes = asset.data as Uint8Array;
+                                const file = new File([bytes.slice()], `${asset.id}.bin`);
+                                mappedId = await AssetService.write(file, 'resource', {
+                                    scopeType
+                                });
+                            }
+                            createdIds.push(mappedId);
+                            map[asset.id] = mappedId;
+                            return;
+                        } catch (error) {
+                            lastError = error;
+                            if (attempt < maxAttempts) {
+                                await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
+                            }
+                        }
+                    }
+                    throw (
+                        lastError ??
+                        new AppError('DB_WRITE_FAILED', `Failed to import asset: ${asset.id}`)
+                    );
+                })
+            )
+        );
+
+        const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+        if (failures.length > 0) {
+            throw failures[0].reason;
         }
 
-        const bytes = asset.data as Uint8Array;
-        const file = new File([bytes.slice()], `${asset.id}.bin`);
-        map[asset.id] = await AssetService.write(file, 'resource', { scopeType });
+        return map;
+    } catch (error) {
+        await Promise.allSettled(createdIds.map((id) => AssetService.delete(id)));
+        throw error;
     }
-
-    return map;
 }
 
 export function requireMapped(map: Record<string, string>, id: string): string {
