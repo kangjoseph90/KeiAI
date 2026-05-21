@@ -40,3 +40,5 @@ export interface Macro {
     recursive?: boolean;
     run: MacroFn;
 }
+
+export type MacroRegistry = ReadonlyMap<string, readonly Macro[]>;

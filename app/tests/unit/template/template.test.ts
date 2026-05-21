@@ -6,6 +6,7 @@ import {
     runTemplate,
     createDryRunMacros
 } from '$lib/template';
+import type { Macro } from '$lib/template';
 import {
     createAssetMacros,
     type AssetNameIndex,
@@ -20,7 +21,9 @@ const {
     mockGetCharacter,
     mockGetPersona,
     mockGetChat,
+    mockGetMessage,
     mockGetChatVariable,
+    mockGetGlobalVariable,
     mockSetChatVariable
 } = vi.hoisted(() => ({
     mockCollectCharJSInstances: vi.fn(),
@@ -29,7 +32,9 @@ const {
     mockGetCharacter: vi.fn(),
     mockGetPersona: vi.fn(),
     mockGetChat: vi.fn(),
+    mockGetMessage: vi.fn(),
     mockGetChatVariable: vi.fn(),
+    mockGetGlobalVariable: vi.fn(),
     mockSetChatVariable: vi.fn()
 }));
 
@@ -59,9 +64,17 @@ vi.mock('$lib/stores/content/chat', () => ({
     getChat: mockGetChat
 }));
 
+vi.mock('$lib/stores/content/message', () => ({
+    getMessage: mockGetMessage
+}));
+
 vi.mock('$lib/managers/chat', () => ({
     getChatVariable: mockGetChatVariable,
     setChatVariable: mockSetChatVariable
+}));
+
+vi.mock('$lib/managers/preset', () => ({
+    getGlobalVariable: mockGetGlobalVariable
 }));
 
 function createPluginInstance(): PluginInstance {
@@ -101,11 +114,41 @@ describe('template', () => {
         mockGetChat.mockResolvedValue({
             id: 'chat-1',
             title: 'Demo chat',
-            chatNote: 'Talk softly'
+            chatNote: 'Talk softly',
+            greetingMessageId: 'msg-greeting',
+            lastMessageId: 'msg-last',
+            messageCount: 7
+        });
+        mockGetMessage.mockImplementation(async (id: string) => {
+            if (id === 'msg-greeting') {
+                return {
+                    activeSwipeId: 'swipe-1',
+                    swipes: {
+                        'swipe-1': { content: 'Hello there' }
+                    }
+                };
+            }
+
+            if (id === 'msg-last') {
+                return {
+                    activeSwipeId: 'swipe-1',
+                    swipes: {
+                        'swipe-1': { content: 'See you' }
+                    }
+                };
+            }
+
+            return null;
         });
         mockGetChatVariable.mockImplementation(async (_chatId: string, key: string) => {
+            if (key === 'aff') return '60';
+            if (key === 'charlist') return '["hello","world"]';
             if (key === 'flag') return '1';
-            if (key === 'mood') return 'happy';
+            if (key === 'mood') return 'very happy';
+            return null;
+        });
+        mockGetGlobalVariable.mockImplementation(async (key: string) => {
+            if (key === 'toggle_romance') return '1';
             return null;
         });
         mockSetChatVariable.mockResolvedValue(undefined);
@@ -156,6 +199,12 @@ describe('template', () => {
         await expect(
             interpretTemplate(parseTemplate('{{greater::2::1}}'), {}, macros)
         ).resolves.toBe('1');
+        await expect(
+            interpretTemplate(parseTemplate('{{any::0::false::yes}}'), {}, macros)
+        ).resolves.toBe('1');
+        await expect(
+            interpretTemplate(parseTemplate('{{any::0::false}}'), {}, macros)
+        ).resolves.toBe('0');
         await expect(interpretTemplate(parseTemplate('{{? 2 + 3 * 4}}'), {}, macros)).resolves.toBe(
             '14'
         );
@@ -241,6 +290,38 @@ describe('template', () => {
         expect(mockGetCharacter).not.toHaveBeenCalled();
     });
 
+    it('falls back through macro stacks when a higher priority macro throws', async () => {
+        const localMacros = new Map([
+            [
+                'char',
+                {
+                    run: () => {
+                        throw new Error('not handled');
+                    }
+                }
+            ]
+        ]);
+
+        await expect(runTemplate('{{char}}', { characterId: 'char-1' }, localMacros)).resolves.toBe(
+            'Kei'
+        );
+    });
+
+    it('returns ERROR when all macro handlers with a name fail', async () => {
+        const localMacros = new Map([
+            [
+                'fail',
+                {
+                    run: () => {
+                        throw new Error('boom');
+                    }
+                }
+            ]
+        ]);
+
+        await expect(runTemplate('{{fail}}', {}, localMacros)).resolves.toBe('ERROR');
+    });
+
     it('interprets if, elif, and else branches', async () => {
         const macros = await collectTemplateMacros({});
         const template = parseTemplate(
@@ -248,6 +329,99 @@ describe('template', () => {
         );
 
         await expect(interpretTemplate(template, {}, macros)).resolves.toBe('yes');
+    });
+
+    it('interprets if conditions with the expression evaluator', async () => {
+        await expect(
+            runTemplate(
+                '{{#if {{gettoggle::romance}} and {{getvar::aff}} >= 50}}yes{{:else}}no{{/if}}',
+                { chatId: 'chat-1' }
+            )
+        ).resolves.toBe('yes');
+    });
+
+    it('treats nested macros as expression value atoms', async () => {
+        await expect(
+            runTemplate('{{#if {{getvar::mood}} == "very happy"}}yes{{:else}}no{{/if}}', {
+                chatId: 'chat-1'
+            })
+        ).resolves.toBe('yes');
+        await expect(
+            runTemplate('{{? {{getvar::aff}} - 10 }}', { chatId: 'chat-1' })
+        ).resolves.toBe('50');
+    });
+
+    it('normalizes only block boundary newlines', async () => {
+        await expect(runTemplate('{{#if 1}}\n  hello\n\n{{/if}}', {})).resolves.toBe('  hello\n');
+    });
+
+    it('exposes last message macros', async () => {
+        await expect(
+            runTemplate('{{lastmessageid}}|{{lastmessageindex}}', { chatId: 'chat-1' })
+        ).resolves.toBe('msg-last|6');
+    });
+
+    it('exposes greeting and message boundary macros', async () => {
+        await expect(
+            runTemplate(
+                '{{firstmessageid}}|{{firstmessage}}|{{greetingmessage}}|{{lastmessage}}|{{isfirstmessage}}|{{islastmessage}}',
+                { chatId: 'chat-1', messageId: 'msg-greeting' }
+            )
+        ).resolves.toBe('msg-greeting|Hello there|Hello there|See you|1|0');
+
+        await expect(
+            runTemplate('{{isfirstmessage}}|{{islastmessage}}', {
+                chatId: 'chat-1',
+                messageId: 'msg-last'
+            })
+        ).resolves.toBe('0|1');
+    });
+
+    it('renders pure blocks as raw text', async () => {
+        await expect(
+            runTemplate('{{#pure}}{{char}}{{/pure}}', { characterId: 'char-1' })
+        ).resolves.toBe('{{char}}');
+        await expect(
+            runTemplate('{{#pure}}\n{{char}}\n{{/pure}}', { characterId: 'char-1' })
+        ).resolves.toBe('{{char}}');
+    });
+
+    it('escapes braces inside escape blocks', async () => {
+        await expect(runTemplate('{{#escape}}{{char}}{{/escape}}', {})).resolves.toBe(
+            '\\{\\{char\\}\\}'
+        );
+        await expect(runTemplate('{{#escape}}\n{{char}}\n{{/escape}}', {})).resolves.toBe(
+            '\\{\\{char\\}\\}'
+        );
+    });
+
+    it('iterates JSON arrays with scoped slot macros', async () => {
+        await expect(runTemplate('{{#each [1,2,3] as n}}{{slot::n}},{{/each}}', {})).resolves.toBe(
+            '1,2,3,'
+        );
+        await expect(
+            runTemplate('{{#each {{getvar::charlist}} as c}}{{slot::c}}{{/each}}', {
+                chatId: 'chat-1'
+            })
+        ).resolves.toBe('helloworld');
+    });
+
+    it('lets each scoped slots fall back to outer slot macros', async () => {
+        const localMacros = new Map<string, Macro>([
+            [
+                'slot',
+                {
+                    run: ([name]: string[]) => {
+                        if (name !== undefined) throw new Error('not handled');
+                        return 'outer';
+                    }
+                }
+            ]
+        ]);
+
+        await expect(
+            runTemplate('{{#each [1] as n}}{{slot}}:{{slot::n}}{{/each}}', {}, localMacros)
+        ).resolves.toBe('outer:1');
     });
 
     it('accepts anonymous block close tags for Risu compatibility', async () => {
@@ -275,7 +449,15 @@ describe('template', () => {
         );
     });
 
-    it('keeps escape block body as raw text', () => {
+    it('parses escape and pure block bodies as raw text', () => {
+        expect(parseTemplate('{{#pure}}{{char}}{{/pure}}')).toEqual([
+            {
+                type: 'block',
+                name: 'pure',
+                args: [],
+                branches: [[{ type: 'text', value: '{{char}}' }]]
+            }
+        ]);
         expect(parseTemplate('{{#escape}}{{char}}{{/escape}}')).toEqual([
             {
                 type: 'block',

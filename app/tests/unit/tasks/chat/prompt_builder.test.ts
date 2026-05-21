@@ -56,6 +56,7 @@ const chat: Chat = {
     scopeId: 'user-1',
     title: 'Test Chat',
     chatNote: 'chat note',
+    messageCount: 0,
     personas: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} }
 };

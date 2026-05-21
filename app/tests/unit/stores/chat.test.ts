@@ -106,6 +106,7 @@ describe('Chat Store', () => {
         scopeId: 'user-1',
         title: 'Test Chat',
         chatNote: '',
+        messageCount: 0,
         lorebooks: { refs: {}, folders: {} },
         personas: { refs: {}, folders: {} }
     };

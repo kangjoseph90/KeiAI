@@ -1,5 +1,5 @@
 import type { ScriptFields } from '$lib/services';
-import { normalizeCharacterMacros } from '../utils';
+import { denormalizeRisuTemplate, normalizeRisuTemplate } from './template';
 
 export interface RisuRegexScript {
     comment?: string;
@@ -61,7 +61,7 @@ export function risuScriptToKei(
         type: 'regex',
         name: script.comment ?? `Script ${index + 1}`,
         regex: script.in ?? '',
-        replacement: normalizeCharacterMacros(script.out ?? ''),
+        replacement: normalizeRisuTemplate(script.out ?? ''),
         phase: risuScriptPhase(script.type),
         flag: flag.flag,
         advanced: script.ableFlag ?? false,
@@ -75,7 +75,7 @@ export function keiScriptToRisu(script: ScriptFields): RisuRegexScript {
     return {
         comment: script.name,
         in: script.regex,
-        out: script.replacement,
+        out: denormalizeRisuTemplate(script.replacement),
         type: script.enabled ? keiScriptPhase(script.phase) : 'disabled',
         flag: formatRisuRegexFlag(script.flag, script.order),
         ableFlag: script.advanced

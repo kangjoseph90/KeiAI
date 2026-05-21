@@ -391,6 +391,7 @@ describe('Chat Pipeline', () => {
             scopeId: 'user-1',
             title: 'Mock Chat',
             chatNote: '',
+            messageCount: 0,
             defaultCharacterId: 'char-1',
             lorebooks: { refs: {}, folders: {} },
             personas: {
@@ -516,6 +517,7 @@ describe('Chat Pipeline', () => {
                 scopeId: 'user-1',
                 title: 'Mock Chat',
                 chatNote: '',
+                messageCount: 1,
                 defaultCharacterId: 'char-1',
                 defaultPersonaId: 'persona-1',
                 lastMessageId: targetMessageId,

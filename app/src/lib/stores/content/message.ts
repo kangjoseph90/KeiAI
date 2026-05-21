@@ -188,7 +188,10 @@ export async function createMessage(
         await refreshMessageIndexes(chatId);
     }
 
-    await updateChat(chatId, { lastMessageId: newMessage.id });
+    await updateChat(chatId, {
+        lastMessageId: newMessage.id,
+        messageCount: (chat.messageCount ?? 0) + 1
+    });
 
     return newMessage;
 }
@@ -210,9 +213,15 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
     // DB write — always happens
     await MessageService.delete(msgId);
     const chat = await getChat(chatId);
+    const nextMessageCount = Math.max(0, (chat?.messageCount ?? 1) - 1);
     if (chat?.lastMessageId === msgId) {
         const [lastMessage] = await MessageService.getMessagesBefore(chatId, '\uffff', 1);
-        await updateChat(chatId, { lastMessageId: lastMessage?.id });
+        await updateChat(chatId, {
+            lastMessageId: lastMessage?.id,
+            messageCount: nextMessageCount
+        });
+    } else if (chat) {
+        await updateChat(chatId, { messageCount: nextMessageCount });
     }
 
     // Store update — only if still viewing this chat

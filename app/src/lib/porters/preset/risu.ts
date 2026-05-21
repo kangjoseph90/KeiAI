@@ -7,15 +7,9 @@ import { generateId } from '$lib/utils/id';
 import type { RisuRegexScript } from '../risu/script';
 import { decodeRPack, encodeRPack } from '../risu/rpack';
 import { keiScriptToRisu, risuScriptToKei } from '../risu/script';
+import { denormalizeRisuTemplate, normalizeRisuTemplate } from '../risu/template';
 import type { KeiPresetPackageV1 } from './types';
-import {
-    isRecord,
-    normalizeCharacterMacros,
-    readDefaultVariables,
-    refs,
-    sortOrder,
-    writeDefaultVariables
-} from '../utils';
+import { isRecord, readDefaultVariables, refs, sortOrder, writeDefaultVariables } from '../utils';
 
 import { compareSortOrder } from '../../utils/ordering';
 
@@ -277,14 +271,14 @@ function risuPromptToKeiBlock(item: RisuPromptItem, index: number, hasPostEveryt
             name,
             type: 'character' as const,
             role: 'system' as LLMRole,
-            format: optionalFormat(item.innerFormat)
+            format: normalizeOptionalTemplate(item.innerFormat)
         };
     if (item.type === 'persona')
         return {
             name,
             type: 'persona' as const,
             role: 'system' as LLMRole,
-            format: optionalFormat(item.innerFormat)
+            format: normalizeOptionalTemplate(item.innerFormat)
         };
     if (item.type === 'lorebook') {
         return {
@@ -301,14 +295,14 @@ function risuPromptToKeiBlock(item: RisuPromptItem, index: number, hasPostEveryt
             name,
             type: 'memory' as const,
             role: 'system' as LLMRole,
-            format: optionalFormat(item.innerFormat)
+            format: normalizeOptionalTemplate(item.innerFormat)
         };
     if (item.type === 'authornote')
         return {
             name,
             type: 'chatNote' as const,
             role: 'system' as LLMRole,
-            format: optionalFormat(item.innerFormat)
+            format: normalizeOptionalTemplate(item.innerFormat)
         };
     if (item.type === 'chatML' || item.type === 'cache') return null;
     if (item.type === 'chat') {
@@ -324,14 +318,14 @@ function risuPromptToKeiBlock(item: RisuPromptItem, index: number, hasPostEveryt
             name,
             type: 'characterNote' as const,
             role: risuRoleToKei(item.role),
-            format: optionalFormat(item.text)
+            format: normalizeOptionalTemplate(item.text)
         };
     }
     return {
         name,
         type: 'text' as const,
         role: risuRoleToKei('role' in item ? item.role : undefined),
-        content: 'text' in item ? normalizeCharacterMacros(item.text ?? '') : ''
+        content: 'text' in item ? normalizeRisuTemplate(item.text ?? '') : ''
     };
 }
 
@@ -339,26 +333,46 @@ function keiBlockToRisuPrompt(
     block: KeiPresetPackageV1['preset']['promptBlocks'][string]
 ): RisuPromptItem {
     if (block.type === 'character')
-        return { type: 'description', innerFormat: block.format, name: block.name };
+        return {
+            type: 'description',
+            innerFormat: denormalizeOptionalTemplate(block.format),
+            name: block.name
+        };
     if (block.type === 'persona')
-        return { type: 'persona', innerFormat: block.format, name: block.name };
+        return {
+            type: 'persona',
+            innerFormat: denormalizeOptionalTemplate(block.format),
+            name: block.name
+        };
     if (block.type === 'lorebook') {
         if (block.maxDepth === 0) return { type: 'postEverything', name: block.name };
-        return { type: 'lorebook', innerFormat: block.format, name: block.name };
+        return {
+            type: 'lorebook',
+            innerFormat: denormalizeOptionalTemplate(block.format),
+            name: block.name
+        };
     }
     if (block.type === 'memory')
-        return { type: 'memory', innerFormat: block.format, name: block.name };
+        return {
+            type: 'memory',
+            innerFormat: denormalizeOptionalTemplate(block.format),
+            name: block.name
+        };
     if (block.type === 'characterNote') {
         return {
             type: 'plain',
             type2: 'globalNote',
-            text: block.format ?? '',
+            text: denormalizeRisuTemplate(block.format ?? ''),
             role: keiRoleToRisu(block.role),
             name: block.name
         };
     }
     if (block.type === 'chatNote') {
-        return { type: 'authornote', innerFormat: block.format, name: block.name };
+        return {
+            type: 'authornote',
+            innerFormat: denormalizeOptionalTemplate(block.format),
+            name: block.name
+        };
     }
     if (block.type === 'history') {
         return {
@@ -371,7 +385,7 @@ function keiBlockToRisuPrompt(
     return {
         type: 'plain',
         type2: 'normal',
-        text: block.content,
+        text: denormalizeRisuTemplate(block.content),
         role: keiRoleToRisu(block.role),
         name: block.name
     };
@@ -407,9 +421,13 @@ function readRisuDisabledNumber(value: unknown): number | undefined {
     return value;
 }
 
-function optionalFormat(value: string | undefined): string | undefined {
-    const normalized = normalizeCharacterMacros(value ?? '');
+function normalizeOptionalTemplate(value: string | undefined): string | undefined {
+    const normalized = normalizeRisuTemplate(value ?? '');
     return normalized.trim() ? normalized : undefined;
+}
+
+function denormalizeOptionalTemplate(value: string | undefined): string | undefined {
+    return value === undefined ? undefined : denormalizeRisuTemplate(value);
 }
 
 async function encrypt(data: Uint8Array, keyText: string): Promise<ArrayBuffer> {

@@ -16,6 +16,7 @@ export interface ChatContent {
 
 export interface ChatRefs {
     lastMessageId?: string;
+    messageCount: number;
     greetingMessageId?: string;
     defaultPersonaId?: string;
     defaultCharacterId?: string;
@@ -37,6 +38,7 @@ export interface Chat extends ChatFields {
 const defaultFields: ChatFields = {
     title: 'New Chat',
     chatNote: '',
+    messageCount: 0,
     lorebooks: { refs: {}, folders: {} },
     personas: { refs: {}, folders: {} }
 };

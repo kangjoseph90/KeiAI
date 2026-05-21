@@ -48,12 +48,6 @@ export function writeDefaultVariables(vars: Record<string, string>): string {
         .join('\n');
 }
 
-export function normalizeCharacterMacros(content: string): string {
-    return content
-        .replace(/<\s*(char|bot)\s*>/gi, '{{char}}')
-        .replace(/<\s*user\s*>/gi, '{{user}}');
-}
-
 export function createPortableIdMap(ids: string[], prefix: string): Record<string, string> {
     let next = 0;
     const map: Record<string, string> = {};

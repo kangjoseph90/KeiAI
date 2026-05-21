@@ -60,7 +60,7 @@ export function parseTemplate(text: string): Template {
         if (parsed.kind === 'open') {
             const name = normalizeName(parsed.name);
 
-            if (name === 'escape') {
+            if (name === 'escape' || name === 'pure') {
                 const raw = readRawBlock(text, tag.end, name);
                 if (raw) {
                     current().push({

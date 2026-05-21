@@ -4,7 +4,8 @@ import type { CharacterBookEntry, CharacterCardV3 } from './ccv3';
 import { fromKeiPackageJson, base64ToBytes } from './package';
 import { readRisuLorebookDecorators } from '../risu/lorebook';
 import { risuScriptToKei } from '../risu/script';
-import { normalizeCharacterMacros, readDefaultVariables, sortOrder } from '../utils';
+import { normalizeRisuTemplate } from '../risu/template';
+import { readDefaultVariables, sortOrder } from '../utils';
 import type {
     KeiCharacterPackageV1,
     KeiCharacterPayload,
@@ -67,13 +68,13 @@ function readRisuCharacter(
 
     return {
         name: data.name,
-        description: normalizeCharacterMacros(data.description),
-        personality: normalizeCharacterMacros(data.personality),
-        scenario: normalizeCharacterMacros(data.scenario),
-        firstMessage: normalizeCharacterMacros(data.first_mes),
-        alternateGreetings: data.alternate_greetings.map(normalizeCharacterMacros),
-        systemPrompt: normalizeCharacterMacros(data.system_prompt),
-        postHistoryInstructions: normalizeCharacterMacros(data.post_history_instructions),
+        description: normalizeRisuTemplate(data.description),
+        personality: normalizeRisuTemplate(data.personality),
+        scenario: normalizeRisuTemplate(data.scenario),
+        firstMessage: normalizeRisuTemplate(data.first_mes),
+        alternateGreetings: data.alternate_greetings.map(normalizeRisuTemplate),
+        systemPrompt: normalizeRisuTemplate(data.system_prompt),
+        postHistoryInstructions: normalizeRisuTemplate(data.post_history_instructions),
         defaultVariables: readDefaultVariables(risuai.defaultVariables),
         allowLowLevel: risuai.lowLevelAccess ?? false,
         lorebooks: (data.character_book?.entries ?? []).map((entry, index) =>
@@ -202,7 +203,7 @@ function cardLorebookToFields(entry: CharacterBookEntry, index: number): Loreboo
         name: entry.name ?? entry.comment ?? `Lorebook ${index + 1}`,
         key: entry.keys.join(', '),
         secondKey: entry.secondary_keys?.join(', ') ?? '',
-        content: normalizeCharacterMacros(entry.content),
+        content: normalizeRisuTemplate(entry.content),
         depth: 1,
         order: entry.insertion_order,
         alwaysActive: entry.constant ?? false,

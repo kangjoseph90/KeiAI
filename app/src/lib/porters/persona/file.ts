@@ -2,7 +2,7 @@ import { AppError } from '$lib/types/errors';
 import { imageToPng, isPng, readPng, writePngTextChunks } from '$lib/utils/png';
 import { unzip, zip } from '$lib/utils/zip';
 import { base64ToBytes, bytesToBase64 } from '../character/package';
-import { normalizeCharacterMacros } from '../utils';
+import { denormalizeRisuTemplate, normalizeRisuTemplate } from '../risu/template';
 import type { KeiPersonaPackageV1 } from './types';
 
 const TEXT_ENCODER = new TextEncoder();
@@ -52,7 +52,7 @@ async function readRisuPersonaPng(bytes: Uint8Array): Promise<KeiPersonaPackageV
         kind: 'keiai.persona',
         persona: {
             name: card.name,
-            description: normalizeCharacterMacros(card.personaPrompt),
+            description: normalizeRisuTemplate(card.personaPrompt),
             avatarAssetId: 'asset_0',
             assets: { refs: {}, folders: {} }
         },
@@ -66,7 +66,7 @@ async function writeRisuPersonaPng(pkg: KeiPersonaPackageV1): Promise<Uint8Array
         : undefined;
     const card: RisuPersonaCard = {
         name: pkg.persona.name,
-        personaPrompt: pkg.persona.description
+        personaPrompt: denormalizeRisuTemplate(pkg.persona.description)
     };
     const png = avatar ? await imageToPng(avatar) : EMPTY_PNG;
     return writePngTextChunks(

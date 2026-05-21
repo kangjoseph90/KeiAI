@@ -6,6 +6,7 @@ import {
 } from '../risu/module';
 import { keiLorebookToRisuInternal, risuInternalLorebookToKei } from '../risu/lorebook';
 import { keiScriptToRisu, risuScriptToKei } from '../risu/script';
+import { denormalizeRisuTemplate, normalizeRisuTemplate } from '../risu/template';
 import type { KeiModulePackageV1, KeiScriptPayload } from './types';
 import { refs, sortOrder } from '../utils';
 
@@ -40,7 +41,7 @@ export function risuModuleToKeiPackage(risu: FullRisuModule): KeiModulePackageV1
         kind: 'keiai.module',
         module: {
             name: risu.name ?? 'Imported Risu Module',
-            description: risu.description ?? '',
+            description: normalizeRisuTemplate(risu.description ?? ''),
             allowLowLevel: risu.lowLevelAccess ?? false,
             lorebooks: refs(lorebooks),
             scripts: refs(scripts),
@@ -68,7 +69,7 @@ export function risuModuleToKeiPackage(risu: FullRisuModule): KeiModulePackageV1
 export function keiPackageToRisuModule(pkg: KeiModulePackageV1): FullRisuModule {
     return {
         name: pkg.module.name,
-        description: pkg.module.description,
+        description: denormalizeRisuTemplate(pkg.module.description),
         lowLevelAccess: pkg.module.allowLowLevel,
         id: 'keiai',
         lorebook: pkg.lorebooks.map(keiLorebookToRisuInternal),

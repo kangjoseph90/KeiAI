@@ -23,12 +23,11 @@ export async function readCharX(input: ZipInput): Promise<KeiCharacterPackageV1>
         card.data.extensions.risuai ??= {};
         if (module.trigger) card.data.extensions.risuai.triggerscript = module.trigger;
         if (module.regex) card.data.extensions.risuai.customScripts = module.regex;
-        if (module.lorebook?.length) {
-            card.data.character_book ??= {
+        if (module.lorebook?.length && !card.data.character_book?.entries?.length) {
+            card.data.character_book = {
                 extensions: {},
-                entries: []
+                entries: module.lorebook.map(moduleLorebookToEntry)
             };
-            card.data.character_book.entries.push(...module.lorebook.map(moduleLorebookToEntry));
         }
     }
 

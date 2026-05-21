@@ -6,6 +6,7 @@ import { keiLorebookToRisuCardEntry, keiLorebookToRisuInternal } from '../risu/l
 import { keiScriptToRisu } from '../risu/script';
 import { sanitizeFileName } from '$lib/utils/file';
 import { writeDefaultVariables } from '../utils';
+import { denormalizeRisuTemplate } from '../risu/template';
 
 export type CardAssetUriMode = 'data' | 'png' | 'charx';
 
@@ -22,15 +23,17 @@ export function keiPackageToCard(
         spec_version: '3.0',
         data: {
             name: pkg.character.name,
-            description: pkg.character.description,
+            description: denormalizeRisuTemplate(pkg.character.description),
             personality: '',
             scenario: '',
-            first_mes: greetings[0]?.content ?? '',
-            alternate_greetings: greetings.slice(1).map((greeting) => greeting.content),
+            first_mes: denormalizeRisuTemplate(greetings[0]?.content ?? ''),
+            alternate_greetings: greetings
+                .slice(1)
+                .map((greeting) => denormalizeRisuTemplate(greeting.content)),
             mes_example: '',
             creator_notes: '',
             system_prompt: '',
-            post_history_instructions: pkg.character.characterNote,
+            post_history_instructions: denormalizeRisuTemplate(pkg.character.characterNote),
             character_book: {
                 extensions: {},
                 recursive_scanning: false,

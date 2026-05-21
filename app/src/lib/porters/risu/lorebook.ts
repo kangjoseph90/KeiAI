@@ -1,7 +1,7 @@
 import type { LorebookFields } from '$lib/services';
 import type { CharacterBookEntry } from '../character/ccv3';
-import { normalizeCharacterMacros } from '../utils';
 import type { RisuInternalLorebook } from './module';
+import { denormalizeRisuTemplate, normalizeRisuTemplate } from './template';
 
 const DECORATOR_RE = /^\s*@@([a-z_]+)(?:\s+(.*?))?\s*$/i;
 
@@ -14,8 +14,9 @@ export function addRisuLorebookDecorators(lorebook: LorebookFields): string {
     decorators.push(lorebook.recursive ? '@@recursive' : '@@unrecursive');
     if (lorebook.noRecursiveSearch) decorators.push('@@no_recursive_search');
 
-    if (decorators.length === 0) return lorebook.content;
-    return `${decorators.join('\n')}\n${lorebook.content}`;
+    const content = denormalizeRisuTemplate(lorebook.content);
+    if (decorators.length === 0) return content;
+    return `${decorators.join('\n')}\n${content}`;
 }
 
 export function readRisuLorebookDecorators(lorebook: LorebookFields): LorebookFields {
@@ -50,7 +51,7 @@ export function risuInternalLorebookToKei(
         name: lorebook.comment ?? `Lorebook ${index + 1}`,
         key: lorebook.key ?? '',
         secondKey: lorebook.secondkey ?? '',
-        content: normalizeCharacterMacros(lorebook.content ?? ''),
+        content: normalizeRisuTemplate(lorebook.content ?? ''),
         depth: 1,
         order: lorebook.insertorder ?? 100,
         alwaysActive: lorebook.alwaysActive ?? false,

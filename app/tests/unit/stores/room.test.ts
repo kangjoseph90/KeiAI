@@ -92,6 +92,7 @@ describe('Room Store', () => {
         scopeId: 'user-1',
         title: 'Chat 1',
         chatNote: '',
+        messageCount: 0,
         lorebooks: { refs: {}, folders: {} },
         personas: { refs: {}, folders: {} }
     };

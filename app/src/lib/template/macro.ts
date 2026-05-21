@@ -1,40 +1,44 @@
-import type { Macro, MacroFn, TemplateContext } from './types';
+import type { Macro, MacroFn, MacroRegistry, TemplateContext } from './types';
 import { collectCharJSInstances } from '$lib/charjs/collect';
 import { invokeHandler } from '$lib/charjs/engine';
 import { pluginManager } from '$lib/plugins';
-import { evaluate } from './rpn';
 import { getCharacter } from '$lib/stores/content/character';
 import { getPersona } from '$lib/stores/content/persona';
 import { getChat } from '$lib/stores/content/chat';
+import { getMessage } from '$lib/stores/content/message';
 import { getChatVariable, setChatVariable } from '$lib/managers/chat';
 import { getGlobalVariable } from '$lib/managers/preset';
 import { createLogger } from '$lib/adapters/logger';
 
 const logger = createLogger('template:macro');
 
-export async function collectTemplateMacros(ctx: TemplateContext): Promise<Map<string, Macro>> {
+export async function collectTemplateMacros(ctx: TemplateContext): Promise<Map<string, Macro[]>> {
     const macros = collectBuiltInMacros();
 
     if (ctx.chatId) {
         const charjs = await collectCharJSMacros(ctx.chatId, ctx.characterId);
         for (const [name, macro] of charjs) {
-            macros.set(name, macro);
+            pushMacro(macros, name, macro);
         }
     }
 
     const plugins = collectPluginMacros();
     for (const [name, macro] of plugins) {
-        macros.set(name, macro);
+        pushMacro(macros, name, macro);
     }
 
     return macros;
 }
 
-function collectBuiltInMacros(): Map<string, Macro> {
-    const macros = new Map<string, Macro>();
+function collectBuiltInMacros(): Map<string, Macro[]> {
+    const macros = new Map<string, Macro[]>();
 
     const add = (name: string, macro: Macro | MacroFn) => {
-        macros.set(normalizeName(name), typeof macro === 'function' ? { run: macro } : macro);
+        pushMacro(
+            macros,
+            normalizeName(name),
+            typeof macro === 'function' ? { run: macro } : macro
+        );
     };
     const addAliases = (names: string[], macro: Macro | MacroFn) => {
         for (const name of names) add(name, macro);
@@ -100,6 +104,42 @@ function collectBuiltInMacros(): Map<string, Macro> {
     addAliases(['messageindex', 'msgindex'], (_args, ctx) =>
         ctx.messageIndex === undefined ? '' : String(ctx.messageIndex)
     );
+    add('lastmessageid', async (_args, ctx) => {
+        if (!ctx.chatId) return '';
+        const chat = await getChat(ctx.chatId);
+        return chat?.lastMessageId ?? '';
+    });
+    add('firstmessageid', async (_args, ctx) => {
+        if (!ctx.chatId) return '';
+        const chat = await getChat(ctx.chatId);
+        return chat?.greetingMessageId ?? '';
+    });
+    addAliases(['firstmessage', 'greetingmessage'], async (_args, ctx) => {
+        if (!ctx.chatId) return '';
+        const chat = await getChat(ctx.chatId);
+        return chat?.greetingMessageId ? await getMessageContent(chat.greetingMessageId) : '';
+    });
+    add('lastmessage', async (_args, ctx) => {
+        if (!ctx.chatId) return '';
+        const chat = await getChat(ctx.chatId);
+        return chat?.lastMessageId ? await getMessageContent(chat.lastMessageId) : '';
+    });
+    add('isfirstmessage', async (_args, ctx) => {
+        if (!ctx.chatId || !ctx.messageId) return '0';
+        const chat = await getChat(ctx.chatId);
+        return bool(ctx.messageId === chat?.greetingMessageId);
+    });
+    add('islastmessage', async (_args, ctx) => {
+        if (!ctx.chatId || !ctx.messageId) return '0';
+        const chat = await getChat(ctx.chatId);
+        return bool(ctx.messageId === chat?.lastMessageId);
+    });
+    add('lastmessageindex', async (_args, ctx) => {
+        if (!ctx.chatId) return '';
+        const chat = await getChat(ctx.chatId);
+        if (!chat) return '';
+        return String((chat.messageCount ?? 0) - 1);
+    });
     addAliases(['role'], (_args, ctx) => ctx.role ?? '');
     addAliases(['isuser'], (_args, ctx) => bool(ctx.role === 'user'));
     addAliases(['isassistant', 'isbot'], (_args, ctx) => bool(ctx.role === 'assistant'));
@@ -110,13 +150,6 @@ function collectBuiltInMacros(): Map<string, Macro> {
     addAliases(['date', 'datetimeformat'], (args) =>
         formatLocalDate(new Date(), args.join(':') || 'YYYY-MM-DD')
     );
-    addAliases(['?', 'calc'], ([expression]) => {
-        try {
-            return String(evaluate(expression ?? '0'));
-        } catch {
-            return 'ERROR';
-        }
-    });
     add('round', ([value]) => String(Math.round(toNumber(value))));
     add('floor', ([value]) => String(Math.floor(toNumber(value))));
     add('ceil', ([value]) => String(Math.ceil(toNumber(value))));
@@ -132,6 +165,7 @@ function collectBuiltInMacros(): Map<string, Macro> {
     add('and', ([a, b]) => bool(isTruthy(a) && isTruthy(b)));
     add('or', ([a, b]) => bool(isTruthy(a) || isTruthy(b)));
     add('not', ([value]) => bool(!isTruthy(value)));
+    add('any', (args) => bool(args.some(isTruthy)));
     add('length', ([value]) => String((value ?? '').length));
     add('trim', ([value]) => value?.trim() ?? '');
     add('lower', ([value]) => value?.toLowerCase() ?? '');
@@ -153,6 +187,10 @@ function collectBuiltInMacros(): Map<string, Macro> {
     add('getglobalvar', async ([key]) => {
         if (!key) return '';
         return (await getGlobalVariable(key)) ?? 'null';
+    });
+    add('gettoggle', async ([key]) => {
+        if (!key) return '';
+        return (await getGlobalVariable(`toggle_${key}`)) ?? 'null';
     });
     add('setvar', async ([key, value], ctx) => {
         if (!ctx.chatId || !key) return '';
@@ -217,6 +255,36 @@ function normalizeName(name: string): string {
     return name.trim().toLowerCase();
 }
 
+async function getMessageContent(messageId: string): Promise<string> {
+    const message = await getMessage(messageId);
+    const swipe = message?.swipes[message.activeSwipeId];
+    return swipe?.content ?? '';
+}
+
+export function pushMacro(macros: Map<string, Macro[]>, name: string, macro: Macro): void {
+    const key = normalizeName(name);
+    const stack = macros.get(key);
+    if (stack) {
+        stack.push(macro);
+        return;
+    }
+
+    macros.set(key, [macro]);
+}
+
+export function pushLocalMacros(
+    macros: Map<string, Macro[]>,
+    localMacros: ReadonlyMap<string, Macro>
+): void {
+    for (const [name, macro] of localMacros) {
+        pushMacro(macros, name, macro);
+    }
+}
+
+export function forkMacroRegistry(macros: MacroRegistry): Map<string, Macro[]> {
+    return new Map([...macros].map(([name, stack]) => [name, [...stack]]));
+}
+
 function toNumber(value: string | undefined): number {
     const number = Number(value ?? 0);
     return Number.isFinite(number) ? number : 0;
@@ -257,16 +325,11 @@ function formatLocalDate(date: Date, format: string): string {
     );
 }
 
-export function createDryRunMacros(overrides?: ReadonlyMap<string, Macro>): Map<string, Macro> {
+export function createDryRunMacros(): Map<string, Macro> {
     const dryRunMacros = new Map<string, Macro>([
         ['setvar', { run: () => '' }],
         ['addvar', { run: () => '' }]
     ]);
 
-    if (overrides) {
-        for (const [key, value] of overrides) {
-            dryRunMacros.set(key, value);
-        }
-    }
     return dryRunMacros;
 }

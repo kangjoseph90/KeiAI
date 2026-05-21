@@ -1,4 +1,4 @@
-import { collectTemplateMacros } from './macro';
+import { collectTemplateMacros, pushLocalMacros } from './macro';
 import { interpretTemplate } from './interpreter';
 import { parseTemplate } from './parser';
 import type { Macro, TemplateContext } from './types';
@@ -10,9 +10,7 @@ export async function runTemplate(
 ): Promise<string> {
     const resolved = await collectTemplateMacros(ctx);
     if (localMacros) {
-        for (const [name, macro] of localMacros) {
-            resolved.set(name, macro);
-        }
+        pushLocalMacros(resolved, localMacros);
     }
     const parsed = parseTemplate(text);
     return interpretTemplate(parsed, ctx, resolved);
@@ -24,6 +22,7 @@ export type {
     BlockNode,
     Macro,
     MacroFn,
+    MacroRegistry,
     MacroNode,
     Template,
     TemplateContext,
