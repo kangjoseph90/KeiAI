@@ -156,17 +156,39 @@
     // ── Actions ───────────────────────────────────────────────────────────────
 
     const morphHtml: Action<HTMLElement, string> = (node, html) => {
-        const template = document.createElement('div');
+        const template = document.createElement('template');
+
+        function isSameStableImage(fromEl: Element, toEl: Element): boolean {
+            if (!(fromEl instanceof HTMLImageElement) || !(toEl instanceof HTMLImageElement)) {
+                return false;
+            }
+
+            const assetId = fromEl.dataset.keiaiAssetId;
+            if (assetId && toEl.dataset.keiaiAssetId === assetId && fromEl.hasAttribute('src')) {
+                return true;
+            }
+
+            const nextSrc = toEl.getAttribute('src');
+            return !!nextSrc && fromEl.src === toEl.src;
+        }
 
         const update = (newHtml: string) => {
             if (!newHtml) {
                 node.innerHTML = '';
                 return;
             }
-            template.innerHTML = newHtml;
-            morphdom(node, template, {
+
+            template.innerHTML = `<div>${newHtml}</div>`;
+            const target = template.content.firstElementChild;
+            if (!target) {
+                node.innerHTML = '';
+                return;
+            }
+
+            morphdom(node, target, {
                 childrenOnly: true,
                 onBeforeElUpdated: (fromEl, toEl) => {
+                    if (isSameStableImage(fromEl, toEl)) return false;
                     if (fromEl.isEqualNode(toEl)) return false;
                     return true;
                 }
