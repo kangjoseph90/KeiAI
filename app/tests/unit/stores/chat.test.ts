@@ -143,7 +143,7 @@ describe('Chat Store', () => {
             await selectChat('chat-1');
 
             expect(get(activeChat)?.id).toBe(mockChat.id);
-            expect(loadInitialMessages).toHaveBeenCalledWith('chat-1', 50);
+            expect(loadInitialMessages).toHaveBeenCalledWith('chat-1', 30);
             expect(get(chatLorebooks)).toEqual([]);
             expect(updateRoom).toHaveBeenCalledWith('room-1', { lastActiveChatId: 'chat-1' });
         });

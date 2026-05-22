@@ -9,7 +9,8 @@
         ChevronRight,
         ChevronLeft,
         MessageSquare,
-        ArrowDown
+        ArrowDown,
+        Loader2
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
@@ -72,13 +73,19 @@
 
         const { scrollTop, scrollHeight, clientHeight } = scrollContainerEl;
 
-        // Show scroll-to-bottom button if we are more than 300px away from bottom
-        showScrollToBottom = scrollHeight - scrollTop - clientHeight > 300;
+        // In flex-col-reverse:
+        // - scrollTop is 0 at the visual bottom (latest messages) and negative when scrolled up.
+        // - Math.abs(scrollTop) is the distance scrolled up from the bottom.
+        // - Distance from the top of the container (oldest messages) is scrollHeight - clientHeight - Math.abs(scrollTop).
+        const absScrollTop = Math.abs(scrollTop);
+        const distanceFromTop = scrollHeight - clientHeight - absScrollTop;
 
-        // Load older messages if we scroll to the top (within 30px) and have more
-        if (scrollTop < 30 && !isLoadingOlder && hasMoreOlder) {
+        // Show scroll-to-bottom button if we are more than 300px away from the bottom
+        showScrollToBottom = absScrollTop > 300;
+
+        // Load older messages if we scroll to the visual top (within 30px of the top) and have more
+        if (distanceFromTop < 30 && !isLoadingOlder && hasMoreOlder) {
             isLoadingOlder = true;
-            const prevHeight = scrollHeight;
 
             try {
                 const loaded = await loadOlderMessages($activeChat.id, MESSAGE_PAGE_SIZE);
@@ -86,10 +93,6 @@
 
                 if (loaded === 0) {
                     hasMoreOlder = false;
-                }
-
-                if (scrollContainerEl) {
-                    scrollContainerEl.scrollTop = scrollContainerEl.scrollHeight - prevHeight;
                 }
 
                 const overflow = $displayMessages.length - MESSAGE_WINDOW_SIZE;
@@ -102,11 +105,7 @@
             } finally {
                 isLoadingOlder = false;
             }
-        } else if (
-            scrollHeight - scrollTop - clientHeight < 30 &&
-            !isLoadingNewer &&
-            hasMoreNewer
-        ) {
+        } else if (absScrollTop < 30 && !isLoadingNewer && hasMoreNewer) {
             isLoadingNewer = true;
 
             try {
@@ -124,7 +123,6 @@
                 }
 
                 await tick();
-                scrollToBottom();
             } catch (err) {
                 logger.error('Failed to load newer messages:', err);
             } finally {
@@ -136,7 +134,7 @@
     function scrollToBottom() {
         if (scrollContainerEl) {
             scrollContainerEl.scrollTo({
-                top: scrollContainerEl.scrollHeight,
+                top: 0,
                 behavior: 'smooth'
             });
         }
@@ -244,10 +242,10 @@
     // Auto-scroll to bottom when new messages arrive
     $effect(() => {
         const msgs = $displayMessages;
-        if (msgs.length > lastMessageCount && !isLoadingOlder) {
+        if (msgs.length > lastMessageCount && !isLoadingOlder && !isLoadingNewer) {
             tick().then(() => {
                 if (scrollContainerEl) {
-                    scrollContainerEl.scrollTop = scrollContainerEl.scrollHeight;
+                    scrollContainerEl.scrollTop = 0;
                 }
             });
         }
@@ -310,11 +308,20 @@
             <div class="flex flex-1 flex-col overflow-hidden relative">
                 <ChatBackground chatId={$activeChat.id} {defaultCharacter} />
 
+                {#if isLoadingOlder}
+                    <div
+                        class="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-background/85 backdrop-blur-md border px-3 py-1.5 rounded-full shadow-md flex items-center gap-2 text-xs text-muted-foreground transition-all duration-200"
+                    >
+                        <Loader2 class="size-3.5 animate-spin text-primary" />
+                        <span>Loading older messages...</span>
+                    </div>
+                {/if}
+
                 <!-- Messages -->
                 <div
                     bind:this={scrollContainerEl}
                     onscroll={handleScroll}
-                    class="relative z-10 flex-1 overflow-y-auto px-4 py-4"
+                    class="relative z-10 flex flex-col-reverse gap-4 flex-1 overflow-y-auto px-4 py-4"
                 >
                     {#if $displayMessages.length === 0}
                         <!-- Empty State -->
@@ -334,50 +341,41 @@
                             </div>
                         </div>
                     {:else}
-                        <div class="flex flex-col gap-4">
-                            {#if isLoadingOlder}
-                                <div class="flex justify-center py-2 shrink-0">
-                                    <span class="text-xs text-muted-foreground animate-pulse"
-                                        >Loading older messages...</span
-                                    >
-                                </div>
-                            {/if}
-                            {#each $displayMessages as msg (msg.id)}
-                                <Message
-                                    message={msg}
-                                    isEditing={editModeId === msg.id}
-                                    bind:editText={editMessageText}
-                                    characterName={defaultCharacter?.name ?? ''}
-                                    characterId={defaultCharacter?.id}
-                                    personaId={defaultPersona?.id}
-                                    onEdit={() => {
-                                        editModeId = msg.id;
-                                        // Initialize edit text from the active swipe
-                                        const activeSwipe = msg.swipes[msg.activeSwipeId];
-                                        editMessageText = activeSwipe?.content ?? '';
-                                    }}
-                                    onSave={() => handleUpdateMessage(msg.id)}
-                                    onDelete={() => deleteMessage($activeChat!.id, msg.id)}
-                                    onCancelEdit={() => (editModeId = null)}
-                                    onDismissError={() => dismissChat($activeChat!.id)}
-                                    onResolveTool={(toolCallId, decision) =>
-                                        resolveToolCall(
-                                            $activeChat!.id,
-                                            selectedCharacter!.id,
-                                            selectedPersona!.id,
-                                            msg.id,
-                                            toolCallId,
-                                            decision
-                                        )}
-                                    onLoadDetail={(toolCallId) => ToolCallService.get(toolCallId)}
-                                    onRegenerate={() => handleRegenerate()}
-                                    onSwipe={(newSwipeId) => handleSwipe(msg.id, newSwipeId)}
-                                    onFork={() => handleFork(msg.id)}
-                                    isLastMessage={msg.id ===
-                                        $displayMessages[$displayMessages.length - 1]?.id}
-                                />
-                            {/each}
-                        </div>
+                        {#each [...$displayMessages].reverse() as msg (msg.id)}
+                            <Message
+                                message={msg}
+                                isEditing={editModeId === msg.id}
+                                bind:editText={editMessageText}
+                                characterName={defaultCharacter?.name ?? ''}
+                                characterId={defaultCharacter?.id}
+                                personaId={defaultPersona?.id}
+                                onEdit={() => {
+                                    editModeId = msg.id;
+                                    // Initialize edit text from the active swipe
+                                    const activeSwipe = msg.swipes[msg.activeSwipeId];
+                                    editMessageText = activeSwipe?.content ?? '';
+                                }}
+                                onSave={() => handleUpdateMessage(msg.id)}
+                                onDelete={() => deleteMessage($activeChat!.id, msg.id)}
+                                onCancelEdit={() => (editModeId = null)}
+                                onDismissError={() => dismissChat($activeChat!.id)}
+                                onResolveTool={(toolCallId, decision) =>
+                                    resolveToolCall(
+                                        $activeChat!.id,
+                                        selectedCharacter!.id,
+                                        selectedPersona!.id,
+                                        msg.id,
+                                        toolCallId,
+                                        decision
+                                    )}
+                                onLoadDetail={(toolCallId) => ToolCallService.get(toolCallId)}
+                                onRegenerate={() => handleRegenerate()}
+                                onSwipe={(newSwipeId) => handleSwipe(msg.id, newSwipeId)}
+                                onFork={() => handleFork(msg.id)}
+                                isLastMessage={msg.id ===
+                                    $displayMessages[$displayMessages.length - 1]?.id}
+                            />
+                        {/each}
                     {/if}
                 </div>
 

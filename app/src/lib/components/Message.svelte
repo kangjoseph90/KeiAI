@@ -99,8 +99,6 @@
 
     let thoughtExpanded = $state(false);
     let copied = $state(false);
-    let messageEl: HTMLDivElement | undefined = $state();
-    let isRenderVisible = $state(false);
 
     // Render pipeline internals
     let displayContent = $state('');
@@ -113,8 +111,6 @@
     let lastMessageIndex: number | undefined;
     let lastMessageScope: string | undefined;
     let lastMessageCssSource = '';
-    let renderDirty = true;
-    let visibilityObserver: IntersectionObserver | null = null;
 
     const rawAssetUrlCache: RawAssetUrlCache = new SvelteMap();
 
@@ -301,12 +297,6 @@
     function refreshDisplay() {
         const currentContent = activeSwipe?.content ?? '';
 
-        if (!isRenderVisible) {
-            renderDirty = true;
-            return;
-        }
-        renderDirty = false;
-
         // If completely done or error, render immediately without throttling
         if (message.displayStatus !== 'generating') {
             if (renderTimeout) {
@@ -363,32 +353,15 @@
             lastMessageIndex = message.messageIndex;
             lastMessageScope = messageScope;
             lastMessageCssSource = cssSource;
-            renderDirty = true;
             refreshDisplay();
         }
     });
 
     onMount(() => {
-        if (!messageEl || typeof IntersectionObserver === 'undefined') {
-            isRenderVisible = true;
-            refreshDisplay();
-            return;
-        }
-
-        visibilityObserver = new IntersectionObserver(
-            ([entry]) => {
-                isRenderVisible = entry?.isIntersecting ?? false;
-                if (isRenderVisible && renderDirty) {
-                    refreshDisplay();
-                }
-            },
-            { rootMargin: '800px 0px' }
-        );
-        visibilityObserver.observe(messageEl);
+        refreshDisplay();
     });
 
     onDestroy(() => {
-        visibilityObserver?.disconnect();
         if (renderTimeout) {
             clearTimeout(renderTimeout);
             renderTimeout = null;
@@ -401,7 +374,7 @@
 </script>
 
 <!-- Message Container -->
-<div bind:this={messageEl} class="group flex justify-start gap-3">
+<div class="group flex justify-start gap-3">
     <div
         class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground overflow-hidden"
     >
@@ -486,11 +459,11 @@
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted text-foreground'}"
             >
-                {#if message.displayStatus === 'generating' && !displayContent}
+                {#if message.displayStatus === 'generating' && !activeSwipe?.content}
                     <span class="flex items-center gap-1.5 text-muted-foreground">
                         <Loader2 class="size-3 animate-spin" /> Thinking...
                     </span>
-                {:else if renderedHtml || isRenderVisible}
+                {:else if renderedHtml}
                     <!-- eslint-disable-next-line svelte/no-at-html-tags -- CSS is scoped by data-keiai-message-scope -->
                     {@html messageStyleHtml}
                     <div
@@ -501,6 +474,14 @@
                             ? '**:text-primary-foreground prose-invert'
                             : 'dark:prose-invert'}"
                     ></div>
+                {:else if activeSwipe?.content}
+                    <div
+                        class="prose prose-sm max-w-none whitespace-pre-wrap {isUser
+                            ? '**:text-primary-foreground prose-invert'
+                            : 'dark:prose-invert'}"
+                    >
+                        {activeSwipe.content}
+                    </div>
                 {:else}
                     <div class="min-h-5"></div>
                 {/if}

@@ -150,7 +150,7 @@ export async function selectChat(chatId: string): Promise<void> {
     messageIndexes.set(new Map());
     roomChats.set(chat.id, chat);
     activeChatId.set(chat.id);
-    await loadInitialMessages(chatId, 50);
+    await loadInitialMessages(chatId, 30);
 
     const personaIds = Object.keys(chat.personas.refs);
     const [lorebooks, personaEntries] = await Promise.all([
