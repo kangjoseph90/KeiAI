@@ -4,7 +4,32 @@ import { AssetService } from '$lib/services/asset';
 export type AssetNameIndex = Map<string, Map<string, string[]>>;
 export type RawAssetUrlCache = Map<string, string | null>;
 
-export function createAssetMacros(
+export function createBackgroundMacros(
+    index: AssetNameIndex,
+    ownerIds: readonly (string | null | undefined)[],
+    rawUrlCache: RawAssetUrlCache
+): Map<string, Macro> {
+    const macros = createDisplayMacros(index, ownerIds, rawUrlCache);
+    macros.set('bg', {
+        run: async ([name]) => {
+            if (!name) return '';
+
+            const url = await readAssetUrl(index, ownerIds, rawUrlCache, name);
+            if (!url) return '';
+
+            const style = [
+                'width:100%',
+                'height:100%',
+                `background: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)),url("${escapeCssString(url)}")`,
+                'background-size: cover'
+            ].join(';');
+            return `<div style="${escapeHtmlAttribute(style)}"></div>`;
+        }
+    });
+    return macros;
+}
+
+export function createDisplayMacros(
     index: AssetNameIndex,
     ownerIds: readonly (string | null | undefined)[],
     rawUrlCache: RawAssetUrlCache
@@ -45,21 +70,31 @@ export function createAssetMacros(
             ].join('');
         }
     });
-    macros.set('raw', {
-        run: async ([name]) => {
-            if (!name) return '';
 
-            const assetId = resolveAssetName(index, ownerIds, name) ?? name;
-            const cached = rawUrlCache.get(assetId);
-            if (cached !== undefined) return cached ?? '';
-
-            const url = await AssetService.read(assetId);
-            rawUrlCache.set(assetId, url);
-            return url ?? '';
-        }
-    });
+    const rawMacro: Macro = {
+        run: ([name]) => readAssetUrl(index, ownerIds, rawUrlCache, name)
+    };
+    macros.set('raw', rawMacro);
+    macros.set('path', rawMacro);
 
     return macros;
+}
+
+async function readAssetUrl(
+    index: AssetNameIndex,
+    ownerIds: readonly (string | null | undefined)[],
+    rawUrlCache: RawAssetUrlCache,
+    name: string | undefined
+): Promise<string> {
+    if (!name) return '';
+
+    const assetId = resolveAssetName(index, ownerIds, name) ?? name;
+    const cached = rawUrlCache.get(assetId);
+    if (cached !== undefined) return cached ?? '';
+
+    const url = await AssetService.read(assetId);
+    rawUrlCache.set(assetId, url);
+    return url ?? '';
 }
 
 /**
@@ -117,4 +152,11 @@ function escapeHtmlAttribute(str: string): string {
         .replace(/'/g, '&#39;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
+}
+
+function escapeCssString(str: string): string {
+    return str
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\r?\n|\r/g, '');
 }

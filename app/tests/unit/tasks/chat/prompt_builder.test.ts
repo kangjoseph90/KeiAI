@@ -39,6 +39,8 @@ const character: Character = {
     name: 'Test Character',
     description: 'character',
     characterNote: 'character note',
+    backgroundHTML: '',
+    messageCSS: '',
     greetings: {},
     defaultVariables: {},
     allowLowLevel: false,

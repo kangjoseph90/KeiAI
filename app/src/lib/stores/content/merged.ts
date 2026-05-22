@@ -1,4 +1,4 @@
-import type { Lorebook, Script } from '$lib/services';
+import type { AppSettings, Character, Lorebook, Module, Script } from '$lib/services';
 import { getChat } from './chat';
 import { getCharacter } from './character';
 import { getAppSettings } from './settings';
@@ -6,6 +6,38 @@ import { getChatLorebooks } from './chat';
 import { getCharacterLorebooks, getCharacterScripts } from './character';
 import { getModuleLorebooks, getModuleScripts } from './module';
 import { getActivePreset, getPresetScripts } from './preset';
+
+/**
+ * Returns loaded active modules for a character.
+ * Combines globally enabled modules and character-specific enabled modules.
+ */
+export function getActiveModulesForCharacter(
+    character: Character | null | undefined,
+    settings: AppSettings | null | undefined,
+    moduleList: readonly Module[]
+): Module[] {
+    const byId = new Map(moduleList.map((module) => [module.id, module]));
+    const result: Module[] = [];
+    const seen = new Set<string>();
+
+    for (const [id, ref] of Object.entries(settings?.modules.refs ?? {})) {
+        if (!ref?.enabled || seen.has(id)) continue;
+        const module = byId.get(id);
+        if (!module) continue;
+        result.push(module);
+        seen.add(id);
+    }
+
+    for (const [id, ref] of Object.entries(character?.modules.refs ?? {})) {
+        if (!ref?.enabled || seen.has(id)) continue;
+        const module = byId.get(id);
+        if (!module) continue;
+        result.push(module);
+        seen.add(id);
+    }
+
+    return result;
+}
 
 /**
  * Returns active module IDs for a character.

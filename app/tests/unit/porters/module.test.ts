@@ -49,6 +49,8 @@ describe('module porters', () => {
         id: 'module-real',
         name: 'Test Module',
         description: 'Module description',
+        backgroundHTML: '',
+        messageCSS: '',
         allowLowLevel: true,
         lorebooks: {
             refs: { lorebook_real: { id: 'lorebook_real', sortOrder: 'a' } },
@@ -224,6 +226,8 @@ function makePackage(overrides: Partial<KeiModulePackageV1> = {}): KeiModulePack
         module: {
             name: 'Imported Module',
             description: 'Description',
+            backgroundHTML: '',
+            messageCSS: '',
             allowLowLevel: true,
             lorebooks: {
                 refs: { lorebook_0: { id: 'lorebook_0', sortOrder: 'a' } },

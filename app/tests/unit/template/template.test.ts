@@ -8,10 +8,10 @@ import {
 } from '$lib/template';
 import type { Macro } from '$lib/template';
 import {
-    createAssetMacros,
+    createDisplayMacros,
     type AssetNameIndex,
     type RawAssetUrlCache
-} from '$lib/template/assets';
+} from '$lib/template/display';
 import type { PluginInstance } from '$lib/plugins/manager';
 
 const {
@@ -434,7 +434,7 @@ describe('template', () => {
     it('renders img macros when asset macros are injected', async () => {
         const assetMap: AssetNameIndex = new Map([['char-1', new Map([['avatar', ['asset-1']]])]]);
         const cache: RawAssetUrlCache = new Map();
-        const macros = createAssetMacros(assetMap, ['char-1'], cache);
+        const macros = createDisplayMacros(assetMap, ['char-1'], cache);
         await expect(runTemplate('{{img::avatar}}', {}, macros)).resolves.toBe(
             '<img data-keiai-asset-id="asset-1" data-keiai-asset-name="avatar" alt="" loading="lazy" decoding="async" />'
         );
@@ -443,7 +443,7 @@ describe('template', () => {
     it('renders inlay macros directly using asset ID', async () => {
         const assetMap: AssetNameIndex = new Map();
         const cache: RawAssetUrlCache = new Map();
-        const macros = createAssetMacros(assetMap, [], cache);
+        const macros = createDisplayMacros(assetMap, [], cache);
         await expect(runTemplate('{{inlay::asset-direct-id}}', {}, macros)).resolves.toBe(
             '<img data-keiai-asset-id="asset-direct-id" alt="" loading="lazy" decoding="async" />'
         );

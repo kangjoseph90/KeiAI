@@ -62,6 +62,8 @@ describe('ModuleService', () => {
     const defaultFields: ModuleFields = {
         name: 'Test Module',
         description: 'Test Description',
+        backgroundHTML: '',
+        messageCSS: '',
         allowLowLevel: false,
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },

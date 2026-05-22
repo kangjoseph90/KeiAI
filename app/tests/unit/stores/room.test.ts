@@ -103,6 +103,8 @@ describe('Room Store', () => {
         name: 'Character 1',
         description: '',
         characterNote: '',
+        backgroundHTML: '',
+        messageCSS: '',
         greetings: {},
         defaultVariables: {},
         allowLowLevel: false,

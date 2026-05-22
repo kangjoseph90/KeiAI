@@ -39,6 +39,8 @@
     let enabled = $derived($appSettings?.modules.refs[mod.id]?.enabled ?? true);
     let editName = $state('');
     let editDesc = $state('');
+    let editBackgroundHTML = $state('');
+    let editMessageCSS = $state('');
     let editAllowLowLevel = $state(false);
     let loadedModuleId = $state<string | null>(null);
 
@@ -57,6 +59,8 @@
             loadedModuleId = mod.id;
             editName = current.name;
             editDesc = current.description;
+            editBackgroundHTML = current.backgroundHTML;
+            editMessageCSS = current.messageCSS;
             editAllowLowLevel = current.allowLowLevel;
         }
 
@@ -75,6 +79,8 @@
         await updateModule(mod.id, {
             name: editName,
             description: editDesc,
+            backgroundHTML: editBackgroundHTML,
+            messageCSS: editMessageCSS,
             allowLowLevel: editAllowLowLevel
         });
         navigate({ view: 'settings' });
@@ -142,6 +148,24 @@
                     <div class="space-y-1">
                         <Label>Description</Label>
                         <Textarea bind:value={editDesc} rows={4} />
+                    </div>
+                    <div class="space-y-1">
+                        <Label>Background HTML</Label>
+                        <Textarea
+                            bind:value={editBackgroundHTML}
+                            rows={8}
+                            class="font-mono text-sm"
+                            placeholder="&lt;style&gt;...&lt;/style&gt;"
+                        />
+                    </div>
+                    <div class="space-y-1">
+                        <Label>Message CSS</Label>
+                        <Textarea
+                            bind:value={editMessageCSS}
+                            rows={8}
+                            class="font-mono text-sm"
+                            placeholder=".status-panel &#123; ... &#125;"
+                        />
                     </div>
                     <label class="flex items-center gap-2 text-sm">
                         <input type="checkbox" bind:checked={editAllowLowLevel} />

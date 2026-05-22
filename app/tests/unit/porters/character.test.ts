@@ -59,6 +59,8 @@ describe('character porters', () => {
         name: 'Kei',
         description: 'Character description',
         characterNote: 'Character note',
+        backgroundHTML: '',
+        messageCSS: '',
         greetings: {
             greet_1: { id: 'greet_1', content: 'Hello', createdAt: 10 }
         },
@@ -646,6 +648,8 @@ function makePackage(overrides: Partial<KeiCharacterPackageV1> = {}): KeiCharact
             name: 'Imported',
             description: 'Description',
             characterNote: 'Note',
+            backgroundHTML: '',
+            messageCSS: '',
             greetings: {
                 greet_1: { id: 'greet_1', content: 'Hi', createdAt: 1 }
             },

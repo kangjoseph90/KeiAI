@@ -84,6 +84,8 @@ describe('Module Store', () => {
         id: 'mod-1',
         name: 'Test Module',
         description: 'Description',
+        backgroundHTML: '',
+        messageCSS: '',
         allowLowLevel: false,
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },

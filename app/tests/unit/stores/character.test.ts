@@ -95,6 +95,8 @@ describe('Character Store', () => {
         name: 'Test Character',
         description: 'Description',
         characterNote: '',
+        backgroundHTML: '',
+        messageCSS: '',
         greetings: {},
         defaultVariables: {},
         allowLowLevel: false,

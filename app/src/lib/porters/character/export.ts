@@ -58,6 +58,8 @@ export async function exportCharacterPackage(
         name: character.name,
         description: character.description,
         characterNote: character.characterNote,
+        backgroundHTML: character.backgroundHTML,
+        messageCSS: character.messageCSS,
         greetings: { ...character.greetings },
         defaultVariables: { ...character.defaultVariables },
         allowLowLevel: character.allowLowLevel,

@@ -20,6 +20,8 @@ export interface ModuleRefs {
 export interface ModuleContent {
     name: string;
     description: string;
+    backgroundHTML: string;
+    messageCSS: string;
     allowLowLevel: boolean;
 }
 
@@ -34,6 +36,8 @@ export interface Module extends ModuleFields {
 const defaultModuleFields: ModuleFields = {
     name: 'New Module',
     description: '',
+    backgroundHTML: '',
+    messageCSS: '',
     allowLowLevel: false,
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },

@@ -59,6 +59,8 @@ export async function exportModuleToKei(
     const portableModule: KeiModulePayload = {
         name: module.name,
         description: module.description,
+        backgroundHTML: module.backgroundHTML,
+        messageCSS: module.messageCSS,
         allowLowLevel: module.allowLowLevel,
         lorebooks: exportEntityList(module.lorebooks, lorebookMap, 'lorebook_folder'),
         scripts: exportEntityList(module.scripts, scriptMap, 'script_folder'),

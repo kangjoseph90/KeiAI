@@ -7,6 +7,7 @@ import { keiScriptToRisu } from '../risu/script';
 import { sanitizeFileName } from '$lib/utils/file';
 import { writeDefaultVariables } from '../utils';
 import { denormalizeRisuTemplate } from '../risu/template';
+import { backgroundWithMessageCSS } from '../risu/background';
 
 export type CardAssetUriMode = 'data' | 'png' | 'charx';
 
@@ -50,6 +51,12 @@ export function keiPackageToCard(
                     customScripts: pkg.scripts.map(keiScriptToRisu),
                     triggerscript: [],
                     defaultVariables: writeDefaultVariables(pkg.character.defaultVariables),
+                    backgroundHTML: denormalizeRisuTemplate(
+                        backgroundWithMessageCSS(
+                            pkg.character.backgroundHTML,
+                            pkg.character.messageCSS
+                        )
+                    ),
                     lowLevelAccess: pkg.character.allowLowLevel
                 },
                 keiai: toKeiPackageJson(pkg, {

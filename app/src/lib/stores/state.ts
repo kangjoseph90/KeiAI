@@ -28,7 +28,7 @@ import type { DisplayMessage, ChatTask } from './types';
 import { EntityStore } from './entity_store';
 import { compareSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { EntityListConfig, AssetRef } from '$lib/types/refs';
-import { normalizeAssetName, type AssetNameIndex } from '$lib/template/assets';
+import { normalizeAssetName, type AssetNameIndex } from '$lib/template/display';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);

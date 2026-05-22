@@ -31,6 +31,8 @@ export async function importCharacterPackage(
                 name: pkg.character.name,
                 description: pkg.character.description,
                 characterNote: pkg.character.characterNote,
+                backgroundHTML: pkg.character.backgroundHTML ?? '',
+                messageCSS: pkg.character.messageCSS ?? '',
                 greetings: { ...pkg.character.greetings },
                 defaultVariables: { ...pkg.character.defaultVariables },
                 allowLowLevel: pkg.character.allowLowLevel,

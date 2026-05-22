@@ -5,6 +5,7 @@ import { fromKeiPackageJson, base64ToBytes } from './package';
 import { readRisuLorebookDecorators } from '../risu/lorebook';
 import { risuScriptToKei } from '../risu/script';
 import { normalizeRisuTemplate } from '../risu/template';
+import { extractStyleCSS } from '../risu/background';
 import { readDefaultVariables, sortOrder } from '../utils';
 import type {
     KeiCharacterPackageV1,
@@ -22,6 +23,8 @@ interface ImportedRisuCharacter {
     alternateGreetings: string[];
     systemPrompt: string;
     postHistoryInstructions: string;
+    backgroundHTML: string;
+    messageCSS: string;
     defaultVariables: Record<string, string>;
     allowLowLevel: boolean;
     lorebooks: LorebookFields[];
@@ -65,6 +68,10 @@ function readRisuCharacter(
     const data = card.data;
     const risuai = data.extensions.risuai ?? {};
     const assets = resolveAssets(card, files, defaultImage);
+    const backgroundHTML =
+        typeof risuai.backgroundHTML === 'string'
+            ? normalizeRisuTemplate(risuai.backgroundHTML)
+            : '';
 
     return {
         name: data.name,
@@ -75,6 +82,8 @@ function readRisuCharacter(
         alternateGreetings: data.alternate_greetings.map(normalizeRisuTemplate),
         systemPrompt: normalizeRisuTemplate(data.system_prompt),
         postHistoryInstructions: normalizeRisuTemplate(data.post_history_instructions),
+        backgroundHTML,
+        messageCSS: extractStyleCSS(backgroundHTML),
         defaultVariables: readDefaultVariables(risuai.defaultVariables),
         allowLowLevel: risuai.lowLevelAccess ?? false,
         lorebooks: (data.character_book?.entries ?? []).map((entry, index) =>
@@ -110,6 +119,8 @@ function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPac
             .map((value) => value.trim())
             .filter(Boolean)
             .join('\n'),
+        backgroundHTML: risu.backgroundHTML,
+        messageCSS: risu.messageCSS,
         greetings: createGreetings([risu.firstMessage, ...risu.alternateGreetings]),
         defaultVariables: { ...risu.defaultVariables },
         allowLowLevel: risu.allowLowLevel,

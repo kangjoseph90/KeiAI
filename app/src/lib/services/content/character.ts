@@ -20,6 +20,8 @@ export interface CharacterContent {
     name: string;
     description: string;
     characterNote: string;
+    backgroundHTML: string;
+    messageCSS: string;
     greetings: Record<string, Greeting>;
     defaultVariables: Record<string, string>;
     allowLowLevel: boolean;
@@ -48,6 +50,8 @@ const defaultFields: CharacterFields = {
     name: 'New Character',
     description: '',
     characterNote: '',
+    backgroundHTML: '',
+    messageCSS: '',
     greetings: {},
     defaultVariables: {},
     allowLowLevel: false,

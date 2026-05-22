@@ -15,6 +15,7 @@
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
     import Message from '$lib/components/Message.svelte';
     import ChatRuntimePanel from './ChatRuntimePanel.svelte';
+    import ChatBackground from './ChatBackground.svelte';
     import {
         activeChat,
         activeRoom,
@@ -307,11 +308,13 @@
         {:else}
             <!-- Messages Column -->
             <div class="flex flex-1 flex-col overflow-hidden relative">
+                <ChatBackground chatId={$activeChat.id} {defaultCharacter} />
+
                 <!-- Messages -->
                 <div
                     bind:this={scrollContainerEl}
                     onscroll={handleScroll}
-                    class="flex-1 overflow-y-auto px-4 py-4"
+                    class="relative z-10 flex-1 overflow-y-auto px-4 py-4"
                 >
                     {#if $displayMessages.length === 0}
                         <!-- Empty State -->
@@ -394,7 +397,9 @@
                 {/if}
 
                 <!-- Message Input -->
-                <div class="flex gap-2 border-t px-4 py-3">
+                <div
+                    class="relative z-10 flex gap-2 border-t bg-background/80 px-4 py-3 backdrop-blur"
+                >
                     <AutoResizeTextarea
                         bind:value={newMessageText}
                         onkeydown={(e) => {

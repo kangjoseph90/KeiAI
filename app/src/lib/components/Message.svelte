@@ -32,12 +32,25 @@
     import type { TemplateContext } from '$lib/template';
     import { parseMarkdownAsync } from '$lib/markdown';
     import morphdom from 'morphdom';
-    import DOMPurify from 'dompurify';
     import type { Action } from 'svelte/action';
     import { hydrateAssets } from '$lib/components/hydrate';
     import { SvelteMap } from 'svelte/reactivity';
-    import { chatAssetsMap, roomCharacters, chatPersonas, modules } from '$lib/stores';
-    import { createAssetMacros, type RawAssetUrlCache } from '$lib/template/assets';
+    import {
+        appSettings,
+        chatAssetsMap,
+        getActiveModulesForCharacter,
+        roomCharacters,
+        chatPersonas,
+        modules
+    } from '$lib/stores';
+    import { createDisplayMacros, type RawAssetUrlCache } from '$lib/template/display';
+    import {
+        scopeCss,
+        stripStyleTags,
+        protectHtmlStyles,
+        restoreHtmlStyles,
+        sanitizeWithStyle
+    } from '$lib/utils/style';
     import { AssetService } from '$lib/services/asset';
 
     // ── Props ─────────────────────────────────────────────────────────────────
@@ -93,10 +106,13 @@
     let displayContent = $state('');
     let lastContent = '';
     let renderedHtml = $state('');
+    let messageStyleHtml = $state('');
     let lastStatus: string | undefined;
     let lastDisplayCharacterId: string | undefined;
     let lastDisplayPersonaId: string | undefined;
     let lastMessageIndex: number | undefined;
+    let lastMessageScope: string | undefined;
+    let lastMessageCssSource = '';
     let renderDirty = true;
     let visibilityObserver: IntersectionObserver | null = null;
 
@@ -126,6 +142,7 @@
     let displayPersonaId = $derived(
         message.role === 'user' && activeSwipe?.speakerId ? activeSwipe.speakerId : personaId
     );
+    let messageScope = $derived(`kei-${message.id}-${message.activeSwipeId}`);
     let speakerAvatarId = $derived.by(() => {
         if (isUser) {
             const persona = $chatPersonas.find((p) => p.id === displayPersonaId);
@@ -177,21 +194,30 @@
     let lastRenderTime = 0;
     let renderTimeout: ReturnType<typeof setTimeout> | null = null;
     const RENDER_THROTTLE_MS = 150;
-    const STYLE_BLOCK_REGEX = /<style\b[^>]*>[\s\S]*?<\/style>/gi;
 
-    function protectHtmlStyles(value: string): { text: string; styles: string[] } {
-        const styles: string[] = [];
-        const text = value.replace(STYLE_BLOCK_REGEX, (style) => {
-            const index = styles.push(style) - 1;
-            return `\n<!--kei-style-${index}-->\n`;
-        });
-        return { text, styles };
+    function messageCssSource(): string {
+        const ownerId = message.role === 'assistant' ? displayCharacterId : characterId;
+        const character = ownerId ? $roomCharacters.find((item) => item.id === ownerId) : undefined;
+        const activeModules = getActiveModulesForCharacter(character, $appSettings, $modules);
+        return [character?.messageCSS ?? '', ...activeModules.map((module) => module.messageCSS)]
+            .filter((part) => part.trim())
+            .join('\n');
     }
 
-    function restoreHtmlStyles(value: string, styles: string[]): string {
-        return value.replace(/<!--kei-style-(\d+)-->/g, (_, index: string) => {
-            return styles[Number(index)] ?? '';
-        });
+    async function renderMessageCSS(templateCtx: TemplateContext, ownerIds: string[]) {
+        const source = messageCssSource();
+        if (!source.trim()) {
+            messageStyleHtml = '';
+            return;
+        }
+
+        const displayMacros = createDisplayMacros($chatAssetsMap, ownerIds, rawAssetUrlCache);
+        const templated = await runTemplate(source, templateCtx);
+        const processed = await runPipeline(message.chatId, 'display', templated, templateCtx);
+        const withAssets = await runTemplate(processed, templateCtx, displayMacros);
+        const scopeSelector = `[data-keiai-message-scope="${messageScope.replace(/"/g, '\\"')}"]`;
+        const css = scopeCss(stripStyleTags(withAssets), scopeSelector);
+        messageStyleHtml = `<style>${css}</style>`;
     }
 
     async function executeRender(contentToRender: string) {
@@ -202,6 +228,18 @@
         pendingRefresh = true;
 
         try {
+            const selfId = message.role === 'user' ? displayPersonaId : displayCharacterId;
+            const opponentId = message.role === 'user' ? displayCharacterId : displayPersonaId;
+            const ownerIds = Array.from(
+                new Set([
+                    selfId,
+                    opponentId,
+                    ...$roomCharacters.map((c) => c.id),
+                    ...$chatPersonas.map((p) => p.id),
+                    ...$modules.map((m) => m.id)
+                ])
+            ).filter((id): id is string => !!id);
+
             const templateCtx: TemplateContext = {
                 characterId: displayCharacterId,
                 personaId: displayPersonaId,
@@ -212,33 +250,18 @@
                 speakerName: activeSwipe?.speakerName,
                 role: message.role
             };
+
             // Do not render display macros before display pipeline
             const dryRunMacros = createDryRunMacros();
+            const displayMacros = createDisplayMacros($chatAssetsMap, ownerIds, rawAssetUrlCache);
             const templated = await runTemplate(contentToRender, templateCtx, dryRunMacros);
             const processed = await runPipeline(message.chatId, 'display', templated, templateCtx);
-
-            const selfId = message.role === 'user' ? displayPersonaId : displayCharacterId;
-            const opponentId = message.role === 'user' ? displayCharacterId : displayPersonaId;
-
-            const ownerIds = Array.from(
-                new Set([
-                    selfId,
-                    opponentId,
-                    ...$roomCharacters.map((c) => c.id),
-                    ...$chatPersonas.map((p) => p.id),
-                    ...$modules.map((m) => m.id)
-                ])
-            ).filter((id): id is string => !!id);
-            const assetMacros = createAssetMacros($chatAssetsMap, ownerIds, rawAssetUrlCache);
-            const rendered = await runTemplate(processed, templateCtx, assetMacros);
+            const rendered = await runTemplate(processed, templateCtx, displayMacros);
+            await renderMessageCSS(templateCtx, ownerIds);
             const protectedHtml = protectHtmlStyles(rendered);
             const rawHtml = await parseMarkdownAsync(protectedHtml.text);
             const restoredHtml = restoreHtmlStyles(rawHtml as string, protectedHtml.styles);
-            const sanitized = DOMPurify.sanitize(restoredHtml, {
-                ADD_TAGS: ['style'],
-                ALLOWED_URI_REGEXP:
-                    /^(?:(?:https?|mailto|tel|data|blob):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i
-            });
+            const sanitized = sanitizeWithStyle(restoredHtml);
 
             // Update states atomically
             displayContent = rendered;
@@ -293,6 +316,7 @@
     $effect(() => {
         const current = activeSwipe?.content ?? '';
         const status = message.displayStatus;
+        const cssSource = messageCssSource();
 
         // Ensure refresh on both content updates and status transitions (e.g. generating -> completed)
         if (
@@ -300,18 +324,23 @@
             status !== lastStatus ||
             displayCharacterId !== lastDisplayCharacterId ||
             displayPersonaId !== lastDisplayPersonaId ||
-            message.messageIndex !== lastMessageIndex
+            message.messageIndex !== lastMessageIndex ||
+            messageScope !== lastMessageScope ||
+            cssSource !== lastMessageCssSource
         ) {
             // Synchronously clear state when a fresh generation starts to prevent showing old content
             if (status === 'generating' && current === '') {
                 displayContent = '';
                 renderedHtml = '';
+                messageStyleHtml = '';
             }
             lastContent = current;
             lastStatus = status;
             lastDisplayCharacterId = displayCharacterId;
             lastDisplayPersonaId = displayPersonaId;
             lastMessageIndex = message.messageIndex;
+            lastMessageScope = messageScope;
+            lastMessageCssSource = cssSource;
             renderDirty = true;
             refreshDisplay();
         }
@@ -440,7 +469,10 @@
                         <Loader2 class="size-3 animate-spin" /> Thinking...
                     </span>
                 {:else if renderedHtml || isRenderVisible}
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- CSS is scoped by data-keiai-message-scope -->
+                    {@html messageStyleHtml}
                     <div
+                        data-keiai-message-scope={messageScope}
                         use:morphHtml={renderedHtml}
                         use:hydrateAssets={renderedHtml}
                         class="prose prose-sm max-w-none {isUser

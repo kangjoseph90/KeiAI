@@ -80,6 +80,8 @@ describe('ChatManager', () => {
         name: 'Alpha',
         description: '',
         characterNote: '',
+        backgroundHTML: '',
+        messageCSS: '',
         greetings: { greet1: { id: 'greet1', content: 'Hello', createdAt: 1 } },
         defaultVariables: { mood: 'calm', shared: 'alpha' },
         allowLowLevel: false,
