@@ -177,7 +177,9 @@ export class PluginManager {
         } = instance;
 
         broker.expose('core.log', (...args: unknown[]) => {
-            createLogger(`plugin:${pluginId}`).info(...args);
+            const logArgs =
+                args.at(-1) instanceof AbortSignal ? args.slice(0, args.length - 1) : args;
+            createLogger(`plugin:${pluginId}`).info(...logArgs);
         });
 
         broker.expose('core.getArg', async (key: unknown) => {
