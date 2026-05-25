@@ -13,7 +13,7 @@ import {
     type UpdateMultiRoomIndexParams
 } from '$lib/services';
 import { AppError } from '$lib/types/errors';
-import { sortByRefs } from '$lib/utils/ordering';
+import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
     activeRoomId,
     isMultiRoom,
@@ -25,6 +25,7 @@ import {
     roomChats
 } from '../state';
 import { clearActiveRoom, updateRoom } from './room';
+import { getAppSettings, updateSettings } from './settings';
 
 function assertActiveMultiRoom(roomId: string): void {
     if (!get(isMultiRoom) || get(activeRoomId) !== roomId) {
@@ -56,11 +57,12 @@ function upsertRoomMember(member: MultiRoomMember): void {
 }
 
 export async function loadMultiRooms(): Promise<void> {
+    const settings = await getAppSettings();
     const [rooms, metas] = await Promise.all([
         MultiRoomService.listRooms(),
         MultiRoomService.listIndexes()
     ]);
-    multiRooms.setAll(rooms);
+    multiRooms.setAll(sortByRefs(rooms, settings.multiRooms.refs));
     multiRoomMetas.setAll(metas);
 }
 
@@ -128,11 +130,23 @@ export async function selectMultiRoom(roomId: string): Promise<void> {
 }
 
 export async function createMultiRoom(fields: CreateMultiRoomParams): Promise<Room> {
+    const settings = await getAppSettings();
     const room = await MultiRoomService.createRoom({
         visibility: fields.visibility,
         publicName: fields.publicName,
         name: fields.name
     });
+
+    const sortOrder = generateSortOrder(settings.multiRooms.refs, settings.multiRooms.folders);
+    try {
+        await updateSettings({
+            multiRooms: { refs: { [room.id]: { id: room.id, sortOrder } } }
+        });
+    } catch (error) {
+        await MultiRoomService.deleteRoom(room.id);
+        throw error;
+    }
+
     const meta = await MultiRoomService.getIndex(room.id);
     multiRooms.set(room.id, room);
     multiRoomMetas.set(meta.id, meta);
@@ -142,7 +156,18 @@ export async function createMultiRoom(fields: CreateMultiRoomParams): Promise<Ro
 
 export async function deleteMultiRoom(roomId: string): Promise<void> {
     assertActiveMultiRoom(roomId);
-    await MultiRoomService.deleteRoom(roomId);
+    const settings = await getAppSettings();
+    const existingRef = settings.multiRooms.refs[roomId];
+
+    await updateSettings({ multiRooms: { refs: { [roomId]: undefined } } });
+
+    try {
+        await MultiRoomService.deleteRoom(roomId);
+    } catch (error) {
+        await updateSettings({ multiRooms: { refs: { [roomId]: existingRef } } });
+        throw error;
+    }
+
     multiRooms.delete(roomId);
     multiRoomMetas.delete(roomId);
     multiRoomMembers.update((current) => {

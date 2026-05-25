@@ -32,19 +32,28 @@ export async function updateSettings(changes: DeepPartial<AppSettings>): Promise
 
 // ─── Global Folder & Item Management ──────────────────────
 
-export type GlobalFolderType = 'characters' | 'personas' | 'presets' | 'modules' | 'plugins';
+export type GlobalFolderType =
+    | 'rooms'
+    | 'multiRooms'
+    | 'characters'
+    | 'personas'
+    | 'presets'
+    | 'modules'
+    | 'plugins';
 
 export async function createGlobalFolder(
     folderType: GlobalFolderType,
     name: string,
-    parentId?: string
+    parentId?: string,
+    sortOrder?: string
 ): Promise<FolderDef> {
     const settings = await getAppSettings();
 
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(settings[folderType].folders),
+        sortOrder:
+            sortOrder ?? generateSortOrder(settings[folderType].refs, settings[folderType].folders),
         parentId
     };
 

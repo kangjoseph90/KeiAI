@@ -17,7 +17,11 @@
         deleteModuleScript,
         createModuleCharJS,
         updateModuleCharJS,
-        deleteModuleCharJS
+        deleteModuleCharJS,
+        createModuleFolder,
+        updateModuleFolder,
+        deleteModuleFolder,
+        moveModuleItem
     } from '$lib/stores';
     import { navigate } from '$lib/router';
     import type { Module, Lorebook, Script, CharJS } from '$lib/services';
@@ -33,6 +37,7 @@
     import LorebookItem from './LorebookItem.svelte';
     import ScriptItem from './ScriptItem.svelte';
     import CharJSItem from './CharJSItem.svelte';
+    import EntityList from '$lib/components/entitylist/EntityList.svelte';
 
     let { mod }: { mod: Module } = $props();
 
@@ -197,17 +202,29 @@
                         <Plus class="size-3" /> Add
                     </Button>
                 </div>
-                <div class="flex flex-col gap-1.5">
-                    {#each lorebooks as lb (lb.id)}
+                <EntityList
+                    entities={lorebooks}
+                    config={$activeModule?.lorebooks ?? { refs: {}, folders: {} }}
+                    layout="list"
+                    onCreateFolder={(name, parentId) =>
+                        createModuleFolder(mod.id, 'lorebooks', name, parentId)}
+                    onUpdateFolder={(id, changes) =>
+                        updateModuleFolder(mod.id, 'lorebooks', id, changes)}
+                    onDeleteFolder={(id) => deleteModuleFolder(mod.id, 'lorebooks', id)}
+                    onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                        moveModuleItem(mod.id, 'lorebooks', itemId, newFolderId, newSortOrder)}
+                >
+                    {#snippet empty()}
+                        <p class="text-xs text-muted-foreground">No lorebooks.</p>
+                    {/snippet}
+                    {#snippet item({ entity: lb })}
                         <LorebookItem
                             item={lb}
                             onUpdate={handleUpdateLorebook}
                             onDelete={handleDeleteLorebook}
                         />
-                    {:else}
-                        <p class="text-xs text-muted-foreground">No lorebooks.</p>
-                    {/each}
-                </div>
+                    {/snippet}
+                </EntityList>
             </section>
 
             <Separator />
@@ -239,17 +256,29 @@
                         <Plus class="size-3" /> Add
                     </Button>
                 </div>
-                <div class="flex flex-col gap-1.5">
-                    {#each scripts as sc (sc.id)}
+                <EntityList
+                    entities={scripts}
+                    config={$activeModule?.scripts ?? { refs: {}, folders: {} }}
+                    layout="list"
+                    onCreateFolder={(name, parentId) =>
+                        createModuleFolder(mod.id, 'scripts', name, parentId)}
+                    onUpdateFolder={(id, changes) =>
+                        updateModuleFolder(mod.id, 'scripts', id, changes)}
+                    onDeleteFolder={(id) => deleteModuleFolder(mod.id, 'scripts', id)}
+                    onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                        moveModuleItem(mod.id, 'scripts', itemId, newFolderId, newSortOrder)}
+                >
+                    {#snippet empty()}
+                        <p class="text-xs text-muted-foreground">No scripts.</p>
+                    {/snippet}
+                    {#snippet item({ entity: sc })}
                         <ScriptItem
                             item={sc}
                             onUpdate={handleUpdateScript}
                             onDelete={handleDeleteScript}
                         />
-                    {:else}
-                        <p class="text-xs text-muted-foreground">No scripts.</p>
-                    {/each}
-                </div>
+                    {/snippet}
+                </EntityList>
             </section>
 
             <Separator />
@@ -275,17 +304,29 @@
                         <Plus class="size-3" /> Add
                     </Button>
                 </div>
-                <div class="flex flex-col gap-1.5">
-                    {#each charjs as cjs (cjs.id)}
+                <EntityList
+                    entities={charjs}
+                    config={$activeModule?.charjs ?? { refs: {}, folders: {} }}
+                    layout="list"
+                    onCreateFolder={(name, parentId) =>
+                        createModuleFolder(mod.id, 'charjs', name, parentId)}
+                    onUpdateFolder={(id, changes) =>
+                        updateModuleFolder(mod.id, 'charjs', id, changes)}
+                    onDeleteFolder={(id) => deleteModuleFolder(mod.id, 'charjs', id)}
+                    onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                        moveModuleItem(mod.id, 'charjs', itemId, newFolderId, newSortOrder)}
+                >
+                    {#snippet empty()}
+                        <p class="text-xs text-muted-foreground">No CharJS.</p>
+                    {/snippet}
+                    {#snippet item({ entity: cjs })}
                         <CharJSItem
                             item={cjs}
                             onUpdate={handleUpdateCharJS}
                             onDelete={handleDeleteCharJS}
                         />
-                    {:else}
-                        <p class="text-xs text-muted-foreground">No CharJS.</p>
-                    {/each}
-                </div>
+                    {/snippet}
+                </EntityList>
             </section>
         </div>
 

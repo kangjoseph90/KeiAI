@@ -66,6 +66,8 @@ function reorderGlobalStoresBySettings(): void {
     const settings = get(appSettings);
     if (!settings) return;
 
+    reorderStoreByRefs(rooms, settings.rooms.refs);
+    reorderStoreByRefs(multiRooms, settings.multiRooms.refs);
     reorderStoreByRefs(characters, settings.characters.refs);
     reorderStoreByRefs(personas, settings.personas.refs);
     reorderStoreByRefs(presets, settings.presets.refs);

@@ -11,11 +11,16 @@
         updatePresetContent,
         createPresetCustomToggle,
         updatePresetCustomToggle,
-        deletePresetCustomToggle
+        deletePresetCustomToggle,
+        createPresetFolder,
+        updatePresetFolder,
+        deletePresetFolder,
+        movePresetItem
     } from '$lib/stores';
     import type { Preset, PresetCustomToggle, Script } from '$lib/services';
     import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
     import ScriptItem from '../../modules/ScriptItem.svelte';
+    import EntityList from '$lib/components/entitylist/EntityList.svelte';
 
     interface Props {
         preset: Preset;
@@ -183,14 +188,17 @@
         </Button>
     </div>
 
-    <div class="flex flex-col gap-3">
-        {#each currentScripts as script (script.id)}
-            <ScriptItem
-                item={script}
-                onUpdate={(id, changes) => updatePresetScript(preset.id, id, changes)}
-                onDelete={(id) => deletePresetScript(preset.id, id)}
-            />
-        {:else}
+    <EntityList
+        entities={currentScripts}
+        config={preset.scripts}
+        layout="list"
+        onCreateFolder={(name, parentId) => createPresetFolder(preset.id, name, parentId)}
+        onUpdateFolder={(id, changes) => updatePresetFolder(preset.id, id, changes)}
+        onDeleteFolder={(id) => deletePresetFolder(preset.id, id)}
+        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+            movePresetItem(preset.id, itemId, newFolderId, newSortOrder)}
+    >
+        {#snippet empty()}
             <div
                 class="bg-muted/30 rounded-lg p-8 text-center text-muted-foreground border border-dashed"
             >
@@ -199,6 +207,13 @@
                     Scripts allow you to modify prompts and responses using regex.
                 </p>
             </div>
-        {/each}
-    </div>
+        {/snippet}
+        {#snippet item({ entity: script })}
+            <ScriptItem
+                item={script}
+                onUpdate={(id, changes) => updatePresetScript(preset.id, id, changes)}
+                onDelete={(id) => deletePresetScript(preset.id, id)}
+            />
+        {/snippet}
+    </EntityList>
 </div>

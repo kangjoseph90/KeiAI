@@ -19,21 +19,26 @@
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import { Separator } from '$lib/components/ui/separator';
     import { Textarea } from '$lib/components/ui/textarea';
+    import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import {
         activeChat,
         addChatPersona,
         chatPersonas,
         chatLorebooks,
         chatSelections,
+        createChatFolder,
         createChatLorebook,
         deleteChatLorebook,
+        deleteChatFolder,
         isMultiRoom,
         multiRoomPersonas,
         personas,
         removeChatPersona,
         setChatDefaultPersona,
         setChatSelectedPersona,
+        moveChatItem,
         updateChatContent,
+        updateChatFolder,
         updateChatLorebook
     } from '$lib/stores';
     import { navigate } from '$lib/router';
@@ -135,7 +140,7 @@
                     >
                         <User class="size-3" /> Personas
                     </Label>
-                    <div class="flex gap-1.5">
+                    <div class="mb-2 flex gap-1.5">
                         <select
                             class="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
                             bind:value={personaToAdd}
@@ -155,22 +160,41 @@
                             <Plus class="size-4" />
                         </Button>
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        {#each $chatPersonas as persona (persona.id)}
+                    <EntityList
+                        entities={$chatPersonas}
+                        config={$activeChat.personas}
+                        layout="grid"
+                        onCreateFolder={(name, parentId) =>
+                            createChatFolder(chatId, 'personas', name, parentId)}
+                        onUpdateFolder={(id, changes) =>
+                            updateChatFolder(chatId, 'personas', id, changes)}
+                        onDeleteFolder={(id) => deleteChatFolder(chatId, 'personas', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveChatItem(chatId, 'personas', itemId, newFolderId, newSortOrder)}
+                    >
+                        {#snippet empty()}
+                            <div class="rounded-md border border-dashed p-3 text-center">
+                                <p class="text-[10px] text-muted-foreground">
+                                    No personas attached to this chat.
+                                </p>
+                            </div>
+                        {/snippet}
+                        {#snippet item({ entity: persona })}
                             {@const ref = $activeChat.personas.refs[persona.id]}
                             {@const disabled = ref?.enabled === false}
                             {@const selected = $chatSelections?.personaId === persona.id}
                             {@const isDefault = $activeChat.defaultPersonaId === persona.id}
                             <div class="group relative">
                                 <button
-                                    class="flex w-full min-w-0 items-center gap-2 rounded-md border bg-background p-2 text-left transition-colors {selected
+                                    class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors {selected
                                         ? 'border-primary ring-2 ring-primary/20'
-                                        : 'hover:bg-muted'} {disabled ? 'opacity-40' : ''}"
+                                        : 'hover:bg-sidebar-accent'} {disabled ? 'opacity-40' : ''}"
+                                    title={persona.name}
                                     {disabled}
                                     onclick={() => handlePersonaSelect(persona.id)}
                                 >
                                     <div
-                                        class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
+                                        class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
                                     >
                                         {#if persona.avatarAssetId}
                                             <AssetView
@@ -182,12 +206,7 @@
                                             {initial(persona.name)}
                                         {/if}
                                     </div>
-                                    <div class="min-w-0">
-                                        <p class="truncate text-xs font-medium">{persona.name}</p>
-                                        <p class="truncate text-[10px] text-muted-foreground">
-                                            Persona
-                                        </p>
-                                    </div>
+                                    <span class="w-full truncate text-[11px]">{persona.name}</span>
                                 </button>
                                 <button
                                     class="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
@@ -214,14 +233,8 @@
                                     <X class="size-3" />
                                 </button>
                             </div>
-                        {:else}
-                            <div class="col-span-2 rounded-md border border-dashed p-3 text-center">
-                                <p class="text-[10px] text-muted-foreground">
-                                    No personas attached to this chat.
-                                </p>
-                            </div>
-                        {/each}
-                    </div>
+                        {/snippet}
+                    </EntityList>
                 </section>
                 <Separator />
             {/if}
@@ -280,19 +293,31 @@
                         </Button>
                     </div>
 
-                    <div class="space-y-2">
-                        {#each $chatLorebooks as lb (lb.id)}
+                    <EntityList
+                        entities={$chatLorebooks}
+                        config={$activeChat.lorebooks}
+                        layout="list"
+                        onCreateFolder={(name, parentId) =>
+                            createChatFolder(chatId, 'lorebooks', name, parentId)}
+                        onUpdateFolder={(id, changes) =>
+                            updateChatFolder(chatId, 'lorebooks', id, changes)}
+                        onDeleteFolder={(id) => deleteChatFolder(chatId, 'lorebooks', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveChatItem(chatId, 'lorebooks', itemId, newFolderId, newSortOrder)}
+                    >
+                        {#snippet empty()}
+                            <p class="py-2 text-center text-[10px] italic text-muted-foreground">
+                                No chat lorebooks.
+                            </p>
+                        {/snippet}
+                        {#snippet item({ entity: lb })}
                             <LorebookItem
                                 item={lb}
                                 onUpdate={(id, changes) => updateChatLorebook(chatId, id, changes)}
                                 onDelete={(id) => deleteChatLorebook(chatId, id)}
                             />
-                        {:else}
-                            <p class="text-[10px] text-muted-foreground italic text-center py-2">
-                                No chat-specific lorebooks.
-                            </p>
-                        {/each}
-                    </div>
+                        {/snippet}
+                    </EntityList>
                 </section>
 
                 <!-- Runtime Variables -->

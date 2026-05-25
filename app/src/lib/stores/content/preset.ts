@@ -94,7 +94,7 @@ export async function createPreset(fields: DeepPartial<PresetFields> = {}): Prom
     const resolvedPreset = await resolveGlobalVariables(preset.id, preset);
 
     // Add to parent's refs
-    const sortOrder = generateSortOrder(settings.presets.refs);
+    const sortOrder = generateSortOrder(settings.presets.refs, settings.presets.folders);
     try {
         await updateSettings({
             presets: { refs: { [preset.id]: { id: preset.id, sortOrder } } }
@@ -135,7 +135,7 @@ export async function importPresetPackage(
     }
 
     const settings = await getAppSettings();
-    const sortOrder = generateSortOrder(settings.presets.refs);
+    const sortOrder = generateSortOrder(settings.presets.refs, settings.presets.folders);
     try {
         await updateSettings({
             presets: { refs: { [preset.id]: { id: preset.id, sortOrder } } }
@@ -303,7 +303,7 @@ export async function createPresetScript(
     const sc = await ScriptService.create(presetId, fields);
 
     // Update parent's refs
-    const sortOrder = generateSortOrder(preset.scripts.refs);
+    const sortOrder = generateSortOrder(preset.scripts.refs, preset.scripts.folders);
     try {
         await updatePreset(presetId, {
             scripts: { refs: { [sc.id]: { id: sc.id, sortOrder } } }
@@ -360,7 +360,8 @@ export async function deletePresetScript(presetId: string, scriptId: string): Pr
 export async function createPresetFolder(
     presetId: string,
     name: string,
-    parentId?: string
+    parentId?: string,
+    sortOrder?: string
 ): Promise<FolderDef> {
     const preset = await getPreset(presetId);
     if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
@@ -368,7 +369,7 @@ export async function createPresetFolder(
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(preset.scripts.folders),
+        sortOrder: sortOrder ?? generateSortOrder(preset.scripts.refs, preset.scripts.folders),
         parentId
     };
 

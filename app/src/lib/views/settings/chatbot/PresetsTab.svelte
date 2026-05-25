@@ -5,9 +5,21 @@
     import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
     import { Separator } from '$lib/components/ui/separator';
     import { Badge } from '$lib/components/ui/badge';
-    import { presets, activePreset, selectPreset, createPreset, deletePreset } from '$lib/stores';
+    import {
+        presets,
+        activePreset,
+        selectPreset,
+        createPreset,
+        deletePreset,
+        appSettings,
+        createGlobalFolder,
+        updateGlobalFolder,
+        deleteGlobalFolder,
+        moveGlobalItem
+    } from '$lib/stores';
     import { exportPresetFile, importPresetFile } from '$lib/managers/preset';
     import type { PresetFileExport } from '$lib/porters/preset';
+    import EntityList from '$lib/components/entitylist/EntityList.svelte';
 
     let newPresetName = $state('');
     let importInput = $state<HTMLInputElement>();
@@ -58,58 +70,74 @@
 
         <Separator />
 
-        <div class="flex flex-col gap-2">
-            {#each $presets as preset (preset.id)}
-                <div
-                    class="flex items-center justify-between p-2 rounded-lg border {$activePreset?.id ===
-                    preset.id
-                        ? 'border-primary bg-primary/5'
-                        : 'hover:bg-muted/50'}"
-                >
-                    <div class="flex flex-col">
-                        <span class="text-sm font-medium">{preset.name}</span>
-                        <span class="text-[10px] text-muted-foreground truncate max-w-[200px]"
-                            >{preset.description || 'No description'}</span
-                        >
+        {#if $appSettings}
+            <EntityList
+                entities={$presets}
+                config={$appSettings.presets}
+                layout="list"
+                onCreateFolder={(name, parentId) => createGlobalFolder('presets', name, parentId)}
+                onUpdateFolder={(id, changes) => updateGlobalFolder('presets', id, changes)}
+                onDeleteFolder={(id) => deleteGlobalFolder('presets', id)}
+                onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                    moveGlobalItem('presets', itemId, newFolderId, newSortOrder)}
+            >
+                {#snippet empty()}
+                    <div class="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                        <p class="text-sm text-muted-foreground">No presets created yet.</p>
                     </div>
-                    <div class="flex items-center gap-2">
-                        {#if $activePreset?.id !== preset.id}
+                {/snippet}
+                {#snippet item({ entity: preset })}
+                    <div
+                        class="flex items-center justify-between p-2 rounded-lg border {$activePreset?.id ===
+                        preset.id
+                            ? 'border-primary bg-primary/5'
+                            : 'hover:bg-muted/50'}"
+                    >
+                        <div class="flex flex-col">
+                            <span class="text-sm font-medium">{preset.name}</span>
+                            <span class="text-[10px] text-muted-foreground truncate max-w-[200px]"
+                                >{preset.description || 'No description'}</span
+                            >
+                        </div>
+                        <div class="flex items-center gap-2">
+                            {#if $activePreset?.id !== preset.id}
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onclick={() => selectPreset(preset.id)}>Use</Button
+                                >
+                            {:else}
+                                <Badge>Active</Badge>
+                            {/if}
+                            <select
+                                bind:value={exportFormat}
+                                class="h-8 rounded-md border bg-background px-2 text-xs"
+                                aria-label="Preset export format"
+                            >
+                                <option value="risup">Risu .risup</option>
+                                <option value="keipreset">Kei .keipreset</option>
+                            </select>
                             <Button
                                 size="sm"
                                 variant="outline"
-                                onclick={() => selectPreset(preset.id)}>Use</Button
+                                onclick={() => exportPresetFile(preset.id, presetExportRequest())}
+                                aria-label="Export preset"
                             >
-                        {:else}
-                            <Badge>Active</Badge>
-                        {/if}
-                        <select
-                            bind:value={exportFormat}
-                            class="h-8 rounded-md border bg-background px-2 text-xs"
-                            aria-label="Preset export format"
-                        >
-                            <option value="risup">Risu .risup</option>
-                            <option value="keipreset">Kei .keipreset</option>
-                        </select>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onclick={() => exportPresetFile(preset.id, presetExportRequest())}
-                            aria-label="Export preset"
-                        >
-                            <Download class="size-4" />
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant="ghost"
-                            class="h-8 w-8 p-0 text-destructive"
-                            onclick={() => deletePreset(preset.id)}
-                            aria-label="Delete preset"
-                        >
-                            <Trash2 class="size-4" />
-                        </Button>
+                                <Download class="size-4" />
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                class="h-8 w-8 p-0 text-destructive"
+                                onclick={() => deletePreset(preset.id)}
+                                aria-label="Delete preset"
+                            >
+                                <Trash2 class="size-4" />
+                            </Button>
+                        </div>
                     </div>
-                </div>
-            {/each}
-        </div>
+                {/snippet}
+            </EntityList>
+        {/if}
     </CardContent>
 </Card>

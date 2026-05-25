@@ -4,18 +4,26 @@
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import {
+        appSettings,
         characters,
         createCharacter,
+        createGlobalFolder,
         createMultiRoom,
         createPersona,
         createRoom,
         deleteCharacter,
+        deleteGlobalFolder,
+        deleteMultiRoom,
         deletePersona,
+        deleteRoom,
+        moveGlobalItem,
         multiRooms,
         personas,
         rooms,
-        selectMultiRoom
+        selectMultiRoom,
+        updateGlobalFolder
     } from '$lib/stores';
+    import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { importCharacterFile } from '$lib/managers';
     import { importPersonaFile } from '$lib/managers/persona';
     import type { RouteState } from '$lib/router';
@@ -127,6 +135,16 @@
     async function handleDeleteCharacter(characterId: string, name: string) {
         if (!confirm(`Delete character "${name}"?`)) return;
         await deleteCharacter(characterId);
+    }
+
+    async function handleDeleteRoom(roomId: string, name: string) {
+        if (!confirm(`Delete room "${name}"?`)) return;
+        await deleteRoom(roomId);
+    }
+
+    async function handleDeleteMultiRoom(roomId: string, name: string) {
+        if (!confirm(`Delete multi room "${name}"?`)) return;
+        await deleteMultiRoom(roomId);
     }
 
     async function handleImportPersona(event: Event) {
@@ -352,144 +370,220 @@
                 </div>
             </div>
 
-            {#if tab === 'rooms'}
-                {#if $rooms.length === 0}
-                    <div class="flex h-[50vh] items-center justify-center">
-                        <div class="max-w-sm text-center">
-                            <div
-                                class="mx-auto flex size-14 items-center justify-center rounded-full bg-muted"
-                            >
-                                <DoorOpen class="size-6 text-muted-foreground" />
+            {#if $appSettings}
+                {#if tab === 'rooms'}
+                    <EntityList
+                        entities={filteredRooms()}
+                        config={$appSettings.rooms}
+                        layout="grid"
+                        childContainerClass="relative ml-6 p-3 my-1"
+                        onCreateFolder={(name, parentId) =>
+                            createGlobalFolder('rooms', name, parentId)}
+                        onUpdateFolder={(id, changes) => updateGlobalFolder('rooms', id, changes)}
+                        onDeleteFolder={(id) => deleteGlobalFolder('rooms', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveGlobalItem('rooms', itemId, newFolderId, newSortOrder)}
+                    >
+                        {#snippet empty()}
+                            <div class="flex h-[50vh] items-center justify-center">
+                                <div class="max-w-sm text-center">
+                                    <div
+                                        class="mx-auto flex size-14 items-center justify-center rounded-full bg-muted"
+                                    >
+                                        <DoorOpen class="size-6 text-muted-foreground" />
+                                    </div>
+                                    <h2 class="mt-4 text-lg font-semibold">
+                                        Create your first room
+                                    </h2>
+                                    <p class="mt-2 text-sm text-muted-foreground">
+                                        Rooms hold character refs, chats, and conversation context.
+                                    </p>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        onclick={() => (creatingRoom = true)}
+                                    >
+                                        <Plus class="size-4" />
+                                        New Room
+                                    </Button>
+                                </div>
                             </div>
-                            <h2 class="mt-4 text-lg font-semibold">Create your first room</h2>
-                            <p class="mt-2 text-sm text-muted-foreground">
-                                Rooms hold character refs, chats, and conversation context.
-                            </p>
-                            <Button class="mt-5 gap-2" onclick={() => (creatingRoom = true)}>
-                                <Plus class="size-4" />
-                                New Room
-                            </Button>
-                        </div>
-                    </div>
-                {:else}
-                    <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {#each filteredRooms() as room (room.id)}
+                        {/snippet}
+                        {#snippet item({ entity: room })}
                             {@const characterCount = Object.keys(room.characters.refs).length}
                             {@const chatCount = Object.keys(room.chats.refs).length}
-                            <button
-                                class="flex min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
-                                onclick={() => onNavigate({ view: 'room', roomId: room.id })}
+                            <div
+                                class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
                             >
                                 <div class="flex w-full items-center gap-3">
-                                    <div
-                                        class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold"
+                                    <button
+                                        class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                                        onclick={() =>
+                                            onNavigate({ view: 'room', roomId: room.id })}
                                     >
-                                        {initial(room.name)}
-                                    </div>
-                                    <div class="min-w-0">
-                                        <h2 class="truncate text-sm font-semibold">{room.name}</h2>
-                                        <p class="mt-0.5 truncate text-xs text-muted-foreground">
-                                            {characterCount} characters / {chatCount} chats
-                                        </p>
-                                    </div>
+                                        <div
+                                            class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold text-foreground"
+                                        >
+                                            {initial(room.name)}
+                                        </div>
+                                        <div class="min-w-0">
+                                            <h2
+                                                class="truncate text-sm font-semibold text-foreground"
+                                            >
+                                                {room.name}
+                                            </h2>
+                                            <p
+                                                class="mt-0.5 truncate text-xs text-muted-foreground"
+                                            >
+                                                {characterCount} characters / {chatCount} chats
+                                            </p>
+                                        </div>
+                                    </button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        class="shrink-0 text-muted-foreground hover:text-destructive"
+                                        title="Delete room"
+                                        onclick={() => handleDeleteRoom(room.id, room.name)}
+                                    >
+                                        <Trash2 class="size-4" />
+                                    </Button>
                                 </div>
-                                <div
+                                <button
                                     class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                    onclick={() => onNavigate({ view: 'room', roomId: room.id })}
                                 >
                                     <DoorOpen class="size-3.5" />
                                     Open room
+                                </button>
+                            </div>
+                        {/snippet}
+                    </EntityList>
+                {:else if tab === 'multiRooms'}
+                    <EntityList
+                        entities={filteredMultiRooms()}
+                        config={$appSettings.multiRooms}
+                        layout="grid"
+                        childContainerClass="relative ml-6 p-3 my-1"
+                        onCreateFolder={(name, parentId) =>
+                            createGlobalFolder('multiRooms', name, parentId)}
+                        onUpdateFolder={(id, changes) =>
+                            updateGlobalFolder('multiRooms', id, changes)}
+                        onDeleteFolder={(id) => deleteGlobalFolder('multiRooms', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveGlobalItem('multiRooms', itemId, newFolderId, newSortOrder)}
+                    >
+                        {#snippet empty()}
+                            <div class="flex h-[50vh] items-center justify-center">
+                                <div class="max-w-sm text-center">
+                                    <div
+                                        class="mx-auto flex size-14 items-center justify-center rounded-full bg-muted"
+                                    >
+                                        <DoorOpen class="size-6 text-muted-foreground" />
+                                    </div>
+                                    <h2 class="mt-4 text-lg font-semibold">
+                                        Create your first multi room
+                                    </h2>
+                                    <p class="mt-2 text-sm text-muted-foreground">
+                                        Multi rooms are shared spaces with room-scoped content.
+                                    </p>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        onclick={() => (creatingMultiRoom = true)}
+                                    >
+                                        <Plus class="size-4" />
+                                        New Multi Room
+                                    </Button>
                                 </div>
-                            </button>
-                        {:else}
-                            <div
-                                class="col-span-full rounded-lg border border-dashed p-10 text-center"
-                            >
-                                <p class="text-sm text-muted-foreground">No rooms found.</p>
                             </div>
-                        {/each}
-                    </section>
-                {/if}
-            {:else if tab === 'multiRooms'}
-                {#if $multiRooms.length === 0}
-                    <div class="flex h-[50vh] items-center justify-center">
-                        <div class="max-w-sm text-center">
-                            <div
-                                class="mx-auto flex size-14 items-center justify-center rounded-full bg-muted"
-                            >
-                                <DoorOpen class="size-6 text-muted-foreground" />
-                            </div>
-                            <h2 class="mt-4 text-lg font-semibold">Create your first multi room</h2>
-                            <p class="mt-2 text-sm text-muted-foreground">
-                                Multi rooms are shared spaces with room-scoped content.
-                            </p>
-                            <Button class="mt-5 gap-2" onclick={() => (creatingMultiRoom = true)}>
-                                <Plus class="size-4" />
-                                New Multi Room
-                            </Button>
-                        </div>
-                    </div>
-                {:else}
-                    <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {#each filteredMultiRooms() as room (room.id)}
+                        {/snippet}
+                        {#snippet item({ entity: room })}
                             {@const characterCount = Object.keys(room.characters.refs).length}
                             {@const chatCount = Object.keys(room.chats.refs).length}
-                            <button
-                                class="flex min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
-                                onclick={() => openMultiRoom(room.id)}
+                            <div
+                                class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
                             >
                                 <div class="flex w-full items-center gap-3">
-                                    <div
-                                        class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold"
+                                    <button
+                                        class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                                        onclick={() => openMultiRoom(room.id)}
                                     >
-                                        {initial(room.name)}
-                                    </div>
-                                    <div class="min-w-0">
-                                        <h2 class="truncate text-sm font-semibold">{room.name}</h2>
-                                        <p class="mt-0.5 truncate text-xs text-muted-foreground">
-                                            {characterCount} characters / {chatCount} chats
-                                        </p>
-                                    </div>
+                                        <div
+                                            class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold"
+                                        >
+                                            {initial(room.name)}
+                                        </div>
+                                        <div class="min-w-0">
+                                            <h2 class="truncate text-sm font-semibold">
+                                                {room.name}
+                                            </h2>
+                                            <p
+                                                class="mt-0.5 truncate text-xs text-muted-foreground"
+                                            >
+                                                {characterCount} characters / {chatCount} chats
+                                            </p>
+                                        </div>
+                                    </button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        class="shrink-0 text-muted-foreground hover:text-destructive"
+                                        title="Delete multi room"
+                                        onclick={() => handleDeleteMultiRoom(room.id, room.name)}
+                                    >
+                                        <Trash2 class="size-4" />
+                                    </Button>
                                 </div>
-                                <div
+                                <button
                                     class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                    onclick={() => openMultiRoom(room.id)}
                                 >
                                     <DoorOpen class="size-3.5" />
                                     Open multi room
+                                </button>
+                            </div>
+                        {/snippet}
+                    </EntityList>
+                {:else if tab === 'characters'}
+                    <EntityList
+                        entities={filteredCharacters()}
+                        config={$appSettings.characters}
+                        layout="grid"
+                        childContainerClass="relative ml-6 p-3 my-1"
+                        onCreateFolder={(name, parentId) =>
+                            createGlobalFolder('characters', name, parentId)}
+                        onUpdateFolder={(id, changes) =>
+                            updateGlobalFolder('characters', id, changes)}
+                        onDeleteFolder={(id) => deleteGlobalFolder('characters', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveGlobalItem('characters', itemId, newFolderId, newSortOrder)}
+                    >
+                        {#snippet empty()}
+                            <div class="flex h-[50vh] items-center justify-center">
+                                <div class="max-w-sm text-center">
+                                    <div
+                                        class="mx-auto flex size-14 items-center justify-center rounded-full bg-muted"
+                                    >
+                                        <Sparkles class="size-6 text-muted-foreground" />
+                                    </div>
+                                    <h2 class="mt-4 text-lg font-semibold">
+                                        Create your first character
+                                    </h2>
+                                    <p class="mt-2 text-sm text-muted-foreground">
+                                        Characters are global resources you can add to rooms.
+                                    </p>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        onclick={() => (creatingCharacter = true)}
+                                    >
+                                        <Plus class="size-4" />
+                                        New Character
+                                    </Button>
                                 </div>
-                            </button>
-                        {:else}
-                            <div
-                                class="col-span-full rounded-lg border border-dashed p-10 text-center"
-                            >
-                                <p class="text-sm text-muted-foreground">No multi rooms found.</p>
                             </div>
-                        {/each}
-                    </section>
-                {/if}
-            {:else if tab === 'characters'}
-                {#if $characters.length === 0}
-                    <div class="flex h-[50vh] items-center justify-center">
-                        <div class="max-w-sm text-center">
+                        {/snippet}
+                        {#snippet item({ entity: character })}
                             <div
-                                class="mx-auto flex size-14 items-center justify-center rounded-full bg-muted"
-                            >
-                                <Sparkles class="size-6 text-muted-foreground" />
-                            </div>
-                            <h2 class="mt-4 text-lg font-semibold">Create your first character</h2>
-                            <p class="mt-2 text-sm text-muted-foreground">
-                                Characters are global resources you can add to rooms.
-                            </p>
-                            <Button class="mt-5 gap-2" onclick={() => (creatingCharacter = true)}>
-                                <Plus class="size-4" />
-                                New Character
-                            </Button>
-                        </div>
-                    </div>
-                {:else}
-                    <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {#each filteredCharacters() as character (character.id)}
-                            <div
-                                class="flex min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
                             >
                                 <div class="flex w-full items-center gap-3">
                                     <button
@@ -529,7 +623,6 @@
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-destructive"
                                         title="Delete character"
-                                        aria-label={`Delete character ${character.name}`}
                                         onclick={() =>
                                             handleDeleteCharacter(character.id, character.name)}
                                     >
@@ -548,99 +641,109 @@
                                     Open studio
                                 </button>
                             </div>
-                        {:else}
-                            <div
-                                class="col-span-full rounded-lg border border-dashed p-10 text-center"
-                            >
-                                <p class="text-sm text-muted-foreground">No characters found.</p>
+                        {/snippet}
+                    </EntityList>
+                {:else if tab === 'personas'}
+                    <EntityList
+                        entities={filteredPersonas()}
+                        config={$appSettings.personas}
+                        layout="grid"
+                        childContainerClass="relative ml-6 p-3 my-1"
+                        onCreateFolder={(name, parentId) =>
+                            createGlobalFolder('personas', name, parentId)}
+                        onUpdateFolder={(id, changes) =>
+                            updateGlobalFolder('personas', id, changes)}
+                        onDeleteFolder={(id) => deleteGlobalFolder('personas', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveGlobalItem('personas', itemId, newFolderId, newSortOrder)}
+                    >
+                        {#snippet empty()}
+                            <div class="flex h-[50vh] items-center justify-center">
+                                <div class="max-w-sm text-center">
+                                    <div
+                                        class="mx-auto flex size-14 items-center justify-center rounded-full bg-muted"
+                                    >
+                                        <UserRound class="size-6 text-muted-foreground" />
+                                    </div>
+                                    <h2 class="mt-4 text-lg font-semibold">
+                                        Create your first persona
+                                    </h2>
+                                    <p class="mt-2 text-sm text-muted-foreground">
+                                        Personas are user speakers you can attach to chats.
+                                    </p>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        onclick={() => (creatingPersona = true)}
+                                    >
+                                        <Plus class="size-4" />
+                                        New Persona
+                                    </Button>
+                                </div>
                             </div>
-                        {/each}
-                    </section>
-                {/if}
-            {:else if $personas.length === 0}
-                <div class="flex h-[50vh] items-center justify-center">
-                    <div class="max-w-sm text-center">
-                        <div
-                            class="mx-auto flex size-14 items-center justify-center rounded-full bg-muted"
-                        >
-                            <UserRound class="size-6 text-muted-foreground" />
-                        </div>
-                        <h2 class="mt-4 text-lg font-semibold">Create your first persona</h2>
-                        <p class="mt-2 text-sm text-muted-foreground">
-                            Personas are user speakers you can attach to chats.
-                        </p>
-                        <Button class="mt-5 gap-2" onclick={() => (creatingPersona = true)}>
-                            <Plus class="size-4" />
-                            New Persona
-                        </Button>
-                    </div>
-                </div>
-            {:else}
-                <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {#each filteredPersonas() as persona (persona.id)}
-                        <div
-                            class="flex min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
-                        >
-                            <div class="flex w-full items-center gap-3">
+                        {/snippet}
+                        {#snippet item({ entity: persona })}
+                            <div
+                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+                            >
+                                <div class="flex w-full items-center gap-3">
+                                    <button
+                                        class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                                        onclick={() =>
+                                            onNavigate({
+                                                view: 'personaStudio',
+                                                personaId: persona.id
+                                            })}
+                                    >
+                                        <div
+                                            class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
+                                        >
+                                            {#if persona.avatarAssetId}
+                                                <AssetView
+                                                    id={persona.avatarAssetId}
+                                                    alt={persona.name}
+                                                    class="size-full object-cover"
+                                                />
+                                            {:else}
+                                                {initial(persona.name)}
+                                            {/if}
+                                        </div>
+                                        <div class="min-w-0">
+                                            <h2 class="truncate text-sm font-semibold">
+                                                {persona.name}
+                                            </h2>
+                                            <p
+                                                class="mt-0.5 truncate text-xs text-muted-foreground"
+                                            >
+                                                {persona.description || 'No description'}
+                                            </p>
+                                        </div>
+                                    </button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        class="shrink-0 text-muted-foreground hover:text-destructive"
+                                        title="Delete persona"
+                                        onclick={() =>
+                                            handleDeletePersona(persona.id, persona.name)}
+                                    >
+                                        <Trash2 class="size-4" />
+                                    </Button>
+                                </div>
                                 <button
-                                    class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                                    class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
                                     onclick={() =>
                                         onNavigate({
                                             view: 'personaStudio',
                                             personaId: persona.id
                                         })}
                                 >
-                                    <div
-                                        class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
-                                    >
-                                        {#if persona.avatarAssetId}
-                                            <AssetView
-                                                id={persona.avatarAssetId}
-                                                alt={persona.name}
-                                                class="size-full object-cover"
-                                            />
-                                        {:else}
-                                            {initial(persona.name)}
-                                        {/if}
-                                    </div>
-                                    <div class="min-w-0">
-                                        <h2 class="truncate text-sm font-semibold">
-                                            {persona.name}
-                                        </h2>
-                                        <p class="mt-0.5 truncate text-xs text-muted-foreground">
-                                            {persona.description || 'No description'}
-                                        </p>
-                                    </div>
+                                    <UserRound class="size-3.5" />
+                                    Open studio
                                 </button>
-                                <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    class="shrink-0 text-muted-foreground hover:text-destructive"
-                                    title="Delete persona"
-                                    aria-label={`Delete persona ${persona.name}`}
-                                    onclick={() => handleDeletePersona(persona.id, persona.name)}
-                                >
-                                    <Trash2 class="size-4" />
-                                </Button>
                             </div>
-                            <button
-                                class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
-                                onclick={() =>
-                                    onNavigate({
-                                        view: 'personaStudio',
-                                        personaId: persona.id
-                                    })}
-                            >
-                                <UserRound class="size-3.5" />
-                                Open studio
-                            </button>
-                        </div>
-                    {:else}
-                        <div class="col-span-full rounded-lg border border-dashed p-10 text-center">
-                            <p class="text-sm text-muted-foreground">No personas found.</p>
-                        </div>
-                    {/each}
-                </section>
+                        {/snippet}
+                    </EntityList>
+                {/if}
             {/if}
         </div>
     </main>

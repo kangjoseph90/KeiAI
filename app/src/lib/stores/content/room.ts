@@ -30,6 +30,7 @@ import {
     multiRoomCharacters,
     multiRoomPersonas
 } from '../state';
+import { getAppSettings, updateSettings } from './settings';
 
 export async function getRoom(roomId: string): Promise<Room | null> {
     const active = get(activeRoom);
@@ -42,7 +43,9 @@ export async function getRoom(roomId: string): Promise<Room | null> {
 }
 
 export async function loadRooms(): Promise<void> {
-    rooms.setAll(await RoomService.list());
+    const settings = await getAppSettings();
+    const list = await RoomService.list();
+    rooms.setAll(sortByRefs(list, settings.rooms.refs));
 }
 
 export async function selectRoom(roomId: string): Promise<void> {
@@ -96,7 +99,19 @@ export function clearActiveRoom(): void {
 }
 
 export async function createRoom(fields: DeepPartial<RoomFields> = {}): Promise<Room> {
+    const settings = await getAppSettings();
     const room = await RoomService.create(fields);
+    const sortOrder = generateSortOrder(settings.rooms.refs, settings.rooms.folders);
+
+    try {
+        await updateSettings({
+            rooms: { refs: { [room.id]: { id: room.id, sortOrder } } }
+        });
+    } catch (error) {
+        await RoomService.delete(room.id);
+        throw error;
+    }
+
     rooms.set(room.id, room);
     return room;
 }
@@ -126,7 +141,18 @@ export async function deleteRoom(roomId: string): Promise<void> {
     if (multiRooms.get(roomId)) {
         throw new AppError('INVALID_INPUT', `Cannot delete multi room with deleteRoom: ${roomId}`);
     }
-    await RoomService.delete(roomId);
+
+    const settings = await getAppSettings();
+    const existingRef = settings.rooms.refs[roomId];
+    await updateSettings({ rooms: { refs: { [roomId]: undefined } } });
+
+    try {
+        await RoomService.delete(roomId);
+    } catch (error) {
+        await updateSettings({ rooms: { refs: { [roomId]: existingRef } } });
+        throw error;
+    }
+
     rooms.delete(roomId);
     if (roomId === get(activeRoomId)) {
         clearActiveRoom();
@@ -141,7 +167,8 @@ export async function addRoomCharacter(roomId: string, characterId: string): Pro
     if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
     const existing = room.characters.refs[characterId];
-    const sortOrder = existing?.sortOrder ?? generateSortOrder(room.characters.refs);
+    const sortOrder =
+        existing?.sortOrder ?? generateSortOrder(room.characters.refs, room.characters.folders);
     await updateRoom(roomId, {
         characters: {
             refs: {
@@ -218,7 +245,8 @@ export async function createRoomFolder(
     roomId: string,
     folderType: RoomFolderType,
     name: string,
-    parentId?: string
+    parentId?: string,
+    sortOrder?: string
 ): Promise<FolderDef> {
     const room = await getRoom(roomId);
     if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
@@ -226,7 +254,7 @@ export async function createRoomFolder(
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(room[folderType].folders),
+        sortOrder: sortOrder ?? generateSortOrder(room[folderType].refs, room[folderType].folders),
         parentId
     };
 

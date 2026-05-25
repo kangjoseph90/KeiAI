@@ -5,29 +5,49 @@
     import { Separator } from '$lib/components/ui/separator';
     import type { Script, CharJS } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
+    import type { FolderDef, EntityListConfig } from '$lib/types/refs';
     import ScriptItem from '../../modules/ScriptItem.svelte';
     import CharJSItem from '../../modules/CharJSItem.svelte';
+    import EntityList from '$lib/components/entitylist/EntityList.svelte';
+
+    interface FolderCallbacks {
+        onCreateFolder: (name: string, parentId?: string) => Promise<FolderDef>;
+        onUpdateFolder: (
+            folderId: string,
+            changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
+        ) => Promise<void>;
+        onDeleteFolder: (folderId: string) => Promise<void>;
+        onMoveItem: (itemId: string, newFolderId?: string, newSortOrder?: string) => Promise<void>;
+    }
 
     interface Props {
         scripts: Script[];
         charJS: CharJS[];
+        scriptsConfig: EntityListConfig;
+        charjsConfig: EntityListConfig;
         onCreateScript: (data: DeepPartial<Script>) => void | Promise<void>;
         onUpdateScript: (id: string, changes: DeepPartial<Script>) => void | Promise<void>;
         onDeleteScript: (id: string) => void | Promise<void>;
         onCreateCharJS: (data: DeepPartial<CharJS>) => void | Promise<void>;
         onUpdateCharJS: (id: string, changes: DeepPartial<CharJS>) => void | Promise<void>;
         onDeleteCharJS: (id: string) => void | Promise<void>;
+        scriptFolders: FolderCallbacks;
+        charjsFolders: FolderCallbacks;
     }
 
     let {
         scripts,
         charJS,
+        scriptsConfig,
+        charjsConfig,
         onCreateScript,
         onUpdateScript,
         onDeleteScript,
         onCreateCharJS,
         onUpdateCharJS,
-        onDeleteCharJS
+        onDeleteCharJS,
+        scriptFolders,
+        charjsFolders
     }: Props = $props();
 
     let newScriptName = $state('');
@@ -86,11 +106,19 @@
             <h3 class="text-sm font-semibold flex items-center gap-2">
                 <ImageIcon class="size-4" /> Regex Scripts
             </h3>
-            {#each scripts as s (s.id)}
-                <ScriptItem item={s} onUpdate={onUpdateScript} onDelete={onDeleteScript} />
-            {:else}
-                <p class="text-sm text-muted-foreground pl-6">No regex scripts defined.</p>
-            {/each}
+            <EntityList
+                entities={scripts}
+                config={scriptsConfig}
+                layout="list"
+                onCreateFolder={scriptFolders.onCreateFolder}
+                onUpdateFolder={scriptFolders.onUpdateFolder}
+                onDeleteFolder={scriptFolders.onDeleteFolder}
+                onMoveItem={scriptFolders.onMoveItem}
+            >
+                {#snippet item({ entity: s })}
+                    <ScriptItem item={s} onUpdate={onUpdateScript} onDelete={onDeleteScript} />
+                {/snippet}
+            </EntityList>
         </div>
 
         <Separator />
@@ -115,13 +143,19 @@
                     >
                 </div>
             </div>
-            {#each charJS as js (js.id)}
-                <CharJSItem item={js} onUpdate={onUpdateCharJS} onDelete={onDeleteCharJS} />
-            {:else}
-                <p class="text-sm text-muted-foreground pl-6">
-                    No JavaScript plugins active for this character.
-                </p>
-            {/each}
+            <EntityList
+                entities={charJS}
+                config={charjsConfig}
+                layout="list"
+                onCreateFolder={charjsFolders.onCreateFolder}
+                onUpdateFolder={charjsFolders.onUpdateFolder}
+                onDeleteFolder={charjsFolders.onDeleteFolder}
+                onMoveItem={charjsFolders.onMoveItem}
+            >
+                {#snippet item({ entity: js })}
+                    <CharJSItem item={js} onUpdate={onUpdateCharJS} onDelete={onDeleteCharJS} />
+                {/snippet}
+            </EntityList>
         </div>
     </div>
 </section>

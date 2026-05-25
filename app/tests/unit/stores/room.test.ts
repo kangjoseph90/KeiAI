@@ -43,6 +43,16 @@ vi.mock('$lib/services', () => ({
     },
     ChatService: {
         listByRoom: vi.fn()
+    },
+    SettingsService: {
+        get: vi.fn().mockResolvedValue({
+            rooms: { refs: {}, folders: {} },
+            characters: { refs: {}, folders: {} }
+        }),
+        update: vi.fn().mockResolvedValue({
+            rooms: { refs: {}, folders: {} },
+            characters: { refs: {}, folders: {} }
+        })
     }
 }));
 

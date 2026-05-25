@@ -121,7 +121,7 @@ export async function createModule(fields: DeepPartial<ModuleFields> = {}): Prom
     const mod = await ModuleService.create(fields);
 
     // Add to parent's refs
-    const sortOrder = generateSortOrder(settings.modules.refs);
+    const sortOrder = generateSortOrder(settings.modules.refs, settings.modules.folders);
     try {
         await updateSettings({
             modules: { refs: { [mod.id]: { id: mod.id, sortOrder, enabled: true } } }
@@ -155,7 +155,7 @@ export async function importModulePackage(
     }
 
     const settings = await getAppSettings();
-    const sortOrder = generateSortOrder(settings.modules.refs);
+    const sortOrder = generateSortOrder(settings.modules.refs, settings.modules.folders);
     try {
         await updateSettings({
             modules: { refs: { [mod.id]: { id: mod.id, sortOrder, enabled: true } } }
@@ -237,7 +237,7 @@ export async function createModuleLorebook(
     const lb = await LorebookService.create(moduleId, fields);
 
     // Update parent's refs
-    const sortOrder = generateSortOrder(mod.lorebooks.refs);
+    const sortOrder = generateSortOrder(mod.lorebooks.refs, mod.lorebooks.folders);
     try {
         await updateModule(moduleId, {
             lorebooks: { refs: { [lb.id]: { id: lb.id, sortOrder } } }
@@ -302,7 +302,7 @@ export async function createModuleScript(
     const sc = await ScriptService.create(moduleId, fields);
 
     // Update parent's refs
-    const sortOrder = generateSortOrder(mod.scripts.refs);
+    const sortOrder = generateSortOrder(mod.scripts.refs, mod.scripts.folders);
     try {
         await updateModule(moduleId, {
             scripts: { refs: { [sc.id]: { id: sc.id, sortOrder } } }
@@ -365,7 +365,7 @@ export async function createModuleCharJS(
 
     const cjs = await CharJSService.create(moduleId, fields);
 
-    const sortOrder = generateSortOrder(mod.charjs.refs);
+    const sortOrder = generateSortOrder(mod.charjs.refs, mod.charjs.folders);
     try {
         await updateModule(moduleId, {
             charjs: { refs: { [cjs.id]: { id: cjs.id, sortOrder } } }
@@ -423,7 +423,8 @@ export async function createModuleFolder(
     moduleId: string,
     folderType: ModuleFolderType,
     name: string,
-    parentId?: string
+    parentId?: string,
+    sortOrder?: string
 ): Promise<FolderDef> {
     const mod = await getModule(moduleId);
     if (!mod) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
@@ -431,7 +432,7 @@ export async function createModuleFolder(
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(mod[folderType].folders),
+        sortOrder: sortOrder ?? generateSortOrder(mod[folderType].refs, mod[folderType].folders),
         parentId
     };
 

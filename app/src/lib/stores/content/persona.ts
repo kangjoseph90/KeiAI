@@ -77,7 +77,7 @@ export async function createPersona(fields: DeepPartial<PersonaFields> = {}): Pr
     const persona = await PersonaService.create(fields);
 
     // Add to parent's refs
-    const sortOrder = generateSortOrder(settings.personas.refs);
+    const sortOrder = generateSortOrder(settings.personas.refs, settings.personas.folders);
     try {
         await updateSettings({
             personas: { refs: { [persona.id]: { id: persona.id, sortOrder } } }
@@ -114,7 +114,7 @@ export async function importPersonaPackage(
 
     if (persona.scopeType === 'user') {
         const settings = await getAppSettings();
-        const sortOrder = generateSortOrder(settings.personas.refs);
+        const sortOrder = generateSortOrder(settings.personas.refs, settings.personas.folders);
         try {
             await updateSettings({
                 personas: { refs: { [persona.id]: { id: persona.id, sortOrder } } }

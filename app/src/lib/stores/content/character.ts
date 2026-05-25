@@ -194,7 +194,7 @@ export async function createCharacter(
     const character = await CharacterService.create(fields);
 
     // Add to parent's refs
-    const sortOrder = generateSortOrder(settings.characters.refs);
+    const sortOrder = generateSortOrder(settings.characters.refs, settings.characters.folders);
     try {
         await updateSettings({
             characters: { refs: { [character.id]: { id: character.id, sortOrder } } }
@@ -230,7 +230,7 @@ export async function importCharacterPackage(
 
     if (character.scopeType === 'user') {
         const settings = await getAppSettings();
-        const sortOrder = generateSortOrder(settings.characters.refs);
+        const sortOrder = generateSortOrder(settings.characters.refs, settings.characters.folders);
         try {
             await updateSettings({
                 characters: { refs: { [character.id]: { id: character.id, sortOrder } } }
@@ -371,7 +371,7 @@ export async function createCharacterLorebook(
 
     const lb = await LorebookService.create(characterId, fields, char.scopeType);
 
-    const sortOrder = generateSortOrder(char.lorebooks.refs);
+    const sortOrder = generateSortOrder(char.lorebooks.refs, char.lorebooks.folders);
     try {
         await updateCharacter(characterId, {
             lorebooks: { refs: { [lb.id]: { id: lb.id, sortOrder } } }
@@ -435,7 +435,7 @@ export async function createCharacterScript(
 
     const sc = await ScriptService.create(characterId, fields, char.scopeType);
 
-    const sortOrder = generateSortOrder(char.scripts.refs);
+    const sortOrder = generateSortOrder(char.scripts.refs, char.scripts.folders);
     try {
         await updateCharacter(characterId, {
             scripts: { refs: { [sc.id]: { id: sc.id, sortOrder } } }
@@ -495,7 +495,7 @@ export async function createCharacterCharJS(
     if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
     const cjs = await CharJSService.create(characterId, fields, char.scopeType);
 
-    const sortOrder = generateSortOrder(char.charjs.refs);
+    const sortOrder = generateSortOrder(char.charjs.refs, char.charjs.folders);
     try {
         await updateCharacter(characterId, {
             charjs: { refs: { [cjs.id]: { id: cjs.id, sortOrder } } }
@@ -553,7 +553,8 @@ export async function createCharacterFolder(
     characterId: string,
     folderType: CharacterFolderType,
     name: string,
-    parentId?: string
+    parentId?: string,
+    sortOrder?: string
 ): Promise<FolderDef> {
     const char = await getCharacter(characterId);
     if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
@@ -561,7 +562,7 @@ export async function createCharacterFolder(
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(char[folderType].folders),
+        sortOrder: sortOrder ?? generateSortOrder(char[folderType].refs, char[folderType].folders),
         parentId
     };
 

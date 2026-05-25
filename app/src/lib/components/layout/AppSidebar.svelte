@@ -1,7 +1,11 @@
 <script lang="ts">
     import {
         Check,
+        ChevronDown,
+        ChevronRight,
         Edit3,
+        Folder,
+        FolderOpen,
         Home,
         MessageSquare,
         PanelLeft,
@@ -21,11 +25,18 @@
         activePreset,
         activeRoom,
         addRoomCharacter,
+        appSettings,
         characters,
         chatSelections,
         createChat,
+        createGlobalFolder,
+        createRoomFolder,
         deleteChat,
+        deleteGlobalFolder,
+        deleteRoomFolder,
         isMultiRoom,
+        moveGlobalItem,
+        moveRoomItem,
         multiRoomCharacters,
         removeRoomCharacter,
         roomChats,
@@ -33,8 +44,12 @@
         rooms,
         setChatDefaultCharacter,
         setChatSelectedCharacter,
-        updateChat
+        updateChat,
+        updateGlobalFolder,
+        updateRoomFolder
     } from '$lib/stores';
+    import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import { getFolderColorClass } from '$lib/components/entitylist/folders';
     import { setGlobalVariable } from '$lib/managers';
     import type { RouteState } from '$lib/router';
     import { syncChatGreetings } from '$lib/managers';
@@ -146,38 +161,65 @@
 <aside class="flex h-full shrink-0 border-r bg-sidebar text-sidebar-foreground">
     <div class="flex w-14 flex-col border-r border-sidebar-border bg-sidebar">
         <div class="flex h-14 items-center justify-center border-b border-sidebar-border">
-            <button
-                class="rounded px-1.5 py-1 text-xs font-bold transition-colors hover:bg-sidebar-accent"
+            <Button
+                variant="ghost"
+                size="icon"
+                class="size-9"
                 title="Home"
                 onclick={() => onNavigate({ view: 'home' })}
             >
-                Kei
-            </button>
+                <Home class="size-4" />
+            </Button>
         </div>
 
         <div class="flex-1 overflow-y-auto px-2 py-2">
-            <div class="flex flex-col items-center gap-2">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    class="size-9"
-                    title="Home"
-                    onclick={() => onNavigate({ view: 'home' })}
-                >
-                    <Home class="size-4" />
-                </Button>
-                {#each $rooms as room (room.id)}
-                    {@const selected = route.roomId === room.id}
-                    <button
-                        class="relative flex size-10 items-center justify-center overflow-hidden rounded-md border bg-background text-xs font-semibold transition-colors {selected
-                            ? 'border-primary ring-2 ring-primary/20'
-                            : 'border-transparent hover:border-sidebar-border'}"
-                        title={room.name}
-                        onclick={() => handleSelectRoom(room.id)}
+            <div class="flex flex-col items-center gap-2 w-full">
+                {#if $appSettings}
+                    <EntityList
+                        entities={$rooms}
+                        config={$appSettings.rooms}
+                        layout="list"
+                        gridClass="flex flex-col gap-2 items-center w-full"
+                        listClass="flex flex-col gap-2 items-center w-full"
+                        childContainerClass="relative my-1 py-1.5 flex flex-col gap-2 items-center w-full"
+                        onCreateFolder={(name, parentId) =>
+                            createGlobalFolder('rooms', name, parentId)}
+                        onUpdateFolder={(id, changes) => updateGlobalFolder('rooms', id, changes)}
+                        onDeleteFolder={(id) => deleteGlobalFolder('rooms', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveGlobalItem('rooms', itemId, newFolderId, newSortOrder)}
                     >
-                        {initial(room.name)}
-                    </button>
-                {/each}
+                        {#snippet folder({ folder: f, collapsed, toggle })}
+                            <button
+                                class="relative flex size-10 items-center justify-center overflow-hidden rounded-md border transition-colors select-none cursor-pointer
+                                    {f.color
+                                    ? getFolderColorClass(f.color)
+                                    : 'border-transparent bg-muted/30 text-foreground hover:bg-muted/50 hover:border-sidebar-border'}"
+                                onclick={toggle}
+                                title={f.name}
+                            >
+                                {#if collapsed}
+                                    <Folder strokeWidth={2.5} class="size-4 text-inherit" />
+                                {:else}
+                                    <FolderOpen strokeWidth={2.5} class="size-4 text-inherit" />
+                                {/if}
+                            </button>
+                        {/snippet}
+
+                        {#snippet item({ entity: room })}
+                            {@const selected = route.roomId === room.id}
+                            <button
+                                class="relative flex size-10 items-center justify-center overflow-hidden rounded-md border bg-background text-xs font-semibold transition-colors {selected
+                                    ? 'border-primary ring-2 ring-primary/20'
+                                    : 'border-transparent hover:border-sidebar-border'}"
+                                title={room.name}
+                                onclick={() => handleSelectRoom(room.id)}
+                            >
+                                {initial(room.name)}
+                            </button>
+                        {/snippet}
+                    </EntityList>
+                {/if}
             </div>
         </div>
 
@@ -249,8 +291,33 @@
                         <Plus class="size-4" />
                     </Button>
                 </div>
-                <div class="grid grid-cols-3 gap-2">
-                    {#each $roomCharacters as character (character.id)}
+                <EntityList
+                    entities={$roomCharacters}
+                    config={$activeRoom.characters}
+                    layout="grid"
+                    gridClass="grid grid-cols-3 gap-2"
+                    listClass="grid grid-cols-3 gap-2"
+                    childContainerClass="relative my-1 py-1.5 pl-2"
+                    onCreateFolder={(name, parentId) =>
+                        createRoomFolder($activeRoom.id, 'characters', name, parentId)}
+                    onUpdateFolder={(id, changes) =>
+                        updateRoomFolder($activeRoom.id, 'characters', id, changes)}
+                    onDeleteFolder={(id) => deleteRoomFolder($activeRoom.id, 'characters', id)}
+                    onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                        moveRoomItem(
+                            $activeRoom.id,
+                            'characters',
+                            itemId,
+                            newFolderId,
+                            newSortOrder
+                        )}
+                >
+                    {#snippet empty()}
+                        <div class="col-span-3 rounded-md border border-dashed p-3 text-center">
+                            <p class="text-[11px] text-muted-foreground">No characters.</p>
+                        </div>
+                    {/snippet}
+                    {#snippet item({ entity: character })}
                         {@const ref = $activeRoom.characters.refs[character.id]}
                         {@const disabled = ref?.enabled === false}
                         {@const selected = $chatSelections?.characterId === character.id}
@@ -304,12 +371,8 @@
                                 <X class="size-3" />
                             </button>
                         </div>
-                    {:else}
-                        <div class="col-span-3 rounded-md border border-dashed p-3 text-center">
-                            <p class="text-[11px] text-muted-foreground">No characters.</p>
-                        </div>
-                    {/each}
-                </div>
+                    {/snippet}
+                </EntityList>
             </div>
 
             <div class="border-b border-sidebar-border p-3">
@@ -327,82 +390,142 @@
 
             <div class="flex-1 overflow-y-auto p-2">
                 <div class="flex flex-col gap-1">
-                    {#each filteredChats() as chat (chat.id)}
-                        {@const selected = route.chatId === chat.id}
-                        <div
-                            class="group rounded-md px-2 py-2 text-sm transition-colors {selected
-                                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                                : 'hover:bg-sidebar-accent/50'}"
-                        >
-                            {#if editingChatId === chat.id}
-                                <form
-                                    class="flex gap-1"
-                                    onsubmit={(event) => {
-                                        event.preventDefault();
-                                        handleRenameChat(chat.id);
-                                    }}
-                                >
-                                    <Input
-                                        bind:value={editingChatTitle}
-                                        class="h-7 flex-1 text-xs"
-                                        autofocus
-                                        onkeydown={(event) => {
-                                            if (event.key === 'Escape') {
+                    <EntityList
+                        entities={filteredChats()}
+                        config={$activeRoom.chats}
+                        layout="list"
+                        onCreateFolder={(name, parentId) =>
+                            createRoomFolder($activeRoom.id, 'chats', name, parentId)}
+                        onUpdateFolder={(id, changes) =>
+                            updateRoomFolder($activeRoom.id, 'chats', id, changes)}
+                        onDeleteFolder={(id) => deleteRoomFolder($activeRoom.id, 'chats', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveRoomItem(
+                                $activeRoom.id,
+                                'chats',
+                                itemId,
+                                newFolderId,
+                                newSortOrder
+                            )}
+                    >
+                        {#snippet empty()}
+                            <div class="px-3 py-8 text-center text-xs text-muted-foreground">
+                                No chats yet.
+                            </div>
+                        {/snippet}
+                        {#snippet folder({ folder: f, collapsed, toggle, parts })}
+                            <div
+                                role="button"
+                                tabindex="0"
+                                class="relative group/folder flex items-center justify-between rounded-md px-2 py-2 text-sm select-none cursor-pointer transition-colors hover:bg-sidebar-accent/50 w-full"
+                                onclick={toggle}
+                                onkeydown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        toggle();
+                                    }
+                                }}
+                            >
+                                <div class="flex items-center gap-2 min-w-0 flex-1">
+                                    {#if collapsed}
+                                        <Folder
+                                            strokeWidth={2.5}
+                                            class="size-4 shrink-0 {f.color
+                                                ? getFolderColorClass(f.color)
+                                                : ''}"
+                                        />
+                                    {:else}
+                                        <FolderOpen
+                                            strokeWidth={2.5}
+                                            class="size-4 shrink-0 {f.color
+                                                ? getFolderColorClass(f.color)
+                                                : ''}"
+                                        />
+                                    {/if}
+                                    <div class="flex-1 min-w-0 text-foreground">
+                                        {@render parts.name({ folder: f })}
+                                    </div>
+                                </div>
+                                <div class="ml-2">
+                                    {@render parts.actions({ folder: f })}
+                                </div>
+                            </div>
+                        {/snippet}
+                        {#snippet item({ entity: chat })}
+                            {@const selected = route.chatId === chat.id}
+                            <div
+                                class="group rounded-md px-2 py-2 text-sm transition-colors {selected
+                                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                                    : 'hover:bg-sidebar-accent/50'}"
+                            >
+                                {#if editingChatId === chat.id}
+                                    <form
+                                        class="flex gap-1"
+                                        onsubmit={(event) => {
+                                            event.preventDefault();
+                                            handleRenameChat(chat.id);
+                                        }}
+                                    >
+                                        <Input
+                                            bind:value={editingChatTitle}
+                                            class="h-7 flex-1 text-xs text-foreground bg-background"
+                                            autofocus
+                                            onkeydown={(event) => {
+                                                if (event.key === 'Escape') {
+                                                    editingChatId = null;
+                                                    editingChatTitle = '';
+                                                }
+                                            }}
+                                        />
+                                        <Button type="submit" size="icon" class="size-7">
+                                            <Check class="size-3" />
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            class="size-7"
+                                            onclick={() => {
                                                 editingChatId = null;
                                                 editingChatTitle = '';
-                                            }
-                                        }}
-                                    />
-                                    <Button type="submit" size="icon" class="size-7">
-                                        <Check class="size-3" />
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        class="size-7"
-                                        onclick={() => {
-                                            editingChatId = null;
-                                            editingChatTitle = '';
-                                        }}
-                                    >
-                                        <X class="size-3" />
-                                    </Button>
-                                </form>
-                            {:else}
-                                <div class="flex items-center gap-2">
-                                    <button
-                                        class="flex min-w-0 flex-1 items-center gap-2 text-left"
-                                        onclick={() => handleSelectChat(chat.id)}
-                                    >
-                                        <MessageSquare class="size-3.5 shrink-0" />
-                                        <span class="min-w-0 flex-1 truncate">
-                                            {chat.title || 'Untitled Chat'}
-                                        </span>
-                                    </button>
-                                    <button
-                                        class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
-                                        title="Rename chat"
-                                        onclick={() =>
-                                            startRenameChat(chat.id, chat.title || 'Untitled Chat')}
-                                    >
-                                        <Edit3 class="size-3" />
-                                    </button>
-                                    <button
-                                        class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
-                                        title="Delete chat"
-                                        onclick={() => handleDeleteChat(chat.id)}
-                                    >
-                                        <Trash2 class="size-3" />
-                                    </button>
-                                </div>
-                            {/if}
-                        </div>
-                    {:else}
-                        <div class="px-3 py-8 text-center text-xs text-muted-foreground">
-                            No chats yet.
-                        </div>
-                    {/each}
+                                            }}
+                                        >
+                                            <X class="size-3" />
+                                        </Button>
+                                    </form>
+                                {:else}
+                                    <div class="flex items-center gap-2">
+                                        <button
+                                            class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                            onclick={() => handleSelectChat(chat.id)}
+                                        >
+                                            <MessageSquare class="size-3.5 shrink-0" />
+                                            <span class="min-w-0 flex-1 truncate text-foreground">
+                                                {chat.title || 'Untitled Chat'}
+                                            </span>
+                                        </button>
+                                        <button
+                                            class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                            title="Rename chat"
+                                            onclick={() =>
+                                                startRenameChat(
+                                                    chat.id,
+                                                    chat.title || 'Untitled Chat'
+                                                )}
+                                        >
+                                            <Edit3 class="size-3" />
+                                        </button>
+                                        <button
+                                            class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
+                                            title="Delete chat"
+                                            onclick={() => handleDeleteChat(chat.id)}
+                                        >
+                                            <Trash2 class="size-3" />
+                                        </button>
+                                    </div>
+                                {/if}
+                            </div>
+                        {/snippet}
+                    </EntityList>
                 </div>
             </div>
 

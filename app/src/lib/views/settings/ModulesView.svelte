@@ -4,7 +4,11 @@
         createModule,
         deleteModule,
         appSettings,
-        setModuleEnabled
+        setModuleEnabled,
+        createGlobalFolder,
+        updateGlobalFolder,
+        deleteGlobalFolder,
+        moveGlobalItem
     } from '$lib/stores';
     import { navigate } from '$lib/router';
     import { Button } from '$lib/components/ui/button';
@@ -15,6 +19,7 @@
     import ModuleCard from '../modules/ModuleCard.svelte';
     import { exportModuleFile, importModuleFile } from '$lib/managers/module';
     import type { ModuleFileExport } from '$lib/porters/module';
+    import EntityList from '$lib/components/entitylist/EntityList.svelte';
 
     let { moduleId }: { moduleId?: string } = $props();
 
@@ -56,7 +61,7 @@
         <p class="text-sm text-muted-foreground">Module not found.</p>
         <Button variant="outline" onclick={() => navigate({ view: 'settings' })}>Back</Button>
     </div>
-{:else}
+{:else if $appSettings}
     <div class="flex flex-col gap-4">
         <div class="flex gap-2">
             <Input
@@ -80,8 +85,22 @@
             />
         </div>
 
-        <div class="flex flex-col gap-2">
-            {#each $modules as mod (mod.id)}
+        <EntityList
+            entities={$modules}
+            config={$appSettings.modules}
+            layout="list"
+            onCreateFolder={(name, parentId) => createGlobalFolder('modules', name, parentId)}
+            onUpdateFolder={(id, changes) => updateGlobalFolder('modules', id, changes)}
+            onDeleteFolder={(id) => deleteGlobalFolder('modules', id)}
+            onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                moveGlobalItem('modules', itemId, newFolderId, newSortOrder)}
+        >
+            {#snippet empty()}
+                <div class="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                    <p class="text-sm text-muted-foreground">No modules created yet.</p>
+                </div>
+            {/snippet}
+            {#snippet item({ entity: mod })}
                 {@const enabled = $appSettings?.modules.refs[mod.id]?.enabled ?? true}
                 <Card>
                     <CardContent class="flex items-center justify-between gap-3 p-4">
@@ -141,9 +160,7 @@
                         </div>
                     </CardContent>
                 </Card>
-            {:else}
-                <p class="text-sm text-muted-foreground">No modules found.</p>
-            {/each}
-        </div>
+            {/snippet}
+        </EntityList>
     </div>
 {/if}

@@ -68,6 +68,8 @@ export interface AppSettingsContent {
 
 export interface AppSettingsRefs {
     presetId?: string;
+    rooms: EntityListConfig;
+    multiRooms: EntityListConfig;
     characters: EntityListConfig;
     personas: EntityListConfig;
     presets: EntityListConfig;
@@ -210,6 +212,8 @@ export const defaultSettings: AppSettings = {
     imagegenProvider: 'openai',
     sttProvider: 'openai',
     rerankerProvider: 'cohere',
+    rooms: { refs: {}, folders: {} },
+    multiRooms: { refs: {}, folders: {} },
     characters: { refs: {}, folders: {} },
     personas: { refs: {}, folders: {} },
     presets: { refs: {}, folders: {} },

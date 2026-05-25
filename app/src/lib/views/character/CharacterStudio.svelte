@@ -34,7 +34,11 @@
         characterCharJS,
         createCharacterCharJS,
         updateCharacterCharJS,
-        deleteCharacterCharJS
+        deleteCharacterCharJS,
+        createCharacterFolder,
+        updateCharacterFolder,
+        deleteCharacterFolder,
+        moveCharacterItem
     } from '$lib/stores';
     import { navigate } from '$lib/router';
     import {
@@ -261,6 +265,7 @@
                         {:else if activeTab === 'lorebooks'}
                             <LorebooksTab
                                 lorebooks={$characterLorebooks}
+                                config={$activeCharacter!.lorebooks}
                                 onCreate={async (data) => {
                                     await createCharacterLorebook(
                                         $activeCharacter!.id,
@@ -277,11 +282,37 @@
                                 onDelete={async (id) => {
                                     await deleteCharacterLorebook($activeCharacter!.id, id);
                                 }}
+                                onCreateFolder={(name, parentId) =>
+                                    createCharacterFolder(
+                                        $activeCharacter!.id,
+                                        'lorebooks',
+                                        name,
+                                        parentId
+                                    )}
+                                onUpdateFolder={(id, changes) =>
+                                    updateCharacterFolder(
+                                        $activeCharacter!.id,
+                                        'lorebooks',
+                                        id,
+                                        changes
+                                    )}
+                                onDeleteFolder={(id) =>
+                                    deleteCharacterFolder($activeCharacter!.id, 'lorebooks', id)}
+                                onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                                    moveCharacterItem(
+                                        $activeCharacter!.id,
+                                        'lorebooks',
+                                        itemId,
+                                        newFolderId,
+                                        newSortOrder
+                                    )}
                             />
                         {:else if activeTab === 'scripts'}
                             <ScriptsTab
                                 scripts={$characterScripts}
                                 charJS={$characterCharJS}
+                                scriptsConfig={$activeCharacter!.scripts}
+                                charjsConfig={$activeCharacter!.charjs}
                                 onCreateScript={async (data) => {
                                     await createCharacterScript(
                                         $activeCharacter!.id,
@@ -305,6 +336,58 @@
                                 }}
                                 onDeleteCharJS={async (id) => {
                                     await deleteCharacterCharJS($activeCharacter!.id, id);
+                                }}
+                                scriptFolders={{
+                                    onCreateFolder: (name, parentId) =>
+                                        createCharacterFolder(
+                                            $activeCharacter!.id,
+                                            'scripts',
+                                            name,
+                                            parentId
+                                        ),
+                                    onUpdateFolder: (id, changes) =>
+                                        updateCharacterFolder(
+                                            $activeCharacter!.id,
+                                            'scripts',
+                                            id,
+                                            changes
+                                        ),
+                                    onDeleteFolder: (id) =>
+                                        deleteCharacterFolder($activeCharacter!.id, 'scripts', id),
+                                    onMoveItem: (itemId, newFolderId, newSortOrder) =>
+                                        moveCharacterItem(
+                                            $activeCharacter!.id,
+                                            'scripts',
+                                            itemId,
+                                            newFolderId,
+                                            newSortOrder
+                                        )
+                                }}
+                                charjsFolders={{
+                                    onCreateFolder: (name, parentId) =>
+                                        createCharacterFolder(
+                                            $activeCharacter!.id,
+                                            'charjs',
+                                            name,
+                                            parentId
+                                        ),
+                                    onUpdateFolder: (id, changes) =>
+                                        updateCharacterFolder(
+                                            $activeCharacter!.id,
+                                            'charjs',
+                                            id,
+                                            changes
+                                        ),
+                                    onDeleteFolder: (id) =>
+                                        deleteCharacterFolder($activeCharacter!.id, 'charjs', id),
+                                    onMoveItem: (itemId, newFolderId, newSortOrder) =>
+                                        moveCharacterItem(
+                                            $activeCharacter!.id,
+                                            'charjs',
+                                            itemId,
+                                            newFolderId,
+                                            newSortOrder
+                                        )
                                 }}
                             />
                         {:else if activeTab === 'assets'}

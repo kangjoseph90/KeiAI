@@ -1,5 +1,15 @@
 <script lang="ts">
-    import { plugins, createPlugin, updatePlugin, deletePlugin } from '$lib/stores';
+    import {
+        plugins,
+        createPlugin,
+        updatePlugin,
+        deletePlugin,
+        appSettings,
+        createGlobalFolder,
+        updateGlobalFolder,
+        deleteGlobalFolder,
+        moveGlobalItem
+    } from '$lib/stores';
     import type { Plugin, PluginFields } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { navigate } from '$lib/router';
@@ -11,6 +21,7 @@
     import { Label } from '$lib/components/ui/label';
     import { ArrowLeft, Check, Pencil, Plus, Trash2, X, Play, Square } from 'lucide-svelte';
     import { pluginManager } from '$lib/plugins';
+    import EntityList from '$lib/components/entitylist/EntityList.svelte';
 
     let { pluginId }: { pluginId?: string } = $props();
 
@@ -228,7 +239,7 @@
         <p class="text-sm text-muted-foreground">Plugin not found.</p>
         <Button variant="outline" onclick={() => navigate({ view: 'settings' })}>Back</Button>
     </div>
-{:else}
+{:else if $appSettings}
     <div class="flex flex-col gap-4">
         <div class="flex gap-2">
             <Input
@@ -242,8 +253,22 @@
             </Button>
         </div>
 
-        <div class="flex flex-col gap-2">
-            {#each $plugins as plugin (plugin.id)}
+        <EntityList
+            entities={$plugins}
+            config={$appSettings.plugins}
+            layout="list"
+            onCreateFolder={(name, parentId) => createGlobalFolder('plugins', name, parentId)}
+            onUpdateFolder={(id, changes) => updateGlobalFolder('plugins', id, changes)}
+            onDeleteFolder={(id) => deleteGlobalFolder('plugins', id)}
+            onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                moveGlobalItem('plugins', itemId, newFolderId, newSortOrder)}
+        >
+            {#snippet empty()}
+                <div class="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                    <p class="text-sm text-muted-foreground">No plugins installed.</p>
+                </div>
+            {/snippet}
+            {#snippet item({ entity: plugin })}
                 <Card>
                     <CardContent class="flex items-center justify-between gap-3 p-4">
                         <button
@@ -302,9 +327,7 @@
                         </div>
                     </CardContent>
                 </Card>
-            {:else}
-                <p class="text-sm text-muted-foreground">No plugins found.</p>
-            {/each}
-        </div>
+            {/snippet}
+        </EntityList>
     </div>
 {/if}

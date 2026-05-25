@@ -1,17 +1,31 @@
 import type { OrderedRef } from '../types/refs';
 import { generateKeyBetween } from 'fractional-indexing';
 
-export function compareSortOrder(a: string, b: string): number {
+export function compareSortOrder(a: string | null, b: string | null): number {
     if (a === b) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
     return a < b ? -1 : 1;
 }
 
-/** Generate a fractional sort order key for appending to the end of a list */
-export function generateSortOrder(refs: Record<string, OrderedRef> = {}): string {
-    const values = Object.values(refs).sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder));
-    if (values.length === 0) return generateKeyBetween(null, null);
-    const lastOrder = values[values.length - 1].sortOrder;
-    return generateKeyBetween(lastOrder, null);
+/**
+ * Generate a fractional sort order key for appending to the end of a list.
+ * Accepts multiple sources (refs, folders, etc.) to ensure uniqueness across
+ * all items at the same level.
+ */
+export function generateSortOrder(
+    ...sources: Array<Record<string, { sortOrder: string }> | undefined>
+): string {
+    const orders: string[] = [];
+    for (const source of sources) {
+        if (!source) continue;
+        for (const item of Object.values(source)) {
+            if (item?.sortOrder) orders.push(item.sortOrder);
+        }
+    }
+    if (orders.length === 0) return generateKeyBetween(null, null);
+    orders.sort(compareSortOrder);
+    return generateKeyBetween(orders[orders.length - 1], null);
 }
 
 /**

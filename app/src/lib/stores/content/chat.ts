@@ -195,7 +195,7 @@ export async function createChat(
 
     const chat = await ChatService.create(roomId, fields, room.scopeType);
 
-    const sortOrder = generateSortOrder(room.chats.refs);
+    const sortOrder = generateSortOrder(room.chats.refs, room.chats.folders);
     try {
         await updateRoom(roomId, {
             chats: { refs: { [chat.id]: { id: chat.id, sortOrder } } }
@@ -306,7 +306,7 @@ export async function createChatLorebook(
 
     const lb = await LorebookService.create(chatId, fields, chat.scopeType);
 
-    const sortOrder = generateSortOrder(chat.lorebooks.refs);
+    const sortOrder = generateSortOrder(chat.lorebooks.refs, chat.lorebooks.folders);
     try {
         await updateChat(chatId, {
             lorebooks: { refs: { [lb.id]: { id: lb.id, sortOrder } } }
@@ -366,7 +366,8 @@ export async function addChatPersona(chatId: string, personaId: string): Promise
     if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
 
     const existing = chat.personas.refs[personaId];
-    const sortOrder = existing?.sortOrder ?? generateSortOrder(chat.personas.refs);
+    const sortOrder =
+        existing?.sortOrder ?? generateSortOrder(chat.personas.refs, chat.personas.folders);
     await updateChat(chatId, {
         personas: {
             refs: {
@@ -427,7 +428,8 @@ export async function createChatFolder(
     chatId: string,
     folderType: ChatFolderType,
     name: string,
-    parentId?: string
+    parentId?: string,
+    sortOrder?: string
 ): Promise<FolderDef> {
     const chat = await getChat(chatId);
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
@@ -435,7 +437,7 @@ export async function createChatFolder(
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: generateSortOrder(chat[folderType].folders),
+        sortOrder: sortOrder ?? generateSortOrder(chat[folderType].refs, chat[folderType].folders),
         parentId
     };
 

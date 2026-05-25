@@ -27,7 +27,7 @@ export async function createPlugin(fields: DeepPartial<PluginFields> = {}): Prom
     const plugin = await PluginService.create(fields);
 
     // Add to parent's refs
-    const sortOrder = generateSortOrder(settings.plugins.refs);
+    const sortOrder = generateSortOrder(settings.plugins.refs, settings.plugins.folders);
     try {
         await updateSettings({
             plugins: { refs: { [plugin.id]: { id: plugin.id, sortOrder } } }
