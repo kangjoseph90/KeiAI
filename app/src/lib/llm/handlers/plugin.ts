@@ -1,4 +1,9 @@
-import type { LLMStreamContent, LLMStreamHandler, PluginLLMHandlerConfig } from '../types';
+import type {
+    LLMStreamOptions,
+    LLMStreamContent,
+    LLMStreamHandler,
+    PluginLLMHandlerConfig
+} from '../types';
 import type { OpenAIChat } from '../types';
 import type { PluginInstance } from '$lib/plugins';
 import { debounceStream } from '$lib/utils/stream';
@@ -10,18 +15,24 @@ export class PluginLLMStreamHandler implements LLMStreamHandler {
         private readonly fnId: string
     ) {}
 
-    async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent> {
-        const rawStream = this.rawStream(messages, signal);
+    async *stream(
+        messages: OpenAIChat[],
+        signal: AbortSignal,
+        options: LLMStreamOptions = {}
+    ): AsyncIterable<LLMStreamContent> {
+        const rawStream = this.rawStream(messages, signal, options);
         yield* debounceStream(rawStream);
     }
 
     private async *rawStream(
         messages: OpenAIChat[],
-        signal: AbortSignal
+        signal: AbortSignal,
+        options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
         const streamConfig = {
             modelId: this.config.modelId,
-            parameters: this.config.parameters,
+            parameters: options.parameters,
+            maxResponse: options.maxResponse,
             useProxy: this.config.useProxy,
             retry: this.config.retry,
             timeout: this.config.timeout

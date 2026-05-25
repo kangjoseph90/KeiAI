@@ -19,8 +19,8 @@ export async function exportPresetToKei(presetId: string): Promise<KeiPresetPack
     const portablePreset: KeiPresetPayload = {
         name: preset.name,
         description: preset.description,
-        chatModel: { ...preset.chatModel },
-        auxModel: { ...preset.auxModel },
+        models: structuredClone(preset.models),
+        parameters: structuredClone(preset.parameters),
         promptBlocks: structuredClone(preset.promptBlocks),
         maxResponse: preset.maxResponse,
         maxContext: preset.maxContext,

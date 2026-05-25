@@ -3,9 +3,13 @@ import { RPCBroker } from './rpc/broker';
 import { guestSDK } from './sdk';
 import type { Plugin } from '$lib/services/content/plugin';
 import { getPlugin, updatePlugin } from '$lib/stores/content/plugin';
+import { getAppSettings } from '$lib/stores/content/settings';
+import { getActivePreset } from '$lib/stores/content/preset';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
-import type { PluginLLMModel, LLMTokenizer } from '$lib/types/models/llm';
+import type { LLMTokenizer, LLMTypeDefinition, PluginLLMModel } from '$lib/types/models/llm';
+import type { LLMStreamContent, OpenAIChat } from '$lib/llm/types';
+import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
 
 const logger = createLogger('plugins:manager');
 const PLUGIN_READY_TIMEOUT_MS = 5_000;
@@ -20,6 +24,7 @@ export interface PluginInstance {
     eventListeners: Map<string, string[]>;
     macroHandlers: Map<string, { fnId: string; recursive?: boolean }>;
     llmProviders: Map<string, { fnId: string; model: PluginLLMModel }>;
+    llmTypes: Map<string, LLMTypeDefinition>;
     unloadHandlers: string[];
 }
 
@@ -114,6 +119,7 @@ export class PluginManager {
                 eventListeners: new Map(),
                 macroHandlers: new Map(),
                 llmProviders: new Map(),
+                llmTypes: new Map(),
                 unloadHandlers: []
             };
 
@@ -264,6 +270,66 @@ export class PluginManager {
             if (current && current.fnId === String(fnId)) {
                 instance.llmProviders.delete(mId);
             }
+        });
+
+        broker.expose('core.registerLLMType', (type: unknown, opts: unknown) => {
+            const llmType = String(type);
+            const options = (opts || {}) as { label?: string; description?: string };
+
+            instance.llmTypes.set(llmType, {
+                type: llmType,
+                label: options.label || String(type),
+                description: options.description
+            });
+
+            return llmType;
+        });
+
+        broker.expose('core.removeLLMType', (type: unknown) => {
+            instance.llmTypes.delete(String(type));
+        });
+
+        async function* streamLLM(
+            type: unknown,
+            messages: unknown,
+            signal: unknown
+        ): AsyncIterable<LLMStreamContent> {
+            const abortSignal = signal instanceof AbortSignal ? signal : undefined;
+            const settings = await getAppSettings();
+            const preset = getActivePreset();
+            if (!preset) {
+                throw new Error('No active preset selected');
+            }
+
+            const modelConfig = resolveLLMModelConfig(String(type), preset);
+            if (!modelConfig) {
+                throw new Error(`No model configured for LLM type: ${String(type)}`);
+            }
+
+            const handler = selectLLMHandler(modelConfig, settings);
+            if (!handler) {
+                throw new Error('Failed to create LLM handler');
+            }
+
+            const parameters = resolveLLMParameters(String(type), preset) ?? {};
+            yield* handler.stream(
+                messages as OpenAIChat[],
+                abortSignal ?? new AbortController().signal,
+                {
+                    parameters,
+                    maxResponse: preset.maxResponse
+                }
+            );
+        }
+
+        broker.expose('core.streamLLM', streamLLM);
+
+        broker.expose('core.callLLM', async (type: unknown, messages: unknown, signal: unknown) => {
+            let content = '';
+            for await (const chunk of streamLLM(type, messages, signal)) {
+                content = chunk.content;
+            }
+            return content;
         });
     }
 

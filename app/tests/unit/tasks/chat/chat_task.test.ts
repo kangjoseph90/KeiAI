@@ -93,7 +93,13 @@ vi.mock('$lib/stores', () => ({
     getPersona: vi.fn().mockResolvedValue({ id: 'persona-1', name: '', description: '' }),
     getPreset: vi.fn().mockResolvedValue({
         id: 'preset-1',
-        chatModel: { id: '', provider: 'openai', parameters: {} }
+        models: {
+            chat: { id: '', provider: 'openai' },
+            aux: { id: '', provider: 'openai' }
+        },
+        parameters: {
+            chat: {}
+        }
     }),
     getMergedLorebooks: vi.fn().mockResolvedValue([]),
     getMergedScripts: vi.fn().mockResolvedValue([])
@@ -143,7 +149,9 @@ vi.mock('$lib/tasks/chat/prompt', () => ({
 }));
 
 vi.mock('$lib/llm/handler', () => ({
-    selectLLMHandler: vi.fn().mockReturnValue(null)
+    selectLLMHandler: vi.fn().mockReturnValue(null),
+    resolveLLMModelConfig: vi.fn((type, preset) => preset.models?.[type] ?? null),
+    resolveLLMParameters: vi.fn((type, preset) => preset.parameters?.[type] ?? null)
 }));
 
 vi.mock('$lib/pipeline', () => ({

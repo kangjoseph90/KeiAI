@@ -16,6 +16,7 @@ function createInstance(pluginId: string): PluginInstance {
         eventListeners: new Map(),
         macroHandlers: new Map(),
         llmProviders: new Map(),
+        llmTypes: new Map(),
         unloadHandlers: []
     };
 }

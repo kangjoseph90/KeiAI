@@ -65,8 +65,13 @@ describe('PresetService', () => {
     const mockFields: PresetFields = {
         name: 'Test Preset',
         description: 'Test Description',
-        chatModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: { temperature: 0.9 } },
-        auxModel: { id: '', provider: 'openai', parameters: {} },
+        models: {
+            chat: { id: 'openai::gpt-5.4', provider: 'openai' },
+            aux: { id: '', provider: 'openai' }
+        },
+        parameters: {
+            chat: { temperature: 0.9 }
+        },
         promptBlocks: {},
         maxResponse: 600,
         maxContext: 4096,
@@ -128,7 +133,7 @@ describe('PresetService', () => {
             expect(result).not.toBeNull();
             expect(result?.id).toBe('preset-123');
             expect(result?.name).toBe(mockFields.name);
-            expect(result?.chatModel.id).toBe(mockFields.chatModel.id);
+            expect(result?.models?.chat?.id).toBe(mockFields.models?.chat?.id);
         });
 
         it('should return null if record is missing', async () => {

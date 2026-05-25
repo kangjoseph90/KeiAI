@@ -132,20 +132,23 @@ function risuPresetToKeiPreset(risu: RisuPreset): KeiPresetPackageV1 {
         preset: {
             name: risu.name ?? 'Imported Risu Preset',
             description: '',
-            chatModel: {
-                id: risu.aiModel ?? 'openai::gpt-5.4',
-                provider: 'openai',
-                parameters: {
+            models: {
+                chat: {
+                    id: risu.aiModel ?? 'openai::gpt-5.4',
+                    provider: 'openai'
+                },
+                aux: {
+                    id: risu.subModel ?? risu.aiModel ?? 'openai::gpt-5.4',
+                    provider: 'openai'
+                }
+            },
+            parameters: {
+                chat: {
                     ...(temperature != null ? { temperature } : {}),
                     ...(frequencyPenalty != null ? { frequency_penalty: frequencyPenalty } : {}),
                     ...(presencePenalty != null ? { presence_penalty: presencePenalty } : {}),
                     ...(topP != null ? { top_p: topP } : {})
                 }
-            },
-            auxModel: {
-                id: risu.subModel ?? risu.aiModel ?? 'openai::gpt-5.4',
-                provider: 'openai',
-                parameters: {}
             },
             promptBlocks,
             maxResponse: readRisuDisabledNumber(risu.maxResponse) ?? 300,
@@ -163,7 +166,9 @@ function risuPresetToKeiPreset(risu: RisuPreset): KeiPresetPackageV1 {
 }
 
 function keiPresetToRisuPreset(pkg: KeiPresetPackageV1): RisuPreset {
-    const parameters = pkg.preset.chatModel.parameters ?? {};
+    const chatModel = pkg.preset.models?.chat ?? { id: 'openai::gpt-5.4', provider: 'openai' };
+    const auxModel = pkg.preset.models?.aux ?? chatModel;
+    const parameters = pkg.preset.parameters?.chat ?? {};
     return {
         name: pkg.preset.name,
         mainPrompt: '',
@@ -174,8 +179,8 @@ function keiPresetToRisuPreset(pkg: KeiPresetPackageV1): RisuPreset {
         maxResponse: pkg.preset.maxResponse,
         frequencyPenalty: readPercent(parameters.frequency_penalty, 70),
         PresensePenalty: readPercent(parameters.presence_penalty, 70),
-        aiModel: pkg.preset.chatModel.id,
-        subModel: pkg.preset.auxModel.id,
+        aiModel: chatModel.id,
+        subModel: auxModel.id,
         top_p: typeof parameters.top_p === 'number' ? parameters.top_p : 1,
         promptPreprocess: false,
         bias: [],

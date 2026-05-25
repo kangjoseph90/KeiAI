@@ -33,7 +33,7 @@ import {
 } from '$lib/stores/content/message';
 import { getChatVariablesBefore, prepareNextSwipe } from '$lib/managers';
 import { buildPrompt } from './prompt';
-import { selectLLMHandler } from '../../llm/handler';
+import { selectLLMHandler, resolveLLMModelConfig, resolveLLMParameters } from '../../llm/handler';
 import { runPipeline } from '../../pipeline';
 import { runTemplate } from '../../template';
 import type { TemplateContext } from '../../template';
@@ -130,6 +130,13 @@ export async function runChat(
         // ── 3. Register task ──────────────────────────────────────────
         createChatTask(chatId, preparedMessage.id, controller);
 
+        const modelConfig = resolveLLMModelConfig('chat', preset);
+        const parameters = resolveLLMParameters('chat', preset) ?? {};
+
+        if (!modelConfig) {
+            throw new AppError('INVALID_INPUT', 'Chat model is not configurated');
+        }
+
         // ── 4. Build Prompt (pure function) ──────────────────────────────
         const templateCtx: TemplateContext = {
             characterId,
@@ -144,7 +151,7 @@ export async function runChat(
             persona,
             lorebooks,
             messages,
-            tokenizer: preset.chatModel.tokenizer ?? 'o200k_base',
+            tokenizer: modelConfig.tokenizer ?? 'o200k_base',
             context: templateCtx
         });
 
@@ -152,7 +159,7 @@ export async function runChat(
         const pipedPrompt = await runPipeline(chatId, 'prompt', prompt, templateCtx);
 
         // ── 5. Select Handler ──────────────────────────────────────
-        const handler = opts.handlerOverride ?? selectLLMHandler(preset.chatModel, settings);
+        const handler = opts.handlerOverride ?? selectLLMHandler(modelConfig, settings);
         if (!handler) {
             throw new AppError('INVALID_INPUT', 'Failed to create LLM handler. Check API key.');
         }
@@ -160,7 +167,10 @@ export async function runChat(
         // ── 6. Stream chunks → update swipe in DB ─────────────────────
         let finalContent = '';
 
-        for await (const state of handler.stream(pipedPrompt, controller.signal)) {
+        for await (const state of handler.stream(pipedPrompt, controller.signal, {
+            parameters,
+            maxResponse: preset.maxResponse
+        })) {
             finalContent = state.content;
 
             await updateMessageSwipe(preparedMessage.id, targetSwipeId, {

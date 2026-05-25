@@ -5,9 +5,8 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
-import type { LLMModelConfig, LLMRole } from '$lib/types/models/llm';
+import type { LLMModelConfig, LLMParameters, LLMRole, LLMType } from '$lib/types/models/llm';
 import type { EntityListConfig } from '$lib/types/refs';
-import { ScriptService } from './script';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -48,8 +47,8 @@ export type PresetCustomToggle = PresetCustomToggleFields & {
 export interface PresetContent {
     name: string;
     description: string;
-    chatModel: LLMModelConfig;
-    auxModel: LLMModelConfig;
+    models: Partial<Record<LLMType, LLMModelConfig>>;
+    parameters: Partial<Record<LLMType, LLMParameters>>;
     promptBlocks: Record<string, PromptBlock>;
     maxResponse: number;
     maxContext: number;
@@ -76,8 +75,16 @@ export interface Preset extends PresetFields {
 export const defaultPresetFields: PresetFields = {
     name: 'New Preset',
     description: '',
-    chatModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: {} },
-    auxModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: {} },
+    models: {
+        chat: { id: 'openai::gpt-5.4', provider: 'openai' },
+        aux: { id: 'openai::gpt-5.4', provider: 'openai' }
+    },
+    parameters: {
+        chat: {
+            temperature: 1,
+            top_p: 0.9
+        }
+    },
     promptBlocks: {},
     maxResponse: 6000,
     maxContext: 60000,

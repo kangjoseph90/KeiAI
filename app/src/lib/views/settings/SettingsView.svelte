@@ -112,7 +112,7 @@
                                 </p>
                             </div>
                             <Separator />
-                            <div class="h-[70vh]">
+                            <div class="h-[calc(100vh-12rem)] min-h-[32rem]">
                                 <ChatBotSettings />
                             </div>
                         </div>

@@ -14,7 +14,7 @@
  *   GenerationManager.generate(chatId, handler);
  */
 
-import type { LLMStreamContent, LLMStreamHandler, OpenAIChat } from '../types';
+import type { LLMStreamOptions, LLMStreamContent, LLMStreamHandler, OpenAIChat } from '../types';
 import { debounceStream } from '$lib/utils/stream';
 import { abortableSleep } from '$lib/utils/async';
 
@@ -78,7 +78,11 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
         this.chunkDelayMs = config.chunkDelayMs ?? 60;
     }
 
-    async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent> {
+    async *stream(
+        messages: OpenAIChat[],
+        signal: AbortSignal,
+        _options: LLMStreamOptions = {}
+    ): AsyncIterable<LLMStreamContent> {
         const rawStream = this.rawStream(messages, signal);
         yield* debounceStream(rawStream);
     }

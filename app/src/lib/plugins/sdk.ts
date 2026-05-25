@@ -157,14 +157,74 @@ export const guestSDK = String.raw`
             }
         }
     
-        async invoke(id, args) {
+        async invoke(id, args, signal) {
             const channel = this.transport.open();
+            const onAbort = () => channel.abort(signal.reason);
+
+            if (signal) {
+                if (signal.aborted) {
+                    channel.abort(signal.reason);
+                } else {
+                    signal.addEventListener('abort', onAbort, { once: true });
+                }
+            }
+
             try {
                 channel.send({ type: 'rpc_invoke', functionId: id, args });
-                const response = await channel.receive();
-                if (!response || response.type !== 'rpc_return') throw new Error('Invalid response');
-                return response.data;
+                for await (const response of channel) {
+                    if (!response) continue;
+                    if (response.type === 'rpc_return') {
+                        return response.data;
+                    }
+                    if (response.type === 'rpc_error') {
+                        const err = new Error(response.error?.message || 'Plugin RPC error');
+                        err.name = response.error?.name || 'Error';
+                        err.stack = response.error?.stack;
+                        throw err;
+                    }
+                    if (response.type !== 'rpc_yield') {
+                        throw new Error('Invalid response');
+                    }
+                }
+                throw new Error('Channel closed before response');
             } finally {
+                if (signal) signal.removeEventListener('abort', onAbort);
+                channel.close();
+            }
+        }
+
+        async *invokeStream(id, args, signal) {
+            const channel = this.transport.open();
+            const onAbort = () => channel.abort(signal.reason);
+
+            if (signal) {
+                if (signal.aborted) {
+                    channel.abort(signal.reason);
+                } else {
+                    signal.addEventListener('abort', onAbort, { once: true });
+                }
+            }
+
+            try {
+                channel.send({ type: 'rpc_invoke', functionId: id, args });
+
+                for await (const response of channel) {
+                    if (!response) continue;
+                    if (response.type === 'rpc_yield') {
+                        yield response.data;
+                    } else if (response.type === 'rpc_return') {
+                        return response.data;
+                    } else if (response.type === 'rpc_error') {
+                        const err = new Error(response.error?.message || 'Plugin RPC error');
+                        err.name = response.error?.name || 'Error';
+                        err.stack = response.error?.stack;
+                        throw err;
+                    } else {
+                        throw new Error('Invalid stream response');
+                    }
+                }
+            } finally {
+                if (signal) signal.removeEventListener('abort', onAbort);
                 channel.close();
             }
         }
@@ -257,6 +317,29 @@ export const guestSDK = String.raw`
                     broker.unexpose(fnId);
                 }
             };
+        },
+        registerLLMType: (type, opts = {}) => {
+            const p = broker.invoke('core.registerLLMType', [
+                type,
+                {
+                    label: opts.label || type,
+                    description: opts.description
+                }
+            ]);
+            registrations.push(p);
+            return async () => {
+                try {
+                    await broker.invoke('core.removeLLMType', [type]);
+                } catch (e) {
+                    // Ignore transport errors during unload
+                }
+            };
+        },
+        callLLM: (type, messages, signal) => {
+            return broker.invoke('core.callLLM', [type, messages], signal);
+        },
+        streamLLM: (type, messages, signal) => {
+            return broker.invokeStream('core.streamLLM', [type, messages], signal);
         }
     };
     

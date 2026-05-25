@@ -5,6 +5,24 @@
  * Referenced by adapters (tokenizer), llm (provider/prompt), and UI (model selector).
  */
 
+// ─── Types ───────────────────────────────────────────────────────────────
+export type BuiltInLLMType = 'chat' | 'aux' | 'translation';
+export type LLMType = BuiltInLLMType | string;
+
+export interface LLMTypeDefinition {
+    type: LLMType;
+    label: string;
+    description?: string;
+}
+
+export const BUILT_IN_LLM_TYPES: LLMTypeDefinition[] = [
+    {
+        type: 'translation',
+        label: 'Translation',
+        description: 'Model used for translation tasks.'
+    }
+];
+
 // ─── Tokenizer ───────────────────────────────────────────────────────────────
 
 /** Supported tokenizer encodings. Each maps to a concrete tokenizer implementation. */
@@ -56,6 +74,8 @@ export type LLMParameter =
     | 'reasoning_effort'
     | 'thinking_tokens'
     | 'verbosity';
+
+export type LLMParameters = Partial<Record<LLMParameter, number | string | boolean>>;
 
 // Display names for UI
 
@@ -146,7 +166,6 @@ export interface LLMModelConfig {
     id: string;
     provider: LLMProvider;
     tokenizer?: LLMTokenizer;
-    parameters: Partial<Record<LLMParameter, number | string | boolean>>;
 }
 
 const OPENAI_MODELS: BuiltInLLMModel[] = [

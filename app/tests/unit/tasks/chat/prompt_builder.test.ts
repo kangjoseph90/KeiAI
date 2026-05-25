@@ -30,7 +30,7 @@ vi.mock('$lib/llm/tokenizer', () => ({
     }
 }));
 
-const model: LLMModelConfig = { id: 'mock::default', provider: 'mock', parameters: {} };
+const model: LLMModelConfig = { id: 'mock::default', provider: 'mock' };
 
 const character: Character = {
     id: 'char-1',
@@ -77,8 +77,11 @@ function makePreset(promptBlocks: Record<string, PromptBlock>): Preset {
         id: 'preset-1',
         name: 'Test Preset',
         description: '',
-        chatModel: model,
-        auxModel: model,
+        models: {
+            chat: model,
+            aux: model
+        },
+        parameters: {},
         promptBlocks,
         maxResponse: 6000,
         maxContext: 60000,

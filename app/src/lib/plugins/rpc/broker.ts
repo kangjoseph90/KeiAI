@@ -39,8 +39,9 @@ export class RPCBroker {
                 return;
             }
 
-            // Execute the function
-            const result = await fn(...req.args);
+            // Execute the function. The channel signal is appended so exposed APIs can cancel
+            // long-running work without requiring callers to pass AbortSignal over RPC.
+            const result = await fn(...req.args, channel.signal);
 
             // Check if result is an async iterable (e.g., streaming)
             if (

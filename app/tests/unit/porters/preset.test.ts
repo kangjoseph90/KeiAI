@@ -23,8 +23,13 @@ describe('preset porters', () => {
         id: 'preset-real',
         name: 'Test Preset',
         description: 'Preset description',
-        chatModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: { temperature: 0.7 } },
-        auxModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: {} },
+        models: {
+            chat: { id: 'openai::gpt-5.4', provider: 'openai' },
+            aux: { id: 'openai::gpt-5.4', provider: 'openai' }
+        },
+        parameters: {
+            chat: { temperature: 0.7 }
+        },
         promptBlocks: {
             block_1: {
                 id: 'block_1',
@@ -79,7 +84,7 @@ describe('preset porters', () => {
 
         expect(pkg.kind).toBe('keiai.preset');
         expect(pkg.preset.name).toBe('Test Preset');
-        expect(pkg.preset.chatModel.provider).toBe('openai');
+        expect(pkg.preset.models?.chat?.provider).toBe('openai');
         expect((pkg.preset.promptBlocks.block_1 as { content: string })?.content).toBe(
             'You are helpful.'
         );
@@ -105,7 +110,9 @@ describe('preset porters', () => {
         expect(PresetService.create).toHaveBeenCalledWith(
             expect.objectContaining({
                 name: 'Imported Preset',
-                chatModel: expect.objectContaining({ provider: 'openai' }),
+                models: expect.objectContaining({
+                    chat: expect.objectContaining({ provider: 'openai' })
+                }),
                 maxResponse: 8000
             })
         );
@@ -124,8 +131,11 @@ function makePackage(overrides: Partial<KeiPresetPackageV1> = {}): KeiPresetPack
         preset: {
             name: 'Imported Preset',
             description: 'Description',
-            chatModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: {} },
-            auxModel: { id: 'openai::gpt-5.4', provider: 'openai', parameters: {} },
+            models: {
+                chat: { id: 'openai::gpt-5.4', provider: 'openai' },
+                aux: { id: 'openai::gpt-5.4', provider: 'openai' }
+            },
+            parameters: {},
             promptBlocks: {
                 block_1: {
                     id: 'block_1',

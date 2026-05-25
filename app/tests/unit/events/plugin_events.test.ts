@@ -38,6 +38,7 @@ function createPluginInstance(): PluginInstance {
         ]),
         macroHandlers: new Map(),
         llmProviders: new Map(),
+        llmTypes: new Map(),
         unloadHandlers: []
     };
 }

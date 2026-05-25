@@ -15,8 +15,8 @@ export async function importPresetFromKei(pkg: KeiPresetPackageV1): Promise<stri
     const preset = await PresetService.create({
         name: pkg.preset.name,
         description: pkg.preset.description,
-        chatModel: { ...pkg.preset.chatModel },
-        auxModel: { ...pkg.preset.auxModel },
+        models: structuredClone(pkg.preset.models),
+        parameters: structuredClone(pkg.preset.parameters),
         promptBlocks: structuredClone(pkg.preset.promptBlocks),
         maxResponse: pkg.preset.maxResponse,
         maxContext: pkg.preset.maxContext,

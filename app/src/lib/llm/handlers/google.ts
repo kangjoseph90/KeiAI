@@ -7,6 +7,7 @@
 import type {
     LLMStreamContent,
     LLMStreamHandler,
+    LLMStreamOptions,
     OpenAIChat,
     RemoteLLMHandlerConfig
 } from '../types';
@@ -27,17 +28,22 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
         this.config = config;
     }
 
-    async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent> {
-        const rawStream = this.rawStream(messages, signal);
+    async *stream(
+        messages: OpenAIChat[],
+        signal: AbortSignal,
+        options: LLMStreamOptions = {}
+    ): AsyncIterable<LLMStreamContent> {
+        const rawStream = this.rawStream(messages, signal, options);
         // Debounce stream to batch fast successive chunks (common with Gemini)
         yield* debounceStream(rawStream);
     }
 
     private async *rawStream(
         messages: OpenAIChat[],
-        signal: AbortSignal
+        signal: AbortSignal,
+        options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
-        const response = await this.fetchStream(messages, signal);
+        const response = await this.fetchStream(messages, signal, options);
         const reader = response.body?.getReader();
         if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
@@ -98,8 +104,13 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
         }
     }
 
-    private async fetchStream(messages: OpenAIChat[], signal: AbortSignal): Promise<Response> {
+    private async fetchStream(
+        messages: OpenAIChat[],
+        signal: AbortSignal,
+        options: LLMStreamOptions
+    ): Promise<Response> {
         const config = this.config;
+        const parameters = options.parameters ?? {};
         const baseEndpoint = `/models/${config.modelId}:streamGenerateContent?alt=sse`;
         const url = `${buildUrl(config.baseUrl, baseEndpoint)}${config.apiKey ? `&key=${config.apiKey}` : ''}`;
         const useProxy = config.useProxy ?? true;
@@ -116,9 +127,10 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
         const body: Record<string, unknown> = {
             contents: geminiMessages,
             generationConfig: {
-                temperature: config.parameters?.temperature,
-                topK: config.parameters?.top_k,
-                topP: config.parameters?.top_p
+                maxOutputTokens: options.maxResponse ?? 4096,
+                temperature: parameters.temperature,
+                topK: parameters.top_k,
+                topP: parameters.top_p
             }
         };
 

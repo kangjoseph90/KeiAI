@@ -7,6 +7,7 @@
 import type {
     LLMStreamContent,
     LLMStreamHandler,
+    LLMStreamOptions,
     OpenAIChat,
     RemoteLLMHandlerConfig
 } from '../types';
@@ -27,16 +28,21 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
         this.config = config;
     }
 
-    async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent> {
-        const rawStream = this.rawStream(messages, signal);
+    async *stream(
+        messages: OpenAIChat[],
+        signal: AbortSignal,
+        options: LLMStreamOptions = {}
+    ): AsyncIterable<LLMStreamContent> {
+        const rawStream = this.rawStream(messages, signal, options);
         yield* debounceStream(rawStream);
     }
 
     private async *rawStream(
         messages: OpenAIChat[],
-        signal: AbortSignal
+        signal: AbortSignal,
+        options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
-        const response = await this.fetchStream(messages, signal);
+        const response = await this.fetchStream(messages, signal, options);
         const reader = response.body?.getReader();
         if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
@@ -80,8 +86,13 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
         }
     }
 
-    private async fetchStream(messages: OpenAIChat[], signal: AbortSignal): Promise<Response> {
+    private async fetchStream(
+        messages: OpenAIChat[],
+        signal: AbortSignal,
+        options: LLMStreamOptions
+    ): Promise<Response> {
         const config = this.config;
+        const parameters = options.parameters ?? {};
         const url = buildUrl(config.baseUrl, '/messages');
         const useProxy = config.useProxy ?? true;
 
@@ -107,12 +118,10 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
                     messages: anthropicMessages,
                     system: systemMessage,
                     stream: true,
-                    max_tokens:
-                        (config.parameters as Record<string, number | undefined>)?.['max_tokens'] ??
-                        4096,
-                    temperature: config.parameters?.temperature,
-                    top_p: config.parameters?.top_p,
-                    top_k: config.parameters?.top_k
+                    max_tokens: options.maxResponse ?? 4096,
+                    temperature: parameters.temperature,
+                    top_p: parameters.top_p,
+                    top_k: parameters.top_k
                 })
             },
             { proxy: useProxy, signal, retry: config.retry, timeout: config.timeout }

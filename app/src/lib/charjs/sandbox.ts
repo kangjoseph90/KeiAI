@@ -11,6 +11,10 @@ import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
 import { getChatVariable, setChatVariable } from '$lib/managers';
 import { generateId } from '$lib/utils/id';
+import { getAppSettings } from '$lib/stores/content/settings';
+import { getActivePreset } from '$lib/stores/content/preset';
+import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
+import type { OpenAIChat } from '$lib/llm/types';
 
 export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance): void {
     const keiObj = ctx.newObject();
@@ -186,7 +190,7 @@ function injectLowLevelAPIs(
     keiObj: ReturnType<QuickJSAsyncContext['newObject']>,
     instance: CharJSInstance
 ): void {
-    // TODO: Wire to actual LLM/image handlers
+    // TODO: Wire image handlers
     // TODO: When allowLowLevel=false, show permission request UI to user instead of auto-granting
 
     async function requirePermission(): Promise<void> {
@@ -196,8 +200,50 @@ function injectLowLevelAPIs(
         // allow low level permission is included in character import - warning ui when importing
     }
 
-    void ctx;
-    void keiObj;
-    void instance;
-    void requirePermission;
+    const callLLMFn = ctx.newFunction('callLLM', (typeHandle, messagesHandle) => {
+        const type = ctx.getString(typeHandle);
+        const messages = ctx.dump(messagesHandle) as OpenAIChat[];
+        const promise = ctx.newPromise();
+
+        (async () => {
+            await requirePermission();
+
+            const settings = await getAppSettings();
+            const preset = getActivePreset();
+            if (!preset) {
+                throw new Error('No active preset selected');
+            }
+
+            const modelConfig = resolveLLMModelConfig(type, preset);
+            if (!modelConfig) {
+                throw new Error(`No model configured for LLM type: ${type}`);
+            }
+
+            const handler = selectLLMHandler(modelConfig, settings);
+            if (!handler) {
+                throw new Error('Failed to create LLM handler');
+            }
+
+            let content = '';
+            for await (const chunk of handler.stream(messages, new AbortController().signal, {
+                parameters: resolveLLMParameters(type, preset) ?? {},
+                maxResponse: preset.maxResponse
+            })) {
+                content = chunk.content;
+            }
+
+            return content;
+        })()
+            .then((content) => {
+                promise.resolve(ctx.newString(content));
+            })
+            .catch((error: unknown) => {
+                const message = error instanceof Error ? error.message : String(error);
+                promise.reject(ctx.newString(message));
+            });
+
+        return promise.handle;
+    });
+    ctx.setProp(keiObj, 'callLLM', callLLMFn);
+    callLLMFn.dispose();
 }

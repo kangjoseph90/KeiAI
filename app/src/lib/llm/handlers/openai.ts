@@ -11,6 +11,7 @@
 import type {
     LLMStreamContent,
     LLMStreamHandler,
+    LLMStreamOptions,
     OpenAIChat,
     RemoteLLMHandlerConfig
 } from '../types';
@@ -53,16 +54,21 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
         this.config = config;
     }
 
-    async *stream(messages: OpenAIChat[], signal: AbortSignal): AsyncIterable<LLMStreamContent> {
-        const rawStream = this.rawStream(messages, signal);
+    async *stream(
+        messages: OpenAIChat[],
+        signal: AbortSignal,
+        options: LLMStreamOptions = {}
+    ): AsyncIterable<LLMStreamContent> {
+        const rawStream = this.rawStream(messages, signal, options);
         yield* debounceStream(rawStream);
     }
 
     private async *rawStream(
         messages: OpenAIChat[],
-        signal: AbortSignal
+        signal: AbortSignal,
+        options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
-        const response = await this.fetchStream(messages, signal);
+        const response = await this.fetchStream(messages, signal, options);
         const reader = response.body?.getReader();
         if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
@@ -153,14 +159,19 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
 
     // ─── Internals ──────────────────────────────────────────────────────────
 
-    private async fetchStream(messages: OpenAIChat[], signal: AbortSignal): Promise<Response> {
+    private async fetchStream(
+        messages: OpenAIChat[],
+        signal: AbortSignal,
+        options: LLMStreamOptions
+    ): Promise<Response> {
         const config = this.config;
-
+        const parameters = options.parameters ?? {};
         const url = buildUrl(config.baseUrl, '/chat/completions');
         const useProxy = config.useProxy ?? true;
 
         const body = JSON.stringify({
-            ...config.parameters,
+            ...parameters,
+            max_tokens: options.maxResponse ?? 4096,
             model: config.modelId,
             messages: messages.map((m) => ({ role: m.role, content: m.content })),
             stream: true

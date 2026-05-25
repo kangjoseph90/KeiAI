@@ -21,11 +21,32 @@ import {
     type BuiltInLLMModel,
     type CustomLLMModel,
     type PluginLLMModel,
-    BUILT_IN_LLM_MODELS
+    BUILT_IN_LLM_MODELS,
+    type LLMType,
+    type LLMParameters
 } from '$lib/types/models/llm';
 import { pluginManager } from '$lib/plugins';
+import type { Preset } from '$lib/services';
 
 const logger = createLogger('llm:handler');
+
+/**
+ * Resolves llm model and parameters by LLM type
+ */
+export function resolveLLMModelConfig(type: LLMType, preset: Preset): LLMModelConfig | null {
+    const modelConfig = preset.models[type];
+    if (modelConfig) return modelConfig;
+    if (type === 'chat') return null;
+    if (type === 'aux') return preset.models.chat ?? null;
+    return preset.models.aux ?? preset.models.chat ?? null;
+}
+
+export function resolveLLMParameters(type: LLMType, preset: Preset): LLMParameters | null {
+    const parameters = preset.parameters[type];
+    if (parameters) return parameters;
+    if (type === 'chat') return null;
+    return preset.parameters.chat ?? null;
+}
 
 /**
  * Build a LLMStreamHandler from the given model config + app settings.
@@ -44,29 +65,25 @@ export function selectLLMHandler(
 
     // Custom models: dispatch by handler field
     if (model.provider === 'custom') {
-        return selectCustomHandler(model, settings);
+        return selectCustomHandler(model);
     }
 
     // Plugin models: dispatch by plugin handler
     if (model.provider === 'plugin') {
-        return selectPluginHandler(model, modelConfig);
+        return selectPluginHandler(model);
     }
 
     // Built-in models: dispatch by provider
-    return selectBuiltInHandler(model, modelConfig, settings);
+    return selectBuiltInHandler(model, settings);
 }
 
-function selectPluginHandler(
-    model: PluginLLMModel,
-    modelConfig: LLMModelConfig
-): LLMStreamHandler | null {
+function selectPluginHandler(model: PluginLLMModel): LLMStreamHandler | null {
     for (const instance of pluginManager.getInstances()) {
         const providerDef = instance.llmProviders.get(model.modelId);
         if (providerDef) {
             return new PluginLLMStreamHandler(
                 {
-                    modelId: model.modelId,
-                    parameters: modelConfig.parameters
+                    modelId: model.modelId
                 },
                 instance,
                 providerDef.fnId
@@ -78,14 +95,12 @@ function selectPluginHandler(
 
 function selectBuiltInHandler(
     model: BuiltInLLMModel,
-    modelConfig: LLMModelConfig,
     settings: AppSettings
 ): LLMStreamHandler | null {
     switch (model.provider) {
         case 'openai': {
             return new OpenAILLMStreamHandler({
                 modelId: model.modelId,
-                parameters: modelConfig.parameters,
                 apiKey: settings.openai.apiKey,
                 baseUrl: 'https://api.openai.com/v1'
             });
@@ -94,7 +109,6 @@ function selectBuiltInHandler(
         case 'anthropic': {
             return new AnthropicLLMStreamHandler({
                 modelId: model.modelId,
-                parameters: modelConfig.parameters,
                 apiKey: settings.anthropic.apiKey,
                 baseUrl: 'https://api.anthropic.com/v1'
             });
@@ -103,7 +117,6 @@ function selectBuiltInHandler(
         case 'deepseek': {
             return new OpenAILLMStreamHandler({
                 modelId: model.modelId,
-                parameters: modelConfig.parameters,
                 apiKey: settings.deepseek.apiKey,
                 baseUrl: 'https://api.deepseek.com'
             });
@@ -112,7 +125,6 @@ function selectBuiltInHandler(
         case 'google': {
             return new GoogleLLMStreamHandler({
                 modelId: model.modelId,
-                parameters: modelConfig.parameters,
                 apiKey: settings.google.apiKey,
                 baseUrl: 'https://generativelanguage.googleapis.com/v1beta'
             });
@@ -121,7 +133,6 @@ function selectBuiltInHandler(
         case 'mistral': {
             return new OpenAILLMStreamHandler({
                 modelId: model.modelId,
-                parameters: modelConfig.parameters,
                 apiKey: settings.mistral.apiKey,
                 baseUrl: 'https://api.mistral.ai/v1'
             });
@@ -130,7 +141,6 @@ function selectBuiltInHandler(
         case 'openrouter': {
             return new OpenAILLMStreamHandler({
                 modelId: model.modelId,
-                parameters: modelConfig.parameters,
                 apiKey: settings.openrouter.apiKey,
                 baseUrl: 'https://openrouter.ai/api/v1'
             });
@@ -138,8 +148,7 @@ function selectBuiltInHandler(
 
         case 'transformers': {
             return new TransformersLLMStreamHandler({
-                modelId: model.modelId,
-                parameters: modelConfig.parameters
+                modelId: model.modelId
             });
         }
 
@@ -152,10 +161,7 @@ function selectBuiltInHandler(
     }
 }
 
-function selectCustomHandler(
-    model: CustomLLMModel,
-    _settings: AppSettings
-): LLMStreamHandler | null {
+function selectCustomHandler(model: CustomLLMModel): LLMStreamHandler | null {
     switch (model.handler) {
         case 'openai_compatible':
             return new OpenAILLMStreamHandler({
