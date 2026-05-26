@@ -1,9 +1,9 @@
 export function normalizeRisuTemplate(content: string): string {
-    return transformTemplate(content, 'normalize');
+    return normalizeBlocks(transformSimpleMacros(content, 'normalize'));
 }
 
 export function denormalizeRisuTemplate(content: string): string {
-    return transformTemplate(content, 'denormalize');
+    return transformSimpleMacros(content, 'denormalize');
 }
 
 type Direction = 'normalize' | 'denormalize';
@@ -31,12 +31,15 @@ interface BlockFrame {
 const NORMALIZE_MACRO_NAMES: Readonly<Record<string, string>> = {
     authornote: 'chatnote',
     chatindex: 'messageindex',
+    chat_index: 'messageindex',
     isfirstmsg: 'isfirstmessage',
     lastmessageid: 'lastmessageindex',
     personality: 'characternote',
     scenario: 'characternote',
     exampledialogue: 'characternote',
     mainprompt: 'characternote',
+    main_prompt: 'characternote',
+    systemprompt: 'characternote',
     globalnote: 'characternote'
 };
 
@@ -48,7 +51,31 @@ const DENORMALIZE_MACRO_NAMES: Readonly<Record<string, string>> = {
     msgindex: 'chatindex'
 };
 
-function transformTemplate(content: string, direction: Direction): string {
+function transformSimpleMacros(content: string, direction: Direction): string {
+    let next = content;
+
+    if (direction === 'normalize') {
+        next = next.replace(/<(user|bot|char)>/gi, (_match, name: string) =>
+            normalizeName(name) === 'user' ? '{{user}}' : '{{char}}'
+        );
+        next = next.replace(
+            /\{\{\s*getglobalvar\s*::\s*toggle_([^{}]*?)\s*\}\}/gi,
+            (_raw, key: string) => renderMacro('gettoggle', [key.trim()])
+        );
+    } else {
+        next = next.replace(/\{\{\s*gettoggle\s*::\s*([^{}]*?)\s*\}\}/gi, (_raw, key: string) =>
+            renderMacro('getglobalvar', [`toggle_${key.trim()}`])
+        );
+    }
+
+    const names = direction === 'normalize' ? NORMALIZE_MACRO_NAMES : DENORMALIZE_MACRO_NAMES;
+    return next.replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g, (raw, name: string) => {
+        const transformed = names[normalizeName(name)];
+        return transformed ? renderMacro(transformed, []) : raw;
+    });
+}
+
+function normalizeBlocks(content: string): string {
     const chunks: string[] = [];
     const stack: BlockFrame[] = [];
     let cursor = 0;
@@ -56,46 +83,42 @@ function transformTemplate(content: string, direction: Direction): string {
     while (cursor < content.length) {
         const tag = findNextTag(content, cursor);
         if (!tag) {
-            chunks.push(transformText(content.slice(cursor), direction));
+            chunks.push(content.slice(cursor));
             break;
         }
 
-        chunks.push(transformText(content.slice(cursor, tag.start), direction));
-        chunks.push(transformTag(tag, stack, direction));
+        chunks.push(content.slice(cursor, tag.start));
+        chunks.push(transformTag(tag, stack));
         cursor = tag.end;
     }
 
     return chunks.join('');
 }
 
-function transformTag(tag: TemplateTag, stack: BlockFrame[], direction: Direction): string {
+function transformTag(tag: TemplateTag, stack: BlockFrame[]): string {
     const parsed = parseTag(tag.inner);
     if (parsed.kind === 'comment') return tag.raw;
 
-    if (parsed.kind === 'macro') {
-        return direction === 'normalize'
-            ? normalizeMacro(parsed, tag.raw)
-            : denormalizeMacro(parsed, tag.raw);
-    }
+    if (parsed.kind === 'macro') return tag.raw;
 
     if (parsed.kind === 'open') {
-        if (direction === 'normalize' && parsed.name === 'when') {
+        if (parsed.name === 'when') {
             stack.push({ source: 'when', target: 'if', close: '{{/if}}' });
             return `{{#if ${risuWhenToExpression(parsed.args, activeSlotNames(stack))}}}`;
         }
 
-        if (direction === 'normalize' && parsed.name === 'each') {
+        if (parsed.name === 'each') {
             const spec = risuEachToKeiSpec(parsed.args);
             stack.push({ source: 'each', target: 'each', close: '{{/each}}', slotName: spec.name });
             return `{{#each ${spec.text}}}`;
         }
 
-        if (direction === 'normalize' && parsed.name === 'puredisplay') {
+        if (parsed.name === 'puredisplay') {
             stack.push({ source: 'puredisplay', target: 'pure', close: '{{/pure}}' });
             return '{{#pure}}';
         }
 
-        if (direction === 'normalize' && parsed.name === 'if_pure') {
+        if (parsed.name === 'if_pure') {
             stack.push({ source: 'if_pure', target: 'if', close: '{{/pure}}{{/if}}' });
             return `{{#if ${risuWhenToExpression(parsed.args, activeSlotNames(stack))}}}{{#pure}}`;
         }
@@ -112,7 +135,7 @@ function transformTag(tag: TemplateTag, stack: BlockFrame[], direction: Directio
 
     if (parsed.kind === 'branch') {
         const frame = stack.at(-1);
-        if (direction === 'normalize' && frame?.source === 'if_pure') {
+        if (frame?.source === 'if_pure') {
             if (parsed.name === 'elif') {
                 return `{{/pure}}{{:elif ${risuWhenToExpression(parsed.args, activeSlotNames(stack))}}}{{#pure}}`;
             }
@@ -124,36 +147,6 @@ function transformTag(tag: TemplateTag, stack: BlockFrame[], direction: Directio
     }
 
     return tag.raw;
-}
-
-function transformText(text: string, direction: Direction): string {
-    if (direction === 'denormalize') return text;
-    return text.replace(/<(user|bot|char)>/gi, (_match, name: string) =>
-        normalizeName(name) === 'user' ? '{{user}}' : '{{char}}'
-    );
-}
-
-function normalizeMacro(parsed: Extract<ParsedTag, { kind: 'macro' }>, raw: string): string {
-    const normalizedName = NORMALIZE_MACRO_NAMES[parsed.name];
-    if (normalizedName) return renderMacro(normalizedName, parsed.args);
-
-    if (parsed.name === 'getglobalvar' && parsed.args.length === 1) {
-        const key = parsed.args[0] ?? '';
-        if (key.startsWith('toggle_')) return `{{gettoggle::${key.slice('toggle_'.length)}}}`;
-    }
-
-    return raw;
-}
-
-function denormalizeMacro(parsed: Extract<ParsedTag, { kind: 'macro' }>, raw: string): string {
-    const denormalizedName = DENORMALIZE_MACRO_NAMES[parsed.name];
-    if (denormalizedName) return renderMacro(denormalizedName, parsed.args);
-
-    if (parsed.name === 'gettoggle' && parsed.args.length === 1) {
-        return `{{getglobalvar::toggle_${parsed.args[0] ?? ''}}}`;
-    }
-
-    return raw;
 }
 
 function renderMacro(name: string, args: string[]): string {
@@ -233,7 +226,7 @@ function rightOperand(value: string, slotNames: ReadonlySet<string>): string {
 function valueForTruthy(value: string, slotNames: ReadonlySet<string>): string {
     const trimmed = value.trim();
     if (slotNames.has(trimmed)) return `{{slot::${trimmed}}}`;
-    if (isTemplateExpression(trimmed)) return normalizeRisuTemplate(trimmed);
+    if (isTemplateExpression(trimmed)) return trimmed;
     if (isExpressionLike(trimmed) || isBooleanLiteral(trimmed)) return trimmed;
     if (isNumberLiteral(trimmed)) return trimmed;
     return JSON.stringify(trimmed);
@@ -242,7 +235,7 @@ function valueForTruthy(value: string, slotNames: ReadonlySet<string>): string {
 function valueForComparison(value: string, slotNames: ReadonlySet<string>): string {
     const trimmed = value.trim();
     if (slotNames.has(trimmed)) return `{{slot::${trimmed}}}`;
-    if (isTemplateExpression(trimmed)) return normalizeRisuTemplate(trimmed);
+    if (isTemplateExpression(trimmed)) return trimmed;
     if (isGeneratedExpression(trimmed)) return trimmed;
     if (isNumberLiteral(trimmed) || isBooleanLiteral(trimmed)) return trimmed;
     return JSON.stringify(trimmed);
@@ -251,7 +244,7 @@ function valueForComparison(value: string, slotNames: ReadonlySet<string>): stri
 function valueForNumericComparison(value: string, slotNames: ReadonlySet<string>): string {
     const trimmed = value.trim();
     if (slotNames.has(trimmed)) return `{{slot::${trimmed}}}`;
-    if (isTemplateExpression(trimmed)) return normalizeRisuTemplate(trimmed);
+    if (isTemplateExpression(trimmed)) return trimmed;
     if (isGeneratedExpression(trimmed) || isNumberLiteral(trimmed)) return trimmed;
     return JSON.stringify(trimmed);
 }

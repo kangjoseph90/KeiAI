@@ -113,6 +113,8 @@ export function normalizeAssetName(name: string): string {
         'mp4',
         'webm',
         'avi',
+        'm4p',
+        'm4v',
         'mp3',
         'wav',
         'ogg'
@@ -129,20 +131,64 @@ export function normalizeAssetName(name: string): string {
 export function resolveAssetName(
     index: AssetNameIndex,
     ownerIds: readonly (string | undefined | null)[],
-    name: string
+    name: string,
+    maxDiff = 4
 ): string | null {
     const key = normalizeAssetName(name);
     if (!key) return null;
+    const effectiveMaxDiff = Math.min(maxDiff, Math.floor(key.length * 0.3));
 
     for (const ownerId of ownerIds) {
         if (!ownerId) continue;
-
-        const ids = index.get(ownerId)?.get(key);
+        const ownerMap = index.get(ownerId);
+        if (!ownerMap) continue;
+        const ids = ownerMap.get(key);
         if (ids?.length === 1) return ids[0];
         if (ids && ids.length > 1) return null;
+        if (effectiveMaxDiff <= 0) continue;
+        let closestKey: string | null = null;
+        let closestDist = Infinity;
+        for (const candidateKey of ownerMap.keys()) {
+            if (Math.abs(key.length - candidateKey.length) > effectiveMaxDiff) {
+                continue;
+            }
+            const dist = getDistance(key, candidateKey);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestKey = candidateKey;
+            }
+        }
+        if (closestKey && closestDist <= effectiveMaxDiff) {
+            const closestIds = ownerMap.get(closestKey);
+            if (closestIds?.length === 1) {
+                ownerMap.set(key, closestIds);
+                return closestIds[0];
+            }
+        }
     }
-
     return null;
+}
+
+function getDistance(a: string, b: string): number {
+    const h = a.length + 1;
+    const w = b.length + 1;
+    const d = new Int16Array(h * w);
+    for (let i = 0; i < h; i++) {
+        d[i * w] = i;
+    }
+    for (let i = 0; i < w; i++) {
+        d[i] = i;
+    }
+    for (let i = 1; i < h; i++) {
+        for (let j = 1; j < w; j++) {
+            d[i * w + j] = Math.min(
+                d[(i - 1) * w + j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1),
+                d[(i - 1) * w + j] + 1,
+                d[i * w + j - 1] + 1
+            );
+        }
+    }
+    return d[h * w - 1];
 }
 
 function escapeHtmlAttribute(str: string): string {

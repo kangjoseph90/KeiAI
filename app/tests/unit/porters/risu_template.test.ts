@@ -92,6 +92,18 @@ describe('Risu template normalization', () => {
         );
     });
 
+    it('normalizes macro aliases inside if conditions', () => {
+        expect(normalizeRisuTemplate('{{#if {{chat_index}} == 1}}yes{{/if}}')).toBe(
+            '{{#if {{messageindex}} == 1}}yes{{/if}}'
+        );
+
+        expect(
+            normalizeRisuTemplate(
+                '{{#if {{chat_index}} == 1}}one{{:elif {{chat_index}} == 2}}two{{/if}}'
+            )
+        ).toBe('{{#if {{messageindex}} == 1}}one{{:elif {{messageindex}} == 2}}two{{/if}}');
+    });
+
     it('ignores Risu keep and legacy markers', () => {
         expect(normalizeRisuTemplate('{{#when::keep::1}}yes{{/}}')).toBe('{{#if 1}}yes{{/if}}');
 

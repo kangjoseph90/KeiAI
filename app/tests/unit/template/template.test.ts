@@ -9,6 +9,8 @@ import {
 import type { Macro } from '$lib/template';
 import {
     createDisplayMacros,
+    normalizeAssetName,
+    resolveAssetName,
     type AssetNameIndex,
     type RawAssetUrlCache
 } from '$lib/template/display';
@@ -439,6 +441,21 @@ describe('template', () => {
         await expect(runTemplate('{{img::avatar}}', {}, macros)).resolves.toBe(
             '<img data-keiai-asset-id="asset-1" data-keiai-asset-name="avatar" alt="" loading="lazy" decoding="async" />'
         );
+    });
+
+    it('resolves asset names with Risu-compatible fuzzy matching', () => {
+        expect(normalizeAssetName('Theme Song.m4p')).toBe('themesong');
+        expect(normalizeAssetName('Intro Clip.m4v')).toBe('introclip');
+
+        const ownerMap = new Map([
+            ['dohwasmileone', ['asset-smile']],
+            ['bg', ['asset-bg']]
+        ]);
+        const assetMap: AssetNameIndex = new Map([['char-1', ownerMap]]);
+
+        expect(resolveAssetName(assetMap, ['char-1'], 'dohwa smile onee')).toBe('asset-smile');
+        expect(ownerMap.get('dohwasmileonee')).toEqual(['asset-smile']);
+        expect(resolveAssetName(assetMap, ['char-1'], 'bq')).toBeNull();
     });
 
     it('renders inlay macros directly using asset ID', async () => {

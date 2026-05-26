@@ -157,11 +157,11 @@ function collectBuiltInMacros(): Map<string, Macro[]> {
     add('pow', ([base, exponent]) => String(toNumber(base) ** toNumber(exponent)));
     addAliases(['remainder', 'remaind'], ([a, b]) => String(toNumber(a) % toNumber(b)));
     add('equal', ([a, b]) => bool(a === b));
-    add('notequal', ([a, b]) => bool(a !== b));
+    addAliases(['notequal', 'not_equal'], ([a, b]) => bool(a !== b));
     add('greater', ([a, b]) => bool(toNumber(a) > toNumber(b)));
     add('less', ([a, b]) => bool(toNumber(a) < toNumber(b)));
-    add('greaterequal', ([a, b]) => bool(toNumber(a) >= toNumber(b)));
-    add('lessequal', ([a, b]) => bool(toNumber(a) <= toNumber(b)));
+    addAliases(['greaterequal', 'greater_equal'], ([a, b]) => bool(toNumber(a) >= toNumber(b)));
+    addAliases(['lessequal', 'less_equal'], ([a, b]) => bool(toNumber(a) <= toNumber(b)));
     add('and', ([a, b]) => bool(isTruthy(a) && isTruthy(b)));
     add('or', ([a, b]) => bool(isTruthy(a) || isTruthy(b)));
     add('not', ([value]) => bool(!isTruthy(value)));
