@@ -1,11 +1,11 @@
 import { get } from 'svelte/store';
 import { SettingsService, type AppSettings } from '$lib/services';
 import { appSettings } from '../state';
-import type { FolderDef, EntityListConfig } from '$lib/types/refs';
+import type { FolderDef } from '$lib/types/refs';
 import { generateSortOrder } from '$lib/utils/ordering';
-import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
+import type { CustomLLMModel } from '$lib/types/models/llm';
 
 /**
  * Returns app settings from store cache first, then from DB if needed.
@@ -27,6 +27,29 @@ export async function loadSettings(): Promise<void> {
 
 export async function updateSettings(changes: DeepPartial<AppSettings>): Promise<void> {
     const updated = await SettingsService.update(changes);
+    appSettings.set(updated);
+}
+
+// ─── Custom LLM Model CRUD ──────────────────────────────────────────
+
+export async function createCustomLLMModel(
+    fields: DeepPartial<CustomLLMModel> & { sortOrder: string }
+): Promise<string> {
+    const { modelId, settings } = await SettingsService.createCustomLLMModel(fields);
+    appSettings.set(settings);
+    return modelId;
+}
+
+export async function updateCustomLLMModel(
+    modelId: string,
+    changes: DeepPartial<CustomLLMModel & { sortOrder: string }>
+): Promise<void> {
+    const updated = await SettingsService.updateCustomLLMModel(modelId, changes);
+    appSettings.set(updated);
+}
+
+export async function deleteCustomLLMModel(modelId: string): Promise<void> {
+    const updated = await SettingsService.deleteCustomLLMModel(modelId);
     appSettings.set(updated);
 }
 

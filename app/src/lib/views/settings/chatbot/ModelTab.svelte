@@ -39,7 +39,7 @@
         let model: LLMModelBase | undefined;
 
         if (provider === 'custom') {
-            model = $appSettings?.custom?.llm?.models.find((m) => m.id === modelId);
+            model = $appSettings?.custom?.llm?.models[modelId];
         } else if (provider === 'plugin') {
             model = pluginManager
                 .getInstances()

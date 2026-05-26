@@ -170,7 +170,7 @@ export interface JinaProviderConfig {
 
 export interface CustomProviderConfig {
     llm: {
-        models: CustomLLMModel[];
+        models: Record<string, CustomLLMModel & { sortOrder: string }>;
     };
     // tts: {} - onnx runtime model
     embedding: {

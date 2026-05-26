@@ -196,7 +196,7 @@ function selectCustomHandler(model: CustomLLMModel): LLMStreamHandler | null {
 function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel | undefined {
     // Custom models
     if (config.provider === 'custom') {
-        return settings.custom.llm.models?.find((m: CustomLLMModel) => m.id === config.id);
+        return settings.custom.llm.models[config.id];
     }
 
     // Plugin models

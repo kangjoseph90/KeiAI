@@ -16,6 +16,7 @@
     import { pluginManager } from '$lib/plugins';
     import type { AppSettings } from '$lib/services/content/settings';
     import type { DeepPartial } from '$lib/utils/defaults';
+    import { compareSortOrder } from '$lib/utils/ordering';
 
     interface Props {
         title: string;
@@ -43,7 +44,9 @@
 
     function getModelsForProvider(provider: LLMProvider) {
         if (provider === 'custom') {
-            return $appSettings?.custom?.llm?.models || [];
+            return Object.values($appSettings?.custom?.llm?.models ?? {}).sort((a, b) =>
+                compareSortOrder(a.sortOrder, b.sortOrder)
+            );
         }
         if (provider === 'plugin') {
             const allModels = pluginManager

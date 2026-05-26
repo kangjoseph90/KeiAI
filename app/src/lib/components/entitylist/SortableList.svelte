@@ -21,6 +21,7 @@
     let draggedId: string | null = $state(null);
     let dragOverId: string | null = $state(null);
     let dragOverZone: 'before' | 'after' | null = $state(null);
+    let dragSuppressedId: string | null = $state(null);
 
     // ─── Sorted Items ──────────────────────────────────────────────────
     const sortedItems = $derived.by(() => {
@@ -41,7 +42,29 @@
     });
 
     // ─── Drag Handlers ─────────────────────────────────────────────────
+    function isInteractiveDragTarget(target: EventTarget | null): boolean {
+        if (!(target instanceof HTMLElement)) return false;
+        return Boolean(
+            target.closest(
+                'input, textarea, select, button, a, [contenteditable="true"], [data-no-reorder-drag]'
+            )
+        );
+    }
+
+    function handlePointerDown(e: PointerEvent, id: string) {
+        dragSuppressedId = isInteractiveDragTarget(e.target) ? id : null;
+    }
+
+    function clearDragSuppression() {
+        dragSuppressedId = null;
+    }
+
     function handleDragStart(e: DragEvent, id: string) {
+        if (dragSuppressedId === id || isInteractiveDragTarget(e.target)) {
+            e.preventDefault();
+            return;
+        }
+
         draggedId = id;
         if (e.dataTransfer) {
             e.dataTransfer.effectAllowed = 'move';
@@ -53,6 +76,7 @@
         draggedId = null;
         dragOverId = null;
         dragOverZone = null;
+        dragSuppressedId = null;
     }
 
     function handleDragOver(e: DragEvent, item: { entity: T; sortOrder: string | null }) {
@@ -114,7 +138,10 @@
     {#each sortedItems as item (item.entity.id)}
         {@const entity = item.entity}
         <div
-            draggable="true"
+            draggable={dragSuppressedId !== entity.id}
+            onpointerdown={(e) => handlePointerDown(e, entity.id)}
+            onpointerup={clearDragSuppression}
+            onpointercancel={clearDragSuppression}
             ondragstart={(e) => handleDragStart(e, entity.id)}
             ondragover={(e) => handleDragOver(e, item)}
             ondragleave={(e) => handleDragLeave(e, entity.id)}

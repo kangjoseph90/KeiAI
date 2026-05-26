@@ -101,6 +101,7 @@
     // Local states
     let editingFolderId = $state<string | null>(null);
     let renameValue = $state('');
+    let dragSuppressedId = $state<string | null>(null);
 
     interface VisualItem {
         type: 'folder' | 'entity';
@@ -204,7 +205,29 @@
     }
 
     // ─── Drag & Drop Handlers ──────────────────────────────────────────
+    function isInteractiveDragTarget(target: EventTarget | null): boolean {
+        if (!(target instanceof HTMLElement)) return false;
+        return Boolean(
+            target.closest(
+                'input, textarea, select, button, a, [contenteditable="true"], [data-no-reorder-drag]'
+            )
+        );
+    }
+
+    function handlePointerDown(e: PointerEvent, id: string) {
+        dragSuppressedId = isInteractiveDragTarget(e.target) ? id : null;
+    }
+
+    function clearDragSuppression() {
+        dragSuppressedId = null;
+    }
+
     function handleDragStart(e: DragEvent, node: VisualItem) {
+        if (dragSuppressedId === node.id || isInteractiveDragTarget(e.target)) {
+            e.preventDefault();
+            return;
+        }
+
         ctx.draggedId = node.id;
         ctx.draggedType = node.type;
         ctx.draggedParentId = parentId;
@@ -221,6 +244,7 @@
         ctx.draggedParentId = undefined;
         ctx.dragOverId = null;
         ctx.dragOverZone = null;
+        dragSuppressedId = null;
     }
 
     function getSiblingsIn(folderId: string | undefined): {
@@ -705,7 +729,10 @@
                 <div class={layout === 'grid' && !isCollapsed ? 'col-span-full' : ''}>
                     <div
                         role="none"
-                        draggable="true"
+                        draggable={dragSuppressedId !== visualNode.id}
+                        onpointerdown={(e) => handlePointerDown(e, visualNode.id)}
+                        onpointerup={clearDragSuppression}
+                        onpointercancel={clearDragSuppression}
                         ondragstart={(e) => handleDragStart(e, visualNode)}
                         ondragover={(e) => handleDragOver(e, visualNode)}
                         ondragleave={(e) => handleDragLeave(e, visualNode)}
@@ -778,7 +805,10 @@
                 <!-- Entity Row or Grid Card -->
                 {@const entity = visualNode.entity!}
                 <div
-                    draggable="true"
+                    draggable={dragSuppressedId !== visualNode.id}
+                    onpointerdown={(e) => handlePointerDown(e, visualNode.id)}
+                    onpointerup={clearDragSuppression}
+                    onpointercancel={clearDragSuppression}
                     ondragstart={(e) => handleDragStart(e, visualNode)}
                     ondragover={(e) => handleDragOver(e, visualNode)}
                     ondragleave={(e) => handleDragLeave(e, visualNode)}
