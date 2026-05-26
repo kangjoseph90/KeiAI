@@ -1,5 +1,6 @@
 import type { LorebookFields } from '$lib/services';
 import { generateId } from '$lib/utils/id';
+import { generateKeyBetween } from 'fractional-indexing';
 import type { CharacterBookEntry, CharacterCardV3 } from './ccv3';
 import { fromKeiPackageJson, base64ToBytes } from './package';
 import { readRisuLorebookDecorators } from '../risu/lorebook';
@@ -168,9 +169,12 @@ function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPac
 
 function createGreetings(contents: string[]): KeiCharacterPayload['greetings'] {
     const greetings: KeiCharacterPayload['greetings'] = {};
+    let prev: string | null = null;
     for (const content of contents.filter(Boolean)) {
         const id = generateId();
-        greetings[id] = { id, content, createdAt: 0 };
+        const sortOrder = generateKeyBetween(prev, null);
+        greetings[id] = { id, content, sortOrder };
+        prev = sortOrder;
     }
     return greetings;
 }

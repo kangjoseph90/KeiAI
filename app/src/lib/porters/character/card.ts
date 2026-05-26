@@ -8,6 +8,7 @@ import { sanitizeFileName } from '$lib/utils/file';
 import { writeDefaultVariables } from '../utils';
 import { denormalizeRisuTemplate } from '../risu/template';
 import { backgroundWithMessageCSS } from '../risu/background';
+import { compareSortOrder } from '$lib/utils/ordering';
 
 export type CardAssetUriMode = 'data' | 'png' | 'charx';
 
@@ -15,8 +16,8 @@ export function keiPackageToCard(
     pkg: KeiCharacterPackageV1,
     assetUriMode: CardAssetUriMode
 ): CharacterCardV3 {
-    const greetings = Object.values(pkg.character.greetings).sort(
-        (a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)
+    const greetings = Object.values(pkg.character.greetings).sort((a, b) =>
+        compareSortOrder(a.sortOrder, b.sortOrder)
     );
 
     return {

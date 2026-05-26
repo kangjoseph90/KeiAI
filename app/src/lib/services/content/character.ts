@@ -13,7 +13,7 @@ import { AssetService } from '../asset';
 export interface Greeting {
     id: string;
     content: string;
-    createdAt: number;
+    sortOrder: string;
 }
 
 export interface CharacterContent {
@@ -212,15 +212,14 @@ export class CharacterService {
 
     static async createGreeting(
         characterId: string,
-        content: string
+        fields: { content: string; sortOrder: string }
     ): Promise<{ greetingId: string; character: Character }> {
         const greetingId = generateId();
         const updatedCharacter = await this.update(characterId, {
             greetings: {
                 [greetingId]: {
-                    id: greetingId,
-                    content: content,
-                    createdAt: clock.now()
+                    ...fields,
+                    id: greetingId
                 }
             }
         });
@@ -231,11 +230,11 @@ export class CharacterService {
     static async updateGreeting(
         characterId: string,
         greetingId: string,
-        content: string
+        changes: DeepPartial<Greeting>
     ): Promise<Character> {
         return this.update(characterId, {
             greetings: {
-                [greetingId]: { content }
+                [greetingId]: changes
             }
         });
     }

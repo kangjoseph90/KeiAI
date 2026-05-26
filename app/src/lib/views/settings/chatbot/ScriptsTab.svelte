@@ -1,8 +1,7 @@
 <script lang="ts">
-    import { GripVertical, Plus, Trash2 } from 'lucide-svelte';
+    import { Plus, Trash2 } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { Separator } from '$lib/components/ui/separator';
-    import { Textarea } from '$lib/components/ui/textarea';
     import {
         presetScripts,
         createPresetScript,
@@ -18,9 +17,10 @@
         movePresetItem
     } from '$lib/stores';
     import type { Preset, PresetCustomToggle, Script } from '$lib/services';
-    import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
+    import { generateSortOrder } from '$lib/utils/ordering';
     import ScriptItem from '../../modules/ScriptItem.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import SortableList from '$lib/components/entitylist/SortableList.svelte';
 
     interface Props {
         preset: Preset;
@@ -35,10 +35,6 @@
         const unsub = presetScripts.subscribe((v) => (currentScripts = v));
         return unsub;
     });
-
-    const sortedToggles = $derived(() =>
-        sortByRefs(Object.values(preset.customToggles), preset.customToggles)
-    );
 
     async function handleAddScript() {
         await createPresetScript(preset.id, { name: 'New Script' });
@@ -60,18 +56,8 @@
         });
     }
 
-    async function moveToggle(id: string, direction: 'up' | 'down') {
-        const toggles = sortedToggles();
-        const index = toggles.findIndex((toggle) => toggle.id === id);
-        if (index === -1) return;
-
-        const targetIndex = direction === 'up' ? index - 1 : index + 1;
-        if (targetIndex < 0 || targetIndex >= toggles.length) return;
-
-        const current = toggles[index];
-        const target = toggles[targetIndex];
-        await updatePresetCustomToggle(preset.id, current.id, { sortOrder: target.sortOrder });
-        await updatePresetCustomToggle(preset.id, target.id, { sortOrder: current.sortOrder });
+    async function handleReorderToggle(id: string, newSortOrder: string) {
+        await updatePresetCustomToggle(preset.id, id, { sortOrder: newSortOrder });
     }
 
     function updateToggleType(toggle: PresetCustomToggle, type: PresetCustomToggle['type']) {
@@ -86,29 +72,26 @@
 
 <div class="flex flex-col gap-6">
     <div class="space-y-2">
-        <h4 class="text-sm font-medium">Custom Toggles</h4>
-        <div class="flex flex-col gap-2 rounded-md border p-2">
-            {#each sortedToggles() as toggle (toggle.id)}
-                <div class="flex flex-col gap-2 border-b pb-2 last:border-0 last:pb-0">
+        <div class="flex items-center justify-between">
+            <h4 class="text-sm font-medium">Custom Toggles</h4>
+            <Button size="sm" variant="outline" class="h-8 gap-1.5" onclick={handleAddToggle}>
+                <Plus class="size-3.5" /> Add Toggle
+            </Button>
+        </div>
+        <SortableList
+            entities={Object.values(preset.customToggles)}
+            onReorder={handleReorderToggle}
+        >
+            {#snippet empty()}
+                <p class="py-6 text-center text-xs text-muted-foreground">No custom toggles.</p>
+            {/snippet}
+            {#snippet item({ entity: toggle })}
+                <div
+                    class="flex flex-col gap-1.5 rounded-lg border p-3 hover:bg-muted/30 transition-colors"
+                >
                     <div class="flex items-center gap-2">
-                        <div class="flex flex-col">
-                            <button
-                                class="flex size-4 items-center justify-center rounded hover:bg-muted"
-                                onclick={() => moveToggle(toggle.id, 'up')}
-                                aria-label="Move toggle up"
-                            >
-                                <GripVertical class="size-3 rotate-90 text-muted-foreground" />
-                            </button>
-                            <button
-                                class="flex size-4 items-center justify-center rounded hover:bg-muted"
-                                onclick={() => moveToggle(toggle.id, 'down')}
-                                aria-label="Move toggle down"
-                            >
-                                <GripVertical class="size-3 -rotate-90 text-muted-foreground" />
-                            </button>
-                        </div>
                         <input
-                            class="h-8 w-1/4 rounded-md border bg-background px-2 text-xs"
+                            class="h-7 w-1/4 rounded-md border bg-background px-2 text-xs"
                             value={'key' in toggle ? (toggle.key ?? '') : ''}
                             placeholder="key"
                             oninput={(event) =>
@@ -117,7 +100,7 @@
                                 })}
                         />
                         <input
-                            class="h-8 flex-1 rounded-md border bg-background px-2 text-xs"
+                            class="h-7 flex-1 rounded-md border bg-background px-2 text-xs"
                             value={toggle.label ?? ''}
                             placeholder="label"
                             oninput={(event) =>
@@ -126,7 +109,7 @@
                                 })}
                         />
                         <select
-                            class="h-8 w-28 rounded-md border bg-background px-2 text-xs"
+                            class="h-7 w-28 rounded-md border bg-background px-2 text-xs"
                             value={toggle.type}
                             onchange={(event) =>
                                 updateToggleType(
@@ -154,10 +137,10 @@
                         </Button>
                     </div>
                     {#if toggle.type === 'select'}
-                        <div class="flex items-center gap-2 pl-6">
+                        <div class="flex items-center gap-2">
                             <span class="text-[10px] text-muted-foreground shrink-0">Options:</span>
                             <input
-                                class="h-8 flex-1 rounded-md border bg-background px-2 text-xs"
+                                class="h-7 flex-1 rounded-md border bg-background px-2 text-xs"
                                 value={toggle.options.join(',')}
                                 placeholder="Option A,Option B"
                                 oninput={(event) =>
@@ -170,13 +153,8 @@
                         </div>
                     {/if}
                 </div>
-            {:else}
-                <p class="py-6 text-center text-xs text-muted-foreground">No custom toggles.</p>
-            {/each}
-            <Button size="sm" variant="outline" class="h-8 gap-1.5" onclick={handleAddToggle}>
-                <Plus class="size-3.5" /> Add Toggle
-            </Button>
-        </div>
+            {/snippet}
+        </SortableList>
     </div>
 
     <Separator />

@@ -100,9 +100,9 @@
         { id: 'advanced', label: 'Advanced', icon: Settings2 }
     ] as const;
 
-    async function handleCreateGreeting(content: string) {
+    async function handleCreateGreeting(fields: { content: string; sortOrder: string }) {
         if (!$activeCharacter) return;
-        await createCharacterGreeting($activeCharacter.id, content);
+        await createCharacterGreeting($activeCharacter.id, fields);
         if (isChatSynced() && $activeChat) {
             await syncChatGreetings($activeChat.id);
         }
@@ -116,9 +116,12 @@
         }
     }
 
-    async function handleUpdateGreeting(id: string, content: string) {
+    async function handleUpdateGreeting(
+        id: string,
+        changes: { content?: string; sortOrder?: string }
+    ) {
         if (!$activeCharacter) return;
-        await updateCharacterGreeting($activeCharacter.id, id, content);
+        await updateCharacterGreeting($activeCharacter.id, id, changes);
         if (isChatSynced() && $activeChat) {
             await syncChatGreetings($activeChat.id);
         }

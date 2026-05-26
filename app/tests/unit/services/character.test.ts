@@ -193,7 +193,7 @@ describe('CharacterService', () => {
                     name: 'Test Char',
                     description: 'Test',
                     characterNote: 'Hello',
-                    greetings: { '1': { id: '1', content: 'Hi', createdAt: 1000 } }
+                    greetings: { '1': { id: '1', content: 'Hi', sortOrder: 'a' } }
                 }
             };
 
@@ -238,7 +238,7 @@ describe('CharacterService', () => {
                 name: 'New Character',
                 description: 'A test character',
                 characterNote: 'You are helpful',
-                greetings: { '1': { id: '1', content: 'Hello!', createdAt: 1000 } }
+                greetings: { '1': { id: '1', content: 'Hello!', sortOrder: 'a' } }
             });
 
             expect(result.id).toBe('test-id-123');

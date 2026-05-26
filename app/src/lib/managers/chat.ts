@@ -37,13 +37,13 @@ export async function syncChatGreetings(chatId: string): Promise<void> {
         characters.flatMap((character) => {
             if (!character) return [];
             return Object.values(character.greetings)
-                .sort((a, b) => a.createdAt - b.createdAt)
+                .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder))
                 .map((greeting) => [
                     greeting.id,
                     {
                         id: greeting.id,
                         content: greeting.content,
-                        createdAt: greeting.createdAt,
+                        createdAt: Date.now(),
                         variables,
                         speakerId: character.id,
                         speakerName: character.name

@@ -82,7 +82,7 @@ describe('ChatManager', () => {
         characterNote: '',
         backgroundHTML: '',
         messageCSS: '',
-        greetings: { greet1: { id: 'greet1', content: 'Hello', createdAt: 1 } },
+        greetings: { greet1: { id: 'greet1', content: 'Hello', sortOrder: 'a' } },
         defaultVariables: { mood: 'calm', shared: 'alpha' },
         allowLowLevel: false,
         modules: { refs: {}, folders: {} },
@@ -95,7 +95,7 @@ describe('ChatManager', () => {
         ...charOne,
         id: 'char-2',
         name: 'Beta',
-        greetings: { greet2: { id: 'greet2', content: 'Yo', createdAt: 2 } },
+        greetings: { greet2: { id: 'greet2', content: 'Yo', sortOrder: 'b' } },
         defaultVariables: { shared: 'beta', energy: 'high' }
     };
 

@@ -255,11 +255,11 @@ export async function importCharacterPackage(
 
 export async function createCharacterGreeting(
     characterId: string,
-    content: string
+    fields: { content: string; sortOrder: string }
 ): Promise<{ greetingId: string; character: Character }> {
     const { greetingId, character: updated } = await CharacterService.createGreeting(
         characterId,
-        content
+        fields
     );
 
     if (updated.scopeType === 'user') {
@@ -273,9 +273,9 @@ export async function createCharacterGreeting(
 export async function updateCharacterGreeting(
     characterId: string,
     greetingId: string,
-    content: string
+    changes: { content?: string; sortOrder?: string }
 ): Promise<Character> {
-    const updated = await CharacterService.updateGreeting(characterId, greetingId, content);
+    const updated = await CharacterService.updateGreeting(characterId, greetingId, changes);
 
     if (updated.scopeType === 'user') {
         characters.set(characterId, updated);

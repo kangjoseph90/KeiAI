@@ -1,30 +1,53 @@
 <script lang="ts">
-    import { MessageSquare, Plus, Zap, Trash2 } from 'lucide-svelte';
+    import { MessageSquare, Plus, Zap, Trash2, ChevronDown, ChevronRight } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { Badge } from '$lib/components/ui/badge';
     import { Textarea } from '$lib/components/ui/textarea';
-    import { Card, CardContent, CardHeader } from '$lib/components/ui/card';
+    import { generateSortOrder } from '$lib/utils/ordering';
+    import SortableList from '$lib/components/entitylist/SortableList.svelte';
     import type { Character } from '$lib/services';
+    import { SvelteSet } from 'svelte/reactivity';
 
     interface Props {
         character: Character;
         isChatSynced: boolean;
-        onCreate: (content: string) => void | Promise<void>;
-        onUpdate: (id: string, content: string) => void | Promise<void>;
+        onCreate: (fields: { content: string; sortOrder: string }) => void | Promise<void>;
+        onUpdate: (
+            id: string,
+            changes: { content?: string; sortOrder?: string }
+        ) => void | Promise<void>;
         onDelete: (id: string) => void | Promise<void>;
     }
 
     let { character, isChatSynced, onCreate, onUpdate, onDelete }: Props = $props();
     let newGreeting = $state('');
+    let expanded = new SvelteSet<string>();
 
-    const sortedGreetings = $derived(() =>
-        Object.values(character.greetings ?? {}).sort((a, b) => a.createdAt - b.createdAt)
-    );
+    function toggleExpand(id: string) {
+        if (expanded.has(id)) expanded.delete(id);
+        else expanded.add(id);
+    }
+
+    function preview(content: string, max = 80): string {
+        const oneLine = content.replace(/\n/g, ' ').trim();
+        return oneLine.length > max ? oneLine.slice(0, max) + '...' : oneLine;
+    }
 
     async function handleAdd() {
         if (!newGreeting.trim()) return;
-        await onCreate(newGreeting);
+        const sortOrder = generateSortOrder(
+            Object.fromEntries(
+                Object.values(character.greetings ?? {}).map((g) => [
+                    g.id,
+                    { id: g.id, sortOrder: g.sortOrder }
+                ])
+            )
+        );
+        await onCreate({ content: newGreeting, sortOrder });
         newGreeting = '';
+    }
+
+    async function handleReorder(id: string, newSortOrder: string) {
+        await onUpdate(id, { sortOrder: newSortOrder });
     }
 </script>
 
@@ -74,28 +97,49 @@
         </div>
     {/if}
 
-    <div class="space-y-4">
-        {#each sortedGreetings() as g (g.id)}
-            <Card>
-                <CardHeader class="py-3 flex flex-row items-center justify-between">
-                    <Badge variant="secondary" class="font-mono text-[10px]">{g.id}</Badge>
+    <SortableList entities={Object.values(character.greetings ?? {})} onReorder={handleReorder}>
+        {#snippet empty()}
+            <p class="py-6 text-center text-xs text-muted-foreground">No greetings.</p>
+        {/snippet}
+        {#snippet item({ entity: g })}
+            <div class="flex flex-col rounded-lg border p-3">
+                <div class="flex items-center gap-2">
+                    <button
+                        class="shrink-0 rounded hover:bg-muted p-0.5"
+                        onclick={() => toggleExpand(g.id)}
+                    >
+                        {#if expanded.has(g.id)}
+                            <ChevronDown class="size-3.5 text-muted-foreground" />
+                        {:else}
+                            <ChevronRight class="size-3.5 text-muted-foreground" />
+                        {/if}
+                    </button>
+                    {#if !expanded.has(g.id)}
+                        <span class="text-xs text-muted-foreground truncate"
+                            >{preview(g.content)}</span
+                        >
+                    {:else}
+                        <span class="text-xs font-medium">Greeting</span>
+                    {/if}
+                    <div class="flex-1"></div>
                     <Button
                         variant="ghost"
-                        size="icon"
-                        class="size-8 text-destructive"
+                        size="icon-sm"
+                        class="text-destructive hover:text-destructive"
                         onclick={() => onDelete(g.id)}
                     >
-                        <Trash2 class="size-4" />
+                        <Trash2 class="size-3.5" />
                     </Button>
-                </CardHeader>
-                <CardContent class="pb-4">
+                </div>
+                {#if expanded.has(g.id)}
                     <Textarea
-                        rows={4}
+                        rows={6}
                         value={g.content}
-                        oninput={(e) => onUpdate(g.id, e.currentTarget.value)}
+                        oninput={(e) => onUpdate(g.id, { content: e.currentTarget.value })}
+                        class="text-xs mt-1.5"
                     />
-                </CardContent>
-            </Card>
-        {/each}
-    </div>
+                {/if}
+            </div>
+        {/snippet}
+    </SortableList>
 </section>

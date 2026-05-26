@@ -62,7 +62,7 @@ describe('character porters', () => {
         backgroundHTML: '',
         messageCSS: '',
         greetings: {
-            greet_1: { id: 'greet_1', content: 'Hello', createdAt: 10 }
+            greet_1: { id: 'greet_1', content: 'Hello', sortOrder: 'a' }
         },
         defaultVariables: { mood: 'calm' },
         allowLowLevel: false,
@@ -651,7 +651,7 @@ function makePackage(overrides: Partial<KeiCharacterPackageV1> = {}): KeiCharact
             backgroundHTML: '',
             messageCSS: '',
             greetings: {
-                greet_1: { id: 'greet_1', content: 'Hi', createdAt: 1 }
+                greet_1: { id: 'greet_1', content: 'Hi', sortOrder: 'a' }
             },
             defaultVariables: {},
             allowLowLevel: false,
