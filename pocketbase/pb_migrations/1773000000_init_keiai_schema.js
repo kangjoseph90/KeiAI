@@ -67,6 +67,7 @@ migrate(
       '@request.auth.id != "" && @collection.multi_room_members.roomId ?= roomId && @collection.multi_room_members.userId ?= @request.auth.id && @collection.multi_room_members.isDeleted ?= false';
     const ownerByRoomRule =
       '@request.auth.id != "" && @collection.multi_room_index.id ?= roomId && @collection.multi_room_index.ownerUserId ?= @request.auth.id && @collection.multi_room_index.isDeleted ?= false';
+    const encryptedPayloadMaxChars = 10 * 1024 * 1024;
 
     function addEncryptedPayloadFields(collection) {
       collection.fields.add(
@@ -76,7 +77,12 @@ migrate(
         new Field({ name: "updatedAt", type: "number", required: true }),
       );
       collection.fields.add(
-        new Field({ name: "encryptedData", type: "text", required: true }),
+        new Field({
+          name: "encryptedData",
+          type: "text",
+          required: true,
+          max: encryptedPayloadMaxChars,
+        }),
       );
       collection.fields.add(
         new Field({ name: "encryptedDataIV", type: "text", required: true }),

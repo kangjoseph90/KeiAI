@@ -112,7 +112,7 @@ const pb = spawn(bin, ["serve", `--http=${addr}`], {
 });
 
 pb.on("close", (code) => {
-  process.exit(code ?? 0);
+  process.exit(code == null ? 0 : code);
 });
 
 // Forward signals so Ctrl+C cleanly stops PocketBase
