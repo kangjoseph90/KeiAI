@@ -112,6 +112,68 @@ if (!$app.store().has("checkRate")) {
     return null;
   });
 
+  $app.store().set("normalizeUsername", function (username) {
+    return String(username || "")
+      .trim()
+      .toLowerCase();
+  });
+
+  var config = { enabled: false, usernames: {} };
+  var raw = $os.getenv("PB_ALLOWED_USERNAMES");
+  if (raw) {
+    raw = String(raw).trim();
+    if (
+      (raw.charAt(0) === '"' && raw.charAt(raw.length - 1) === '"') ||
+      (raw.charAt(0) === "'" && raw.charAt(raw.length - 1) === "'")
+    ) {
+      raw = raw.slice(1, -1);
+    }
+
+    var normalizeUsername = $app.store().get("normalizeUsername");
+    var count = 0;
+    String(raw)
+      .split(/[\s,]+/)
+      .forEach(function (part) {
+        var username = normalizeUsername(part);
+        var key = "$" + username;
+        if (!username || config.usernames[key]) return;
+        config.usernames[key] = true;
+        count++;
+      });
+
+    config.enabled = count > 0;
+  }
+  $app.store().set("allowedUsernameConfig", config);
+
+  $app.store().set("isUsernameAllowed", function (username) {
+    var config = $app.store().get("allowedUsernameConfig");
+    if (!config || !config.enabled) return true;
+
+    var normalizeUsername = $app.store().get("normalizeUsername");
+    return Boolean(config.usernames["$" + normalizeUsername(username)]);
+  });
+
+  $app.store().set("getAuthUsername", function (e) {
+    var auth = $app.store().get("getAuthRecord")(e);
+    if (!auth) return "";
+    try {
+      return auth.getString("username");
+    } catch (_) {}
+    return "";
+  });
+
+  $app.store().set("rejectDisallowedUsername", function (e, username) {
+    var isUsernameAllowed = $app.store().get("isUsernameAllowed");
+    if (isUsernameAllowed(username)) return false;
+    throw new ForbiddenError("Username is not allowed on this server.", null);
+  });
+
+  $app.store().set("rejectDisallowedAuth", function (e) {
+    var username = $app.store().get("getAuthUsername")(e);
+    if (!username) return false;
+    return $app.store().get("rejectDisallowedUsername")(e, username);
+  });
+
   $app.store().set("getNumberField", function (record, fieldName, fallback) {
     try {
       var rawValue = record.get(fieldName);
@@ -266,6 +328,10 @@ if (!$app.store().has("checkRate")) {
     if (!constantTimeEqual(storedHash, authTokenHash)) {
       return { error: e.json(401, { error: "Recovery failed." }) };
     }
+    var isUsernameAllowed = $app.store().get("isUsernameAllowed");
+    if (!isUsernameAllowed(record.getString("username"))) {
+      return { error: e.json(401, { error: "Recovery failed." }) };
+    }
     return { record: record, body: body };
   });
 }
@@ -284,6 +350,98 @@ var DEFAULT_ASSET_QUOTA_BYTES = Number(
 if (!DUMMY_SALT_SECRET) {
   throw new Error("DUMMY_SALT_SECRET is not defined");
 }
+
+// ─── Username Whitelist ──────────────────────────────────────────────
+
+onRecordCreateRequest((e) => {
+  if (e.record) {
+    $app.store().get("rejectDisallowedUsername")(
+      e,
+      e.record.getString("username"),
+    );
+  }
+  e.next();
+}, "users");
+
+onRecordUpdateRequest((e) => {
+  if (e.record) {
+    $app.store().get("rejectDisallowedUsername")(
+      e,
+      e.record.getString("username"),
+    );
+  }
+  e.next();
+}, "users");
+
+onRecordAuthRequest((e) => {
+  if (e.record) {
+    $app.store().get("rejectDisallowedUsername")(
+      e,
+      e.record.getString("username"),
+    );
+  }
+  e.next();
+}, "users");
+
+onRecordAuthRefreshRequest((e) => {
+  if (e.record) {
+    $app.store().get("rejectDisallowedUsername")(
+      e,
+      e.record.getString("username"),
+    );
+  }
+  e.next();
+}, "users");
+
+onRecordsListRequest((e) => {
+  $app.store().get("rejectDisallowedAuth")(e);
+  e.next();
+});
+
+onRecordViewRequest((e) => {
+  $app.store().get("rejectDisallowedAuth")(e);
+  e.next();
+});
+
+onRecordCreateRequest((e) => {
+  $app.store().get("rejectDisallowedAuth")(e);
+  e.next();
+});
+
+onRecordUpdateRequest((e) => {
+  $app.store().get("rejectDisallowedAuth")(e);
+  e.next();
+});
+
+onRecordDeleteRequest((e) => {
+  $app.store().get("rejectDisallowedAuth")(e);
+  e.next();
+});
+
+onBatchRequest((e) => {
+  $app.store().get("rejectDisallowedAuth")(e);
+  e.next();
+});
+
+onFileDownloadRequest((e) => {
+  $app.store().get("rejectDisallowedAuth")(e);
+  e.next();
+});
+
+onFileTokenRequest((e) => {
+  $app.store().get("rejectDisallowedAuth")(e);
+  e.next();
+});
+
+onRealtimeConnectRequest((e) => {
+  $app.store().get("rejectDisallowedAuth")(e);
+  e.next();
+});
+
+onRealtimeSubscribeRequest((e) => {
+  $app.store().get("rejectDisallowedAuth")(e);
+  e.next();
+});
 
 // ─── 0. Server Capabilities ─────────────────────────────────────────
 
@@ -316,6 +474,11 @@ routerAdd("POST", "/api/account/salt", (e) => {
 
     var dummySaltForUsername = $app.store().get("dummySaltForUsername");
     var dummySalt = dummySaltForUsername(username);
+    var isUsernameAllowed = $app.store().get("isUsernameAllowed");
+    if (!isUsernameAllowed(username)) {
+      return e.json(200, { salt: dummySalt });
+    }
+
     var realSalt = "";
 
     try {
@@ -397,6 +560,7 @@ routerAdd("POST", "/api/pairing", (e) => {
 
   var auth = getAuthRecord(e);
   if (!auth) return e.json(401, { error: "Authentication required." });
+  $app.store().get("rejectDisallowedUsername")(e, auth.getString("username"));
 
   var body = e.requestInfo().body || {};
   var id = body.id || "";
@@ -453,6 +617,7 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
 
   var auth = getAuthRecord(e);
   if (!auth) return e.json(401, { error: "Authentication required." });
+  $app.store().get("rejectDisallowedUsername")(e, auth.getString("username"));
 
   try {
     var hash = e.request.pathValue("hash");
@@ -521,6 +686,7 @@ routerAdd("GET", "/api/assets/download/{hash}", (e) => {
 
   var auth = getAuthRecord(e);
   if (!auth) return e.json(401, { error: "Authentication required." });
+  $app.store().get("rejectDisallowedUsername")(e, auth.getString("username"));
 
   var hash = e.request.pathValue("hash");
   if (!/^[0-9a-f]{64}$/i.test(hash)) {
