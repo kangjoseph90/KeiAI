@@ -298,11 +298,6 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
     }
     hash = hash.toLowerCase();
 
-    var existing = h.findAssetCatalogWith($app, hash);
-    if (existing) {
-      return e.json(200, { status: "exists", hash: hash });
-    }
-
     var body = toBytes(e.request.body, 10 * 1024 * 1024 + 1);
     if (!body || body.length === 0) {
       return e.json(400, { error: "Missing asset ciphertext." });
@@ -314,6 +309,15 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
     var actualHash = h.sha256Bytes(body);
     if (actualHash !== hash) {
       return e.json(400, { error: "Asset hash mismatch." });
+    }
+
+    var existing = h.findAssetCatalogWith($app, hash);
+    if (existing) {
+      var storedExisting = h.storeAssetBytes(hash, body, existing);
+      return e.json(storedExisting.status === "stored" ? 201 : 200, {
+        status: storedExisting.status,
+        hash: hash,
+      });
     }
 
     var created = false;
@@ -331,7 +335,10 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
       var record = new Record(collection);
       record.set("hash", hash);
       record.set("size", body.length);
-      record.set("data", $filesystem.fileFromBytes(body, hash + ".bin"));
+      var storedAsset = h.storeAssetBytes(hash, body, null);
+      if (storedAsset.file) {
+        record.set("data", storedAsset.file);
+      }
       txApp.save(record);
       created = true;
     });
@@ -363,23 +370,23 @@ routerAdd("GET", "/api/assets/download/{hash}", (e) => {
   var record = h.findAssetCatalogWith($app, hash.toLowerCase());
   if (!record) return e.json(404, { error: "Asset not found." });
 
-  var filename = record.getString("data");
-  if (!filename) return e.json(404, { error: "Asset not found." });
-
-  var fsys = $app.newFilesystem();
-  try {
-    return fsys.serve(
-      e.response,
-      e.request,
-      record.baseFilesPath() + "/" + filename,
-      hash.toLowerCase() + ".bin",
-    );
-  } catch (_) {
-    return e.json(404, { error: "Asset file not found." });
-  } finally {
-    fsys.close();
-  }
+  hash = hash.toLowerCase();
+  if (h.serveAsset(e, record, hash)) return;
+  return e.json(404, { error: "Asset file not found." });
 });
+
+routerAdd(
+  "POST",
+  "/api/admin/assets/migrate-r2-to-local",
+  (e) => {
+    var h = require(`${__hooks}/keiai.js`);
+    var body = e.requestInfo().body || {};
+    var result = h.migrateR2AssetsToLocal(body.limit);
+    if (result.error) return e.json(400, result);
+    return e.json(200, result);
+  },
+  $apis.requireSuperuserAuth(),
+);
 
 // Asset usage hooks
 
@@ -426,6 +433,9 @@ cronAdd("asset-gc", "0 * * * *", () => {
     for (var i = 0; i < orphans.length; i++) {
       try {
         var record = $app.findRecordById("asset_catalog", orphans[i].id);
+        if (!require(`${__hooks}/keiai.js`).deleteAssetBytes(record.getString("hash"))) {
+          continue;
+        }
         $app.delete(record);
       } catch (_) {}
     }
