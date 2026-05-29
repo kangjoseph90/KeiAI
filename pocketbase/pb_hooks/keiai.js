@@ -248,8 +248,14 @@ function getOrCreateAssetAccount(app, userId) {
   account.set("maxBytes", "0");
   account.set("createdAt", now);
   account.set("updatedAt", now);
-  app.save(account);
-  return account;
+  try {
+    app.save(account);
+    return account;
+  } catch (err) {
+    var existing = findAssetAccountWith(app, userId);
+    if (existing) return existing;
+    throw err;
+  }
 }
 
 function findMultiRoomIndex(app, roomId) {
@@ -801,6 +807,16 @@ function deleteAssetBytes(hash) {
   }
 }
 
+function hasAssetUsage(hash) {
+  var rows = [];
+  $app
+    .db()
+    .newQuery("SELECT id FROM asset_usage WHERE hash = {:hash} LIMIT 1")
+    .bind({ hash: hash })
+    .all(rows);
+  return rows.length > 0;
+}
+
 function getPairingBlobs() {
   return getStoreObject("keiaiPairingBlobs", {});
 }
@@ -821,6 +837,7 @@ module.exports = {
   getNumberField: getNumberField,
   getPairingBlobs: getPairingBlobs,
   handleAssetRefTransition: handleAssetRefTransition,
+  hasAssetUsage: hasAssetUsage,
   isNoRowsError: isNoRowsError,
   isUsernameAllowed: isUsernameAllowed,
   migrateR2AssetsToLocal: migrateR2AssetsToLocal,

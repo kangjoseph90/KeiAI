@@ -339,8 +339,12 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
       if (storedAsset.file) {
         record.set("data", storedAsset.file);
       }
-      txApp.save(record);
-      created = true;
+      try {
+        txApp.save(record);
+        created = true;
+      } catch (err) {
+        if (!h.findAssetCatalogWith(txApp, hash)) throw err;
+      }
     });
 
     return e.json(created ? 201 : 200, {
@@ -407,6 +411,10 @@ onRecordAfterUpdateSuccess((e) => {
   );
 }, "assets");
 
+onRecordAfterDeleteSuccess((e) => {
+  require(`${__hooks}/keiai.js`).handleAssetRefTransition(null, e.record);
+}, "assets");
+
 onRecordAfterCreateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
 }, "multi_room_assets");
@@ -416,6 +424,10 @@ onRecordAfterUpdateSuccess((e) => {
     e.record,
     e.record.original(),
   );
+}, "multi_room_assets");
+
+onRecordAfterDeleteSuccess((e) => {
+  require(`${__hooks}/keiai.js`).handleAssetRefTransition(null, e.record);
 }, "multi_room_assets");
 
 // Asset garbage collection
@@ -439,7 +451,12 @@ cronAdd("asset-gc", "0 * * * *", () => {
     for (var i = 0; i < orphans.length; i++) {
       try {
         var record = $app.findRecordById("asset_catalog", orphans[i].id);
-        if (!require(`${__hooks}/keiai.js`).deleteAssetBytes(record.getString("hash"))) {
+        var h = require(`${__hooks}/keiai.js`);
+        var hash = record.getString("hash");
+        if (h.hasAssetUsage(hash)) {
+          continue;
+        }
+        if (!h.deleteAssetBytes(hash)) {
           continue;
         }
         $app.delete(record);
