@@ -20,16 +20,22 @@ import { generateId } from '$lib/utils/id';
 import { AppError } from '$lib/types/errors';
 import { canAccessScope, getSessionScope } from '../session';
 import type { AssetKind } from './types';
-import { CACHE_HIGH_WATERMARK, CACHE_LOW_WATERMARK } from './types';
+import {
+    CACHE_HIGH_WATERMARK,
+    CACHE_LOW_WATERMARK,
+    MAX_IMAGE_HEIGHT,
+    MAX_IMAGE_WIDTH,
+    WEBP_QUALITY
+} from './types';
 import {
     decryptConvergentAsset,
     encryptConvergentAsset,
     isValidImageHeader,
-    parseFields,
-    preprocessImage
+    parseFields
 } from './util';
 import { fetchAssetCiphertext } from './remote';
 import { sha256, type Bytes } from '$lib/crypto';
+import { preprocessImage } from '$lib/utils/image';
 
 // ─── Registry Helpers ────────────────────────────────────────────────
 
@@ -271,7 +277,11 @@ export class AssetService {
         let plaintext: Uint8Array | null = null;
 
         if (file) {
-            const { blob } = await preprocessImage(file);
+            const { blob } = await preprocessImage(file, {
+                maxWidth: MAX_IMAGE_WIDTH,
+                maxHeight: MAX_IMAGE_HEIGHT,
+                quality: WEBP_QUALITY
+            });
             plaintext = new Uint8Array(await blob.arrayBuffer());
             const encrypted = await encryptConvergentAsset(plaintext);
             fields = {

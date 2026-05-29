@@ -66,6 +66,15 @@ vi.mock('$lib/crypto', () => ({
         })
     ),
     decryptBytes: vi.fn(() => Promise.resolve(new Uint8Array([12]))),
+    encrypt: vi.fn(() =>
+        Promise.resolve({
+            ciphertext: new Uint8Array([13]),
+            iv: new Uint8Array([14])
+        })
+    ),
+    decrypt: vi.fn(() =>
+        Promise.resolve(JSON.stringify({ name: 'Remote Profile', avatar: 'remote-avatar' }))
+    ),
     generatePairingCode: vi.fn(() => 'ABCDEFGH'),
     createPairingBlob: vi.fn(() => Promise.resolve({ lookupId: 'lookup', blob: 'blob' })),
     decryptPairingBlob: vi.fn(() =>
@@ -138,7 +147,9 @@ describe('AuthService', () => {
                 masterKeyIv: 'iv',
                 identityPublicKey: JSON.stringify({ kty: 'EC' }),
                 encryptedIdentityPrivateKey: 'priv',
-                identityPrivateKeyIv: 'privIv'
+                identityPrivateKeyIv: 'privIv',
+                encryptedProfile: 'profile',
+                encryptedProfileIV: 'profileIv'
             }
         });
         vi.mocked(UserService.getUser).mockResolvedValue({
@@ -155,7 +166,9 @@ describe('AuthService', () => {
         expect(mockCollection.create).toHaveBeenCalledWith(
             expect.objectContaining({
                 id: 'user-123',
-                username: 'kei'
+                username: 'kei',
+                encryptedProfile: 'b64:13',
+                encryptedProfileIV: 'b64:14'
             })
         );
         expect(mockCollection.authWithPassword).toHaveBeenCalled();
@@ -179,8 +192,7 @@ describe('AuthService', () => {
                 identityPublicKey: JSON.stringify({ kty: 'EC' }),
                 encryptedIdentityPrivateKey: 'priv',
                 identityPrivateKeyIv: 'privIv',
-                username: 'kei',
-                name: 'Recovered'
+                username: 'kei'
             })
             .mockResolvedValueOnce({ success: true });
 
@@ -194,7 +206,9 @@ describe('AuthService', () => {
                 masterKeyIv: 'iv',
                 identityPublicKey: JSON.stringify({ kty: 'EC' }),
                 encryptedIdentityPrivateKey: 'priv',
-                identityPrivateKeyIv: 'privIv'
+                identityPrivateKeyIv: 'privIv',
+                encryptedProfile: 'profile',
+                encryptedProfileIV: 'profileIv'
             }
         });
 
@@ -213,7 +227,12 @@ describe('AuthService', () => {
             expect.objectContaining({ method: 'POST' })
         );
         expect(UserService.saveUser).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 'user-123', username: 'kei', name: 'Recovered' })
+            expect.objectContaining({
+                id: 'user-123',
+                username: 'kei',
+                name: 'Remote Profile',
+                avatar: 'remote-avatar'
+            })
         );
     });
 

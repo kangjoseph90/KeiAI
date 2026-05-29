@@ -3,9 +3,8 @@
  *
  * Handles bidirectional synchronization of user display data (name, avatar)
  * with PocketBase. Separated from DataRecordSyncEngine because user data:
- *   - Lives in the `users` PB collection (not the encrypted data tables)
- *   - Is NOT E2EE (name/avatar are plaintext)
- *   - Has different serialization (avatar is a PB file field, not Base64 blob)
+ *   - Lives in encrypted profile fields on the `users` PB collection
+ *   - Shares the auth record lifecycle, but keeps display data opaque to the server
  *
  * Push: Triggered by local user adapter write events.
  * Pull: PB Realtime subscription on the user's own record.
@@ -19,9 +18,52 @@ import { getActiveSession } from '../session';
 import { appUser, type UserWriteEvent } from '$lib/adapters/user';
 import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
 import { normalizeTimestamp, isReadyToSync } from './utils';
+import { decrypt, encrypt, fromBase64, toBase64 } from '$lib/crypto';
 import { createLogger } from '$lib/adapters/logger';
 
 const logger = createLogger('sync:user');
+
+export interface UserProfilePayload {
+    name: string;
+    avatar: string;
+}
+
+export interface EncryptedUserProfile {
+    encryptedProfile: string;
+    encryptedProfileIV: string;
+}
+
+export async function encryptUserProfile(
+    masterKey: CryptoKey,
+    profile: UserProfilePayload
+): Promise<EncryptedUserProfile> {
+    const encrypted = await encrypt(masterKey, JSON.stringify(profile));
+    return {
+        encryptedProfile: toBase64(encrypted.ciphertext),
+        encryptedProfileIV: toBase64(encrypted.iv)
+    };
+}
+
+export async function decryptUserProfile(
+    masterKey: CryptoKey,
+    record: Record<string, unknown>
+): Promise<UserProfilePayload | null> {
+    const encryptedProfile = record.encryptedProfile;
+    const encryptedProfileIV = record.encryptedProfileIV;
+    if (typeof encryptedProfile !== 'string' || typeof encryptedProfileIV !== 'string') {
+        return null;
+    }
+
+    const plaintext = await decrypt(masterKey, {
+        ciphertext: fromBase64(encryptedProfile),
+        iv: fromBase64(encryptedProfileIV)
+    });
+    const parsed = JSON.parse(plaintext) as Partial<UserProfilePayload>;
+    return {
+        name: typeof parsed.name === 'string' ? parsed.name : '',
+        avatar: typeof parsed.avatar === 'string' ? parsed.avatar : ''
+    };
+}
 
 export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEvent, 'user'> {
     private subscribed = false;
@@ -55,26 +97,16 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
         if (!isReadyToSync()) return;
 
         try {
-            const { userId } = getActiveSession();
+            const { userId, masterKey } = getActiveSession();
 
             const user = await appUser.getUser(userId);
             if (!user) return;
 
-            const updateData: Record<string, unknown> = { name: user.name };
-
-            if (user.avatar?.startsWith('data:image')) {
-                try {
-                    const fetchResponse = await fetch(user.avatar);
-                    updateData.avatar = await fetchResponse.blob();
-                } catch (e) {
-                    logger.warn('Failed to parse avatar data URI for upload', e);
-                }
-            }
-
-            // Push to server.
-            // Note: We no longer swap the local Data URI for the server URL after upload.
-            // Keeping the Data URI locally ensures instant loading and works around Tauri caching issues.
-            await pb.collection('users').update(userId, updateData);
+            const encryptedProfile = await encryptUserProfile(masterKey, {
+                name: user.name,
+                avatar: user.avatar
+            });
+            await pb.collection('users').update(userId, encryptedProfile);
         } catch (err) {
             logger.error('Push failed', err);
             throw err;
@@ -123,18 +155,9 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
      */
     private async handleRealtimeEvent(serverRecord: Record<string, unknown>): Promise<void> {
         try {
-            const { userId } = getActiveSession();
-
-            const remoteName = (serverRecord.name as string) ?? '';
-            let remoteAvatar = '';
-            if (serverRecord.avatar) {
-                const serverUrl = pb.files.getURL(
-                    serverRecord as { id: string; collectionId: string; collectionName: string },
-                    serverRecord.avatar as string
-                );
-                // Convert server URL to Data URI for local-first persistence
-                remoteAvatar = await this.imageUrlToDataUri(serverUrl);
-            }
+            const { userId, masterKey } = getActiveSession();
+            const remoteProfile = await decryptUserProfile(masterKey, serverRecord);
+            if (!remoteProfile) return;
 
             const remoteUpdatedAt = normalizeTimestamp(
                 serverRecord.updatedAt,
@@ -150,7 +173,7 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
                 return;
             }
 
-            await this.applyRemoteUserUpdate(userId, remoteName, remoteAvatar, remoteUpdatedAt);
+            await this.applyRemoteUserUpdate(userId, remoteProfile, remoteUpdatedAt);
         } catch (err) {
             logger.error('Realtime event error', err);
         }
@@ -160,16 +183,15 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
         if (!isReadyToSync()) return;
 
         try {
-            const { userId } = getActiveSession();
+            const { userId, masterKey } = getActiveSession();
             const user = await appUser.getUser(userId);
             if (!user) return;
 
             const serverRecord = await pb.collection('users').getOne(userId);
-            const remoteName = (serverRecord.name as string) ?? '';
-            let remoteAvatar = '';
-            if (serverRecord.avatar) {
-                const serverUrl = pb.files.getURL(serverRecord, serverRecord.avatar as string);
-                remoteAvatar = await this.imageUrlToDataUri(serverUrl);
+            const remoteProfile = await decryptUserProfile(masterKey, serverRecord);
+            if (!remoteProfile) {
+                await this.pushCurrentUser();
+                return;
             }
 
             const remoteUpdatedAt = normalizeTimestamp(
@@ -184,7 +206,7 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
                 await this.pushCurrentUser();
             } else {
                 // Remote is newer or equal: apply locally
-                await this.applyRemoteUserUpdate(userId, remoteName, remoteAvatar, remoteUpdatedAt);
+                await this.applyRemoteUserUpdate(userId, remoteProfile, remoteUpdatedAt);
             }
         } catch (err) {
             logger.error('Pull failed', err);
@@ -194,8 +216,7 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
 
     private async applyRemoteUserUpdate(
         userId: string,
-        remoteName: string,
-        remoteAvatar: string,
+        remoteProfile: { name: string; avatar: string },
         remoteUpdatedAt: number
     ): Promise<void> {
         const user = await appUser.getUser(userId);
@@ -204,33 +225,11 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
 
         const updated = {
             ...user,
-            name: remoteName,
-            avatar: remoteAvatar,
+            name: remoteProfile.name,
+            avatar: remoteProfile.avatar,
             updatedAt: remoteUpdatedAt
         };
         await appUser.saveUser(updated, { origin: 'sync' });
-    }
-
-    /**
-     * Fetches an image from a URL and converts it to a Data URI.
-     * Used to persist remote avatars as local-first Base64 strings.
-     */
-    private async imageUrlToDataUri(url: string): Promise<string> {
-        try {
-            const response = await fetch(url);
-            if (!response.ok) return url;
-
-            const blob = await response.blob();
-            return await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result as string);
-                reader.onerror = () => reject(new Error('FileReader failed'));
-                reader.readAsDataURL(blob);
-            });
-        } catch (err) {
-            logger.warn('Failed to convert image to data URI', err);
-            return url; // Fallback to original URL
-        }
     }
 }
 

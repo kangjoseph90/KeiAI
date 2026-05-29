@@ -40,6 +40,7 @@ import {
     MultiRecordSyncEngine,
     SyncManager
 } from './sync';
+import { decryptUserProfile, encryptUserProfile } from './sync/user';
 import { AppError } from '$lib/types/errors';
 import { createLogger } from '$lib/adapters/logger';
 
@@ -51,8 +52,6 @@ interface SaltResponse {
 
 interface RecoverResponse {
     userId: string;
-    name: string;
-    avatar?: string;
     encryptedRecoveryMasterKey: string;
     encryptedRecoveryMasterKeyIV: string;
     identityPublicKey: string;
@@ -107,11 +106,14 @@ export class AuthService {
             const publicKeyJwk = await exportPublicKey(identityKeyPair.publicKey);
             rawPrivateKey = await exportPrivateKey(identityKeyPair.privateKey);
             const encryptedPrivateKey = await encryptBytes(masterKey, rawPrivateKey);
+            const encryptedProfile = await encryptUserProfile(masterKey, {
+                name: existing.name,
+                avatar: existing.avatar
+            });
 
-            const createData: Record<string, string | Blob> = {
+            const createData: Record<string, string> = {
                 id: userId,
                 username: normalizedUsername,
-                name: existing.name,
                 password: toHex(keys.loginKey),
                 passwordConfirm: toHex(keys.loginKey),
                 salt: toBase64(salt),
@@ -122,19 +124,12 @@ export class AuthService {
                 recoveryAuthTokenHash: toBase64(recovery.recoveryAuthTokenHash),
                 identityPublicKey: JSON.stringify(publicKeyJwk),
                 encryptedIdentityPrivateKey: toBase64(encryptedPrivateKey.ciphertext),
-                identityPrivateKeyIv: toBase64(encryptedPrivateKey.iv)
+                identityPrivateKeyIv: toBase64(encryptedPrivateKey.iv),
+                encryptedProfile: encryptedProfile.encryptedProfile,
+                encryptedProfileIV: encryptedProfile.encryptedProfileIV
             };
 
             if (email) createData.email = email;
-
-            if (existing.avatar.startsWith('data:image')) {
-                try {
-                    const fetchResponse = await fetch(existing.avatar);
-                    createData.avatar = await fetchResponse.blob();
-                } catch (e) {
-                    logger.warn('Failed to parse local avatar for PB upload', e);
-                }
-            }
 
             await pb.collection('users').create(createData);
         } catch (error) {
@@ -362,18 +357,14 @@ export class AuthService {
                 }
             }
 
-            let avatarUrl: string | undefined;
-            if (serverRecord?.avatar) {
-                avatarUrl = pb.files.getURL(
-                    serverRecord as { id: string; collectionId: string; collectionName: string },
-                    serverRecord.avatar as string
-                );
-            }
+            const profile = serverRecord
+                ? await decryptUserProfile(masterKey, serverRecord as Record<string, unknown>)
+                : null;
 
             await UserService.saveUser({
                 id: userId,
-                name: serverRecord?.name,
-                avatar: avatarUrl,
+                name: profile?.name,
+                avatar: profile?.avatar,
                 masterKey,
                 identityKeyPair,
                 selfHostUrl: currentSelfHostUrl,
@@ -451,16 +442,13 @@ export class AuthService {
             });
             const privateKey = await importPrivateKey(rawPrivateKey, true);
 
-            let pbAvatarUrl: string | undefined;
-            if (authData.record?.avatar) {
-                pbAvatarUrl = pb.files.getURL(authData.record, authData.record.avatar);
-            }
+            const profile = await decryptUserProfile(masterKey, authData.record);
 
             try {
                 await UserService.saveUser({
                     id: authData.record.id,
-                    name: authData.record?.name,
-                    avatar: pbAvatarUrl,
+                    name: profile?.name,
+                    avatar: profile?.avatar,
                     masterKey,
                     identityKeyPair: { publicKey, privateKey },
                     selfHostUrl,

@@ -20,9 +20,7 @@ vi.mock('$lib/adapters/pb', () => ({
     pb: {
         authStore: { isValid: true },
         collection: vi.fn(() => mockCollection),
-        files: {
-            getURL: vi.fn(() => 'http://server/avatar.png')
-        }
+        files: {}
     }
 }));
 
@@ -43,9 +41,19 @@ vi.mock('$lib/adapters/user', () => ({
     }
 }));
 
-// Mock global fetch
-const mockFetch = vi.fn();
-global.fetch = mockFetch;
+vi.mock('$lib/crypto', () => ({
+    encrypt: vi.fn(() =>
+        Promise.resolve({
+            ciphertext: new Uint8Array([1, 2, 3]),
+            iv: new Uint8Array([4, 5, 6])
+        })
+    ),
+    decrypt: vi.fn(() =>
+        Promise.resolve(JSON.stringify({ name: 'Remote Name', avatar: 'remote-avatar' }))
+    ),
+    toBase64: vi.fn((data: Uint8Array) => `b64:${Array.from(data).join(',')}`),
+    fromBase64: vi.fn(() => new Uint8Array([1, 2, 3]))
+}));
 
 describe('UserRecordSyncEngine', () => {
     const mockUserId = 'user-123';
@@ -89,18 +97,16 @@ describe('UserRecordSyncEngine', () => {
             });
             await vi.advanceTimersByTimeAsync(3000);
 
-            expect(mockCollection.update).toHaveBeenCalledWith(mockUserId, { name: 'New Name' });
+            expect(mockCollection.update).toHaveBeenCalledWith(mockUserId, {
+                encryptedProfile: 'b64:1,2,3',
+                encryptedProfileIV: 'b64:4,5,6'
+            });
         });
 
-        it('should handle avatar data URI upload and keep it locally', async () => {
+        it('should include avatar in the encrypted profile payload', async () => {
             vi.useFakeTimers();
-            const mockBlob = new Blob(['test'], { type: 'image/png' });
-            mockFetch.mockResolvedValue({
-                blob: vi.fn().mockResolvedValue(mockBlob)
-            });
             vi.mocked(mockCollection.update).mockResolvedValue({
-                id: mockUserId,
-                avatar: 'abc.png'
+                id: mockUserId
             } as unknown as RecordModel);
             vi.mocked(appUser.getUser).mockResolvedValue({
                 id: mockUserId,
@@ -117,15 +123,10 @@ describe('UserRecordSyncEngine', () => {
             });
             await vi.advanceTimersByTimeAsync(3000);
 
-            expect(mockFetch).toHaveBeenCalledWith('data:image/png;base64,abc');
-            expect(mockCollection.update).toHaveBeenCalledWith(
-                mockUserId,
-                expect.objectContaining({
-                    name: 'Name',
-                    avatar: mockBlob
-                })
-            );
-            // Local avatar should NOT be updated with server URL anymore
+            expect(mockCollection.update).toHaveBeenCalledWith(mockUserId, {
+                encryptedProfile: 'b64:1,2,3',
+                encryptedProfileIV: 'b64:4,5,6'
+            });
             expect(appUser.saveUser).not.toHaveBeenCalled();
         });
 
@@ -155,25 +156,15 @@ describe('UserRecordSyncEngine', () => {
     });
 
     describe('trigger', () => {
-        it('should fetch from PocketBase and convert avatar to Data URI', async () => {
+        it('should fetch from PocketBase and apply encrypted profile', async () => {
             const mockServerRecord = {
-                name: 'Remote Name',
-                avatar: 'remote.png',
+                encryptedProfile: 'profile',
+                encryptedProfileIV: 'iv',
                 updated: '2023-01-01T00:00:00Z'
             };
             vi.mocked(mockCollection.getOne).mockResolvedValue(
                 mockServerRecord as unknown as RecordModel
             );
-
-            // Mock conversion process
-            const mockDataUri = 'data:image/png;base64,cmVtb3Rl'; // 'remote' in base64
-            const realBlob = new Blob([new TextEncoder().encode('remote')], {
-                type: 'image/png'
-            });
-            mockFetch.mockResolvedValue({
-                ok: true,
-                blob: vi.fn().mockResolvedValue(realBlob)
-            });
 
             vi.mocked(appUser.getUser).mockResolvedValue({
                 id: mockUserId,
@@ -189,7 +180,7 @@ describe('UserRecordSyncEngine', () => {
                 expect.objectContaining({
                     id: mockUserId,
                     name: 'Remote Name',
-                    avatar: mockDataUri,
+                    avatar: 'remote-avatar',
                     updatedAt: expect.any(Number)
                 }),
                 { origin: 'sync' }

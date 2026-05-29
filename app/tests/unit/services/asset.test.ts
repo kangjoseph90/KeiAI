@@ -54,11 +54,15 @@ vi.mock('$lib/utils/id', () => ({
 }));
 
 vi.mock('$lib/services/asset/util', () => ({
-    preprocessImage: vi.fn(),
     encryptConvergentAsset: vi.fn(),
     decryptConvergentAsset: vi.fn(),
     isValidImageHeader: vi.fn(),
     parseFields: vi.fn((record: AssetRecord) => record.data)
+}));
+
+vi.mock('$lib/utils/image', () => ({
+    preprocessImage: vi.fn(),
+    blobToDataUrl: vi.fn()
 }));
 
 vi.mock('$lib/services/asset/remote', () => ({
@@ -72,9 +76,9 @@ import { sha256 } from '$lib/crypto';
 import {
     decryptConvergentAsset,
     encryptConvergentAsset,
-    isValidImageHeader,
-    preprocessImage
+    isValidImageHeader
 } from '$lib/services/asset/util';
+import { preprocessImage } from '$lib/utils/image';
 import { fetchAssetCiphertext } from '$lib/services/asset/remote';
 
 describe('AssetService', () => {
