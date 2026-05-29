@@ -8,6 +8,7 @@
 import type { EmbeddingResult, EmbeddingHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
 import { AppError } from '$lib/types/errors';
+import { buildUrl } from '$lib/utils/url';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ export class OpenAIEmbeddingHandler implements EmbeddingHandler {
             headers.Authorization = `Bearer ${this.config.apiKey}`;
         }
 
-        const response = await appHttp.fetch(`${this.config.baseUrl}/embeddings`, {
+        const response = await appHttp.fetch(buildUrl(this.config.baseUrl, '/embeddings'), {
             method: 'POST',
             headers,
             body: JSON.stringify({

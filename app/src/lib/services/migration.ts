@@ -3,7 +3,7 @@ import { appHttp } from '$lib/adapters/http';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
 import { Semaphore } from '$lib/utils/semaphore';
-import { normalizeUrl } from '$lib/utils/url';
+import { buildUrl, normalizeUrl } from '$lib/utils/url';
 import { AssetService } from './asset';
 import { SyncManager } from './sync';
 import { getActiveSession } from './session';
@@ -45,7 +45,7 @@ export class MigrationService {
         let response: Response;
         try {
             response = await appHttp.fetch(
-                `${normalized}/api/capabilities`,
+                buildUrl(normalized, '/api/capabilities'),
                 { method: 'GET' },
                 { timeout: 5_000, retry: { maxRetries: 1 } }
             );

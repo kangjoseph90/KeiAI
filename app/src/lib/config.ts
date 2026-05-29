@@ -5,8 +5,9 @@
  * These are used across the application, including Web Workers.
  */
 
-/** CDN base URL for asset and resource delivery */
-export const CDN_BASE_URL = import.meta.env.VITE_CDN_BASE_URL ?? '';
+/** Official KeiAI server URLs (hardcoded) */
+export const KEI_PB_URL = 'https://api.keiai.xyz';
+export const KEI_CDN_URL = 'https://cdn.keiai.xyz';
 
 /** Proxy URL for bypassing CORS on the web */
 export const PROXY_URL = import.meta.env.VITE_PROXY_URL ?? '';
@@ -23,9 +24,6 @@ export const setSafeMode = (v: boolean) => {
 
 // Validation (Fail fast in non-worker context if required vars are missing)
 if (typeof window !== 'undefined') {
-    if (!CDN_BASE_URL) {
-        console.warn('VITE_CDN_BASE_URL is not set. Local static assets will be used.');
-    }
     if (!PROXY_URL) {
         console.warn('VITE_PROXY_URL is not set. External API calls may fail due to CORS.');
     }

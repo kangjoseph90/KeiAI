@@ -1,5 +1,6 @@
 import { AppError } from '$lib/types/errors';
-import { CDN_BASE_URL } from '$lib/config';
+import { KEI_CDN_URL } from '$lib/config';
+import { buildUrl } from './url';
 
 const CACHE_NAME = 'kei-cdn-v1';
 
@@ -10,9 +11,7 @@ const CACHE_NAME = 'kei-cdn-v1';
  * @param path - Resource path (e.g., '/token/claude/tokenizer.json' or '/models/...')
  */
 export async function cdnFetch(path: string): Promise<ArrayBuffer> {
-    // Normalize path (ensure it starts with /)
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    const url = `${CDN_BASE_URL}${normalizedPath}`;
+    const url = buildUrl(KEI_CDN_URL, path);
 
     const cache = await caches.open(CACHE_NAME);
     const cached = await cache.match(url);
@@ -36,8 +35,7 @@ export async function cdnFetch(path: string): Promise<ArrayBuffer> {
  * Manually evict a specific resource from the cache.
  */
 export async function cdnEvict(path: string): Promise<boolean> {
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    const url = `${CDN_BASE_URL}${normalizedPath}`;
+    const url = buildUrl(KEI_CDN_URL, path);
     const cache = await caches.open(CACHE_NAME);
     return await cache.delete(url);
 }

@@ -472,6 +472,267 @@ function getAssetMaxBytes(user) {
   return getDefaultAssetQuotaBytes();
 }
 
+function normalizeEnv(value) {
+  var normalized = String(value || "").trim();
+  if (
+    (normalized.charAt(0) === '"' &&
+      normalized.charAt(normalized.length - 1) === '"') ||
+    (normalized.charAt(0) === "'" &&
+      normalized.charAt(normalized.length - 1) === "'")
+  ) {
+    normalized = normalized.slice(1, -1);
+  }
+  return normalized;
+}
+
+function getR2Config() {
+  var bucket = normalizeEnv($os.getenv("R2_BUCKET"));
+  var endpoint = normalizeEnv($os.getenv("R2_ENDPOINT"));
+  var accessKey = normalizeEnv($os.getenv("R2_ACCESS_KEY_ID"));
+  var secretKey = normalizeEnv($os.getenv("R2_SECRET_ACCESS_KEY"));
+  if (!bucket || !endpoint || !accessKey || !secretKey) return null;
+
+  return {
+    bucket: bucket,
+    region: normalizeEnv($os.getenv("R2_REGION")) || "auto",
+    endpoint: endpoint,
+    accessKey: accessKey,
+    secretKey: secretKey,
+    forcePathStyle:
+      normalizeEnv($os.getenv("R2_FORCE_PATH_STYLE")).toLowerCase() !== "false",
+  };
+}
+
+function assetObjectKey(hash) {
+  return "assets/" + String(hash || "").toLowerCase() + ".bin";
+}
+
+function newR2Filesystem() {
+  var config = getR2Config();
+  if (!config) return null;
+  return $filesystem.s3(
+    config.bucket,
+    config.region,
+    config.endpoint,
+    config.accessKey,
+    config.secretKey,
+    config.forcePathStyle,
+  );
+}
+
+function getLegacyAssetFileKey(record) {
+  if (!record) return "";
+  var filename = record.getString("data");
+  if (!filename) return "";
+  return record.baseFilesPath() + "/" + filename;
+}
+
+function hasAssetInR2(hash) {
+  var fsys = newR2Filesystem();
+  if (!fsys) return false;
+  try {
+    return fsys.exists(assetObjectKey(hash));
+  } catch (_) {
+    return false;
+  } finally {
+    fsys.close();
+  }
+}
+
+function uploadAssetToR2(hash, bytes) {
+  var fsys = newR2Filesystem();
+  if (!fsys) return;
+  try {
+    fsys.upload(bytes, assetObjectKey(hash));
+  } finally {
+    fsys.close();
+  }
+}
+
+function serveAssetFromR2(e, hash) {
+  var fsys = newR2Filesystem();
+  if (!fsys) return false;
+  try {
+    var key = assetObjectKey(hash);
+    if (!fsys.exists(key)) return false;
+    fsys.serve(e.response, e.request, key, String(hash).toLowerCase() + ".bin");
+    return true;
+  } catch (_) {
+    return false;
+  } finally {
+    fsys.close();
+  }
+}
+
+function serveAssetFromLegacy(e, record, hash) {
+  var fileKey = getLegacyAssetFileKey(record);
+  if (!fileKey) return false;
+
+  var fsys = $app.newFilesystem();
+  try {
+    fsys.serve(e.response, e.request, fileKey, String(hash).toLowerCase() + ".bin");
+    return true;
+  } catch (_) {
+    return false;
+  } finally {
+    fsys.close();
+  }
+}
+
+function copyLegacyAssetToR2(record, hash) {
+  if (!getR2Config()) return false;
+
+  var fileKey = getLegacyAssetFileKey(record);
+  if (!fileKey) return false;
+
+  var legacy = $app.newFilesystem();
+  var reader = null;
+  try {
+    if (!legacy.exists(fileKey)) return false;
+    reader = legacy.getReader(fileKey);
+    var bytes = toBytes(reader, 10 * 1024 * 1024 + 1);
+    if (!bytes || bytes.length === 0 || bytes.length > 10 * 1024 * 1024) {
+      return false;
+    }
+    uploadAssetToR2(hash, bytes);
+    return true;
+  } catch (_) {
+    return false;
+  } finally {
+    if (reader) {
+      try {
+        reader.close();
+      } catch (_) {}
+    }
+    legacy.close();
+  }
+}
+
+function storeAssetBytes(hash, bytes, existing) {
+  if (!getR2Config()) {
+    if (existing) return { status: "exists", file: null };
+    return {
+      status: "stored",
+      file: $filesystem.fileFromBytes(bytes, String(hash).toLowerCase() + ".bin"),
+    };
+  }
+
+  if (existing && hasAssetInR2(hash)) {
+    return { status: "exists", file: null };
+  }
+  if (existing && copyLegacyAssetToR2(existing, hash)) {
+    return { status: "migrated", file: null };
+  }
+
+  uploadAssetToR2(hash, bytes);
+  return { status: "stored", file: null };
+}
+
+function serveAsset(e, record, hash) {
+  if (getR2Config()) {
+    if (serveAssetFromR2(e, hash)) return true;
+    if (copyLegacyAssetToR2(record, hash) && serveAssetFromR2(e, hash)) {
+      return true;
+    }
+  }
+
+  return serveAssetFromLegacy(e, record, hash);
+}
+
+function migrateR2AssetsToLocal(limit) {
+  if (!getR2Config()) {
+    return { error: "R2 storage is not configured." };
+  }
+
+  var pageSize = Math.max(1, Math.min(Number(limit) || 50, 200));
+  var rows = [];
+  $app
+    .db()
+    .newQuery(
+      "SELECT id FROM asset_catalog " +
+        "WHERE data IS NULL OR data = '' LIMIT {:limit}",
+    )
+    .bind({ limit: pageSize })
+    .all(rows);
+
+  var migrated = 0;
+  var skipped = 0;
+  var failed = 0;
+
+  for (var i = 0; i < rows.length; i++) {
+    var record = null;
+    var reader = null;
+    var r2 = null;
+    try {
+      record = $app.findRecordById("asset_catalog", rows[i].id);
+      var hash = record.getString("hash").toLowerCase();
+      r2 = newR2Filesystem();
+      var key = assetObjectKey(hash);
+      if (!r2 || !r2.exists(key)) {
+        skipped++;
+        continue;
+      }
+
+      reader = r2.getReader(key);
+      var bytes = toBytes(reader, 10 * 1024 * 1024 + 1);
+      if (!bytes || bytes.length === 0 || bytes.length > 10 * 1024 * 1024) {
+        skipped++;
+        continue;
+      }
+
+      record.set("data", $filesystem.fileFromBytes(bytes, hash + ".bin"));
+      $app.save(record);
+      migrated++;
+    } catch (_) {
+      failed++;
+    } finally {
+      if (reader) {
+        try {
+          reader.close();
+        } catch (_) {}
+      }
+      if (r2) {
+        try {
+          r2.close();
+        } catch (_) {}
+      }
+    }
+  }
+
+  var remainingRows = [];
+  $app
+    .db()
+    .newQuery(
+      "SELECT id FROM asset_catalog " +
+        "WHERE data IS NULL OR data = '' LIMIT 1",
+    )
+    .all(remainingRows);
+
+  return {
+    migrated: migrated,
+    skipped: skipped,
+    failed: failed,
+    remaining: remainingRows.length,
+  };
+}
+
+function deleteAssetBytes(hash) {
+  if (!getR2Config()) return true;
+
+  var fsys = newR2Filesystem();
+  try {
+    var key = assetObjectKey(hash);
+    if (!fsys.exists(key)) return true;
+    fsys.delete(key);
+    return true;
+  } catch (err) {
+    if (isNoRowsError(err)) return true;
+    return false;
+  } finally {
+    fsys.close();
+  }
+}
+
 function getPairingBlobs() {
   return getStoreObject("keiaiPairingBlobs", {});
 }
@@ -482,6 +743,7 @@ function setPairingBlobs(pairingBlobs) {
 
 module.exports = {
   checkRate: checkRate,
+  deleteAssetBytes: deleteAssetBytes,
   dummySaltForUsername: dummySaltForUsername,
   findAssetCatalogWith: findAssetCatalogWith,
   findRecoveryRecord: findRecoveryRecord,
@@ -492,9 +754,12 @@ module.exports = {
   handleAssetRefTransition: handleAssetRefTransition,
   isNoRowsError: isNoRowsError,
   isUsernameAllowed: isUsernameAllowed,
+  migrateR2AssetsToLocal: migrateR2AssetsToLocal,
   normalizeUsername: normalizeUsername,
   rejectDisallowedAuth: rejectDisallowedAuth,
   rejectDisallowedUsername: rejectDisallowedUsername,
+  serveAsset: serveAsset,
   setPairingBlobs: setPairingBlobs,
   sha256Bytes: sha256Bytes,
+  storeAssetBytes: storeAssetBytes,
 };
