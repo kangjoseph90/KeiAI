@@ -2,41 +2,32 @@
  * Sync Module - Barrel Export & Lifecycle Orchestrator
  *
  * Directory layout:
- *   sync/data.ts     - DataSyncService:    encrypted app data (characters, chats, etc.)
- *   sync/user.ts     - UserSyncService:    plaintext user display data (name, avatar)
- *   sync/asset.ts    - AssetSyncService:   asset sync (pull/push/realtime) + upload queue
- *   sync/multi.ts    - MultiSyncService:   plaintext multi-room metadata
+ *   sync/data.ts     - DataRecordSyncEngine:    encrypted app data records
+ *   sync/user.ts     - UserRecordSyncEngine:    user profile record
+ *   sync/asset/record.ts - AssetRecordSyncEngine:   asset metadata records
+ *   sync/asset/binary.ts - AssetBinarySyncEngine:   asset binary upload engine
+ *   sync/multi.ts    - MultiRecordSyncEngine:   plaintext multi-room metadata records
  *   sync/index.ts    - SyncManager:        unified lifecycle (start/stop/reconnect)
  *
  * This module has NO dependency on Svelte stores. UI refresh is driven by
  * store-level subscriptions to local adapter write events.
  */
 
-export { DataSyncService } from './data';
-export { UserSyncService } from './user';
-export { AssetSyncService } from './asset';
-export { MultiSyncService } from './multi';
+export { DataRecordSyncEngine } from './data';
+export { UserRecordSyncEngine } from './user';
+export { AssetRecordSyncEngine, AssetBinarySyncEngine } from './asset';
+export { MultiRecordSyncEngine } from './multi';
 export type { SyncState, SyncProgress, SyncStatus } from './base';
 export type { AssetSyncStatus } from './asset';
 
-import { DataSyncService } from './data';
-import { UserSyncService } from './user';
-import { AssetSyncService } from './asset';
-import { MultiSyncService } from './multi';
+import { DataRecordSyncEngine } from './data';
+import { UserRecordSyncEngine } from './user';
+import { AssetRecordSyncEngine, AssetBinarySyncEngine } from './asset';
+import { MultiRecordSyncEngine } from './multi';
 import { appUser } from '$lib/adapters/user';
 import { appMulti } from '$lib/adapters/multi';
+import { appAsset } from '$lib/adapters/asset';
 import { localDB, SYNC_TABLES } from '$lib/adapters/db';
-
-type SyncTriggerCleanup = () => void;
-export type SyncTriggerContext = {
-    data: typeof DataSyncService;
-    user: typeof UserSyncService;
-    asset: typeof AssetSyncService;
-    multi: typeof MultiSyncService;
-    resubscribeAndPull: () => Promise<void>;
-};
-
-type SyncTriggerRegistration = (context: SyncTriggerContext) => void | SyncTriggerCleanup;
 
 /**
  * Unified lifecycle controller for all sync services.
@@ -44,118 +35,100 @@ type SyncTriggerRegistration = (context: SyncTriggerContext) => void | SyncTrigg
  */
 export class SyncManager {
     private static started = false;
-    private static readonly triggerRegistrations = new Set<SyncTriggerRegistration>();
-    private static readonly activeTriggerCleanups = new Map<
-        SyncTriggerRegistration,
-        SyncTriggerCleanup
-    >();
+    private static cleanups: Array<() => void> = [];
 
     private static readonly FALLBACK_POLL_INTERVAL_MS = 300_000;
-
-    private static readonly fallbackPollTrigger: SyncTriggerRegistration = ({
-        data,
-        asset,
-        multi
-    }) => {
-        const timer = setInterval(() => {
-            void data.syncAll();
-            void asset.start();
-            void multi.syncAll();
-        }, this.FALLBACK_POLL_INTERVAL_MS);
-
-        return () => clearInterval(timer);
-    };
-
-    private static readonly onlineTrigger: SyncTriggerRegistration = ({ resubscribeAndPull }) => {
-        const listener = () => {
-            void resubscribeAndPull();
-        };
-
-        window.addEventListener('online', listener);
-        return () => window.removeEventListener('online', listener);
-    };
-
-    private static readonly visibilityTrigger: SyncTriggerRegistration = ({
-        data,
-        resubscribeAndPull
-    }) => {
-        const listener = () => {
-            if (document.visibilityState === 'visible') {
-                if (!data.isSubscribed) {
-                    void resubscribeAndPull();
-                }
-            }
-        };
-
-        document.addEventListener('visibilitychange', listener);
-        return () => document.removeEventListener('visibilitychange', listener);
-    };
-
-    private static readonly localUserTrigger: SyncTriggerRegistration = ({ user }) => {
-        return appUser.subscribeWriteEvents((events) => {
-            for (const event of events) {
-                if (event.origin !== 'local') continue;
-                void user.pushUser();
-            }
-        });
-    };
-
-    private static readonly localMultiTrigger: SyncTriggerRegistration = ({ multi }) => {
-        return appMulti.subscribeWriteEvents((events) => {
-            for (const event of events) {
-                if (event.origin !== 'local') continue;
-                void multi.handleLocalWrite(event);
-            }
-        });
-    };
-
-    private static readonly localDbTrigger: SyncTriggerRegistration = ({ data }) => {
-        return localDB.subscribeWriteEvents((events) => {
-            for (const event of events) {
-                if (event.origin !== 'local') continue;
-
-                if (SYNC_TABLES.includes(event.tableName)) {
-                    void data.handleLocalWrite(event);
-                }
-            }
-        });
-    };
-
-    private static initializedBuiltInTriggers = false;
-
-    // ─── Lifecycle ────────────────────────────────────────────────────
 
     /**
      * Start all sync subscriptions and the fallback poll timer.
      */
     static startAutoSync(): void {
         if (typeof window === 'undefined' || this.started) return;
-        this.ensureBuiltInTriggersRegistered();
         this.started = true;
 
-        // Data sync Realtime subscriptions
-        void DataSyncService.subscribeRealtime();
+        void DataRecordSyncEngine.subscribeRealtime();
+        void AssetRecordSyncEngine.subscribeRealtime();
+        void AssetBinarySyncEngine.start();
+        void MultiRecordSyncEngine.subscribeRealtime();
+        void UserRecordSyncEngine.subscribeRealtime();
 
-        // Asset sync Realtime subscription + catch-up pull + upload queue
-        void AssetSyncService.subscribeRealtime();
-        void AssetSyncService.start();
+        const pollTimer = setInterval(() => {
+            void DataRecordSyncEngine.trigger();
+            void AssetRecordSyncEngine.trigger();
+            void AssetBinarySyncEngine.start();
+            void MultiRecordSyncEngine.trigger();
+        }, this.FALLBACK_POLL_INTERVAL_MS);
 
-        // Multi-room metadata sync
-        void MultiSyncService.subscribeRealtime();
-        void MultiSyncService.syncAll();
+        const onlineListener = () => {
+            void this.resubscribeAndPull();
+        };
+        window.addEventListener('online', onlineListener);
 
-        // Profile sync Realtime subscription
-        void UserSyncService.subscribeRealtime();
-        this.installTriggerSources();
+        const visibilityListener = () => {
+            if (document.visibilityState === 'visible') {
+                if (this.hasDisconnectedRecordSync()) {
+                    void this.resubscribeAndPull();
+                }
+            }
+        };
+        document.addEventListener('visibilitychange', visibilityListener);
+
+        const userCleanup = appUser.subscribeWriteEvents((events) => {
+            for (const event of events) {
+                UserRecordSyncEngine.handleLocalWrite(event);
+            }
+        });
+
+        const multiCleanup = appMulti.subscribeWriteEvents((events) => {
+            for (const event of events) {
+                if (event.origin !== 'local') continue;
+                void MultiRecordSyncEngine.handleLocalWrite(event);
+            }
+        });
+
+        const dbCleanup = localDB.subscribeWriteEvents((events) => {
+            for (const event of events) {
+                if (SYNC_TABLES.includes(event.tableName)) {
+                    DataRecordSyncEngine.handleLocalWrite(event);
+                }
+            }
+        });
+
+        const assetCleanup = appAsset.subscribeWriteEvents((events) => {
+            for (const event of events) {
+                AssetRecordSyncEngine.handleLocalWrite(event);
+                AssetBinarySyncEngine.handleLocalWrite(event);
+            }
+        });
+
+        this.cleanups = [
+            () => clearInterval(pollTimer),
+            () => window.removeEventListener('online', onlineListener),
+            () => document.removeEventListener('visibilitychange', visibilityListener),
+            userCleanup,
+            multiCleanup,
+            dbCleanup,
+            assetCleanup
+        ];
     }
 
     static stopAutoSync(): void {
-        void DataSyncService.unsubscribeRealtime();
-        void AssetSyncService.unsubscribeRealtime();
-        void MultiSyncService.unsubscribeRealtime();
-        void UserSyncService.unsubscribeRealtime();
-        AssetSyncService.stop();
-        this.clearTriggerSources();
+        for (const cleanup of this.cleanups) {
+            cleanup();
+        }
+        this.cleanups = [];
+
+        void DataRecordSyncEngine.unsubscribeRealtime();
+        void AssetRecordSyncEngine.unsubscribeRealtime();
+        void MultiRecordSyncEngine.unsubscribeRealtime();
+        void UserRecordSyncEngine.unsubscribeRealtime();
+
+        DataRecordSyncEngine.stop();
+        AssetRecordSyncEngine.stop();
+        MultiRecordSyncEngine.stop();
+        UserRecordSyncEngine.stop();
+        AssetBinarySyncEngine.stop();
+
         this.started = false;
     }
 
@@ -163,99 +136,60 @@ export class SyncManager {
      * Full data sync. Called on boot and after login.
      */
     static async syncAll(): Promise<void> {
-        await DataSyncService.syncAll();
-        await AssetSyncService.start();
-        await MultiSyncService.syncAll();
-        await UserSyncService.pullUser();
+        await Promise.all([
+            DataRecordSyncEngine.trigger(),
+            AssetRecordSyncEngine.trigger(),
+            MultiRecordSyncEngine.trigger(),
+            UserRecordSyncEngine.trigger()
+        ]);
+        void AssetBinarySyncEngine.start();
     }
 
     static async refreshRoomSync(): Promise<void> {
         if (!this.started) return;
 
-        await DataSyncService.unsubscribeRealtime();
-        await AssetSyncService.unsubscribeRealtime();
-        await DataSyncService.subscribeRealtime();
-        await AssetSyncService.subscribeRealtime();
-        await DataSyncService.syncAll();
-        await AssetSyncService.start();
+        await Promise.all([
+            DataRecordSyncEngine.unsubscribeRealtime(),
+            AssetRecordSyncEngine.unsubscribeRealtime()
+        ]);
+        await Promise.all([
+            DataRecordSyncEngine.subscribeRealtime(),
+            AssetRecordSyncEngine.subscribeRealtime()
+        ]);
+        await Promise.all([DataRecordSyncEngine.trigger(), AssetRecordSyncEngine.trigger()]);
+        void AssetBinarySyncEngine.start();
     }
-
-    static registerTriggerSource(register: SyncTriggerRegistration): () => void {
-        this.triggerRegistrations.add(register);
-
-        if (this.started && typeof window !== 'undefined') {
-            this.installTriggerSource(register);
-        }
-
-        return () => {
-            const cleanup = this.activeTriggerCleanups.get(register);
-            if (cleanup) {
-                cleanup();
-                this.activeTriggerCleanups.delete(register);
-            }
-            this.triggerRegistrations.delete(register);
-        };
-    }
-
-    // ─── Internal ────────────────────────────────────────────────────
 
     /** On come-back-online / tab-focus: re-subscribe if needed, then catch-up pull. */
     private static async resubscribeAndPull(): Promise<void> {
-        if (!DataSyncService.isSubscribed) {
-            await DataSyncService.subscribeRealtime();
+        if (!DataRecordSyncEngine.isSubscribed) {
+            await DataRecordSyncEngine.subscribeRealtime();
         }
-        if (!AssetSyncService.isSubscribed) {
-            await AssetSyncService.subscribeRealtime();
+        if (!AssetRecordSyncEngine.isSubscribed) {
+            await AssetRecordSyncEngine.subscribeRealtime();
         }
-        if (!MultiSyncService.isSubscribed) {
-            await MultiSyncService.subscribeRealtime();
+        if (!MultiRecordSyncEngine.isSubscribed) {
+            await MultiRecordSyncEngine.subscribeRealtime();
         }
-        if (!UserSyncService.isSubscribed) {
-            await UserSyncService.subscribeRealtime();
+        if (!UserRecordSyncEngine.isSubscribed) {
+            await UserRecordSyncEngine.subscribeRealtime();
         }
 
-        await DataSyncService.syncAll();
-        await AssetSyncService.start();
-        await MultiSyncService.syncAll();
-        await UserSyncService.pullUser();
+        await Promise.all([
+            DataRecordSyncEngine.trigger(),
+            AssetRecordSyncEngine.trigger(),
+            MultiRecordSyncEngine.trigger(),
+            UserRecordSyncEngine.trigger()
+        ]);
+        void AssetBinarySyncEngine.start();
     }
 
-    private static ensureBuiltInTriggersRegistered(): void {
-        if (this.initializedBuiltInTriggers) return;
-
-        this.triggerRegistrations.add(this.fallbackPollTrigger);
-        this.triggerRegistrations.add(this.onlineTrigger);
-        this.triggerRegistrations.add(this.visibilityTrigger);
-        this.triggerRegistrations.add(this.localUserTrigger);
-        this.triggerRegistrations.add(this.localDbTrigger);
-        this.triggerRegistrations.add(this.localMultiTrigger);
-        this.initializedBuiltInTriggers = true;
-    }
-
-    private static installTriggerSources(): void {
-        for (const registration of this.triggerRegistrations) {
-            this.installTriggerSource(registration);
-        }
-    }
-
-    private static installTriggerSource(registration: SyncTriggerRegistration): void {
-        if (this.activeTriggerCleanups.has(registration)) return;
-
-        const cleanup = registration({
-            data: DataSyncService,
-            user: UserSyncService,
-            asset: AssetSyncService,
-            multi: MultiSyncService,
-            resubscribeAndPull: () => this.resubscribeAndPull()
-        });
-
-        this.activeTriggerCleanups.set(registration, cleanup ?? (() => {}));
-    }
-
-    private static clearTriggerSources(): void {
-        for (const cleanup of this.activeTriggerCleanups.values()) {
-            cleanup();
-        }
-        this.activeTriggerCleanups.clear();
+    private static hasDisconnectedRecordSync(): boolean {
+        return (
+            !DataRecordSyncEngine.isSubscribed ||
+            !AssetRecordSyncEngine.isSubscribed ||
+            !MultiRecordSyncEngine.isSubscribed ||
+            !UserRecordSyncEngine.isSubscribed
+        );
     }
 }

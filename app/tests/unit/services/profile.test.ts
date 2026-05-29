@@ -2,7 +2,7 @@
  * User Service Tests
  *
  * Tests the UserService which manages the current user's user data
- * and connects with the User adapter and UserSyncService.
+ * and connects with the User adapter and UserRecordSyncEngine.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';

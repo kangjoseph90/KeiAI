@@ -164,9 +164,7 @@ routerAdd("POST", "/api/recovery/lookup", (e) => {
   return e.json(200, {
     userId: record.id,
     username: record.getString("username"),
-    name: record.getString("name"),
     email: record.getString("email"),
-    avatar: record.getString("avatar"),
     encryptedRecoveryMasterKey: record.getString("encryptedRecoveryMasterKey"),
     encryptedRecoveryMasterKeyIV: record.getString("recoveryMasterKeyIv"),
     identityPublicKey: record.getString("identityPublicKey"),
@@ -174,6 +172,8 @@ routerAdd("POST", "/api/recovery/lookup", (e) => {
       "encryptedIdentityPrivateKey",
     ),
     identityPrivateKeyIv: record.getString("identityPrivateKeyIv"),
+    encryptedProfile: record.getString("encryptedProfile"),
+    encryptedProfileIV: record.getString("encryptedProfileIV"),
   });
 });
 
@@ -324,10 +324,10 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
     $app.runInTransaction(function (txApp) {
       if (h.findAssetCatalogWith(txApp, hash)) return;
 
-      var user = txApp.findRecordById("users", auth.id);
-      var assetMaxBytes = h.getAssetMaxBytes(user);
-      var assetUsedBytes = h.getNumberField(user, "assetUsedBytes", 0);
-      if (assetUsedBytes + body.length > assetMaxBytes) {
+      var account = h.getOrCreateAssetAccount(txApp, auth.id);
+      var maxBytes = h.getAssetMaxBytes(account);
+      var usedBytes = h.getNumberField(account, "usedBytes", 0);
+      if (usedBytes + body.length > maxBytes) {
         throw new Error("QUOTA_EXCEEDED");
       }
 

@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MultiSyncEngine } from '$lib/services/sync/multi';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MultiRecordSyncEngineImpl } from '$lib/services/sync/multi';
 import { pb } from '$lib/adapters/pb';
 import {
     appMulti,
@@ -59,13 +59,13 @@ vi.mock('$lib/services/session', () => ({
     hasActiveSession: vi.fn()
 }));
 
-describe('MultiSyncEngine', () => {
+describe('MultiRecordSyncEngine', () => {
     const userId = 'user-1';
-    let service: MultiSyncEngine;
+    let service: MultiRecordSyncEngineImpl;
 
     beforeEach(() => {
         vi.clearAllMocks();
-        service = new MultiSyncEngine();
+        service = new MultiRecordSyncEngineImpl();
         vi.mocked(getActiveSession).mockReturnValue({
             userId,
             masterKey: {} as CryptoKey,
@@ -83,6 +83,10 @@ describe('MultiSyncEngine', () => {
         vi.mocked(appMulti.getRoomIndexesSince).mockResolvedValue([]);
         vi.mocked(appMulti.getMembersSince).mockResolvedValue([]);
         vi.mocked(appMulti.getMembersByRoomsSince).mockResolvedValue([]);
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
     });
 
     it('pulls remote room index and member metadata', async () => {
@@ -121,7 +125,7 @@ describe('MultiSyncEngine', () => {
         vi.mocked(appMulti.getRoomIndex).mockResolvedValue(null);
         vi.mocked(appMulti.getMember).mockResolvedValue(null);
 
-        await service.syncAll();
+        await service.trigger();
 
         expect(appMulti.saveRoomIndex).toHaveBeenCalledWith(
             expect.objectContaining({ id: 'room-1', updatedAt: 2000 }),
@@ -144,7 +148,7 @@ describe('MultiSyncEngine', () => {
         vi.mocked(appMulti.getMembersSince).mockResolvedValue([ownMember]);
         vi.mocked(appMulti.getMembersByRoomsSince).mockResolvedValue([invitedMember]);
 
-        await service.syncAll();
+        await service.trigger();
 
         expect(mockBatch.collection).toHaveBeenCalledWith('multi_room_index');
         expect(mockBatch.collection).toHaveBeenCalledWith('multi_room_members');
@@ -158,16 +162,18 @@ describe('MultiSyncEngine', () => {
     });
 
     it('routes local member write events through writable-member filtering', async () => {
+        vi.useFakeTimers();
         vi.mocked(appMulti.getMember).mockResolvedValue(member({ id: 'member-1' }));
         vi.mocked(appMulti.getRoomIndexesByOwner).mockResolvedValue([]);
 
-        await service.handleLocalWrite({
+        service.handleLocalWrite({
             tableName: 'multi_room_members',
             operation: 'put',
             ids: ['member-1'],
             origin: 'local'
         });
 
+        await vi.advanceTimersByTimeAsync(3_000);
         await vi.waitFor(() => {
             expect(mockBatch.collection).toHaveBeenCalledWith('multi_room_members');
         });

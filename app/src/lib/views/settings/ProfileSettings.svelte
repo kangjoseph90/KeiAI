@@ -13,6 +13,11 @@
     import * as Avatar from '$lib/components/ui/avatar';
     import { Upload, UserRoundPen } from 'lucide-svelte';
     import { getErrorMessage } from '$lib/types/errors';
+    import { blobToDataUrl, preprocessImage } from '$lib/utils/image';
+
+    const AVATAR_MAX_SIZE = 5 * 1024 * 1024;
+    const AVATAR_IMAGE_SIZE = 512;
+    const AVATAR_WEBP_QUALITY = 0.85;
 
     let userName = $state('');
     let userAvatar = $state('');
@@ -28,25 +33,27 @@
         }
     });
 
-    function handleAvatarUpload(event: Event) {
+    async function handleAvatarUpload(event: Event) {
         const target = event.target as HTMLInputElement;
         const file = target.files?.[0];
         if (!file) return;
 
-        // Maximum size 5MB
-        if (file.size > 5 * 1024 * 1024) {
+        if (file.size > AVATAR_MAX_SIZE) {
             errorMsg = 'Avatar image must be under 5MB';
             return;
         }
 
-        errorMsg = '';
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            if (typeof e.target?.result === 'string') {
-                userAvatar = e.target.result;
-            }
-        };
-        reader.readAsDataURL(file);
+        try {
+            errorMsg = '';
+            const { blob } = await preprocessImage(file, {
+                maxWidth: AVATAR_IMAGE_SIZE,
+                maxHeight: AVATAR_IMAGE_SIZE,
+                quality: AVATAR_WEBP_QUALITY
+            });
+            userAvatar = await blobToDataUrl(blob);
+        } catch (e) {
+            errorMsg = getErrorMessage(e);
+        }
     }
 
     async function handleUpdateUser() {

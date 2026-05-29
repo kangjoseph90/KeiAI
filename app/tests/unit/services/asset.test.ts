@@ -54,22 +54,19 @@ vi.mock('$lib/utils/id', () => ({
 }));
 
 vi.mock('$lib/services/asset/util', () => ({
-    preprocessImage: vi.fn(),
     encryptConvergentAsset: vi.fn(),
     decryptConvergentAsset: vi.fn(),
     isValidImageHeader: vi.fn(),
     parseFields: vi.fn((record: AssetRecord) => record.data)
 }));
 
-vi.mock('$lib/services/asset/remote', () => ({
-    fetchAssetCiphertext: vi.fn()
+vi.mock('$lib/utils/image', () => ({
+    preprocessImage: vi.fn(),
+    blobToDataUrl: vi.fn()
 }));
 
-vi.mock('$lib/services/sync/asset', () => ({
-    AssetSyncService: {
-        pushById: vi.fn().mockResolvedValue(undefined),
-        start: vi.fn().mockResolvedValue(undefined)
-    }
+vi.mock('$lib/services/asset/remote', () => ({
+    fetchAssetCiphertext: vi.fn()
 }));
 
 import { getActiveSession } from '$lib/services/session';
@@ -79,11 +76,10 @@ import { sha256 } from '$lib/crypto';
 import {
     decryptConvergentAsset,
     encryptConvergentAsset,
-    isValidImageHeader,
-    preprocessImage
+    isValidImageHeader
 } from '$lib/services/asset/util';
+import { preprocessImage } from '$lib/utils/image';
 import { fetchAssetCiphertext } from '$lib/services/asset/remote';
-import { AssetSyncService } from '$lib/services/sync/asset';
 
 describe('AssetService', () => {
     const mockUserId = 'user-123';

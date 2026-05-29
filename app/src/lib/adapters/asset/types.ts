@@ -8,7 +8,7 @@
  *
  * Binary blobs are stored via appStorage (OPFS or Tauri filesystem) directly.
  * The adapter is storage-only: no PB communication, no encryption logic.
- * Encryption is handled by the caller (AssetService / AssetSyncEngine).
+ * Encryption is handled by the caller (AssetService / AssetBinarySyncEngine).
  */
 
 import type { BaseRecord, DataRecord, DataScope, DatabaseMutationOrigin } from '$lib/adapters/db';

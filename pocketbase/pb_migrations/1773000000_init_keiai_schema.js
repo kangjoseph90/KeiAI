@@ -29,15 +29,20 @@ migrate(
       { name: "encryptedRecoveryMasterKey", type: "text" },
       { name: "recoveryMasterKeyIv", type: "text" },
       { name: "recoveryAuthTokenHash", type: "text" },
-      { name: "assetMaxBytes", type: "number" },
-      { name: "assetUsedBytes", type: "number" },
       { name: "identityPublicKey", type: "text" },
       { name: "encryptedIdentityPrivateKey", type: "text" },
       { name: "identityPrivateKeyIv", type: "text" },
+      {
+        name: "encryptedProfile",
+        type: "text",
+        required: true,
+        max: 10 * 1024 * 1024,
+      },
+      { name: "encryptedProfileIV", type: "text", required: true },
     ];
 
     for (const f of userFields) {
-      users.fields.add(new Field({ name: f.name, type: f.type }));
+      users.fields.add(new Field(f));
     }
 
     // Persist fields first — identityFields validation needs them saved
@@ -360,6 +365,36 @@ migrate(
         'CREATE INDEX IF NOT EXISTS "idx_asset_usage_hash" ON "asset_usage" (hash)',
       )
       .execute();
+
+    const accounts = new Collection({
+      name: "asset_accounts",
+      type: "base",
+    });
+
+    accounts.fields.add(
+      new Field({ name: "userId", type: "text", required: true }),
+    );
+    accounts.fields.add(
+      new Field({ name: "usedBytes", type: "number", min: 0 }),
+    );
+    accounts.fields.add(
+      new Field({ name: "maxBytes", type: "number" }),
+    );
+    accounts.fields.add(
+      new Field({ name: "createdAt", type: "number", required: true }),
+    );
+    accounts.fields.add(
+      new Field({ name: "updatedAt", type: "number", required: true }),
+    );
+
+    app.save(accounts);
+
+    app
+      .db()
+      .newQuery(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "idx_asset_accounts_user" ON "asset_accounts" (userId)',
+      )
+      .execute();
   },
   (app) => {
     // DOWN — drop everything
@@ -383,6 +418,7 @@ migrate(
       "settings",
       "characters",
       "rooms",
+      "asset_accounts",
       "asset_usage",
       "asset_catalog",
     ];
@@ -406,8 +442,8 @@ migrate(
         "identityPublicKey",
         "encryptedIdentityPrivateKey",
         "identityPrivateKeyIv",
-        "assetMaxBytes",
-        "assetUsedBytes",
+        "encryptedProfile",
+        "encryptedProfileIV",
       ];
       for (const f of fields) {
         try {

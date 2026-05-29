@@ -215,6 +215,31 @@ function findAssetUsageWith(app, userId, hash) {
   }
 }
 
+function findAssetAccountWith(app, userId) {
+  try {
+    return app.findFirstRecordByData("asset_accounts", "userId", userId);
+  } catch (err) {
+    if (!isNoRowsError(err)) throw err;
+    return null;
+  }
+}
+
+function getOrCreateAssetAccount(app, userId) {
+  var account = findAssetAccountWith(app, userId);
+  if (account) return account;
+
+  var now = Date.now();
+  var collection = app.findCollectionByNameOrId("asset_accounts");
+  account = new Record(collection);
+  account.set("userId", userId);
+  account.set("usedBytes", "0");
+  account.set("maxBytes", "0");
+  account.set("createdAt", now);
+  account.set("updatedAt", now);
+  app.save(account);
+  return account;
+}
+
 function findMultiRoomIndex(app, roomId) {
   try {
     return app.findRecordById("multi_room_index", roomId);
@@ -268,10 +293,11 @@ function incrementUsage(userId, hash) {
     created.set("updatedAt", now);
     txApp.save(created);
 
-    var user = txApp.findRecordById("users", userId);
-    var used = getNumberField(user, "assetUsedBytes", 0);
-    user.set("assetUsedBytes", used + size);
-    txApp.save(user);
+    var account = getOrCreateAssetAccount(txApp, userId);
+    var used = getNumberField(account, "usedBytes", 0);
+    account.set("usedBytes", String(used + size));
+    account.set("updatedAt", now);
+    txApp.save(account);
   });
 }
 
@@ -294,10 +320,11 @@ function decrementUsage(userId, hash) {
     var size = getNumberField(usage, "size", 0);
     txApp.delete(usage);
 
-    var user = txApp.findRecordById("users", userId);
-    var used = getNumberField(user, "assetUsedBytes", 0);
-    user.set("assetUsedBytes", Math.max(used - size, 0));
-    txApp.save(user);
+    var account = getOrCreateAssetAccount(txApp, userId);
+    var used = getNumberField(account, "usedBytes", 0);
+    account.set("usedBytes", String(Math.max(used - size, 0)));
+    account.set("updatedAt", now);
+    txApp.save(account);
   });
 }
 
@@ -466,8 +493,8 @@ function getDefaultAssetQuotaBytes() {
   return Number($os.getenv("DEFAULT_ASSET_QUOTA_BYTES") || Infinity);
 }
 
-function getAssetMaxBytes(user) {
-  var value = getNumberField(user, "assetMaxBytes", -1);
+function getAssetMaxBytes(account) {
+  var value = getNumberField(account, "maxBytes", -1);
   if (value > 0) return value;
   return getDefaultAssetQuotaBytes();
 }
@@ -749,6 +776,7 @@ module.exports = {
   findRecoveryRecord: findRecoveryRecord,
   getAuthRecord: getAuthRecord,
   getAssetMaxBytes: getAssetMaxBytes,
+  getOrCreateAssetAccount: getOrCreateAssetAccount,
   getNumberField: getNumberField,
   getPairingBlobs: getPairingBlobs,
   handleAssetRefTransition: handleAssetRefTransition,

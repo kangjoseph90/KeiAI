@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { DataSyncService } from '$lib/services/sync/data';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { DataRecordSyncEngine } from '$lib/services/sync/data';
 import { pb } from '$lib/adapters/pb';
 import { localDB } from '$lib/adapters/db';
 import { appKV } from '$lib/adapters/kv';
@@ -84,7 +84,7 @@ vi.mock('$lib/crypto', () => ({
 
 import { appMulti } from '$lib/adapters/multi';
 
-describe('DataSyncService', () => {
+describe('DataRecordSyncEngine', () => {
     const mockUserId = 'user-123';
     const mockRoomId = 'room-123';
     const makeRecord = (id: string, updatedAt = 1000): BaseRecord => ({
@@ -111,21 +111,25 @@ describe('DataSyncService', () => {
         vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([]);
     });
 
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     describe('Realtime Subscription', () => {
         it('should subscribe to all sync tables', async () => {
-            await DataSyncService.subscribeRealtime();
+            await DataRecordSyncEngine.subscribeRealtime();
             expect(mockCollection.subscribe).toHaveBeenCalled();
         });
 
         it('should handle unsubscribe', async () => {
-            (DataSyncService as unknown as { subscribed: boolean }).subscribed = true;
-            await DataSyncService.unsubscribeRealtime();
+            (DataRecordSyncEngine as unknown as { subscribed: boolean }).subscribed = true;
+            await DataRecordSyncEngine.unsubscribeRealtime();
             expect(mockCollection.unsubscribe).toHaveBeenCalled();
-            expect(DataSyncService.isSubscribed).toBe(false);
+            expect(DataRecordSyncEngine.isSubscribed).toBe(false);
         });
     });
 
-    describe('Pull Logic (syncAll)', () => {
+    describe('Pull Logic (trigger)', () => {
         it('should pull changes and handle LWW conflict', async () => {
             const tableName = 'characters';
             vi.mocked(appKV.get).mockResolvedValue('1000');
@@ -151,7 +155,7 @@ describe('DataSyncService', () => {
                 updatedAt: 1500
             } as BaseRecord);
 
-            await DataSyncService.syncAll();
+            await DataRecordSyncEngine.trigger();
 
             expect(localDB.putRecords).toHaveBeenCalledWith(
                 tableName,
@@ -185,7 +189,7 @@ describe('DataSyncService', () => {
             } as unknown as { items: unknown[]; page: number; totalPages: number });
             vi.mocked(localDB.getRecord).mockResolvedValue(localRecord);
 
-            await DataSyncService.syncAll();
+            await DataRecordSyncEngine.trigger();
 
             expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
                 expect.objectContaining({ id: 'rec-1' })
@@ -221,10 +225,10 @@ describe('DataSyncService', () => {
             vi.mocked(localDB.getRecord).mockResolvedValue(localRecord);
             vi.mocked(mockBatch.send).mockRejectedValueOnce(new Error('batch failed'));
 
-            await DataSyncService.syncAll();
+            await DataRecordSyncEngine.trigger();
 
             expect(appKV.set).not.toHaveBeenCalled();
-            expect(DataSyncService.getState().state).toBe('network_error');
+            expect(DataRecordSyncEngine.getState().state).toBe('network_error');
         });
 
         it('should pull active room scope from multi_room_records', async () => {
@@ -259,7 +263,7 @@ describe('DataSyncService', () => {
                 } as unknown as { items: unknown[]; page: number; totalPages: number });
             vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
 
-            await DataSyncService.syncAll();
+            await DataRecordSyncEngine.trigger();
 
             expect(pb.collection).toHaveBeenCalledWith('records');
             expect(pb.collection).toHaveBeenCalledWith('multi_room_records');
@@ -309,7 +313,7 @@ describe('DataSyncService', () => {
                 .mockResolvedValueOnce([deletedRecord])
                 .mockResolvedValueOnce([]);
 
-            await DataSyncService.syncAll();
+            await DataRecordSyncEngine.trigger();
 
             expect(mockBatch.collection).toHaveBeenCalledWith('multi_room_records');
             expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
@@ -332,31 +336,31 @@ describe('DataSyncService', () => {
         });
     });
 
-    describe('Push Logic', () => {
-        it('pushRecord should use create if isNew is true', async () => {
-            const record = makeRecord('new-1');
-            await DataSyncService.pushRecord('characters', record, true);
-            expect(mockBatchCollection.create).toHaveBeenCalled();
-            expect(mockBatch.send).toHaveBeenCalled();
-        });
-
-        it('pushRecord should use upsert if isNew is false', async () => {
+    describe('Local write buffer', () => {
+        it('coalesces local write events and pushes latest records using upsert batch', async () => {
+            vi.useFakeTimers();
             const record = makeRecord('existing-1');
-            await DataSyncService.pushRecord('characters', record);
-            expect(mockBatchCollection.upsert).toHaveBeenCalled();
-            expect(mockBatch.send).toHaveBeenCalled();
-        });
-    });
+            vi.mocked(localDB.getRecord).mockResolvedValue(record);
 
-    describe('pushRecentWrites', () => {
-        it('should fetch unsynced changes and push them using upsert batch', async () => {
-            const record = makeRecord('offline-1');
-            vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([record]);
+            DataRecordSyncEngine.handleLocalWrite({
+                tableName: 'characters',
+                operation: 'put',
+                ids: ['existing-1'],
+                origin: 'local'
+            });
+            DataRecordSyncEngine.handleLocalWrite({
+                tableName: 'characters',
+                operation: 'put',
+                ids: ['existing-1'],
+                origin: 'local'
+            });
 
-            await DataSyncService.pushRecentWrites(mockUserId, 5000);
+            await vi.advanceTimersByTimeAsync(3_000);
 
-            expect(localDB.getUnsyncedChanges).toHaveBeenCalled();
-            expect(mockBatchCollection.upsert).toHaveBeenCalled();
+            expect(localDB.getRecord).toHaveBeenCalledTimes(1);
+            expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'existing-1' })
+            );
             expect(mockBatch.send).toHaveBeenCalled();
         });
     });
