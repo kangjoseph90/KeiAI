@@ -215,6 +215,18 @@ function findAssetUsageWith(app, userId, hash) {
   }
 }
 
+function findPendingAssetUsagesWith(app, hash) {
+  var rows = [];
+  app
+    .db()
+    .newQuery(
+      "SELECT id FROM asset_usage WHERE hash = {:hash} AND size = 0",
+    )
+    .bind({ hash: hash })
+    .all(rows);
+  return rows;
+}
+
 function findAssetAccountWith(app, userId) {
   try {
     return app.findFirstRecordByData("asset_accounts", "userId", userId);
@@ -278,10 +290,7 @@ function incrementUsage(userId, hash) {
     }
 
     var catalog = findAssetCatalogWith(txApp, hash);
-    if (!catalog) return;
-
-    var size = getNumberField(catalog, "size", 0);
-    if (size <= 0) return;
+    var size = catalog ? getNumberField(catalog, "size", 0) : 0;
 
     var collection = txApp.findCollectionByNameOrId("asset_usage");
     var created = new Record(collection);
@@ -293,11 +302,43 @@ function incrementUsage(userId, hash) {
     created.set("updatedAt", now);
     txApp.save(created);
 
+    if (size <= 0) return;
+
     var account = getOrCreateAssetAccount(txApp, userId);
     var used = getNumberField(account, "usedBytes", 0);
     account.set("usedBytes", String(used + size));
     account.set("updatedAt", now);
     txApp.save(account);
+  });
+}
+
+function reconcilePendingAssetUsage(hash) {
+  var now = Date.now();
+  if (!hash) return;
+
+  $app.runInTransaction(function (txApp) {
+    var catalog = findAssetCatalogWith(txApp, hash);
+    if (!catalog) return;
+
+    var size = getNumberField(catalog, "size", 0);
+    if (size <= 0) return;
+
+    var rows = findPendingAssetUsagesWith(txApp, hash);
+    for (var i = 0; i < rows.length; i++) {
+      var usage = txApp.findRecordById("asset_usage", rows[i].id);
+      if (!usage) continue;
+
+      usage.set("size", size);
+      usage.set("updatedAt", now);
+      txApp.save(usage);
+
+      var userId = usage.getString("userId");
+      var account = getOrCreateAssetAccount(txApp, userId);
+      var used = getNumberField(account, "usedBytes", 0);
+      account.set("usedBytes", String(used + size));
+      account.set("updatedAt", now);
+      txApp.save(account);
+    }
   });
 }
 
@@ -786,6 +827,7 @@ module.exports = {
   normalizeUsername: normalizeUsername,
   rejectDisallowedAuth: rejectDisallowedAuth,
   rejectDisallowedUsername: rejectDisallowedUsername,
+  reconcilePendingAssetUsage: reconcilePendingAssetUsage,
   serveAsset: serveAsset,
   setPairingBlobs: setPairingBlobs,
   sha256Bytes: sha256Bytes,

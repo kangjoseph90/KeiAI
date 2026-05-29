@@ -391,6 +391,12 @@ routerAdd(
 // Asset usage hooks
 
 onRecordAfterCreateSuccess((e) => {
+  require(`${__hooks}/keiai.js`).reconcilePendingAssetUsage(
+    e.record.getString("hash"),
+  );
+}, "asset_catalog");
+
+onRecordAfterCreateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
 }, "assets");
 
