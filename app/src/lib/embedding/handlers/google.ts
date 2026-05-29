@@ -8,6 +8,7 @@
 import type { EmbeddingResult, EmbeddingHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
 import { AppError } from '$lib/types/errors';
+import { buildUrl } from '$lib/utils/url';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ export class GoogleEmbeddingHandler implements EmbeddingHandler {
 
         // Use batchEmbedContents for all requests for consistency and efficiency
         const response = await appHttp.fetch(
-            `${this.config.baseUrl}/${modelName}:batchEmbedContents`,
+            buildUrl(this.config.baseUrl, `/${modelName}:batchEmbedContents`),
             {
                 method: 'POST',
                 headers: {

@@ -4,7 +4,7 @@ import PocketBase from 'pocketbase';
 const isBrowser = typeof window !== 'undefined';
 
 import { AppError } from '$lib/types/errors';
-import { PB_URL } from '$lib/config';
+import { PB_URL, KEI_PB_URL } from '$lib/config';
 import { normalizeUrl } from '$lib/utils/url';
 
 if (!PB_URL) {
@@ -22,5 +22,5 @@ if (isBrowser) {
 }
 
 export function isKeiServer(): boolean {
-    return normalizeUrl(pb.baseUrl) === normalizeUrl(PB_URL);
+    return normalizeUrl(pb.baseUrl) === normalizeUrl(KEI_PB_URL);
 }

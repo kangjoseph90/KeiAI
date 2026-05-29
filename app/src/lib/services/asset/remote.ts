@@ -8,8 +8,8 @@
 import { isKeiServer, pb } from '$lib/adapters/pb';
 import { appHttp } from '$lib/adapters/http';
 import { AppError } from '$lib/types/errors';
-import { CDN_BASE_URL, PB_URL } from '$lib/config';
-import { normalizeUrl } from '$lib/utils/url';
+import { KEI_CDN_URL } from '$lib/config';
+import { buildUrl, normalizeUrl } from '$lib/utils/url';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -31,9 +31,9 @@ type AssetApiError = {
 
 function getCiphertextUrl(hash: string): string {
     if (isKeiServer()) {
-        return `${normalizeUrl(CDN_BASE_URL)}/${hash}.bin`;
+        return buildUrl(KEI_CDN_URL, `/assets/${hash}.bin`);
     }
-    return `${normalizeUrl(pb.baseUrl)}/api/assets/download/${encodeURIComponent(hash)}`;
+    return buildUrl(pb.baseUrl, `/api/assets/download/${encodeURIComponent(hash)}`);
 }
 
 function authHeaders(): Record<string, string> {
@@ -70,7 +70,7 @@ function toAppError(error: unknown): unknown {
 export async function uploadAsset(hash: string, ciphertext: Uint8Array): Promise<UploadResult> {
     try {
         const response = await appHttp.fetch(
-            `${normalizeUrl(pb.baseUrl)}/api/assets/${encodeURIComponent(hash)}`,
+            buildUrl(pb.baseUrl, `/api/assets/${encodeURIComponent(hash)}`),
             {
                 method: 'PUT',
                 headers: {
