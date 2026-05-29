@@ -19,7 +19,6 @@ import { clock } from '$lib/utils/clock';
 import { generateId } from '$lib/utils/id';
 import { AppError } from '$lib/types/errors';
 import { canAccessScope, getSessionScope } from '../session';
-import { AssetSyncService } from '../sync/asset';
 import type { AssetKind } from './types';
 import { CACHE_HIGH_WATERMARK, CACHE_LOW_WATERMARK } from './types';
 import {
@@ -302,7 +301,6 @@ export class AssetService {
 
         if (!plaintext) {
             await appAsset.putAsset(record);
-            void AssetSyncService.pushById(id);
             return id;
         }
 
@@ -318,10 +316,7 @@ export class AssetService {
             throw error;
         }
 
-        void AssetSyncService.pushById(id);
-        void AssetSyncService.start().finally(() => {
-            AssetService.scheduleEviction();
-        });
+        AssetService.scheduleEviction();
         return id;
     }
 
@@ -336,8 +331,6 @@ export class AssetService {
             appStorage.delete(`assets/${id}`).catch(() => undefined),
             appAsset.deleteRegistry(id).catch(() => undefined)
         ]);
-        void AssetSyncService.pushById(id);
-        void AssetSyncService.start();
     }
 
     /** Clears all in-memory URL caches and pending loads. Mainly for tests. */

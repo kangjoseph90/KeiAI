@@ -34,7 +34,12 @@ import {
 } from '$lib/crypto';
 import { UserService } from './user';
 import { getActiveSession } from './session';
-import { AssetSyncService, DataSyncService, SyncManager } from './sync';
+import {
+    AssetRecordSyncEngine,
+    DataRecordSyncEngine,
+    MultiRecordSyncEngine,
+    SyncManager
+} from './sync';
 import { AppError } from '$lib/types/errors';
 import { createLogger } from '$lib/adapters/logger';
 
@@ -377,8 +382,9 @@ export class AuthService {
             });
             await UserService.setActiveUser(userId, { preserveAuth: !!serverRecord });
 
-            await DataSyncService.resetCursors(userId);
-            await AssetSyncService.resetCursors(userId);
+            await DataRecordSyncEngine.resetCursor(userId);
+            await AssetRecordSyncEngine.resetCursor(userId);
+            await MultiRecordSyncEngine.resetCursor(userId);
         } catch (e) {
             pb.authStore.clear();
             throw e;
@@ -463,8 +469,9 @@ export class AuthService {
                 });
                 await UserService.setActiveUser(authData.record.id, { preserveAuth: true });
 
-                await DataSyncService.resetCursors(authData.record.id);
-                await AssetSyncService.resetCursors(authData.record.id);
+                await DataRecordSyncEngine.resetCursor(authData.record.id);
+                await AssetRecordSyncEngine.resetCursor(authData.record.id);
+                await MultiRecordSyncEngine.resetCursor(authData.record.id);
             } catch (err) {
                 // authWithPassword succeeded but local save failed (e.g. ISLAND_MISMATCH).
                 // Clear PB token so a stale cross-island token is never left in memory.

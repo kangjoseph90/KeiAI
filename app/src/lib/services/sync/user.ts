@@ -1,13 +1,13 @@
 /**
- * User Sync Service
+ * User Record Sync Engine
  *
  * Handles bidirectional synchronization of user display data (name, avatar)
- * with PocketBase. Separated from DataSyncService because user data:
+ * with PocketBase. Separated from DataRecordSyncEngine because user data:
  *   - Lives in the `users` PB collection (not the encrypted data tables)
  *   - Is NOT E2EE (name/avatar are plaintext)
  *   - Has different serialization (avatar is a PB file field, not Base64 blob)
  *
- * Push: Called by UserService.updateUser() after local writes.
+ * Push: Triggered by local user adapter write events.
  * Pull: PB Realtime subscription on the user's own record.
  *
  * This module has NO dependency on Svelte stores. Store refresh is handled by
@@ -15,16 +15,15 @@
  */
 
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession, hasActiveSession } from '../session';
-import { toUser, type User } from '../user';
-import { appUser } from '$lib/adapters/user';
-import { BaseSyncEngine } from './base';
+import { getActiveSession } from '../session';
+import { appUser, type UserWriteEvent } from '$lib/adapters/user';
+import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
+import { normalizeTimestamp, isReadyToSync } from './utils';
 import { createLogger } from '$lib/adapters/logger';
-import { AppError } from '$lib/types/errors';
 
 const logger = createLogger('sync:user');
 
-export class UserSyncEngine extends BaseSyncEngine {
+export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEvent, 'user'> {
     private subscribed = false;
 
     constructor() {
@@ -35,14 +34,25 @@ export class UserSyncEngine extends BaseSyncEngine {
         return this.subscribed;
     }
 
-    // ─── Push (local → server) ──────────────────────────
+    protected override getBufferedWrites(event: UserWriteEvent): BufferedRecordWrite<'user'>[] {
+        if (event.origin !== 'local') return [];
+        if (event.ids.length === 0) return [];
+
+        return event.ids.map((id) => ({ bucket: 'user', id }));
+    }
+
+    protected override async pushBufferedWrites(
+        writes: BufferedRecordWrite<'user'>[]
+    ): Promise<void> {
+        if (writes.length === 0) return;
+        await this.pushCurrentUser();
+    }
 
     /**
      * Push the current user display data to PocketBase.
-     * Fire-and-forget: errors are logged but never thrown.
      */
-    async pushUser(): Promise<void> {
-        if (!pb.authStore.isValid || !hasActiveSession()) return;
+    private async pushCurrentUser(): Promise<void> {
+        if (!isReadyToSync()) return;
 
         try {
             const { userId } = getActiveSession();
@@ -67,28 +77,30 @@ export class UserSyncEngine extends BaseSyncEngine {
             await pb.collection('users').update(userId, updateData);
         } catch (err) {
             logger.error('Push failed', err);
+            throw err;
         }
     }
-
-    // ─── Pull (server → local via Realtime) ──────────────────────────
 
     /**
      * Subscribe to Realtime updates on the current user's PB record.
      */
     async subscribeRealtime(): Promise<void> {
-        if (!pb.authStore.isValid || !hasActiveSession()) return;
+        if (!isReadyToSync()) return;
 
         const { userId } = getActiveSession();
-
-        const user = await appUser.getUser(userId);
-        if (!user) return;
 
         // Ensure clean state before subscribing to avoid duplicate handlers
         await this.unsubscribeRealtime();
 
-        await pb.collection('users').subscribe(userId, (e) => {
-            void this.handleRealtimeEvent(e.record as Record<string, unknown>);
-        });
+        try {
+            await pb.collection('users').subscribe(userId, (e) => {
+                void this.handleRealtimeEvent(e.record as Record<string, unknown>);
+            });
+        } catch (err) {
+            await this.unsubscribeRealtime();
+            throw err;
+        }
+
         this.subscribed = true;
     }
 
@@ -109,7 +121,7 @@ export class UserSyncEngine extends BaseSyncEngine {
     /**
      * Handle a Realtime event for the user's own PB record.
      */
-    private async handleRealtimeEvent(serverRecord: Record<string, unknown>): Promise<User | null> {
+    private async handleRealtimeEvent(serverRecord: Record<string, unknown>): Promise<void> {
         try {
             const { userId } = getActiveSession();
 
@@ -124,41 +136,28 @@ export class UserSyncEngine extends BaseSyncEngine {
                 remoteAvatar = await this.imageUrlToDataUri(serverUrl);
             }
 
-            const remoteUpdatedAt = serverRecord.updated
-                ? new Date(serverRecord.updated as string).getTime()
-                : 0;
+            const remoteUpdatedAt = normalizeTimestamp(
+                serverRecord.updatedAt,
+                serverRecord.updated
+            );
 
             const localUser = await appUser.getUser(userId);
             const localUpdatedAt = localUser?.updatedAt ?? 0;
 
             if (localUpdatedAt > remoteUpdatedAt) {
                 // Local is newer: push back to server (background fire-and-forget)
-                void this.pushUser();
-                return null;
+                void this.pushCurrentUser().catch(() => undefined);
+                return;
             }
 
-            return await this.applyRemoteUserUpdate(
-                userId,
-                remoteName,
-                remoteAvatar,
-                remoteUpdatedAt
-            );
+            await this.applyRemoteUserUpdate(userId, remoteName, remoteAvatar, remoteUpdatedAt);
         } catch (err) {
             logger.error('Realtime event error', err);
-            return null;
         }
     }
 
-    /**
-     * One-shot pull: fetch the latest user data from PB and apply if newer.
-     * Called on reconnect / tab focus.
-     */
-    async pullUser(): Promise<void> {
-        await this.trigger();
-    }
-
-    protected override async performSync(): Promise<void> {
-        if (!pb.authStore.isValid || !hasActiveSession()) return;
+    protected override async syncRecords(): Promise<void> {
+        if (!isReadyToSync()) return;
 
         try {
             const { userId } = getActiveSession();
@@ -173,16 +172,16 @@ export class UserSyncEngine extends BaseSyncEngine {
                 remoteAvatar = await this.imageUrlToDataUri(serverUrl);
             }
 
-            const remoteUpdatedAt = serverRecord.updated
-                ? new Date(serverRecord.updated as string).getTime()
-                : 0;
+            const remoteUpdatedAt = normalizeTimestamp(
+                serverRecord.updatedAt,
+                serverRecord.updated
+            );
 
-            const localUser = user;
-            const localUpdatedAt = localUser?.updatedAt ?? 0;
+            const localUpdatedAt = user?.updatedAt ?? 0;
 
             if (localUpdatedAt > remoteUpdatedAt) {
                 // Local is newer: push back to server
-                await this.pushUser();
+                await this.pushCurrentUser();
             } else {
                 // Remote is newer or equal: apply locally
                 await this.applyRemoteUserUpdate(userId, remoteName, remoteAvatar, remoteUpdatedAt);
@@ -193,32 +192,15 @@ export class UserSyncEngine extends BaseSyncEngine {
         }
     }
 
-    protected override isAuthError(error: unknown): boolean {
-        if (error instanceof AppError) {
-            return error.code === 'NOT_AUTHENTICATED' || error.code === 'SESSION_EXPIRED';
-        }
-
-        const status = (error as { status?: unknown })?.status;
-        return status === 401 || status === 403;
-    }
-
-    protected override isQuotaError(error: unknown): boolean {
-        if (error instanceof AppError) {
-            return error.code === 'QUOTA_EXCEEDED';
-        }
-        const status = (error as { status?: unknown })?.status;
-        return status === 402 || status === 413;
-    }
-
     private async applyRemoteUserUpdate(
         userId: string,
         remoteName: string,
         remoteAvatar: string,
         remoteUpdatedAt: number
-    ): Promise<User | null> {
+    ): Promise<void> {
         const user = await appUser.getUser(userId);
-        if (!user) return null;
-        if (remoteUpdatedAt <= user.updatedAt) return null;
+        if (!user) return;
+        if (remoteUpdatedAt <= user.updatedAt) return;
 
         const updated = {
             ...user,
@@ -227,8 +209,6 @@ export class UserSyncEngine extends BaseSyncEngine {
             updatedAt: remoteUpdatedAt
         };
         await appUser.saveUser(updated, { origin: 'sync' });
-
-        return toUser(updated);
     }
 
     /**
@@ -254,4 +234,4 @@ export class UserSyncEngine extends BaseSyncEngine {
     }
 }
 
-export const UserSyncService = new UserSyncEngine();
+export const UserRecordSyncEngine = new UserRecordSyncEngineImpl();

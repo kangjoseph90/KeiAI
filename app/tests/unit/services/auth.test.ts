@@ -114,8 +114,9 @@ vi.mock('$lib/services/session', () => ({
 }));
 
 vi.mock('$lib/services/sync', () => ({
-    DataSyncService: { resetCursors: vi.fn(() => Promise.resolve()) },
-    AssetSyncService: { resetCursors: vi.fn(() => Promise.resolve()) },
+    DataRecordSyncEngine: { resetCursor: vi.fn(() => Promise.resolve()) },
+    AssetRecordSyncEngine: { resetCursor: vi.fn(() => Promise.resolve()) },
+    MultiRecordSyncEngine: { resetCursor: vi.fn(() => Promise.resolve()) },
     SyncManager: { stopAutoSync: vi.fn() }
 }));
 

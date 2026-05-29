@@ -10,21 +10,21 @@ const assetStatusListeners = new Set<
 >();
 
 vi.mock('$lib/services/sync', () => ({
-    DataSyncService: {
+    DataRecordSyncEngine: {
         subscribeStatus: vi.fn((listener: (status: { state: string }) => void) => {
             dataStatusListeners.add(listener);
             listener({ state: 'idle' });
             return () => dataStatusListeners.delete(listener);
         })
     },
-    UserSyncService: {
+    UserRecordSyncEngine: {
         subscribeStatus: vi.fn((listener: (status: { state: string }) => void) => {
             userStatusListeners.add(listener);
             listener({ state: 'idle' });
             return () => userStatusListeners.delete(listener);
         })
     },
-    AssetSyncService: {
+    AssetBinarySyncEngine: {
         subscribeStatus: vi.fn(
             (listener: (status: { state: string; pendingCount: number }) => void) => {
                 assetStatusListeners.add(listener);

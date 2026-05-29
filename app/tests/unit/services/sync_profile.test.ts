@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { UserSyncService } from '$lib/services/sync/user';
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
+import { UserRecordSyncEngineImpl } from '$lib/services/sync/user';
 import { pb } from '$lib/adapters/pb';
 import { getActiveSession, hasActiveSession } from '$lib/services/session';
 import { appUser } from '$lib/adapters/user';
@@ -47,11 +47,13 @@ vi.mock('$lib/adapters/user', () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-describe('UserSyncService', () => {
+describe('UserRecordSyncEngine', () => {
     const mockUserId = 'user-123';
+    let service: UserRecordSyncEngineImpl;
 
     beforeEach(() => {
         vi.clearAllMocks();
+        service = new UserRecordSyncEngineImpl();
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
             masterKey: {} as CryptoKey,
@@ -59,11 +61,16 @@ describe('UserSyncService', () => {
         });
         vi.mocked(hasActiveSession).mockReturnValue(true);
         (pb.authStore as unknown as { isValid: boolean }).isValid = true;
-        (UserSyncService as unknown as { subscribed: boolean }).subscribed = false;
+        (service as unknown as { subscribed: boolean }).subscribed = false;
     });
 
-    describe('pushUser', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    describe('local write push', () => {
         it('should update PocketBase record', async () => {
+            vi.useFakeTimers();
             vi.mocked(appUser.getUser).mockResolvedValue({
                 id: mockUserId,
                 name: 'New Name',
@@ -74,12 +81,19 @@ describe('UserSyncService', () => {
                 id: mockUserId
             } as unknown as RecordModel);
 
-            await UserSyncService.pushUser();
+            service.handleLocalWrite({
+                tableName: 'users',
+                operation: 'put',
+                ids: [mockUserId],
+                origin: 'local'
+            });
+            await vi.advanceTimersByTimeAsync(3000);
 
             expect(mockCollection.update).toHaveBeenCalledWith(mockUserId, { name: 'New Name' });
         });
 
         it('should handle avatar data URI upload and keep it locally', async () => {
+            vi.useFakeTimers();
             const mockBlob = new Blob(['test'], { type: 'image/png' });
             mockFetch.mockResolvedValue({
                 blob: vi.fn().mockResolvedValue(mockBlob)
@@ -95,7 +109,13 @@ describe('UserSyncService', () => {
                 selfHostUrl: 'http://test'
             } as UserRecord);
 
-            await UserSyncService.pushUser();
+            service.handleLocalWrite({
+                tableName: 'users',
+                operation: 'put',
+                ids: [mockUserId],
+                origin: 'local'
+            });
+            await vi.advanceTimersByTimeAsync(3000);
 
             expect(mockFetch).toHaveBeenCalledWith('data:image/png;base64,abc');
             expect(mockCollection.update).toHaveBeenCalledWith(
@@ -110,18 +130,31 @@ describe('UserSyncService', () => {
         });
 
         it('should skip if auth or session is unavailable', async () => {
+            vi.useFakeTimers();
             (pb.authStore as unknown as { isValid: boolean }).isValid = false;
-            await UserSyncService.pushUser();
+            service.handleLocalWrite({
+                tableName: 'users',
+                operation: 'put',
+                ids: [mockUserId],
+                origin: 'local'
+            });
+            await vi.advanceTimersByTimeAsync(3000);
             expect(pb.collection).not.toHaveBeenCalled();
 
             (pb.authStore as unknown as { isValid: boolean }).isValid = true;
             vi.mocked(hasActiveSession).mockReturnValue(false);
-            await UserSyncService.pushUser();
+            service.handleLocalWrite({
+                tableName: 'users',
+                operation: 'put',
+                ids: [mockUserId],
+                origin: 'local'
+            });
+            await vi.advanceTimersByTimeAsync(3000);
             expect(pb.collection).not.toHaveBeenCalled();
         });
     });
 
-    describe('pullUser', () => {
+    describe('trigger', () => {
         it('should fetch from PocketBase and convert avatar to Data URI', async () => {
             const mockServerRecord = {
                 name: 'Remote Name',
@@ -149,7 +182,7 @@ describe('UserSyncService', () => {
                 selfHostUrl: 'http://test'
             } as UserRecord);
 
-            await UserSyncService.pullUser();
+            await service.trigger();
 
             expect(mockCollection.getOne).toHaveBeenCalledWith(mockUserId);
             expect(appUser.saveUser).toHaveBeenCalledWith(
@@ -172,16 +205,24 @@ describe('UserSyncService', () => {
                 avatar: '',
                 selfHostUrl: 'http://test'
             } as UserRecord);
-            await UserSyncService.subscribeRealtime();
+            await service.subscribeRealtime();
+
+            expect(mockCollection.subscribe).toHaveBeenCalledWith(mockUserId, expect.any(Function));
+        });
+
+        it('should subscribe even when the local user record is not created yet', async () => {
+            vi.mocked(appUser.getUser).mockResolvedValue(null);
+
+            await service.subscribeRealtime();
 
             expect(mockCollection.subscribe).toHaveBeenCalledWith(mockUserId, expect.any(Function));
         });
 
         it('should unsubscribe', async () => {
             // Use type casting to access private static member for testing
-            (UserSyncService as unknown as { subscribed: boolean }).subscribed = true;
+            (service as unknown as { subscribed: boolean }).subscribed = true;
 
-            await UserSyncService.unsubscribeRealtime();
+            await service.unsubscribeRealtime();
 
             expect(mockCollection.unsubscribe).toHaveBeenCalledWith(mockUserId);
         });

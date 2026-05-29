@@ -1,4 +1,8 @@
-import { AssetSyncService, DataSyncService, UserSyncService } from '$lib/services/sync';
+import {
+    AssetBinarySyncEngine,
+    DataRecordSyncEngine,
+    UserRecordSyncEngine
+} from '$lib/services/sync';
 import type { SyncStatus } from '$lib/services/sync/base';
 import { assetSyncStatus, dataSyncStatus, userSyncStatus } from '../state';
 import { startDataStoreSync, stopDataStoreSync } from './data';
@@ -11,13 +15,13 @@ export function startSyncStatusTracking(): void {
     if (stopTracking) return;
 
     const unsubscribers = [
-        DataSyncService.subscribeStatus((status: SyncStatus) => {
+        DataRecordSyncEngine.subscribeStatus((status: SyncStatus) => {
             dataSyncStatus.set(status);
         }),
-        UserSyncService.subscribeStatus((status) => {
+        UserRecordSyncEngine.subscribeStatus((status) => {
             userSyncStatus.set(status);
         }),
-        AssetSyncService.subscribeStatus((status) => {
+        AssetBinarySyncEngine.subscribeStatus((status) => {
             assetSyncStatus.set(status);
         })
     ];

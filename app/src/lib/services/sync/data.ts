@@ -10,7 +10,7 @@
  */
 
 import { pb } from '$lib/adapters/pb';
-import { getActiveSession, hasActiveSession } from '../session';
+import { getActiveSession } from '../session';
 import { encrypt, decrypt, toBase64, fromBase64, importMasterKey } from '$lib/crypto';
 import {
     localDB,
@@ -23,24 +23,24 @@ import {
 } from '$lib/adapters/db';
 import { appKV } from '$lib/adapters/kv';
 import { appMulti, type MultiRoomDeleteMarkerRecord } from '$lib/adapters/multi';
-import { BaseSyncEngine } from './base';
+import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
 import { createLogger } from '$lib/adapters/logger';
-import { isErrorCode } from '$lib/types/errors';
 import { clock } from '$lib/utils/clock';
-
-type RealtimeEvent = {
-    action: string;
-    record: Record<string, unknown>;
-};
+import {
+    normalizeTimestamp,
+    PAGE_SIZE,
+    CHUNK_SIZE,
+    MAX_DELETE_MARKER_ATTEMPTS,
+    belongsToScope,
+    getSyncKey,
+    getActiveSyncScopes,
+    getRealtimeScope,
+    type SyncScope,
+    type RealtimeEvent,
+    isReadyToSync
+} from './utils';
 
 type RemoteCollection = 'records' | 'multi_room_records';
-
-interface SyncScope {
-    scope: DataScope;
-    key: CryptoKey;
-    collection: RemoteCollection;
-    ownerField: 'userId' | 'roomId';
-}
 
 interface LocalChange {
     table: TableName;
@@ -55,29 +55,20 @@ interface DecodedRemoteRecord {
 const logger = createLogger('sync:data');
 const USER_RECORDS_COLLECTION: RemoteCollection = 'records';
 const ROOM_RECORDS_COLLECTION: RemoteCollection = 'multi_room_records';
-const MAX_DELETE_MARKER_ATTEMPTS = 5;
 
-export class DataSyncEngine extends BaseSyncEngine {
-    // ─── State ────────────────────────────────────────────────────────
+export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWriteEvent, TableName> {
     private subscribed = false;
-    private syncing = false;
-    private pendingQueue: Array<() => Promise<void>> = [];
-
-    private readonly PAGE_SIZE = 200;
-    private readonly CHUNK_SIZE = 100;
 
     constructor() {
         super();
     }
-
-    // ─── Realtime Subscriptions ───────────────────────────────────────
 
     get isSubscribed(): boolean {
         return this.subscribed;
     }
 
     async subscribeRealtime(): Promise<void> {
-        if (!pb.authStore.isValid || !hasActiveSession()) return;
+        if (!isReadyToSync()) return;
 
         await this.unsubscribeRealtime();
 
@@ -116,56 +107,42 @@ export class DataSyncEngine extends BaseSyncEngine {
         this.subscribed = false;
     }
 
-    // ─── Cursor Management ───────────────────────────────────────────
-
     /**
      * Wipe the user-scope data cursor.
      * Call this when there is no existing local user record so the next syncAll()
      * fetches everything from scratch.
      */
-    async resetCursors(userId: string): Promise<void> {
-        await appKV.remove(this.syncKey({ scopeType: 'user', scopeId: userId }));
+    async resetCursor(userId: string): Promise<void> {
+        await appKV.remove(getSyncKey('records', 'user', userId));
     }
 
-    // ─── Catch-up Pull (boot + fallback poll) ─────────────────────────
+    protected override async syncRecords(): Promise<void> {
+        if (!isReadyToSync()) return;
 
-    async syncAll(): Promise<void> {
-        await this.trigger();
-    }
-
-    protected override async performSync(): Promise<void> {
-        if (!pb.authStore.isValid || !hasActiveSession()) return;
-
-        this.syncing = true;
         let firstError: unknown = null;
         let completed = 0;
-        const scopes = this.getActiveSyncScopes();
+        const scopes = getActiveSyncScopes(USER_RECORDS_COLLECTION, ROOM_RECORDS_COLLECTION);
 
-        try {
-            const results = await Promise.allSettled(
-                scopes.map(async (scope) => {
-                    await this.syncScope(scope);
-                    completed++;
-                    this.updateStatus({
-                        progress: {
-                            completed,
-                            total: scopes.length,
-                            currentItemId: scope.scope.scopeId
-                        }
-                    });
-                })
-            );
+        const results = await Promise.allSettled(
+            scopes.map(async (scope) => {
+                await this.syncScope(scope);
+                completed++;
+                this.updateStatus({
+                    progress: {
+                        completed,
+                        total: scopes.length,
+                        currentItemId: scope.scope.scopeId
+                    }
+                });
+            })
+        );
 
-            await this.syncRoomDeleteMarkers();
+        await this.syncRoomDeleteMarkers();
 
-            for (const result of results) {
-                if (result.status === 'rejected') {
-                    firstError ??= result.reason;
-                }
+        for (const result of results) {
+            if (result.status === 'rejected') {
+                firstError ??= result.reason;
             }
-        } finally {
-            this.syncing = false;
-            void this.flushPendingQueue();
         }
 
         if (firstError) {
@@ -173,39 +150,8 @@ export class DataSyncEngine extends BaseSyncEngine {
         }
     }
 
-    private getActiveSyncScopes(): SyncScope[] {
-        const { userId, masterKey, roomId, roomKey } = getActiveSession();
-        const scopes: SyncScope[] = [
-            {
-                scope: { scopeType: 'user', scopeId: userId },
-                key: masterKey,
-                collection: USER_RECORDS_COLLECTION,
-                ownerField: 'userId'
-            }
-        ];
-
-        if (roomId && roomKey) {
-            scopes.push({
-                scope: { scopeType: 'room', scopeId: roomId },
-                key: roomKey,
-                collection: ROOM_RECORDS_COLLECTION,
-                ownerField: 'roomId'
-            });
-        }
-
-        return scopes;
-    }
-
-    /** Flush all push tasks queued during a syncAll run. */
-    private async flushPendingQueue(): Promise<void> {
-        const tasks = this.pendingQueue.splice(0);
-        for (const task of tasks) {
-            await task();
-        }
-    }
-
     private async syncScope(syncScope: SyncScope): Promise<void> {
-        const syncKey = this.syncKey(syncScope.scope);
+        const syncKey = getSyncKey('records', syncScope.scope.scopeType, syncScope.scope.scopeId);
         const lastSyncTime = Number.parseInt((await appKV.get(syncKey)) || '0', 10) || 0;
         let nextCursor = lastSyncTime;
         let cursorSafeToAdvance = true;
@@ -216,18 +162,16 @@ export class DataSyncEngine extends BaseSyncEngine {
 
         try {
             while (true) {
-                const result = await pb
-                    .collection(syncScope.collection)
-                    .getList(page, this.PAGE_SIZE, {
-                        filter: pb.filter(
-                            `${syncScope.ownerField} = {:scopeId} && updatedAt >= {:since}`,
-                            {
-                                scopeId: syncScope.scope.scopeId,
-                                since: lastSyncTime
-                            }
-                        ),
-                        sort: 'updatedAt'
-                    });
+                const result = await pb.collection(syncScope.collection).getList(page, PAGE_SIZE, {
+                    filter: pb.filter(
+                        `${syncScope.ownerField} = {:scopeId} && updatedAt >= {:since}`,
+                        {
+                            scopeId: syncScope.scope.scopeId,
+                            since: lastSyncTime
+                        }
+                    ),
+                    sort: 'updatedAt'
+                });
 
                 if (result.items.length > 0) {
                     const grouped = new Map<TableName, DataRecord[]>();
@@ -315,8 +259,6 @@ export class DataSyncEngine extends BaseSyncEngine {
         }
     }
 
-    // ─── Push ────────────────────────────────────────────────────────
-
     private async collectUnsyncedChanges(
         scope: DataScope,
         sinceUpdatedAt: number
@@ -335,41 +277,27 @@ export class DataSyncEngine extends BaseSyncEngine {
         return changes;
     }
 
-    private async collectDeletedChanges(scope: DataScope): Promise<LocalChange[]> {
-        const changes = await this.collectUnsyncedChanges(scope, 0);
-        return changes.filter(({ record }) => record.isDeleted);
-    }
-
     private async pushChanges(
         syncScope: SyncScope,
         changes: LocalChange[],
-        swallowErrors = true,
-        isNew = false
+        continueOnError = true
     ): Promise<void> {
-        const owned = changes.filter(
-            ({ record }) =>
-                record.scopeType === syncScope.scope.scopeType &&
-                record.scopeId === syncScope.scope.scopeId
-        );
+        const owned = changes.filter(({ record }) => belongsToScope(record, syncScope.scope));
         if (owned.length === 0) return;
 
-        for (let i = 0; i < owned.length; i += this.CHUNK_SIZE) {
-            const chunk = owned.slice(i, i + this.CHUNK_SIZE);
+        for (let i = 0; i < owned.length; i += CHUNK_SIZE) {
+            const chunk = owned.slice(i, i + CHUNK_SIZE);
             const batch = pb.createBatch();
             for (const change of chunk) {
                 const payload = await this.localToPbRecord(change.table, change.record, syncScope);
-                if (isNew) {
-                    batch.collection(syncScope.collection).create(payload);
-                } else {
-                    batch.collection(syncScope.collection).upsert(payload);
-                }
+                batch.collection(syncScope.collection).upsert(payload);
             }
 
             try {
                 await batch.send({ requestKey: null });
             } catch (err) {
                 logger.error(`Failed to push batch to ${syncScope.collection}`, err);
-                if (!swallowErrors) {
+                if (!continueOnError) {
                     throw err;
                 }
             }
@@ -378,65 +306,45 @@ export class DataSyncEngine extends BaseSyncEngine {
 
     private async pushChangesForActiveScopes(
         changes: LocalChange[],
-        swallowErrors = true,
-        isNew = false
+        continueOnError = true
     ): Promise<void> {
-        const scopes = this.getActiveSyncScopes();
+        const scopes = getActiveSyncScopes(USER_RECORDS_COLLECTION, ROOM_RECORDS_COLLECTION);
         for (const syncScope of scopes) {
-            await this.pushChanges(syncScope, changes, swallowErrors, isNew);
+            await this.pushChanges(syncScope, changes, continueOnError);
         }
     }
 
-    async pushRecord(tableName: TableName, record: BaseRecord, isNew = false): Promise<void> {
-        if (!pb.authStore.isValid || !hasActiveSession()) return;
-        await this.pushChangesForActiveScopes(
-            [{ table: tableName, record: record as DataRecord }],
-            true,
-            isNew
-        );
+    protected override getBufferedWrites(
+        event: DatabaseWriteEvent
+    ): BufferedRecordWrite<TableName>[] {
+        if (event.origin !== 'local' || !SYNC_TABLES.includes(event.tableName)) return [];
+        if (event.operation === 'delete' || event.operation === 'deleteByIndex') return [];
+        return event.ids.map((id) => ({ bucket: event.tableName, id }));
     }
 
-    async pushById(tableName: TableName, id: string): Promise<void> {
-        const record = await localDB.getRecord<DataRecord>(tableName, id);
-        if (record) void this.pushRecord(tableName, record);
-    }
+    protected override async pushBufferedWrites(
+        writes: BufferedRecordWrite<TableName>[]
+    ): Promise<void> {
+        if (!isReadyToSync()) return;
 
-    async handleLocalWrite(event: DatabaseWriteEvent): Promise<void> {
-        if (event.origin !== 'local' || !SYNC_TABLES.includes(event.tableName)) return;
-        if (event.operation === 'delete' || event.operation === 'deleteByIndex') return;
-        if (event.ids.length === 0) return;
-
-        const task = () => this.pushIds(event.tableName, event.ids);
-        if (this.syncing) {
-            this.pendingQueue.push(task);
-        } else {
-            void task();
+        const byTable = new Map<TableName, Set<string>>();
+        for (const write of writes) {
+            const ids = byTable.get(write.bucket) ?? new Set<string>();
+            ids.add(write.id);
+            byTable.set(write.bucket, ids);
         }
-    }
 
-    private async pushIds(tableName: TableName, ids: string[]): Promise<void> {
-        if (!pb.authStore.isValid || !hasActiveSession()) return;
-
-        const records = await Promise.all(
-            ids.map((id) => localDB.getRecord<DataRecord>(tableName, id))
-        );
-        const changes = records
-            .filter((record): record is DataRecord => record !== undefined)
-            .map((record) => ({ table: tableName, record }));
+        const changes: LocalChange[] = [];
+        for (const [tableName, ids] of byTable) {
+            const records = await Promise.all(
+                [...ids].map((id) => localDB.getRecord<DataRecord>(tableName, id))
+            );
+            for (const record of records) {
+                if (record) changes.push({ table: tableName, record });
+            }
+        }
         if (changes.length === 0) return;
 
-        await this.pushChangesForActiveScopes(changes);
-    }
-
-    async pushRecentWrites(userId: string, sinceInclusive: number): Promise<void> {
-        if (!pb.authStore.isValid || !hasActiveSession()) return;
-        const { userId: activeUserId } = getActiveSession();
-        if (userId !== activeUserId) return;
-
-        const changes = await this.collectUnsyncedChanges(
-            { scopeType: 'user', scopeId: userId },
-            sinceInclusive - 1
-        );
         await this.pushChangesForActiveScopes(changes);
     }
 
@@ -461,7 +369,9 @@ export class DataSyncEngine extends BaseSyncEngine {
                 collection: ROOM_RECORDS_COLLECTION,
                 ownerField: 'roomId'
             };
-            const changes = await this.collectDeletedChanges(scope);
+            const changes = (await this.collectUnsyncedChanges(scope, 0)).filter(
+                ({ record }) => record.isDeleted
+            );
             if (changes.length > 0) {
                 await this.pushChanges(syncScope, changes, false);
             }
@@ -487,15 +397,13 @@ export class DataSyncEngine extends BaseSyncEngine {
         }
     }
 
-    // ─── Realtime Event Handler ───────────────────────────────────────
-
     private async handleRealtimeEvent(
         collection: RemoteCollection,
         e: RealtimeEvent
     ): Promise<void> {
         try {
-            if (!hasActiveSession()) return;
-            const syncScope = this.getRealtimeScope(collection, e.record);
+            if (!isReadyToSync()) return;
+            const syncScope = getRealtimeScope(USER_RECORDS_COLLECTION, collection, e.record);
             if (!syncScope) return;
 
             const remote = await this.pbToLocalRecord(e.record, syncScope);
@@ -508,40 +416,13 @@ export class DataSyncEngine extends BaseSyncEngine {
                 if (!local || remoteAt > localAt) {
                     await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
                 } else if (remoteAt < localAt) {
-                    void this.pushRecord(remote.table, local);
+                    void this.pushChangesForActiveScopes([{ table: remote.table, record: local }]);
                 }
             });
         } catch (err) {
             logger.error(`Realtime event error for ${collection}`, err);
         }
     }
-
-    private getRealtimeScope(
-        collection: RemoteCollection,
-        record: Record<string, unknown>
-    ): SyncScope | null {
-        const { userId, masterKey, roomId, roomKey } = getActiveSession();
-
-        if (collection === USER_RECORDS_COLLECTION) {
-            if (record.userId !== userId) return null;
-            return {
-                scope: { scopeType: 'user', scopeId: userId },
-                key: masterKey,
-                collection,
-                ownerField: 'userId'
-            };
-        }
-
-        if (!roomId || !roomKey || record.roomId !== roomId) return null;
-        return {
-            scope: { scopeType: 'room', scopeId: roomId },
-            key: roomKey,
-            collection,
-            ownerField: 'roomId'
-        };
-    }
-
-    // ─── Serialization ────────────────────────────────────────────────
 
     private async localToPbRecord(
         table: TableName,
@@ -588,8 +469,8 @@ export class DataSyncEngine extends BaseSyncEngine {
                 id: pbRecord.id as string,
                 scopeType: syncScope.scope.scopeType,
                 scopeId: syncScope.scope.scopeId,
-                createdAt: this.normalizeTimestamp(pbRecord.createdAt, pbRecord.created),
-                updatedAt: this.normalizeTimestamp(pbRecord.updatedAt, pbRecord.updated),
+                createdAt: normalizeTimestamp(pbRecord.createdAt, pbRecord.created),
+                updatedAt: normalizeTimestamp(pbRecord.updatedAt, pbRecord.updated),
                 isDeleted: Boolean(pbRecord.isDeleted)
             } as unknown as DataRecord
         };
@@ -602,29 +483,9 @@ export class DataSyncEngine extends BaseSyncEngine {
         throw new Error(`Unknown synced record kind: ${String(kind)}`);
     }
 
-    private syncKey(scope: DataScope): string {
-        return `lastSync_records_${scope.scopeType}_${scope.scopeId}`;
-    }
-
     private changeKey(table: TableName, id: string): string {
         return `${table}:${id}`;
     }
-
-    protected override isAuthError(error: unknown): boolean {
-        if (isErrorCode(error, 'NOT_AUTHENTICATED') || isErrorCode(error, 'SESSION_EXPIRED')) {
-            return true;
-        }
-
-        const status = (error as { status?: unknown })?.status;
-        return status === 401 || status === 403;
-    }
-
-    protected override isQuotaError(error: unknown): boolean {
-        if (isErrorCode(error, 'QUOTA_EXCEEDED')) return true;
-
-        const status = (error as { status?: unknown })?.status;
-        return status === 402 || status === 413;
-    }
 }
 
-export const DataSyncService = new DataSyncEngine();
+export const DataRecordSyncEngine = new DataRecordSyncEngineImpl();

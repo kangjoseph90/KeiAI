@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AssetSyncEngine } from '$lib/services/sync/asset';
+import { AssetBinarySyncEngineImpl, AssetRecordSyncEngineImpl } from '$lib/services/sync/asset';
 import type { AssetRecord, AssetRegistryRecord } from '$lib/adapters/asset';
 import { AppError } from '$lib/types/errors';
 
@@ -89,9 +89,9 @@ import { getActiveSession, hasActiveSession } from '$lib/services/session';
 import { encryptConvergentAsset } from '$lib/services/asset/util';
 import { uploadAsset } from '$lib/services/asset/remote';
 
-describe('AssetSyncEngine', () => {
+describe('Asset sync', () => {
     const mockUserId = 'user-123';
-    let service: AssetSyncEngine;
+    let binaryWorker: AssetBinarySyncEngineImpl;
 
     const createRegistryRecord = (): AssetRegistryRecord => ({
         id: 'asset-1',
@@ -123,7 +123,7 @@ describe('AssetSyncEngine', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        service = new AssetSyncEngine();
+        binaryWorker = new AssetBinarySyncEngineImpl();
 
         vi.mocked(hasActiveSession).mockReturnValue(true);
         vi.mocked(getActiveSession).mockReturnValue({
@@ -158,7 +158,7 @@ describe('AssetSyncEngine', () => {
     });
 
     it('uploads local registry entries and marks the asset remote after upload succeeds', async () => {
-        await service.trigger();
+        await binaryWorker.start();
 
         expect(uploadAsset).toHaveBeenCalledWith('new-hash', new Uint8Array([10, 11, 12]));
         expect(appAsset.putAsset).toHaveBeenCalledWith(
@@ -186,16 +186,25 @@ describe('AssetSyncEngine', () => {
             new AppError('QUOTA_EXCEEDED', 'Asset quota exceeded.')
         );
 
-        await service.trigger();
+        await binaryWorker.start();
 
-        await vi.waitFor(() => expect(service.getState().state).toBe('quota_error'));
+        await vi.waitFor(() => expect(binaryWorker.getState().state).toBe('quota_error'));
         expect(appAsset.putAsset).not.toHaveBeenCalled();
     });
 
     it('drops stale local registry entries when the logical asset no longer exists', async () => {
         vi.mocked(appAsset.getAsset).mockResolvedValue(undefined);
 
-        await service.trigger();
+        await binaryWorker.start();
+
+        expect(appAsset.deleteRegistry).toHaveBeenCalledWith('asset-1');
+        expect(uploadAsset).not.toHaveBeenCalled();
+    });
+
+    it('drops stale local registry entries when the cached blob is missing', async () => {
+        vi.mocked(appStorage.read).mockResolvedValue(null);
+
+        await binaryWorker.start();
 
         expect(appAsset.deleteRegistry).toHaveBeenCalledWith('asset-1');
         expect(uploadAsset).not.toHaveBeenCalled();
@@ -233,7 +242,8 @@ describe('AssetSyncEngine', () => {
                 }
             ]);
 
-        await service.trigger();
+        const recordSync = new AssetRecordSyncEngineImpl();
+        await recordSync.trigger();
 
         const batch = vi.mocked(pb.createBatch).mock.results[0].value as {
             collection: ReturnType<typeof vi.fn>;

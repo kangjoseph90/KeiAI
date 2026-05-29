@@ -1,4 +1,5 @@
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
+import { toErrorState, isAbortError } from './utils';
 
 export type SyncState = 'idle' | 'syncing' | 'network_error' | 'quota_error' | 'auth_error';
 
@@ -13,22 +14,41 @@ export interface SyncStatus {
     progress?: SyncProgress;
 }
 
+export interface BufferedRecordWrite<TBucket extends string = string> {
+    bucket: TBucket;
+    id: string;
+}
+
+const DEFAULT_WRITE_FLUSH_INTERVAL_MS = 3_000;
+
 type SyncStatusListener<TStatus extends SyncStatus> = (status: TStatus) => void;
 
 /**
- * Shared state machine for sync engines.
+ * Shared lifecycle for local-first record sync engines.
  *
- * - trigger() is deduplicated while a run is in flight
- * - extra triggers during a run mark the engine dirty and schedule one more pass
- * - status listeners allow the store layer to render progress without importing stores here
+ * It owns full-sync triggering, status/progress tracking, and coalescing local
+ * write events into a latest-record batch flush. Payload shape, encryption,
+ * scope rules, and remote collections stay in subclasses.
  */
-export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
+export abstract class BaseRecordSyncEngine<
+    TWriteEvent,
+    TBucket extends string = string,
+    TStatus extends SyncStatus = SyncStatus
+> {
     private runPromise: Promise<void> | null = null;
     private rerunRequested = false;
     private readonly listeners = new Set<SyncStatusListener<TStatus>>();
     private status: TStatus;
 
-    protected constructor(initialStatus?: DeepPartial<TStatus>) {
+    private readonly bufferedWrites = new Map<string, BufferedRecordWrite<TBucket>>();
+    private flushTimer: ReturnType<typeof setTimeout> | null = null;
+    private flushingWrites = false;
+    private fullSyncRunning = false;
+
+    protected constructor(
+        initialStatus?: DeepPartial<TStatus>,
+        private readonly writeFlushIntervalMs = DEFAULT_WRITE_FLUSH_INTERVAL_MS
+    ) {
         this.status = deepMerge(
             {
                 state: 'idle'
@@ -64,8 +84,21 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
         return this.runPromise;
     }
 
+    handleLocalWrite(event: TWriteEvent): void {
+        const writes = this.getBufferedWrites(event);
+        if (writes.length === 0) return;
+
+        for (const write of writes) {
+            this.bufferedWrites.set(this.writeKey(write), write);
+        }
+
+        this.scheduleWriteFlush();
+    }
+
     stop(): void {
         this.rerunRequested = false;
+        this.clearFlushTimer();
+        this.bufferedWrites.clear();
         this.updateStatus({
             state: 'idle',
             progress: undefined
@@ -77,38 +110,20 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
         this.emitStatus();
     }
 
-    protected abstract performSync(): Promise<void>;
+    protected abstract syncRecords(): Promise<void>;
 
-    protected isQuotaError(_error: unknown): boolean {
-        return false;
-    }
+    protected abstract getBufferedWrites(event: TWriteEvent): BufferedRecordWrite<TBucket>[];
 
-    protected isAuthError(_error: unknown): boolean {
-        return false;
-    }
+    protected abstract pushBufferedWrites(writes: BufferedRecordWrite<TBucket>[]): Promise<void>;
 
-    protected isAbortError(error: unknown): boolean {
-        return error instanceof DOMException
-            ? error.name === 'AbortError'
-            : error instanceof Error && error.name === 'AbortError';
-    }
-
-    protected normalizeTimestamp(primary: unknown, fallback: unknown): number {
-        if (typeof primary === 'number') return primary;
-
-        if (typeof primary === 'string') {
-            const parsed = Number(primary);
-            if (!Number.isNaN(parsed)) return parsed;
-            const asDate = new Date(primary).getTime();
-            if (!Number.isNaN(asDate)) return asDate;
+    protected async performSync(): Promise<void> {
+        this.fullSyncRunning = true;
+        try {
+            await this.syncRecords();
+        } finally {
+            this.fullSyncRunning = false;
+            void this.flushBufferedWrites();
         }
-
-        if (typeof fallback === 'string') {
-            const asDate = new Date(fallback).getTime();
-            if (!Number.isNaN(asDate)) return asDate;
-        }
-
-        return 0;
     }
 
     private async drainQueue(): Promise<void> {
@@ -125,7 +140,7 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
                     } as DeepPartial<TStatus>);
                 }
             } catch (error) {
-                if (this.isAbortError(error)) {
+                if (isAbortError(error)) {
                     this.updateStatus({
                         state: 'idle',
                         progress: undefined
@@ -134,18 +149,12 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
                 }
 
                 this.updateStatus({
-                    state: this.toErrorState(error),
+                    state: toErrorState(error),
                     progress: undefined
                 } as DeepPartial<TStatus>);
                 break;
             }
         }
-    }
-
-    private toErrorState(error: unknown): SyncState {
-        if (this.isQuotaError(error)) return 'quota_error';
-        if (this.isAuthError(error)) return 'auth_error';
-        return 'network_error';
     }
 
     private emitStatus(): void {
@@ -160,5 +169,49 @@ export abstract class BaseSyncEngine<TStatus extends SyncStatus = SyncStatus> {
             ...status,
             progress: status.progress ? { ...status.progress } : undefined
         } as TStatus;
+    }
+
+    private scheduleWriteFlush(): void {
+        if (this.flushTimer || this.fullSyncRunning || this.flushingWrites) return;
+
+        this.flushTimer = setTimeout(() => {
+            this.flushTimer = null;
+            void this.flushBufferedWrites();
+        }, this.writeFlushIntervalMs);
+    }
+
+    private async flushBufferedWrites(): Promise<void> {
+        if (this.fullSyncRunning || this.flushingWrites) return;
+        if (this.bufferedWrites.size === 0) return;
+
+        const writes = [...this.bufferedWrites.values()];
+        this.bufferedWrites.clear();
+        this.flushingWrites = true;
+        this.updateStatus({ state: 'syncing' } as DeepPartial<TStatus>);
+
+        try {
+            await this.pushBufferedWrites(writes);
+            this.updateStatus({ state: 'idle', progress: undefined } as DeepPartial<TStatus>);
+        } catch (error) {
+            this.updateStatus({
+                state: toErrorState(error),
+                progress: undefined
+            } as DeepPartial<TStatus>);
+        } finally {
+            this.flushingWrites = false;
+            if (this.bufferedWrites.size > 0) {
+                this.scheduleWriteFlush();
+            }
+        }
+    }
+
+    private clearFlushTimer(): void {
+        if (!this.flushTimer) return;
+        clearTimeout(this.flushTimer);
+        this.flushTimer = null;
+    }
+
+    private writeKey(write: BufferedRecordWrite<TBucket>): string {
+        return `${write.bucket}\u0000${write.id}`;
     }
 }

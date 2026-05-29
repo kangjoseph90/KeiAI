@@ -21,14 +21,6 @@ vi.mock('$lib/crypto', () => ({
 
 // Session will be managed via setUserSession/clearSession in beforeEach/afterEach
 
-vi.mock('$lib/services/sync', () => ({
-    DataSyncService: {
-        pushRecord: vi.fn(),
-        pushById: vi.fn(),
-        pushRecentWrites: vi.fn()
-    }
-}));
-
 vi.mock('$lib/services/content/record_buffer', () => ({
     buffer: {
         get: vi.fn(),
