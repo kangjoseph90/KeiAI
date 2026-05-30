@@ -216,15 +216,19 @@ function findAssetUsageWith(app, userId, hash) {
 }
 
 function findPendingAssetUsagesWith(app, hash) {
-  var rows = [];
-  app
-    .db()
-    .newQuery(
-      "SELECT id FROM asset_usage WHERE hash = {:hash} AND (size = 0 OR size IS NULL)",
-    )
-    .bind({ hash: hash })
-    .all(rows);
-  return rows;
+  try {
+    return app.findRecordsByFilter(
+      "asset_usage",
+      "hash = {:hash} && (size = 0 || size = null)",
+      "",
+      0,
+      0,
+      { hash: hash },
+    );
+  } catch (err) {
+    if (!isNoRowsError(err)) throw err;
+    return [];
+  }
 }
 
 function findAssetAccountWith(app, userId) {
@@ -548,9 +552,9 @@ function reconcilePendingAssetUsage(hash) {
     var size = getNumberField(catalog, "size", 0);
     if (size <= 0) return;
 
-    var rows = findPendingAssetUsagesWith(txApp, hash);
-    for (var i = 0; i < rows.length; i++) {
-      var usage = txApp.findRecordById("asset_usage", rows[i].id);
+    var usages = findPendingAssetUsagesWith(txApp, hash);
+    for (var i = 0; i < usages.length; i++) {
+      var usage = usages[i];
       if (!usage) continue;
 
       usage.set("size", size);
