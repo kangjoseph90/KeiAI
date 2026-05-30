@@ -429,6 +429,12 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
       }
     });
 
+    if (created) {
+      try {
+        h.reconcilePendingAssetUsage(hash);
+      } catch (_) {}
+    }
+
     return e.json(created ? 201 : 200, {
       status: created ? "stored" : "exists",
       hash: hash,
@@ -512,6 +518,12 @@ routerAdd("PUT", "/api/multi-rooms/{roomId}/assets/{hash}", (e) => {
         if (!h.findAssetCatalogWith(txApp, hash)) throw err;
       }
     });
+
+    if (created) {
+      try {
+        h.reconcilePendingAssetUsage(hash);
+      } catch (_) {}
+    }
 
     return e.json(created ? 201 : 200, {
       status: created ? "stored" : "exists",
