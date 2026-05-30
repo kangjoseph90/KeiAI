@@ -570,19 +570,6 @@ onRecordAfterCreateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
 }, "assets");
 
-onRecordCreateRequest((e) => {
-  require(`${__hooks}/keiai.js`).assertAssetRefQuota(e.record, null);
-  e.next();
-}, "assets");
-
-onRecordUpdateRequest((e) => {
-  require(`${__hooks}/keiai.js`).assertAssetRefQuota(
-    e.record,
-    e.record.original(),
-  );
-  e.next();
-}, "assets");
-
 onRecordAfterUpdateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(
     e.record,
@@ -596,19 +583,6 @@ onRecordAfterDeleteSuccess((e) => {
 
 onRecordAfterCreateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
-}, "multi_room_assets");
-
-onRecordCreateRequest((e) => {
-  require(`${__hooks}/keiai.js`).assertAssetRefQuota(e.record, null);
-  e.next();
-}, "multi_room_assets");
-
-onRecordUpdateRequest((e) => {
-  require(`${__hooks}/keiai.js`).assertAssetRefQuota(
-    e.record,
-    e.record.original(),
-  );
-  e.next();
 }, "multi_room_assets");
 
 onRecordAfterUpdateSuccess((e) => {

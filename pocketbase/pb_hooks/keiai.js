@@ -484,52 +484,6 @@ function getMultiRoomUploadOwner(auth, roomId) {
   return { status: 200, ownerUserId: room.getString("ownerUserId") };
 }
 
-function assertAssetOwnerCanAfford(userId, hash, oldHash) {
-  var catalog = findAssetCatalogWith($app, hash);
-  if (!catalog) {
-    throw new BadRequestError(
-      "Asset binary must be uploaded before metadata.",
-      null,
-    );
-  }
-
-  if (findAssetUsageWith($app, userId, hash)) return;
-
-  var account = getOrCreateAssetAccount($app, userId);
-  var used = getNumberField(account, "usedBytes", 0);
-
-  if (oldHash) {
-    var oldUsage = findAssetUsageWith($app, userId, oldHash);
-    if (oldUsage && getNumberField(oldUsage, "refCount", 0) <= 1) {
-      used = Math.max(used - getNumberField(oldUsage, "size", 0), 0);
-    }
-  }
-
-  var size = getNumberField(catalog, "size", 0);
-  if (used + size > getAssetMaxBytes(account)) {
-    throw new BadRequestError("Asset quota exceeded.", null);
-  }
-}
-
-function assertAssetRefQuota(record, oldRecord) {
-  var oldLive = isLiveAssetRef(oldRecord);
-  var newLive = isLiveAssetRef(record);
-  if (!newLive) return;
-
-  var oldHash = oldLive ? oldRecord.getString("hash").toLowerCase() : "";
-  var newHash = record.getString("hash").toLowerCase();
-  var oldUserId = oldLive ? getAssetUsageUserId($app, oldRecord) : "";
-  var newUserId = getAssetUsageUserId($app, record);
-  if (!newUserId) return;
-
-  if (oldLive && oldHash === newHash && oldUserId === newUserId) return;
-  assertAssetOwnerCanAfford(
-    newUserId,
-    newHash,
-    oldUserId === newUserId ? oldHash : "",
-  );
-}
-
 function incrementUsage(userId, hash) {
   var now = Date.now();
   if (!userId || !hash) return;
@@ -1096,7 +1050,6 @@ module.exports = {
   getOrCreateAssetAccount: getOrCreateAssetAccount,
   getNumberField: getNumberField,
   getPairingBlobs: getPairingBlobs,
-  assertAssetRefQuota: assertAssetRefQuota,
   handleAssetRefTransition: handleAssetRefTransition,
   hasAssetUsage: hasAssetUsage,
   isNoRowsError: isNoRowsError,
