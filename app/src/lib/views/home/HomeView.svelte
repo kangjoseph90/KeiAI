@@ -12,6 +12,7 @@
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
+    import RoomAvatar from '$lib/components/RoomAvatar.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import {
@@ -551,7 +552,7 @@
                             {@const characterCount = Object.keys(room.characters.refs).length}
                             {@const chatCount = Object.keys(room.chats.refs).length}
                             <div
-                                class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+                                class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 group"
                             >
                                 <div class="flex w-full items-center gap-3">
                                     <button
@@ -559,11 +560,7 @@
                                         onclick={() =>
                                             onNavigate({ view: 'room', roomId: room.id })}
                                     >
-                                        <div
-                                            class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold text-foreground"
-                                        >
-                                            {initial(room.name)}
-                                        </div>
+                                        <RoomAvatar {room} class="size-12 shrink-0" />
                                         <div class="min-w-0">
                                             <h2
                                                 class="truncate text-sm font-semibold text-foreground"
