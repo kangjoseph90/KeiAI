@@ -4,9 +4,17 @@
  * Tests PBKDF2 key derivation and related functions.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { generateSalt, deriveKeys, importWrappingKey } from '$lib/crypto/kdf';
 import { SALT_BYTES, KDF_ITERATIONS } from '$lib/crypto/constants';
+
+vi.mock('$lib/crypto/constants', async (importOriginal) => {
+    const original = await importOriginal<typeof import('$lib/crypto/constants')>();
+    return {
+        ...original,
+        KDF_ITERATIONS: 10
+    };
+});
 
 describe('kdf', () => {
     describe('generateSalt', () => {

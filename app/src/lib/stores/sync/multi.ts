@@ -1,7 +1,12 @@
 import { appMulti } from '$lib/adapters/multi';
 import { MultiRoomService, type MultiRoomMember } from '$lib/services';
 import { createLogger } from '$lib/adapters/logger';
-import { multiRoomMembers, multiRoomMetas } from '../state';
+import { getActiveSession, hasActiveSession } from '$lib/services/session';
+import { activeRoomId, multiRoomMembers, multiRoomMetas, multiRooms } from '../state';
+import { getAppSettings, updateSettings } from '../content/settings';
+import { clearActiveRoom } from '../content/room';
+import { get } from 'svelte/store';
+import { sortByRefs } from '$lib/utils/ordering';
 
 let stopMultiStoreSyncListener: (() => void) | null = null;
 const logger = createLogger('store:sync:multi');
@@ -43,6 +48,30 @@ async function getMultiRoomMetaOrNull(roomId: string) {
     }
 }
 
+async function refreshMultiRoomList(): Promise<void> {
+    const settings = await getAppSettings();
+    const rooms = await MultiRoomService.listRooms();
+    multiRooms.setAll(sortByRefs(rooms, settings.multiRooms.refs));
+}
+
+async function purgeSyncedRoom(roomId: string): Promise<void> {
+    await MultiRoomService.purgeLocalRoomContent(roomId);
+    const settings = await getAppSettings();
+    if (settings.multiRooms.refs[roomId]) {
+        await updateSettings({ multiRooms: { refs: { [roomId]: undefined } } });
+    }
+    multiRooms.delete(roomId);
+    multiRoomMetas.delete(roomId);
+    multiRoomMembers.update((current) => {
+        const next = new Map(current);
+        next.delete(roomId);
+        return next;
+    });
+    if (get(activeRoomId) === roomId) {
+        clearActiveRoom();
+    }
+}
+
 export function startMultiStoreSync(): void {
     if (stopMultiStoreSyncListener) return;
 
@@ -60,6 +89,14 @@ export function startMultiStoreSync(): void {
             try {
                 switch (tableName) {
                     case 'multi_room_index': {
+                        const tombstones = await Promise.all(
+                            ids.map((id) => appMulti.getRoomIndex(id))
+                        );
+                        for (const room of tombstones) {
+                            if (room?.isDeleted) {
+                                await purgeSyncedRoom(room.id);
+                            }
+                        }
                         const metas = await Promise.all(
                             ids.map(async (id) => [id, await getMultiRoomMetaOrNull(id)] as const)
                         );
@@ -72,10 +109,31 @@ export function startMultiStoreSync(): void {
                                 }
                             }
                         });
+                        await refreshMultiRoomList();
                         break;
                     }
                     case 'multi_room_members': {
+                        let shouldRefreshRooms = false;
+                        if (hasActiveSession()) {
+                            const { userId } = getActiveSession();
+                            const members = await Promise.all(
+                                ids.map((id) => appMulti.getMember(id))
+                            );
+                            for (const member of members) {
+                                if (member?.userId === userId && member.status !== 'accepted') {
+                                    await purgeSyncedRoom(member.roomId);
+                                } else if (
+                                    member?.userId === userId &&
+                                    member.status === 'accepted'
+                                ) {
+                                    shouldRefreshRooms = true;
+                                }
+                            }
+                        }
                         await refreshRoomMembersByMemberIds(ids);
+                        if (shouldRefreshRooms) {
+                            await refreshMultiRoomList();
+                        }
                         break;
                     }
                 }

@@ -11,6 +11,7 @@ import { getActiveSession, hasActiveSession } from '$lib/services/session';
 
 const mockCollection = {
     getList: vi.fn(),
+    getOne: vi.fn(),
     subscribe: vi.fn(),
     unsubscribe: vi.fn()
 };
@@ -79,6 +80,15 @@ describe('MultiRecordSyncEngine', () => {
             page: 1,
             totalPages: 1
         } as unknown as { items: unknown[]; page: number; totalPages: number });
+        vi.mocked(mockCollection.getOne).mockResolvedValue({
+            id: 'room-1',
+            ownerUserId: 'owner-1',
+            visibility: 'private',
+            publicName: 'Room',
+            createdAt: 1,
+            updatedAt: 2000,
+            isDeleted: false
+        });
         vi.mocked(appMulti.getRoomIndexesByOwner).mockResolvedValue([]);
         vi.mocked(appMulti.getRoomIndexesSince).mockResolvedValue([]);
         vi.mocked(appMulti.getMembersSince).mockResolvedValue([]);
@@ -161,7 +171,7 @@ describe('MultiRecordSyncEngine', () => {
         expect(appKV.set).toHaveBeenCalledWith('lastSync_multi_meta_user-1', '2200');
     });
 
-    it('routes local member write events through writable-member filtering', async () => {
+    it('does not push local member write events for non-owned rooms', async () => {
         vi.useFakeTimers();
         vi.mocked(appMulti.getMember).mockResolvedValue(member({ id: 'member-1' }));
         vi.mocked(appMulti.getRoomIndexesByOwner).mockResolvedValue([]);
@@ -174,11 +184,46 @@ describe('MultiRecordSyncEngine', () => {
         });
 
         await vi.advanceTimersByTimeAsync(3_000);
-        await vi.waitFor(() => {
-            expect(mockBatch.collection).toHaveBeenCalledWith('multi_room_members');
-        });
-        expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
+        expect(mockBatch.collection).not.toHaveBeenCalledWith('multi_room_members');
+        expect(mockBatchCollection.upsert).not.toHaveBeenCalledWith(
             expect.objectContaining({ id: 'member-1', userId })
+        );
+    });
+
+    it('bootstraps a room index when an accepted own membership arrives', async () => {
+        vi.mocked(mockCollection.getList)
+            .mockResolvedValueOnce({
+                items: [],
+                page: 1,
+                totalPages: 1
+            } as unknown as { items: unknown[]; page: number; totalPages: number })
+            .mockResolvedValueOnce({
+                items: [
+                    {
+                        id: 'member-1',
+                        roomId: 'room-1',
+                        userId,
+                        status: 'accepted',
+                        encryptedRoomKey: 'key',
+                        createdAt: 1,
+                        updatedAt: 2500
+                    }
+                ],
+                page: 1,
+                totalPages: 1
+            } as unknown as { items: unknown[]; page: number; totalPages: number });
+        vi.mocked(appMulti.getMember).mockResolvedValue(null);
+        vi.mocked(appMulti.getRoomIndex).mockResolvedValue(null);
+        vi.mocked(mockCollection.getOne).mockResolvedValue(
+            roomIndex({ ownerUserId: 'owner-1', updatedAt: 1500 })
+        );
+
+        await service.trigger();
+
+        expect(mockCollection.getOne).toHaveBeenCalledWith('room-1', { requestKey: null });
+        expect(appMulti.saveRoomIndex).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'room-1', ownerUserId: 'owner-1' }),
+            { origin: 'sync' }
         );
     });
 });
@@ -205,7 +250,6 @@ function member(overrides: Partial<MultiRoomMemberRecord> = {}): MultiRoomMember
         encryptedRoomKey: 'key',
         createdAt: 1,
         updatedAt: 2,
-        isDeleted: false,
         ...overrides
     };
 }

@@ -16,11 +16,13 @@ import {
 import { localDB, TABLES, type RoomRecord } from '$lib/adapters/db';
 import {
     fromBase64,
-    exportMasterKeyRaw,
+    fingerprintIdentityPublicKey,
     generateMasterKey,
+    importPublicKey,
     unwrapKeyWithIdentity,
     wrapKeyForIdentity,
-    toBase64
+    toBase64,
+    exportPublicKey
 } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 import { clock } from '$lib/utils/clock';
@@ -30,7 +32,13 @@ import { buffer } from './content/record_buffer';
 import { parseFields as parseRoomFields, type Room } from './content/room';
 import { appAsset } from '$lib/adapters/asset';
 import { appStorage } from '$lib/adapters/storage';
-import { SyncManager } from './sync';
+import { appHttp } from '$lib/adapters/http';
+import { pb } from '$lib/adapters/pb';
+import { MultiRecordSyncEngine, SyncManager } from './sync';
+import { buildUrl } from '$lib/utils/url';
+import { createLogger } from '$lib/adapters/logger';
+
+const logger = createLogger('service:multi');
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -53,6 +61,29 @@ export interface MultiRoomMember {
     updatedAt: number;
 }
 
+export interface PublicMultiRoom {
+    id: string;
+    ownerUserId: string;
+    visibility: 'public';
+    publicName?: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface UserPublicKey {
+    userId: string;
+    username: string;
+    identityPublicKey: JsonWebKey;
+}
+
+export interface UserKeyTrust {
+    userId: string;
+    username?: string;
+    publicKeyFingerprint: string;
+    firstSeenAt: number;
+    lastSeenAt: number;
+}
+
 export interface CreateMultiRoomParams {
     visibility: MultiRoomVisibility;
     publicName?: string;
@@ -63,6 +94,14 @@ export interface UpdateMultiRoomIndexParams {
     visibility?: MultiRoomVisibility;
     publicName?: string;
 }
+
+type MultiRoomApiResponse = {
+    room?: MultiRoomIndexRecord;
+    rooms?: PublicMultiRoom[];
+    member?: MultiRoomMemberRecord;
+    user?: UserPublicKey;
+    error?: string;
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -93,7 +132,7 @@ function assertActiveMember(
     member: MultiRoomMemberRecord | null,
     roomId: string
 ): MultiRoomMemberRecord {
-    if (!member || member.isDeleted) {
+    if (!member) {
         throw new AppError('NOT_FOUND', `Multi membership not found: ${roomId}`);
     }
     if (member.status !== 'accepted') {
@@ -134,14 +173,98 @@ function createAcceptedMember(
         status: 'accepted',
         encryptedRoomKey,
         createdAt: now,
-        updatedAt: now,
-        isDeleted: false
+        updatedAt: now
     };
+}
+
+function authHeaders(): Record<string, string> {
+    return pb.authStore.token ? { Authorization: pb.authStore.token } : {};
+}
+
+async function multiRoomApi(
+    method: 'POST' | 'DELETE',
+    path: string,
+    allowNotFound = false
+): Promise<MultiRoomApiResponse> {
+    const response = await appHttp.fetch(buildUrl(pb.baseUrl, path), {
+        method,
+        headers: authHeaders()
+    });
+    const body = (await response.json().catch(() => ({}))) as MultiRoomApiResponse;
+    if (response.status === 404 && allowNotFound) return body;
+    if (!response.ok) {
+        throw new AppError(
+            response.status === 401 || response.status === 403
+                ? 'NOT_AUTHENTICATED'
+                : 'NETWORK_ERROR',
+            body.error ?? `Multi-room API failed: ${response.status}`
+        );
+    }
+    return body;
+}
+
+async function getJson<T>(path: string): Promise<T> {
+    const response = await appHttp.fetch(buildUrl(pb.baseUrl, path), {
+        method: 'GET',
+        headers: authHeaders()
+    });
+    const body = (await response.json().catch(() => ({}))) as T & { error?: string };
+    if (!response.ok) {
+        throw new AppError(
+            response.status === 401 || response.status === 403
+                ? 'NOT_AUTHENTICATED'
+                : response.status === 404
+                  ? 'NOT_FOUND'
+                  : 'NETWORK_ERROR',
+            body.error ?? `Multi-room API failed: ${response.status}`
+        );
+    }
+    return body;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
 
 export class MultiRoomService {
+    static async searchPublicRooms(name = ''): Promise<PublicMultiRoom[]> {
+        const params = name.trim() ? `?name=${encodeURIComponent(name.trim())}` : '';
+        const result = await getJson<{ rooms?: PublicMultiRoom[] }>(
+            `/api/multi-rooms/search${params}`
+        );
+        return result.rooms ?? [];
+    }
+
+    static async getUserPublicKey(userId: string): Promise<UserPublicKey> {
+        const result = await getJson<UserPublicKey>(
+            `/api/users/${encodeURIComponent(userId)}/public-key`
+        );
+        return result;
+    }
+
+    static async getUserKeyTrust(userId: string): Promise<UserKeyTrust | null> {
+        return await appMulti.getUserKeyTrust(userId);
+    }
+
+    static async trustUserPublicKey(user: UserPublicKey, fingerprint: string): Promise<void> {
+        const existing = await appMulti.getUserKeyTrust(user.userId);
+        const now = clock.now();
+        await appMulti.saveUserKeyTrust({
+            userId: user.userId,
+            username: user.username,
+            publicKeyFingerprint: fingerprint,
+            firstSeenAt: existing?.firstSeenAt ?? now,
+            lastSeenAt: now
+        });
+    }
+
+    static async fingerprintUserPublicKey(user: UserPublicKey): Promise<string> {
+        return fingerprintIdentityPublicKey(user.identityPublicKey);
+    }
+
+    static async getOwnPublicKeyFingerprint(): Promise<string> {
+        const { identityKeyPair } = getActiveSession();
+        return fingerprintIdentityPublicKey(await exportPublicKey(identityKeyPair.publicKey));
+    }
+
     static async createRoom(params: CreateMultiRoomParams): Promise<Room> {
         const { userId, identityKeyPair } = getActiveSession();
         const roomId = generateId();
@@ -174,10 +297,11 @@ export class MultiRoomService {
             data: roomData
         };
 
-        await localDB.putRecord<RoomRecord>('rooms', roomRecord);
         await appMulti.saveRoomIndex(index);
         await appMulti.saveMember(member);
         setMultiRoomSession({ roomId, roomKey });
+        await MultiRecordSyncEngine.trigger();
+        await localDB.putRecord<RoomRecord>('rooms', roomRecord);
         void SyncManager.refreshRoomSync();
 
         return {
@@ -200,7 +324,7 @@ export class MultiRoomService {
             fromBase64(member.encryptedRoomKey!)
         );
         setMultiRoomSession({ roomId, roomKey });
-        void SyncManager.refreshRoomSync();
+        await SyncManager.refreshRoomSync();
         return toMultiRoom(index, member);
     }
 
@@ -215,7 +339,7 @@ export class MultiRoomService {
             getRoomIndex(roomId),
             appMulti.getMembership(roomId, userId)
         ]);
-        if (!membership || membership.isDeleted) {
+        if (!membership) {
             throw new AppError('NOT_FOUND', `Multi membership not found: ${roomId}`);
         }
         return toMultiRoom(index, membership);
@@ -228,34 +352,56 @@ export class MultiRoomService {
         const memberships = await appMulti.getMembersByUser(userId);
         const roomIds = memberships.filter((m) => m.status === 'accepted').map((m) => m.roomId);
 
-        const records = await Promise.all(
-            roomIds.map((member) => buffer.get<RoomRecord>('rooms', member))
-        );
+        const [indexes, records] = await Promise.all([
+            appMulti.getRoomIndexes(roomIds),
+            Promise.all(roomIds.map((roomId) => buffer.get<RoomRecord>('rooms', roomId)))
+        ]);
+        const indexById = new Map(indexes.map((index) => [index.id, index]));
 
-        return records
-            .filter((record): record is RoomRecord =>
-                Boolean(
-                    record &&
-                    !record.isDeleted &&
-                    record.scopeType === 'room' &&
-                    record.scopeId === record.id
-                )
-            )
-            .map((record) => ({
-                ...parseRoomFields(record),
-                id: record.id,
-                scopeType: record.scopeType,
-                scopeId: record.scopeId
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name));
+        const rooms: Room[] = [];
+        for (let i = 0; i < roomIds.length; i++) {
+            const roomId = roomIds[i];
+            const record = records[i];
+            if (
+                record &&
+                !record.isDeleted &&
+                record.scopeType === 'room' &&
+                record.scopeId === record.id
+            ) {
+                rooms.push({
+                    ...parseRoomFields(record),
+                    id: record.id,
+                    scopeType: record.scopeType,
+                    scopeId: record.scopeId
+                });
+                continue;
+            }
+
+            const meta = indexById.get(roomId);
+            if (meta) {
+                rooms.push({
+                    name: meta.publicName ?? meta.id,
+                    chats: { refs: {}, folders: {} },
+                    characters: { refs: {}, folders: {} },
+                    id: meta.id,
+                    scopeType: 'room' as const,
+                    scopeId: meta.id
+                });
+            }
+        }
+
+        return rooms.sort((a, b) => a.name.localeCompare(b.name));
     }
 
     static async listIndexes(): Promise<MultiRoom[]> {
         const { userId } = getActiveSession();
         const memberships = await appMulti.getMembersByUser(userId);
-        const indexes = await appMulti.getRoomIndexes(memberships.map((member) => member.roomId));
+        const acceptedMemberships = memberships.filter((member) => member.status === 'accepted');
+        const indexes = await appMulti.getRoomIndexes(
+            acceptedMemberships.map((member) => member.roomId)
+        );
         const indexById = new Map(indexes.map((index) => [index.id, index]));
-        return memberships
+        return acceptedMemberships
             .map((member) => {
                 const index = indexById.get(member.roomId);
                 return index ? toMultiRoom(index, member) : null;
@@ -276,8 +422,15 @@ export class MultiRoomService {
         if (index.ownerUserId !== userId) {
             throw new AppError('OWNERSHIP_VIOLATION', `Cannot update shared room: ${roomId}`);
         }
-        if (!membership || membership.isDeleted) {
+        if (!membership) {
             throw new AppError('NOT_FOUND', `Multi membership not found: ${roomId}`);
+        }
+
+        const hasChange =
+            (changes.visibility !== undefined && changes.visibility !== index.visibility) ||
+            ('publicName' in changes && changes.publicName !== index.publicName);
+        if (!hasChange) {
+            return toMultiRoom(index, membership);
         }
 
         const updated: MultiRoomIndexRecord = { ...index, updatedAt: clock.now() };
@@ -288,41 +441,56 @@ export class MultiRoomService {
             updated.publicName = changes.publicName;
         }
         await appMulti.saveRoomIndex(updated);
+        await MultiRecordSyncEngine.trigger();
         return toMultiRoom(updated, membership);
     }
 
-    static async inviteMember(
+    static async approveJoinRequest(
         roomId: string,
         recipientUserId: string,
         recipientPublicKey: CryptoKey
     ): Promise<MultiRoomMember> {
-        const { userId, roomId: activeRoomId, roomKey } = getActiveSession();
+        const { userId, identityKeyPair } = getActiveSession();
         await assertRoomOwner(roomId, userId);
         if (recipientUserId === userId) {
-            throw new AppError('INVALID_INPUT', 'Cannot invite yourself to your own room');
-        }
-        if (activeRoomId !== roomId || !roomKey) {
-            throw new AppError('INVALID_INPUT', `Multi room is not open: ${roomId}`);
+            throw new AppError('INVALID_INPUT', 'Cannot approve your own join request');
         }
 
-        const id = generateId();
         const now = clock.now();
-        const existing = await appMulti.getMembership(roomId, recipientUserId);
+        const [ownerMembership, existing] = await Promise.all([
+            appMulti.getMembership(roomId, userId),
+            appMulti.getMembership(roomId, recipientUserId)
+        ]);
+        const ownerMember = assertActiveMember(ownerMembership, roomId);
+        if (!existing || existing.status !== 'pending') {
+            throw new AppError(
+                'INVALID_INPUT',
+                `Multi membership is not pending: ${recipientUserId}`
+            );
+        }
+        const roomKey = await unwrapKeyWithIdentity(
+            identityKeyPair.privateKey,
+            fromBase64(ownerMember.encryptedRoomKey!)
+        );
         const wrappedRoomKey = await wrapKeyForIdentity(recipientPublicKey, roomKey);
 
         const member: MultiRoomMemberRecord = {
-            id: existing?.id ?? id,
+            id: existing.id,
             roomId,
             userId: recipientUserId,
             status: 'accepted',
             encryptedRoomKey: toBase64(wrappedRoomKey),
-            createdAt: existing?.createdAt ?? now,
-            updatedAt: now,
-            isDeleted: false
+            createdAt: existing.createdAt,
+            updatedAt: now
         };
 
         await appMulti.saveMember(member);
+        await MultiRecordSyncEngine.trigger();
         return toMultiRoomMember(member);
+    }
+
+    static async importUserPublicKey(user: UserPublicKey): Promise<CryptoKey> {
+        return importPublicKey(user.identityPublicKey);
     }
 
     static async revokeMember(roomId: string, targetUserId: string): Promise<void> {
@@ -332,7 +500,7 @@ export class MultiRoomService {
             throw new AppError('INVALID_INPUT', 'Cannot revoke the room owner');
         }
         const member = await appMulti.getMembership(roomId, targetUserId);
-        if (!member || member.isDeleted) {
+        if (!member) {
             throw new AppError('NOT_FOUND', `Multi membership not found: ${targetUserId}`);
         }
 
@@ -340,35 +508,21 @@ export class MultiRoomService {
             ...member,
             status: 'revoked',
             encryptedRoomKey: undefined,
-            updatedAt: clock.now(),
-            isDeleted: false
+            updatedAt: clock.now()
         });
+        await MultiRecordSyncEngine.trigger();
     }
 
     static async requestJoin(roomId: string): Promise<MultiRoomMember> {
-        const { userId } = getActiveSession();
-        await getRoomIndex(roomId);
-
-        const id = generateId();
-        const now = clock.now();
-        const existing = await appMulti.getMembership(roomId, userId);
-
-        if (existing && !existing.isDeleted && existing.status === 'accepted') {
-            return toMultiRoomMember(existing);
+        const result = await multiRoomApi(
+            'POST',
+            `/api/multi-rooms/${encodeURIComponent(roomId)}/join-request`
+        );
+        if (!result.member) {
+            throw new AppError('NETWORK_ERROR', 'Join request did not return a membership.');
         }
-
-        const member: MultiRoomMemberRecord = {
-            id: existing?.id ?? id,
-            roomId,
-            userId,
-            status: 'pending',
-            encryptedRoomKey: undefined,
-            createdAt: existing?.createdAt ?? now,
-            updatedAt: now,
-            isDeleted: false
-        };
-
-        await appMulti.saveMember(member);
+        const member = result.member;
+        await appMulti.saveMember(member, { origin: 'sync' });
         return toMultiRoomMember(member);
     }
 
@@ -377,7 +531,7 @@ export class MultiRoomService {
         await assertRoomOwner(roomId, userId);
 
         const member = await appMulti.getMembership(roomId, targetUserId);
-        if (!member || member.isDeleted) {
+        if (!member) {
             throw new AppError('NOT_FOUND', `Multi membership not found: ${targetUserId}`);
         }
         if (member.status !== 'pending') {
@@ -388,9 +542,9 @@ export class MultiRoomService {
             ...member,
             status: 'revoked',
             encryptedRoomKey: undefined,
-            updatedAt: clock.now(),
-            isDeleted: false
+            updatedAt: clock.now()
         });
+        await MultiRecordSyncEngine.trigger();
     }
 
     static async listMembers(roomId: string): Promise<MultiRoomMember[]> {
@@ -402,44 +556,54 @@ export class MultiRoomService {
             .sort((a, b) => a.createdAt - b.createdAt);
     }
 
-    // Unlike deleteUser, deleteRoom is not destructive, but only soft deletes and expect to be synced
     static async deleteRoom(roomId: string): Promise<void> {
-        const {
-            userId,
-            identityKeyPair,
-            roomId: activeRoomId,
-            roomKey: activeRoomKey
-        } = getActiveSession();
+        const { userId } = getActiveSession();
         await assertRoomOwner(roomId, userId);
-        const roomKey =
-            activeRoomId === roomId && activeRoomKey
-                ? activeRoomKey
-                : await this.getRoomKey(roomId, userId, identityKeyPair.privateKey);
-        const rawRoomKey = await exportMasterKeyRaw(roomKey);
-        const encodedRoomKey = toBase64(rawRoomKey);
-        rawRoomKey.fill(0);
+        const result = await multiRoomApi(
+            'DELETE',
+            `/api/multi-rooms/${encodeURIComponent(roomId)}`,
+            true
+        );
+        if (result.room) {
+            await appMulti.saveRoomIndex(result.room, { origin: 'sync' });
+        } else {
+            await appMulti.purgeRoomLocal(roomId, { origin: 'sync' });
+        }
+        await this.purgeLocalRoomContent(roomId);
+    }
 
-        const now = clock.now();
-        await appMulti.saveDeleteMarker({
-            roomId,
-            roomKey: encodedRoomKey,
-            dataDone: false,
-            assetDone: false,
-            createdAt: now,
-            updatedAt: now,
-            attempts: 0
-        });
+    static async purgeInaccessibleRoomContent(): Promise<void> {
+        const { userId } = getActiveSession();
+        const memberships = await appMulti.getMembersByUser(userId);
+        const roomIds = Array.from(new Set(memberships.map((member) => member.roomId)));
+        const indexes = await appMulti.getRoomIndexes(roomIds);
+        const accessibleRoomIds = new Set(indexes.map((index) => index.id));
+        const purgeRoomIds = new Set<string>();
 
-        // Purge all asset artifacts for this room
+        for (const member of memberships) {
+            if (member.status !== 'accepted' || !accessibleRoomIds.has(member.roomId)) {
+                purgeRoomIds.add(member.roomId);
+            }
+        }
+
+        for (const roomId of purgeRoomIds) {
+            try {
+                await this.purgeLocalRoomContent(roomId);
+            } catch (error) {
+                logger.error(`Failed to purge inaccessible multi room content: ${roomId}`, error);
+            }
+        }
+    }
+
+    static async purgeLocalRoomContent(roomId: string): Promise<void> {
         const roomScope = { scopeType: 'room' as const, scopeId: roomId };
         const [assets, registry] = await Promise.all([
             appAsset.getAllAssets(roomScope),
             appAsset.getAllRegistry(roomScope)
         ]);
 
-        // Soft delete all asset records
         for (const asset of assets) {
-            await appAsset.softDeleteAsset(asset.id);
+            await appAsset.deleteAsset(asset.id, { origin: 'sync' });
         }
 
         const ids = new Set<string>([...assets.map((r) => r.id), ...registry.map((r) => r.id)]);
@@ -449,40 +613,38 @@ export class MultiRoomService {
         }
 
         await Promise.all(TABLES.map((table) => buffer.flushTable(table)));
-        const dbPromises = TABLES.map((table) =>
-            localDB.softDeleteByIndex(table, 'scopeId', roomId)
-        );
+        await Promise.all(TABLES.map((table) => localDB.deleteByIndex(table, 'scopeId', roomId)));
 
-        await Promise.all([
-            ...dbPromises,
-            appMulti.deleteRoomIndex(roomId),
-            appMulti.deleteMembersByRoom(roomId)
-        ]);
-
-        if (activeRoomId === roomId || !activeRoomKey) {
+        if (getActiveSession().roomId === roomId) {
             clearMultiRoomSession();
             void SyncManager.refreshRoomSync();
         }
-    }
-
-    private static async getRoomKey(
-        roomId: string,
-        userId: string,
-        privateKey: CryptoKey
-    ): Promise<CryptoKey> {
-        const membership = await appMulti.getMembership(roomId, userId);
-        const member = assertActiveMember(membership, roomId);
-        return unwrapKeyWithIdentity(privateKey, fromBase64(member.encryptedRoomKey!));
     }
 
     static async leaveRoom(roomId: string): Promise<void> {
-        const { userId, roomId: activeRoomId } = getActiveSession();
-        const member = await appMulti.getMembership(roomId, userId);
-        if (!member || member.isDeleted) return;
-        await appMulti.deleteMember(member.id);
-        if (activeRoomId === roomId) {
-            clearMultiRoomSession();
-            void SyncManager.refreshRoomSync();
+        const { userId } = getActiveSession();
+        const result = await multiRoomApi(
+            'POST',
+            `/api/multi-rooms/${encodeURIComponent(roomId)}/leave`,
+            true
+        );
+        if (result.member) {
+            await appMulti.saveMember(result.member, { origin: 'sync' });
+        } else {
+            // Room already deleted or membership gone — mark local as left
+            const local = await appMulti.getMembership(roomId, userId);
+            if (local && local.status !== 'left') {
+                await appMulti.saveMember(
+                    {
+                        ...local,
+                        status: 'left',
+                        encryptedRoomKey: undefined,
+                        updatedAt: clock.now()
+                    },
+                    { origin: 'sync' }
+                );
+            }
         }
+        await this.purgeLocalRoomContent(roomId);
     }
 }

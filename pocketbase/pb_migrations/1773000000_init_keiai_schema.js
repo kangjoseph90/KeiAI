@@ -64,12 +64,12 @@ migrate(
 
     // ─── 3. Create blind sync tables ─────────────────────────────────
     const userRule = "userId = @request.auth.id";
-    const memberRule =
-      '@request.auth.id != "" && @collection.multi_room_members.roomId ?= roomId && @collection.multi_room_members.userId ?= @request.auth.id && @collection.multi_room_members.status ?= "accepted" && @collection.multi_room_members.isDeleted ?= false';
+    const activeMemberRule =
+      '@request.auth.id != "" && @collection.multi_room_index.id ?= roomId && @collection.multi_room_index.isDeleted ?= false && @collection.multi_room_members.roomId ?= roomId && @collection.multi_room_members.userId ?= @request.auth.id && @collection.multi_room_members.status ?= "accepted"';
     const memberMetaRule =
-      '@request.auth.id != "" && @collection.multi_room_members.roomId ?= id && @collection.multi_room_members.userId ?= @request.auth.id && @collection.multi_room_members.isDeleted ?= false';
+      '@request.auth.id != "" && @collection.multi_room_members.roomId ?= id && @collection.multi_room_members.userId ?= @request.auth.id';
     const memberRowMetaRule =
-      '@request.auth.id != "" && @collection.multi_room_members.roomId ?= roomId && @collection.multi_room_members.userId ?= @request.auth.id && @collection.multi_room_members.isDeleted ?= false';
+      '@request.auth.id != "" && (userId = @request.auth.id || @collection.multi_room_index.id ?= roomId && @collection.multi_room_index.ownerUserId ?= @request.auth.id || @collection.multi_room_members.roomId ?= roomId && @collection.multi_room_members.userId ?= @request.auth.id && @collection.multi_room_members.status ?= "accepted")';
     const ownerByRoomRule =
       '@request.auth.id != "" && @collection.multi_room_index.id ?= roomId && @collection.multi_room_index.ownerUserId ?= @request.auth.id && @collection.multi_room_index.isDeleted ?= false';
     const encryptedPayloadMaxChars = 10 * 1024 * 1024;
@@ -145,11 +145,11 @@ migrate(
       const collection = new Collection({
         name: name,
         type: "base",
-        listRule: memberRule,
-        viewRule: memberRule,
-        createRule: memberRule,
-        updateRule: memberRule,
-        deleteRule: memberRule,
+        listRule: activeMemberRule,
+        viewRule: activeMemberRule,
+        createRule: activeMemberRule,
+        updateRule: activeMemberRule,
+        deleteRule: activeMemberRule,
       });
 
       collection.fields.add(
@@ -255,7 +255,6 @@ migrate(
     members.fields.add(
       new Field({ name: "updatedAt", type: "number", required: true }),
     );
-    members.fields.add(new Field({ name: "isDeleted", type: "bool" }));
     app.save(members);
 
     app
@@ -302,6 +301,11 @@ migrate(
     const catalog = new Collection({
       name: "asset_catalog",
       type: "base",
+      listRule: null,
+      viewRule: null,
+      createRule: null,
+      updateRule: null,
+      deleteRule: null,
     });
 
     catalog.fields.add(
@@ -332,6 +336,11 @@ migrate(
     const usage = new Collection({
       name: "asset_usage",
       type: "base",
+      listRule: null,
+      viewRule: null,
+      createRule: null,
+      updateRule: null,
+      deleteRule: null,
     });
 
     usage.fields.add(
@@ -369,6 +378,11 @@ migrate(
     const accounts = new Collection({
       name: "asset_accounts",
       type: "base",
+      listRule: null,
+      viewRule: null,
+      createRule: null,
+      updateRule: null,
+      deleteRule: null,
     });
 
     accounts.fields.add(
@@ -377,9 +391,7 @@ migrate(
     accounts.fields.add(
       new Field({ name: "usedBytes", type: "number", min: 0 }),
     );
-    accounts.fields.add(
-      new Field({ name: "maxBytes", type: "number" }),
-    );
+    accounts.fields.add(new Field({ name: "maxBytes", type: "number" }));
     accounts.fields.add(
       new Field({ name: "createdAt", type: "number", required: true }),
     );

@@ -1,5 +1,16 @@
 <script lang="ts">
-    import { DoorOpen, Import, Plus, Search, Sparkles, Trash2, UserRound } from 'lucide-svelte';
+    import {
+        Check,
+        DoorOpen,
+        Import,
+        KeyRound,
+        Plus,
+        Search,
+        Sparkles,
+        Trash2,
+        UserRound,
+        X
+    } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
@@ -16,17 +27,28 @@
         deleteMultiRoom,
         deletePersona,
         deleteRoom,
+        leaveMultiRoom,
+        loadOwnedMultiRoomMembers,
         moveGlobalItem,
+        multiRoomMembers,
+        multiRoomMetas,
         multiRooms,
         personas,
+        rejectJoinMultiRoom,
+        requestJoinMultiRoom,
         rooms,
         selectMultiRoom,
-        updateGlobalFolder
+        updateGlobalFolder,
+        userId
     } from '$lib/stores';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { importCharacterFile } from '$lib/managers';
     import { importPersonaFile } from '$lib/managers/persona';
     import type { RouteState } from '$lib/router';
+    import { MultiRoomService, type PublicMultiRoom } from '$lib/services';
+    import { formatPublicKeyFingerprint } from '$lib/crypto';
+    import { getErrorMessage } from '$lib/types/errors';
+    import { approveMultiRoomJoinRequest } from '$lib/stores';
 
     interface Props {
         onNavigate: (route: RouteState) => void;
@@ -45,6 +67,13 @@
     let importingPersona = $state(false);
     let roomName = $state('');
     let multiRoomName = $state('');
+    let joinRoomId = $state('');
+    let publicRoomQuery = $state('');
+    let publicRoomResults = $state<PublicMultiRoom[]>([]);
+    let multiRoomActionError = $state('');
+    let searchingPublicRooms = $state(false);
+    let joiningRoom = $state(false);
+    let approvingMemberId = $state('');
     let characterName = $state('');
     let personaName = $state('');
 
@@ -60,6 +89,10 @@
         return $multiRooms.filter((room) => room.name.toLowerCase().includes(normalized));
     });
 
+    function isMultiRoomOwner(roomId: string): boolean {
+        return $multiRoomMetas.find((item) => item.id === roomId)?.ownerUserId === $userId;
+    }
+
     const filteredCharacters = $derived(() => {
         const normalized = query.trim().toLowerCase();
         if (!normalized) return $characters;
@@ -70,6 +103,29 @@
         const normalized = query.trim().toLowerCase();
         if (!normalized) return $personas;
         return $personas.filter((persona) => persona.name.toLowerCase().includes(normalized));
+    });
+
+    const pendingRequests = $derived(() => {
+        const ownedRoomIds = new Set(
+            $multiRoomMetas.filter((meta) => meta.ownerUserId === $userId).map((meta) => meta.id)
+        );
+        return Array.from($multiRoomMembers.entries()).flatMap(([roomId, members]) =>
+            ownedRoomIds.has(roomId)
+                ? members
+                      .filter((member) => member.status === 'pending')
+                      .map((member) => ({
+                          roomId,
+                          roomName: $multiRooms.find((room) => room.id === roomId)?.name ?? roomId,
+                          member
+                      }))
+                : []
+        );
+    });
+
+    $effect(() => {
+        if (tab === 'multiRooms') {
+            void loadOwnedMultiRoomMembers();
+        }
     });
 
     async function handleCreateRoom() {
@@ -94,6 +150,80 @@
         multiRoomName = '';
         creatingMultiRoom = false;
         await openMultiRoom(room.id);
+    }
+
+    async function handleSearchPublicRooms() {
+        searchingPublicRooms = true;
+        multiRoomActionError = '';
+        try {
+            publicRoomResults = await MultiRoomService.searchPublicRooms(publicRoomQuery);
+        } catch (e) {
+            multiRoomActionError = getErrorMessage(e);
+        } finally {
+            searchingPublicRooms = false;
+        }
+    }
+
+    async function handleRequestJoin(roomId: string) {
+        const trimmed = roomId.trim();
+        if (!trimmed) return;
+        joiningRoom = true;
+        multiRoomActionError = '';
+        try {
+            await requestJoinMultiRoom(trimmed);
+            joinRoomId = '';
+        } catch (e) {
+            multiRoomActionError = getErrorMessage(e);
+        } finally {
+            joiningRoom = false;
+        }
+    }
+
+    async function handleApprovePending(roomId: string, memberUserId: string) {
+        approvingMemberId = `${roomId}:${memberUserId}`;
+        multiRoomActionError = '';
+        try {
+            const user = await MultiRoomService.getUserPublicKey(memberUserId);
+            const fingerprint = await MultiRoomService.fingerprintUserPublicKey(user);
+            const trusted = await MultiRoomService.getUserKeyTrust(user.userId);
+            const formatted = formatPublicKeyFingerprint(fingerprint);
+
+            if (!trusted) {
+                const ok = confirm(
+                    `First time seeing ${user.username || user.userId}.\nFingerprint: ${formatted}`
+                );
+                if (!ok) return;
+                await MultiRoomService.trustUserPublicKey(user, fingerprint);
+            } else if (trusted.publicKeyFingerprint !== fingerprint) {
+                alert(
+                    `Public key fingerprint changed for ${user.username || user.userId}.\nPrevious: ${formatPublicKeyFingerprint(trusted.publicKeyFingerprint)}\nCurrent: ${formatted}`
+                );
+                return;
+            } else {
+                await MultiRoomService.trustUserPublicKey(user, fingerprint);
+            }
+
+            const publicKey = await MultiRoomService.importUserPublicKey(user);
+            await approveMultiRoomJoinRequest(roomId, user.userId, publicKey);
+            await loadOwnedMultiRoomMembers();
+        } catch (e) {
+            multiRoomActionError = getErrorMessage(e);
+        } finally {
+            approvingMemberId = '';
+        }
+    }
+
+    async function handleRejectPending(roomId: string, memberUserId: string) {
+        approvingMemberId = `${roomId}:${memberUserId}`;
+        multiRoomActionError = '';
+        try {
+            await rejectJoinMultiRoom(roomId, memberUserId);
+            await loadOwnedMultiRoomMembers();
+        } catch (e) {
+            multiRoomActionError = getErrorMessage(e);
+        } finally {
+            approvingMemberId = '';
+        }
     }
 
     async function openMultiRoom(roomId: string) {
@@ -145,6 +275,11 @@
     async function handleDeleteMultiRoom(roomId: string, name: string) {
         if (!confirm(`Delete multi room "${name}"?`)) return;
         await deleteMultiRoom(roomId);
+    }
+
+    async function handleLeaveMultiRoom(roomId: string, name: string) {
+        if (!confirm(`Leave multi room "${name}"?`)) return;
+        await leaveMultiRoom(roomId);
     }
 
     async function handleImportPersona(event: Event) {
@@ -459,6 +594,123 @@
                         {/snippet}
                     </EntityList>
                 {:else if tab === 'multiRooms'}
+                    <div class="grid gap-3 lg:grid-cols-3">
+                        <form
+                            class="rounded-lg border bg-card p-3"
+                            onsubmit={(event) => {
+                                event.preventDefault();
+                                handleRequestJoin(joinRoomId);
+                            }}
+                        >
+                            <div class="flex gap-2">
+                                <Input bind:value={joinRoomId} placeholder="Room id" />
+                                <Button type="submit" disabled={joiningRoom || !joinRoomId.trim()}>
+                                    <KeyRound class="size-4" />
+                                </Button>
+                            </div>
+                        </form>
+
+                        <form
+                            class="rounded-lg border bg-card p-3 lg:col-span-2"
+                            onsubmit={(event) => {
+                                event.preventDefault();
+                                handleSearchPublicRooms();
+                            }}
+                        >
+                            <div class="flex gap-2">
+                                <Input bind:value={publicRoomQuery} placeholder="Public room" />
+                                <Button type="submit" disabled={searchingPublicRooms}>
+                                    <Search class="size-4" />
+                                </Button>
+                            </div>
+                            {#if publicRoomResults.length > 0}
+                                <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                                    {#each publicRoomResults as result (result.id)}
+                                        <div
+                                            class="flex min-w-0 items-center justify-between gap-2 rounded-md border bg-background px-3 py-2"
+                                        >
+                                            <div class="min-w-0">
+                                                <div class="truncate text-sm font-medium">
+                                                    {result.publicName || result.id}
+                                                </div>
+                                                <div class="truncate text-xs text-muted-foreground">
+                                                    {result.id}
+                                                </div>
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={joiningRoom}
+                                                onclick={() => handleRequestJoin(result.id)}
+                                            >
+                                                <KeyRound class="size-4" />
+                                            </Button>
+                                        </div>
+                                    {/each}
+                                </div>
+                            {/if}
+                        </form>
+                    </div>
+
+                    {#if pendingRequests().length > 0}
+                        <div class="rounded-lg border bg-card p-3">
+                            <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                                {#each pendingRequests() as request (request.member.id)}
+                                    <div
+                                        class="flex min-w-0 items-center justify-between gap-2 rounded-md border bg-background px-3 py-2"
+                                    >
+                                        <div class="min-w-0">
+                                            <div class="truncate text-sm font-medium">
+                                                {request.roomName}
+                                            </div>
+                                            <div class="truncate text-xs text-muted-foreground">
+                                                {request.member.userId}
+                                            </div>
+                                        </div>
+                                        <div class="flex shrink-0 gap-1">
+                                            <Button
+                                                size="icon-sm"
+                                                variant="outline"
+                                                title="Approve"
+                                                disabled={approvingMemberId ===
+                                                    `${request.roomId}:${request.member.userId}`}
+                                                onclick={() =>
+                                                    handleApprovePending(
+                                                        request.roomId,
+                                                        request.member.userId
+                                                    )}
+                                            >
+                                                <Check class="size-4" />
+                                            </Button>
+                                            <Button
+                                                size="icon-sm"
+                                                variant="ghost"
+                                                title="Reject"
+                                                disabled={approvingMemberId ===
+                                                    `${request.roomId}:${request.member.userId}`}
+                                                onclick={() =>
+                                                    handleRejectPending(
+                                                        request.roomId,
+                                                        request.member.userId
+                                                    )}
+                                            >
+                                                <X class="size-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+
+                    {#if multiRoomActionError}
+                        <div
+                            class="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+                        >
+                            {multiRoomActionError}
+                        </div>
+                    {/if}
+
                     <EntityList
                         entities={filteredMultiRooms()}
                         config={$appSettings.multiRooms}
@@ -527,10 +779,19 @@
                                         variant="ghost"
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-destructive"
-                                        title="Delete multi room"
-                                        onclick={() => handleDeleteMultiRoom(room.id, room.name)}
+                                        title={isMultiRoomOwner(room.id)
+                                            ? 'Delete multi room'
+                                            : 'Leave multi room'}
+                                        onclick={() =>
+                                            isMultiRoomOwner(room.id)
+                                                ? handleDeleteMultiRoom(room.id, room.name)
+                                                : handleLeaveMultiRoom(room.id, room.name)}
                                     >
-                                        <Trash2 class="size-4" />
+                                        {#if isMultiRoomOwner(room.id)}
+                                            <Trash2 class="size-4" />
+                                        {:else}
+                                            <DoorOpen class="size-4" />
+                                        {/if}
                                     </Button>
                                 </div>
                                 <button

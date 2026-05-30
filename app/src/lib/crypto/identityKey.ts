@@ -13,6 +13,7 @@
 
 import { IDENTITY_RSA_MODULUS_BITS, IDENTITY_RSA_PUBLIC_EXPONENT } from './constants';
 import { importMasterKey } from './masterKey';
+import { sha256 } from './hash';
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
@@ -55,6 +56,29 @@ export async function importPublicKey(jwk: JsonWebKey): Promise<CryptoKey> {
     return crypto.subtle.importKey('jwk', jwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, true, [
         'encrypt'
     ]);
+}
+
+export async function fingerprintIdentityPublicKey(jwk: JsonWebKey): Promise<string> {
+    return sha256(
+        JSON.stringify({
+            alg: jwk.alg ?? '',
+            e: jwk.e ?? '',
+            ext: jwk.ext ?? true,
+            key_ops: jwk.key_ops ?? [],
+            kty: jwk.kty ?? '',
+            n: jwk.n ?? ''
+        })
+    );
+}
+
+export function formatPublicKeyFingerprint(fingerprint: string): string {
+    return (
+        fingerprint
+            .slice(0, 32)
+            .toUpperCase()
+            .match(/.{1,4}/g)
+            ?.join(' ') ?? fingerprint
+    );
 }
 
 // ─── Private Key Export / Import ─────────────────────────────────────

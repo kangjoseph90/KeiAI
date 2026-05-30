@@ -57,14 +57,6 @@ vi.mock('$lib/adapters/kv', () => ({
     }
 }));
 
-vi.mock('$lib/adapters/multi', () => ({
-    appMulti: {
-        getDeleteMarkers: vi.fn(() => Promise.resolve([])),
-        saveDeleteMarker: vi.fn(),
-        deleteDeleteMarker: vi.fn()
-    }
-}));
-
 vi.mock('$lib/services/session', () => ({
     getActiveSession: vi.fn(),
     hasActiveSession: vi.fn(),
@@ -77,12 +69,9 @@ vi.mock('$lib/services/session', () => ({
 vi.mock('$lib/crypto', () => ({
     toBase64: vi.fn((b) => 'base64-' + b),
     fromBase64: vi.fn(() => new Uint8Array([1, 2, 3])),
-    importMasterKey: vi.fn(() => Promise.resolve({ type: 'room-key' } as unknown as CryptoKey)),
     encrypt: vi.fn(() => ({ ciphertext: new Uint8Array(), iv: new Uint8Array() })),
     decrypt: vi.fn(() => '{}')
 }));
-
-import { appMulti } from '$lib/adapters/multi';
 
 describe('DataRecordSyncEngine', () => {
     const mockUserId = 'user-123';
@@ -278,61 +267,6 @@ describe('DataRecordSyncEngine', () => {
                 ],
                 expect.objectContaining({ origin: 'sync' })
             );
-        });
-
-        it('should push room delete marker tombstones and mark data done', async () => {
-            vi.mocked(appKV.get).mockResolvedValue('1000');
-            vi.mocked(mockCollection.getList).mockResolvedValue({
-                items: [],
-                page: 1,
-                totalPages: 1
-            } as unknown as { items: unknown[]; page: number; totalPages: number });
-            vi.mocked(appMulti.getDeleteMarkers).mockResolvedValue([
-                {
-                    roomId: mockRoomId,
-                    roomKey: 'room-key',
-                    dataDone: false,
-                    assetDone: false,
-                    createdAt: 1,
-                    updatedAt: 2,
-                    attempts: 0
-                }
-            ]);
-            const deletedRecord: DataRecord = {
-                id: 'deleted-room-record',
-                scopeType: 'room',
-                scopeId: mockRoomId,
-                createdAt: 1,
-                updatedAt: 2,
-                isDeleted: true,
-                data: {}
-            };
-            vi.mocked(localDB.getUnsyncedChanges)
-                .mockResolvedValueOnce([])
-                .mockResolvedValueOnce([])
-                .mockResolvedValueOnce([deletedRecord])
-                .mockResolvedValueOnce([]);
-
-            await DataRecordSyncEngine.trigger();
-
-            expect(mockBatch.collection).toHaveBeenCalledWith('multi_room_records');
-            expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    id: 'deleted-room-record',
-                    roomId: mockRoomId,
-                    kind: 'characters',
-                    isDeleted: true
-                })
-            );
-            expect(appMulti.saveDeleteMarker).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    roomId: mockRoomId,
-                    dataDone: true,
-                    assetDone: false,
-                    lastError: undefined
-                })
-            );
-            expect(appMulti.deleteDeleteMarker).not.toHaveBeenCalled();
         });
     });
 

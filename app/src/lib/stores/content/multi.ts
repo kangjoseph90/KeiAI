@@ -12,6 +12,7 @@ import {
     type RoomFields,
     type UpdateMultiRoomIndexParams
 } from '$lib/services';
+import { getActiveSession } from '$lib/services/session';
 import { AppError } from '$lib/types/errors';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
@@ -26,12 +27,6 @@ import {
 } from '../state';
 import { clearActiveRoom, updateRoom } from './room';
 import { getAppSettings, updateSettings } from './settings';
-
-function assertActiveMultiRoom(roomId: string): void {
-    if (!get(isMultiRoom) || get(activeRoomId) !== roomId) {
-        throw new AppError('INVALID_INPUT', `Multi room is not active: ${roomId}`);
-    }
-}
 
 function setRoomMembers(roomId: string, members: MultiRoomMember[]): void {
     multiRoomMembers.update((current) => {
@@ -57,6 +52,7 @@ function upsertRoomMember(member: MultiRoomMember): void {
 }
 
 export async function loadMultiRooms(): Promise<void> {
+    await MultiRoomService.purgeInaccessibleRoomContent();
     const settings = await getAppSettings();
     const [rooms, metas] = await Promise.all([
         MultiRoomService.listRooms(),
@@ -91,6 +87,22 @@ export async function loadMultiRoomMembers(roomId: string): Promise<MultiRoomMem
     const members = await MultiRoomService.listMembers(roomId);
     setRoomMembers(roomId, members);
     return members;
+}
+
+export async function loadOwnedMultiRoomMembers(): Promise<void> {
+    const { userId } = getActiveSession();
+    const metas = await MultiRoomService.listIndexes();
+    await Promise.all(
+        metas
+            .filter((meta) => meta.ownerUserId === userId)
+            .map(async (meta) => {
+                try {
+                    setRoomMembers(meta.id, await MultiRoomService.listMembers(meta.id));
+                } catch {
+                    // A stale owner-visible room should not block the home view.
+                }
+            })
+    );
 }
 
 export async function selectMultiRoom(roomId: string): Promise<void> {
@@ -155,7 +167,6 @@ export async function createMultiRoom(fields: CreateMultiRoomParams): Promise<Ro
 }
 
 export async function deleteMultiRoom(roomId: string): Promise<void> {
-    assertActiveMultiRoom(roomId);
     const settings = await getAppSettings();
     const existingRef = settings.multiRooms.refs[roomId];
 
@@ -180,12 +191,41 @@ export async function deleteMultiRoom(roomId: string): Promise<void> {
     }
 }
 
-export async function inviteMultiRoomMember(
+export async function leaveMultiRoom(roomId: string): Promise<void> {
+    const settings = await getAppSettings();
+    const existingRef = settings.multiRooms.refs[roomId];
+
+    await updateSettings({ multiRooms: { refs: { [roomId]: undefined } } });
+
+    try {
+        await MultiRoomService.leaveRoom(roomId);
+    } catch (error) {
+        await updateSettings({ multiRooms: { refs: { [roomId]: existingRef } } });
+        throw error;
+    }
+
+    multiRooms.delete(roomId);
+    multiRoomMetas.delete(roomId);
+    multiRoomMembers.update((current) => {
+        const next = new Map(current);
+        next.delete(roomId);
+        return next;
+    });
+    if (get(activeRoomId) === roomId) {
+        clearActiveRoom();
+    }
+}
+
+export async function approveMultiRoomJoinRequest(
     roomId: string,
     recipientUserId: string,
     recipientPublicKey: CryptoKey
 ): Promise<MultiRoomMember> {
-    const member = await MultiRoomService.inviteMember(roomId, recipientUserId, recipientPublicKey);
+    const member = await MultiRoomService.approveJoinRequest(
+        roomId,
+        recipientUserId,
+        recipientPublicKey
+    );
     upsertRoomMember(member);
     return member;
 }

@@ -11,7 +11,7 @@
 
 import { pb } from '$lib/adapters/pb';
 import { getActiveSession } from '../session';
-import { encrypt, decrypt, toBase64, fromBase64, importMasterKey } from '$lib/crypto';
+import { encrypt, decrypt, toBase64, fromBase64 } from '$lib/crypto';
 import {
     localDB,
     type TableName,
@@ -22,15 +22,12 @@ import {
     type DatabaseWriteEvent
 } from '$lib/adapters/db';
 import { appKV } from '$lib/adapters/kv';
-import { appMulti, type MultiRoomDeleteMarkerRecord } from '$lib/adapters/multi';
 import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
 import { createLogger } from '$lib/adapters/logger';
-import { clock } from '$lib/utils/clock';
 import {
     normalizeTimestamp,
     PAGE_SIZE,
     CHUNK_SIZE,
-    MAX_DELETE_MARKER_ATTEMPTS,
     belongsToScope,
     getSyncKey,
     getActiveSyncScopes,
@@ -137,8 +134,6 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             })
         );
 
-        await this.syncRoomDeleteMarkers();
-
         for (const result of results) {
             if (result.status === 'rejected') {
                 firstError ??= result.reason;
@@ -226,10 +221,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             logger.error(`Failed to pull ${syncScope.collection}`, err);
         }
 
-        const scannedUnsynced = await this.collectUnsyncedChanges(
-            syncScope.scope,
-            lastSyncTime - 1
-        );
+        const scannedUnsynced = await this.collectUnsyncedChanges(syncScope.scope, lastSyncTime);
         for (const change of scannedUnsynced) {
             offlineWrites.set(this.changeKey(change.table, change.record.id), change);
         }
@@ -346,55 +338,6 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         if (changes.length === 0) return;
 
         await this.pushChangesForActiveScopes(changes);
-    }
-
-    private async syncRoomDeleteMarkers(): Promise<void> {
-        const markers = await appMulti.getDeleteMarkers();
-        for (const marker of markers) {
-            await this.syncRoomDeleteMarker(marker);
-        }
-    }
-
-    private async syncRoomDeleteMarker(marker: MultiRoomDeleteMarkerRecord): Promise<void> {
-        if (marker.attempts >= MAX_DELETE_MARKER_ATTEMPTS) return;
-
-        const scope: DataScope = { scopeType: 'room', scopeId: marker.roomId };
-        const rawRoomKey = fromBase64(marker.roomKey);
-
-        try {
-            const roomKey = await importMasterKey(rawRoomKey, true);
-            const syncScope: SyncScope = {
-                scope,
-                key: roomKey,
-                collection: ROOM_RECORDS_COLLECTION,
-                ownerField: 'roomId'
-            };
-            const changes = (await this.collectUnsyncedChanges(scope, 0)).filter(
-                ({ record }) => record.isDeleted
-            );
-            if (changes.length > 0) {
-                await this.pushChanges(syncScope, changes, false);
-            }
-            if (marker.assetDone) {
-                await appMulti.deleteDeleteMarker(marker.roomId);
-            } else {
-                await appMulti.saveDeleteMarker({
-                    ...marker,
-                    dataDone: true,
-                    updatedAt: clock.now(),
-                    lastError: undefined
-                });
-            }
-        } catch (error) {
-            await appMulti.saveDeleteMarker({
-                ...marker,
-                attempts: marker.attempts + 1,
-                updatedAt: clock.now(),
-                lastError: error instanceof Error ? error.message : String(error)
-            });
-        } finally {
-            rawRoomKey.fill(0);
-        }
     }
 
     private async handleRealtimeEvent(

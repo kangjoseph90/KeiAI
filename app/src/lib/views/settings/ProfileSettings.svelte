@@ -14,6 +14,8 @@
     import { Upload, UserRoundPen } from 'lucide-svelte';
     import { getErrorMessage } from '$lib/types/errors';
     import { blobToDataUrl, preprocessImage } from '$lib/utils/image';
+    import { MultiRoomService } from '$lib/services';
+    import { formatPublicKeyFingerprint } from '$lib/crypto';
 
     const AVATAR_MAX_SIZE = 5 * 1024 * 1024;
     const AVATAR_IMAGE_SIZE = 512;
@@ -26,10 +28,23 @@
     let loading = $state(false);
     let errorMsg = $state('');
     let successMsg = $state('');
+    let identityFingerprint = $state('');
 
     $effect(() => {
         if ($activeUser && !userName) {
             userName = $activeUser.name;
+        }
+    });
+
+    $effect(() => {
+        if ($activeUser) {
+            void MultiRoomService.getOwnPublicKeyFingerprint()
+                .then((fingerprint) => {
+                    identityFingerprint = formatPublicKeyFingerprint(fingerprint);
+                })
+                .catch(() => {
+                    identityFingerprint = '';
+                });
         }
     });
 
@@ -137,6 +152,15 @@
                 <Input bind:value={userName} placeholder="Your display name" />
             </div>
         </div>
+
+        {#if identityFingerprint}
+            <div class="space-y-2">
+                <Label>Identity Fingerprint</Label>
+                <div class="rounded-md border bg-muted/30 px-3 py-2 font-mono text-sm">
+                    {identityFingerprint}
+                </div>
+            </div>
+        {/if}
 
         <Button class="w-full" disabled={loading || !userName} onclick={handleUpdateUser}>
             <UserRoundPen class="mr-2 size-4" /> Save Profile
