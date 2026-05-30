@@ -8,7 +8,7 @@
 import type { DatabaseMutationOrigin } from '$lib/adapters/db';
 
 export type MultiRoomVisibility = 'public' | 'private';
-export type MultiRoomMemberStatus = 'pending' | 'accepted' | 'revoked';
+export type MultiRoomMemberStatus = 'pending' | 'accepted' | 'revoked' | 'left';
 
 export interface MultiRoomIndexRecord {
     id: string; // roomId
@@ -28,23 +28,19 @@ export interface MultiRoomMemberRecord {
     encryptedRoomKey?: string;
     createdAt: number;
     updatedAt: number;
-    isDeleted: boolean;
 }
 
-export interface MultiRoomDeleteMarkerRecord {
-    roomId: string;
-    roomKey: string;
-    dataDone: boolean;
-    assetDone: boolean;
-    createdAt: number;
-    updatedAt: number;
-    attempts: number;
-    lastError?: string;
+export interface MultiUserKeyTrustRecord {
+    userId: string;
+    username?: string;
+    publicKeyFingerprint: string;
+    firstSeenAt: number;
+    lastSeenAt: number;
 }
 
 export type MultiTableName = 'multi_room_index' | 'multi_room_members';
 
-export type MultiWriteOperation = 'put' | 'putMany' | 'softDelete' | 'purge';
+export type MultiWriteOperation = 'put' | 'putMany' | 'purge';
 
 export interface MultiWriteOptions {
     origin?: DatabaseMutationOrigin;
@@ -82,13 +78,9 @@ export interface IMultiAdapter {
     getMembersSince(userId: string, sinceUpdatedAt: number): Promise<MultiRoomMemberRecord[]>;
     saveMember(record: MultiRoomMemberRecord, options?: MultiWriteOptions): Promise<void>;
     saveMembers(records: MultiRoomMemberRecord[], options?: MultiWriteOptions): Promise<void>;
-    deleteMember(id: string, options?: MultiWriteOptions): Promise<void>;
-    deleteMembersByRoom(roomId: string, options?: MultiWriteOptions): Promise<void>;
 
-    getDeleteMarkers(): Promise<MultiRoomDeleteMarkerRecord[]>;
-    getDeleteMarker(roomId: string): Promise<MultiRoomDeleteMarkerRecord | null>;
-    saveDeleteMarker(record: MultiRoomDeleteMarkerRecord): Promise<void>;
-    deleteDeleteMarker(roomId: string): Promise<void>;
+    getUserKeyTrust(userId: string): Promise<MultiUserKeyTrustRecord | null>;
+    saveUserKeyTrust(record: MultiUserKeyTrustRecord): Promise<void>;
 
     /** Remove all local metadata for a room. This is cache cleanup, not a server delete intent. */
     purgeRoomLocal(roomId: string, options?: MultiWriteOptions): Promise<void>;

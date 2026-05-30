@@ -6,7 +6,6 @@ import { pb } from '$lib/adapters/pb';
 
 export const PAGE_SIZE = 200;
 export const CHUNK_SIZE = 100;
-export const MAX_DELETE_MARKER_ATTEMPTS = 5;
 
 export type RealtimeEvent = {
     action: string;
@@ -87,16 +86,26 @@ export function getRealtimeScope(
 
 export function isQuotaError(error: unknown): boolean {
     if (isErrorCode(error, 'QUOTA_EXCEEDED')) return true;
-    const status = (error as { status?: unknown })?.status;
-    return status === 402 || status === 413 || status === 429;
+
+    const errObj = error && typeof error === 'object' ? (error as Record<string, unknown>) : null;
+    const status = errObj?.status;
+
+    if (status === 402 || status === 413 || status === 429) return true;
+
+    if (status === 400) {
+        const message = error instanceof Error ? error.message : String(errObj?.message ?? '');
+        return message.toLowerCase().includes('quota');
+    }
+
+    return false;
 }
 
 export function isAuthError(error: unknown): boolean {
     if (isErrorCode(error, 'NOT_AUTHENTICATED') || isErrorCode(error, 'SESSION_EXPIRED')) {
         return true;
     }
-    const status = (error as { status?: unknown })?.status;
-    return status === 401 || status === 403;
+    const errObj = error && typeof error === 'object' ? (error as Record<string, unknown>) : null;
+    return errObj?.status === 401 || errObj?.status === 403;
 }
 
 export function toErrorState(error: unknown): SyncState {

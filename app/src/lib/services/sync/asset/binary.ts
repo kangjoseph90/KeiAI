@@ -192,7 +192,13 @@ export class AssetBinarySyncEngineImpl {
             encKey: encrypted.encKey
         };
 
-        await uploadAsset(encrypted.hash, encrypted.ciphertext);
+        if (syncScope.scope.scopeType === 'room') {
+            await uploadAsset(encrypted.hash, encrypted.ciphertext, {
+                roomId: syncScope.scope.scopeId
+            });
+        } else {
+            await uploadAsset(encrypted.hash, encrypted.ciphertext);
+        }
 
         await appAsset.putAsset({
             ...asset,

@@ -3,10 +3,10 @@ import { clock } from '$lib/utils/clock';
 import { MultiWriteEventEmitter } from './events';
 import type {
     IMultiAdapter,
-    MultiRoomDeleteMarkerRecord,
     MultiRoomIndexRecord,
     MultiRoomMemberRecord,
     MultiTableName,
+    MultiUserKeyTrustRecord,
     MultiWriteEventListener,
     MultiWriteOperation,
     MultiWriteOptions
@@ -15,7 +15,7 @@ import type {
 class MultiDexie extends Dexie {
     roomIndex!: Dexie.Table<MultiRoomIndexRecord, string>;
     members!: Dexie.Table<MultiRoomMemberRecord, string>;
-    deleteMarkers!: Dexie.Table<MultiRoomDeleteMarkerRecord, string>;
+    userKeyTrust!: Dexie.Table<MultiUserKeyTrustRecord, string>;
 
     constructor() {
         super('KeiMulti');
@@ -23,8 +23,14 @@ class MultiDexie extends Dexie {
             roomIndex:
                 'id, ownerUserId, [ownerUserId+updatedAt], updatedAt, isDeleted, visibility, publicName',
             members:
-                'id, roomId, userId, [roomId+userId], [userId+updatedAt], [roomId+updatedAt], updatedAt, status, isDeleted',
-            deleteMarkers: 'roomId, updatedAt, attempts'
+                'id, roomId, userId, [roomId+userId], [userId+updatedAt], [roomId+updatedAt], updatedAt, status'
+        });
+        this.version(2).stores({
+            roomIndex:
+                'id, ownerUserId, [ownerUserId+updatedAt], updatedAt, isDeleted, visibility, publicName',
+            members:
+                'id, roomId, userId, [roomId+userId], [userId+updatedAt], [roomId+updatedAt], updatedAt, status',
+            userKeyTrust: 'userId, username, publicKeyFingerprint, lastSeenAt'
         });
     }
 }
@@ -102,7 +108,7 @@ export class WebMultiAdapter implements IMultiAdapter {
             updatedAt: clock.now(),
             isDeleted: true
         });
-        this.emitWriteEvent('multi_room_index', 'softDelete', [roomId], options);
+        this.emitWriteEvent('multi_room_index', 'put', [roomId], options);
     }
 
     async getMember(id: string): Promise<MultiRoomMemberRecord | null> {
@@ -110,19 +116,11 @@ export class WebMultiAdapter implements IMultiAdapter {
     }
 
     async getMembersByUser(userId: string): Promise<MultiRoomMemberRecord[]> {
-        return await multiDB.members
-            .where('userId')
-            .equals(userId)
-            .filter((record) => !record.isDeleted)
-            .toArray();
+        return await multiDB.members.where('userId').equals(userId).toArray();
     }
 
     async getMembersByRoom(roomId: string): Promise<MultiRoomMemberRecord[]> {
-        return await multiDB.members
-            .where('roomId')
-            .equals(roomId)
-            .filter((record) => !record.isDeleted)
-            .toArray();
+        return await multiDB.members.where('roomId').equals(roomId).toArray();
     }
 
     async getMembersByRoomsSince(
@@ -174,66 +172,20 @@ export class WebMultiAdapter implements IMultiAdapter {
         );
     }
 
-    async deleteMember(id: string, options?: MultiWriteOptions): Promise<void> {
-        const record = await this.getMember(id);
-        if (!record) return;
-        await multiDB.members.put({
-            ...record,
-            updatedAt: clock.now(),
-            isDeleted: true
-        });
-        this.emitWriteEvent('multi_room_members', 'softDelete', [id], options);
+    async getUserKeyTrust(userId: string): Promise<MultiUserKeyTrustRecord | null> {
+        return (await multiDB.userKeyTrust.get(userId)) ?? null;
     }
 
-    async deleteMembersByRoom(roomId: string, options?: MultiWriteOptions): Promise<void> {
-        const members = await multiDB.members.where('roomId').equals(roomId).toArray();
-        if (members.length === 0) return;
-
-        const now = clock.now();
-        const updatedMembers = members.map((m) => ({
-            ...m,
-            updatedAt: now,
-            isDeleted: true
-        }));
-
-        await multiDB.members.bulkPut(updatedMembers);
-        this.emitWriteEvent(
-            'multi_room_members',
-            'softDelete',
-            updatedMembers.map((m) => m.id),
-            options
-        );
-    }
-
-    async getDeleteMarkers(): Promise<MultiRoomDeleteMarkerRecord[]> {
-        return await multiDB.deleteMarkers.orderBy('updatedAt').toArray();
-    }
-
-    async getDeleteMarker(roomId: string): Promise<MultiRoomDeleteMarkerRecord | null> {
-        return (await multiDB.deleteMarkers.get(roomId)) ?? null;
-    }
-
-    async saveDeleteMarker(record: MultiRoomDeleteMarkerRecord): Promise<void> {
-        await multiDB.deleteMarkers.put(record);
-    }
-
-    async deleteDeleteMarker(roomId: string): Promise<void> {
-        await multiDB.deleteMarkers.delete(roomId);
+    async saveUserKeyTrust(record: MultiUserKeyTrustRecord): Promise<void> {
+        await multiDB.userKeyTrust.put(record);
     }
 
     async purgeRoomLocal(roomId: string, options?: MultiWriteOptions): Promise<void> {
         const members = await multiDB.members.where('roomId').equals(roomId).toArray();
-        await multiDB.transaction(
-            'rw',
-            multiDB.roomIndex,
-            multiDB.members,
-            multiDB.deleteMarkers,
-            async () => {
-                await multiDB.roomIndex.delete(roomId);
-                await multiDB.members.where('roomId').equals(roomId).delete();
-                await multiDB.deleteMarkers.delete(roomId);
-            }
-        );
+        await multiDB.transaction('rw', multiDB.roomIndex, multiDB.members, async () => {
+            await multiDB.roomIndex.delete(roomId);
+            await multiDB.members.where('roomId').equals(roomId).delete();
+        });
         this.emitWriteEvent(
             'multi_room_members',
             'purge',
@@ -250,24 +202,17 @@ export class WebMultiAdapter implements IMultiAdapter {
         const roomIds = [...new Set(memberships.map((member) => member.roomId))];
         const orphanedRoomIds: string[] = [];
 
-        await multiDB.transaction(
-            'rw',
-            multiDB.roomIndex,
-            multiDB.members,
-            multiDB.deleteMarkers,
-            async () => {
-                await multiDB.members.where('userId').equals(userId).delete();
+        await multiDB.transaction('rw', multiDB.roomIndex, multiDB.members, async () => {
+            await multiDB.members.where('userId').equals(userId).delete();
 
-                for (const roomId of roomIds) {
-                    const remaining = await multiDB.members.where('roomId').equals(roomId).count();
-                    if (remaining === 0) {
-                        await multiDB.roomIndex.delete(roomId);
-                        await multiDB.deleteMarkers.delete(roomId);
-                        orphanedRoomIds.push(roomId);
-                    }
+            for (const roomId of roomIds) {
+                const remaining = await multiDB.members.where('roomId').equals(roomId).count();
+                if (remaining === 0) {
+                    await multiDB.roomIndex.delete(roomId);
+                    orphanedRoomIds.push(roomId);
                 }
             }
-        );
+        });
 
         this.emitWriteEvent(
             'multi_room_members',

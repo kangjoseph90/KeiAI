@@ -762,3 +762,40 @@
   - 개인 데이터와 멀티룸 데이터가 로컬에서는 같은 도메인 모델로 동작하고, 서버에서는 권한/키 경계에 맞게 분리된다.
   - 멀티룸 메타데이터는 plaintext이지만, room content와 asset payload는 room key로 암호화된다.
 - 참고: ADR 030, ADR 032, ADR 035, docs/schema.md, docs/asset-system-v3.md
+
+---
+
+## 037: 멀티룸 멤버십, 삭제, owner-paid asset 정책
+
+- 상태: 채택
+- 대체: ADR 036의 `MultiRoomDeleteMarkerRecord` 기반 room deletion 정책과, 멀티룸 범위에서 ADR 032의 "hard quota는 `PUT /api/assets/{hash}`에서만 적용" 문구를 대체한다.
+- 맥락: 멀티룸은 local-first/E2EE 컨텐츠를 유지하되, 서버가 접근권, 삭제, asset quota를 명확히 판단해야 한다. delete marker 방식은 room 삭제와 나가기/추방 상태를 섞고 sync 엔진을 복잡하게 만들었다.
+- 결정:
+  - `multi_room_index`는 room lifecycle의 source of truth다. room 삭제는 `multi_room_index.isDeleted = true`로 표현한다.
+  - `multi_room_members`는 user-room relationship ledger다. `isDeleted`를 두지 않고 `pending | accepted | revoked | left` status만 사용한다.
+  - `revoked`는 ban이 아니라 현재 접근권 회수다. `left`는 사용자의 자발적 이탈이다.
+  - room content 접근 조건은 다음 하나로 통일한다.
+    ```text
+    index exists
+    index.isDeleted === false
+    membership.status === "accepted"
+    ```
+  - 서버 endpoint는 sync 권한만으로 허용하면 안 되는 전환에만 둔다.
+    - `join-request`: non-owner가 자기 membership을 `pending`으로 upsert.
+    - `leave`: non-owner가 자기 membership을 `left`로 변경.
+    - `delete`: owner-only. `multi_room_records`/`multi_room_assets`를 즉시 hard delete하고 index tombstone을 남김.
+    - room asset upload: accepted member가 업로드하되 quota는 room owner 기준으로 검사.
+  - room create, invite, revoke, reject, index update, accepted member의 content write는 sync에 의존한다.
+  - 클라이언트는 inaccessible room content를 로컬에 남기지 않는다. sync 이벤트와 앱 로드 시 `purgeInaccessibleRoomContent()`가 이 invariant를 best-effort로 복구한다. index/member metadata는 purge 근거로 보존한다.
+  - 멀티룸 asset 비용은 owner가 부담한다. `multi_room_assets.roomId -> multi_room_index.ownerUserId`로 usage owner를 찾고, upload와 metadata live-ref 전이 모두 owner quota를 기준으로 검사한다.
+- 결과:
+  - room 삭제와 user relationship 상태가 분리된다.
+  - delete marker와 room-key tombstone push가 사라져 sync 엔진이 단순해진다.
+  - 서버 content 접근권은 accepted membership 하나로 판단된다.
+  - room delete는 서버 records/assets를 즉시 제거하고, asset usage hook이 owner usage/refCount를 감소시킨다.
+- 한계:
+  - `revoked -> pending` 재신청 허용 여부는 제품 정책으로 남겨둔다.
+  - local purge는 durable queue가 아니라 best-effort repair다.
+  - create는 local-first sync라 서버 원자성은 없다.
+  - 서버 asset GC는 `asset_usage` orphan catalog/blob 정리에 의존한다.
+- 참고: ADR 032, ADR 035, ADR 036, docs/schema.md, docs/asset-system-v3.md

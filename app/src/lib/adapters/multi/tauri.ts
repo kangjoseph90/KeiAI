@@ -3,10 +3,10 @@ import { clock } from '$lib/utils/clock';
 import { MultiWriteEventEmitter } from './events';
 import type {
     IMultiAdapter,
-    MultiRoomDeleteMarkerRecord,
     MultiRoomIndexRecord,
     MultiRoomMemberRecord,
     MultiTableName,
+    MultiUserKeyTrustRecord,
     MultiWriteEventListener,
     MultiWriteOperation,
     MultiWriteOptions
@@ -26,22 +26,18 @@ interface MultiRoomMemberRow {
     id: string;
     roomId: string;
     userId: string;
-    status: 'pending' | 'accepted' | 'revoked';
+    status: 'pending' | 'accepted' | 'revoked' | 'left';
     encryptedRoomKey: string | null;
     createdAt: number;
     updatedAt: number;
-    isDeleted: number;
 }
 
-interface MultiRoomDeleteMarkerRow {
-    roomId: string;
-    roomKey: string;
-    dataDone: number;
-    assetDone: number;
-    createdAt: number;
-    updatedAt: number;
-    attempts: number;
-    lastError: string | null;
+interface MultiUserKeyTrustRow {
+    userId: string;
+    username: string | null;
+    publicKeyFingerprint: string;
+    firstSeenAt: number;
+    lastSeenAt: number;
 }
 
 export class TauriMultiAdapter implements IMultiAdapter {
@@ -94,20 +90,16 @@ export class TauriMultiAdapter implements IMultiAdapter {
                     status             TEXT    NOT NULL,
                     encryptedRoomKey   TEXT,
                     createdAt          INTEGER NOT NULL,
-                    updatedAt          INTEGER NOT NULL,
-                    isDeleted          INTEGER NOT NULL DEFAULT 0
+                    updatedAt          INTEGER NOT NULL
                 )
             `);
             await db.execute(`
-                CREATE TABLE IF NOT EXISTS multi_room_delete_markers (
-                    roomId    TEXT    PRIMARY KEY,
-                    roomKey   TEXT    NOT NULL,
-                    dataDone  INTEGER NOT NULL DEFAULT 0,
-                    assetDone INTEGER NOT NULL DEFAULT 0,
-                    createdAt INTEGER NOT NULL,
-                    updatedAt INTEGER NOT NULL,
-                    attempts  INTEGER NOT NULL,
-                    lastError TEXT
+                CREATE TABLE IF NOT EXISTS multi_user_key_trust (
+                    userId               TEXT    PRIMARY KEY,
+                    username             TEXT,
+                    publicKeyFingerprint TEXT    NOT NULL,
+                    firstSeenAt          INTEGER NOT NULL,
+                    lastSeenAt           INTEGER NOT NULL
                 )
             `);
             await db.execute(
@@ -124,9 +116,6 @@ export class TauriMultiAdapter implements IMultiAdapter {
             );
             await db.execute(
                 `CREATE UNIQUE INDEX IF NOT EXISTS idx_multi_room_members_room_user ON multi_room_members (roomId, userId)`
-            );
-            await db.execute(
-                `CREATE INDEX IF NOT EXISTS idx_multi_room_delete_markers_updatedAt ON multi_room_delete_markers (updatedAt)`
             );
             return db;
         })();
@@ -154,21 +143,17 @@ export class TauriMultiAdapter implements IMultiAdapter {
             status: row.status,
             encryptedRoomKey: row.encryptedRoomKey ?? undefined,
             createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-            isDeleted: row.isDeleted === 1
+            updatedAt: row.updatedAt
         };
     }
 
-    private toDeleteMarker(row: MultiRoomDeleteMarkerRow): MultiRoomDeleteMarkerRecord {
+    private toUserKeyTrust(row: MultiUserKeyTrustRow): MultiUserKeyTrustRecord {
         return {
-            roomId: row.roomId,
-            roomKey: row.roomKey,
-            dataDone: row.dataDone === 1,
-            assetDone: row.assetDone === 1,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-            attempts: row.attempts,
-            lastError: row.lastError ?? undefined
+            userId: row.userId,
+            username: row.username ?? undefined,
+            publicKeyFingerprint: row.publicKeyFingerprint,
+            firstSeenAt: row.firstSeenAt,
+            lastSeenAt: row.lastSeenAt
         };
     }
 
@@ -194,8 +179,8 @@ export class TauriMultiAdapter implements IMultiAdapter {
         const db = await this.getSQLite();
         await db.execute(
             `INSERT OR REPLACE INTO multi_room_members
-             (id, roomId, userId, status, encryptedRoomKey, createdAt, updatedAt, isDeleted)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             (id, roomId, userId, status, encryptedRoomKey, createdAt, updatedAt)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
             [
                 record.id,
                 record.roomId,
@@ -203,27 +188,7 @@ export class TauriMultiAdapter implements IMultiAdapter {
                 record.status,
                 record.encryptedRoomKey ?? null,
                 record.createdAt,
-                record.updatedAt,
-                record.isDeleted ? 1 : 0
-            ]
-        );
-    }
-
-    private async writeDeleteMarker(record: MultiRoomDeleteMarkerRecord): Promise<void> {
-        const db = await this.getSQLite();
-        await db.execute(
-            `INSERT OR REPLACE INTO multi_room_delete_markers
-             (roomId, roomKey, dataDone, assetDone, createdAt, updatedAt, attempts, lastError)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [
-                record.roomId,
-                record.roomKey,
-                record.dataDone ? 1 : 0,
-                record.assetDone ? 1 : 0,
-                record.createdAt,
-                record.updatedAt,
-                record.attempts,
-                record.lastError ?? null
+                record.updatedAt
             ]
         );
     }
@@ -294,7 +259,7 @@ export class TauriMultiAdapter implements IMultiAdapter {
             updatedAt: clock.now(),
             isDeleted: true
         });
-        this.emitWriteEvent('multi_room_index', 'softDelete', [roomId], options);
+        this.emitWriteEvent('multi_room_index', 'put', [roomId], options);
     }
 
     async getMember(id: string): Promise<MultiRoomMemberRecord | null> {
@@ -309,7 +274,7 @@ export class TauriMultiAdapter implements IMultiAdapter {
     async getMembersByUser(userId: string): Promise<MultiRoomMemberRecord[]> {
         const db = await this.getSQLite();
         const rows = await db.select<MultiRoomMemberRow[]>(
-            `SELECT * FROM multi_room_members WHERE userId = $1 AND isDeleted = 0`,
+            `SELECT * FROM multi_room_members WHERE userId = $1`,
             [userId]
         );
         return rows.map((row) => this.toMember(row));
@@ -318,7 +283,7 @@ export class TauriMultiAdapter implements IMultiAdapter {
     async getMembersByRoom(roomId: string): Promise<MultiRoomMemberRecord[]> {
         const db = await this.getSQLite();
         const rows = await db.select<MultiRoomMemberRow[]>(
-            `SELECT * FROM multi_room_members WHERE roomId = $1 AND isDeleted = 0`,
+            `SELECT * FROM multi_room_members WHERE roomId = $1`,
             [roomId]
         );
         return rows.map((row) => this.toMember(row));
@@ -383,67 +348,29 @@ export class TauriMultiAdapter implements IMultiAdapter {
         );
     }
 
-    async deleteMember(id: string, options?: MultiWriteOptions): Promise<void> {
-        const record = await this.getMember(id);
-        if (!record) return;
-        await this.writeMember({
-            ...record,
-            updatedAt: clock.now(),
-            isDeleted: true
-        });
-        this.emitWriteEvent('multi_room_members', 'softDelete', [id], options);
-    }
-
-    async deleteMembersByRoom(roomId: string, options?: MultiWriteOptions): Promise<void> {
+    async getUserKeyTrust(userId: string): Promise<MultiUserKeyTrustRecord | null> {
         const db = await this.getSQLite();
-        const rows = await db.select<MultiRoomMemberRow[]>(
-            `SELECT * FROM multi_room_members WHERE roomId = $1`,
-            [roomId]
+        const rows = await db.select<MultiUserKeyTrustRow[]>(
+            `SELECT * FROM multi_user_key_trust WHERE userId = $1`,
+            [userId]
         );
-        if (rows.length === 0) return;
-
-        const now = clock.now();
-        for (const row of rows) {
-            const record = this.toMember(row);
-            await this.writeMember({
-                ...record,
-                updatedAt: now,
-                isDeleted: true
-            });
-        }
-
-        this.emitWriteEvent(
-            'multi_room_members',
-            'softDelete',
-            rows.map((row) => row.id),
-            options
-        );
+        return rows[0] ? this.toUserKeyTrust(rows[0]) : null;
     }
 
-    async getDeleteMarkers(): Promise<MultiRoomDeleteMarkerRecord[]> {
+    async saveUserKeyTrust(record: MultiUserKeyTrustRecord): Promise<void> {
         const db = await this.getSQLite();
-        const rows = await db.select<MultiRoomDeleteMarkerRow[]>(
-            `SELECT * FROM multi_room_delete_markers ORDER BY updatedAt ASC`
+        await db.execute(
+            `INSERT OR REPLACE INTO multi_user_key_trust
+             (userId, username, publicKeyFingerprint, firstSeenAt, lastSeenAt)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [
+                record.userId,
+                record.username ?? null,
+                record.publicKeyFingerprint,
+                record.firstSeenAt,
+                record.lastSeenAt
+            ]
         );
-        return rows.map((row) => this.toDeleteMarker(row));
-    }
-
-    async getDeleteMarker(roomId: string): Promise<MultiRoomDeleteMarkerRecord | null> {
-        const db = await this.getSQLite();
-        const rows = await db.select<MultiRoomDeleteMarkerRow[]>(
-            `SELECT * FROM multi_room_delete_markers WHERE roomId = $1`,
-            [roomId]
-        );
-        return rows[0] ? this.toDeleteMarker(rows[0]) : null;
-    }
-
-    async saveDeleteMarker(record: MultiRoomDeleteMarkerRecord): Promise<void> {
-        await this.writeDeleteMarker(record);
-    }
-
-    async deleteDeleteMarker(roomId: string): Promise<void> {
-        const db = await this.getSQLite();
-        await db.execute(`DELETE FROM multi_room_delete_markers WHERE roomId = $1`, [roomId]);
     }
 
     async purgeRoomLocal(roomId: string, options?: MultiWriteOptions): Promise<void> {
@@ -455,7 +382,6 @@ export class TauriMultiAdapter implements IMultiAdapter {
         const members = memberRows.map((row) => this.toMember(row));
         await db.execute(`DELETE FROM multi_room_members WHERE roomId = $1`, [roomId]);
         await db.execute(`DELETE FROM multi_room_index WHERE id = $1`, [roomId]);
-        await db.execute(`DELETE FROM multi_room_delete_markers WHERE roomId = $1`, [roomId]);
         this.emitWriteEvent(
             'multi_room_members',
             'purge',
@@ -486,9 +412,6 @@ export class TauriMultiAdapter implements IMultiAdapter {
             );
             if ((rows[0]?.count ?? 0) === 0) {
                 await db.execute(`DELETE FROM multi_room_index WHERE id = $1`, [roomId]);
-                await db.execute(`DELETE FROM multi_room_delete_markers WHERE roomId = $1`, [
-                    roomId
-                ]);
                 orphanedRoomIds.push(roomId);
             }
         }

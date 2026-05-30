@@ -219,9 +219,7 @@ function findPendingAssetUsagesWith(app, hash) {
   var rows = [];
   app
     .db()
-    .newQuery(
-      "SELECT id FROM asset_usage WHERE hash = {:hash} AND size = 0",
-    )
+    .newQuery("SELECT id FROM asset_usage WHERE hash = {:hash} AND size = 0")
     .bind({ hash: hash })
     .all(rows);
   return rows;
@@ -267,6 +265,196 @@ function findMultiRoomIndex(app, roomId) {
   }
 }
 
+function findMultiRoomMember(app, roomId, userId) {
+  try {
+    return app.findFirstRecordByFilter(
+      "multi_room_members",
+      "roomId = {:roomId} && userId = {:userId}",
+      { roomId: roomId, userId: userId },
+    );
+  } catch (err) {
+    if (!isNoRowsError(err)) throw err;
+    return null;
+  }
+}
+
+function findMultiRoomRecordsByRoom(app, collectionName, roomId) {
+  return app.findRecordsByFilter(
+    collectionName,
+    "roomId = {:roomId}",
+    "",
+    0,
+    0,
+    { roomId: roomId },
+  );
+}
+
+function searchPublicMultiRooms(query) {
+  var filter = 'visibility = "public" && isDeleted = false';
+  var params = {};
+  var name = String(query || "").trim();
+  if (name) {
+    filter += " && publicName ~ {:name}";
+    params.name = name;
+  }
+
+  return $app
+    .findRecordsByFilter(
+      "multi_room_index",
+      filter,
+      "-updatedAt",
+      50,
+      0,
+      params,
+    )
+    .map(serializeMultiRoomIndex);
+}
+
+function getUserPublicKey(userId) {
+  var user = null;
+  try {
+    user = $app.findRecordById("users", userId);
+  } catch (err) {
+    if (!isNoRowsError(err)) throw err;
+    return { status: 404, body: { error: "User not found." } };
+  }
+
+  if (!isUsernameAllowed(user.getString("username"))) {
+    return { status: 404, body: { error: "User not found." } };
+  }
+
+  var publicKey = user.getString("identityPublicKey");
+  if (!publicKey) {
+    return { status: 404, body: { error: "User public key not found." } };
+  }
+
+  return {
+    status: 200,
+    body: {
+      userId: user.id,
+      username: user.getString("username"),
+      identityPublicKey: JSON.parse(publicKey),
+    },
+  };
+}
+
+function serializeMultiRoomIndex(record) {
+  return {
+    id: record.id,
+    ownerUserId: record.getString("ownerUserId"),
+    visibility: record.getString("visibility"),
+    publicName: record.getString("publicName") || undefined,
+    createdAt: getNumberField(record, "createdAt", 0),
+    updatedAt: getNumberField(record, "updatedAt", 0),
+    isDeleted: record.getBool("isDeleted"),
+  };
+}
+
+function serializeMultiRoomMember(record) {
+  return {
+    id: record.id,
+    roomId: record.getString("roomId"),
+    userId: record.getString("userId"),
+    status: record.getString("status"),
+    encryptedRoomKey: record.getString("encryptedRoomKey") || undefined,
+    createdAt: getNumberField(record, "createdAt", 0),
+    updatedAt: getNumberField(record, "updatedAt", 0),
+  };
+}
+
+function createOrUpdateJoinRequest(auth, roomId) {
+  var room = findMultiRoomIndex($app, roomId);
+  if (!room || room.getBool("isDeleted")) {
+    return { status: 404, body: { error: "Multi room not found." } };
+  }
+
+  var member = null;
+  var now = Date.now();
+  $app.runInTransaction(function (txApp) {
+    member = findMultiRoomMember(txApp, roomId, auth.id);
+    if (!member) {
+      var collection = txApp.findCollectionByNameOrId("multi_room_members");
+      member = new Record(collection);
+      member.set("roomId", roomId);
+      member.set("userId", auth.id);
+      member.set("createdAt", now);
+    }
+
+    if (member.getString("status") !== "accepted") {
+      member.set("status", "pending");
+      member.set("encryptedRoomKey", "");
+    }
+    member.set("updatedAt", now);
+    txApp.save(member);
+  });
+
+  return { status: 200, body: { member: serializeMultiRoomMember(member) } };
+}
+
+function leaveMultiRoom(auth, roomId) {
+  var room = findMultiRoomIndex($app, roomId);
+  if (!room || room.getBool("isDeleted")) {
+    return { status: 404, body: { error: "Multi room not found." } };
+  }
+  if (room.getString("ownerUserId") === auth.id) {
+    return { status: 400, body: { error: "Room owner must delete the room." } };
+  }
+
+  var member = null;
+  var now = Date.now();
+  $app.runInTransaction(function (txApp) {
+    member = findMultiRoomMember(txApp, roomId, auth.id);
+    if (!member) return;
+    member.set("status", "left");
+    member.set("encryptedRoomKey", "");
+    member.set("updatedAt", now);
+    txApp.save(member);
+  });
+
+  if (!member) {
+    return { status: 404, body: { error: "Multi membership not found." } };
+  }
+  return { status: 200, body: { member: serializeMultiRoomMember(member) } };
+}
+
+function deleteMultiRoom(auth, roomId) {
+  var room = findMultiRoomIndex($app, roomId);
+  if (!room) {
+    return { status: 404, body: { error: "Multi room not found." } };
+  }
+  if (room.getString("ownerUserId") !== auth.id) {
+    return {
+      status: 403,
+      body: { error: "Only the room owner can delete it." },
+    };
+  }
+
+  var now = Date.now();
+  $app.runInTransaction(function (txApp) {
+    var assets = findMultiRoomRecordsByRoom(txApp, "multi_room_assets", roomId);
+    for (var i = 0; i < assets.length; i++) {
+      if (assets[i]) txApp.delete(assets[i]);
+    }
+
+    var records = findMultiRoomRecordsByRoom(
+      txApp,
+      "multi_room_records",
+      roomId,
+    );
+    for (var j = 0; j < records.length; j++) {
+      if (records[j]) txApp.delete(records[j]);
+    }
+
+    var index = txApp.findRecordById("multi_room_index", roomId);
+    index.set("isDeleted", true);
+    index.set("updatedAt", now);
+    txApp.save(index);
+    room = index;
+  });
+
+  return { status: 200, body: { room: serializeMultiRoomIndex(room) } };
+}
+
 function getAssetUsageUserId(app, record) {
   var collectionName = "";
   try {
@@ -280,6 +468,66 @@ function getAssetUsageUserId(app, record) {
   }
 
   return record.getString("userId");
+}
+
+function getMultiRoomUploadOwner(auth, roomId) {
+  var room = findMultiRoomIndex($app, roomId);
+  if (!room || room.getBool("isDeleted")) {
+    return { status: 404, body: { error: "Multi room not found." } };
+  }
+
+  var member = findMultiRoomMember($app, roomId, auth.id);
+  if (!member || member.getString("status") !== "accepted") {
+    return { status: 403, body: { error: "Multi room access denied." } };
+  }
+
+  return { status: 200, ownerUserId: room.getString("ownerUserId") };
+}
+
+function assertAssetOwnerCanAfford(userId, hash, oldHash) {
+  var catalog = findAssetCatalogWith($app, hash);
+  if (!catalog) {
+    throw new BadRequestError(
+      "Asset binary must be uploaded before metadata.",
+      null,
+    );
+  }
+
+  if (findAssetUsageWith($app, userId, hash)) return;
+
+  var account = getOrCreateAssetAccount($app, userId);
+  var used = getNumberField(account, "usedBytes", 0);
+
+  if (oldHash) {
+    var oldUsage = findAssetUsageWith($app, userId, oldHash);
+    if (oldUsage && getNumberField(oldUsage, "refCount", 0) <= 1) {
+      used = Math.max(used - getNumberField(oldUsage, "size", 0), 0);
+    }
+  }
+
+  var size = getNumberField(catalog, "size", 0);
+  if (used + size > getAssetMaxBytes(account)) {
+    throw new BadRequestError("Asset quota exceeded.", null);
+  }
+}
+
+function assertAssetRefQuota(record, oldRecord) {
+  var oldLive = isLiveAssetRef(oldRecord);
+  var newLive = isLiveAssetRef(record);
+  if (!newLive) return;
+
+  var oldHash = oldLive ? oldRecord.getString("hash").toLowerCase() : "";
+  var newHash = record.getString("hash").toLowerCase();
+  var oldUserId = oldLive ? getAssetUsageUserId($app, oldRecord) : "";
+  var newUserId = getAssetUsageUserId($app, record);
+  if (!newUserId) return;
+
+  if (oldLive && oldHash === newHash && oldUserId === newUserId) return;
+  assertAssetOwnerCanAfford(
+    newUserId,
+    newHash,
+    oldUserId === newUserId ? oldHash : "",
+  );
 }
 
 function incrementUsage(userId, hash) {
@@ -378,9 +626,9 @@ function decrementUsage(userId, hash) {
 function isLiveAssetRef(record) {
   return Boolean(
     record &&
-      record.getString("status") === "remote" &&
-      !record.getBool("isDeleted") &&
-      record.getString("hash"),
+    record.getString("status") === "remote" &&
+    !record.getBool("isDeleted") &&
+    record.getString("hash"),
   );
 }
 
@@ -424,14 +672,14 @@ function sha256Bytes(bytes) {
   ];
 
   var h = [
-    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f,
-    0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c,
+    0x1f83d9ab, 0x5be0cd19,
   ];
 
   var msg = bytes.slice();
   var bitLength = msg.length * 8;
   msg.push(0x80);
-  while ((msg.length % 64) !== 56) msg.push(0);
+  while (msg.length % 64 !== 56) msg.push(0);
   for (var i = 7; i >= 0; i--) {
     msg.push((bitLength / Math.pow(256, i)) & 255);
   }
@@ -644,7 +892,12 @@ function serveAssetFromLegacy(e, record, hash) {
 
   var fsys = $app.newFilesystem();
   try {
-    fsys.serve(e.response, e.request, fileKey, String(hash).toLowerCase() + ".bin");
+    fsys.serve(
+      e.response,
+      e.request,
+      fileKey,
+      String(hash).toLowerCase() + ".bin",
+    );
     return true;
   } catch (_) {
     return false;
@@ -687,7 +940,10 @@ function storeAssetBytes(hash, bytes, existing) {
     if (existing) return { status: "exists", file: null };
     return {
       status: "stored",
-      file: $filesystem.fileFromBytes(bytes, String(hash).toLowerCase() + ".bin"),
+      file: $filesystem.fileFromBytes(
+        bytes,
+        String(hash).toLowerCase() + ".bin",
+      ),
     };
   }
 
@@ -831,20 +1087,27 @@ module.exports = {
   dummySaltForUsername: dummySaltForUsername,
   findAssetCatalogWith: findAssetCatalogWith,
   findRecoveryRecord: findRecoveryRecord,
+  createOrUpdateJoinRequest: createOrUpdateJoinRequest,
+  deleteMultiRoom: deleteMultiRoom,
   getAuthRecord: getAuthRecord,
   getAssetMaxBytes: getAssetMaxBytes,
+  getMultiRoomUploadOwner: getMultiRoomUploadOwner,
+  getUserPublicKey: getUserPublicKey,
   getOrCreateAssetAccount: getOrCreateAssetAccount,
   getNumberField: getNumberField,
   getPairingBlobs: getPairingBlobs,
+  assertAssetRefQuota: assertAssetRefQuota,
   handleAssetRefTransition: handleAssetRefTransition,
   hasAssetUsage: hasAssetUsage,
   isNoRowsError: isNoRowsError,
   isUsernameAllowed: isUsernameAllowed,
+  leaveMultiRoom: leaveMultiRoom,
   migrateR2AssetsToLocal: migrateR2AssetsToLocal,
   normalizeUsername: normalizeUsername,
   rejectDisallowedAuth: rejectDisallowedAuth,
   rejectDisallowedUsername: rejectDisallowedUsername,
   reconcilePendingAssetUsage: reconcilePendingAssetUsage,
+  searchPublicMultiRooms: searchPublicMultiRooms,
   serveAsset: serveAsset,
   setPairingBlobs: setPairingBlobs,
   sha256Bytes: sha256Bytes,

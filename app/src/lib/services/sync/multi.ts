@@ -113,7 +113,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
         }
 
         try {
-            const pushedCursor = await this.pushLocalChanges(userId, lastSyncTime - 1, false);
+            const pushedCursor = await this.pushLocalChanges(userId, lastSyncTime, false);
             nextCursor = Math.max(nextCursor, pushedCursor);
         } catch (error) {
             correctionError = error;
@@ -140,10 +140,14 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             for (const item of result.items) {
                 const remote = this.pbToRoomIndex(item as unknown as Record<string, unknown>);
                 const local = await appMulti.getRoomIndex(remote.id);
-                if (!local || remote.updatedAt > local.updatedAt) {
+                if (
+                    !local ||
+                    remote.updatedAt > local.updatedAt ||
+                    (remote.isDeleted && !local.isDeleted)
+                ) {
                     await appMulti.saveRoomIndex(remote, { origin: 'sync' });
                 } else if (local.updatedAt > remote.updatedAt) {
-                    await this.pushRoomIndexes([local], false);
+                    await this.pushWritableRoomIndexes([local], false);
                 }
                 nextCursor = Math.max(nextCursor, remote.updatedAt);
             }
@@ -168,10 +172,15 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             for (const item of result.items) {
                 const remote = this.pbToMember(item as unknown as Record<string, unknown>);
                 const local = await appMulti.getMember(remote.id);
-                if (!local || remote.updatedAt > local.updatedAt) {
+                const shouldSave =
+                    !local ||
+                    remote.updatedAt > local.updatedAt ||
+                    (this.isOwnInactiveMembership(remote) && remote.updatedAt >= local.updatedAt);
+                if (shouldSave) {
                     await appMulti.saveMember(remote, { origin: 'sync' });
+                    await this.ensureRoomIndexForMember(remote);
                 } else if (local.updatedAt > remote.updatedAt) {
-                    await this.pushMembers([local], false);
+                    await this.pushWritableMembers([local], false);
                 }
                 nextCursor = Math.max(nextCursor, remote.updatedAt);
             }
@@ -190,17 +199,17 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
     ): Promise<number> {
         let nextCursor = sinceUpdatedAt;
         const ownedRoomIndexes = await appMulti.getRoomIndexesByOwner(userId);
-        const ownedRoomIds = ownedRoomIndexes.map((room) => room.id);
+        const activeOwnedRoomIds = ownedRoomIndexes
+            .filter((room) => !room.isDeleted)
+            .map((room) => room.id);
         const changedIndexes = (await appMulti.getRoomIndexesSince(sinceUpdatedAt)).filter(
             (index) => index.ownerUserId === userId
         );
-        const ownMemberships = await appMulti.getMembersSince(userId, sinceUpdatedAt);
         const ownedRoomMemberships = await appMulti.getMembersByRoomsSince(
-            ownedRoomIds,
+            activeOwnedRoomIds,
             sinceUpdatedAt
         );
         const memberById = new Map<string, MultiRoomMemberRecord>();
-        for (const member of ownMemberships) memberById.set(member.id, member);
         for (const member of ownedRoomMemberships) memberById.set(member.id, member);
 
         if (changedIndexes.length > 0) {
@@ -294,17 +303,29 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
         }
     }
 
-    private async pushWritableRoomIndexes(records: MultiRoomIndexRecord[]): Promise<void> {
+    private async pushWritableRoomIndexes(
+        records: MultiRoomIndexRecord[],
+        continueOnError = true
+    ): Promise<void> {
         const { userId } = getActiveSession();
-        await this.pushRoomIndexes(records.filter((record) => record.ownerUserId === userId));
+        await this.pushRoomIndexes(
+            records.filter((record) => record.ownerUserId === userId),
+            continueOnError
+        );
     }
 
-    private async pushWritableMembers(records: MultiRoomMemberRecord[]): Promise<void> {
+    private async pushWritableMembers(
+        records: MultiRoomMemberRecord[],
+        continueOnError = true
+    ): Promise<void> {
         const { userId } = getActiveSession();
         const ownedRooms = await appMulti.getRoomIndexesByOwner(userId);
-        const ownedRoomIds = new Set(ownedRooms.map((room) => room.id));
+        const activeOwnedRoomIds = new Set(
+            ownedRooms.filter((room) => !room.isDeleted).map((room) => room.id)
+        );
         await this.pushMembers(
-            records.filter((record) => record.userId === userId || ownedRoomIds.has(record.roomId))
+            records.filter((record) => activeOwnedRoomIds.has(record.roomId)),
+            continueOnError
         );
     }
 
@@ -317,7 +338,11 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             if (collection === 'multi_room_index') {
                 const remote = this.pbToRoomIndex(event.record);
                 const local = await appMulti.getRoomIndex(remote.id);
-                if (!local || remote.updatedAt > local.updatedAt) {
+                if (
+                    !local ||
+                    remote.updatedAt > local.updatedAt ||
+                    (remote.isDeleted && !local.isDeleted)
+                ) {
                     await appMulti.saveRoomIndex(remote, { origin: 'sync' });
                 } else if (local.updatedAt > remote.updatedAt) {
                     void this.pushWritableRoomIndexes([local]);
@@ -327,8 +352,13 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
 
             const remote = this.pbToMember(event.record);
             const local = await appMulti.getMember(remote.id);
-            if (!local || remote.updatedAt > local.updatedAt) {
+            const shouldSave =
+                !local ||
+                remote.updatedAt > local.updatedAt ||
+                (this.isOwnInactiveMembership(remote) && remote.updatedAt >= local.updatedAt);
+            if (shouldSave) {
                 await appMulti.saveMember(remote, { origin: 'sync' });
+                await this.ensureRoomIndexForMember(remote);
             } else if (local.updatedAt > remote.updatedAt) {
                 void this.pushWritableMembers([local]);
             }
@@ -357,8 +387,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             status: record.status as MultiRoomMemberRecord['status'],
             encryptedRoomKey: (record.encryptedRoomKey as string | undefined) || undefined,
             createdAt: normalizeTimestamp(record.createdAt, record.created),
-            updatedAt: normalizeTimestamp(record.updatedAt, record.updated),
-            isDeleted: Boolean(record.isDeleted)
+            updatedAt: normalizeTimestamp(record.updatedAt, record.updated)
         };
     }
 
@@ -382,9 +411,34 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             status: record.status,
             encryptedRoomKey: record.encryptedRoomKey,
             createdAt: record.createdAt,
-            updatedAt: record.updatedAt,
-            isDeleted: record.isDeleted
+            updatedAt: record.updatedAt
         };
+    }
+
+    private isOwnInactiveMembership(record: MultiRoomMemberRecord): boolean {
+        const { userId } = getActiveSession();
+        return record.userId === userId && record.status !== 'accepted';
+    }
+
+    private async ensureRoomIndexForMember(record: MultiRoomMemberRecord): Promise<void> {
+        const { userId } = getActiveSession();
+        if (record.userId !== userId || record.status !== 'accepted') return;
+
+        const local = await appMulti.getRoomIndex(record.roomId);
+        if (local && !local.isDeleted) return;
+
+        try {
+            const remote = this.pbToRoomIndex(
+                (await pb.collection('multi_room_index').getOne(record.roomId, {
+                    requestKey: null
+                })) as unknown as Record<string, unknown>
+            );
+            if (!remote.isDeleted) {
+                await appMulti.saveRoomIndex(remote, { origin: 'sync' });
+            }
+        } catch (error) {
+            logger.warn(`Failed to bootstrap multi room index: ${record.roomId}`, error);
+        }
     }
 }
 

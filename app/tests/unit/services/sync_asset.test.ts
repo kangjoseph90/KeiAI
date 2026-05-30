@@ -56,18 +56,9 @@ vi.mock('$lib/adapters/kv', () => ({
     }
 }));
 
-vi.mock('$lib/adapters/multi', () => ({
-    appMulti: {
-        getDeleteMarkers: vi.fn(() => Promise.resolve([])),
-        saveDeleteMarker: vi.fn(),
-        deleteDeleteMarker: vi.fn()
-    }
-}));
-
 vi.mock('$lib/crypto', () => ({
     encrypt: vi.fn(() => ({ ciphertext: new Uint8Array([1]), iv: new Uint8Array([2]) })),
     decrypt: vi.fn(),
-    importMasterKey: vi.fn(() => Promise.resolve({ type: 'room-key' } as unknown as CryptoKey)),
     toBase64: vi.fn((buf: Uint8Array) => Buffer.from(buf).toString('base64')),
     fromBase64: vi.fn((str: string) => new Uint8Array(Buffer.from(str, 'base64')))
 }));
@@ -83,7 +74,6 @@ vi.mock('$lib/services/asset/remote', () => ({
 
 import { pb } from '$lib/adapters/pb';
 import { appAsset } from '$lib/adapters/asset';
-import { appMulti } from '$lib/adapters/multi';
 import { appStorage } from '$lib/adapters/storage';
 import { getActiveSession, hasActiveSession } from '$lib/services/session';
 import { encryptConvergentAsset } from '$lib/services/asset/util';
@@ -208,48 +198,5 @@ describe('Asset sync', () => {
 
         expect(appAsset.deleteRegistry).toHaveBeenCalledWith('asset-1');
         expect(uploadAsset).not.toHaveBeenCalled();
-    });
-
-    it('pushes room asset tombstones from delete markers and clears completed marker', async () => {
-        vi.mocked(appAsset.getRegistryByStatus).mockResolvedValue([]);
-        vi.mocked(appMulti.getDeleteMarkers).mockResolvedValue([
-            {
-                roomId: 'room-1',
-                roomKey: 'room-key',
-                dataDone: true,
-                assetDone: false,
-                createdAt: 1,
-                updatedAt: 2,
-                attempts: 0
-            }
-        ]);
-        vi.mocked(appAsset.getAssetsSince)
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([
-                {
-                    id: 'room-asset-1',
-                    scopeType: 'room',
-                    scopeId: 'room-1',
-                    createdAt: 1,
-                    updatedAt: 2,
-                    isDeleted: true,
-                    data: {
-                        kind: 'resource',
-                        status: 'remote',
-                        hash: 'hash-1',
-                        encKey: 'key-1'
-                    }
-                }
-            ]);
-
-        const recordSync = new AssetRecordSyncEngineImpl();
-        await recordSync.trigger();
-
-        const batch = vi.mocked(pb.createBatch).mock.results[0].value as {
-            collection: ReturnType<typeof vi.fn>;
-            send: ReturnType<typeof vi.fn>;
-        };
-        expect(batch.collection).toHaveBeenCalledWith('multi_room_assets');
-        expect(appMulti.deleteDeleteMarker).toHaveBeenCalledWith('room-1');
     });
 });

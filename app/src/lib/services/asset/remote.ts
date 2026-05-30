@@ -2,7 +2,7 @@
  * Asset Remote API — KeiAI v3
  *
  * Thin client-side wrappers around the asset ciphertext endpoints.
- * Hard quota is enforced only by PUT /api/assets/{hash}; metadata sync remains blind.
+ * Hard quota is enforced by the upload endpoint for the paying scope.
  */
 
 import { isKeiServer, pb } from '$lib/adapters/pb';
@@ -17,6 +17,10 @@ export interface UploadResult {
     status: 'stored' | 'exists';
     hash: string;
 }
+
+export type UploadAssetOptions = {
+    roomId?: string;
+};
 
 type AssetApiError = {
     status?: number;
@@ -67,10 +71,17 @@ function toAppError(error: unknown): unknown {
 
 // ─── API Functions ───────────────────────────────────────────────────
 
-export async function uploadAsset(hash: string, ciphertext: Uint8Array): Promise<UploadResult> {
+export async function uploadAsset(
+    hash: string,
+    ciphertext: Uint8Array,
+    options: UploadAssetOptions = {}
+): Promise<UploadResult> {
     try {
+        const path = options.roomId
+            ? `/api/multi-rooms/${encodeURIComponent(options.roomId)}/assets/${encodeURIComponent(hash)}`
+            : `/api/assets/${encodeURIComponent(hash)}`;
         const response = await appHttp.fetch(
-            buildUrl(pb.baseUrl, `/api/assets/${encodeURIComponent(hash)}`),
+            buildUrl(pb.baseUrl, path),
             {
                 method: 'PUT',
                 headers: {

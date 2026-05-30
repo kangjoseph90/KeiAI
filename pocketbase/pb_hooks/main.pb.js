@@ -222,7 +222,9 @@ routerAdd("POST", "/api/pairing", (e) => {
   var id = String(body.id || "");
   var blob = String(body.blob || "");
   var ttl =
-    body.ttl == null || body.ttl === "" ? PAIRING_TTL_SECONDS : Number(body.ttl);
+    body.ttl == null || body.ttl === ""
+      ? PAIRING_TTL_SECONDS
+      : Number(body.ttl);
   if (
     !/^[0-9a-f]{64}$/i.test(id) ||
     !blob ||
@@ -275,6 +277,86 @@ routerAdd("GET", "/api/pairing/{lookupId}", (e) => {
   delete pairingBlobs[lookupId];
   h.setPairingBlobs(pairingBlobs);
   return e.json(200, { blob: entry.blob });
+});
+
+// Multi-room lifecycle API
+
+routerAdd("GET", "/api/multi-rooms/search", (e) => {
+  var h = require(`${__hooks}/keiai.js`);
+  var auth = h.getAuthRecord(e);
+  if (!auth) return e.json(401, { error: "Authentication required." });
+  h.rejectDisallowedUsername(e, auth.getString("username"));
+
+  var ip = e.realIP();
+  if (!h.checkRate(ip + ":multi-room-search", 30, 60000)) {
+    return e.json(429, { error: "Too many requests. Try again later." });
+  }
+
+  var query = e.requestInfo().query || {};
+  return e.json(200, { rooms: h.searchPublicMultiRooms(query.name) });
+});
+
+routerAdd("GET", "/api/users/{userId}/public-key", (e) => {
+  var h = require(`${__hooks}/keiai.js`);
+  var auth = h.getAuthRecord(e);
+  if (!auth) return e.json(401, { error: "Authentication required." });
+  h.rejectDisallowedUsername(e, auth.getString("username"));
+
+  var ip = e.realIP();
+  if (!h.checkRate(ip + ":user-public-key", 60, 60000)) {
+    return e.json(429, { error: "Too many requests. Try again later." });
+  }
+
+  var result = h.getUserPublicKey(e.request.pathValue("userId"));
+  return e.json(result.status, result.body);
+});
+
+routerAdd("POST", "/api/multi-rooms/{roomId}/join-request", (e) => {
+  var h = require(`${__hooks}/keiai.js`);
+  var auth = h.getAuthRecord(e);
+  if (!auth) return e.json(401, { error: "Authentication required." });
+  h.rejectDisallowedUsername(e, auth.getString("username"));
+
+  var ip = e.realIP();
+  if (!h.checkRate(ip + ":multi-room-join", 10, 60000)) {
+    return e.json(429, { error: "Too many requests. Try again later." });
+  }
+
+  var roomId = e.request.pathValue("roomId");
+  var result = h.createOrUpdateJoinRequest(auth, roomId);
+  return e.json(result.status, result.body);
+});
+
+routerAdd("POST", "/api/multi-rooms/{roomId}/leave", (e) => {
+  var h = require(`${__hooks}/keiai.js`);
+  var auth = h.getAuthRecord(e);
+  if (!auth) return e.json(401, { error: "Authentication required." });
+  h.rejectDisallowedUsername(e, auth.getString("username"));
+
+  var ip = e.realIP();
+  if (!h.checkRate(ip + ":multi-room-leave", 20, 60000)) {
+    return e.json(429, { error: "Too many requests. Try again later." });
+  }
+
+  var roomId = e.request.pathValue("roomId");
+  var result = h.leaveMultiRoom(auth, roomId);
+  return e.json(result.status, result.body);
+});
+
+routerAdd("DELETE", "/api/multi-rooms/{roomId}", (e) => {
+  var h = require(`${__hooks}/keiai.js`);
+  var auth = h.getAuthRecord(e);
+  if (!auth) return e.json(401, { error: "Authentication required." });
+  h.rejectDisallowedUsername(e, auth.getString("username"));
+
+  var ip = e.realIP();
+  if (!h.checkRate(ip + ":multi-room-delete", 10, 60000)) {
+    return e.json(429, { error: "Too many requests. Try again later." });
+  }
+
+  var roomId = e.request.pathValue("roomId");
+  var result = h.deleteMultiRoom(auth, roomId);
+  return e.json(result.status, result.body);
 });
 
 // Asset API
@@ -359,6 +441,90 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
   }
 });
 
+routerAdd("PUT", "/api/multi-rooms/{roomId}/assets/{hash}", (e) => {
+  var h = require(`${__hooks}/keiai.js`);
+
+  var ip = e.realIP();
+  if (!h.checkRate(ip + ":multi-room-asset-upload", 30, 60000)) {
+    return e.json(429, { error: "Too many requests. Try again later." });
+  }
+
+  var auth = h.getAuthRecord(e);
+  if (!auth) return e.json(401, { error: "Authentication required." });
+  h.rejectDisallowedUsername(e, auth.getString("username"));
+
+  try {
+    var roomId = e.request.pathValue("roomId");
+    var hash = e.request.pathValue("hash");
+    if (!/^[0-9a-f]{64}$/i.test(hash)) {
+      return e.json(400, { error: "Invalid asset hash." });
+    }
+    hash = hash.toLowerCase();
+
+    var owner = h.getMultiRoomUploadOwner(auth, roomId);
+    if (owner.status !== 200) return e.json(owner.status, owner.body);
+
+    var body = toBytes(e.request.body, 10 * 1024 * 1024 + 1);
+    if (!body || body.length === 0) {
+      return e.json(400, { error: "Missing asset ciphertext." });
+    }
+    if (body.length > 10 * 1024 * 1024) {
+      return e.json(413, { error: "Asset too large." });
+    }
+
+    var actualHash = h.sha256Bytes(body);
+    if (actualHash !== hash) {
+      return e.json(400, { error: "Asset hash mismatch." });
+    }
+
+    var existing = h.findAssetCatalogWith($app, hash);
+    if (existing) {
+      var storedExisting = h.storeAssetBytes(hash, body, existing);
+      return e.json(storedExisting.status === "stored" ? 201 : 200, {
+        status: storedExisting.status,
+        hash: hash,
+      });
+    }
+
+    var created = false;
+    $app.runInTransaction(function (txApp) {
+      if (h.findAssetCatalogWith(txApp, hash)) return;
+
+      var account = h.getOrCreateAssetAccount(txApp, owner.ownerUserId);
+      var maxBytes = h.getAssetMaxBytes(account);
+      var usedBytes = h.getNumberField(account, "usedBytes", 0);
+      if (usedBytes + body.length > maxBytes) {
+        throw new Error("QUOTA_EXCEEDED");
+      }
+
+      var collection = txApp.findCollectionByNameOrId("asset_catalog");
+      var record = new Record(collection);
+      record.set("hash", hash);
+      record.set("size", body.length);
+      var storedAsset = h.storeAssetBytes(hash, body, null);
+      if (storedAsset.file) {
+        record.set("data", storedAsset.file);
+      }
+      try {
+        txApp.save(record);
+        created = true;
+      } catch (err) {
+        if (!h.findAssetCatalogWith(txApp, hash)) throw err;
+      }
+    });
+
+    return e.json(created ? 201 : 200, {
+      status: created ? "stored" : "exists",
+      hash: hash,
+    });
+  } catch (err) {
+    if (err && err.message === "QUOTA_EXCEEDED") {
+      return e.json(402, { error: "Asset quota exceeded." });
+    }
+    return e.json(500, { error: "Upload failed: " + err.toString() });
+  }
+});
+
 routerAdd("GET", "/api/assets/download/{hash}", (e) => {
   var h = require(`${__hooks}/keiai.js`);
 
@@ -404,6 +570,19 @@ onRecordAfterCreateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
 }, "assets");
 
+onRecordCreateRequest((e) => {
+  require(`${__hooks}/keiai.js`).assertAssetRefQuota(e.record, null);
+  e.next();
+}, "assets");
+
+onRecordUpdateRequest((e) => {
+  require(`${__hooks}/keiai.js`).assertAssetRefQuota(
+    e.record,
+    e.record.original(),
+  );
+  e.next();
+}, "assets");
+
 onRecordAfterUpdateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(
     e.record,
@@ -417,6 +596,19 @@ onRecordAfterDeleteSuccess((e) => {
 
 onRecordAfterCreateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
+}, "multi_room_assets");
+
+onRecordCreateRequest((e) => {
+  require(`${__hooks}/keiai.js`).assertAssetRefQuota(e.record, null);
+  e.next();
+}, "multi_room_assets");
+
+onRecordUpdateRequest((e) => {
+  require(`${__hooks}/keiai.js`).assertAssetRefQuota(
+    e.record,
+    e.record.original(),
+  );
+  e.next();
 }, "multi_room_assets");
 
 onRecordAfterUpdateSuccess((e) => {
