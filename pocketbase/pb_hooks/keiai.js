@@ -219,7 +219,9 @@ function findPendingAssetUsagesWith(app, hash) {
   var rows = [];
   app
     .db()
-    .newQuery("SELECT id FROM asset_usage WHERE hash = {:hash} AND size = 0")
+    .newQuery(
+      "SELECT id FROM asset_usage WHERE hash = {:hash} AND (size = 0 OR size IS NULL)",
+    )
     .bind({ hash: hash })
     .all(rows);
   return rows;
@@ -491,7 +493,22 @@ function incrementUsage(userId, hash) {
   $app.runInTransaction(function (txApp) {
     var usage = findAssetUsageWith(txApp, userId, hash);
     if (usage) {
+      var currentSize = getNumberField(usage, "size", 0);
+      var catalog = findAssetCatalogWith(txApp, hash);
+      var catalogSize = catalog ? getNumberField(catalog, "size", 0) : 0;
+
       usage.set("refCount", getNumberField(usage, "refCount", 0) + 1);
+
+      if (currentSize === 0 && catalogSize > 0) {
+        usage.set("size", catalogSize);
+
+        var account = getOrCreateAssetAccount(txApp, userId);
+        var used = getNumberField(account, "usedBytes", 0);
+        account.set("usedBytes", String(used + catalogSize));
+        account.set("updatedAt", now);
+        txApp.save(account);
+      }
+
       usage.set("updatedAt", now);
       txApp.save(usage);
       return;

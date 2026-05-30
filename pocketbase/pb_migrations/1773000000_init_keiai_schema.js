@@ -351,7 +351,7 @@ migrate(
       new Field({ name: "refCount", type: "number", required: true, min: 0 }),
     );
     usage.fields.add(
-      new Field({ name: "size", type: "number", required: true }),
+      new Field({ name: "size", type: "number" }),
     );
     usage.fields.add(
       new Field({ name: "createdAt", type: "number", required: true }),
