@@ -13,7 +13,10 @@ import {
     type CharJSFields,
     type CharJS
 } from '$lib/services';
-import { importModuleFromKei, type KeiModulePackageV1 } from '$lib/porters/module';
+import {
+    importModulePackage as importModulePackagePorter,
+    type KeiModulePackageV1
+} from '$lib/porters/module';
 import type { FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
@@ -145,7 +148,7 @@ export async function importModulePackage(
         select?: boolean;
     } = {}
 ): Promise<Module> {
-    const moduleId = await importModuleFromKei(pkg, {
+    const moduleId = await importModulePackagePorter(pkg, {
         allowLightAssets: options.allowLightAssets
     });
 

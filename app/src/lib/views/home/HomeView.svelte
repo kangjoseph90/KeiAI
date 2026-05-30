@@ -44,6 +44,7 @@
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { importCharacterFile } from '$lib/managers';
     import { importPersonaFile } from '$lib/managers/persona';
+    import { isKeiServer } from '$lib/adapters/pb';
     import type { RouteState } from '$lib/router';
     import { MultiRoomService, type PublicMultiRoom } from '$lib/services';
     import { formatPublicKeyFingerprint } from '$lib/crypto';
@@ -253,7 +254,7 @@
         importingCharacter = true;
         try {
             const character = await importCharacterFile(file, {
-                allowLightAssets: false,
+                allowLightAssets: isKeiServer(),
                 select: true
             });
             onNavigate({ view: 'characterStudio', charId: character.id });
@@ -290,7 +291,10 @@
 
         importingPersona = true;
         try {
-            const persona = await importPersonaFile(file, { select: true });
+            const persona = await importPersonaFile(file, {
+                allowLightAssets: isKeiServer(),
+                select: true
+            });
             onNavigate({ view: 'personaStudio', personaId: persona.id });
         } finally {
             importingPersona = false;

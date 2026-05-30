@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-    exportPresetToKei,
-    importPresetFromKei,
+    exportPresetPackage,
+    importPresetPackage,
     type KeiPresetPackageV1
 } from '$lib/porters/preset';
 import { PresetService, ScriptService, type Preset, type Script } from '$lib/services';
@@ -80,7 +80,7 @@ describe('preset porters', () => {
         vi.mocked(PresetService.get).mockResolvedValue(preset);
         vi.mocked(ScriptService.listByOwner).mockResolvedValue([script]);
 
-        const pkg = await exportPresetToKei('preset-real');
+        const pkg = await exportPresetPackage('preset-real');
 
         expect(pkg.kind).toBe('keiai.preset');
         expect(pkg.preset.name).toBe('Test Preset');
@@ -103,7 +103,7 @@ describe('preset porters', () => {
         vi.mocked(ScriptService.create).mockResolvedValue({ ...script, id: 'script-new' });
         vi.mocked(PresetService.update).mockResolvedValue({ ...preset, id: 'preset-new' });
 
-        const presetId = await importPresetFromKei(pkg);
+        const presetId = await importPresetPackage(pkg);
         const update = vi.mocked(PresetService.update).mock.calls[0]?.[1];
 
         expect(presetId).toBe('preset-new');

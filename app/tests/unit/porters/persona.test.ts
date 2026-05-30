@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-    exportPersonaToKei,
-    importPersonaFromKei,
+    exportPersonaPackage,
+    importPersonaPackage,
     type KeiPersonaPackageV1
 } from '$lib/porters/persona';
 import { AssetService } from '$lib/services/asset';
@@ -54,7 +54,7 @@ describe('persona porters', () => {
         }));
         vi.mocked(AssetService.readBytes).mockResolvedValue(new Uint8Array([1, 2, 3]));
 
-        const pkg = await exportPersonaToKei('persona-real', { mode: 'light' });
+        const pkg = await exportPersonaPackage('persona-real', 'light');
 
         expect(pkg.kind).toBe('keiai.persona');
         expect(pkg.persona.avatarAssetId).toBe('asset_0');
@@ -73,7 +73,7 @@ describe('persona porters', () => {
             ]
         });
 
-        await expect(importPersonaFromKei(pkg, { allowLightAssets: true })).rejects.toThrow(
+        await expect(importPersonaPackage(pkg, { allowLightAssets: true })).rejects.toThrow(
             'Broken asset payload'
         );
         expect(AssetService.write).not.toHaveBeenCalled();
@@ -95,7 +95,7 @@ describe('persona porters', () => {
         });
         vi.mocked(PersonaService.update).mockResolvedValue({ ...persona, id: 'persona-new' });
 
-        const personaId = await importPersonaFromKei(pkg, { scopeType: 'room' });
+        const personaId = await importPersonaPackage(pkg, { scopeType: 'room' });
         const update = vi.mocked(PersonaService.update).mock.calls[0]?.[1];
 
         expect(personaId).toBe('persona-new');

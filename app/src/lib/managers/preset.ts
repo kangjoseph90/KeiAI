@@ -1,5 +1,5 @@
 import {
-    exportPresetToKei,
+    exportPresetPackage,
     presetFileExtension,
     presetFileMimeType,
     readPresetFile,
@@ -20,7 +20,7 @@ export async function importPresetFile(
 }
 
 export async function exportPresetFile(presetId: string, request: PresetFileExport): Promise<void> {
-    const pkg = await exportPresetToKei(presetId);
+    const pkg = await exportPresetPackage(presetId);
     const bytes = await writePresetFile(pkg, request);
     downloadBytes(
         bytes,

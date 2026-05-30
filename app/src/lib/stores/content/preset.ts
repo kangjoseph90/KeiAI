@@ -12,7 +12,10 @@ import {
     type Script,
     type PresetContent
 } from '$lib/services';
-import { importPresetFromKei, type KeiPresetPackageV1 } from '$lib/porters/preset';
+import {
+    importPresetPackage as importPresetPackagePorter,
+    type KeiPresetPackageV1
+} from '$lib/porters/preset';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import type { FolderDef } from '$lib/types/refs';
@@ -118,7 +121,7 @@ export async function importPresetPackage(
     } = {}
 ): Promise<Preset> {
     const baseGlobals = getActivePreset()?.globalVariables ?? {};
-    const presetId = await importPresetFromKei({
+    const presetId = await importPresetPackagePorter({
         ...pkg,
         preset: {
             ...pkg.preset,

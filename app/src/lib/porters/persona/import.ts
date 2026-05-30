@@ -16,7 +16,7 @@ function assertPackage(pkg: KeiPersonaPackageV1): void {
     }
 }
 
-export async function importPersonaFromKei(
+export async function importPersonaPackage(
     pkg: KeiPersonaPackageV1,
     options: ImportPersonaOptions = {}
 ): Promise<string> {

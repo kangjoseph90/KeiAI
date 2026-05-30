@@ -14,7 +14,7 @@ function assertPackage(pkg: KeiModulePackageV1): void {
     }
 }
 
-export async function importModuleFromKei(
+export async function importModulePackage(
     pkg: KeiModulePackageV1,
     options: ImportModuleOptions = {}
 ): Promise<string> {

@@ -17,7 +17,7 @@ import {
 } from '$lib/services';
 import { AssetService } from '$lib/services/asset';
 import {
-    importCharacterPackage as importCharacterPackageToDb,
+    importCharacterPackage as importCharacterPackagePorter,
     type KeiCharacterPackageV1
 } from '$lib/porters/character';
 import type { DataScopeType } from '$lib/adapters/db';
@@ -218,7 +218,7 @@ export async function importCharacterPackage(
     } = {}
 ): Promise<Character> {
     const scopeType = get(isMultiRoom) ? 'room' : 'user';
-    const characterId = await importCharacterPackageToDb(pkg, {
+    const characterId = await importCharacterPackagePorter(pkg, {
         scopeType,
         allowLightAssets: options.allowLightAssets
     });

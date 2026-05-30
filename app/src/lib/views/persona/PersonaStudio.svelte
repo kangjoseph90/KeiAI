@@ -24,14 +24,12 @@
         updatePersonaAvatar
     } from '$lib/stores';
     import { navigate } from '$lib/router';
-    import { exportPersonaFile, importPersonaFile } from '$lib/managers/persona';
-    import type { PersonaFileExport } from '$lib/porters/persona';
+    import { isKeiServer } from '$lib/adapters/pb';
+    import { exportPersonaFile } from '$lib/managers/persona';
 
     let { personaId }: { personaId: string } = $props();
 
     let avatarInput = $state<HTMLInputElement>();
-    let personaInput = $state<HTMLInputElement>();
-    let exportFormat = $state<'png' | 'keipersona'>('png');
 
     function backToContext() {
         if ($activeRoom && $activeChat) {
@@ -56,20 +54,6 @@
         if (!$activePersona) return;
         await deletePersona($activePersona.id);
         backToContext();
-    }
-
-    async function handleImportPersona(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
-        if (!file) return;
-        const persona = await importPersonaFile(file, { select: true });
-        target.value = '';
-        navigate({ view: 'personaStudio', personaId: persona.id });
-    }
-
-    function personaExportRequest(): PersonaFileExport {
-        if (exportFormat === 'keipersona') return { kind: 'keipersona' };
-        return { kind: 'risu', format: 'png' };
     }
 </script>
 
@@ -97,36 +81,48 @@
                 variant="outline"
                 size="sm"
                 class="gap-1.5"
-                onclick={() => personaInput?.click()}
+                disabled={!$activePersona}
+                onclick={() =>
+                    $activePersona &&
+                    exportPersonaFile($activePersona.id, { kind: 'risu', format: 'png' })}
+                title="Export Risu PNG"
             >
-                <Upload class="size-4" />
-                Import
+                <Download class="size-4" />
+                Risu PNG
             </Button>
-            <input
-                bind:this={personaInput}
-                type="file"
-                accept=".png,.keipersona"
-                class="hidden"
-                onchange={handleImportPersona}
-            />
-            <select
-                bind:value={exportFormat}
-                class="h-8 rounded-md border bg-background px-2 text-xs"
-                aria-label="Persona export format"
-            >
-                <option value="png">Risu .png</option>
-                <option value="keipersona">Kei .keipersona</option>
-            </select>
+            {#if isKeiServer()}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    class="gap-1.5"
+                    disabled={!$activePersona}
+                    onclick={() =>
+                        $activePersona &&
+                        exportPersonaFile($activePersona.id, {
+                            kind: 'keipersona',
+                            assetMode: 'light'
+                        })}
+                    title="Export Kei Light"
+                >
+                    <Download class="size-4" />
+                    Kei Light
+                </Button>
+            {/if}
             <Button
                 variant="outline"
                 size="sm"
                 class="gap-1.5"
                 disabled={!$activePersona}
                 onclick={() =>
-                    $activePersona && exportPersonaFile($activePersona.id, personaExportRequest())}
+                    $activePersona &&
+                    exportPersonaFile($activePersona.id, {
+                        kind: 'keipersona',
+                        assetMode: 'baked'
+                    })}
+                title="Export Kei Baked"
             >
                 <Download class="size-4" />
-                Export
+                Kei Baked
             </Button>
             <Button variant="destructive" size="sm" class="gap-1.5" onclick={handleDelete}>
                 <Trash2 class="size-4" />

@@ -1,5 +1,5 @@
 import {
-    exportModuleToKei,
+    exportModulePackage,
     moduleFileExtension,
     readModuleFile,
     writeModuleFile,
@@ -21,7 +21,8 @@ export async function importModuleFile(
 }
 
 export async function exportModuleFile(moduleId: string, request: ModuleFileExport): Promise<void> {
-    const pkg = await exportModuleToKei(moduleId, { mode: 'baked' });
+    const assetMode = request.kind === 'keimodule' ? request.assetMode : 'baked';
+    const pkg = await exportModulePackage(moduleId, assetMode);
     const bytes = await writeModuleFile(pkg, request);
     downloadBytes(
         bytes,

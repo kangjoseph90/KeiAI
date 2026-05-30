@@ -1,7 +1,7 @@
 import { AppError } from '$lib/types/errors';
 import { unzip, zip } from '$lib/utils/zip';
 import type { KeiModulePackageV1 } from './types';
-import { isRecord } from '../utils';
+import { isRecord, type KeiPackageExportMode } from '../utils';
 import {
     keiPackageToRisuModule,
     readRisuModulePackage,
@@ -12,7 +12,9 @@ import {
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 
-export type ModuleFileExport = { kind: 'keimodule' } | { kind: 'risu'; format: 'risum' };
+export type ModuleFileExport =
+    | { kind: 'keimodule'; assetMode: KeiPackageExportMode }
+    | { kind: 'risu'; format: 'risum' };
 
 export async function readModuleFile(file: File): Promise<KeiModulePackageV1> {
     const name = file.name.toLowerCase();

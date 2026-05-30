@@ -20,12 +20,12 @@
     import { exportModuleFile, importModuleFile } from '$lib/managers/module';
     import type { ModuleFileExport } from '$lib/porters/module';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import { isKeiServer } from '$lib/adapters/pb';
 
     let { moduleId }: { moduleId?: string } = $props();
 
     let newName = $state('');
     let importInput = $state<HTMLInputElement>();
-    let exportFormat = $state<'risum' | 'keimodule'>('risum');
 
     const selectedModule = $derived(
         moduleId ? ($modules.find((mod) => mod.id === moduleId) ?? null) : null
@@ -43,14 +43,12 @@
         const target = event.target as HTMLInputElement;
         const file = target.files?.[0];
         if (!file) return;
-        const mod = await importModuleFile(file, { select: true });
+        const mod = await importModuleFile(file, {
+            allowLightAssets: isKeiServer(),
+            select: true
+        });
         target.value = '';
         navigate({ view: 'settings', moduleId: mod.id });
-    }
-
-    function moduleExportRequest(): ModuleFileExport {
-        if (exportFormat === 'keimodule') return { kind: 'keimodule' };
-        return { kind: 'risu', format: exportFormat };
     }
 </script>
 
@@ -135,20 +133,46 @@
                             >
                                 <Pencil class="size-4" />
                             </Button>
-                            <select
-                                bind:value={exportFormat}
-                                class="h-8 rounded-md border bg-background px-2 text-xs"
-                                aria-label="Module export format"
-                            >
-                                <option value="risum">Risu .risum</option>
-                                <option value="keimodule">Kei .keimodule</option>
-                            </select>
                             <Button
                                 size="sm"
                                 variant="outline"
-                                onclick={() => exportModuleFile(mod.id, moduleExportRequest())}
+                                class="gap-1"
+                                onclick={() =>
+                                    exportModuleFile(mod.id, { kind: 'risu', format: 'risum' })}
+                                title="Export Risu Module"
                             >
                                 <Download class="size-4" />
+                                Risu Module
+                            </Button>
+                            {#if isKeiServer()}
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    class="gap-1"
+                                    onclick={() =>
+                                        exportModuleFile(mod.id, {
+                                            kind: 'keimodule',
+                                            assetMode: 'light'
+                                        })}
+                                    title="Export Kei Light"
+                                >
+                                    <Download class="size-4" />
+                                    Kei Light
+                                </Button>
+                            {/if}
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                class="gap-1"
+                                onclick={() =>
+                                    exportModuleFile(mod.id, {
+                                        kind: 'keimodule',
+                                        assetMode: 'baked'
+                                    })}
+                                title="Export Kei Baked"
+                            >
+                                <Download class="size-4" />
+                                Kei Baked
                             </Button>
                             <Button
                                 size="sm"

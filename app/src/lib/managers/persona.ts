@@ -1,5 +1,5 @@
 import {
-    exportPersonaToKei,
+    exportPersonaPackage,
     personaFileExtension,
     readPersonaFile,
     writePersonaFile,
@@ -24,7 +24,8 @@ export async function exportPersonaFile(
     personaId: string,
     request: PersonaFileExport
 ): Promise<void> {
-    const pkg = await exportPersonaToKei(personaId, { mode: 'baked' });
+    const assetMode = request.kind === 'keipersona' ? request.assetMode : 'baked';
+    const pkg = await exportPersonaPackage(personaId, assetMode);
     const bytes = await writePersonaFile(pkg, request);
     downloadBytes(
         bytes,

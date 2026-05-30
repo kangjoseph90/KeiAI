@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-    exportModuleToKei,
-    importModuleFromKei,
+    exportModulePackage,
+    importModulePackage,
     type KeiModulePackageV1
 } from '$lib/porters/module';
 import { AssetService } from '$lib/services/asset';
@@ -138,7 +138,7 @@ describe('module porters', () => {
         }));
         vi.mocked(AssetService.readBytes).mockResolvedValue(new Uint8Array([1, 2, 3]));
 
-        const pkg = await exportModuleToKei('module-real', { mode: 'light' });
+        const pkg = await exportModulePackage('module-real', 'light');
 
         expect(pkg.kind).toBe('keiai.module');
         expect(pkg.module.name).toBe('Test Module');
@@ -163,7 +163,7 @@ describe('module porters', () => {
             ]
         });
 
-        await expect(importModuleFromKei(pkg, { allowLightAssets: true })).rejects.toThrow(
+        await expect(importModulePackage(pkg, { allowLightAssets: true })).rejects.toThrow(
             'Broken asset payload'
         );
         expect(AssetService.write).not.toHaveBeenCalled();
@@ -190,7 +190,7 @@ describe('module porters', () => {
         vi.mocked(CharJSService.create).mockResolvedValue({ ...charjs, id: 'charjs-new' });
         vi.mocked(ModuleService.update).mockResolvedValue({ ...module_, id: 'module-new' });
 
-        const moduleId = await importModuleFromKei(pkg);
+        const moduleId = await importModulePackage(pkg);
         const update = vi.mocked(ModuleService.update).mock.calls[0]?.[1];
 
         expect(moduleId).toBe('module-new');

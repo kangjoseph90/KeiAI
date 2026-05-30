@@ -9,12 +9,6 @@ import {
     type KeiPackageExportMode
 } from '../utils';
 
-export type KeiModuleExportMode = KeiPackageExportMode;
-
-export interface ExportModuleOptions {
-    mode?: KeiModuleExportMode;
-}
-
 function collectAssetIds(module: KeiModulePayload): string[] {
     const ids = new Set<string>();
     for (const id of Object.keys(module.assets.refs)) {
@@ -23,12 +17,10 @@ function collectAssetIds(module: KeiModulePayload): string[] {
     return [...ids];
 }
 
-export async function exportModuleToKei(
+export async function exportModulePackage(
     moduleId: string,
-    options: ExportModuleOptions = {}
+    assetMode: KeiPackageExportMode
 ): Promise<KeiModulePackageV1> {
-    const mode = options.mode ?? 'light';
-
     const module = await ModuleService.get(moduleId);
     if (!module) {
         throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
@@ -69,7 +61,7 @@ export async function exportModuleToKei(
     };
 
     const assetPayloads = await Promise.all(
-        assetIds.map((id) => exportAsset(id, assetMap[id], mode))
+        assetIds.map((id) => exportAsset(id, assetMap[id], assetMode))
     );
 
     return {

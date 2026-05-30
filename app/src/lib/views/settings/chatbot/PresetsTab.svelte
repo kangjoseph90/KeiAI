@@ -23,7 +23,6 @@
 
     let newPresetName = $state('');
     let importInput = $state<HTMLInputElement>();
-    let exportFormat = $state<'risup' | 'keipreset'>('risup');
 
     async function handleCreatePreset() {
         if (!newPresetName.trim()) return;
@@ -38,11 +37,6 @@
         if (!file) return;
         await importPresetFile(file, { select: true });
         target.value = '';
-    }
-
-    function presetExportRequest(): PresetFileExport {
-        if (exportFormat === 'keipreset') return { kind: 'keipreset' };
-        return { kind: 'risu', format: exportFormat };
     }
 </script>
 
@@ -109,21 +103,26 @@
                             {:else}
                                 <Badge>Active</Badge>
                             {/if}
-                            <select
-                                bind:value={exportFormat}
-                                class="h-8 rounded-md border bg-background px-2 text-xs"
-                                aria-label="Preset export format"
-                            >
-                                <option value="risup">Risu .risup</option>
-                                <option value="keipreset">Kei .keipreset</option>
-                            </select>
                             <Button
                                 size="sm"
                                 variant="outline"
-                                onclick={() => exportPresetFile(preset.id, presetExportRequest())}
-                                aria-label="Export preset"
+                                class="gap-1"
+                                onclick={() =>
+                                    exportPresetFile(preset.id, { kind: 'risu', format: 'risup' })}
+                                title="Export Risu Preset"
                             >
                                 <Download class="size-4" />
+                                Risu Preset
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                class="gap-1"
+                                onclick={() => exportPresetFile(preset.id, { kind: 'keipreset' })}
+                                title="Export Kei Preset"
+                            >
+                                <Download class="size-4" />
+                                Kei Preset
                             </Button>
                             <Button
                                 size="sm"

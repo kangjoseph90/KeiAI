@@ -1,6 +1,9 @@
 import { get } from 'svelte/store';
 import { PersonaService, type PersonaFields, type Persona } from '$lib/services/content/persona';
-import { importPersonaFromKei, type KeiPersonaPackageV1 } from '$lib/porters/persona';
+import {
+    importPersonaPackage as importPersonaPackagePorter,
+    type KeiPersonaPackageV1
+} from '$lib/porters/persona';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import {
@@ -102,7 +105,7 @@ export async function importPersonaPackage(
     } = {}
 ): Promise<Persona> {
     const scopeType = get(isMultiRoom) ? 'room' : 'user';
-    const personaId = await importPersonaFromKei(pkg, {
+    const personaId = await importPersonaPackagePorter(pkg, {
         scopeType,
         allowLightAssets: options.allowLightAssets
     });

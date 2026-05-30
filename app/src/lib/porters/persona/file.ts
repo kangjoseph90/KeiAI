@@ -4,6 +4,7 @@ import { unzip, zip } from '$lib/utils/zip';
 import { base64ToBytes, bytesToBase64 } from '../character/package';
 import { denormalizeRisuTemplate, normalizeRisuTemplate } from '../risu/template';
 import type { KeiPersonaPackageV1 } from './types';
+import type { KeiPackageExportMode } from '../utils';
 
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
@@ -13,7 +14,9 @@ const EMPTY_PNG = new Uint8Array([
     239, 191, 167, 219, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
 ]);
 
-export type PersonaFileExport = { kind: 'keipersona' } | { kind: 'risu'; format: 'png' };
+export type PersonaFileExport =
+    | { kind: 'keipersona'; assetMode: KeiPackageExportMode }
+    | { kind: 'risu'; format: 'png' };
 
 interface RisuPersonaCard {
     name: string;

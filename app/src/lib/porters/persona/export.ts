@@ -9,12 +9,6 @@ import {
     type KeiPackageExportMode
 } from '../utils';
 
-export type KeiPersonaExportMode = KeiPackageExportMode;
-
-export interface ExportPersonaOptions {
-    mode?: KeiPersonaExportMode;
-}
-
 function collectAssetIds(persona: KeiPersonaPayload): string[] {
     const ids = new Set<string>();
     if (persona.avatarAssetId) ids.add(persona.avatarAssetId);
@@ -24,12 +18,10 @@ function collectAssetIds(persona: KeiPersonaPayload): string[] {
     return [...ids];
 }
 
-export async function exportPersonaToKei(
+export async function exportPersonaPackage(
     personaId: string,
-    options: ExportPersonaOptions = {}
+    assetMode: KeiPackageExportMode
 ): Promise<KeiPersonaPackageV1> {
-    const mode = options.mode ?? 'light';
-
     const persona = await PersonaService.get(personaId);
     if (!persona) {
         throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
@@ -46,7 +38,7 @@ export async function exportPersonaToKei(
     };
 
     const assetPayloads = await Promise.all(
-        assetIds.map((id) => exportAsset(id, assetMap[id], mode))
+        assetIds.map((id) => exportAsset(id, assetMap[id], assetMode))
     );
 
     return {

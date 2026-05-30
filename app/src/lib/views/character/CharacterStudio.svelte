@@ -41,6 +41,7 @@
         moveCharacterItem
     } from '$lib/stores';
     import { navigate } from '$lib/router';
+    import { isKeiServer } from '$lib/adapters/pb';
     import {
         exportCharacterFile,
         syncChatGreetings,
@@ -181,18 +182,20 @@
                 <Download class="size-3.5" />
                 CharX
             </Button>
-            <Button
-                variant="outline"
-                size="sm"
-                class="gap-1.5"
-                disabled={!$activeCharacter || exporting !== null}
-                onclick={() =>
-                    handleExport('keichar-light', { kind: 'keichar', assetMode: 'light' })}
-                title="Export KeiChar light archive"
-            >
-                <Download class="size-3.5" />
-                Kei Light
-            </Button>
+            {#if isKeiServer()}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    class="gap-1.5"
+                    disabled={!$activeCharacter || exporting !== null}
+                    onclick={() =>
+                        handleExport('keichar-light', { kind: 'keichar', assetMode: 'light' })}
+                    title="Export KeiChar light archive"
+                >
+                    <Download class="size-3.5" />
+                    Kei Light
+                </Button>
+            {/if}
             <Button
                 variant="outline"
                 size="sm"
