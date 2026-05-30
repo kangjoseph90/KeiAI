@@ -365,7 +365,7 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
   var h = require(`${__hooks}/keiai.js`);
 
   var ip = e.realIP();
-  if (!h.checkRate(ip + ":asset-upload", 30, 60000)) {
+  if (!h.checkRate(ip + ":asset-upload", 300, 60000)) {
     return e.json(429, { error: "Too many requests. Try again later." });
   }
 
@@ -451,7 +451,7 @@ routerAdd("PUT", "/api/multi-rooms/{roomId}/assets/{hash}", (e) => {
   var h = require(`${__hooks}/keiai.js`);
 
   var ip = e.realIP();
-  if (!h.checkRate(ip + ":multi-room-asset-upload", 30, 60000)) {
+  if (!h.checkRate(ip + ":multi-room-asset-upload", 300, 60000)) {
     return e.json(429, { error: "Too many requests. Try again later." });
   }
 

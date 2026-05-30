@@ -99,7 +99,7 @@ function readRisuCharacter(
 
 function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPackageV1 {
     const avatar = risu.assets.find((asset) => asset.role === 'avatar');
-    const resources = risu.assets.filter((asset) => asset.role === 'resource');
+    const resources = risu.assets.filter((asset) => asset !== avatar);
     const lorebooks = risu.lorebooks.map(
         (lorebook, index): KeiLorebookPayload => ({
             id: portableId('lorebook', index),
@@ -195,6 +195,16 @@ function resolveAssets(
             role: asset.type === 'icon' ? 'avatar' : 'resource'
         });
     }
+
+    if (!assets.some((asset) => asset.role === 'avatar') && defaultImage) {
+        assets.push({
+            id: 'avatar_default',
+            name: 'avatar',
+            data: defaultImage,
+            role: 'avatar'
+        });
+    }
+
     return assets;
 }
 

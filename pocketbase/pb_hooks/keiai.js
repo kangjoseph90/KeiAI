@@ -1,13 +1,21 @@
 function getStoreObject(key, fallback) {
   var store = $app.store();
   if (!store.has(key)) {
-    store.set(key, fallback);
+    store.set(key, JSON.stringify(fallback));
   }
-  return store.get(key);
+  var val = store.get(key);
+  if (typeof val === "string") {
+    try {
+      return JSON.parse(val);
+    } catch (_) {
+      return fallback;
+    }
+  }
+  return val;
 }
 
 function setStoreObject(key, value) {
-  $app.store().set(key, value);
+  $app.store().set(key, JSON.stringify(value));
 }
 
 function checkRate(key, maxRequests, windowMs) {
