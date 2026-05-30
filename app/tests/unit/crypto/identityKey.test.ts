@@ -5,7 +5,7 @@
  * Uses real Web Crypto API (no mocking) as required for crypto tests.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeAll } from 'vitest';
 import {
     decryptWithIdentity,
     encryptForIdentity,
@@ -20,6 +20,14 @@ import {
 import { decrypt, encrypt } from '$lib/crypto/encryption';
 import { generateMasterKey } from '$lib/crypto/masterKey';
 
+vi.mock('$lib/crypto/constants', async (importOriginal) => {
+    const original = await importOriginal<typeof import('$lib/crypto/constants')>();
+    return {
+        ...original,
+        IDENTITY_RSA_MODULUS_BITS: 2048
+    };
+});
+
 vi.setConfig({ testTimeout: 15_000 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -30,6 +38,14 @@ async function makeKeyPair(): Promise<CryptoKeyPair> {
 }
 
 describe('identityKey', () => {
+    let sharedKeyPair: CryptoKeyPair;
+    let charlieKeyPair: CryptoKeyPair;
+
+    beforeAll(async () => {
+        sharedKeyPair = await makeKeyPair();
+        charlieKeyPair = await makeKeyPair();
+    });
+
     describe('generateIdentityKeyPair', () => {
         it('should generate an RSA-OAEP key pair', async () => {
             const kp = await makeKeyPair();
@@ -41,21 +57,21 @@ describe('identityKey', () => {
         });
 
         it('should have correct key types', async () => {
-            const kp = await makeKeyPair();
+            const kp = sharedKeyPair;
 
             expect(kp.publicKey.type).toBe('public');
             expect(kp.privateKey.type).toBe('private');
         });
 
         it('should have correct usages', async () => {
-            const kp = await makeKeyPair();
+            const kp = sharedKeyPair;
 
             expect(kp.publicKey.usages).toEqual(['encrypt']);
             expect(kp.privateKey.usages).toEqual(['decrypt']);
         });
 
         it('should generate extractable keys by default', async () => {
-            const kp = await makeKeyPair();
+            const kp = sharedKeyPair;
 
             expect(kp.publicKey.extractable).toBe(true);
             expect(kp.privateKey.extractable).toBe(true);
@@ -74,7 +90,7 @@ describe('identityKey', () => {
 
     describe('exportPublicKey / importPublicKey', () => {
         it('should export public key as JWK with expected fields', async () => {
-            const kp = await makeKeyPair();
+            const kp = sharedKeyPair;
 
             const jwk = await exportPublicKey(kp.publicKey);
 
@@ -86,7 +102,7 @@ describe('identityKey', () => {
         });
 
         it('should import public key from JWK and restore a usable CryptoKey', async () => {
-            const kp = await makeKeyPair();
+            const kp = sharedKeyPair;
 
             const jwk = await exportPublicKey(kp.publicKey);
             const restored = await importPublicKey(jwk);
@@ -98,7 +114,7 @@ describe('identityKey', () => {
         });
 
         it('should produce a public key that can encrypt after roundtrip', async () => {
-            const kp = await makeKeyPair();
+            const kp = sharedKeyPair;
 
             const jwk = await exportPublicKey(kp.publicKey);
             const restored = await importPublicKey(jwk);
@@ -113,7 +129,7 @@ describe('identityKey', () => {
 
     describe('exportPrivateKey / importPrivateKey', () => {
         it('should export private key as PKCS#8 raw bytes', async () => {
-            const kp = await makeKeyPair();
+            const kp = sharedKeyPair;
 
             const raw = await exportPrivateKey(kp.privateKey);
 
@@ -122,7 +138,7 @@ describe('identityKey', () => {
         });
 
         it('should import private key with extractable=false for registered users', async () => {
-            const kp = await makeKeyPair();
+            const kp = sharedKeyPair;
 
             const raw = await exportPrivateKey(kp.privateKey);
             const locked = await importPrivateKey(raw, false);
@@ -134,7 +150,7 @@ describe('identityKey', () => {
         });
 
         it('should import private key with extractable=true for guest users', async () => {
-            const kp = await makeKeyPair();
+            const kp = sharedKeyPair;
 
             const raw = await exportPrivateKey(kp.privateKey);
             const unlocked = await importPrivateKey(raw, true);
@@ -143,7 +159,7 @@ describe('identityKey', () => {
         });
 
         it('should produce a private key that can decrypt after roundtrip', async () => {
-            const kp = await makeKeyPair();
+            const kp = sharedKeyPair;
 
             const raw = await exportPrivateKey(kp.privateKey);
             const restored = await importPrivateKey(raw, false);
@@ -158,7 +174,7 @@ describe('identityKey', () => {
         });
 
         it('should prevent export of non-extractable private key', async () => {
-            const kp = await makeKeyPair();
+            const kp = sharedKeyPair;
             const raw = await exportPrivateKey(kp.privateKey);
             const locked = await importPrivateKey(raw, false);
 
@@ -168,7 +184,7 @@ describe('identityKey', () => {
 
     describe('encryptForIdentity / decryptWithIdentity', () => {
         it('should encrypt bytes for another identity and decrypt with that identity', async () => {
-            const bob = await makeKeyPair();
+            const bob = sharedKeyPair;
             const data = new TextEncoder().encode('room secret') as Uint8Array<ArrayBuffer>;
 
             const encrypted = await encryptForIdentity(bob.publicKey, data);
@@ -178,19 +194,19 @@ describe('identityKey', () => {
         });
 
         it('should fail to decrypt with the wrong private key', async () => {
-            const bob = await makeKeyPair();
-            const charlie = await makeKeyPair();
+            const bob = sharedKeyPair;
+            const charlie = charlieKeyPair;
             const data = new TextEncoder().encode('room secret') as Uint8Array<ArrayBuffer>;
 
             const encrypted = await encryptForIdentity(bob.publicKey, data);
 
             await expect(decryptWithIdentity(charlie.privateKey, encrypted)).rejects.toThrow();
-        }, 15_000);
+        });
     });
 
     describe('wrapKeyForIdentity / unwrapKeyWithIdentity', () => {
         it('should wrap an AES-GCM key for another identity and unwrap a usable key', async () => {
-            const bob = await makeKeyPair();
+            const bob = sharedKeyPair;
             const roomKey = await generateMasterKey();
 
             const wrapped = await wrapKeyForIdentity(bob.publicKey, roomKey);
@@ -203,7 +219,7 @@ describe('identityKey', () => {
         });
 
         it('should unwrap an AES-GCM key as non-extractable', async () => {
-            const bob = await makeKeyPair();
+            const bob = sharedKeyPair;
             const roomKey = await generateMasterKey();
 
             const wrapped = await wrapKeyForIdentity(bob.publicKey, roomKey);
@@ -217,7 +233,7 @@ describe('identityKey', () => {
     describe('full registration/login flow simulation', () => {
         it('should complete E2EE identity key storage roundtrip (register -> login)', async () => {
             const masterKey = await generateMasterKey();
-            const kp = await generateIdentityKeyPair();
+            const kp = sharedKeyPair;
 
             const publicKeyJwk = await exportPublicKey(kp.publicKey);
             const rawPrivate = await exportPrivateKey(kp.privateKey);

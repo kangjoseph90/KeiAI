@@ -1,10 +1,56 @@
 import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloudflare:test';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import worker from '../src/index';
 
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
 describe('Proxy worker', () => {
+	beforeEach(() => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+			const urlStr = typeof url === 'string' ? url : (url as Request).url;
+
+			const headersRecord: Record<string, string> = {};
+			if (init?.headers) {
+				if (init.headers instanceof Headers) {
+					init.headers.forEach((value, key) => {
+						headersRecord[key] = value;
+						if (key.toLowerCase() === 'x-custom-header') {
+							headersRecord['X-Custom-Header'] = value;
+						}
+					});
+				} else if (Array.isArray(init.headers)) {
+					for (const [key, value] of init.headers) {
+						headersRecord[key] = value;
+						headersRecord[key.toLowerCase()] = value;
+					}
+				} else {
+					for (const [key, value] of Object.entries(init.headers)) {
+						headersRecord[key] = value;
+						headersRecord[key.toLowerCase()] = value;
+					}
+				}
+			}
+
+			let bodyText = '';
+			if (init?.body) {
+				if (typeof init.body === 'string') {
+					bodyText = init.body;
+				} else {
+					bodyText = await new Response(init.body as BodyInit).text();
+				}
+			}
+
+			return new Response(
+				JSON.stringify({
+					url: urlStr,
+					headers: headersRecord,
+					data: bodyText,
+				}),
+				{ status: 200 }
+			);
+		});
+	});
+
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
