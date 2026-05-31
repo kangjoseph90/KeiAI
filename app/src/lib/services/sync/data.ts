@@ -24,6 +24,7 @@ import {
 import { appKV } from '$lib/adapters/kv';
 import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
 import { createLogger } from '$lib/adapters/logger';
+import { clock } from '$lib/utils/clock';
 import {
     normalizeTimestamp,
     PAGE_SIZE,
@@ -193,6 +194,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                     for (const { remote, local } of pairedRecords) {
                         const remoteAt = remote.record.updatedAt ?? 0;
                         const localAt = local?.updatedAt ?? 0;
+                        clock.observe(remoteAt);
 
                         if (!local || remoteAt > localAt) {
                             const records = grouped.get(remote.table) ?? [];
@@ -351,6 +353,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 
             const remote = await this.pbToLocalRecord(e.record, syncScope);
             const remoteAt = remote.record.updatedAt ?? 0;
+            clock.observe(remoteAt);
 
             await localDB.transaction([remote.table], 'rw', async () => {
                 const local = await localDB.getRecord<DataRecord>(remote.table, remote.record.id);

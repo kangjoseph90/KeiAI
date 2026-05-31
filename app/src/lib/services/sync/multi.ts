@@ -19,6 +19,7 @@ import { appKV } from '$lib/adapters/kv';
 import { getActiveSession } from '../session';
 import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
 import { createLogger } from '$lib/adapters/logger';
+import { clock } from '$lib/utils/clock';
 import {
     normalizeTimestamp,
     PAGE_SIZE,
@@ -139,6 +140,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
 
             for (const item of result.items) {
                 const remote = this.pbToRoomIndex(item as unknown as Record<string, unknown>);
+                clock.observe(remote.updatedAt);
                 const local = await appMulti.getRoomIndex(remote.id);
                 if (
                     !local ||
@@ -171,6 +173,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
 
             for (const item of result.items) {
                 const remote = this.pbToMember(item as unknown as Record<string, unknown>);
+                clock.observe(remote.updatedAt);
                 const local = await appMulti.getMember(remote.id);
                 const shouldSave =
                     !local ||
@@ -337,6 +340,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             if (!isReadyToSync()) return;
             if (collection === 'multi_room_index') {
                 const remote = this.pbToRoomIndex(event.record);
+                clock.observe(remote.updatedAt);
                 const local = await appMulti.getRoomIndex(remote.id);
                 if (
                     !local ||
@@ -351,6 +355,7 @@ export class MultiRecordSyncEngineImpl extends BaseRecordSyncEngine<
             }
 
             const remote = this.pbToMember(event.record);
+            clock.observe(remote.updatedAt);
             const local = await appMulti.getMember(remote.id);
             const shouldSave =
                 !local ||

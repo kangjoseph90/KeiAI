@@ -97,6 +97,27 @@ export class MonotonicClock {
         return this.floor;
     }
 
+    /**
+     * Observe a timestamp produced by another replica.
+     *
+     * The next local now() call will be greater than the observed value, while
+     * preserving the existing numeric timestamp format.
+     */
+    observe(timestamp: number): void {
+        if (!Number.isFinite(timestamp) || timestamp <= 0) return;
+
+        const wall = Date.now();
+        if (timestamp > wall + MAX_FUTURE_DRIFT) {
+            logger.warn(
+                `Observed timestamp ${timestamp} is too far ahead of wall clock ${wall}. ` +
+                    'Ignoring it to avoid future timestamp poisoning.'
+            );
+            return;
+        }
+
+        this.floor = Math.max(this.floor, timestamp);
+    }
+
     private flushFloor(): void {
         if (this.storage && this.floor > 0) {
             void this.storage.set(CLOCK_FLOOR_KEY, this.floor.toString());

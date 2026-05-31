@@ -20,6 +20,7 @@ import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
 import { normalizeTimestamp, isReadyToSync } from './utils';
 import { decrypt, encrypt, fromBase64, toBase64 } from '$lib/crypto';
 import { createLogger } from '$lib/adapters/logger';
+import { clock } from '$lib/utils/clock';
 
 const logger = createLogger('sync:user');
 
@@ -163,6 +164,7 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
                 serverRecord.updatedAt,
                 serverRecord.updated
             );
+            clock.observe(remoteUpdatedAt);
 
             const localUser = await appUser.getUser(userId);
             const localUpdatedAt = localUser?.updatedAt ?? 0;
@@ -198,6 +200,7 @@ export class UserRecordSyncEngineImpl extends BaseRecordSyncEngine<UserWriteEven
                 serverRecord.updatedAt,
                 serverRecord.updated
             );
+            clock.observe(remoteUpdatedAt);
 
             const localUpdatedAt = user?.updatedAt ?? 0;
 

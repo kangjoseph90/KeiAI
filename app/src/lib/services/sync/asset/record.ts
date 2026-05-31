@@ -23,6 +23,7 @@ import {
 } from '$lib/adapters/asset';
 import { BaseRecordSyncEngine, type BufferedRecordWrite } from '../base';
 import { createLogger } from '$lib/adapters/logger';
+import { clock } from '$lib/utils/clock';
 import {
     normalizeTimestamp,
     PAGE_SIZE,
@@ -195,6 +196,7 @@ export class AssetRecordSyncEngineImpl extends BaseRecordSyncEngine<AssetWriteEv
                     pulledRemoteIds.add(remote.id);
                     const remoteAt = remote.updatedAt ?? 0;
                     const localAt = local?.updatedAt ?? 0;
+                    clock.observe(remoteAt);
 
                     if (!local || remoteAt > localAt) {
                         await appAsset.putAsset(remote, { origin: 'sync' });
@@ -250,6 +252,7 @@ export class AssetRecordSyncEngineImpl extends BaseRecordSyncEngine<AssetWriteEv
 
             const remote = await this.pbToLocalRecord(event.record, syncScope);
             const remoteAt = remote.updatedAt ?? 0;
+            clock.observe(remoteAt);
             let shouldEvict = false;
 
             await appAsset.transaction(['assets', 'assetRegistry'], 'rw', async () => {
