@@ -33,6 +33,8 @@ export async function syncChatGreetings(chatId: string): Promise<void> {
     const characters = await Promise.all(refs.map((ref) => getCharacter(ref.id)));
     const variables = await getChatDefaultVariables(chat.id);
 
+    let swipeIndex = 0;
+    const baseTime = Date.now();
     const greetingSwipes = Object.fromEntries(
         characters.flatMap((character) => {
             if (!character) return [];
@@ -43,7 +45,7 @@ export async function syncChatGreetings(chatId: string): Promise<void> {
                     {
                         id: greeting.id,
                         content: greeting.content,
-                        createdAt: Date.now(),
+                        createdAt: baseTime + swipeIndex++,
                         variables,
                         speakerId: character.id,
                         speakerName: character.name

@@ -147,7 +147,13 @@
     {/if}
 
     {#if url}
-        <img src={url} {alt} class="size-full object-cover" onerror={handleImgError} />
+        <img
+            src={url}
+            {alt}
+            class="size-full object-cover"
+            onerror={handleImgError}
+            draggable="false"
+        />
     {:else if error || (!loading && !asset)}
         {#if children}
             {@render children()}

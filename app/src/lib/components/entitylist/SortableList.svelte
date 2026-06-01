@@ -6,6 +6,7 @@
     interface Props {
         entities: T[];
         onReorder: (id: string, newSortOrder: string) => Promise<void>;
+        onItemClick?: (entity: T) => void | Promise<void>;
         item: Snippet<[{ entity: T }]>;
         empty?: Snippet;
     }
@@ -13,6 +14,7 @@
     let {
         entities,
         onReorder,
+        onItemClick = undefined,
         item: itemSnippet,
         empty: emptySnippet = undefined
     }: Props = $props();
@@ -43,7 +45,7 @@
 
     // ─── Drag Handlers ─────────────────────────────────────────────────
     function isInteractiveDragTarget(target: EventTarget | null): boolean {
-        if (!(target instanceof HTMLElement)) return false;
+        if (!(target instanceof Element)) return false;
         return Boolean(
             target.closest(
                 'input, textarea, select, button, a, [contenteditable="true"], [data-no-reorder-drag]'
@@ -147,19 +149,24 @@
             ondragleave={(e) => handleDragLeave(e, entity.id)}
             ondrop={(e) => handleDrop(e, item)}
             ondragend={resetDragState}
+            onclick={(e) => {
+                if (!isInteractiveDragTarget(e.target) && onItemClick) {
+                    onItemClick(entity);
+                }
+            }}
             role="none"
-            class="relative transition-all duration-200 drop-target w-full py-0.5"
+            class="relative transition-all duration-200 drop-target w-full py-0.5 select-none"
         >
             {@render itemSnippet({ entity })}
 
             {#if dragOverId === entity.id}
                 {#if dragOverZone === 'before'}
                     <div
-                        class="absolute top-0 left-0 right-0 h-[3px] bg-primary z-50 pointer-events-none rounded-full"
+                        class="absolute top-0 left-0 right-0 h-[2px] bg-primary/60 z-50 pointer-events-none rounded-full"
                     ></div>
                 {:else if dragOverZone === 'after'}
                     <div
-                        class="absolute bottom-0 left-0 right-0 h-[3px] bg-primary z-50 pointer-events-none rounded-full"
+                        class="absolute bottom-0 left-0 right-0 h-[2px] bg-primary/60 z-50 pointer-events-none rounded-full"
                     ></div>
                 {/if}
             {/if}

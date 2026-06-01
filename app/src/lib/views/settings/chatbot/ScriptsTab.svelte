@@ -70,7 +70,7 @@
     }
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-6 px-2">
     <div class="space-y-2">
         <div class="flex items-center justify-between">
             <h4 class="text-sm font-medium">Custom Toggles</h4>

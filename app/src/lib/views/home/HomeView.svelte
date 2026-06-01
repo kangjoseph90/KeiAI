@@ -517,6 +517,7 @@
                         config={$appSettings.rooms}
                         layout="grid"
                         childContainerClass="relative ml-6 p-3 my-1"
+                        onItemClick={(room) => onNavigate({ view: 'room', roomId: room.id })}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('rooms', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) => updateGlobalFolder('rooms', id, changes)}
@@ -555,11 +556,7 @@
                                 class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 group"
                             >
                                 <div class="flex w-full items-center gap-3">
-                                    <button
-                                        class="flex min-w-0 flex-1 items-center gap-3 text-left"
-                                        onclick={() =>
-                                            onNavigate({ view: 'room', roomId: room.id })}
-                                    >
+                                    <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
                                         <RoomAvatar {room} class="size-12 shrink-0" />
                                         <div class="min-w-0">
                                             <h2
@@ -573,7 +570,7 @@
                                                 {characterCount} characters / {chatCount} chats
                                             </p>
                                         </div>
-                                    </button>
+                                    </div>
                                     <Button
                                         variant="ghost"
                                         size="icon-sm"
@@ -584,13 +581,12 @@
                                         <Trash2 class="size-4" />
                                     </Button>
                                 </div>
-                                <button
+                                <div
                                     class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
-                                    onclick={() => onNavigate({ view: 'room', roomId: room.id })}
                                 >
                                     <DoorOpen class="size-3.5" />
                                     Open room
-                                </button>
+                                </div>
                             </div>
                         {/snippet}
                     </EntityList>
@@ -717,6 +713,7 @@
                         config={$appSettings.multiRooms}
                         layout="grid"
                         childContainerClass="relative ml-6 p-3 my-1"
+                        onItemClick={(room) => openMultiRoom(room.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('multiRooms', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
@@ -756,10 +753,7 @@
                                 class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
                             >
                                 <div class="flex w-full items-center gap-3">
-                                    <button
-                                        class="flex min-w-0 flex-1 items-center gap-3 text-left"
-                                        onclick={() => openMultiRoom(room.id)}
-                                    >
+                                    <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
                                         <div
                                             class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold"
                                         >
@@ -775,7 +769,7 @@
                                                 {characterCount} characters / {chatCount} chats
                                             </p>
                                         </div>
-                                    </button>
+                                    </div>
                                     <Button
                                         variant="ghost"
                                         size="icon-sm"
@@ -795,13 +789,12 @@
                                         {/if}
                                     </Button>
                                 </div>
-                                <button
+                                <div
                                     class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
-                                    onclick={() => openMultiRoom(room.id)}
                                 >
                                     <DoorOpen class="size-3.5" />
                                     Open multi room
-                                </button>
+                                </div>
                             </div>
                         {/snippet}
                     </EntityList>
@@ -811,6 +804,8 @@
                         config={$appSettings.characters}
                         layout="grid"
                         childContainerClass="relative ml-6 p-3 my-1"
+                        onItemClick={(character) =>
+                            onNavigate({ view: 'characterStudio', charId: character.id })}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('characters', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
@@ -848,14 +843,7 @@
                                 class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
                             >
                                 <div class="flex w-full items-center gap-3">
-                                    <button
-                                        class="flex min-w-0 flex-1 items-center gap-3 text-left"
-                                        onclick={() =>
-                                            onNavigate({
-                                                view: 'characterStudio',
-                                                charId: character.id
-                                            })}
-                                    >
+                                    <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
                                         <div
                                             class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
                                         >
@@ -886,7 +874,7 @@
                                                 {character.description || 'No description'}
                                             </p>
                                         </div>
-                                    </button>
+                                    </div>
                                     <Button
                                         variant="ghost"
                                         size="icon-sm"
@@ -898,17 +886,12 @@
                                         <Trash2 class="size-4" />
                                     </Button>
                                 </div>
-                                <button
+                                <div
                                     class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
-                                    onclick={() =>
-                                        onNavigate({
-                                            view: 'characterStudio',
-                                            charId: character.id
-                                        })}
                                 >
                                     <UserRound class="size-3.5" />
                                     Open studio
-                                </button>
+                                </div>
                             </div>
                         {/snippet}
                     </EntityList>
@@ -918,6 +901,8 @@
                         config={$appSettings.personas}
                         layout="grid"
                         childContainerClass="relative ml-6 p-3 my-1"
+                        onItemClick={(persona) =>
+                            onNavigate({ view: 'personaStudio', personaId: persona.id })}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('personas', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
@@ -955,14 +940,7 @@
                                 class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
                             >
                                 <div class="flex w-full items-center gap-3">
-                                    <button
-                                        class="flex min-w-0 flex-1 items-center gap-3 text-left"
-                                        onclick={() =>
-                                            onNavigate({
-                                                view: 'personaStudio',
-                                                personaId: persona.id
-                                            })}
-                                    >
+                                    <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
                                         <div
                                             class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
                                         >
@@ -993,7 +971,7 @@
                                                 {persona.description || 'No description'}
                                             </p>
                                         </div>
-                                    </button>
+                                    </div>
                                     <Button
                                         variant="ghost"
                                         size="icon-sm"
@@ -1005,17 +983,12 @@
                                         <Trash2 class="size-4" />
                                     </Button>
                                 </div>
-                                <button
+                                <div
                                     class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
-                                    onclick={() =>
-                                        onNavigate({
-                                            view: 'personaStudio',
-                                            personaId: persona.id
-                                        })}
                                 >
                                     <UserRound class="size-3.5" />
                                     Open studio
-                                </button>
+                                </div>
                             </div>
                         {/snippet}
                     </EntityList>

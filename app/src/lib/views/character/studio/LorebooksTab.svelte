@@ -14,7 +14,7 @@
         onCreate: (data: DeepPartial<Lorebook>) => void | Promise<void>;
         onUpdate: (id: string, changes: DeepPartial<Lorebook>) => void | Promise<void>;
         onDelete: (id: string) => void | Promise<void>;
-        onCreateFolder: (name: string, parentId?: string) => Promise<FolderDef>;
+        onCreateFolder: (name: string, parentId?: string, sortOrder?: string) => Promise<FolderDef>;
         onUpdateFolder: (
             folderId: string,
             changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>

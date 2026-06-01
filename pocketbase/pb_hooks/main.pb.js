@@ -573,39 +573,60 @@ routerAdd(
 // Asset usage hooks
 
 onRecordAfterCreateSuccess((e) => {
-  require(`${__hooks}/keiai.js`).reconcilePendingAssetUsage(
-    e.record.getString("hash"),
-  );
+  e.next();
+  try {
+    require(`${__hooks}/keiai.js`).reconcilePendingAssetUsage(
+      e.record.getString("hash"),
+    );
+  } catch (_) {}
 }, "asset_catalog");
 
 onRecordAfterCreateSuccess((e) => {
-  require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
+  e.next();
+  try {
+    require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
+  } catch (_) {}
 }, "records");
 
 onRecordAfterUpdateSuccess((e) => {
-  require(`${__hooks}/keiai.js`).handleAssetRefTransition(
-    e.record,
-    e.record.original(),
-  );
+  e.next();
+  try {
+    require(`${__hooks}/keiai.js`).handleAssetRefTransition(
+      e.record,
+      e.record.original(),
+    );
+  } catch (_) {}
 }, "records");
 
 onRecordAfterDeleteSuccess((e) => {
-  require(`${__hooks}/keiai.js`).handleAssetRefTransition(null, e.record);
+  e.next();
+  try {
+    require(`${__hooks}/keiai.js`).handleAssetRefTransition(null, e.record);
+  } catch (_) {}
 }, "records");
 
 onRecordAfterCreateSuccess((e) => {
-  require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
+  e.next();
+  try {
+    require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
+  } catch (_) {}
 }, "multi_room_records");
 
 onRecordAfterUpdateSuccess((e) => {
-  require(`${__hooks}/keiai.js`).handleAssetRefTransition(
-    e.record,
-    e.record.original(),
-  );
+  e.next();
+  try {
+    require(`${__hooks}/keiai.js`).handleAssetRefTransition(
+      e.record,
+      e.record.original(),
+    );
+  } catch (_) {}
 }, "multi_room_records");
 
 onRecordAfterDeleteSuccess((e) => {
-  require(`${__hooks}/keiai.js`).handleAssetRefTransition(null, e.record);
+  e.next();
+  try {
+    require(`${__hooks}/keiai.js`).handleAssetRefTransition(null, e.record);
+  } catch (_) {}
 }, "multi_room_records");
 
 // Asset garbage collection

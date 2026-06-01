@@ -30,9 +30,7 @@
     }
 </script>
 
-<div
-    class="relative overflow-hidden flex items-center justify-center shrink-0 select-none {className}"
->
+<div class="relative flex items-center justify-center shrink-0 select-none {className}">
     {#if roomChars().length === 0}
         <!-- Fallback: Room Initials -->
         <div

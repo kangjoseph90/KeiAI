@@ -11,7 +11,7 @@
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
 
     interface FolderCallbacks {
-        onCreateFolder: (name: string, parentId?: string) => Promise<FolderDef>;
+        onCreateFolder: (name: string, parentId?: string, sortOrder?: string) => Promise<FolderDef>;
         onUpdateFolder: (
             folderId: string,
             changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>

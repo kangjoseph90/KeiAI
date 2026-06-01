@@ -27,7 +27,7 @@ class AssetDexie extends Dexie {
         super('KeiAssets');
         this.version(1).stores({
             assetRegistry:
-                'id, [scopeType+scopeId], [scopeType+scopeId+ownerTable+ownerId], [scopeType+scopeId+ownerTable+ownerId+hash], [scopeType+scopeId+status], [scopeType+scopeId+status+accessedAt]'
+                'id, status, [status+accessedAt], [scopeType+scopeId], [scopeType+scopeId+ownerTable+ownerId], [scopeType+scopeId+ownerTable+ownerId+hash], [scopeType+scopeId+status], [scopeType+scopeId+status+accessedAt]'
         });
     }
 }

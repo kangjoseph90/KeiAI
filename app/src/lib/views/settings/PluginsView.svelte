@@ -257,6 +257,7 @@
             entities={$plugins}
             config={$appSettings.plugins}
             layout="list"
+            onItemClick={(plugin) => navigate({ view: 'settings', pluginId: plugin.id })}
             onCreateFolder={(name, parentId, sortOrder) =>
                 createGlobalFolder('plugins', name, parentId, sortOrder)}
             onUpdateFolder={(id, changes) => updateGlobalFolder('plugins', id, changes)}
@@ -272,10 +273,7 @@
             {#snippet item({ entity: plugin })}
                 <Card>
                     <CardContent class="flex items-center justify-between gap-3 p-4">
-                        <button
-                            class="min-w-0 flex-1 text-left"
-                            onclick={() => navigate({ view: 'settings', pluginId: plugin.id })}
-                        >
+                        <div class="min-w-0 flex-1 cursor-pointer">
                             <div class="flex items-center gap-2">
                                 <p class="font-medium">{plugin.name || 'Unnamed'}</p>
                                 <Badge variant="secondary" class="text-xs font-mono">
@@ -290,7 +288,7 @@
                                     {plugin.description}
                                 </p>
                             {/if}
-                        </button>
+                        </div>
                         <div class="flex shrink-0 gap-1.5 items-center">
                             {#if loadedPluginIds.includes(plugin.id)}
                                 <Button
