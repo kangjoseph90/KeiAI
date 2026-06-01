@@ -1,48 +1,45 @@
 import { pb } from '$lib/adapters/pb';
-import { appStorage } from '$lib/adapters/storage';
-import { clock } from '$lib/utils/clock';
-import { hasActiveSession } from '../../session';
-import {
-    appAsset,
-    type AssetFields,
-    type AssetRegistryRecord,
-    type AssetWriteEvent
-} from '$lib/adapters/asset';
-import type { SyncProgress, SyncStatus } from '../base';
+import { hasActiveSession } from '../session';
+import { appAsset, type AssetRegistryRecord } from '$lib/adapters/asset';
+import type { SyncProgress, SyncStatus } from './base';
 import {
     isQuotaError,
     isAuthError,
     toErrorState,
-    belongsToScope,
     getActiveSyncScopes,
     type SyncScope
-} from '../utils';
+} from './utils';
 import { createLogger } from '$lib/adapters/logger';
-import { encryptConvergentAsset, parseFields } from '../../asset/util';
-import { uploadAsset } from '../../asset/remote';
+import { AssetService } from '../asset';
+import { encryptConvergentAsset } from '../asset/util';
+import { uploadAsset } from '../asset/remote';
 import { Semaphore } from '$lib/utils/semaphore';
-import { USER_ASSETS_COLLECTION, ROOM_ASSETS_COLLECTION } from './types';
 
-export interface AssetBinarySyncStatus extends SyncStatus {
+export type AssetCollection = 'records' | 'multi_room_records';
+
+export const USER_ASSETS_COLLECTION: AssetCollection = 'records';
+export const ROOM_ASSETS_COLLECTION: AssetCollection = 'multi_room_records';
+
+export interface AssetSyncStatus extends SyncStatus {
     pendingCount: number;
     currentAssetId?: string;
 }
 
 const UPLOAD_CONCURRENCY = 3;
-const logger = createLogger('sync:asset:binary');
+const logger = createLogger('sync:asset');
 
-export class AssetBinarySyncEngineImpl {
+export class AssetSyncEngineImpl {
     private runPromise: Promise<void> | null = null;
     private rerunRequested = false;
     private stopped = false;
-    private readonly listeners = new Set<(status: AssetBinarySyncStatus) => void>();
-    private status: AssetBinarySyncStatus = { state: 'idle', pendingCount: 0 };
+    private readonly listeners = new Set<(status: AssetSyncStatus) => void>();
+    private status: AssetSyncStatus = { state: 'idle', pendingCount: 0 };
 
-    getState(): AssetBinarySyncStatus {
+    getState(): AssetSyncStatus {
         return this.cloneStatus(this.status);
     }
 
-    subscribeStatus(listener: (status: AssetBinarySyncStatus) => void): () => void {
+    subscribeStatus(listener: (status: AssetSyncStatus) => void): () => void {
         this.listeners.add(listener);
         listener(this.getState());
         return () => {
@@ -72,9 +69,7 @@ export class AssetBinarySyncEngineImpl {
         });
     }
 
-    handleLocalWrite(event: AssetWriteEvent): void {
-        if (event.origin !== 'local') return;
-        if (event.ids.length === 0) return;
+    handleLocalWrite(): void {
         void this.start();
     }
 
@@ -110,11 +105,13 @@ export class AssetBinarySyncEngineImpl {
         const pendingGroups = await Promise.all(
             scopes.map(async (syncScope) => ({
                 syncScope,
-                entries: await appAsset.getRegistryByStatus(syncScope.scope, 'local')
+                entries: await AssetService.getLocalAssets(syncScope.scope)
             }))
         );
         const pending = pendingGroups.flatMap(({ syncScope, entries }) =>
-            entries.map((entry) => ({ syncScope, entry }))
+            entries
+                .filter((entry) => entry.ownerTable !== 'chats')
+                .map((entry) => ({ syncScope, entry }))
         );
 
         this.updateStatus({ pendingCount: pending.length, progress: undefined });
@@ -166,70 +163,30 @@ export class AssetBinarySyncEngineImpl {
     }
 
     private async uploadOne(entry: AssetRegistryRecord, syncScope: SyncScope): Promise<void> {
-        const asset = await appAsset.getAsset(entry.id);
-        if (!asset || asset.isDeleted || !belongsToScope(asset, syncScope.scope)) {
-            await appAsset.deleteRegistry(entry.id).catch(() => undefined);
-            return;
-        }
-
-        const fields = parseFields(asset);
-        if (fields.status !== 'local') {
-            await this.syncRegistryIndex(entry.id, fields);
-            return;
-        }
-
-        const plaintext = await appStorage.read(`assets/${entry.id}`);
+        const plaintext = await appAsset.readAssetBytes(entry);
         if (!plaintext) {
-            await appAsset.deleteRegistry(entry.id).catch(() => undefined);
+            await AssetService.delete(entry).catch(() => undefined);
             return;
         }
 
         const encrypted = await encryptConvergentAsset(plaintext);
-        const nextFields: AssetFields = {
-            kind: fields.kind,
-            status: 'remote',
-            hash: encrypted.hash,
-            encKey: encrypted.encKey
-        };
+        if (encrypted.hash !== entry.hash) {
+            logger.error(`Local asset hash mismatch during upload: ${entry.id}`);
+            return;
+        }
 
         if (syncScope.scope.scopeType === 'room') {
-            await uploadAsset(encrypted.hash, encrypted.ciphertext, {
+            await uploadAsset(entry.hash, encrypted.ciphertext, {
                 roomId: syncScope.scope.scopeId
             });
         } else {
-            await uploadAsset(encrypted.hash, encrypted.ciphertext);
+            await uploadAsset(entry.hash, encrypted.ciphertext);
         }
 
-        await appAsset.putAsset({
-            ...asset,
-            data: nextFields as unknown as Record<string, unknown>,
-            updatedAt: clock.now()
-        });
-        await appAsset.putRegistry({
-            ...entry,
-            kind: nextFields.kind,
-            status: nextFields.status,
-            size: plaintext.length,
-            updatedAt: clock.now()
-        });
+        await AssetService.markRemote(entry);
     }
 
-    private async syncRegistryIndex(
-        id: string,
-        fields: Pick<AssetFields, 'kind' | 'status'>
-    ): Promise<void> {
-        const registry = await appAsset.getRegistry(id);
-        if (!registry || registry.isDeleted) return;
-        if (registry.kind === fields.kind && registry.status === fields.status) return;
-        await appAsset.putRegistry({
-            ...registry,
-            kind: fields.kind,
-            status: fields.status,
-            updatedAt: clock.now()
-        });
-    }
-
-    private updateStatus(patch: Partial<AssetBinarySyncStatus>): void {
+    private updateStatus(patch: Partial<AssetSyncStatus>): void {
         this.status = { ...this.status, ...patch };
         if (patch.progress === undefined) this.status.progress = undefined;
         if (patch.currentAssetId === undefined) this.status.currentAssetId = undefined;
@@ -238,7 +195,7 @@ export class AssetBinarySyncEngineImpl {
         }
     }
 
-    private cloneStatus(status: AssetBinarySyncStatus): AssetBinarySyncStatus {
+    private cloneStatus(status: AssetSyncStatus): AssetSyncStatus {
         return {
             ...status,
             progress: status.progress ? ({ ...status.progress } as SyncProgress) : undefined
@@ -246,5 +203,4 @@ export class AssetBinarySyncEngineImpl {
     }
 }
 
-export const AssetBinarySyncEngine = new AssetBinarySyncEngineImpl();
-export type AssetSyncStatus = AssetBinarySyncStatus;
+export const AssetSyncEngine = new AssetSyncEngineImpl();

@@ -30,13 +30,12 @@ import { generateId } from '$lib/utils/id';
 import { clearMultiRoomSession, getActiveSession, setMultiRoomSession } from './session';
 import { buffer } from './content/record_buffer';
 import { parseFields as parseRoomFields, type Room } from './content/room';
-import { appAsset } from '$lib/adapters/asset';
-import { appStorage } from '$lib/adapters/storage';
 import { appHttp } from '$lib/adapters/http';
 import { pb } from '$lib/adapters/pb';
 import { MultiRecordSyncEngine, SyncManager } from './sync';
 import { buildUrl } from '$lib/utils/url';
 import { createLogger } from '$lib/adapters/logger';
+import { AssetService } from './asset';
 
 const logger = createLogger('service:multi');
 
@@ -597,20 +596,7 @@ export class MultiRoomService {
 
     static async purgeLocalRoomContent(roomId: string): Promise<void> {
         const roomScope = { scopeType: 'room' as const, scopeId: roomId };
-        const [assets, registry] = await Promise.all([
-            appAsset.getAllAssets(roomScope),
-            appAsset.getAllRegistry(roomScope)
-        ]);
-
-        for (const asset of assets) {
-            await appAsset.deleteAsset(asset.id, { origin: 'sync' });
-        }
-
-        const ids = new Set<string>([...assets.map((r) => r.id), ...registry.map((r) => r.id)]);
-        for (const id of ids) {
-            await appStorage.delete(`assets/${id}`).catch(() => undefined);
-            await appAsset.deleteRegistry(id, { origin: 'sync' }).catch(() => undefined);
-        }
+        await AssetService.deleteScopeAssets(roomScope);
 
         await Promise.all(TABLES.map((table) => buffer.flushTable(table)));
         await Promise.all(TABLES.map((table) => localDB.deleteByIndex(table, 'scopeId', roomId)));

@@ -12,6 +12,7 @@ import { TABLES } from './types';
 import { AppError } from '$lib/types/errors';
 import { DatabaseWriteEventEmitter } from './events';
 import { clock } from '$lib/utils/clock';
+import type { AssetEntries } from '$lib/types/asset';
 
 /**
  * Tauri SQLite Local Database Adapter
@@ -37,6 +38,7 @@ interface DatabaseSqlRow {
     createdAt: number | null;
     updatedAt: number | null;
     isDeleted: number; // 0 | 1
+    assetEntries: string | null;
     data: string; // JSON.stringify(...)
 }
 
@@ -53,6 +55,7 @@ interface RecordBindingShape {
     sortOrder?: string;
     ownerId?: string;
     createdAt?: number;
+    assetEntries?: AssetEntries;
     data?: Record<string, unknown>;
 }
 
@@ -73,6 +76,7 @@ function recordToBindings<T extends BaseRecord>(record: T): DatabaseSqlRow {
         createdAt: clone.createdAt ?? null,
         updatedAt: clone.updatedAt ?? null,
         isDeleted: clone.isDeleted ? 1 : 0,
+        assetEntries: clone.assetEntries ? JSON.stringify(clone.assetEntries) : null,
         data: JSON.stringify(clone.data ?? {})
     };
 
@@ -94,6 +98,7 @@ function parseRecord<T>(row: DatabaseSqlRow): T {
         createdAt: row.createdAt ?? 0,
         updatedAt: row.updatedAt ?? 0,
         isDeleted: row.isDeleted === 1,
+        assetEntries: row.assetEntries ? (JSON.parse(row.assetEntries) as AssetEntries) : undefined,
         data
     } as T;
 }
@@ -148,6 +153,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         createdAt INTEGER,
                         updatedAt INTEGER,
                         isDeleted INTEGER,
+                        assetEntries TEXT,
                         data TEXT
 					);
 				`;
@@ -215,8 +221,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         const b = recordToBindings(record);
         await db.execute(
             `INSERT OR REPLACE INTO ${tableName}
-				(id, scopeType, scopeId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+				(id, scopeType, scopeId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, assetEntries, data)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
             [
                 b.id,
                 b.scopeType,
@@ -230,6 +236,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 b.createdAt,
                 b.updatedAt,
                 b.isDeleted,
+                b.assetEntries,
                 b.data
             ]
         );
@@ -248,8 +255,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             const chunk = records.slice(i, i + chunkSize);
             const placeholders = chunk
                 .map((_, idx) => {
-                    const start = idx * 13 + 1;
-                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12})`;
+                    const start = idx * 14 + 1;
+                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12}, $${start + 13})`;
                 })
                 .join(', ');
 
@@ -269,13 +276,14 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                     b.createdAt,
                     b.updatedAt,
                     b.isDeleted,
+                    b.assetEntries,
                     b.data
                 );
             }
 
             await db.execute(
                 `INSERT OR REPLACE INTO ${tableName}
-					(id, scopeType, scopeId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
+					(id, scopeType, scopeId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, assetEntries, data)
 					VALUES ${placeholders}`,
                 values
             );
@@ -362,8 +370,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 const chunk = recordsToUpdate.slice(i, i + chunkSize);
                 const placeholders = chunk
                     .map((_, idx) => {
-                        const start = idx * 13 + 1;
-                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12})`;
+                        const start = idx * 14 + 1;
+                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12}, $${start + 13})`;
                     })
                     .join(', ');
                 const values: unknown[] = [];
@@ -382,12 +390,13 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         b.createdAt,
                         b.updatedAt,
                         b.isDeleted,
+                        b.assetEntries,
                         b.data
                     );
                 }
                 await db.execute(
                     `INSERT OR REPLACE INTO ${tableName}
-	                (id, scopeType, scopeId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, data)
+	                (id, scopeType, scopeId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, assetEntries, data)
 	                VALUES ${placeholders}`,
                     values
                 );

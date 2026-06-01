@@ -60,7 +60,8 @@ const chat: Chat = {
     chatNote: 'chat note',
     messageCount: 0,
     personas: { refs: {}, folders: {} },
-    lorebooks: { refs: {}, folders: {} }
+    lorebooks: { refs: {}, folders: {} },
+    inlays: { refs: {}, folders: {} }
 };
 
 const persona: Persona = {

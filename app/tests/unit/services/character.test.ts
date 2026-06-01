@@ -52,6 +52,12 @@ vi.mock('$lib/utils/id', () => ({
     generateId: vi.fn(() => 'test-id-123')
 }));
 
+vi.mock('$lib/services/asset', () => ({
+    AssetService: {
+        deleteOwnerAssets: vi.fn()
+    }
+}));
+
 vi.mock('$lib/utils/defaults', () => ({
     deepMerge: vi.fn((target: unknown, source: unknown) => {
         if (

@@ -26,6 +26,7 @@
     import { onDestroy, onMount } from 'svelte';
     import ToolCallGroup from './ToolCallGroup.svelte';
     import AssetView from './AssetView.svelte';
+    import type { AssetReadLocator } from '$lib/services/asset';
     import type { ToolCall } from '$lib/services/content/tool';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate, createDryRunMacros } from '$lib/template';
@@ -139,13 +140,31 @@
         message.role === 'user' && activeSwipe?.speakerId ? activeSwipe.speakerId : personaId
     );
     let messageScope = $derived(`kei-${message.id}-${message.activeSwipeId}`);
-    let speakerAvatarId = $derived.by(() => {
+    let speakerAvatarLocator = $derived.by<AssetReadLocator | null>(() => {
         if (isUser) {
             const persona = $chatPersonas.find((p) => p.id === displayPersonaId);
-            return persona?.avatarAssetId;
+            return persona?.avatar
+                ? {
+                      scopeType: persona.scopeType,
+                      scopeId: persona.scopeId,
+                      ownerTable: 'personas',
+                      ownerId: persona.id,
+                      hash: persona.avatar.hash,
+                      encKey: persona.avatar.encKey
+                  }
+                : null;
         } else {
             const character = $roomCharacters.find((c) => c.id === displayCharacterId);
-            return character?.avatarAssetId;
+            return character?.avatar
+                ? {
+                      scopeType: character.scopeType,
+                      scopeId: character.scopeId,
+                      ownerTable: 'characters',
+                      ownerId: character.id,
+                      hash: character.avatar.hash,
+                      encKey: character.avatar.encKey
+                  }
+                : null;
         }
     });
 
@@ -159,8 +178,8 @@
                 return false;
             }
 
-            const assetId = fromEl.dataset.keiaiAssetId;
-            if (assetId && toEl.dataset.keiaiAssetId === assetId && fromEl.hasAttribute('src')) {
+            const assetVal = fromEl.dataset.keiaiAsset;
+            if (assetVal && toEl.dataset.keiaiAsset === assetVal && fromEl.hasAttribute('src')) {
                 return true;
             }
 
@@ -378,8 +397,12 @@
     <div
         class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground overflow-hidden"
     >
-        {#if speakerAvatarId}
-            <AssetView id={speakerAvatarId} alt={speakerName} class="size-full object-cover" />
+        {#if speakerAvatarLocator}
+            <AssetView
+                asset={speakerAvatarLocator}
+                alt={speakerName}
+                class="size-full object-cover"
+            />
         {:else}
             {speakerInitial}
         {/if}

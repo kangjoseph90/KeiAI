@@ -1,4 +1,3 @@
-import type { AssetRecord } from '$lib/adapters/asset';
 import { appHttp } from '$lib/adapters/http';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
@@ -8,7 +7,7 @@ import { AssetService } from './asset';
 import { SyncManager } from './sync';
 import { getActiveSession } from './session';
 import { UserService } from './user';
-import { parseFields } from './asset/util';
+import type { AssetRegistryRecord } from './asset';
 
 const logger = createLogger('service:migration');
 const LOCALIZATION_CONCURRENCY = 4;
@@ -110,7 +109,7 @@ export class MigrationService {
                 total: remoteAssets.length
             });
 
-            await AssetService.markLocalBatch(remoteAssets.map((asset) => asset.id));
+            await AssetService.markLocalBatch(remoteAssets);
             await UserService.updateSelfHostUrl(userId, nextSelfHostUrl);
 
             this.emitProgress(options, {
@@ -126,9 +125,11 @@ export class MigrationService {
     private static async localizeAssets(
         userId: string,
         options: MigrationOptions
-    ): Promise<AssetRecord[]> {
-        const assets = await AssetService.getAllAssets(userId);
-        const remoteAssets = assets.filter((asset) => parseFields(asset).status === 'remote');
+    ): Promise<AssetRegistryRecord[]> {
+        const remoteAssets = await AssetService.getRemoteAssets({
+            scopeType: 'user',
+            scopeId: userId
+        });
         const semaphore = new Semaphore(LOCALIZATION_CONCURRENCY);
         let completed = 0;
         let firstError: unknown = null;
@@ -142,7 +143,7 @@ export class MigrationService {
         const results = await Promise.allSettled(
             remoteAssets.map((asset) =>
                 semaphore.runExclusive(async () => {
-                    const loaded = await AssetService.load(asset.id);
+                    const loaded = await AssetService.load(asset);
                     if (!loaded) {
                         throw new AppError('NOT_FOUND', `Asset ${asset.id} could not be localized`);
                     }

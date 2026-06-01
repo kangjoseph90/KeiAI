@@ -799,3 +799,31 @@
   - create는 local-first sync라 서버 원자성은 없다.
   - 서버 asset GC는 `asset_usage` orphan catalog/blob 정리에 의존한다.
 - 참고: ADR 032, ADR 035, ADR 036, docs/schema.md, docs/asset-system-v3.md
+
+---
+
+## 038: Asset System V4 - Parent-owned Asset Entries
+
+- 상태: 채택
+- 대체: ADR 032의 synced asset record 모델을 대체한다.
+- 맥락: Asset System V3는 모든 에셋을 동기화 가능한 UUID 레코드로 저장했다. 이 방식은 id 기반 접근과 로컬 라이프사이클은 단순했지만, 에셋 생성마다 soft delete/tombstone 대상 레코드가 계속 늘어나는 문제가 있었다.
+- 검토한 대안:
+  - hash + refCount: 분산 환경에서 같은 owner가 같은 에셋을 여러 기기에서 삭제하는 경우를 안전하게 표현하기 어렵다.
+  - hash + owner set: refCount 문제는 피하지만 owner set이 파생 인덱스가 된다. 실제 live 참조 여부는 결국 부모 레코드를 다시 봐야 한다.
+  - owner별 manifest table: owner마다 manifest row가 하나씩 생겨 source of truth가 부모 레코드와 manifest row 두 곳으로 나뉜다.
+- 결정:
+  - 에셋 참조의 source of truth는 부모 데이터 레코드에 둔다.
+  - 부모 레코드는 sync-visible top-level field로 `assetEntries: Record<hash, 'local' | 'remote'>`를 가진다.
+  - 별도 synced asset metadata row는 제거한다. Data sync engine이 부모 레코드와 `assetEntries`를 동기화하고, Asset sync engine은 binary upload만 담당한다.
+  - 서버 hook은 `records` / `multi_room_records`의 `assetEntries` diff를 보고 `remote` hash만 `asset_usage`에 반영한다.
+  - inlay asset은 chat-owned asset으로 정의한다.
+  - 로컬 registry는 source of truth가 아니라 캐시/바이너리 sync 인덱스이며, identifier는 `scope + owner + hash`를 포함한다.
+- 결과:
+  - synced asset row 폭증 문제가 제거된다.
+  - 서버는 zero-knowledge model을 유지하면서 `assetEntries`만으로 usage accounting과 GC 근거를 얻는다.
+  - content service가 자기 owner 레코드의 asset CRUD와 `assetEntries` 집계를 책임진다.
+  - read path는 `scope/owner/hash/encKey`를 요구해 길어졌지만, 이 값들은 모두 부모 레코드에서 바로 얻을 수 있다.
+- 한계:
+  - 같은 hash를 여러 owner가 들고 있을 때 로컬 registry/storage dedup은 포기한다.
+  - 렌더/UI 경로에 `AssetReadLocator`가 전달되므로 v3의 id 기반 접근보다 코드가 장황해질 수 있다.
+- 참고: docs/asset-system-v4.md, ADR 032, ADR 035, ADR 036, ADR 037, docs/schema.md

@@ -445,18 +445,13 @@ function deleteMultiRoom(auth, roomId) {
 
   var now = Date.now();
   $app.runInTransaction(function (txApp) {
-    var assets = findMultiRoomRecordsByRoom(txApp, "multi_room_assets", roomId);
-    for (var i = 0; i < assets.length; i++) {
-      if (assets[i]) txApp.delete(assets[i]);
-    }
-
     var records = findMultiRoomRecordsByRoom(
       txApp,
       "multi_room_records",
       roomId,
     );
-    for (var j = 0; j < records.length; j++) {
-      if (records[j]) txApp.delete(records[j]);
+    for (var i = 0; i < records.length; i++) {
+      if (records[i]) txApp.delete(records[i]);
     }
 
     var index = txApp.findRecordById("multi_room_index", roomId);
@@ -475,7 +470,7 @@ function getAssetUsageUserId(app, record) {
     collectionName = record.collection().name;
   } catch (_) {}
 
-  if (collectionName === "multi_room_assets") {
+  if (collectionName === "multi_room_records") {
     var roomId = record.getString("roomId");
     var room = findMultiRoomIndex(app, roomId);
     return room ? room.getString("ownerUserId") : "";
@@ -606,32 +601,71 @@ function decrementUsage(userId, hash) {
   });
 }
 
-function isLiveAssetRef(record) {
-  return Boolean(
-    record &&
-    record.getString("status") === "remote" &&
-    !record.getBool("isDeleted") &&
-    record.getString("hash"),
-  );
+function parseAssetEntries(record) {
+  if (!record || record.getBool("isDeleted")) return {};
+  if (record.getString("kind") === "chats") return {};
+
+  var raw = record.getString("assetEntries");
+  if (!raw) return {};
+
+  try {
+    var parsed = JSON.parse(raw);
+    var entries = {};
+    for (var hash in parsed) {
+      if (!Object.prototype.hasOwnProperty.call(parsed, hash)) continue;
+      if (parsed[hash] === "remote") {
+        entries[String(hash).toLowerCase()] = true;
+      }
+    }
+    return entries;
+  } catch (_) {
+    return {};
+  }
 }
 
 function handleAssetRefTransition(record, oldRecord) {
-  var oldLive = isLiveAssetRef(oldRecord);
-  var newLive = isLiveAssetRef(record);
-  var oldHash = oldLive ? oldRecord.getString("hash").toLowerCase() : "";
-  var newHash = newLive ? record.getString("hash").toLowerCase() : "";
-  var oldUserId = oldLive ? getAssetUsageUserId($app, oldRecord) : "";
-  var newUserId = newLive ? getAssetUsageUserId($app, record) : "";
+  var oldUserId = oldRecord ? getAssetUsageUserId($app, oldRecord) : "";
+  var newUserId = record ? getAssetUsageUserId($app, record) : "";
+  var oldEntries = parseAssetEntries(oldRecord);
+  var newEntries = parseAssetEntries(record);
 
-  if (oldLive === newLive && oldHash === newHash && oldUserId === newUserId) {
+  if (oldUserId && oldUserId !== newUserId) {
+    for (var oldHash in oldEntries) {
+      if (Object.prototype.hasOwnProperty.call(oldEntries, oldHash)) {
+        decrementUsage(oldUserId, oldHash);
+      }
+    }
+    oldEntries = {};
+  }
+
+  if (newUserId && oldUserId !== newUserId) {
+    for (var newHash in newEntries) {
+      if (Object.prototype.hasOwnProperty.call(newEntries, newHash)) {
+        incrementUsage(newUserId, newHash);
+      }
+    }
     return;
   }
 
-  if (oldLive && (!newLive || oldHash !== newHash || oldUserId !== newUserId)) {
-    decrementUsage(oldUserId, oldHash);
+  var userId = newUserId || oldUserId;
+  if (!userId) return;
+
+  for (var removedHash in oldEntries) {
+    if (
+      Object.prototype.hasOwnProperty.call(oldEntries, removedHash) &&
+      !newEntries[removedHash]
+    ) {
+      decrementUsage(userId, removedHash);
+    }
   }
-  if (newLive && (!oldLive || oldHash !== newHash || oldUserId !== newUserId)) {
-    incrementUsage(newUserId, newHash);
+
+  for (var addedHash in newEntries) {
+    if (
+      Object.prototype.hasOwnProperty.call(newEntries, addedHash) &&
+      !oldEntries[addedHash]
+    ) {
+      incrementUsage(userId, addedHash);
+    }
   }
 }
 

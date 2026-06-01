@@ -1,39 +1,31 @@
+import type { AssetLocator } from '$lib/adapters/asset';
+
 /**
- * Asset Types — KeiAI v3
+ * Asset Types - KeiAI
  *
- * Asset system with E2EE, local-first, and deduplication.
- * AssetFields is defined in adapters/asset/types.ts (shared with registry).
+ * v4 treats parent records as the sync-visible asset manifest. The local asset
+ * adapter only tracks cached blobs by owner/hash.
  */
+export type { AssetFields, AssetEntries, AssetStatus } from '$lib/types/asset';
+export type { AssetLocator, AssetOwner, AssetRegistryRecord } from '$lib/adapters/asset';
 
-// Re-export for service-layer convenience
-export type { AssetFields, AssetKind as AssetKind } from '$lib/adapters/asset';
+export type AssetReadLocator = AssetLocator & { encKey: string };
 
-// ─── Compression Result ─────────────────────────────────────────────────────
-
+// Compression Result
 export interface CompressAndHashResult {
-    blob: Blob; // Compressed WebP blob
-    hash: string; // SHA256 of ciphertext
-    encKey: string; // Convergent encryption key, hex encoded
+    blob: Blob;
+    hash: string;
+    encKey: string;
     width: number;
     height: number;
 }
 
-// ─── Constants ─────────────────────────────────────────────────────────────
-
-/** Max file size for upload (5MB) */
+// Constants
 export const MAX_ASSET_SIZE = 5 * 1024 * 1024;
-
-/** Target compression dimensions */
 export const MAX_IMAGE_WIDTH = 1920;
 export const MAX_IMAGE_HEIGHT = 1080;
-
-/** Target quality for WebP compression (0-100) */
 export const WEBP_QUALITY = 0.85;
 
-// ─── Cache Watermarks ──────────────────────────────────────────────────────
-
-/** High watermark: start eviction when cache exceeds this size */
-export const CACHE_HIGH_WATERMARK = 500 * 1024 * 1024; // 500 MB
-
-/** Low watermark: evict until cache is below this size */
-export const CACHE_LOW_WATERMARK = 400 * 1024 * 1024; // 400 MB
+// Cache Watermarks
+export const CACHE_HIGH_WATERMARK = 500 * 1024 * 1024;
+export const CACHE_LOW_WATERMARK = 400 * 1024 * 1024;

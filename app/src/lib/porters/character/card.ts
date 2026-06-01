@@ -1,4 +1,3 @@
-import type { LLMRole } from '$lib/types/models/llm';
 import type { KeiCharacterPackageV1 } from './types';
 import type { CardAsset, CharacterCardV3 } from './ccv3';
 import { bytesToBase64, toKeiPackageJson } from './package';
@@ -19,6 +18,19 @@ export function keiPackageToCard(
     const greetings = Object.values(pkg.character.greetings).sort((a, b) =>
         compareSortOrder(a.sortOrder, b.sortOrder)
     );
+
+    const cardAssets: CardAsset[] = [];
+
+    // List assets from pkg.assets Record
+    for (const [layoutId, asset] of Object.entries(pkg.assets)) {
+        if (!asset.data) continue;
+        cardAssets.push(cardAssetFromEntry(pkg, layoutId, asset, false, assetUriMode));
+    }
+
+    // Avatar as 'icon' asset
+    if (pkg.avatar?.data) {
+        cardAssets.push(cardAssetFromEntry(pkg, '__avatar__', pkg.avatar, true, assetUriMode));
+    }
 
     return {
         spec: 'chara_card_v3',
@@ -41,9 +53,7 @@ export function keiPackageToCard(
                 recursive_scanning: false,
                 entries: pkg.lorebooks.map(keiLorebookToRisuCardEntry)
             },
-            assets: pkg.assets
-                .filter((asset) => asset.data)
-                .map((asset) => cardAsset(pkg, asset.id, assetUriMode)),
+            assets: cardAssets,
             tags: [],
             creator: '',
             character_version: '',
@@ -61,7 +71,7 @@ export function keiPackageToCard(
                     lowLevelAccess: pkg.character.allowLowLevel
                 },
                 keiai: toKeiPackageJson(pkg, {
-                    assetPath: (id) => assetPath(pkg, id)
+                    assetPath: (key) => assetPath(pkg, key)
                 })
             },
             group_only_greetings: []
@@ -80,41 +90,45 @@ export function keiPackageToRisuModule(pkg: KeiCharacterPackageV1) {
     };
 }
 
-export function assetPath(pkg: KeiCharacterPackageV1, assetId: string): string {
-    const isAvatar = assetId === pkg.character.avatarAssetId;
-    const asset = pkg.assets.find((item) => item.id === assetId);
+export function assetPath(pkg: KeiCharacterPackageV1, assetKey: string): string {
+    const isAvatar = assetKey === '__avatar__';
+    const asset = pkg.assets[assetKey] ?? pkg.avatar;
     const ext = assetExt(asset?.data);
     const type = isAvatar ? 'icon' : 'x-risu-asset';
     const media = ext === 'mp3' || ext === 'wav' || ext === 'ogg' ? 'audio' : 'images';
     const name = isAvatar
         ? 'main'
-        : sanitizeFileName(pkg.character.assets.refs[assetId]?.name || assetId);
+        : sanitizeFileName(pkg.character.assets.refs[assetKey]?.name || assetKey);
     return `assets/${type}/${media}/${name}.${ext}`;
 }
 
-function cardAsset(
+function cardAssetFromEntry(
     pkg: KeiCharacterPackageV1,
-    assetId: string,
+    assetKey: string,
+    asset: { data?: Uint8Array; hash?: string; encKey?: string },
+    isAvatar: boolean,
     uriMode: CardAssetUriMode
 ): CardAsset {
-    const asset = pkg.assets.find((item) => item.id === assetId);
-    const isAvatar = assetId === pkg.character.avatarAssetId;
     return {
         type: isAvatar ? 'icon' : 'x-risu-asset',
-        uri: assetUri(pkg, assetId, uriMode),
-        name: isAvatar ? 'main' : pkg.character.assets.refs[assetId]?.name || assetId,
+        uri: assetUri(pkg, assetKey, asset, isAvatar, uriMode),
+        name: isAvatar ? 'main' : pkg.character.assets.refs[assetKey]?.name || assetKey,
         ext: assetExt(asset?.data)
     };
 }
 
-function assetUri(pkg: KeiCharacterPackageV1, assetId: string, uriMode: CardAssetUriMode): string {
-    if (uriMode === 'charx') return `embeded://${assetPath(pkg, assetId)}`;
-    if (uriMode === 'png')
-        return assetId === pkg.character.avatarAssetId
-            ? 'ccdefault:'
-            : `__asset:${assetPath(pkg, assetId)}`;
+function assetUri(
+    pkg: KeiCharacterPackageV1,
+    assetKey: string,
+    asset: { data?: Uint8Array },
+    isAvatar: boolean,
+    uriMode: CardAssetUriMode
+): string {
+    if (uriMode === 'charx') return `embeded://${assetPath(pkg, assetKey)}`;
+    if (uriMode === 'png') {
+        return isAvatar ? 'ccdefault:' : `__asset:${assetPath(pkg, assetKey)}`;
+    }
 
-    const asset = pkg.assets.find((item) => item.id === assetId);
     const ext = assetExt(asset?.data);
     return asset?.data ? `data:${mimeType(ext)};base64,${bytesToBase64(asset.data)}` : '';
 }

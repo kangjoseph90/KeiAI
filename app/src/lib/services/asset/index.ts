@@ -1,122 +1,48 @@
 /**
- * Asset Service — KeiAI v3
+ * Asset Service - KeiAI
  *
- * assets       — logical asset SOT and sync metadata
- * assetRegistry — device-local cache index, with denormalized kind/status for fast queries
- * appStorage   — plaintext image bytes cache
+ * Parent records are the sync-visible asset manifest through `assetEntries`.
+ * The local asset adapter owns the cached plaintext blob plus its owner/hash
+ * registry row. There is no separate synced asset metadata row in v4.
  */
 
 import {
     appAsset,
-    type AssetFields,
-    type AssetRecord,
-    type AssetRegistryRecord,
-    type AssetStatus
+    assetRegistryId,
+    type AssetLocator,
+    type AssetOwner,
+    type AssetRegistryRecord
 } from '$lib/adapters/asset';
-import type { DataScopeType } from '$lib/adapters/db';
-import { appStorage } from '$lib/adapters/storage';
+import { localDB, type DataRecord, type DataScope } from '$lib/adapters/db';
 import { clock } from '$lib/utils/clock';
-import { generateId } from '$lib/utils/id';
 import { AppError } from '$lib/types/errors';
-import { canAccessScope, getSessionScope } from '../session';
-import type { AssetKind } from './types';
-import {
-    CACHE_HIGH_WATERMARK,
-    CACHE_LOW_WATERMARK,
-    MAX_IMAGE_HEIGHT,
-    MAX_IMAGE_WIDTH,
-    WEBP_QUALITY
-} from './types';
-import {
-    decryptConvergentAsset,
-    encryptConvergentAsset,
-    isValidImageHeader,
-    parseFields
-} from './util';
+import { canAccessScope } from '../session';
+import { CACHE_HIGH_WATERMARK, CACHE_LOW_WATERMARK, type AssetReadLocator } from './types';
+import { decryptConvergentAsset, encryptConvergentAsset, fileToPlaintext } from './util';
 import { fetchAssetCiphertext } from './remote';
 import { sha256, type Bytes } from '$lib/crypto';
-import { preprocessImage } from '$lib/utils/image';
+import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
 
-// ─── Registry Helpers ────────────────────────────────────────────────
+export type { AssetLocator, AssetOwner, AssetReadLocator, AssetRegistryRecord } from './types';
 
-async function setRegistry(
-    id: string,
-    size: number,
-    kind: AssetKind,
-    status: AssetStatus,
-    scope: ReturnType<typeof getSessionScope>
-): Promise<AssetRegistryRecord> {
-    const now = clock.now();
-    const existing = await appAsset.getRegistry(id);
+async function updateOwnerEntryStatus(locator: AssetLocator, status: AssetStatus): Promise<void> {
+    const record = await localDB.getRecord<DataRecord>(locator.ownerTable, locator.ownerId);
+    if (!record || record.isDeleted || !canAccessScope(record)) return;
 
-    const record: AssetRegistryRecord = {
-        id,
-        scopeType: existing?.scopeType ?? scope.scopeType,
-        scopeId: existing?.scopeId ?? scope.scopeId,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-        isDeleted: false,
-        kind,
-        status,
-        size,
-        accessedAt: now
+    const previous = record.assetEntries ?? {};
+    if (previous[locator.hash] === status) return;
+
+    const assetEntries: AssetEntries = {
+        ...previous,
+        [locator.hash]: status
     };
 
-    await appAsset.putRegistry(record);
-    return record;
-}
-
-async function touchRegistry(id: string): Promise<void> {
-    const existing = await appAsset.getRegistry(id);
-    if (!existing || existing.isDeleted || !canAccessScope(existing)) return;
-
-    await appAsset.putRegistry({
-        ...existing,
-        accessedAt: clock.now(),
+    await localDB.putRecord(locator.ownerTable, {
+        ...record,
+        assetEntries,
         updatedAt: clock.now()
     });
 }
-
-async function getStorageSize(id: string): Promise<number> {
-    try {
-        return await appStorage.getSize(`assets/${id}`);
-    } catch {
-        return 0;
-    }
-}
-
-async function syncRegistryIndex(id: string, kind: AssetKind, status: AssetStatus): Promise<void> {
-    const existing = await appAsset.getRegistry(id);
-    if (!existing || existing.isDeleted || !canAccessScope(existing)) return;
-    if (existing.kind === kind && existing.status === status) return;
-
-    await appAsset.putRegistry({
-        ...existing,
-        kind,
-        status,
-        updatedAt: clock.now()
-    });
-}
-
-// ─── Asset Table Helpers ─────────────────────────────────────────────
-async function updateAssetFields(id: string, changes: Partial<AssetFields>): Promise<AssetRecord> {
-    const asset = await appAsset.getAsset(id);
-    if (!asset || asset.isDeleted || !canAccessScope(asset)) {
-        throw new AppError('NOT_FOUND', `Asset ${id} not found`);
-    }
-
-    const fields = { ...parseFields(asset), ...changes };
-    const updated: AssetRecord = {
-        ...asset,
-        data: fields as unknown as Record<string, unknown>,
-        updatedAt: clock.now()
-    };
-    await appAsset.putAsset(updated);
-    await syncRegistryIndex(id, fields.kind, fields.status);
-    return updated;
-}
-
-// ─── Service ─────────────────────────────────────────────────────────
 
 export class AssetService {
     private static isEvictionPaused = false;
@@ -127,34 +53,75 @@ export class AssetService {
     private static readonly urlCache = new Map<
         string,
         {
+            locator: AssetLocator;
             url?: string;
             refs: number;
             promise?: Promise<string | null>;
         }
     >();
-    private static readonly assetIdByUrl = new Map<string, string>();
+    private static readonly assetKeyByUrl = new Map<string, string>();
 
-    /**
-     * Loads an asset into local appStorage without returning a render URL.
-     * Useful for prefetching or migration prepare steps.
-     * @returns true if the asset is now available locally, false if it failed.
-     */
-    static load(id: string): Promise<boolean> {
-        const pending = AssetService.pendingLoads.get(id);
+    private static async evictUrlCacheForKey(key: string): Promise<void> {
+        const entry = AssetService.urlCache.get(key);
+        if (entry?.url) {
+            await appAsset.revokeRenderUrl(entry.url);
+            AssetService.assetKeyByUrl.delete(entry.url);
+        }
+        AssetService.urlCache.delete(key);
+    }
+
+    private static async evictUrlCacheWhere(
+        predicate: (locator: AssetLocator) => boolean
+    ): Promise<void> {
+        const keys = Array.from(AssetService.urlCache.entries())
+            .filter(([, entry]) => predicate(entry.locator))
+            .map(([key]) => key);
+        await Promise.all(
+            keys.map(async (key) => {
+                await AssetService.evictUrlCacheForKey(key);
+            })
+        );
+    }
+
+    static async write(file: File, owner: AssetOwner): Promise<AssetFields> {
+        const { bytes, mimeType } = await fileToPlaintext(file);
+        const encrypted = await encryptConvergentAsset(bytes);
+        const fields: AssetFields = {
+            name: file.name,
+            hash: encrypted.hash,
+            encKey: encrypted.encKey,
+            mimeType
+        };
+
+        try {
+            await appAsset.putLocalAsset({
+                ...owner,
+                hash: fields.hash,
+                encKey: fields.encKey,
+                bytes
+            });
+        } catch (error) {
+            throw new AppError('DB_WRITE_FAILED', 'Failed to write asset', error);
+        }
+
+        return fields;
+    }
+
+    static async load(locator: AssetReadLocator): Promise<boolean> {
+        const key = assetRegistryId(locator);
+        const pending = AssetService.pendingLoads.get(key);
         if (pending) return pending;
 
-        const promise = AssetService.loadImpl(id).finally(() => {
-            AssetService.pendingLoads.delete(id);
+        const promise = AssetService.loadImpl(locator).finally(() => {
+            AssetService.pendingLoads.delete(key);
         });
-        AssetService.pendingLoads.set(id, promise);
+        AssetService.pendingLoads.set(key, promise);
         return promise;
     }
 
-    /**
-     * Loads an asset and returns its renderable URL.
-     */
-    static async read(id: string): Promise<string | null> {
-        let entry = AssetService.urlCache.get(id);
+    static async read(locator: AssetReadLocator): Promise<string | null> {
+        const key = assetRegistryId(locator);
+        let entry = AssetService.urlCache.get(key);
 
         if (entry) {
             if (entry.url) {
@@ -163,272 +130,165 @@ export class AssetService {
             }
             if (entry.promise) {
                 const url = await entry.promise;
-                if (url) {
-                    entry.refs++;
+                if (AssetService.urlCache.get(key) !== entry) {
+                    if (url) await appAsset.revokeRenderUrl(url);
+                    return null;
                 }
+                if (url) entry.refs++;
                 return url;
             }
         }
 
         const promise = (async () => {
-            const success = await AssetService.load(id);
+            const success = await AssetService.load(locator);
             if (!success) return null;
-            return appStorage.getRenderUrl(`assets/${id}`);
+            return appAsset.getRenderUrl(locator);
         })();
 
-        entry = { refs: 0, promise };
-        AssetService.urlCache.set(id, entry);
+        entry = { locator, refs: 0, promise };
+        AssetService.urlCache.set(key, entry);
 
         try {
             const url = await promise;
+            if (AssetService.urlCache.get(key) !== entry) {
+                if (url) await appAsset.revokeRenderUrl(url);
+                return null;
+            }
             if (url) {
                 entry.url = url;
                 entry.refs++;
-                AssetService.assetIdByUrl.set(url, id);
+                AssetService.assetKeyByUrl.set(url, key);
             } else {
-                AssetService.urlCache.delete(id);
+                AssetService.urlCache.delete(key);
             }
             entry.promise = undefined;
             return url;
-        } catch (err) {
-            AssetService.urlCache.delete(id);
-            throw err;
+        } catch (error) {
+            AssetService.urlCache.delete(key);
+            throw error;
         }
     }
 
-    static async getFields(id: string): Promise<AssetFields> {
-        const asset = await appAsset.getAsset(id);
-        if (!asset || asset.isDeleted || !canAccessScope(asset)) {
-            throw new AppError('NOT_FOUND', `Asset ${id} not found`);
-        }
-        return parseFields(asset);
-    }
-
-    static async readBytes(id: string): Promise<Uint8Array | null> {
-        const success = await AssetService.load(id);
-        if (!success) return null;
-        return appStorage.read(`assets/${id}`);
-    }
-
-    private static async loadImpl(id: string): Promise<boolean> {
-        const asset = await appAsset.getAsset(id);
-        if (!asset || asset.isDeleted || !canAccessScope(asset)) return false;
-
-        const fields = parseFields(asset);
-        const storagePath = `assets/${id}`;
-
-        if (await appStorage.exists(storagePath)) {
-            const size = await getStorageSize(id);
-            await setRegistry(id, size, fields.kind, fields.status, {
-                scopeType: asset.scopeType,
-                scopeId: asset.scopeId
-            });
-            await touchRegistry(id);
+    private static async loadImpl(locator: AssetReadLocator): Promise<boolean> {
+        const localUrl = await appAsset.getRenderUrl(locator);
+        if (localUrl) {
+            await appAsset.revokeRenderUrl(localUrl);
             return true;
         }
 
-        if (fields.status === 'local') {
-            return false;
-        }
-
-        const ciphertext = await fetchAssetCiphertext(fields.hash);
+        const ciphertext = await fetchAssetCiphertext(locator.hash);
         if (!ciphertext || ciphertext.length === 0) return false;
 
         const actualHash = await sha256(ciphertext as unknown as Bytes);
-        if (actualHash !== fields.hash) return false;
+        if (actualHash !== locator.hash) return false;
 
-        const plaintext = await decryptConvergentAsset(ciphertext, fields.encKey);
-        if (!isValidImageHeader(plaintext)) return false;
-
-        await appStorage.write(storagePath, plaintext);
-        try {
-            await setRegistry(id, plaintext.length, fields.kind, fields.status, {
-                scopeType: asset.scopeType,
-                scopeId: asset.scopeId
-            });
-        } catch (error) {
-            await appStorage.delete(storagePath).catch(() => undefined);
-            throw error;
-        }
-
+        const plaintext = await decryptConvergentAsset(ciphertext, locator.encKey);
+        await appAsset.putRemoteAsset({
+            ...locator,
+            bytes: plaintext
+        });
         AssetService.scheduleEviction();
         return true;
     }
 
-    static async write(
-        file: File | null,
-        kind: AssetKind,
-        options: {
-            scopeType?: DataScopeType;
-            hash?: string;
-            encKey?: string;
-        } = {}
-    ): Promise<string> {
-        const { scopeType = 'user', hash, encKey } = options;
-        const scope = getSessionScope(scopeType);
+    static async readBytes(locator: AssetLocator): Promise<Uint8Array | null> {
+        return appAsset.readAssetBytes(locator);
+    }
 
-        if (!file && (!hash || !encKey)) {
-            throw new AppError('INVALID_INPUT', 'Either file or hash+encKey must be provided');
-        }
+    static async delete(locator: AssetLocator): Promise<void> {
+        await appAsset.deleteAsset(locator);
+        await AssetService.evictUrlCacheForKey(assetRegistryId(locator));
+    }
 
-        const id = generateId();
-        const now = clock.now();
-        let fields: AssetFields;
-        let plaintext: Uint8Array | null = null;
+    static async deleteOwnerAssets(owner: AssetOwner): Promise<void> {
+        await appAsset.deleteOwnerAssets(owner);
+        await AssetService.evictUrlCacheWhere(
+            (locator) =>
+                locator.scopeType === owner.scopeType &&
+                locator.scopeId === owner.scopeId &&
+                locator.ownerTable === owner.ownerTable &&
+                locator.ownerId === owner.ownerId
+        );
+    }
 
-        if (file) {
-            const { blob } = await preprocessImage(file, {
-                maxWidth: MAX_IMAGE_WIDTH,
-                maxHeight: MAX_IMAGE_HEIGHT,
-                quality: WEBP_QUALITY
-            });
-            plaintext = new Uint8Array(await blob.arrayBuffer());
-            const encrypted = await encryptConvergentAsset(plaintext);
-            fields = {
-                kind,
-                status: 'local',
-                hash: encrypted.hash,
-                encKey: encrypted.encKey
-            };
-        } else {
-            fields = {
-                kind,
-                status: 'remote',
-                hash: hash as string,
-                encKey: encKey as string
-            };
-        }
+    static async deleteScopeAssets(scope: DataScope): Promise<void> {
+        await appAsset.deleteScopeAssets(scope);
+        await AssetService.evictUrlCacheWhere(
+            (locator) => locator.scopeType === scope.scopeType && locator.scopeId === scope.scopeId
+        );
+    }
 
-        const record: AssetRecord = {
-            id,
-            scopeType: scope.scopeType,
-            scopeId: scope.scopeId,
-            createdAt: now,
-            updatedAt: now,
-            isDeleted: false,
-            data: fields as unknown as Record<string, unknown>
-        };
-
-        if (!plaintext) {
-            await appAsset.putAsset(record);
-            return id;
-        }
-
-        await appStorage.write(`assets/${id}`, plaintext);
-        try {
-            await setRegistry(id, plaintext.length, fields.kind, fields.status, scope);
-            await appAsset.putAsset(record);
-        } catch (error) {
-            await Promise.all([
-                appStorage.delete(`assets/${id}`).catch(() => undefined),
-                appAsset.deleteRegistry(id).catch(() => undefined)
-            ]);
-            throw error;
-        }
-
+    static async markRemote(locator: AssetLocator): Promise<void> {
+        await appAsset.markAssetRemote(locator);
+        await updateOwnerEntryStatus(locator, 'remote');
         AssetService.scheduleEviction();
-        return id;
     }
 
-    static async delete(id: string): Promise<void> {
-        const asset = await appAsset.getAsset(id);
-        if (!asset || asset.isDeleted || !canAccessScope(asset)) {
-            throw new AppError('NOT_FOUND', `Asset ${id} not found`);
-        }
-
-        await Promise.all([
-            appAsset.softDeleteAsset(id),
-            appStorage.delete(`assets/${id}`).catch(() => undefined),
-            appAsset.deleteRegistry(id).catch(() => undefined)
-        ]);
+    static async markLocal(locator: AssetLocator): Promise<void> {
+        await appAsset.markAssetLocal(locator);
+        await updateOwnerEntryStatus(locator, 'local');
     }
 
-    /** Clears all in-memory URL caches and pending loads. Mainly for tests. */
-    static clear(): void {
-        AssetService.urlCache.clear();
-        AssetService.assetIdByUrl.clear();
-        AssetService.pendingLoads.clear();
+    static async markRemoteBatch(locators: AssetLocator[]): Promise<void> {
+        await appAsset.markAssetsRemote(locators);
+        await Promise.all(locators.map((locator) => updateOwnerEntryStatus(locator, 'remote')));
+        AssetService.scheduleEviction();
     }
 
-    static async markRemote(id: string): Promise<AssetRecord> {
-        return updateAssetFields(id, { status: 'remote' });
+    static async markLocalBatch(locators: AssetLocator[]): Promise<void> {
+        await appAsset.markAssetsLocal(locators);
+        await Promise.all(locators.map((locator) => updateOwnerEntryStatus(locator, 'local')));
     }
 
-    static async markLocal(id: string): Promise<AssetRecord> {
-        return updateAssetFields(id, { status: 'local' });
+    static async getLocalAssets(scope: DataScope): Promise<AssetRegistryRecord[]> {
+        return appAsset.getAllLocalAssets(scope);
     }
 
-    static async markLocalBatch(ids: string[]): Promise<void> {
-        await appAsset.transaction(['assets', 'assetRegistry'], 'rw', async () => {
-            for (const id of ids) {
-                const asset = await appAsset.getAsset(id);
-                if (!asset || asset.isDeleted || !canAccessScope(asset)) {
-                    throw new AppError('NOT_FOUND', `Asset ${id} not found`);
-                }
-
-                const fields = { ...parseFields(asset), status: 'local' as const };
-                await appAsset.putAsset({
-                    ...asset,
-                    data: fields as unknown as Record<string, unknown>,
-                    updatedAt: clock.now()
-                });
-
-                await syncRegistryIndex(id, fields.kind, fields.status);
-            }
-        });
+    static async getRemoteAssets(scope: DataScope): Promise<AssetRegistryRecord[]> {
+        return appAsset.getAllRemoteAssets(scope);
     }
 
     static async revokeUrl(url: string): Promise<void> {
-        const id = AssetService.assetIdByUrl.get(url);
-        if (!id) {
-            await appStorage.revokeRenderUrl(url);
+        const key = AssetService.assetKeyByUrl.get(url);
+        if (!key) {
+            await appAsset.revokeRenderUrl(url);
             return;
         }
 
-        const entry = AssetService.urlCache.get(id);
+        const entry = AssetService.urlCache.get(key);
         if (!entry) return;
 
         entry.refs--;
         if (entry.refs <= 0) {
-            AssetService.urlCache.delete(id);
-            AssetService.assetIdByUrl.delete(url);
-            await appStorage.revokeRenderUrl(url);
+            AssetService.urlCache.delete(key);
+            AssetService.assetKeyByUrl.delete(url);
+            await appAsset.revokeRenderUrl(url);
         }
+    }
+
+    static clear(): void {
+        AssetService.urlCache.clear();
+        AssetService.assetKeyByUrl.clear();
+        AssetService.pendingLoads.clear();
     }
 
     static async evictCache(): Promise<void> {
         if (AssetService.isEvictionPaused) return;
 
-        const remoteAssets = await appAsset.getAllRegistryByStatus('remote');
-
+        const remoteAssets = await appAsset.getAllRemoteAssets();
         const totalSize = remoteAssets.reduce((sum, record) => sum + record.size, 0);
         if (totalSize <= CACHE_HIGH_WATERMARK) return;
 
-        const sorted = remoteAssets.sort((a, b) => a.accessedAt - b.accessedAt);
         const toEvict: AssetRegistryRecord[] = [];
         let remaining = totalSize;
-
-        for (const entry of sorted) {
+        for (const entry of remoteAssets) {
             if (remaining <= CACHE_LOW_WATERMARK) break;
+            if (AssetService.urlCache.has(entry.id)) continue;
             toEvict.push(entry);
             remaining -= entry.size;
         }
 
-        await Promise.all(
-            toEvict.map((entry) =>
-                Promise.all([
-                    appStorage.delete(`assets/${entry.id}`).catch(() => undefined),
-                    appAsset.deleteRegistry(entry.id)
-                ])
-            )
-        );
-    }
-
-    static async getAllAssets(userId: string): Promise<AssetRecord[]> {
-        return await appAsset.getAllAssets({
-            scopeType: 'user',
-            scopeId: userId
-        });
+        await Promise.allSettled(toEvict.map((entry) => AssetService.delete(entry)));
     }
 
     static stopEviction(): void {
@@ -446,7 +306,7 @@ export class AssetService {
 
     private static scheduleEviction(): void {
         if (AssetService.isEvictionPaused) return;
-        if (AssetService.evictionTimer) return; // already scheduled
+        if (AssetService.evictionTimer) return;
         AssetService.evictionTimer = setTimeout(() => {
             AssetService.evictionTimer = null;
             void AssetService.evictCache();

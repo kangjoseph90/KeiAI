@@ -1,183 +1,213 @@
 /**
- * Web Asset Adapter — KeiAI
+ * Web Local Asset Store - KeiAI
  *
- * Implements IAssetAdapter using a dedicated Dexie database for asset metadata.
- * Binary blobs are stored via appStorage (OPFS) directly by the service layer.
+ * Dexie stores local asset registry metadata. appStorage owns local blobs, but
+ * this adapter hides /assets paths so callers cannot update metadata and blobs
+ * independently.
  */
 
 import Dexie, { type Table } from 'dexie';
-import { AssetWriteEventEmitter } from './events';
-import type {
-    IAssetAdapter,
-    AssetRecord,
-    AssetRegistryRecord,
-    AssetWriteEventListener,
-    AssetWriteOptions,
-    AssetTableName,
-    AssetWriteOperation,
-    AssetStatus,
-    AssetKind
+import { appStorage } from '$lib/adapters/storage';
+import { clock } from '$lib/utils/clock';
+import {
+    assetRegistryId,
+    type AssetLocator,
+    type AssetOwner,
+    type AssetRegistryRecord,
+    type IAssetAdapter,
+    type PutAssetInput
 } from './types';
 import type { DataScope } from '$lib/adapters/db';
-import { clock } from '$lib/utils/clock';
+import type { AssetStatus } from '$lib/types/asset';
 
 class AssetDexie extends Dexie {
-    assets!: Table<AssetRecord, string>;
     assetRegistry!: Table<AssetRegistryRecord, string>;
 
     constructor() {
         super('KeiAssets');
         this.version(1).stores({
-            assets: 'id, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
             assetRegistry:
-                'id, [scopeType+scopeId], [scopeType+scopeId+status], [scopeType+scopeId+status+kind], [scopeType+scopeId+isDeleted], status, [status+kind], accessedAt'
+                'id, [scopeType+scopeId], [scopeType+scopeId+ownerTable+ownerId], [scopeType+scopeId+ownerTable+ownerId+hash], [scopeType+scopeId+status], [scopeType+scopeId+status+accessedAt]'
         });
     }
 }
 
 const assetDB = new AssetDexie();
 
+function storagePath(id: string): string {
+    return `assets/${encodeURIComponent(id)}`;
+}
+
+function toRecord(input: PutAssetInput, status: AssetStatus): AssetRegistryRecord {
+    return {
+        id: assetRegistryId(input),
+        scopeType: input.scopeType,
+        scopeId: input.scopeId,
+        ownerTable: input.ownerTable,
+        ownerId: input.ownerId,
+        hash: input.hash,
+        encKey: input.encKey,
+        status,
+        size: input.bytes.byteLength,
+        accessedAt: clock.now()
+    };
+}
+
 export class WebAssetAdapter implements IAssetAdapter {
-    private readonly writeEvents = new AssetWriteEventEmitter();
-
-    subscribeWriteEvents(listener: AssetWriteEventListener): () => void {
-        return this.writeEvents.subscribe(listener);
-    }
-
     async flush(): Promise<void> {
         return Promise.resolve();
     }
 
-    private emitWriteEvent(
-        tableName: AssetTableName,
-        operation: AssetWriteOperation,
-        ids: string[],
-        options?: AssetWriteOptions
-    ): void {
-        this.writeEvents.emit({
-            tableName,
-            operation,
-            ids,
-            origin: options?.origin ?? 'local'
-        });
+    async putLocalAsset(input: PutAssetInput): Promise<AssetRegistryRecord> {
+        return this.putAsset(input, 'local');
     }
 
-    // ── Metadata (assets table) ──────────────────────────────────────
-
-    async getAsset(id: string): Promise<AssetRecord | undefined> {
-        return assetDB.assets.get(id);
+    async putRemoteAsset(input: PutAssetInput): Promise<AssetRegistryRecord> {
+        return this.putAsset(input, 'remote');
     }
 
-    async getAllAssets(scope: DataScope): Promise<AssetRecord[]> {
-        return assetDB.assets
-            .where('[scopeType+scopeId]')
-            .equals([scope.scopeType, scope.scopeId])
-            .filter((record) => !record.isDeleted)
-            .sortBy('updatedAt');
+    private async putAsset(
+        input: PutAssetInput,
+        status: AssetStatus
+    ): Promise<AssetRegistryRecord> {
+        const record = toRecord(input, status);
+        await appStorage.write(storagePath(record.id), input.bytes);
+        try {
+            await assetDB.assetRegistry.put(record);
+        } catch (error) {
+            await appStorage.delete(storagePath(record.id)).catch(() => undefined);
+            throw error;
+        }
+        return record;
     }
 
-    async putAsset(record: AssetRecord, options?: AssetWriteOptions): Promise<void> {
-        await assetDB.assets.put(record);
-        this.emitWriteEvent('assets', 'put', [record.id], options);
+    async getAsset(locator: AssetLocator): Promise<AssetRegistryRecord | undefined> {
+        return assetDB.assetRegistry.get(assetRegistryId(locator));
     }
 
-    async softDeleteAsset(id: string, options?: AssetWriteOptions): Promise<void> {
-        const existing = await assetDB.assets.get(id);
-        if (!existing) return;
-
-        await assetDB.assets.put({
-            ...existing,
-            isDeleted: true,
-            updatedAt: clock.now()
-        });
-        this.emitWriteEvent('assets', 'softDelete', [id], options);
+    async deleteAsset(locator: AssetLocator): Promise<void> {
+        await this.deleteByIds([assetRegistryId(locator)]);
     }
 
-    async deleteAsset(id: string, options?: AssetWriteOptions): Promise<void> {
-        await assetDB.assets.delete(id);
-        this.emitWriteEvent('assets', 'delete', [id], options);
-    }
-
-    async getAssetsSince(scope: DataScope, sinceUpdatedAt: number): Promise<AssetRecord[]> {
-        return assetDB.assets
-            .where('[scopeType+scopeId]')
-            .equals([scope.scopeType, scope.scopeId])
-            .filter((record) => record.updatedAt > sinceUpdatedAt)
-            .sortBy('updatedAt');
-    }
-
-    // ── Registry (assetRegistry table) ───────────────────────────────
-
-    async getRegistry(id: string): Promise<AssetRegistryRecord | undefined> {
-        return assetDB.assetRegistry.get(id);
-    }
-
-    async getAllRegistry(scope: DataScope): Promise<AssetRegistryRecord[]> {
-        return assetDB.assetRegistry
-            .where('[scopeType+scopeId]')
-            .equals([scope.scopeType, scope.scopeId])
-            .filter((record) => !record.isDeleted)
+    async deleteOwnerAssets(owner: AssetOwner): Promise<void> {
+        const records = await assetDB.assetRegistry
+            .where('[scopeType+scopeId+ownerTable+ownerId]')
+            .equals([owner.scopeType, owner.scopeId, owner.ownerTable, owner.ownerId])
             .toArray();
+        await this.deleteByIds(records.map((record) => record.id));
     }
 
-    async getRegistryByStatus(
+    async deleteScopeAssets(scope: DataScope): Promise<void> {
+        const records = await assetDB.assetRegistry
+            .where('[scopeType+scopeId]')
+            .equals([scope.scopeType, scope.scopeId])
+            .toArray();
+        await this.deleteByIds(records.map((record) => record.id));
+    }
+
+    private async deleteByIds(ids: string[]): Promise<void> {
+        if (ids.length === 0) return;
+        await assetDB.transaction('rw', assetDB.assetRegistry, async () => {
+            await assetDB.assetRegistry.bulkDelete(ids);
+        });
+        await Promise.all(
+            ids.map((id) => appStorage.delete(storagePath(id)).catch(() => undefined))
+        );
+    }
+
+    async getAllLocalAssets(scope: DataScope): Promise<AssetRegistryRecord[]> {
+        return this.getAllByStatus(scope, 'local');
+    }
+
+    async getAllRemoteAssets(scope?: DataScope): Promise<AssetRegistryRecord[]> {
+        if (scope) return this.getAllByStatus(scope, 'remote');
+        return assetDB.assetRegistry
+            .where('status')
+            .equals('remote')
+            .toArray()
+            .then((records) => records.sort((a, b) => a.accessedAt - b.accessedAt));
+    }
+
+    private async getAllByStatus(
         scope: DataScope,
-        status: AssetStatus,
-        kinds?: AssetKind[]
+        status: AssetStatus
     ): Promise<AssetRegistryRecord[]> {
-        if (!kinds || kinds.length === 0) {
-            return assetDB.assetRegistry
-                .where('[scopeType+scopeId+status]')
-                .equals([scope.scopeType, scope.scopeId, status])
-                .filter((r) => !r.isDeleted)
-                .toArray();
+        return assetDB.assetRegistry
+            .where('[scopeType+scopeId+status]')
+            .equals([scope.scopeType, scope.scopeId, status])
+            .toArray()
+            .then((records) => records.sort((a, b) => a.accessedAt - b.accessedAt));
+    }
+
+    async readAssetBytes(locator: AssetLocator): Promise<Uint8Array | null> {
+        return appStorage.read(storagePath(assetRegistryId(locator)));
+    }
+
+    async getRenderUrl(locator: AssetLocator): Promise<string | null> {
+        const id = assetRegistryId(locator);
+        const url = await appStorage.getRenderUrl(storagePath(id));
+        if (url) {
+            await this.touchAsset(locator);
+        }
+        return url;
+    }
+
+    async revokeRenderUrl(url: string): Promise<void> {
+        await appStorage.revokeRenderUrl(url);
+    }
+
+    async touchAsset(locator: AssetLocator): Promise<void> {
+        await this.markAsset(locator, undefined);
+    }
+
+    async markAssetRemote(locator: AssetLocator): Promise<void> {
+        await this.markAsset(locator, 'remote');
+    }
+
+    async markAssetLocal(locator: AssetLocator): Promise<void> {
+        await this.markAsset(locator, 'local');
+    }
+
+    async markAssetsRemote(locators: AssetLocator[]): Promise<void> {
+        await this.markAssets(locators, 'remote');
+    }
+
+    async markAssetsLocal(locators: AssetLocator[]): Promise<void> {
+        await this.markAssets(locators, 'local');
+    }
+
+    private async markAssets(locators: AssetLocator[], status: AssetStatus): Promise<void> {
+        await assetDB.transaction('rw', assetDB.assetRegistry, async () => {
+            for (const locator of locators) {
+                await this.markAsset(locator, status);
+            }
+        });
+    }
+
+    private async markAsset(
+        locator: AssetLocator,
+        status: AssetStatus | undefined
+    ): Promise<boolean> {
+        const id = assetRegistryId(locator);
+        const existing = await assetDB.assetRegistry.get(id);
+        if (!existing) return false;
+
+        const next: AssetRegistryRecord = {
+            ...existing,
+            status: status ?? existing.status,
+            accessedAt: clock.now()
+        };
+        if (next.status === existing.status && next.accessedAt === existing.accessedAt) {
+            return false;
         }
 
-        const keys = kinds.map((k) => [scope.scopeType, scope.scopeId, status, k]);
-        return assetDB.assetRegistry
-            .where('[scopeType+scopeId+status+kind]')
-            .anyOf(keys)
-            .filter((r) => !r.isDeleted)
-            .toArray();
+        await assetDB.assetRegistry.put(next);
+        return true;
     }
 
-    async getAllRegistryByStatus(
-        status: AssetStatus,
-        kinds?: AssetKind[]
-    ): Promise<AssetRegistryRecord[]> {
-        if (!kinds || kinds.length === 0) {
-            return assetDB.assetRegistry
-                .where('status')
-                .equals(status)
-                .filter((record) => !record.isDeleted)
-                .toArray();
-        }
-
-        const keys = kinds.map((kind) => [status, kind]);
-        return assetDB.assetRegistry
-            .where('[status+kind]')
-            .anyOf(keys)
-            .filter((record) => !record.isDeleted)
-            .toArray();
-    }
-
-    async putRegistry(record: AssetRegistryRecord, options?: AssetWriteOptions): Promise<void> {
-        await assetDB.assetRegistry.put(record);
-        this.emitWriteEvent('assetRegistry', 'put', [record.id], options);
-    }
-
-    async deleteRegistry(id: string, options?: AssetWriteOptions): Promise<void> {
-        await assetDB.assetRegistry.delete(id);
-        this.emitWriteEvent('assetRegistry', 'delete', [id], options);
-    }
-
-    async transaction<R>(
-        tables: AssetTableName[],
-        mode: 'r' | 'rw',
-        callback: () => Promise<R>
-    ): Promise<R> {
+    async transaction<R>(callback: () => Promise<R>): Promise<R> {
         await this.flush();
-        return assetDB.transaction(mode, tables, callback);
+        return assetDB.transaction('rw', assetDB.assetRegistry, callback);
     }
 }
 

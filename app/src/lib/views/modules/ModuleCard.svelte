@@ -18,6 +18,8 @@
         createModuleCharJS,
         updateModuleCharJS,
         deleteModuleCharJS,
+        createModuleAsset,
+        deleteModuleAsset,
         createModuleFolder,
         updateModuleFolder,
         deleteModuleFolder,
@@ -25,6 +27,7 @@
     } from '$lib/stores';
     import { navigate } from '$lib/router';
     import type { Module, Lorebook, Script, CharJS } from '$lib/services';
+    import type { AssetRef } from '$lib/types/refs';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
@@ -33,10 +36,21 @@
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
     import { Separator } from '$lib/components/ui/separator';
-    import { ArrowLeft, BookOpen, Check, Code, FileCode, Plus, Trash2 } from 'lucide-svelte';
+    import {
+        ArrowLeft,
+        BookOpen,
+        Check,
+        Code,
+        FileCode,
+        ImageIcon,
+        Pencil,
+        Plus,
+        Trash2
+    } from 'lucide-svelte';
     import LorebookItem from './LorebookItem.svelte';
     import ScriptItem from './ScriptItem.svelte';
     import CharJSItem from './CharJSItem.svelte';
+    import AssetView from '$lib/components/AssetView.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
 
     let { mod }: { mod: Module } = $props();
@@ -52,6 +66,9 @@
     let lorebooks = $state<Lorebook[]>([]);
     let scripts = $state<Script[]>([]);
     let charjs = $state<CharJS[]>([]);
+    let assetFileInput = $state<HTMLInputElement>();
+    let editingAssetId = $state<string | null>(null);
+    let editAssetName = $state('');
 
     $effect(() => {
         const current = $activeModule;
@@ -118,6 +135,31 @@
 
     function handleDeleteCharJS(charjsId: string) {
         return deleteModuleCharJS(mod.id, charjsId);
+    }
+
+    async function handleAssetUpload(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const file = target.files?.[0];
+        if (!file) return;
+        await createModuleAsset(mod.id, file);
+        target.value = '';
+    }
+
+    function startAssetRename(ref: AssetRef) {
+        editingAssetId = ref.id;
+        editAssetName = ref.name;
+    }
+
+    async function saveAssetRename(ref: AssetRef) {
+        const val = editAssetName.trim();
+        if (val && val !== ref.name) {
+            await updateModule(mod.id, {
+                assets: {
+                    refs: { [ref.id]: { ...ref, name: val } }
+                }
+            });
+        }
+        editingAssetId = null;
     }
 </script>
 
@@ -206,8 +248,8 @@
                     entities={lorebooks}
                     config={$activeModule?.lorebooks ?? { refs: {}, folders: {} }}
                     layout="list"
-                    onCreateFolder={(name, parentId) =>
-                        createModuleFolder(mod.id, 'lorebooks', name, parentId)}
+                    onCreateFolder={(name, parentId, sortOrder) =>
+                        createModuleFolder(mod.id, 'lorebooks', name, parentId, sortOrder)}
                     onUpdateFolder={(id, changes) =>
                         updateModuleFolder(mod.id, 'lorebooks', id, changes)}
                     onDeleteFolder={(id) => deleteModuleFolder(mod.id, 'lorebooks', id)}
@@ -260,8 +302,8 @@
                     entities={scripts}
                     config={$activeModule?.scripts ?? { refs: {}, folders: {} }}
                     layout="list"
-                    onCreateFolder={(name, parentId) =>
-                        createModuleFolder(mod.id, 'scripts', name, parentId)}
+                    onCreateFolder={(name, parentId, sortOrder) =>
+                        createModuleFolder(mod.id, 'scripts', name, parentId, sortOrder)}
                     onUpdateFolder={(id, changes) =>
                         updateModuleFolder(mod.id, 'scripts', id, changes)}
                     onDeleteFolder={(id) => deleteModuleFolder(mod.id, 'scripts', id)}
@@ -308,8 +350,8 @@
                     entities={charjs}
                     config={$activeModule?.charjs ?? { refs: {}, folders: {} }}
                     layout="list"
-                    onCreateFolder={(name, parentId) =>
-                        createModuleFolder(mod.id, 'charjs', name, parentId)}
+                    onCreateFolder={(name, parentId, sortOrder) =>
+                        createModuleFolder(mod.id, 'charjs', name, parentId, sortOrder)}
                     onUpdateFolder={(id, changes) =>
                         updateModuleFolder(mod.id, 'charjs', id, changes)}
                     onDeleteFolder={(id) => deleteModuleFolder(mod.id, 'charjs', id)}
@@ -325,6 +367,124 @@
                             onUpdate={handleUpdateCharJS}
                             onDelete={handleDeleteCharJS}
                         />
+                    {/snippet}
+                </EntityList>
+            </section>
+
+            <Separator />
+
+            <section class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2 text-sm font-medium">
+                        <ImageIcon class="size-4" />
+                        Assets
+                        <Badge variant="secondary" class="text-xs"
+                            >{Object.keys($activeModule?.assets?.refs ?? {}).length}</Badge
+                        >
+                    </div>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        class="gap-1"
+                        onclick={() => assetFileInput?.click()}
+                    >
+                        <Plus class="size-3" /> Add
+                    </Button>
+                    <input
+                        bind:this={assetFileInput}
+                        type="file"
+                        accept="image/*"
+                        class="hidden"
+                        onchange={handleAssetUpload}
+                    />
+                </div>
+                <EntityList
+                    entities={Object.values($activeModule?.assets?.refs ?? {})}
+                    config={$activeModule?.assets ?? { refs: {}, folders: {} }}
+                    layout="list"
+                    onCreateFolder={(name, parentId, sortOrder) =>
+                        createModuleFolder(mod.id, 'assets', name, parentId, sortOrder)}
+                    onUpdateFolder={(id, changes) =>
+                        updateModuleFolder(mod.id, 'assets', id, changes)}
+                    onDeleteFolder={(id) => deleteModuleFolder(mod.id, 'assets', id)}
+                    onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                        moveModuleItem(mod.id, 'assets', itemId, newFolderId, newSortOrder)}
+                >
+                    {#snippet empty()}
+                        <p class="text-xs text-muted-foreground">No assets.</p>
+                    {/snippet}
+                    {#snippet item({ entity: ref })}
+                        <div
+                            class="group flex items-center gap-3 rounded-md border bg-background p-2 transition-colors hover:bg-muted/50"
+                        >
+                            <div
+                                class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
+                            >
+                                <AssetView
+                                    asset={{
+                                        scopeType: 'user',
+                                        scopeId: '',
+                                        ownerTable: 'modules',
+                                        ownerId: mod.id,
+                                        hash: ref.hash,
+                                        encKey: ref.encKey
+                                    }}
+                                    alt={ref.name}
+                                    class="size-full object-cover"
+                                    fallback="icon"
+                                />
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                {#if editingAssetId === ref.id}
+                                    <form
+                                        class="flex items-center gap-1.5"
+                                        onsubmit={(e) => {
+                                            e.preventDefault();
+                                            saveAssetRename(ref);
+                                        }}
+                                    >
+                                        <Input
+                                            bind:value={editAssetName}
+                                            class="h-7 text-xs bg-background w-full"
+                                            autofocus
+                                            onblur={() => saveAssetRename(ref)}
+                                            onkeydown={(e) => {
+                                                if (e.key === 'Escape') {
+                                                    editingAssetId = null;
+                                                }
+                                            }}
+                                        />
+                                    </form>
+                                {:else}
+                                    <span class="truncate text-sm">{ref.name}</span>
+                                    <span class="text-[10px] text-muted-foreground ml-2 font-mono"
+                                        >{ref.mimeType}</span
+                                    >
+                                {/if}
+                            </div>
+                            <div
+                                class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    class="size-7"
+                                    title="Rename"
+                                    onclick={() => startAssetRename(ref)}
+                                >
+                                    <Pencil class="size-3" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    class="size-7 text-destructive hover:text-destructive"
+                                    title="Delete"
+                                    onclick={() => deleteModuleAsset(mod.id, ref.id)}
+                                >
+                                    <Trash2 class="size-3" />
+                                </Button>
+                            </div>
+                        </div>
                     {/snippet}
                 </EntityList>
             </section>

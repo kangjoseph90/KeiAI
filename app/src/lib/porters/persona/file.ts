@@ -1,5 +1,5 @@
 import { AppError } from '$lib/types/errors';
-import { imageToPng, isPng, readPng, writePngTextChunks } from '$lib/utils/png';
+import { imageToPng, readPng, writePngTextChunks } from '$lib/utils/png';
 import { unzip, zip } from '$lib/utils/zip';
 import { base64ToBytes, bytesToBase64 } from '../character/package';
 import { denormalizeRisuTemplate, normalizeRisuTemplate } from '../risu/template';
@@ -56,22 +56,20 @@ async function readRisuPersonaPng(bytes: Uint8Array): Promise<KeiPersonaPackageV
         persona: {
             name: card.name,
             description: normalizeRisuTemplate(card.personaPrompt),
-            avatarAssetId: 'asset_0',
             assets: { refs: {}, folders: {} }
         },
-        assets: [{ id: 'asset_0', data: bytes }]
+        assets: {},
+        avatar: { data: bytes }
     };
 }
 
 async function writeRisuPersonaPng(pkg: KeiPersonaPackageV1): Promise<Uint8Array> {
-    const avatar = pkg.persona.avatarAssetId
-        ? pkg.assets.find((asset) => asset.id === pkg.persona.avatarAssetId)?.data
-        : undefined;
+    const avatarData = pkg.avatar?.data;
     const card: RisuPersonaCard = {
         name: pkg.persona.name,
         personaPrompt: denormalizeRisuTemplate(pkg.persona.description)
     };
-    const png = avatar ? await imageToPng(avatar) : EMPTY_PNG;
+    const png = avatarData ? await imageToPng(avatarData) : EMPTY_PNG;
     return writePngTextChunks(
         png ?? EMPTY_PNG,
         [{ key: 'persona', value: bytesToBase64(TEXT_ENCODER.encode(JSON.stringify(card))) }],
@@ -83,36 +81,64 @@ async function readKeiPersona(bytes: Uint8Array): Promise<KeiPersonaPackageV1> {
     const entries = await unzip(bytes);
     const packageBytes = entries['package.json'];
     if (!packageBytes) throw new AppError('INVALID_INPUT', 'Kei persona is missing package.json');
+
     const parsed = JSON.parse(TEXT_DECODER.decode(packageBytes)) as KeiPersonaPackageV1;
-    return {
-        ...parsed,
-        assets: parsed.assets.map((asset) => ({
+    const assets: Record<string, { data?: Uint8Array; hash?: string; encKey?: string }> = {};
+    for (const [key, asset] of Object.entries(parsed.assets ?? {})) {
+        assets[key] = {
             ...asset,
-            data: entries[`assets/${asset.id}.bin`]
-        }))
-    };
+            data: entries[`assets/${key}.bin`]
+        };
+    }
+
+    let avatar: { data?: Uint8Array; hash?: string; encKey?: string } | undefined;
+    if (parsed.avatar) {
+        avatar = {
+            ...parsed.avatar,
+            data: entries['assets/__avatar__.bin']
+        };
+    }
+
+    return { ...parsed, assets, avatar };
 }
 
 function writeKeiPersona(pkg: KeiPersonaPackageV1): Uint8Array {
+    const serializedAssets = Object.fromEntries(
+        Object.entries(pkg.assets).map(([key, asset]) => [
+            key,
+            {
+                path: asset.data ? `assets/${key}.bin` : undefined,
+                hash: asset.hash,
+                encKey: asset.encKey
+            }
+        ])
+    );
+    const serializedAvatar = pkg.avatar
+        ? {
+              path: pkg.avatar.data ? 'assets/__avatar__.bin' : undefined,
+              hash: pkg.avatar.hash,
+              encKey: pkg.avatar.encKey
+          }
+        : undefined;
+
     const entries: Record<string, Uint8Array> = {
         'package.json': TEXT_ENCODER.encode(
             JSON.stringify(
                 {
                     ...pkg,
-                    assets: pkg.assets.map((asset) => ({
-                        id: asset.id,
-                        ...(asset.data ? { path: `assets/${asset.id}.bin` } : {}),
-                        ...(asset.hash ? { hash: asset.hash } : {}),
-                        ...(asset.encKey ? { encKey: asset.encKey } : {})
-                    }))
+                    assets: serializedAssets,
+                    avatar: serializedAvatar
                 },
                 null,
                 2
             )
         )
     };
-    for (const asset of pkg.assets) {
-        if (asset.data) entries[`assets/${asset.id}.bin`] = asset.data;
+    for (const [key, asset] of Object.entries(pkg.assets)) {
+        if (asset.data) entries[`assets/${key}.bin`] = asset.data;
+    }
+    if (pkg.avatar?.data) {
+        entries['assets/__avatar__.bin'] = pkg.avatar.data;
     }
     return zip(entries);
 }

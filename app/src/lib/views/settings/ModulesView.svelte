@@ -87,7 +87,8 @@
             entities={$modules}
             config={$appSettings.modules}
             layout="list"
-            onCreateFolder={(name, parentId) => createGlobalFolder('modules', name, parentId)}
+            onCreateFolder={(name, parentId, sortOrder) =>
+                createGlobalFolder('modules', name, parentId, sortOrder)}
             onUpdateFolder={(id, changes) => updateGlobalFolder('modules', id, changes)}
             onDeleteFolder={(id) => deleteGlobalFolder('modules', id)}
             onMoveItem={(itemId, newFolderId, newSortOrder) =>

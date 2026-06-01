@@ -13,6 +13,8 @@
  *         with per-context enabled state.
  */
 
+import type { AssetEntries } from '$lib/types/asset';
+
 // ─── Table Registry ──────────────────────────────────────────────────
 
 export type TableName =
@@ -91,6 +93,7 @@ export interface BaseRecord {
     createdAt: number;
     updatedAt: number;
     isDeleted: boolean;
+    assetEntries?: AssetEntries;
 }
 
 /** Standard record — stores domain fields as plaintext JSON */

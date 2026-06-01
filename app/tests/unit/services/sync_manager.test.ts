@@ -2,28 +2,24 @@
  * Sync Manager Tests
  *
  * Tests the SyncManager record sync and binary worker lifecycle.
- * lifecycles (start/stop/reconnect).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SyncManager } from '$lib/services/sync';
 import { DataRecordSyncEngine } from '$lib/services/sync/data';
 import { UserRecordSyncEngine } from '$lib/services/sync/user';
-import { AssetBinarySyncEngine, AssetRecordSyncEngine } from '$lib/services/sync/asset';
+import { AssetSyncEngine } from '$lib/services/sync/asset';
 import { MultiRecordSyncEngine } from '$lib/services/sync/multi';
 import { appUser } from '$lib/adapters/user';
 import { appMulti } from '$lib/adapters/multi';
-import { appAsset } from '$lib/adapters/asset';
 import { localDB } from '$lib/adapters/db';
 import type { DatabaseWriteEventListener } from '$lib/adapters/db';
 import type { UserWriteEventListener } from '$lib/adapters/user';
 import type { MultiWriteEventListener } from '$lib/adapters/multi';
-import type { AssetWriteEventListener } from '$lib/adapters/asset';
 
 let dbWriteListener: DatabaseWriteEventListener | null = null;
 let userWriteListener: UserWriteEventListener | null = null;
 let multiWriteListener: MultiWriteEventListener | null = null;
-let assetWriteListener: AssetWriteEventListener | null = null;
 
 // Mock dependencies with stateful spies
 vi.mock('$lib/services/sync/data', () => {
@@ -85,17 +81,6 @@ vi.mock('$lib/adapters/multi', () => ({
     }
 }));
 
-vi.mock('$lib/adapters/asset', () => ({
-    appAsset: {
-        subscribeWriteEvents: vi.fn((listener: AssetWriteEventListener) => {
-            assetWriteListener = listener;
-            return () => {
-                assetWriteListener = null;
-            };
-        })
-    }
-}));
-
 vi.mock('$lib/services/sync/user', () => {
     const engine = {
         subscribeRealtime: vi.fn(async () => {}),
@@ -111,32 +96,14 @@ vi.mock('$lib/services/sync/user', () => {
 });
 
 vi.mock('$lib/services/sync/asset', () => {
-    let subscribed = false;
-    const record = {
-        trigger: vi.fn(async () => {}),
-        subscribeRealtime: vi.fn(async () => {
-            subscribed = true;
-        }),
-        unsubscribeRealtime: vi.fn(async () => {
-            subscribed = false;
-        }),
-        handleLocalWrite: vi.fn(),
-        stop: vi.fn(),
-        get isSubscribed() {
-            return subscribed;
-        },
-        set isSubscribed(v: boolean) {
-            subscribed = v;
-        }
-    };
-    const binary = {
+    const engine = {
         start: vi.fn(async () => {}),
         stop: vi.fn(),
-        handleLocalWrite: vi.fn()
+        getState: vi.fn(() => ({ state: 'idle', pendingCount: 0 })),
+        subscribeStatus: vi.fn(() => () => {})
     };
     return {
-        AssetRecordSyncEngine: record,
-        AssetBinarySyncEngine: binary
+        AssetSyncEngine: engine
     };
 });
 
@@ -186,25 +153,18 @@ describe('SyncManager', () => {
         vi.mocked(UserRecordSyncEngine.unsubscribeRealtime).mockClear();
         vi.mocked(UserRecordSyncEngine.trigger).mockClear();
         vi.mocked(UserRecordSyncEngine.handleLocalWrite).mockClear();
-        vi.mocked(AssetBinarySyncEngine.start).mockClear();
-        vi.mocked(AssetBinarySyncEngine.stop).mockClear();
-        vi.mocked(AssetBinarySyncEngine.handleLocalWrite).mockClear();
-        vi.mocked(AssetRecordSyncEngine.subscribeRealtime).mockClear();
-        vi.mocked(AssetRecordSyncEngine.unsubscribeRealtime).mockClear();
-        vi.mocked(AssetRecordSyncEngine.trigger).mockClear();
-        vi.mocked(AssetRecordSyncEngine.handleLocalWrite).mockClear();
+        vi.mocked(AssetSyncEngine.start).mockClear();
+        vi.mocked(AssetSyncEngine.stop).mockClear();
         vi.mocked(MultiRecordSyncEngine.trigger).mockClear();
         vi.mocked(MultiRecordSyncEngine.subscribeRealtime).mockClear();
         vi.mocked(MultiRecordSyncEngine.unsubscribeRealtime).mockClear();
         vi.mocked(MultiRecordSyncEngine.handleLocalWrite).mockClear();
         (MultiRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = false;
-        (AssetRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = false;
         vi.mocked(DataRecordSyncEngine.handleLocalWrite).mockClear();
         (DataRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = false;
         dbWriteListener = null;
         userWriteListener = null;
         multiWriteListener = null;
-        assetWriteListener = null;
     });
 
     afterEach(() => {
@@ -217,17 +177,15 @@ describe('SyncManager', () => {
             SyncManager.startAutoSync();
 
             expect(DataRecordSyncEngine.subscribeRealtime).toHaveBeenCalled();
-            expect(AssetRecordSyncEngine.subscribeRealtime).toHaveBeenCalled();
             expect(MultiRecordSyncEngine.subscribeRealtime).toHaveBeenCalled();
             expect(UserRecordSyncEngine.subscribeRealtime).toHaveBeenCalled();
-            expect(AssetBinarySyncEngine.start).toHaveBeenCalledTimes(1);
+            expect(AssetSyncEngine.start).toHaveBeenCalledTimes(1);
             expect(MultiRecordSyncEngine.trigger).not.toHaveBeenCalled();
 
             expect(DataRecordSyncEngine.trigger).not.toHaveBeenCalled();
             vi.advanceTimersByTime(300_000);
             expect(DataRecordSyncEngine.trigger).toHaveBeenCalledTimes(1);
-            expect(AssetRecordSyncEngine.trigger).toHaveBeenCalledTimes(1);
-            expect(AssetBinarySyncEngine.start).toHaveBeenCalledTimes(2);
+            expect(AssetSyncEngine.start).toHaveBeenCalledTimes(2);
             expect(MultiRecordSyncEngine.trigger).toHaveBeenCalledTimes(1);
 
             expect(window.addEventListener).toHaveBeenCalledWith('online', expect.any(Function));
@@ -243,7 +201,6 @@ describe('SyncManager', () => {
             expect(DataRecordSyncEngine.subscribeRealtime).toHaveBeenCalledTimes(1);
             expect(localDB.subscribeWriteEvents).toHaveBeenCalledTimes(1);
             expect(appUser.subscribeWriteEvents).toHaveBeenCalledTimes(1);
-            expect(appAsset.subscribeWriteEvents).toHaveBeenCalledTimes(1);
             expect(appMulti.subscribeWriteEvents).toHaveBeenCalledTimes(1);
         });
     });
@@ -254,14 +211,12 @@ describe('SyncManager', () => {
             SyncManager.stopAutoSync();
 
             expect(DataRecordSyncEngine.unsubscribeRealtime).toHaveBeenCalled();
-            expect(AssetRecordSyncEngine.unsubscribeRealtime).toHaveBeenCalled();
             expect(MultiRecordSyncEngine.unsubscribeRealtime).toHaveBeenCalled();
             expect(UserRecordSyncEngine.unsubscribeRealtime).toHaveBeenCalled();
             expect(DataRecordSyncEngine.stop).toHaveBeenCalled();
-            expect(AssetRecordSyncEngine.stop).toHaveBeenCalled();
             expect(MultiRecordSyncEngine.stop).toHaveBeenCalled();
             expect(UserRecordSyncEngine.stop).toHaveBeenCalled();
-            expect(AssetBinarySyncEngine.stop).toHaveBeenCalled();
+            expect(AssetSyncEngine.stop).toHaveBeenCalled();
 
             vi.advanceTimersByTime(300_000);
             expect(DataRecordSyncEngine.trigger).not.toHaveBeenCalled();
@@ -274,20 +229,14 @@ describe('SyncManager', () => {
             vi.mocked(DataRecordSyncEngine.unsubscribeRealtime).mockClear();
             vi.mocked(DataRecordSyncEngine.subscribeRealtime).mockClear();
             vi.mocked(DataRecordSyncEngine.trigger).mockClear();
-            vi.mocked(AssetRecordSyncEngine.unsubscribeRealtime).mockClear();
-            vi.mocked(AssetRecordSyncEngine.subscribeRealtime).mockClear();
-            vi.mocked(AssetRecordSyncEngine.trigger).mockClear();
-            vi.mocked(AssetBinarySyncEngine.start).mockClear();
+            vi.mocked(AssetSyncEngine.start).mockClear();
 
             await SyncManager.refreshRoomSync();
 
             expect(DataRecordSyncEngine.unsubscribeRealtime).toHaveBeenCalled();
-            expect(AssetRecordSyncEngine.unsubscribeRealtime).toHaveBeenCalled();
             expect(DataRecordSyncEngine.subscribeRealtime).toHaveBeenCalled();
-            expect(AssetRecordSyncEngine.subscribeRealtime).toHaveBeenCalled();
             expect(DataRecordSyncEngine.trigger).toHaveBeenCalled();
-            expect(AssetRecordSyncEngine.trigger).toHaveBeenCalled();
-            expect(AssetBinarySyncEngine.start).toHaveBeenCalled();
+            expect(AssetSyncEngine.start).toHaveBeenCalled();
         });
     });
 
@@ -304,7 +253,6 @@ describe('SyncManager', () => {
 
             // Force it to look disconnected
             (DataRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = false;
-            (AssetRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = false;
             (MultiRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = false;
 
             await onlineHandler();
@@ -319,11 +267,9 @@ describe('SyncManager', () => {
             await Promise.resolve(); // final callback
 
             expect(DataRecordSyncEngine.subscribeRealtime).toHaveBeenCalledTimes(2); // once at start, once at online
-            expect(AssetRecordSyncEngine.subscribeRealtime).toHaveBeenCalledTimes(2); // once at start, once at online
             expect(MultiRecordSyncEngine.subscribeRealtime).toHaveBeenCalledTimes(2); // once at start, once at online
             expect(DataRecordSyncEngine.trigger).toHaveBeenCalled();
-            expect(AssetRecordSyncEngine.trigger).toHaveBeenCalled();
-            expect(AssetBinarySyncEngine.start).toHaveBeenCalledTimes(2);
+            expect(AssetSyncEngine.start).toHaveBeenCalledTimes(2);
             expect(MultiRecordSyncEngine.trigger).toHaveBeenCalledTimes(1);
             expect(UserRecordSyncEngine.trigger).toHaveBeenCalled();
         });
@@ -338,11 +284,9 @@ describe('SyncManager', () => {
 
             // Ensure we are marked as subscribed
             (DataRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = true;
-            (AssetRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = true;
             (MultiRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = true;
             (UserRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = true;
             vi.mocked(DataRecordSyncEngine.subscribeRealtime).mockClear();
-            vi.mocked(AssetRecordSyncEngine.subscribeRealtime).mockClear();
             vi.mocked(MultiRecordSyncEngine.subscribeRealtime).mockClear();
             vi.mocked(UserRecordSyncEngine.subscribeRealtime).mockClear();
 
@@ -350,11 +294,10 @@ describe('SyncManager', () => {
             await Promise.resolve();
 
             expect(DataRecordSyncEngine.subscribeRealtime).not.toHaveBeenCalled();
-            expect(AssetRecordSyncEngine.subscribeRealtime).not.toHaveBeenCalled();
             expect(MultiRecordSyncEngine.subscribeRealtime).not.toHaveBeenCalled();
             expect(UserRecordSyncEngine.subscribeRealtime).not.toHaveBeenCalled();
             expect(DataRecordSyncEngine.trigger).not.toHaveBeenCalled();
-            expect(AssetBinarySyncEngine.start).toHaveBeenCalledTimes(1);
+            expect(AssetSyncEngine.start).toHaveBeenCalledTimes(1);
             expect(MultiRecordSyncEngine.trigger).not.toHaveBeenCalled();
             expect(UserRecordSyncEngine.trigger).not.toHaveBeenCalled();
         });
@@ -368,18 +311,15 @@ describe('SyncManager', () => {
             const visHandler = visCall?.[1] as () => void;
 
             (DataRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = true;
-            (AssetRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = false;
-            (MultiRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = true;
+            (MultiRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = false;
             (UserRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = true;
             vi.mocked(DataRecordSyncEngine.subscribeRealtime).mockClear();
-            vi.mocked(AssetRecordSyncEngine.subscribeRealtime).mockClear();
             vi.mocked(MultiRecordSyncEngine.subscribeRealtime).mockClear();
             vi.mocked(UserRecordSyncEngine.subscribeRealtime).mockClear();
             vi.mocked(DataRecordSyncEngine.trigger).mockClear();
-            vi.mocked(AssetRecordSyncEngine.trigger).mockClear();
             vi.mocked(MultiRecordSyncEngine.trigger).mockClear();
             vi.mocked(UserRecordSyncEngine.trigger).mockClear();
-            vi.mocked(AssetBinarySyncEngine.start).mockClear();
+            vi.mocked(AssetSyncEngine.start).mockClear();
 
             await visHandler();
             await Promise.resolve();
@@ -388,14 +328,12 @@ describe('SyncManager', () => {
             await Promise.resolve();
 
             expect(DataRecordSyncEngine.subscribeRealtime).not.toHaveBeenCalled();
-            expect(AssetRecordSyncEngine.subscribeRealtime).toHaveBeenCalled();
-            expect(MultiRecordSyncEngine.subscribeRealtime).not.toHaveBeenCalled();
+            expect(MultiRecordSyncEngine.subscribeRealtime).toHaveBeenCalled();
             expect(UserRecordSyncEngine.subscribeRealtime).not.toHaveBeenCalled();
             expect(DataRecordSyncEngine.trigger).toHaveBeenCalled();
-            expect(AssetRecordSyncEngine.trigger).toHaveBeenCalled();
             expect(MultiRecordSyncEngine.trigger).toHaveBeenCalled();
             expect(UserRecordSyncEngine.trigger).toHaveBeenCalled();
-            expect(AssetBinarySyncEngine.start).toHaveBeenCalled();
+            expect(AssetSyncEngine.start).toHaveBeenCalled();
         });
 
         it('should route user write events to UserRecordSyncEngine', async () => {
@@ -423,7 +361,7 @@ describe('SyncManager', () => {
             );
         });
 
-        it('should route local DB writes to the appropriate sync engines', async () => {
+        it('should route local DB writes to the appropriate sync engines and start AssetSyncEngine if database change is local', async () => {
             SyncManager.startAutoSync();
             expect(dbWriteListener).not.toBeNull();
 
@@ -441,29 +379,7 @@ describe('SyncManager', () => {
             expect(DataRecordSyncEngine.handleLocalWrite).toHaveBeenCalledWith(
                 expect.objectContaining({ tableName: 'characters', ids: ['c1'] })
             );
-        });
-
-        it('should route asset writes to asset record sync and binary worker', async () => {
-            SyncManager.startAutoSync();
-            expect(assetWriteListener).not.toBeNull();
-
-            assetWriteListener?.([
-                {
-                    tableName: 'assets',
-                    ids: ['asset-1'],
-                    origin: 'local',
-                    operation: 'put'
-                }
-            ]);
-
-            await Promise.resolve();
-
-            expect(AssetRecordSyncEngine.handleLocalWrite).toHaveBeenCalledWith(
-                expect.objectContaining({ tableName: 'assets', ids: ['asset-1'] })
-            );
-            expect(AssetBinarySyncEngine.handleLocalWrite).toHaveBeenCalledWith(
-                expect.objectContaining({ tableName: 'assets', ids: ['asset-1'] })
-            );
+            expect(AssetSyncEngine.start).toHaveBeenCalled();
         });
 
         it('should route multi metadata writes to MultiRecordSyncEngine', async () => {

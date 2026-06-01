@@ -33,14 +33,29 @@ export async function writeCharacterPng(pkg: KeiCharacterPackageV1): Promise<Uin
     const card = keiPackageToCard(pkg, 'png');
     const basePng = await basePngFor(pkg);
     const cardBytes = new TextEncoder().encode(JSON.stringify(card));
+
+    const assetChunks: PngTextChunk[] = [];
+    for (const [key, asset] of Object.entries(pkg.assets)) {
+        if (!asset.data) continue;
+        assetChunks.push({
+            key: `chara-ext-asset_:${assetPath(pkg, key)}`,
+            value: bytesToBase64(asset.data)
+        });
+    }
+
+    // Include avatar as a chunk so keiai extension roundtrip works.
+    // The avatar is also used as the base PNG image, but the keiai
+    // extension's fromKeiPackageJson needs the file in the map.
+    if (pkg.avatar?.data) {
+        assetChunks.push({
+            key: `chara-ext-asset_:${assetPath(pkg, '__avatar__')}`,
+            value: bytesToBase64(pkg.avatar.data)
+        });
+    }
+
     const chunks: PngTextChunk[] = [
         { key: 'ccv3', value: bytesToBase64(cardBytes) },
-        ...pkg.assets
-            .filter((asset) => asset.data)
-            .map((asset) => ({
-                key: `chara-ext-asset_:${assetPath(pkg, asset.id)}`,
-                value: bytesToBase64(asset.data as Uint8Array)
-            }))
+        ...assetChunks
     ];
 
     return writePngTextChunks(basePng, chunks, ['ccv3', 'chara-ext-asset_*']);
@@ -57,10 +72,8 @@ function readAssetChunks(chunks: PngTextChunk[]): Record<string, Uint8Array> {
 }
 
 async function basePngFor(pkg: KeiCharacterPackageV1): Promise<Uint8Array> {
-    const avatar = pkg.character.avatarAssetId
-        ? pkg.assets.find((asset) => asset.id === pkg.character.avatarAssetId)?.data
-        : undefined;
-    if (!avatar) return EMPTY_PNG;
-    if (isPng(avatar)) return avatar;
-    return (await imageToPng(avatar)) ?? EMPTY_PNG;
+    const avatarData = pkg.avatar?.data;
+    if (!avatarData) return EMPTY_PNG;
+    if (isPng(avatarData)) return avatarData;
+    return (await imageToPng(avatarData)) ?? EMPTY_PNG;
 }

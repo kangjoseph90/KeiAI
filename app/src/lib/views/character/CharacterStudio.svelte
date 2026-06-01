@@ -288,12 +288,13 @@
                                 onDelete={async (id) => {
                                     await deleteCharacterLorebook($activeCharacter!.id, id);
                                 }}
-                                onCreateFolder={(name, parentId) =>
+                                onCreateFolder={(name, parentId, sortOrder) =>
                                     createCharacterFolder(
                                         $activeCharacter!.id,
                                         'lorebooks',
                                         name,
-                                        parentId
+                                        parentId,
+                                        sortOrder
                                     )}
                                 onUpdateFolder={(id, changes) =>
                                     updateCharacterFolder(
@@ -344,12 +345,13 @@
                                     await deleteCharacterCharJS($activeCharacter!.id, id);
                                 }}
                                 scriptFolders={{
-                                    onCreateFolder: (name, parentId) =>
+                                    onCreateFolder: (name, parentId, sortOrder) =>
                                         createCharacterFolder(
                                             $activeCharacter!.id,
                                             'scripts',
                                             name,
-                                            parentId
+                                            parentId,
+                                            sortOrder
                                         ),
                                     onUpdateFolder: (id, changes) =>
                                         updateCharacterFolder(
@@ -370,12 +372,13 @@
                                         )
                                 }}
                                 charjsFolders={{
-                                    onCreateFolder: (name, parentId) =>
+                                    onCreateFolder: (name, parentId, sortOrder) =>
                                         createCharacterFolder(
                                             $activeCharacter!.id,
                                             'charjs',
                                             name,
-                                            parentId
+                                            parentId,
+                                            sortOrder
                                         ),
                                     onUpdateFolder: (id, changes) =>
                                         updateCharacterFolder(

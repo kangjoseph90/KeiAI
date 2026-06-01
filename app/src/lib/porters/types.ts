@@ -1,12 +1,10 @@
 export interface KeiAssetPayload {
-    id: string;
     data?: Uint8Array;
     hash?: string;
     encKey?: string;
 }
 
 export interface SerializedKeiAssetPayload {
-    id: string;
     path?: string;
     hash?: string;
     encKey?: string;

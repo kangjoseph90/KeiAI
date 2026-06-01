@@ -1,19 +1,20 @@
 <script lang="ts">
-    import { AssetService } from '$lib/services/asset';
+    import { assetRegistryId } from '$lib/adapters/asset';
+    import { AssetService, type AssetReadLocator } from '$lib/services/asset';
     import { Loader2, FileQuestion } from 'lucide-svelte';
     import { cn } from '$lib/utils';
     import type { Action } from 'svelte/action';
     import { onDestroy } from 'svelte';
 
     let {
-        id,
+        asset,
         alt = '',
         class: className = '',
         style = '',
         fallback = 'icon', // 'icon' | 'none'
         children
     }: {
-        id: string | null | undefined;
+        asset: AssetReadLocator | null | undefined;
         alt?: string;
         class?: string;
         style?: string;
@@ -27,10 +28,10 @@
     let visible = $state(false);
     let retryCount = 0;
     let ownedUrl: string | null = null;
-    let requestedAssetId: string | null = null;
+    let requestedAssetKey: string | null = null;
     const MAX_RETRIES = 2;
 
-    // ── Lazy visibility tracking ─────────────────────────────────────
+    // Lazy visibility tracking
     const observeVisibility: Action = (node) => {
         const observer = new IntersectionObserver(
             ([entry]) => {
@@ -48,15 +49,16 @@
         };
     };
 
-    // ── Load only when visible + id is set ───────────────────────────
-    function loadAsset(assetId: string) {
-        requestedAssetId = assetId;
+    // Load only when visible + asset is set
+    function loadAsset(locator: AssetReadLocator) {
+        const key = assetRegistryId(locator);
+        requestedAssetKey = key;
         loading = true;
         error = false;
 
-        AssetService.read(assetId)
+        AssetService.read(locator)
             .then((res) => {
-                if (id !== assetId) {
+                if (currentAssetKey() !== key) {
                     if (res) void AssetService.revokeUrl(res);
                     return;
                 }
@@ -70,20 +72,21 @@
                 }
             })
             .catch(() => {
-                if (id !== assetId) return;
+                if (currentAssetKey() !== key) return;
                 setUrl(null);
                 error = true;
             })
             .finally(() => {
-                if (id === assetId) loading = false;
+                if (currentAssetKey() === key) loading = false;
             });
     }
 
     $effect(() => {
-        const assetId = id ?? null;
+        const locator = asset ?? null;
+        const key = currentAssetKey();
 
-        if (!assetId) {
-            requestedAssetId = null;
+        if (!locator || !key) {
+            requestedAssetKey = null;
             resetAssetState();
             return;
         }
@@ -91,21 +94,25 @@
         // Wait until the element is visible in the viewport
         if (!visible) return;
 
-        if (requestedAssetId === assetId) return;
+        if (requestedAssetKey === key) return;
 
         resetAssetState();
-        loadAsset(assetId);
+        loadAsset(locator);
     });
 
-    // ── Recovery: img onerror fires when a revoked URL breaks ────────
+    // Recovery: img onerror fires when a revoked URL breaks
     function handleImgError() {
         setUrl(null);
-        if (!id || retryCount >= MAX_RETRIES) {
+        if (!asset || retryCount >= MAX_RETRIES) {
             error = true;
             return;
         }
         retryCount++;
-        loadAsset(id);
+        loadAsset(asset);
+    }
+
+    function currentAssetKey(): string | null {
+        return asset ? assetRegistryId(asset) : null;
     }
 
     function setUrl(nextUrl: string | null): void {
@@ -141,7 +148,7 @@
 
     {#if url}
         <img src={url} {alt} class="size-full object-cover" onerror={handleImgError} />
-    {:else if error || (!loading && !id)}
+    {:else if error || (!loading && !asset)}
         {#if children}
             {@render children()}
         {:else if fallback === 'icon'}

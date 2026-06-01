@@ -29,6 +29,8 @@ import { EntityStore } from './entity_store';
 import { compareSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { EntityListConfig, AssetRef } from '$lib/types/refs';
 import { normalizeAssetName, type AssetNameIndex } from '$lib/template/display';
+import type { AssetReadLocator } from '$lib/services/asset';
+import type { DataScopeType, TableName } from '$lib/adapters/db';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
@@ -228,23 +230,36 @@ export const displayMessages = derived(
 // ─── Asset Helper & Derived Store ─────────────────────────────────────
 
 /**
- * Derived store mapping: Map<OwnerId, Map<NormalizedName, string[]>>
+ * Derived store mapping: Map<OwnerId, Map<NormalizedName, AssetReadLocator[]>>
  * Merges asset refs from active modules, room characters, and chat personas.
  */
 export const chatAssetsMap = derived(
-    [modules, roomCharacters, chatPersonas],
-    ([$modules, $roomCharacters, $chatPersonas]): AssetNameIndex => {
+    [modules, roomCharacters, chatPersonas, userId],
+    ([$modules, $roomCharacters, $chatPersonas, $userId]): AssetNameIndex => {
         const resolverMap: AssetNameIndex = new Map();
 
-        const addEntityAssets = (ownerId: string, assetsConfig?: EntityListConfig<AssetRef>) => {
+        const addEntityAssets = (
+            scopeType: DataScopeType,
+            scopeId: string,
+            ownerTable: TableName,
+            ownerId: string,
+            assetsConfig?: EntityListConfig<AssetRef>
+        ) => {
             if (!assetsConfig?.refs) return;
-            const ownerMap = new Map<string, string[]>();
+            const ownerMap = new Map<string, AssetReadLocator[]>();
             for (const ref of Object.values(assetsConfig.refs)) {
-                if (ref?.name && ref?.id) {
+                if (ref?.name && ref?.hash && ref?.encKey) {
                     const normalized = normalizeAssetName(ref.name);
                     if (normalized) {
                         const list = ownerMap.get(normalized) ?? [];
-                        list.push(ref.id);
+                        list.push({
+                            scopeType,
+                            scopeId,
+                            ownerTable,
+                            ownerId,
+                            hash: ref.hash,
+                            encKey: ref.encKey
+                        });
                         ownerMap.set(normalized, list);
                     }
                 }
@@ -254,9 +269,21 @@ export const chatAssetsMap = derived(
             }
         };
 
-        for (const module of $modules) addEntityAssets(module.id, module.assets);
-        for (const char of $roomCharacters) addEntityAssets(char.id, char.assets);
-        for (const persona of $chatPersonas) addEntityAssets(persona.id, persona.assets);
+        for (const module of $modules) {
+            addEntityAssets('user', $userId ?? '', 'modules', module.id, module.assets);
+        }
+        for (const char of $roomCharacters) {
+            addEntityAssets(char.scopeType, char.scopeId, 'characters', char.id, char.assets);
+        }
+        for (const persona of $chatPersonas) {
+            addEntityAssets(
+                persona.scopeType,
+                persona.scopeId,
+                'personas',
+                persona.id,
+                persona.assets
+            );
+        }
 
         return resolverMap;
     }

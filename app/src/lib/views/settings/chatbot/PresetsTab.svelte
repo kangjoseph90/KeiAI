@@ -69,7 +69,8 @@
                 entities={$presets}
                 config={$appSettings.presets}
                 layout="list"
-                onCreateFolder={(name, parentId) => createGlobalFolder('presets', name, parentId)}
+                onCreateFolder={(name, parentId, sortOrder) =>
+                    createGlobalFolder('presets', name, parentId, sortOrder)}
                 onUpdateFolder={(id, changes) => updateGlobalFolder('presets', id, changes)}
                 onDeleteFolder={(id) => deleteGlobalFolder('presets', id)}
                 onMoveItem={(itemId, newFolderId, newSortOrder) =>

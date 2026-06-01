@@ -5,7 +5,68 @@
  */
 
 import { sha256, sha256Bytes, fromHex, toHex, type Bytes } from '$lib/crypto';
-import type { AssetFields } from '$lib/adapters/asset';
+import { preprocessImage } from '$lib/utils/image';
+import { MAX_IMAGE_HEIGHT, MAX_IMAGE_WIDTH, WEBP_QUALITY } from './types';
+
+export async function fileToPlaintext(
+    file: File
+): Promise<{ bytes: Uint8Array; mimeType: string }> {
+    const sourceBytes = new Uint8Array(await file.arrayBuffer());
+    const sourceMimeType = resolveFileMimeType(file, sourceBytes);
+    const shouldPreprocess =
+        sourceMimeType === 'image/png' ||
+        sourceMimeType === 'image/jpeg' ||
+        sourceMimeType === 'image/jpg';
+
+    if (!shouldPreprocess) {
+        return {
+            bytes: sourceBytes,
+            mimeType: sourceMimeType
+        };
+    }
+
+    const { blob } = await preprocessImage(file, {
+        maxWidth: MAX_IMAGE_WIDTH,
+        maxHeight: MAX_IMAGE_HEIGHT,
+        quality: WEBP_QUALITY
+    });
+
+    return {
+        bytes: new Uint8Array(await blob.arrayBuffer()),
+        mimeType: blob.type || 'image/webp'
+    };
+}
+
+function resolveFileMimeType(file: File, bytes: Uint8Array): string {
+    if (file.type && file.type !== 'application/octet-stream') return file.type;
+
+    if (bytes.length >= 12) {
+        const isWebP =
+            bytes[0] === 0x52 &&
+            bytes[1] === 0x49 &&
+            bytes[2] === 0x46 &&
+            bytes[3] === 0x46 &&
+            bytes[8] === 0x57 &&
+            bytes[9] === 0x45 &&
+            bytes[10] === 0x42 &&
+            bytes[11] === 0x50;
+        if (isWebP) return 'image/webp';
+    }
+
+    if (bytes.length >= 4) {
+        const isPng =
+            bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+        const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+        const isGif =
+            bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38;
+
+        if (isPng) return 'image/png';
+        if (isJpeg) return 'image/jpeg';
+        if (isGif) return 'image/gif';
+    }
+
+    return file.type || 'application/octet-stream';
+}
 
 // ─── Convergent Encryption ───────────────────────────────────────────
 
@@ -28,7 +89,7 @@ async function hkdfBytes(ikm: Uint8Array, info: string, outputBits: number): Pro
             {
                 name: 'HKDF',
                 hash: 'SHA-256',
-                salt: encoder.encode('kei:asset-v3'),
+                salt: encoder.encode('kei-asset-salt'),
                 info: encoder.encode(info)
             },
             keyMaterial,
@@ -103,32 +164,4 @@ export async function decryptConvergentAsset(
         encKeyBytes.fill(0);
         iv.fill(0);
     }
-}
-
-/** Check if bytes start with a valid image magic number */
-export function isValidImageHeader(bytes: Uint8Array): boolean {
-    if (bytes.length < 4) return false;
-
-    const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
-    const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-    const isWebP =
-        bytes[0] === 0x52 &&
-        bytes[1] === 0x49 &&
-        bytes[2] === 0x46 &&
-        bytes[3] === 0x46 &&
-        bytes.length >= 12 &&
-        bytes[8] === 0x57 &&
-        bytes[9] === 0x45 &&
-        bytes[10] === 0x42 &&
-        bytes[11] === 0x50;
-    const isGif = bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38;
-
-    return isPng || isJpeg || isWebP || isGif;
-}
-
-// ─── Asset Field Parsing ─────────────────────────────────────────────
-
-/** Parse plaintext data from a DataRecord */
-export function parseFields(record: { data: Record<string, unknown> }): AssetFields {
-    return record.data as unknown as AssetFields;
 }

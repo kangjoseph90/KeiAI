@@ -580,33 +580,33 @@ onRecordAfterCreateSuccess((e) => {
 
 onRecordAfterCreateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
-}, "assets");
+}, "records");
 
 onRecordAfterUpdateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(
     e.record,
     e.record.original(),
   );
-}, "assets");
+}, "records");
 
 onRecordAfterDeleteSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(null, e.record);
-}, "assets");
+}, "records");
 
 onRecordAfterCreateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(e.record, null);
-}, "multi_room_assets");
+}, "multi_room_records");
 
 onRecordAfterUpdateSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(
     e.record,
     e.record.original(),
   );
-}, "multi_room_assets");
+}, "multi_room_records");
 
 onRecordAfterDeleteSuccess((e) => {
   require(`${__hooks}/keiai.js`).handleAssetRefTransition(null, e.record);
-}, "multi_room_assets");
+}, "multi_room_records");
 
 // Asset garbage collection
 
@@ -619,7 +619,8 @@ cronAdd("asset-gc", "0 * * * *", () => {
       .db()
       .newQuery(
         "SELECT c.id FROM asset_catalog c WHERE NOT EXISTS " +
-          "(SELECT 1 FROM asset_usage u WHERE u.hash = c.hash) LIMIT {:limit}",
+          "(SELECT 1 FROM asset_usage u WHERE u.hash = c.hash) " +
+          "AND datetime(c.created) < datetime('now', '-1 hour') LIMIT {:limit}",
       )
       .bind({ limit: pageSize })
       .all(orphans);

@@ -1,9 +1,14 @@
 import type { DataScopeType } from '$lib/adapters/db';
 import { CharacterService, CharJSService, LorebookService, ScriptService } from '$lib/services';
-import { AssetService } from '$lib/services/asset';
 import { AppError } from '$lib/types/errors';
 import type { KeiCharacterPackageV1 } from './types';
-import { importAssets, remapEntityList, requireMapped } from '../utils';
+import {
+    importAssetPayload,
+    importAssetPayloads,
+    materializeImportedAsset,
+    remapEntityList,
+    remapImportedAssetFolders
+} from '../utils';
 
 export interface ImportCharacterOptions {
     scopeType?: DataScopeType;
@@ -22,7 +27,6 @@ export async function importCharacterPackage(
 ): Promise<string> {
     assertPackage(pkg);
     const scopeType = options.scopeType ?? 'user';
-    const assetMap = await importAssets(pkg.assets, scopeType, options.allowLightAssets ?? true);
 
     let characterId: string | undefined = undefined;
     try {
@@ -33,10 +37,9 @@ export async function importCharacterPackage(
                 characterNote: pkg.character.characterNote,
                 backgroundHTML: pkg.character.backgroundHTML ?? '',
                 messageCSS: pkg.character.messageCSS ?? '',
-                greetings: { ...pkg.character.greetings },
-                defaultVariables: { ...pkg.character.defaultVariables },
+                greetings: pkg.character.greetings,
+                defaultVariables: pkg.character.defaultVariables,
                 allowLowLevel: pkg.character.allowLowLevel,
-                modules: { refs: {}, folders: {} },
                 lorebooks: { refs: {}, folders: {} },
                 scripts: { refs: {}, folders: {} },
                 charjs: { refs: {}, folders: {} },
@@ -45,6 +48,19 @@ export async function importCharacterPackage(
             scopeType
         );
         characterId = character.id;
+
+        const assetInputs = importAssetPayloads(pkg.assets, options.allowLightAssets ?? true);
+
+        if (pkg.avatar) {
+            const avatarInput = materializeImportedAsset(
+                importAssetPayload('avatar', pkg.avatar, options.allowLightAssets ?? true),
+                {
+                    name: pkg.character.avatar?.name ?? 'avatar.bin',
+                    mimeType: pkg.character.avatar?.mimeType ?? 'application/octet-stream'
+                }
+            );
+            await CharacterService.updateAvatar(character.id, avatarInput);
+        }
 
         const lorebookMap: Record<string, string> = {};
         for (const { id, ...fields } of pkg.lorebooks) {
@@ -64,14 +80,45 @@ export async function importCharacterPackage(
             charjsMap[id] = charjs.id;
         }
 
+        const layoutIdMap: Record<string, string> = {};
+        const knownAssetIds = new Set<string>();
+        for (const [portableKey, pkgRef] of Object.entries(pkg.character.assets.refs)) {
+            const imported = assetInputs[portableKey];
+            if (!imported) continue;
+
+            const updated = await CharacterService.createAsset(
+                character.id,
+                materializeImportedAsset(imported, {
+                    name: pkgRef.name,
+                    mimeType: pkgRef.mimeType
+                }),
+                pkgRef.sortOrder
+            );
+
+            const newId = Object.keys(updated.assets.refs).find((id) => !knownAssetIds.has(id));
+            if (newId) {
+                knownAssetIds.add(newId);
+                layoutIdMap[portableKey] = newId;
+            }
+        }
+
+        const current = await CharacterService.get(character.id);
+        if (current) {
+            const fixed = remapImportedAssetFolders({
+                currentRefs: current.assets.refs,
+                layoutIdMap,
+                pkgRefs: pkg.character.assets.refs,
+                pkgFolders: pkg.character.assets.folders
+            });
+            if (fixed) {
+                await CharacterService.update(character.id, { assets: fixed });
+            }
+        }
+
         await CharacterService.update(character.id, {
-            ...(pkg.character.avatarAssetId
-                ? { avatarAssetId: requireMapped(assetMap, pkg.character.avatarAssetId) }
-                : {}),
             lorebooks: remapEntityList(pkg.character.lorebooks, lorebookMap),
             scripts: remapEntityList(pkg.character.scripts, scriptMap),
-            charjs: remapEntityList(pkg.character.charjs, charjsMap),
-            assets: remapEntityList(pkg.character.assets, assetMap)
+            charjs: remapEntityList(pkg.character.charjs, charjsMap)
         });
 
         return character.id;
@@ -79,9 +126,6 @@ export async function importCharacterPackage(
         if (characterId) {
             await CharacterService.delete(characterId).catch(() => undefined);
         }
-        await Promise.all(
-            Object.values(assetMap).map((id) => AssetService.delete(id).catch(() => undefined))
-        );
         throw error;
     }
 }

@@ -71,7 +71,8 @@ describe('ChatManager', () => {
         chatNote: '',
         messageCount: 0,
         lorebooks: { refs: {}, folders: {} },
-        personas: { refs: {}, folders: {} }
+        personas: { refs: {}, folders: {} },
+        inlays: { refs: {}, folders: {} }
     };
     const charOne: Character = {
         id: 'char-1',

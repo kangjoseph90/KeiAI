@@ -8,7 +8,7 @@ export interface KeiModulePackageV1 {
     lorebooks: KeiLorebookPayload[];
     scripts: KeiScriptPayload[];
     charjs: KeiCharJSPayload[];
-    assets: KeiAssetPayload[];
+    assets: Record<string, KeiAssetPayload>;
 }
 
 export type KeiModulePayload = ModuleFields;

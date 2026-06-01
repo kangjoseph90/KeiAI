@@ -173,7 +173,7 @@ export async function updatePresetContent(
     presetId: string,
     changes: DeepPartial<PresetContent>
 ): Promise<void> {
-    const updated = await PresetService.updateContent(presetId, changes);
+    const updated = await PresetService.update(presetId, changes);
     presets.set(presetId, updated);
 }
 
@@ -193,7 +193,7 @@ export async function resolveGlobalVariables(
             toggle.type === 'select' ? '0' : toggle.type === 'checkbox' ? '0' : '';
     }
 
-    const updated = await PresetService.updateContent(presetId, { globalVariables });
+    const updated = await PresetService.update(presetId, { globalVariables });
     presets.set(presetId, updated);
     return updated;
 }

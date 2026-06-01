@@ -46,8 +46,19 @@
         <div
             class="flex size-full items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold text-foreground border border-transparent"
         >
-            {#if char.avatarAssetId}
-                <AssetView id={char.avatarAssetId} alt={char.name} class="size-full object-cover" />
+            {#if char.avatar}
+                <AssetView
+                    asset={{
+                        scopeType: char.scopeType,
+                        scopeId: char.scopeId,
+                        ownerTable: 'characters',
+                        ownerId: char.id,
+                        hash: char.avatar.hash,
+                        encKey: char.avatar.encKey
+                    }}
+                    alt={char.name}
+                    class="size-full object-cover"
+                />
             {:else}
                 {initial(char.name)}
             {/if}
@@ -59,9 +70,16 @@
         <div
             class="absolute left-[9%] right-[9%] top-0 bottom-[18%] z-10 rounded-md border border-background bg-muted shadow-sm overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:-translate-y-1 group-hover:-translate-x-0.5 group-hover:-rotate-6"
         >
-            {#if char1.avatarAssetId}
+            {#if char1.avatar}
                 <AssetView
-                    id={char1.avatarAssetId}
+                    asset={{
+                        scopeType: char1.scopeType,
+                        scopeId: char1.scopeId,
+                        ownerTable: 'characters',
+                        ownerId: char1.id,
+                        hash: char1.avatar.hash,
+                        encKey: char1.avatar.encKey
+                    }}
                     alt={char1.name}
                     class="size-full object-cover"
                 />
@@ -72,9 +90,16 @@
         <div
             class="absolute left-[9%] right-[9%] top-[18%] bottom-0 z-20 rounded-md border border-background bg-muted shadow-md overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:translate-y-1 group-hover:translate-x-0.5 group-hover:rotate-6"
         >
-            {#if char2.avatarAssetId}
+            {#if char2.avatar}
                 <AssetView
-                    id={char2.avatarAssetId}
+                    asset={{
+                        scopeType: char2.scopeType,
+                        scopeId: char2.scopeId,
+                        ownerTable: 'characters',
+                        ownerId: char2.id,
+                        hash: char2.avatar.hash,
+                        encKey: char2.avatar.encKey
+                    }}
                     alt={char2.name}
                     class="size-full object-cover"
                 />
@@ -90,9 +115,16 @@
         <div
             class="absolute left-[14%] right-[14%] top-0 bottom-[28%] z-10 rounded-md border border-background bg-muted shadow-sm overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:-translate-y-1.5 group-hover:-translate-x-0.5 group-hover:-rotate-12"
         >
-            {#if char1.avatarAssetId}
+            {#if char1.avatar}
                 <AssetView
-                    id={char1.avatarAssetId}
+                    asset={{
+                        scopeType: char1.scopeType,
+                        scopeId: char1.scopeId,
+                        ownerTable: 'characters',
+                        ownerId: char1.id,
+                        hash: char1.avatar.hash,
+                        encKey: char1.avatar.encKey
+                    }}
                     alt={char1.name}
                     class="size-full object-cover"
                 />
@@ -103,9 +135,16 @@
         <div
             class="absolute left-[14%] right-[14%] top-[14%] bottom-[14%] z-20 rounded-md border border-background bg-muted shadow-sm overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:rotate-3"
         >
-            {#if char2.avatarAssetId}
+            {#if char2.avatar}
                 <AssetView
-                    id={char2.avatarAssetId}
+                    asset={{
+                        scopeType: char2.scopeType,
+                        scopeId: char2.scopeId,
+                        ownerTable: 'characters',
+                        ownerId: char2.id,
+                        hash: char2.avatar.hash,
+                        encKey: char2.avatar.encKey
+                    }}
                     alt={char2.name}
                     class="size-full object-cover"
                 />
@@ -123,9 +162,16 @@
             <div
                 class="absolute left-[14%] right-[14%] top-[28%] bottom-0 z-30 rounded-md border border-background bg-muted shadow-md overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:translate-y-1.5 group-hover:translate-x-0.5 group-hover:-rotate-3"
             >
-                {#if char3.avatarAssetId}
+                {#if char3.avatar}
                     <AssetView
-                        id={char3.avatarAssetId}
+                        asset={{
+                            scopeType: char3.scopeType,
+                            scopeId: char3.scopeId,
+                            ownerTable: 'characters',
+                            ownerId: char3.id,
+                            hash: char3.avatar.hash,
+                            encKey: char3.avatar.encKey
+                        }}
                         alt={char3.name}
                         class="size-full object-cover"
                     />

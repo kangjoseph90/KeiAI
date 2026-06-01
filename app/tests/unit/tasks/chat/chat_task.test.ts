@@ -70,7 +70,8 @@ vi.mock('$lib/stores', () => ({
         personas: {
             refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
             folders: {}
-        }
+        },
+        inlays: { refs: {}, folders: {} }
     }),
     getRoom: vi.fn().mockResolvedValue({
         id: 'room-1',
@@ -117,7 +118,8 @@ vi.mock('$lib/stores/content/chat', () => ({
         personas: {
             refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
             folders: {}
-        }
+        },
+        inlays: { refs: {}, folders: {} }
     })
 }));
 
@@ -405,7 +407,8 @@ describe('Chat Pipeline', () => {
             personas: {
                 refs: { 'persona-1': { id: 'persona-1', enabled: false, sortOrder: 'a0' } },
                 folders: {}
-            }
+            },
+            inlays: { refs: {}, folders: {} }
         } as Chat);
 
         await runChat(mockChatId, 'char-1', 'persona-1');
@@ -533,7 +536,8 @@ describe('Chat Pipeline', () => {
                 personas: {
                     refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
                     folders: {}
-                }
+                },
+                inlays: { refs: {}, folders: {} }
             } as Chat);
             vi.mocked(MessageService.get).mockResolvedValue(mockExistingMessage as Message);
             vi.mocked(getLastMessage).mockResolvedValue(mockExistingMessage as Message);

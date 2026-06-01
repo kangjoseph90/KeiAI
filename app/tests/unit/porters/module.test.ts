@@ -20,7 +20,9 @@ vi.mock('$lib/services', () => ({
     ModuleService: {
         get: vi.fn(),
         create: vi.fn(),
-        update: vi.fn()
+        update: vi.fn(),
+        delete: vi.fn(),
+        createAsset: vi.fn()
     },
     LorebookService: {
         listByOwner: vi.fn(),
@@ -38,10 +40,13 @@ vi.mock('$lib/services', () => ({
 
 vi.mock('$lib/services/asset', () => ({
     AssetService: {
-        getFields: vi.fn(),
         readBytes: vi.fn(),
         write: vi.fn()
     }
+}));
+
+vi.mock('$lib/services/session', () => ({
+    getSessionScope: vi.fn(() => ({ scopeType: 'user', scopeId: 'user-1' }))
 }));
 
 describe('module porters', () => {
@@ -66,8 +71,22 @@ describe('module porters', () => {
         },
         assets: {
             refs: {
-                'asset-avatar': { id: 'asset-avatar', name: 'Avatar', sortOrder: 'a' },
-                'asset-extra': { id: 'asset-extra', name: 'Extra', sortOrder: 'b' }
+                'asset-avatar': {
+                    id: 'asset-avatar',
+                    name: 'Avatar',
+                    sortOrder: 'a',
+                    hash: 'asset-avatar-hash',
+                    encKey: 'asset-avatar-key',
+                    mimeType: 'image/png'
+                },
+                'asset-extra': {
+                    id: 'asset-extra',
+                    name: 'Extra',
+                    sortOrder: 'b',
+                    hash: 'asset-extra-hash',
+                    encKey: 'asset-extra-key',
+                    mimeType: 'image/png'
+                }
             },
             folders: {}
         }
@@ -130,15 +149,9 @@ describe('module porters', () => {
         vi.mocked(LorebookService.listByOwner).mockResolvedValue([lorebook]);
         vi.mocked(ScriptService.listByOwner).mockResolvedValue([script]);
         vi.mocked(CharJSService.listByOwner).mockResolvedValue([charjs]);
-        vi.mocked(AssetService.getFields).mockImplementation(async (id) => ({
-            kind: 'resource',
-            status: id === 'asset-avatar' ? 'remote' : 'local',
-            hash: `${id}-hash`,
-            encKey: `${id}-key`
-        }));
         vi.mocked(AssetService.readBytes).mockResolvedValue(new Uint8Array([1, 2, 3]));
 
-        const pkg = await exportModulePackage('module-real', 'light');
+        const pkg = await exportModulePackage('module-real', 'baked');
 
         expect(pkg.kind).toBe('keiai.module');
         expect(pkg.module.name).toBe('Test Module');
@@ -151,32 +164,19 @@ describe('module porters', () => {
         expect(pkg.lorebooks[0]?.id).toBe('lorebook_0');
         expect(pkg.scripts[0]?.id).toBe('script_0');
         expect(pkg.charjs[0]?.id).toBe('charjs_0');
-        expect(pkg.assets.find((a) => a.id === 'asset_0')?.data).toBeUndefined();
-        expect(pkg.assets.find((a) => a.id === 'asset_1')?.data).toEqual(new Uint8Array([1, 2, 3]));
+        expect(pkg.assets['asset_0']?.data).toEqual(new Uint8Array([1, 2, 3]));
+        expect(pkg.assets['asset_1']?.data).toEqual(new Uint8Array([1, 2, 3]));
     });
 
     it('validates asset payloads before writing imported assets', async () => {
         const pkg = makePackage({
-            assets: [
-                { id: 'asset_0', data: new Uint8Array([1]), hash: 'hash', encKey: 'key' },
-                { id: 'asset_1', hash: 'broken' }
-            ]
+            assets: {
+                asset_0: { data: new Uint8Array([1]), hash: 'hash', encKey: 'key' },
+                asset_1: { hash: 'broken' }
+            }
         });
 
-        await expect(importModulePackage(pkg, { allowLightAssets: true })).rejects.toThrow(
-            'Broken asset payload'
-        );
-        expect(AssetService.write).not.toHaveBeenCalled();
-    });
-
-    it('imports package records and reconnects refs to created ids', async () => {
-        const pkg = makePackage({
-            assets: [
-                { id: 'asset_0', data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' }
-            ]
-        });
-
-        vi.mocked(AssetService.write).mockResolvedValue('asset-new');
+        // importAssetPayloads runs after create, so create must succeed
         vi.mocked(ModuleService.create).mockResolvedValue({
             ...module_,
             id: 'module-new',
@@ -185,21 +185,75 @@ describe('module porters', () => {
             charjs: { refs: {}, folders: {} },
             assets: { refs: {}, folders: {} }
         });
+        vi.mocked(ModuleService.delete).mockResolvedValue(undefined as never);
+
+        await expect(importModulePackage(pkg, { allowLightAssets: true })).rejects.toThrow(
+            'Broken asset payload'
+        );
+    });
+
+    it('imports package records and reconnects refs to created ids', async () => {
+        const pkg = makePackage({
+            assets: {
+                asset_0: { data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' }
+            }
+        });
+
+        vi.mocked(ModuleService.create).mockResolvedValue({
+            ...module_,
+            id: 'module-new',
+            lorebooks: { refs: {}, folders: {} },
+            scripts: { refs: {}, folders: {} },
+            charjs: { refs: {}, folders: {} },
+            assets: { refs: {}, folders: {} }
+        });
+        vi.mocked(ModuleService.createAsset).mockResolvedValue({
+            ...module_,
+            id: 'module-new',
+            assets: {
+                refs: {
+                    'asset-new': {
+                        id: 'asset-new',
+                        name: 'Avatar',
+                        sortOrder: 'a',
+                        hash: 'hash',
+                        encKey: 'key',
+                        mimeType: 'image/png'
+                    }
+                },
+                folders: {}
+            }
+        });
         vi.mocked(LorebookService.create).mockResolvedValue({ ...lorebook, id: 'lorebook-new' });
         vi.mocked(ScriptService.create).mockResolvedValue({ ...script, id: 'script-new' });
         vi.mocked(CharJSService.create).mockResolvedValue({ ...charjs, id: 'charjs-new' });
         vi.mocked(ModuleService.update).mockResolvedValue({ ...module_, id: 'module-new' });
+        vi.mocked(ModuleService.get).mockResolvedValue({
+            ...module_,
+            id: 'module-new',
+            assets: {
+                refs: {
+                    'asset-new': {
+                        id: 'asset-new',
+                        name: 'Avatar',
+                        sortOrder: 'a',
+                        hash: 'hash',
+                        encKey: 'key',
+                        mimeType: 'image/png'
+                    }
+                },
+                folders: {}
+            }
+        });
 
         const moduleId = await importModulePackage(pkg);
         const update = vi.mocked(ModuleService.update).mock.calls[0]?.[1];
 
         expect(moduleId).toBe('module-new');
-        expect(AssetService.write).toHaveBeenCalledWith(expect.any(File), 'resource', {
-            scopeType: 'user'
-        });
         expect(ModuleService.create).toHaveBeenCalledWith(
             expect.objectContaining({ name: 'Imported Module' })
         );
+        expect(ModuleService.createAsset).toHaveBeenCalledWith('module-new', expect.any(File), 'a');
         expect(LorebookService.create).toHaveBeenCalledWith(
             'module-new',
             expect.objectContaining({ name: 'Lore' })
@@ -215,7 +269,6 @@ describe('module porters', () => {
         expect(update?.lorebooks?.refs?.['lorebook-new']?.id).toBe('lorebook-new');
         expect(update?.scripts?.refs?.['script-new']?.id).toBe('script-new');
         expect(update?.charjs?.refs?.['charjs-new']?.id).toBe('charjs-new');
-        expect(update?.assets?.refs?.['asset-new']?.name).toBe('Avatar');
     });
 });
 
@@ -242,7 +295,16 @@ function makePackage(overrides: Partial<KeiModulePackageV1> = {}): KeiModulePack
                 folders: {}
             },
             assets: {
-                refs: { asset_0: { id: 'asset_0', name: 'Avatar', sortOrder: 'a' } },
+                refs: {
+                    asset_0: {
+                        id: 'asset_0',
+                        name: 'Avatar',
+                        sortOrder: 'a',
+                        hash: 'asset-avatar-hash',
+                        encKey: 'asset-avatar-key',
+                        mimeType: 'image/png'
+                    }
+                },
                 folders: {}
             }
         },
@@ -281,7 +343,7 @@ function makePackage(overrides: Partial<KeiModulePackageV1> = {}): KeiModulePack
             }
         ],
         charjs: [{ id: 'charjs_0', name: 'CharJS', code: 'return input;', enabled: true }],
-        assets: [],
+        assets: {},
         ...overrides
     };
 }

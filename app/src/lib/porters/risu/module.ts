@@ -71,9 +71,7 @@ export function writeRisuModule(module: RisuModule): Uint8Array {
     const assetData = module.assetData ?? [];
     const mainModule: RisuModule = {
         ...module,
-        ...(module.assets
-            ? { assets: module.assets.map((asset) => [asset[0], '', asset[2]] as RisuModuleAsset) }
-            : {}),
+        assets: module.assets?.map((asset) => [asset[0], '', asset[2]] as RisuModuleAsset),
         assetData: undefined
     };
     const body = TEXT_ENCODER.encode(

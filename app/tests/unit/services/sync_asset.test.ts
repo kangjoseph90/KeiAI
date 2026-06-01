@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AssetBinarySyncEngineImpl, AssetRecordSyncEngineImpl } from '$lib/services/sync/asset';
-import type { AssetRecord, AssetRegistryRecord } from '$lib/adapters/asset';
+import { AssetSyncEngineImpl } from '$lib/services/sync/asset';
+import type { AssetRegistryRecord } from '$lib/adapters/asset';
 import { AppError } from '$lib/types/errors';
 
 vi.mock('$lib/adapters/pb', () => ({
@@ -28,24 +28,28 @@ vi.mock('$lib/services/user', () => ({
     UserService: {}
 }));
 
-vi.mock('$lib/adapters/asset', () => ({
-    appAsset: {
-        getAsset: vi.fn(),
-        putAsset: vi.fn(),
-        getAssetsSince: vi.fn(),
-        getRegistry: vi.fn(),
-        getRegistryByStatus: vi.fn(),
-        putRegistry: vi.fn(),
-        deleteRegistry: vi.fn(),
-        transaction: vi.fn(async (_tables, _mode, callback) => callback())
+vi.mock('$lib/adapters/db', () => ({
+    localDB: {
+        getRecord: vi.fn().mockResolvedValue({
+            id: 'char-123',
+            scopeType: 'user',
+            scopeId: 'user-123',
+            assetEntries: {}
+        }),
+        putRecord: vi.fn().mockResolvedValue(undefined)
     }
 }));
 
-vi.mock('$lib/adapters/storage', () => ({
-    appStorage: {
-        read: vi.fn(),
-        delete: vi.fn()
-    }
+vi.mock('$lib/adapters/asset', () => ({
+    appAsset: {
+        getAllLocalAssets: vi.fn(),
+        readAssetBytes: vi.fn(),
+        markAssetRemote: vi.fn(),
+        deleteAsset: vi.fn()
+    },
+    assetRegistryId: vi.fn(
+        (loc) => `${loc.scopeType}:${loc.scopeId}:${loc.ownerTable}:${loc.ownerId}:${loc.hash}`
+    )
 }));
 
 vi.mock('$lib/adapters/kv', () => ({
@@ -64,8 +68,7 @@ vi.mock('$lib/crypto', () => ({
 }));
 
 vi.mock('$lib/services/asset/util', () => ({
-    encryptConvergentAsset: vi.fn(),
-    parseFields: vi.fn((record: AssetRecord) => record.data)
+    encryptConvergentAsset: vi.fn()
 }));
 
 vi.mock('$lib/services/asset/remote', () => ({
@@ -74,46 +77,30 @@ vi.mock('$lib/services/asset/remote', () => ({
 
 import { pb } from '$lib/adapters/pb';
 import { appAsset } from '$lib/adapters/asset';
-import { appStorage } from '$lib/adapters/storage';
 import { getActiveSession, hasActiveSession } from '$lib/services/session';
 import { encryptConvergentAsset } from '$lib/services/asset/util';
 import { uploadAsset } from '$lib/services/asset/remote';
 
 describe('Asset sync', () => {
     const mockUserId = 'user-123';
-    let binaryWorker: AssetBinarySyncEngineImpl;
+    let engine: AssetSyncEngineImpl;
 
     const createRegistryRecord = (): AssetRegistryRecord => ({
-        id: 'asset-1',
+        id: 'user:user-123:characters:char-123:old-hash',
         scopeType: 'user',
         scopeId: mockUserId,
-        createdAt: 1000,
-        updatedAt: 1000,
-        isDeleted: false,
-        kind: 'resource',
+        ownerTable: 'characters',
+        ownerId: 'char-123',
+        hash: 'old-hash',
+        encKey: 'old-key',
         status: 'local',
         accessedAt: 1000,
         size: 42
     });
 
-    const createAssetRecord = (): AssetRecord => ({
-        id: 'asset-1',
-        scopeType: 'user',
-        scopeId: mockUserId,
-        createdAt: 1000,
-        updatedAt: 1000,
-        isDeleted: false,
-        data: {
-            kind: 'resource',
-            status: 'local',
-            hash: 'old-hash',
-            encKey: 'old-key'
-        }
-    });
-
     beforeEach(() => {
         vi.clearAllMocks();
-        binaryWorker = new AssetBinarySyncEngineImpl();
+        engine = new AssetSyncEngineImpl();
 
         vi.mocked(hasActiveSession).mockReturnValue(true);
         vi.mocked(getActiveSession).mockReturnValue({
@@ -129,44 +116,29 @@ describe('Asset sync', () => {
             unsubscribe: vi.fn().mockResolvedValue(undefined)
         } as never);
 
-        vi.mocked(appAsset.getAssetsSince).mockResolvedValue([]);
-        vi.mocked(appAsset.getRegistryByStatus).mockResolvedValue([createRegistryRecord()]);
-        vi.mocked(appAsset.getAsset).mockResolvedValue(createAssetRecord());
-        vi.mocked(appAsset.putAsset).mockResolvedValue(undefined);
-        vi.mocked(appAsset.putRegistry).mockResolvedValue(undefined);
-        vi.mocked(appAsset.deleteRegistry).mockResolvedValue(undefined);
-        vi.mocked(appStorage.read).mockResolvedValue(new Uint8Array([7, 8, 9]));
+        vi.mocked(appAsset.getAllLocalAssets).mockResolvedValue([createRegistryRecord()]);
+        vi.mocked(appAsset.readAssetBytes).mockResolvedValue(new Uint8Array([7, 8, 9]));
         vi.mocked(encryptConvergentAsset).mockResolvedValue({
             ciphertext: new Uint8Array([10, 11, 12]),
-            hash: 'new-hash',
-            encKey: 'new-key'
+            hash: 'old-hash',
+            encKey: 'old-key'
         });
         vi.mocked(uploadAsset).mockResolvedValue({
             status: 'stored',
-            hash: 'new-hash'
+            hash: 'old-hash'
         });
+        vi.mocked(appAsset.markAssetRemote).mockResolvedValue(undefined);
+        vi.mocked(appAsset.deleteAsset).mockResolvedValue(undefined);
     });
 
     it('uploads local registry entries and marks the asset remote after upload succeeds', async () => {
-        await binaryWorker.start();
+        await engine.start();
 
-        expect(uploadAsset).toHaveBeenCalledWith('new-hash', new Uint8Array([10, 11, 12]));
-        expect(appAsset.putAsset).toHaveBeenCalledWith(
+        expect(uploadAsset).toHaveBeenCalledWith('old-hash', new Uint8Array([10, 11, 12]));
+        expect(appAsset.markAssetRemote).toHaveBeenCalledWith(
             expect.objectContaining({
-                id: 'asset-1',
-                data: expect.objectContaining({
-                    kind: 'resource',
-                    status: 'remote',
-                    hash: 'new-hash',
-                    encKey: 'new-key'
-                })
-            })
-        );
-        expect(appAsset.putRegistry).toHaveBeenCalledWith(
-            expect.objectContaining({
-                id: 'asset-1',
-                kind: 'resource',
-                status: 'remote'
+                id: 'user:user-123:characters:char-123:old-hash',
+                hash: 'old-hash'
             })
         );
     });
@@ -176,27 +148,22 @@ describe('Asset sync', () => {
             new AppError('QUOTA_EXCEEDED', 'Asset quota exceeded.')
         );
 
-        await binaryWorker.start();
+        await engine.start();
 
-        await vi.waitFor(() => expect(binaryWorker.getState().state).toBe('quota_error'));
-        expect(appAsset.putAsset).not.toHaveBeenCalled();
-    });
-
-    it('drops stale local registry entries when the logical asset no longer exists', async () => {
-        vi.mocked(appAsset.getAsset).mockResolvedValue(undefined);
-
-        await binaryWorker.start();
-
-        expect(appAsset.deleteRegistry).toHaveBeenCalledWith('asset-1');
-        expect(uploadAsset).not.toHaveBeenCalled();
+        await vi.waitFor(() => expect(engine.getState().state).toBe('quota_error'));
+        expect(appAsset.markAssetRemote).not.toHaveBeenCalled();
     });
 
     it('drops stale local registry entries when the cached blob is missing', async () => {
-        vi.mocked(appStorage.read).mockResolvedValue(null);
+        vi.mocked(appAsset.readAssetBytes).mockResolvedValue(null);
 
-        await binaryWorker.start();
+        await engine.start();
 
-        expect(appAsset.deleteRegistry).toHaveBeenCalledWith('asset-1');
+        expect(appAsset.deleteAsset).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 'user:user-123:characters:char-123:old-hash'
+            })
+        );
         expect(uploadAsset).not.toHaveBeenCalled();
     });
 });

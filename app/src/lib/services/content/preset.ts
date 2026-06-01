@@ -169,10 +169,6 @@ export class PresetService {
         }
     }
 
-    static async updateContent(id: string, changes: DeepPartial<PresetContent>): Promise<Preset> {
-        return this.update(id, changes);
-    }
-
     static async delete(id: string): Promise<void> {
         const record = await buffer.get<PresetRecord>('presets', id);
         if (!record || record.isDeleted || !canAccessUserScope(record)) {

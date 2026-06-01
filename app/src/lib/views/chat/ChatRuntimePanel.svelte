@@ -28,8 +28,10 @@
         chatSelections,
         createChatFolder,
         createChatLorebook,
+        createChatInlay,
         deleteChatLorebook,
         deleteChatFolder,
+        deleteChatInlay,
         isMultiRoom,
         multiRoomPersonas,
         personas,
@@ -55,6 +57,7 @@
 
     let newChatLorebookName = $state('');
     let personaToAdd = $state('');
+    let inlayFileInput = $state<HTMLInputElement>();
     let variables = $state<[string, string][]>([]);
 
     const attachablePersonas = $derived(() => {
@@ -93,6 +96,14 @@
 
     function openPersonaSettings(personaId: string) {
         navigate({ view: 'personaStudio', personaId });
+    }
+
+    async function handleInlayUpload(event: Event) {
+        const target = event.target as HTMLInputElement;
+        const file = target.files?.[0];
+        if (!$activeChat || !file) return;
+        await createChatInlay(chatId, file);
+        target.value = '';
     }
 
     async function handlePersonaSelect(personaId: string) {
@@ -164,8 +175,8 @@
                         entities={$chatPersonas}
                         config={$activeChat.personas}
                         layout="grid"
-                        onCreateFolder={(name, parentId) =>
-                            createChatFolder(chatId, 'personas', name, parentId)}
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createChatFolder(chatId, 'personas', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
                             updateChatFolder(chatId, 'personas', id, changes)}
                         onDeleteFolder={(id) => deleteChatFolder(chatId, 'personas', id)}
@@ -196,9 +207,16 @@
                                     <div
                                         class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
                                     >
-                                        {#if persona.avatarAssetId}
+                                        {#if persona.avatar}
                                             <AssetView
-                                                id={persona.avatarAssetId}
+                                                asset={{
+                                                    scopeType: persona.scopeType,
+                                                    scopeId: persona.scopeId,
+                                                    ownerTable: 'personas',
+                                                    ownerId: persona.id,
+                                                    hash: persona.avatar.hash,
+                                                    encKey: persona.avatar.encKey
+                                                }}
                                                 alt={persona.name}
                                                 class="size-full object-cover"
                                             />
@@ -297,8 +315,8 @@
                         entities={$chatLorebooks}
                         config={$activeChat.lorebooks}
                         layout="list"
-                        onCreateFolder={(name, parentId) =>
-                            createChatFolder(chatId, 'lorebooks', name, parentId)}
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createChatFolder(chatId, 'lorebooks', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
                             updateChatFolder(chatId, 'lorebooks', id, changes)}
                         onDeleteFolder={(id) => deleteChatFolder(chatId, 'lorebooks', id)}
@@ -348,20 +366,83 @@
                     </div>
                 </section>
 
-                <!-- Runtime Assets -->
+                <!-- Runtime Assets (Inlays) -->
                 <section class="space-y-3">
-                    <Label
-                        class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"
-                    >
-                        <ImageIcon class="size-3" /> Gallery
-                    </Label>
-                    <div class="grid grid-cols-3 gap-2">
-                        <button
-                            class="aspect-square rounded border border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground/50 hover:bg-muted hover:text-primary transition-colors"
+                    <div class="flex items-center justify-between">
+                        <Label
+                            class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"
                         >
-                            <Plus class="size-4" />
-                        </button>
+                            <ImageIcon class="size-3" /> Gallery
+                        </Label>
+                        <div class="flex items-center gap-2">
+                            <Badge variant="outline" class="text-[10px] font-mono"
+                                >{Object.keys($activeChat?.inlays?.refs ?? {}).length}</Badge
+                            >
+                            <Button
+                                variant="secondary"
+                                size="icon"
+                                class="size-7"
+                                onclick={() => inlayFileInput?.click()}
+                            >
+                                <Plus class="size-3" />
+                            </Button>
+                            <input
+                                bind:this={inlayFileInput}
+                                type="file"
+                                accept="image/*"
+                                class="hidden"
+                                onchange={handleInlayUpload}
+                            />
+                        </div>
                     </div>
+                    <EntityList
+                        entities={Object.values($activeChat?.inlays?.refs ?? {})}
+                        config={$activeChat?.inlays ?? { refs: {}, folders: {} }}
+                        layout="grid"
+                        gridClass="grid grid-cols-3 gap-2 w-full"
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createChatFolder(chatId, 'inlays', name, parentId, sortOrder)}
+                        onUpdateFolder={(id, changes) =>
+                            updateChatFolder(chatId, 'inlays', id, changes)}
+                        onDeleteFolder={(id) => deleteChatFolder(chatId, 'inlays', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveChatItem(chatId, 'inlays', itemId, newFolderId, newSortOrder)}
+                    >
+                        {#snippet empty()}
+                            <div
+                                class="col-span-full aspect-square rounded border border-dashed border-muted-foreground/30 flex items-center justify-center"
+                            >
+                                <p class="text-[10px] text-muted-foreground">No images.</p>
+                            </div>
+                        {/snippet}
+                        {#snippet item({ entity: ref })}
+                            {@const chat = $activeChat!}
+                            <div
+                                class="group relative aspect-square rounded-lg border overflow-hidden"
+                            >
+                                <AssetView
+                                    asset={{
+                                        scopeType: chat.scopeType,
+                                        scopeId: chat.scopeId,
+                                        ownerTable: 'chats',
+                                        ownerId: chat.id,
+                                        hash: ref.hash,
+                                        encKey: ref.encKey
+                                    }}
+                                    alt={ref.name}
+                                    class="size-full object-cover"
+                                    fallback="none"
+                                />
+                                <button
+                                    class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                    title="Delete"
+                                    onclick={() => deleteChatInlay(chatId, ref.id)}
+                                >
+                                    <X class="size-3" />
+                                </button>
+                            </div>
+                        {/snippet}
+                    </EntityList>
                 </section>
             {/if}
         </div>
