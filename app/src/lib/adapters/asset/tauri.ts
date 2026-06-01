@@ -106,6 +106,8 @@ export class TauriAssetAdapter implements IAssetAdapter {
         sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope ON assetRegistry (scopeType, scopeId);`;
         sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_owner ON assetRegistry (scopeType, scopeId, ownerTable, ownerId);`;
         sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_owner_hash ON assetRegistry (scopeType, scopeId, ownerTable, ownerId, hash);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_status ON assetRegistry (status);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_status_accessedAt ON assetRegistry (status, accessedAt);`;
         sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope_status ON assetRegistry (scopeType, scopeId, status);`;
         sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope_status_accessedAt ON assetRegistry (scopeType, scopeId, status, accessedAt);`;
 
