@@ -87,6 +87,7 @@
             entities={$modules}
             config={$appSettings.modules}
             layout="list"
+            onItemClick={(mod) => navigate({ view: 'settings', moduleId: mod.id })}
             onCreateFolder={(name, parentId, sortOrder) =>
                 createGlobalFolder('modules', name, parentId, sortOrder)}
             onUpdateFolder={(id, changes) => updateGlobalFolder('modules', id, changes)}
@@ -103,10 +104,7 @@
                 {@const enabled = $appSettings?.modules.refs[mod.id]?.enabled ?? true}
                 <Card>
                     <CardContent class="flex items-center justify-between gap-3 p-4">
-                        <button
-                            class="min-w-0 flex-1 text-left"
-                            onclick={() => navigate({ view: 'settings', moduleId: mod.id })}
-                        >
+                        <div class="min-w-0 flex-1 cursor-pointer">
                             <div class="flex items-center gap-2">
                                 <p class="font-medium">{mod.name || 'Unnamed'}</p>
                                 {#if !enabled}
@@ -118,7 +116,7 @@
                                     {mod.description}
                                 </p>
                             {/if}
-                        </button>
+                        </div>
                         <div class="flex shrink-0 items-center gap-1">
                             <label class="flex items-center gap-1.5 text-sm">
                                 <input

@@ -175,6 +175,13 @@
                         entities={$chatPersonas}
                         config={$activeChat.personas}
                         layout="grid"
+                        onItemClick={(persona) => {
+                            const ref = $activeChat.personas.refs[persona.id];
+                            const disabled = ref?.enabled === false;
+                            if (!disabled) {
+                                void handlePersonaSelect(persona.id);
+                            }
+                        }}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createChatFolder(chatId, 'personas', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
@@ -196,13 +203,13 @@
                             {@const selected = $chatSelections?.personaId === persona.id}
                             {@const isDefault = $activeChat.defaultPersonaId === persona.id}
                             <div class="group relative">
-                                <button
-                                    class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors {selected
+                                <div
+                                    class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors cursor-pointer {selected
                                         ? 'border-primary ring-2 ring-primary/20'
-                                        : 'hover:bg-sidebar-accent'} {disabled ? 'opacity-40' : ''}"
+                                        : 'hover:bg-sidebar-accent'} {disabled
+                                        ? 'opacity-40 cursor-not-allowed'
+                                        : ''}"
                                     title={persona.name}
-                                    {disabled}
-                                    onclick={() => handlePersonaSelect(persona.id)}
                                 >
                                     <div
                                         class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
@@ -225,7 +232,7 @@
                                         {/if}
                                     </div>
                                     <span class="w-full truncate text-[11px]">{persona.name}</span>
-                                </button>
+                                </div>
                                 <button
                                     class="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
                                     title="Open persona settings"

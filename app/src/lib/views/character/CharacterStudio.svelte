@@ -288,7 +288,11 @@
                                 onDelete={async (id) => {
                                     await deleteCharacterLorebook($activeCharacter!.id, id);
                                 }}
-                                onCreateFolder={(name, parentId, sortOrder) =>
+                                onCreateFolder={(
+                                    name: string,
+                                    parentId?: string,
+                                    sortOrder?: string
+                                ) =>
                                     createCharacterFolder(
                                         $activeCharacter!.id,
                                         'lorebooks',
@@ -345,7 +349,11 @@
                                     await deleteCharacterCharJS($activeCharacter!.id, id);
                                 }}
                                 scriptFolders={{
-                                    onCreateFolder: (name, parentId, sortOrder) =>
+                                    onCreateFolder: (
+                                        name: string,
+                                        parentId?: string,
+                                        sortOrder?: string
+                                    ) =>
                                         createCharacterFolder(
                                             $activeCharacter!.id,
                                             'scripts',
@@ -372,7 +380,11 @@
                                         )
                                 }}
                                 charjsFolders={{
-                                    onCreateFolder: (name, parentId, sortOrder) =>
+                                    onCreateFolder: (
+                                        name: string,
+                                        parentId?: string,
+                                        sortOrder?: string
+                                    ) =>
                                         createCharacterFolder(
                                             $activeCharacter!.id,
                                             'charjs',

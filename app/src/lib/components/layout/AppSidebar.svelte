@@ -114,11 +114,15 @@
         if (!$activeRoom || !characterToAdd) return;
         await addRoomCharacter($activeRoom.id, characterToAdd);
         characterToAdd = '';
+        if (!$activeChat) return;
+        await syncChatGreetings($activeChat.id);
     }
 
     async function handleRemoveCharacter(characterId: string) {
         if (!$activeRoom) return;
         await removeRoomCharacter($activeRoom.id, characterId);
+        if (!$activeChat) return;
+        await syncChatGreetings($activeChat.id);
     }
 
     async function handleSelectChat(chatId: string) {
@@ -183,6 +187,7 @@
                         gridClass="flex flex-col gap-2 items-center w-full"
                         listClass="flex flex-col gap-2 items-center w-full"
                         childContainerClass="relative my-1 py-1.5 flex flex-col gap-2 items-center w-full"
+                        onItemClick={(room) => handleSelectRoom(room.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('rooms', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) => updateGlobalFolder('rooms', id, changes)}
@@ -191,7 +196,8 @@
                             moveGlobalItem('rooms', itemId, newFolderId, newSortOrder)}
                     >
                         {#snippet folder({ folder: f, collapsed, toggle })}
-                            <button
+                            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+                            <div
                                 class="relative flex size-10 items-center justify-center overflow-hidden rounded-md border transition-colors select-none cursor-pointer
                                     {f.color
                                     ? getFolderColorClass(f.color)
@@ -204,20 +210,19 @@
                                 {:else}
                                     <FolderOpen strokeWidth={2.5} class="size-4 text-inherit" />
                                 {/if}
-                            </button>
+                            </div>
                         {/snippet}
 
                         {#snippet item({ entity: room })}
                             {@const selected = route.roomId === room.id}
-                            <button
+                            <div
                                 class="relative flex size-10 items-center justify-center rounded-md border bg-background text-xs font-semibold transition-colors {selected
                                     ? 'border-primary ring-2 ring-primary/20'
                                     : 'border-transparent hover:border-sidebar-border'} group"
                                 title={room.name}
-                                onclick={() => handleSelectRoom(room.id)}
                             >
                                 <RoomAvatar {room} class="size-full" />
-                            </button>
+                            </div>
                         {/snippet}
                     </EntityList>
                 {/if}
@@ -299,6 +304,13 @@
                     gridClass="grid grid-cols-3 gap-2"
                     listClass="grid grid-cols-3 gap-2"
                     childContainerClass="relative my-1 py-1.5 pl-2"
+                    onItemClick={(character) => {
+                        const ref = $activeRoom.characters.refs[character.id];
+                        const disabled = ref?.enabled === false;
+                        if (!disabled && $activeChat) {
+                            void handleSelectCharacter(character.id);
+                        }
+                    }}
                     onCreateFolder={(name, parentId, sortOrder) =>
                         createRoomFolder($activeRoom.id, 'characters', name, parentId, sortOrder)}
                     onUpdateFolder={(id, changes) =>
@@ -324,13 +336,13 @@
                         {@const selected = $chatSelections?.characterId === character.id}
                         {@const isDefault = $activeChat?.defaultCharacterId === character.id}
                         <div class="group relative">
-                            <button
+                            <div
                                 class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors {selected
                                     ? 'border-primary ring-2 ring-primary/20'
-                                    : 'hover:bg-sidebar-accent'} {disabled ? 'opacity-40' : ''}"
+                                    : 'hover:bg-sidebar-accent'} {disabled
+                                    ? 'opacity-40 cursor-not-allowed'
+                                    : ''}"
                                 title={character.name}
-                                disabled={disabled || !$activeChat}
-                                onclick={() => handleSelectCharacter(character.id)}
                             >
                                 <div
                                     class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
@@ -353,7 +365,7 @@
                                     {/if}
                                 </div>
                                 <span class="w-full truncate text-[11px]">{character.name}</span>
-                            </button>
+                            </div>
                             <button
                                 class="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
                                 title="Open character studio"
@@ -402,6 +414,7 @@
                         entities={filteredChats()}
                         config={$activeRoom.chats}
                         layout="list"
+                        onItemClick={(chat) => handleSelectChat(chat.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createRoomFolder($activeRoom.id, 'chats', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
@@ -422,16 +435,10 @@
                             </div>
                         {/snippet}
                         {#snippet folder({ folder: f, collapsed, toggle, parts })}
+                            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                             <div
-                                role="button"
-                                tabindex="0"
                                 class="relative group/folder flex items-center justify-between rounded-md px-2 py-2 text-sm select-none cursor-pointer transition-colors hover:bg-sidebar-accent/50 w-full"
                                 onclick={toggle}
-                                onkeydown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                        toggle();
-                                    }
-                                }}
                             >
                                 <div class="flex items-center gap-2 min-w-0 flex-1">
                                     {#if collapsed}
@@ -502,15 +509,14 @@
                                     </form>
                                 {:else}
                                     <div class="flex items-center gap-2">
-                                        <button
+                                        <div
                                             class="flex min-w-0 flex-1 items-center gap-2 text-left"
-                                            onclick={() => handleSelectChat(chat.id)}
                                         >
                                             <MessageSquare class="size-3.5 shrink-0" />
                                             <span class="min-w-0 flex-1 truncate text-foreground">
                                                 {chat.title || 'Untitled Chat'}
                                             </span>
-                                        </button>
+                                        </div>
                                         <button
                                             class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
                                             title="Rename chat"
