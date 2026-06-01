@@ -13,7 +13,10 @@ import {
     type CharJSFields,
     type CharJS
 } from '$lib/services';
-import { importModuleFromKei, type KeiModulePackageV1 } from '$lib/porters/module';
+import {
+    importModulePackage as importModulePackagePorter,
+    type KeiModulePackageV1
+} from '$lib/porters/module';
 import type { FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
@@ -29,6 +32,7 @@ import { get } from 'svelte/store';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
+import type { AssetFields } from '$lib/types/asset';
 
 /**
  * Returns module from store cache first, then from DB if needed.
@@ -145,7 +149,7 @@ export async function importModulePackage(
         select?: boolean;
     } = {}
 ): Promise<Module> {
-    const moduleId = await importModuleFromKei(pkg, {
+    const moduleId = await importModulePackagePorter(pkg, {
         allowLightAssets: options.allowLightAssets
     });
 
@@ -222,6 +226,25 @@ export async function setModuleEnabled(moduleId: string, enabled: boolean): Prom
     await updateSettings({
         modules: { refs: { [moduleId]: { ...existing, enabled } } }
     });
+}
+
+// ─── Module-owned Asset CRUD ────────────────────────────────────────
+
+export async function createModuleAsset(
+    moduleId: string,
+    asset: File | AssetFields
+): Promise<void> {
+    const mod = await getModule(moduleId);
+    if (!mod) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
+
+    const sortOrder = generateSortOrder(mod.assets.refs, mod.assets.folders);
+    const updated = await ModuleService.createAsset(moduleId, asset, sortOrder);
+    modules.set(moduleId, updated);
+}
+
+export async function deleteModuleAsset(moduleId: string, assetId: string): Promise<void> {
+    const updated = await ModuleService.deleteAsset(moduleId, assetId);
+    modules.set(moduleId, updated);
 }
 
 // ─── Module-owned Lorebook CRUD ─────────────────────────────────────
@@ -417,7 +440,7 @@ export async function deleteModuleCharJS(moduleId: string, charjsId: string): Pr
 
 // ─── Module-owned Folder & Item Management ──────────────────────
 
-export type ModuleFolderType = 'lorebooks' | 'scripts' | 'charjs';
+export type ModuleFolderType = 'lorebooks' | 'scripts' | 'charjs' | 'assets';
 
 export async function createModuleFolder(
     moduleId: string,

@@ -26,7 +26,9 @@ vi.mock('$lib/services', () => ({
         get: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        updateAvatar: vi.fn(),
+        createAsset: vi.fn()
     },
     LorebookService: {
         listByOwner: vi.fn(),
@@ -44,7 +46,6 @@ vi.mock('$lib/services', () => ({
 
 vi.mock('$lib/services/asset', () => ({
     AssetService: {
-        getFields: vi.fn(),
         readBytes: vi.fn(),
         write: vi.fn(),
         delete: vi.fn()
@@ -66,7 +67,12 @@ describe('character porters', () => {
         },
         defaultVariables: { mood: 'calm' },
         allowLowLevel: false,
-        avatarAssetId: 'asset-avatar',
+        avatar: {
+            name: 'Avatar',
+            hash: 'asset-avatar-hash',
+            encKey: 'asset-avatar-key',
+            mimeType: 'image/png'
+        },
         modules: {
             refs: { module_real: { id: 'module_real', enabled: true, sortOrder: 'a' } },
             folders: {}
@@ -88,9 +94,19 @@ describe('character porters', () => {
                 'asset-avatar': {
                     id: 'asset-avatar',
                     name: 'Avatar',
-                    sortOrder: 'a'
+                    sortOrder: 'a',
+                    hash: 'asset-avatar-hash',
+                    encKey: 'asset-avatar-key',
+                    mimeType: 'image/png'
                 },
-                'asset-extra': { id: 'asset-extra', name: 'Extra', sortOrder: 'b' }
+                'asset-extra': {
+                    id: 'asset-extra',
+                    name: 'Extra',
+                    sortOrder: 'b',
+                    hash: 'asset-extra-hash',
+                    encKey: 'asset-extra-key',
+                    mimeType: 'image/png'
+                }
             },
             folders: {}
         }
@@ -149,11 +165,11 @@ describe('character porters', () => {
     });
 
     it('classifies asset payloads', () => {
-        expect(
-            classifyAsset({ id: 'asset', data: new Uint8Array([1]), hash: 'hash', encKey: 'key' })
-        ).toBe('baked');
-        expect(classifyAsset({ id: 'asset', hash: 'hash', encKey: 'key' })).toBe('light');
-        expect(classifyAsset({ id: 'asset', hash: 'hash' })).toBe('broken');
+        expect(classifyAsset({ data: new Uint8Array([1]), hash: 'hash', encKey: 'key' })).toBe(
+            'baked'
+        );
+        expect(classifyAsset({ hash: 'hash', encKey: 'key' })).toBe('light');
+        expect(classifyAsset({ hash: 'hash' })).toBe('broken');
     });
 
     it('exports a character package with portable ids and asset payloads', async () => {
@@ -161,19 +177,13 @@ describe('character porters', () => {
         vi.mocked(LorebookService.listByOwner).mockResolvedValue([lorebook]);
         vi.mocked(ScriptService.listByOwner).mockResolvedValue([script]);
         vi.mocked(CharJSService.listByOwner).mockResolvedValue([charjs]);
-        vi.mocked(AssetService.getFields).mockImplementation(async (id) => ({
-            kind: 'resource',
-            status: id === 'asset-avatar' ? 'remote' : 'local',
-            hash: `${id}-hash`,
-            encKey: `${id}-key`
-        }));
         vi.mocked(AssetService.readBytes).mockResolvedValue(new Uint8Array([1, 2, 3]));
 
-        const pkg = await exportCharacterPackage('char-real', 'light');
+        const pkg = await exportCharacterPackage('char-real', 'baked');
 
         expect(pkg.kind).toBe('keiai.character');
         expect(pkg.character.greetings.greet_1?.id).toBe('greet_1');
-        expect(pkg.character.avatarAssetId).toBe('asset_0');
+        expect(pkg.character.avatar?.hash).toBe('asset-avatar-hash');
         expect(pkg.character.lorebooks.refs.lorebook_0?.id).toBe('lorebook_0');
         expect(pkg.character.scripts.refs.script_0?.id).toBe('script_0');
         expect(pkg.character.charjs.refs.charjs_0?.id).toBe('charjs_0');
@@ -181,10 +191,9 @@ describe('character porters', () => {
         expect(pkg.lorebooks[0]?.id).toBe('lorebook_0');
         expect(pkg.scripts[0]?.id).toBe('script_0');
         expect(pkg.charjs[0]?.id).toBe('charjs_0');
-        expect(pkg.assets.find((asset) => asset.id === 'asset_0')?.data).toBeUndefined();
-        expect(pkg.assets.find((asset) => asset.id === 'asset_1')?.data).toEqual(
-            new Uint8Array([1, 2, 3])
-        );
+        expect(pkg.assets['asset_0']?.data).toEqual(new Uint8Array([1, 2, 3]));
+        expect(pkg.assets['asset_1']?.data).toEqual(new Uint8Array([1, 2, 3]));
+        expect(pkg.avatar?.data).toEqual(new Uint8Array([1, 2, 3]));
         expect('modules' in pkg.character).toBe(false);
     });
 
@@ -193,12 +202,6 @@ describe('character porters', () => {
         vi.mocked(LorebookService.listByOwner).mockResolvedValue([lorebook]);
         vi.mocked(ScriptService.listByOwner).mockResolvedValue([script]);
         vi.mocked(CharJSService.listByOwner).mockResolvedValue([charjs]);
-        vi.mocked(AssetService.getFields).mockImplementation(async (id) => ({
-            kind: 'resource',
-            status: 'local',
-            hash: `${id}-hash`,
-            encKey: `${id}-key`
-        }));
         vi.mocked(AssetService.readBytes).mockResolvedValue(new Uint8Array([1, 2, 3]));
 
         const pkg = await exportCharacterPackage('char-real', 'baked');
@@ -222,10 +225,8 @@ describe('character porters', () => {
         expect(charxEntries['assets/x-risu-asset/images/Extra.bin']).toBeTruthy();
         expect(keicharEntries['package.json']).toBeTruthy();
         expect(keicharEntries['assets/asset_0.bin']).toBeTruthy();
-        expect(pngRoundTrip.assets.find((asset) => asset.id === 'asset_0')?.data).toEqual(
-            new Uint8Array([1, 2, 3])
-        );
-        expect(pngRoundTrip.character.avatarAssetId).toBe('asset_0');
+        expect(pngRoundTrip.assets['asset_0']?.data).toEqual(new Uint8Array([1, 2, 3]));
+        expect(pngRoundTrip.character.avatar?.hash).toBe('asset-avatar-hash');
         expect(charxRoundTrip.charjs[0]).toEqual(
             expect.objectContaining({ id: 'charjs_0', name: 'CharJS', code: 'return input;' })
         );
@@ -506,137 +507,193 @@ describe('character porters', () => {
 
     it('rejects light assets unless explicitly allowed', async () => {
         const pkg = makePackage({
-            assets: [{ id: 'asset_0', hash: 'hash', encKey: 'key' }]
+            assets: { asset_0: { hash: 'hash', encKey: 'key' } }
         });
 
-        await expect(importCharacterPackage(pkg, { allowLightAssets: false })).rejects.toThrow(
-            'Light asset import is disabled'
-        );
-        expect(AssetService.write).not.toHaveBeenCalled();
-    });
-
-    it('validates all asset payloads before writing imported assets', async () => {
-        const pkg = makePackage({
-            assets: [
-                { id: 'asset_0', data: new Uint8Array([1]), hash: 'hash', encKey: 'key' },
-                { id: 'asset_1', hash: 'broken' }
-            ]
-        });
-
-        await expect(importCharacterPackage(pkg, { allowLightAssets: true })).rejects.toThrow(
-            'Broken asset payload'
-        );
-        expect(AssetService.write).not.toHaveBeenCalled();
-    });
-
-    it('imports package records and reconnects refs to created ids', async () => {
-        const pkg = makePackage({
-            assets: [
-                { id: 'asset_0', data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' }
-            ]
-        });
-
-        vi.mocked(AssetService.write).mockResolvedValue('asset-new');
+        // importAssetPayloads runs after create, so create must succeed
         vi.mocked(CharacterService.create).mockResolvedValue({
             ...character,
             id: 'char-new',
-            avatarAssetId: undefined,
+            avatar: undefined,
             lorebooks: { refs: {}, folders: {} },
             scripts: { refs: {}, folders: {} },
             charjs: { refs: {}, folders: {} },
             assets: { refs: {}, folders: {} }
         });
+        vi.mocked(CharacterService.delete).mockResolvedValue(undefined as never);
+
+        await expect(importCharacterPackage(pkg, { allowLightAssets: false })).rejects.toThrow(
+            'Light asset import is disabled'
+        );
+    });
+
+    it('validates all asset payloads before writing imported assets', async () => {
+        const pkg = makePackage({
+            assets: {
+                asset_0: { data: new Uint8Array([1]), hash: 'hash', encKey: 'key' },
+                asset_1: { hash: 'broken' }
+            }
+        });
+
+        // importAssetPayloads runs after create, so create must succeed
+        vi.mocked(CharacterService.create).mockResolvedValue({
+            ...character,
+            id: 'char-new',
+            avatar: undefined,
+            lorebooks: { refs: {}, folders: {} },
+            scripts: { refs: {}, folders: {} },
+            charjs: { refs: {}, folders: {} },
+            assets: { refs: {}, folders: {} }
+        });
+        vi.mocked(CharacterService.delete).mockResolvedValue(undefined as never);
+
+        await expect(importCharacterPackage(pkg, { allowLightAssets: true })).rejects.toThrow(
+            'Broken asset payload'
+        );
+    });
+
+    it('imports package records and reconnects refs to created ids', async () => {
+        const pkg = makePackage({
+            avatar: { data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' },
+            assets: {
+                asset_0: { data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' }
+            }
+        });
+
+        vi.mocked(CharacterService.create).mockResolvedValue({
+            ...character,
+            id: 'char-new',
+            avatar: undefined,
+            lorebooks: { refs: {}, folders: {} },
+            scripts: { refs: {}, folders: {} },
+            charjs: { refs: {}, folders: {} },
+            assets: { refs: {}, folders: {} }
+        });
+        vi.mocked(CharacterService.updateAvatar).mockResolvedValue({
+            ...character,
+            id: 'char-new',
+            avatar: {
+                name: 'avatar.bin',
+                hash: 'hash',
+                encKey: 'key',
+                mimeType: 'application/octet-stream'
+            }
+        });
+        vi.mocked(CharacterService.createAsset).mockResolvedValue({
+            ...character,
+            id: 'char-new',
+            assets: {
+                refs: {
+                    'asset-new': {
+                        id: 'asset-new',
+                        name: 'Avatar',
+                        sortOrder: 'a',
+                        hash: 'hash',
+                        encKey: 'key',
+                        mimeType: 'image/png'
+                    }
+                },
+                folders: {}
+            }
+        });
         vi.mocked(LorebookService.create).mockResolvedValue({ ...lorebook, id: 'lorebook-new' });
         vi.mocked(ScriptService.create).mockResolvedValue({ ...script, id: 'script-new' });
         vi.mocked(CharJSService.create).mockResolvedValue({ ...charjs, id: 'charjs-new' });
         vi.mocked(CharacterService.update).mockResolvedValue({ ...character, id: 'char-new' });
+        vi.mocked(CharacterService.get).mockResolvedValue({
+            ...character,
+            id: 'char-new',
+            assets: {
+                refs: {
+                    'asset-new': {
+                        id: 'asset-new',
+                        name: 'Avatar',
+                        sortOrder: 'a',
+                        hash: 'hash',
+                        encKey: 'key',
+                        mimeType: 'image/png'
+                    }
+                },
+                folders: {}
+            }
+        });
 
         const characterId = await importCharacterPackage(pkg, { scopeType: 'room' });
         const update = vi.mocked(CharacterService.update).mock.calls[0]?.[1];
 
         expect(characterId).toBe('char-new');
-        expect(AssetService.write).toHaveBeenCalledWith(expect.any(File), 'resource', {
-            scopeType: 'room'
-        });
         expect(CharacterService.create).toHaveBeenCalledWith(
             expect.objectContaining({ name: 'Imported' }),
             'room'
         );
+        expect(CharacterService.updateAvatar).toHaveBeenCalledWith('char-new', expect.any(File));
         expect(LorebookService.create).toHaveBeenCalledWith(
             'char-new',
             expect.objectContaining({ name: 'Lore' }),
             'room'
         );
-        expect(update?.avatarAssetId).toBe('asset-new');
+        expect(CharacterService.createAsset).toHaveBeenCalledWith(
+            'char-new',
+            expect.any(File),
+            'a'
+        );
         expect(update?.lorebooks?.refs?.['lorebook-new']?.id).toBe('lorebook-new');
         expect(update?.scripts?.refs?.['script-new']?.id).toBe('script-new');
         expect(update?.charjs?.refs?.['charjs-new']?.id).toBe('charjs-new');
-        expect(update?.assets?.refs?.['asset-new']?.name).toBe('Avatar');
-    });
-
-    it('retries write operations on failure up to maxAttempts', async () => {
-        const pkg = makePackage({
-            assets: [
-                { id: 'asset_0', data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' }
-            ]
-        });
-
-        let attempts = 0;
-        vi.mocked(AssetService.write).mockImplementation(async () => {
-            attempts++;
-            if (attempts === 1) {
-                throw new Error('Transient error');
-            }
-            return 'asset-new';
-        });
-
-        vi.mocked(CharacterService.create).mockResolvedValue({
-            ...character,
-            id: 'char-new',
-            avatarAssetId: undefined,
-            lorebooks: { refs: {}, folders: {} },
-            scripts: { refs: {}, folders: {} },
-            charjs: { refs: {}, folders: {} },
-            assets: { refs: {}, folders: {} }
-        });
-        vi.mocked(LorebookService.create).mockResolvedValue({ ...lorebook, id: 'lorebook-new' });
-        vi.mocked(ScriptService.create).mockResolvedValue({ ...script, id: 'script-new' });
-        vi.mocked(CharJSService.create).mockResolvedValue({ ...charjs, id: 'charjs-new' });
-        vi.mocked(CharacterService.update).mockResolvedValue({ ...character, id: 'char-new' });
-
-        const characterId = await importCharacterPackage(pkg, { scopeType: 'room' });
-
-        expect(characterId).toBe('char-new');
-        expect(attempts).toBe(2);
     });
 
     it('rolls back created character and assets if database operations fail during import', async () => {
         const pkg = makePackage({
-            assets: [
-                { id: 'asset_0', data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' }
-            ]
+            avatar: { data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' },
+            assets: {
+                asset_0: { data: new Uint8Array([1, 2, 3]), hash: 'hash', encKey: 'key' }
+            }
         });
 
-        vi.mocked(AssetService.write).mockResolvedValue('asset-new');
         vi.mocked(CharacterService.create).mockResolvedValue({
             ...character,
             id: 'char-new',
-            avatarAssetId: undefined,
+            avatar: undefined,
             lorebooks: { refs: {}, folders: {} },
             scripts: { refs: {}, folders: {} },
             charjs: { refs: {}, folders: {} },
             assets: { refs: {}, folders: {} }
         });
+        vi.mocked(CharacterService.updateAvatar).mockResolvedValue({
+            ...character,
+            id: 'char-new',
+            avatar: {
+                name: 'avatar.bin',
+                hash: 'hash',
+                encKey: 'key',
+                mimeType: 'application/octet-stream'
+            }
+        });
+        vi.mocked(CharacterService.createAsset).mockResolvedValue({
+            ...character,
+            id: 'char-new',
+            assets: {
+                refs: {
+                    'asset-new': {
+                        id: 'asset-new',
+                        name: 'Avatar',
+                        sortOrder: 'a',
+                        hash: 'hash',
+                        encKey: 'key',
+                        mimeType: 'image/png'
+                    }
+                },
+                folders: {}
+            }
+        });
         vi.mocked(LorebookService.create).mockRejectedValue(new Error('DB write failed'));
         vi.mocked(CharacterService.delete).mockResolvedValue(undefined as never);
-        vi.mocked(AssetService.delete).mockResolvedValue(undefined as never);
 
         await expect(importCharacterPackage(pkg, { scopeType: 'room' })).rejects.toThrow(
             'DB write failed'
         );
 
         expect(CharacterService.delete).toHaveBeenCalledWith('char-new');
-        expect(AssetService.delete).toHaveBeenCalledWith('asset-new');
     });
 });
 
@@ -655,7 +712,12 @@ function makePackage(overrides: Partial<KeiCharacterPackageV1> = {}): KeiCharact
             },
             defaultVariables: {},
             allowLowLevel: false,
-            avatarAssetId: 'asset_0',
+            avatar: {
+                name: 'Avatar',
+                hash: 'asset-avatar-hash',
+                encKey: 'asset-avatar-key',
+                mimeType: 'image/png'
+            },
             lorebooks: {
                 refs: { lorebook_0: { id: 'lorebook_0', sortOrder: 'a' } },
                 folders: {}
@@ -669,7 +731,16 @@ function makePackage(overrides: Partial<KeiCharacterPackageV1> = {}): KeiCharact
                 folders: {}
             },
             assets: {
-                refs: { asset_0: { id: 'asset_0', name: 'Avatar', sortOrder: 'a' } },
+                refs: {
+                    asset_0: {
+                        id: 'asset_0',
+                        name: 'Avatar',
+                        sortOrder: 'a',
+                        hash: 'asset-avatar-hash',
+                        encKey: 'asset-avatar-key',
+                        mimeType: 'image/png'
+                    }
+                },
                 folders: {}
             }
         },
@@ -708,7 +779,8 @@ function makePackage(overrides: Partial<KeiCharacterPackageV1> = {}): KeiCharact
             }
         ],
         charjs: [{ id: 'charjs_0', name: 'CharJS', code: 'return input;', enabled: true }],
-        assets: [],
+        assets: {},
+        avatar: undefined,
         ...overrides
     };
 }

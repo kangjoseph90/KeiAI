@@ -5,9 +5,7 @@ import { dataSyncStatus, userSyncStatus, assetSyncStatus } from '$lib/stores/sta
 
 const dataStatusListeners = new Set<(status: { state: string }) => void>();
 const userStatusListeners = new Set<(status: { state: string }) => void>();
-const assetStatusListeners = new Set<
-    (status: { state: string; pendingCount: number; currentAssetId?: string }) => void
->();
+const assetStatusListeners = new Set<(status: { state: string; pendingCount: number }) => void>();
 
 vi.mock('$lib/services/sync', () => ({
     DataRecordSyncEngine: {
@@ -24,7 +22,7 @@ vi.mock('$lib/services/sync', () => ({
             return () => userStatusListeners.delete(listener);
         })
     },
-    AssetBinarySyncEngine: {
+    AssetSyncEngine: {
         subscribeStatus: vi.fn(
             (listener: (status: { state: string; pendingCount: number }) => void) => {
                 assetStatusListeners.add(listener);
@@ -56,15 +54,14 @@ describe('sync status stores', () => {
             listener({ state: 'network_error' });
         }
         for (const listener of assetStatusListeners) {
-            listener({ state: 'syncing', pendingCount: 3, currentAssetId: 'asset-1' });
+            listener({ state: 'syncing', pendingCount: 3 });
         }
 
         expect(get(dataSyncStatus)).toEqual({ state: 'syncing' });
         expect(get(userSyncStatus)).toEqual({ state: 'network_error' });
         expect(get(assetSyncStatus)).toEqual({
             state: 'syncing',
-            pendingCount: 3,
-            currentAssetId: 'asset-1'
+            pendingCount: 3
         });
     });
 
@@ -72,7 +69,7 @@ describe('sync status stores', () => {
         startSyncStatusTracking();
 
         for (const listener of assetStatusListeners) {
-            listener({ state: 'quota_error', pendingCount: 2, currentAssetId: 'asset-2' });
+            listener({ state: 'quota_error', pendingCount: 2 });
         }
 
         stopSyncStatusTracking();

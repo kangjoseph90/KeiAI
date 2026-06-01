@@ -1,127 +1,79 @@
 import Database from '@tauri-apps/plugin-sql';
-import { AssetWriteEventEmitter } from './events';
+import { appStorage } from '$lib/adapters/storage';
 import { clock } from '$lib/utils/clock';
-import type {
-    IAssetAdapter,
-    AssetRecord,
-    AssetRegistryRecord,
-    AssetWriteEventListener,
-    AssetWriteOptions,
-    AssetTableName,
-    AssetWriteOperation,
-    AssetStatus,
-    AssetKind
+import {
+    assetRegistryId,
+    type AssetLocator,
+    type AssetOwner,
+    type AssetRegistryRecord,
+    type IAssetAdapter,
+    type PutAssetInput
 } from './types';
-import type { DataScope } from '$lib/adapters/db';
+import type { DataScope, DataScopeType, TableName } from '$lib/adapters/db';
+import type { AssetStatus } from '$lib/types/asset';
 
 /**
- * Tauri Asset Adapter
+ * Tauri Local Asset Store
  *
- * SQLite storage for asset metadata (assets, assetRegistry tables).
- * Binary blobs are stored via appStorage (native FS) directly by the service layer.
- *
- * Row structure:
- *   - assets: plaintext metadata record (DataRecord with `data` JSON column)
- *   - assetRegistry: device-local cache metadata only (size, accessedAt)
+ * SQLite stores local asset registry metadata. appStorage owns local blobs, but
+ * this adapter hides /assets paths so callers cannot update metadata and blobs
+ * independently.
  */
 
-/** Raw shape of an asset record as stored in SQLite */
-interface AssetSqlRow {
-    id: string;
-    scopeType: string;
-    scopeId: string;
-    createdAt: number;
-    updatedAt: number;
-    isDeleted: number; // SQLite uses 0/1 for boolean
-    data: string; // JSON.stringify(AssetFields)
-}
-
-/** Raw shape of a registry record as stored in SQLite */
 interface RegistrySqlRow {
     id: string;
     scopeType: string;
     scopeId: string;
-    createdAt: number;
-    updatedAt: number;
-    isDeleted: number;
-    kind: string;
+    ownerTable: string;
+    ownerId: string;
+    hash: string;
+    encKey: string;
     status: string;
     size: number;
     accessedAt: number;
 }
 
-/** Convert AssetRecord to bindings for SQLite */
-function assetRecordToBindings(record: AssetRecord): AssetSqlRow {
-    return {
-        id: record.id,
-        scopeType: record.scopeType,
-        scopeId: record.scopeId,
-        createdAt: record.createdAt,
-        updatedAt: record.updatedAt,
-        isDeleted: record.isDeleted ? 1 : 0,
-        data: JSON.stringify(record.data ?? {})
-    };
+function storagePath(id: string): string {
+    return `assets/${encodeURIComponent(id)}`;
 }
 
-/** Parse raw SQLite row back into AssetRecord */
-function parseAssetRecord(row: AssetSqlRow): AssetRecord {
-    return {
-        id: row.id,
-        scopeType: row.scopeType as AssetRecord['scopeType'],
-        scopeId: row.scopeId,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        isDeleted: row.isDeleted === 1,
-        data: JSON.parse(row.data) as Record<string, unknown>
-    };
-}
-
-/** Parse raw SQLite row into AssetRegistryRecord */
 function parseRegistryRecord(row: RegistrySqlRow): AssetRegistryRecord {
     return {
         id: row.id,
-        scopeType: row.scopeType as AssetRegistryRecord['scopeType'],
+        scopeType: row.scopeType as DataScopeType,
         scopeId: row.scopeId,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        isDeleted: row.isDeleted === 1,
-        kind: row.kind as AssetKind,
+        ownerTable: row.ownerTable as TableName,
+        ownerId: row.ownerId,
+        hash: row.hash,
+        encKey: row.encKey,
         status: row.status as AssetStatus,
         size: row.size,
         accessedAt: row.accessedAt
     };
 }
 
-// ─── Adapter ───────────────────────────────────────────────────────────────
+function toRecord(input: PutAssetInput, status: AssetStatus): AssetRegistryRecord {
+    return {
+        id: assetRegistryId(input),
+        scopeType: input.scopeType,
+        scopeId: input.scopeId,
+        ownerTable: input.ownerTable,
+        ownerId: input.ownerId,
+        hash: input.hash,
+        encKey: input.encKey,
+        status,
+        size: input.bytes.byteLength,
+        accessedAt: clock.now()
+    };
+}
 
 export class TauriAssetAdapter implements IAssetAdapter {
     private dbPromise: Promise<Database> | null = null;
-    private readonly writeEvents = new AssetWriteEventEmitter();
     private inTransaction = false;
-
-    subscribeWriteEvents(listener: AssetWriteEventListener): () => void {
-        return this.writeEvents.subscribe(listener);
-    }
 
     async flush(): Promise<void> {
         return Promise.resolve();
     }
-
-    private emitWriteEvent(
-        tableName: AssetTableName,
-        operation: AssetWriteOperation,
-        ids: string[],
-        options?: AssetWriteOptions
-    ): void {
-        this.writeEvents.emit({
-            tableName,
-            operation,
-            ids,
-            origin: options?.origin ?? 'local'
-        });
-    }
-
-    // ── SQLite ───────────────────────────────────────────────────────────────
 
     private async getDb(): Promise<Database> {
         if (this.dbPromise) return this.dbPromise;
@@ -135,217 +87,234 @@ export class TauriAssetAdapter implements IAssetAdapter {
         return this.dbPromise;
     }
 
-    private async initDb(db: Database) {
+    private async initDb(db: Database): Promise<void> {
         let sql = '';
-
-        // Assets table - plaintext metadata
-        sql += `
-            CREATE TABLE IF NOT EXISTS assets (
-                id TEXT PRIMARY KEY,
-                scopeType TEXT NOT NULL,
-                scopeId TEXT NOT NULL,
-                createdAt INTEGER NOT NULL,
-                updatedAt INTEGER NOT NULL,
-                isDeleted INTEGER NOT NULL DEFAULT 0,
-                data TEXT
-            );
-        `;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assets_scope ON assets (scopeType, scopeId);`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assets_scope_updatedAt ON assets (scopeType, scopeId, updatedAt);`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assets_updatedAt ON assets (updatedAt);`;
-
-        // Asset registry table - device-local cache metadata + routing fields
         sql += `
             CREATE TABLE IF NOT EXISTS assetRegistry (
                 id TEXT PRIMARY KEY,
                 scopeType TEXT NOT NULL,
                 scopeId TEXT NOT NULL,
-                createdAt INTEGER NOT NULL,
-                updatedAt INTEGER NOT NULL,
-                isDeleted INTEGER NOT NULL DEFAULT 0,
-                kind TEXT NOT NULL,
+                ownerTable TEXT NOT NULL,
+                ownerId TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                encKey TEXT NOT NULL,
                 status TEXT NOT NULL,
                 size INTEGER NOT NULL DEFAULT 0,
                 accessedAt INTEGER NOT NULL
             );
         `;
         sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope ON assetRegistry (scopeType, scopeId);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_owner ON assetRegistry (scopeType, scopeId, ownerTable, ownerId);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_owner_hash ON assetRegistry (scopeType, scopeId, ownerTable, ownerId, hash);`;
         sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope_status ON assetRegistry (scopeType, scopeId, status);`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope_status_kind ON assetRegistry (scopeType, scopeId, status, kind);`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope_isDeleted ON assetRegistry (scopeType, scopeId, isDeleted);`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_status ON assetRegistry (status);`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_status_kind ON assetRegistry (status, kind);`;
-        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_accessedAt ON assetRegistry (accessedAt);`;
+        sql += `CREATE INDEX IF NOT EXISTS idx_assetRegistry_scope_status_accessedAt ON assetRegistry (scopeType, scopeId, status, accessedAt);`;
 
         await db.execute(sql);
     }
 
-    // ── Metadata (assets table) ──────────────────────────────────────
-
-    async getAsset(id: string): Promise<AssetRecord | undefined> {
-        const db = await this.getDb();
-        const rows = await db.select<AssetSqlRow[]>(`SELECT * FROM assets WHERE id = $1`, [id]);
-        if (rows.length > 0) return parseAssetRecord(rows[0]);
-        return undefined;
+    async putLocalAsset(input: PutAssetInput): Promise<AssetRegistryRecord> {
+        return this.putAsset(input, 'local');
     }
 
-    async getAllAssets(scope: DataScope): Promise<AssetRecord[]> {
-        const db = await this.getDb();
-        const rows = await db.select<AssetSqlRow[]>(
-            `SELECT * FROM assets WHERE scopeType = $1 AND scopeId = $2 AND isDeleted = 0 ORDER BY updatedAt ASC`,
-            [scope.scopeType, scope.scopeId]
-        );
-        return rows.map((row) => parseAssetRecord(row));
+    async putRemoteAsset(input: PutAssetInput): Promise<AssetRegistryRecord> {
+        return this.putAsset(input, 'remote');
     }
 
-    async putAsset(record: AssetRecord, options?: AssetWriteOptions): Promise<void> {
-        const db = await this.getDb();
-        const data = assetRecordToBindings(record);
-
-        await db.execute(
-            `INSERT OR REPLACE INTO assets (id, scopeType, scopeId, createdAt, updatedAt, isDeleted, data)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [
-                data.id,
-                data.scopeType,
-                data.scopeId,
-                data.createdAt,
-                data.updatedAt,
-                data.isDeleted,
-                data.data
-            ]
-        );
-        this.emitWriteEvent('assets', 'put', [record.id], options);
-    }
-
-    async softDeleteAsset(id: string, options?: AssetWriteOptions): Promise<void> {
-        const db = await this.getDb();
-        const now = clock.now();
-        await db.execute(`UPDATE assets SET isDeleted = 1, updatedAt = $1 WHERE id = $2`, [
-            now,
-            id
-        ]);
-        this.emitWriteEvent('assets', 'softDelete', [id], options);
-    }
-
-    async deleteAsset(id: string, options?: AssetWriteOptions): Promise<void> {
-        const db = await this.getDb();
-        await db.execute(`DELETE FROM assets WHERE id = $1`, [id]);
-        this.emitWriteEvent('assets', 'delete', [id], options);
-    }
-
-    async getAssetsSince(scope: DataScope, sinceUpdatedAt: number): Promise<AssetRecord[]> {
-        const db = await this.getDb();
-        const rows = await db.select<AssetSqlRow[]>(
-            `SELECT * FROM assets WHERE scopeType = $1 AND scopeId = $2 AND updatedAt > $3 ORDER BY updatedAt ASC`,
-            [scope.scopeType, scope.scopeId, sinceUpdatedAt]
-        );
-        return rows.map((row) => parseAssetRecord(row));
-    }
-
-    // ── Registry (assetRegistry table) ───────────────────────────────
-
-    async getRegistry(id: string): Promise<AssetRegistryRecord | undefined> {
-        const db = await this.getDb();
-        const rows = await db.select<RegistrySqlRow[]>(
-            `SELECT * FROM assetRegistry WHERE id = $1`,
-            [id]
-        );
-        if (rows.length > 0) return parseRegistryRecord(rows[0]);
-        return undefined;
-    }
-
-    async getAllRegistry(scope: DataScope): Promise<AssetRegistryRecord[]> {
-        const db = await this.getDb();
-        const rows = await db.select<RegistrySqlRow[]>(
-            `SELECT * FROM assetRegistry WHERE scopeType = $1 AND scopeId = $2 AND isDeleted = 0`,
-            [scope.scopeType, scope.scopeId]
-        );
-        return rows.map((row) => parseRegistryRecord(row));
-    }
-
-    async getRegistryByStatus(
-        scope: DataScope,
-        status: AssetStatus,
-        kinds?: AssetKind[]
-    ): Promise<AssetRegistryRecord[]> {
-        const db = await this.getDb();
-        if (!kinds || kinds.length === 0) {
-            const rows = await db.select<RegistrySqlRow[]>(
-                `SELECT * FROM assetRegistry WHERE scopeType = $1 AND scopeId = $2 AND status = $3 AND isDeleted = 0`,
-                [scope.scopeType, scope.scopeId, status]
-            );
-            return rows.map((row) => parseRegistryRecord(row));
+    private async putAsset(
+        input: PutAssetInput,
+        status: AssetStatus
+    ): Promise<AssetRegistryRecord> {
+        const record = toRecord(input, status);
+        await appStorage.write(storagePath(record.id), input.bytes);
+        try {
+            const db = await this.getDb();
+            await this.putRecord(db, record);
+        } catch (error) {
+            await appStorage.delete(storagePath(record.id)).catch(() => undefined);
+            throw error;
         }
-
-        const placeholders = kinds.map((_, i) => `$${i + 4}`).join(', ');
-        const rows = await db.select<RegistrySqlRow[]>(
-            `SELECT * FROM assetRegistry WHERE scopeType = $1 AND scopeId = $2 AND status = $3 AND isDeleted = 0 AND kind IN (${placeholders})`,
-            [scope.scopeType, scope.scopeId, status, ...kinds]
-        );
-        return rows.map((row) => parseRegistryRecord(row));
+        return record;
     }
 
-    async getAllRegistryByStatus(
-        status: AssetStatus,
-        kinds?: AssetKind[]
-    ): Promise<AssetRegistryRecord[]> {
-        const db = await this.getDb();
-        if (!kinds || kinds.length === 0) {
-            const rows = await db.select<RegistrySqlRow[]>(
-                `SELECT * FROM assetRegistry WHERE status = $1 AND isDeleted = 0`,
-                [status]
-            );
-            return rows.map((row) => parseRegistryRecord(row));
-        }
-
-        const placeholders = kinds.map((_, i) => `$${i + 2}`).join(', ');
-        const rows = await db.select<RegistrySqlRow[]>(
-            `SELECT * FROM assetRegistry WHERE status = $1 AND isDeleted = 0 AND kind IN (${placeholders})`,
-            [status, ...kinds]
-        );
-        return rows.map((row) => parseRegistryRecord(row));
-    }
-
-    async putRegistry(record: AssetRegistryRecord, options?: AssetWriteOptions): Promise<void> {
-        const db = await this.getDb();
-
+    private async putRecord(db: Database, record: AssetRegistryRecord): Promise<void> {
         await db.execute(
-            `INSERT OR REPLACE INTO assetRegistry (id, scopeType, scopeId, createdAt, updatedAt, isDeleted, kind, status, size, accessedAt)
+            `INSERT OR REPLACE INTO assetRegistry
+                (id, scopeType, scopeId, ownerTable, ownerId, hash, encKey, status, size, accessedAt)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [
                 record.id,
                 record.scopeType,
                 record.scopeId,
-                record.createdAt,
-                record.updatedAt,
-                record.isDeleted ? 1 : 0,
-                record.kind,
+                record.ownerTable,
+                record.ownerId,
+                record.hash,
+                record.encKey,
                 record.status,
                 record.size,
                 record.accessedAt
             ]
         );
-        this.emitWriteEvent('assetRegistry', 'put', [record.id], options);
     }
 
-    async deleteRegistry(id: string, options?: AssetWriteOptions): Promise<void> {
+    async getAsset(locator: AssetLocator): Promise<AssetRegistryRecord | undefined> {
         const db = await this.getDb();
-        await db.execute(`DELETE FROM assetRegistry WHERE id = $1`, [id]);
-        this.emitWriteEvent('assetRegistry', 'delete', [id], options);
+        const rows = await db.select<RegistrySqlRow[]>(
+            `SELECT * FROM assetRegistry WHERE id = $1 LIMIT 1`,
+            [assetRegistryId(locator)]
+        );
+        if (rows.length > 0) return parseRegistryRecord(rows[0]);
+        return undefined;
     }
 
-    async transaction<R>(
-        _tables: AssetTableName[],
-        _mode: 'r' | 'rw',
-        callback: () => Promise<R>
-    ): Promise<R> {
+    async deleteAsset(locator: AssetLocator): Promise<void> {
+        await this.deleteByIds([assetRegistryId(locator)]);
+    }
+
+    async deleteOwnerAssets(owner: AssetOwner): Promise<void> {
+        const db = await this.getDb();
+        const rows = await db.select<{ id: string }[]>(
+            `SELECT id FROM assetRegistry
+             WHERE scopeType = $1 AND scopeId = $2 AND ownerTable = $3 AND ownerId = $4`,
+            [owner.scopeType, owner.scopeId, owner.ownerTable, owner.ownerId]
+        );
+        await this.deleteByIds(rows.map((row) => row.id));
+    }
+
+    async deleteScopeAssets(scope: DataScope): Promise<void> {
+        const db = await this.getDb();
+        const rows = await db.select<{ id: string }[]>(
+            `SELECT id FROM assetRegistry WHERE scopeType = $1 AND scopeId = $2`,
+            [scope.scopeType, scope.scopeId]
+        );
+        await this.deleteByIds(rows.map((row) => row.id));
+    }
+
+    private async deleteByIds(ids: string[]): Promise<void> {
+        if (ids.length === 0) return;
+
+        const db = await this.getDb();
+        await this.withDbTransaction(async () => {
+            for (const id of ids) {
+                await db.execute(`DELETE FROM assetRegistry WHERE id = $1`, [id]);
+            }
+        });
+        await Promise.all(
+            ids.map((id) => appStorage.delete(storagePath(id)).catch(() => undefined))
+        );
+    }
+
+    async getAllLocalAssets(scope: DataScope): Promise<AssetRegistryRecord[]> {
+        return this.getAllByStatus(scope, 'local');
+    }
+
+    async getAllRemoteAssets(scope?: DataScope): Promise<AssetRegistryRecord[]> {
+        if (!scope) {
+            const db = await this.getDb();
+            const rows = await db.select<RegistrySqlRow[]>(
+                `SELECT * FROM assetRegistry WHERE status = $1 ORDER BY accessedAt ASC`,
+                ['remote']
+            );
+            return rows.map((row) => parseRegistryRecord(row));
+        }
+        return this.getAllByStatus(scope, 'remote');
+    }
+
+    private async getAllByStatus(
+        scope: DataScope,
+        status: AssetStatus
+    ): Promise<AssetRegistryRecord[]> {
+        const db = await this.getDb();
+        const rows = await db.select<RegistrySqlRow[]>(
+            `SELECT * FROM assetRegistry
+             WHERE scopeType = $1 AND scopeId = $2 AND status = $3
+             ORDER BY accessedAt ASC`,
+            [scope.scopeType, scope.scopeId, status]
+        );
+        return rows.map((row) => parseRegistryRecord(row));
+    }
+
+    async readAssetBytes(locator: AssetLocator): Promise<Uint8Array | null> {
+        return appStorage.read(storagePath(assetRegistryId(locator)));
+    }
+
+    async getRenderUrl(locator: AssetLocator): Promise<string | null> {
+        const id = assetRegistryId(locator);
+        const url = await appStorage.getRenderUrl(storagePath(id));
+        if (url) {
+            await this.touchAsset(locator);
+        }
+        return url;
+    }
+
+    async revokeRenderUrl(url: string): Promise<void> {
+        await appStorage.revokeRenderUrl(url);
+    }
+
+    async touchAsset(locator: AssetLocator): Promise<void> {
+        await this.updateAssets([locator], undefined);
+    }
+
+    async markAssetRemote(locator: AssetLocator): Promise<void> {
+        await this.updateAssets([locator], 'remote');
+    }
+
+    async markAssetLocal(locator: AssetLocator): Promise<void> {
+        await this.updateAssets([locator], 'local');
+    }
+
+    async markAssetsRemote(locators: AssetLocator[]): Promise<void> {
+        await this.updateAssets(locators, 'remote');
+    }
+
+    async markAssetsLocal(locators: AssetLocator[]): Promise<void> {
+        await this.updateAssets(locators, 'local');
+    }
+
+    private async updateAssets(
+        locators: AssetLocator[],
+        status: AssetStatus | undefined
+    ): Promise<string[]> {
+        const ids = locators.map((locator) => assetRegistryId(locator));
+        if (ids.length === 0) return [];
+
+        const db = await this.getDb();
+        const changed: string[] = [];
+        const now = clock.now();
+
+        await this.withDbTransaction(async () => {
+            for (const id of ids) {
+                const rows = await db.select<RegistrySqlRow[]>(
+                    `SELECT * FROM assetRegistry WHERE id = $1 LIMIT 1`,
+                    [id]
+                );
+                if (rows.length === 0) continue;
+
+                const existing = parseRegistryRecord(rows[0]);
+                const nextStatus = status ?? existing.status;
+                if (existing.status === nextStatus && existing.accessedAt === now) continue;
+
+                await this.putRecord(db, {
+                    ...existing,
+                    status: nextStatus,
+                    accessedAt: now
+                });
+                changed.push(id);
+            }
+        });
+
+        return changed;
+    }
+
+    async transaction<R>(callback: () => Promise<R>): Promise<R> {
+        await this.flush();
+        return this.withDbTransaction(callback);
+    }
+
+    private async withDbTransaction<R>(callback: () => Promise<R>): Promise<R> {
         if (this.inTransaction) {
-            // Already in a transaction, just run the callback
             return await callback();
         }
 
-        await this.flush();
         const db = await this.getDb();
         this.inTransaction = true;
         await db.execute('BEGIN TRANSACTION');

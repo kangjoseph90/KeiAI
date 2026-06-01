@@ -1,12 +1,13 @@
 import { clock } from '$lib/utils/clock';
 import { canAccessScope, getSessionScope } from '../session';
 import { localDB, type CharacterRecord, type DataScopeType } from '$lib/adapters/db';
-import type { OrderedRef, ResourceRef, AssetRef, EntityListConfig } from '$lib/types/refs';
+import type { ResourceRef, EntityListConfig, AssetRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
-import { AssetService } from '../asset';
+import { AssetService, type AssetOwner } from '../asset';
+import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ export interface CharacterContent {
 }
 
 export interface CharacterRefs {
-    avatarAssetId?: string;
+    avatar?: AssetFields;
     modules: EntityListConfig<ResourceRef>;
     lorebooks: EntityListConfig;
     scripts: EntityListConfig;
@@ -66,6 +67,21 @@ const defaultFields: CharacterFields = {
 
 function parseFields(record: CharacterRecord): CharacterFields {
     return deepMerge(defaultFields, record.data as DeepPartial<CharacterFields>);
+}
+
+function assetOwner(record: CharacterRecord): AssetOwner {
+    return {
+        scopeType: record.scopeType,
+        scopeId: record.scopeId,
+        ownerTable: 'characters',
+        ownerId: record.id
+    };
+}
+
+function collectAssetFields(fields: CharacterFields): AssetFields[] {
+    return [fields.avatar, ...Object.values(fields.assets.refs)].filter(
+        (asset): asset is AssetFields => Boolean(asset?.hash)
+    );
 }
 
 // ─── Service ─────────────────────────────────────────────────────────
@@ -154,12 +170,219 @@ export class CharacterService {
         }
     }
 
-    /** Update content fields only — safe entry point for store layer */
-    static async updateContent(
+    static async createAsset(
         id: string,
-        changes: DeepPartial<CharacterContent>
+        asset: File | AssetFields,
+        sortOrder: string
     ): Promise<Character> {
-        return this.update(id, changes);
+        const record = await buffer.get<CharacterRecord>('characters', id);
+        if (!record || record.isDeleted || !canAccessScope(record)) {
+            throw new AppError('NOT_FOUND', 'Character not found');
+        }
+
+        const current = parseFields(record);
+        const owner = assetOwner(record);
+
+        let fields: AssetFields;
+        let status: AssetStatus;
+
+        if (asset instanceof File) {
+            fields = await AssetService.write(asset, owner);
+            status = 'local';
+        } else {
+            fields = asset;
+            status = 'remote';
+        }
+
+        const assetEntries = { ...record.assetEntries };
+        if (!(fields.hash in assetEntries)) {
+            assetEntries[fields.hash] = status;
+        }
+
+        const assetId = generateId();
+        const newRef: AssetRef = {
+            id: assetId,
+            sortOrder,
+            ...fields
+        };
+
+        const updated: CharacterFields = {
+            ...current,
+            assets: {
+                ...current.assets,
+                refs: {
+                    ...current.assets.refs,
+                    [assetId]: newRef
+                }
+            }
+        };
+
+        try {
+            buffer.update<CharacterRecord>({
+                tableName: 'characters',
+                record: {
+                    ...record,
+                    assetEntries,
+                    data: updated as unknown as Record<string, unknown>
+                },
+                patch: { assets: { refs: { [assetId]: newRef } } }
+            });
+        } catch (error) {
+            if (asset instanceof File) {
+                await AssetService.delete({ ...owner, hash: fields.hash }).catch(() => undefined);
+            }
+            throw error;
+        }
+
+        return { ...updated, id: record.id, scopeType: record.scopeType, scopeId: record.scopeId };
+    }
+
+    static async deleteAsset(id: string, assetId: string): Promise<Character> {
+        const record = await buffer.get<CharacterRecord>('characters', id);
+        if (!record || record.isDeleted || !canAccessScope(record)) {
+            throw new AppError('NOT_FOUND', 'Character not found');
+        }
+
+        const current = parseFields(record);
+        const refToDelete = current.assets.refs[assetId];
+        if (!refToDelete) {
+            return {
+                ...current,
+                id: record.id,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
+            };
+        }
+
+        const nextRefs = { ...current.assets.refs };
+        delete nextRefs[assetId];
+
+        const updated: CharacterFields = {
+            ...current,
+            assets: {
+                ...current.assets,
+                refs: nextRefs
+            }
+        };
+
+        const nextFields = collectAssetFields(updated);
+        const hashStillExists = nextFields.some((f) => f.hash === refToDelete.hash);
+
+        const assetEntries = { ...record.assetEntries };
+        if (!hashStillExists) {
+            delete assetEntries[refToDelete.hash];
+        }
+
+        buffer.update<CharacterRecord>({
+            tableName: 'characters',
+            record: {
+                ...record,
+                assetEntries,
+                data: updated as unknown as Record<string, unknown>
+            },
+            patch: { assets: { refs: { [assetId]: undefined } } }
+        });
+
+        if (!hashStillExists) {
+            await AssetService.delete({ ...assetOwner(record), hash: refToDelete.hash }).catch(
+                () => undefined
+            );
+        }
+
+        return { ...updated, id: record.id, scopeType: record.scopeType, scopeId: record.scopeId };
+    }
+
+    static async updateAvatar(id: string, file: File | AssetFields): Promise<Character> {
+        const record = await buffer.get<CharacterRecord>('characters', id);
+        if (!record || record.isDeleted || !canAccessScope(record)) {
+            throw new AppError('NOT_FOUND', `Character not found: ${id}`);
+        }
+
+        const current = parseFields(record);
+        const owner = assetOwner(record);
+
+        let written: AssetFields;
+        let status: AssetStatus;
+
+        if (file instanceof File) {
+            written = await AssetService.write(file, owner);
+            status = 'local';
+        } else {
+            written = file;
+            status = 'remote';
+        }
+
+        const assetEntries = { ...record.assetEntries };
+        if (!(written.hash in assetEntries)) {
+            assetEntries[written.hash] = status;
+        }
+
+        const updated: CharacterFields = {
+            ...current,
+            avatar: written
+        };
+
+        try {
+            buffer.update<CharacterRecord>({
+                tableName: 'characters',
+                record: {
+                    ...record,
+                    assetEntries,
+                    data: updated as unknown as Record<string, unknown>
+                },
+                patch: { avatar: updated.avatar }
+            });
+        } catch (error) {
+            if (file instanceof File) {
+                await AssetService.delete({ ...owner, hash: written.hash }).catch(() => undefined);
+            }
+            throw error;
+        }
+
+        return { ...updated, id: record.id, scopeType: record.scopeType, scopeId: record.scopeId };
+    }
+
+    static async removeAvatar(id: string): Promise<Character> {
+        const record = await buffer.get<CharacterRecord>('characters', id);
+        if (!record || record.isDeleted || !canAccessScope(record)) {
+            throw new AppError('NOT_FOUND', `Character not found: ${id}`);
+        }
+
+        const current = parseFields(record);
+        const oldAvatar = current.avatar;
+        if (!oldAvatar) {
+            return {
+                ...current,
+                id: record.id,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
+            };
+        }
+
+        const updated: CharacterFields = {
+            ...current,
+            avatar: undefined
+        };
+
+        const nextFields = collectAssetFields(updated);
+        const hashStillExists = nextFields.some((f) => f.hash === oldAvatar.hash);
+
+        const assetEntries = { ...record.assetEntries };
+        if (!hashStillExists) {
+            delete assetEntries[oldAvatar.hash];
+        }
+
+        buffer.update<CharacterRecord>({
+            tableName: 'characters',
+            record: {
+                ...record,
+                assetEntries,
+                data: updated as unknown as Record<string, unknown>
+            },
+            patch: { avatar: updated.avatar }
+        });
+
+        return { ...updated, id: record.id, scopeType: record.scopeType, scopeId: record.scopeId };
     }
 
     static async delete(id: string): Promise<void> {
@@ -167,11 +390,6 @@ export class CharacterService {
         if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', `Character not found: ${id}`);
         }
-
-        const fields = parseFields(record);
-        const assetIds: string[] = [];
-        if (fields.avatarAssetId) assetIds.push(fields.avatarAssetId);
-        assetIds.push(...Object.keys(fields.assets.refs));
 
         try {
             await Promise.all([
@@ -201,7 +419,7 @@ export class CharacterService {
                 }
             );
 
-            await Promise.allSettled(assetIds.map((assetId) => AssetService.delete(assetId)));
+            await AssetService.deleteOwnerAssets(assetOwner(record));
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete character', error);

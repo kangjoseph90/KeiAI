@@ -104,7 +104,8 @@ describe('Room Store', () => {
         chatNote: '',
         messageCount: 0,
         lorebooks: { refs: {}, folders: {} },
-        personas: { refs: {}, folders: {} }
+        personas: { refs: {}, folders: {} },
+        inlays: { refs: {}, folders: {} }
     };
     const mockCharacter: Character = {
         id: 'char-1',

@@ -1,8 +1,14 @@
 import { get } from 'svelte/store';
 import { PersonaService, type PersonaFields, type Persona } from '$lib/services/content/persona';
-import { importPersonaFromKei, type KeiPersonaPackageV1 } from '$lib/porters/persona';
+import {
+    importPersonaPackage as importPersonaPackagePorter,
+    type KeiPersonaPackageV1
+} from '$lib/porters/persona';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
+import type { FolderDef } from '$lib/types/refs';
+import type { AssetFields } from '$lib/types/asset';
+import { generateId } from '$lib/utils/id';
 import {
     activePersona,
     activePersonaId,
@@ -12,7 +18,6 @@ import {
     personas
 } from '../state';
 import { getAppSettings, updateSettings } from './settings';
-import { AssetService } from '$lib/services/asset';
 import { AppError } from '$lib/types/errors';
 import type { AppSettings } from '$lib/services';
 
@@ -102,7 +107,7 @@ export async function importPersonaPackage(
     } = {}
 ): Promise<Persona> {
     const scopeType = get(isMultiRoom) ? 'room' : 'user';
-    const personaId = await importPersonaFromKei(pkg, {
+    const personaId = await importPersonaPackagePorter(pkg, {
         scopeType,
         allowLightAssets: options.allowLightAssets
     });
@@ -188,27 +193,132 @@ export async function deletePersona(personaId: string): Promise<void> {
 }
 
 export async function updatePersonaAvatar(personaId: string, file: File): Promise<void> {
-    const persona = await getPersona(personaId);
-    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
-    const oldAssetId = persona.avatarAssetId;
-
-    const newAssetId = await AssetService.write(file, 'resource', {
-        scopeType: persona.scopeType
-    });
-    await updatePersona(personaId, { avatarAssetId: newAssetId });
-
-    if (oldAssetId) {
-        await AssetService.delete(oldAssetId).catch(() => {});
+    const updated = await PersonaService.updateAvatar(personaId, file);
+    if (updated.scopeType === 'user') {
+        personas.set(personaId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomPersonas.set(personaId, updated);
     }
 }
 
 export async function removePersonaAvatar(personaId: string): Promise<void> {
+    const updated = await PersonaService.removeAvatar(personaId);
+    if (updated.scopeType === 'user') {
+        personas.set(personaId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomPersonas.set(personaId, updated);
+    }
+}
+
+// ─── Persona-owned Asset CRUD ──────────────────────────────────────
+
+export async function createPersonaAsset(
+    personaId: string,
+    asset: File | AssetFields
+): Promise<void> {
     const persona = await getPersona(personaId);
     if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
-    const oldAssetId = persona.avatarAssetId;
 
-    if (!oldAssetId) return;
+    const sortOrder = generateSortOrder(persona.assets.refs, persona.assets.folders);
+    const updated = await PersonaService.createAsset(personaId, asset, sortOrder);
 
-    await updatePersona(personaId, { avatarAssetId: undefined });
-    await AssetService.delete(oldAssetId).catch(() => {});
+    if (updated.scopeType === 'user') {
+        personas.set(personaId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomPersonas.set(personaId, updated);
+    }
+}
+
+export async function deletePersonaAsset(personaId: string, assetId: string): Promise<void> {
+    const updated = await PersonaService.deleteAsset(personaId, assetId);
+
+    if (updated.scopeType === 'user') {
+        personas.set(personaId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomPersonas.set(personaId, updated);
+    }
+}
+
+// ─── Persona-owned Folder & Item Management ─────────────────────────
+
+export type PersonaFolderType = 'assets';
+
+export async function createPersonaFolder(
+    personaId: string,
+    folderType: PersonaFolderType,
+    name: string,
+    parentId?: string,
+    sortOrder?: string
+): Promise<FolderDef> {
+    const persona = await getPersona(personaId);
+    if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
+
+    const newFolder: FolderDef = {
+        id: generateId(),
+        name,
+        sortOrder:
+            sortOrder ?? generateSortOrder(persona[folderType].refs, persona[folderType].folders),
+        parentId
+    };
+
+    await updatePersona(personaId, {
+        [folderType]: { folders: { [newFolder.id]: newFolder } }
+    });
+
+    return newFolder;
+}
+
+export async function updatePersonaFolder(
+    personaId: string,
+    folderType: PersonaFolderType,
+    folderId: string,
+    changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
+): Promise<void> {
+    const persona = await getPersona(personaId);
+    if (!persona) return;
+
+    const existing = persona[folderType].folders[folderId];
+    if (!existing) return;
+
+    const updated: FolderDef = { ...existing, ...changes, id: existing.id };
+
+    await updatePersona(personaId, {
+        [folderType]: { folders: { [folderId]: updated } }
+    });
+}
+
+export async function deletePersonaFolder(
+    personaId: string,
+    folderType: PersonaFolderType,
+    folderId: string
+): Promise<void> {
+    await updatePersona(personaId, {
+        [folderType]: { folders: { [folderId]: undefined } }
+    });
+}
+
+export async function movePersonaItem(
+    personaId: string,
+    folderType: PersonaFolderType,
+    itemId: string,
+    newFolderId?: string,
+    newSortOrder?: string
+): Promise<void> {
+    const persona = await getPersona(personaId);
+    if (!persona) return;
+
+    const existing = persona[folderType].refs[itemId];
+    if (!existing) return;
+
+    await updatePersona(personaId, {
+        [folderType]: {
+            refs: {
+                [itemId]: {
+                    ...existing,
+                    folderId: newFolderId,
+                    sortOrder: newSortOrder ?? existing.sortOrder
+                }
+            }
+        }
+    });
 }

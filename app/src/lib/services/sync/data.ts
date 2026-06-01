@@ -24,6 +24,8 @@ import {
 import { appKV } from '$lib/adapters/kv';
 import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
 import { createLogger } from '$lib/adapters/logger';
+import { clock } from '$lib/utils/clock';
+import { AssetService } from '$lib/services/asset';
 import {
     normalizeTimestamp,
     PAGE_SIZE,
@@ -36,6 +38,7 @@ import {
     type RealtimeEvent,
     isReadyToSync
 } from './utils';
+import type { AssetEntries } from '$lib/types/asset';
 
 type RemoteCollection = 'records' | 'multi_room_records';
 
@@ -47,6 +50,12 @@ interface LocalChange {
 interface DecodedRemoteRecord {
     table: TableName;
     record: DataRecord;
+}
+
+interface AssetReconciliation {
+    table: TableName;
+    before: DataRecord | undefined;
+    after: DataRecord;
 }
 
 const logger = createLogger('sync:data');
@@ -190,14 +199,26 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                         }))
                     );
 
+                    const assetReconciliations: Array<{
+                        table: TableName;
+                        before: DataRecord | undefined;
+                        after: DataRecord;
+                    }> = [];
+
                     for (const { remote, local } of pairedRecords) {
                         const remoteAt = remote.record.updatedAt ?? 0;
                         const localAt = local?.updatedAt ?? 0;
+                        clock.observe(remoteAt);
 
                         if (!local || remoteAt > localAt) {
                             const records = grouped.get(remote.table) ?? [];
                             records.push(remote.record);
                             grouped.set(remote.table, records);
+                            assetReconciliations.push({
+                                table: remote.table,
+                                before: local,
+                                after: remote.record
+                            });
                         } else if (remoteAt < localAt) {
                             offlineWrites.set(this.changeKey(remote.table, local.id), {
                                 table: remote.table,
@@ -210,6 +231,11 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                     for (const [table, records] of grouped) {
                         await localDB.putRecords(table, records, { origin: 'sync' });
                     }
+                    await Promise.all(
+                        assetReconciliations.map(({ table, before, after }) =>
+                            this.reconcileAssetRegistry(table, before, after)
+                        )
+                    );
                 }
 
                 if (result.page >= result.totalPages) break;
@@ -351,17 +377,42 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 
             const remote = await this.pbToLocalRecord(e.record, syncScope);
             const remoteAt = remote.record.updatedAt ?? 0;
+            clock.observe(remoteAt);
 
-            await localDB.transaction([remote.table], 'rw', async () => {
-                const local = await localDB.getRecord<DataRecord>(remote.table, remote.record.id);
-                const localAt = local?.updatedAt ?? 0;
+            const assetReconciliation = await localDB.transaction(
+                [remote.table],
+                'rw',
+                async (): Promise<AssetReconciliation | null> => {
+                    const local = await localDB.getRecord<DataRecord>(
+                        remote.table,
+                        remote.record.id
+                    );
+                    const localAt = local?.updatedAt ?? 0;
 
-                if (!local || remoteAt > localAt) {
-                    await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
-                } else if (remoteAt < localAt) {
-                    void this.pushChangesForActiveScopes([{ table: remote.table, record: local }]);
+                    if (!local || remoteAt > localAt) {
+                        await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
+                        return {
+                            table: remote.table,
+                            before: local,
+                            after: remote.record
+                        };
+                    } else if (remoteAt < localAt) {
+                        void this.pushChangesForActiveScopes([
+                            { table: remote.table, record: local }
+                        ]);
+                    }
+
+                    return null;
                 }
-            });
+            );
+
+            if (assetReconciliation) {
+                await this.reconcileAssetRegistry(
+                    assetReconciliation.table,
+                    assetReconciliation.before,
+                    assetReconciliation.after
+                );
+            }
         } catch (err) {
             logger.error(`Realtime event error for ${collection}`, err);
         }
@@ -379,6 +430,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             createdAt,
             updatedAt,
             isDeleted,
+            assetEntries,
             ...rest
         } = record;
         const { ciphertext, iv } = await encrypt(syncScope.key, JSON.stringify(rest));
@@ -390,6 +442,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             createdAt,
             updatedAt,
             isDeleted,
+            assetEntries: assetEntries ? JSON.stringify(assetEntries) : '',
             encryptedData: toBase64(ciphertext),
             encryptedDataIV: toBase64(iv)
         };
@@ -404,6 +457,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         const encIV = fromBase64(pbRecord.encryptedDataIV as string);
         const json = await decrypt(syncScope.key, { ciphertext: encData, iv: encIV });
         const payload = JSON.parse(json) as Record<string, unknown>;
+        const isDeleted = Boolean(pbRecord.isDeleted);
 
         return {
             table,
@@ -414,9 +468,27 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                 scopeId: syncScope.scope.scopeId,
                 createdAt: normalizeTimestamp(pbRecord.createdAt, pbRecord.created),
                 updatedAt: normalizeTimestamp(pbRecord.updatedAt, pbRecord.updated),
-                isDeleted: Boolean(pbRecord.isDeleted)
+                isDeleted,
+                assetEntries: isDeleted ? undefined : this.parseAssetEntries(pbRecord.assetEntries)
             } as unknown as DataRecord
         };
+    }
+
+    private parseAssetEntries(value: unknown): AssetEntries | undefined {
+        if (typeof value !== 'string' || value.length === 0) return undefined;
+
+        try {
+            const parsed = JSON.parse(value) as Record<string, unknown>;
+            const entries: AssetEntries = {};
+            for (const [hash, status] of Object.entries(parsed)) {
+                if (status === 'local' || status === 'remote') {
+                    entries[hash] = status;
+                }
+            }
+            return Object.keys(entries).length > 0 ? entries : undefined;
+        } catch {
+            return undefined;
+        }
     }
 
     private toTableName(kind: unknown): TableName {
@@ -424,6 +496,53 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             return kind as TableName;
         }
         throw new Error(`Unknown synced record kind: ${String(kind)}`);
+    }
+
+    private async reconcileAssetRegistry(
+        table: TableName,
+        before: DataRecord | undefined,
+        after: DataRecord
+    ): Promise<void> {
+        const beforeEntries = before?.assetEntries ?? {};
+        const afterEntries = after.assetEntries ?? {};
+
+        const removed = Object.keys(beforeEntries).filter((hash) => !(hash in afterEntries));
+        const remote = Object.entries(afterEntries)
+            .filter(([hash, status]) => status === 'remote' && beforeEntries[hash] !== 'remote')
+            .map(([hash]) => hash);
+        const local = Object.entries(afterEntries)
+            .filter(([hash, status]) => status === 'local' && beforeEntries[hash] !== 'local')
+            .map(([hash]) => hash);
+
+        await Promise.all([
+            ...removed.map((hash) =>
+                AssetService.delete({
+                    scopeType: after.scopeType,
+                    scopeId: after.scopeId,
+                    ownerTable: table,
+                    ownerId: after.id,
+                    hash
+                }).catch(() => undefined)
+            ),
+            ...local.map((hash) =>
+                AssetService.markLocal({
+                    scopeType: after.scopeType,
+                    scopeId: after.scopeId,
+                    ownerTable: table,
+                    ownerId: after.id,
+                    hash
+                }).catch(() => undefined)
+            ),
+            ...remote.map((hash) =>
+                AssetService.markRemote({
+                    scopeType: after.scopeType,
+                    scopeId: after.scopeId,
+                    ownerTable: table,
+                    ownerId: after.id,
+                    hash
+                }).catch(() => undefined)
+            )
+        ]);
     }
 
     private changeKey(table: TableName, id: string): string {

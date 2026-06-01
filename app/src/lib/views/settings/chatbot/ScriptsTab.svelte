@@ -170,7 +170,8 @@
         entities={currentScripts}
         config={preset.scripts}
         layout="list"
-        onCreateFolder={(name, parentId) => createPresetFolder(preset.id, name, parentId)}
+        onCreateFolder={(name, parentId, sortOrder) =>
+            createPresetFolder(preset.id, name, parentId, sortOrder)}
         onUpdateFolder={(id, changes) => updatePresetFolder(preset.id, id, changes)}
         onDeleteFolder={(id) => deletePresetFolder(preset.id, id)}
         onMoveItem={(itemId, newFolderId, newSortOrder) =>

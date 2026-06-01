@@ -1,15 +1,16 @@
-import type { DataScopeType } from '$lib/adapters/db';
 import { AssetService } from '$lib/services/asset';
-import type { EntityListConfig, FolderDef, OrderedRef } from '$lib/types/refs';
+import type { AssetFields } from '$lib/types/asset';
+import type { AssetOwner, AssetLocator } from '$lib/adapters/asset';
+import type { AssetRef, EntityListConfig, FolderDef, OrderedRef } from '$lib/types/refs';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { generateKeyBetween } from 'fractional-indexing';
-import { Semaphore } from '$lib/utils/semaphore';
 import { classifyAsset, type KeiAssetPayload } from './types';
 
-const IMPORT_CONCURRENCY = 4;
-
 export type KeiPackageExportMode = 'light' | 'baked';
+export type ImportedAssetPayload =
+    | { kind: 'baked'; data: Uint8Array; fallbackName: string }
+    | { kind: 'light'; fields: AssetFields };
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -81,7 +82,7 @@ export function exportEntityList<R extends OrderedRef>(
         refs[nextId] = {
             ...ref,
             id: nextId,
-            ...(ref.folderId ? { folderId: folderMap[ref.folderId] } : {})
+            folderId: ref.folderId ? folderMap[ref.folderId] : undefined
         };
     }
 
@@ -91,19 +92,61 @@ export function exportEntityList<R extends OrderedRef>(
         folders[nextId] = {
             ...folder,
             id: nextId,
-            ...(folder.parentId ? { parentId: folderMap[folder.parentId] } : {})
+            parentId: folder.parentId ? folderMap[folder.parentId] : undefined
         };
     }
 
     return { refs, folders };
 }
 
-function remapFolders(folders: Record<string, FolderDef>): Record<string, string> {
+export function remapFolders(folders: Record<string, FolderDef>): Record<string, string> {
     const map: Record<string, string> = {};
     for (const id of Object.keys(folders)) {
         map[id] = generateId();
     }
     return map;
+}
+
+/**
+ * Remap imported asset folder IDs for a freshly created entity.
+ * Generates new IDs for every folder and patches refs' folderId fields.
+ * Returns null when there are no folders to remap.
+ */
+export function remapImportedAssetFolders(params: {
+    currentRefs: Record<string, AssetRef>;
+    layoutIdMap: Record<string, string>;
+    pkgRefs: Record<string, AssetRef>;
+    pkgFolders: Record<string, FolderDef>;
+}): { refs: Record<string, AssetRef>; folders: Record<string, FolderDef> } | null {
+    if (Object.keys(params.pkgFolders).length === 0) return null;
+
+    const folderMap = remapFolders(params.pkgFolders);
+
+    const fixedRefs: Record<string, AssetRef> = {};
+    for (const [layoutId, ref] of Object.entries(params.currentRefs)) {
+        const portableKey = Object.entries(params.layoutIdMap).find(
+            ([, newId]) => newId === layoutId
+        )?.[0];
+        const pkgRef = portableKey ? params.pkgRefs[portableKey] : undefined;
+
+        fixedRefs[layoutId] = {
+            ...ref,
+            folderId: pkgRef?.folderId ? folderMap[pkgRef.folderId] : undefined
+        };
+    }
+
+    const fixedFolders: Record<string, FolderDef> = {};
+    for (const [id, folder] of Object.entries(params.pkgFolders)) {
+        const nextId = folderMap[id];
+        if (!nextId) continue;
+        fixedFolders[nextId] = {
+            ...folder,
+            id: nextId,
+            parentId: folder.parentId ? folderMap[folder.parentId] : undefined
+        };
+    }
+
+    return { refs: fixedRefs, folders: fixedFolders };
 }
 
 export function remapEntityList<R extends OrderedRef>(
@@ -122,7 +165,7 @@ export function remapEntityList<R extends OrderedRef>(
         refs[nextId] = {
             ...ref,
             id: nextId,
-            ...(ref.folderId ? { folderId: folderMap[ref.folderId] } : {})
+            folderId: ref.folderId ? folderMap[ref.folderId] : undefined
         };
     }
 
@@ -132,114 +175,95 @@ export function remapEntityList<R extends OrderedRef>(
         folders[nextId] = {
             ...folder,
             id: nextId,
-            ...(folder.parentId ? { parentId: folderMap[folder.parentId] } : {})
+            parentId: folder.parentId ? folderMap[folder.parentId] : undefined
         };
     }
 
     return { refs, folders };
 }
 
-export async function exportAsset(
-    id: string,
-    portableId: string,
+/**
+ * Export an asset's blob data as a KeiAssetPayload.
+ * Uses the asset's hash + owner context to locate the blob in local storage.
+ */
+export async function exportAssetPayload(
+    fields: AssetFields,
+    owner: AssetOwner,
     mode: KeiPackageExportMode
 ): Promise<KeiAssetPayload> {
-    const fields = await AssetService.getFields(id);
+    const locator: AssetLocator = { ...owner, hash: fields.hash };
+
     const payload: KeiAssetPayload = {
-        id: portableId,
         hash: fields.hash,
         encKey: fields.encKey
     };
 
-    if (mode === 'light' && fields.status === 'remote') {
-        return payload;
-    }
+    if (mode === 'light') return payload;
 
-    const data = await AssetService.readBytes(id);
+    const data = await AssetService.readBytes(locator);
     if (!data) {
-        throw new AppError('NOT_FOUND', `Asset bytes not found: ${id}`);
+        throw new AppError('NOT_FOUND', `Asset bytes not found: ${fields.hash}`);
     }
 
     return { ...payload, data };
 }
 
-export async function importAssets(
-    assets: KeiAssetPayload[],
-    scopeType: DataScopeType,
-    allowLightAssets: boolean
-): Promise<Record<string, string>> {
-    const map: Record<string, string> = {};
-
-    for (const asset of assets) {
-        const kind = classifyAsset(asset);
-        if (kind === 'broken') {
-            throw new AppError('INVALID_INPUT', `Broken asset payload: ${asset.id}`);
-        }
-
-        if (kind === 'light' && !allowLightAssets) {
-            throw new AppError('INVALID_INPUT', `Light asset import is disabled: ${asset.id}`);
-        }
+export function importAssetPayload(
+    key: string,
+    asset: KeiAssetPayload,
+    allowLight: boolean
+): ImportedAssetPayload {
+    const kind = classifyAsset(asset);
+    if (kind === 'broken') {
+        throw new AppError('INVALID_INPUT', `Broken asset payload: ${key}`);
+    }
+    if (kind === 'light' && !allowLight) {
+        throw new AppError('INVALID_INPUT', `Light asset import is disabled: ${key}`);
     }
 
-    const createdIds: string[] = [];
-    const semaphore = new Semaphore(IMPORT_CONCURRENCY);
-    try {
-        const results = await Promise.allSettled(
-            assets.map((asset) =>
-                semaphore.runExclusive(async () => {
-                    const maxAttempts = 3;
-                    let lastError: unknown;
-                    const kind = classifyAsset(asset);
-                    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-                        try {
-                            let mappedId: string;
-                            if (kind === 'light') {
-                                mappedId = await AssetService.write(null, 'resource', {
-                                    scopeType,
-                                    hash: asset.hash,
-                                    encKey: asset.encKey
-                                });
-                            } else {
-                                const bytes = asset.data as Uint8Array;
-                                const file = new File([bytes.slice()], `${asset.id}.bin`);
-                                mappedId = await AssetService.write(file, 'resource', {
-                                    scopeType
-                                });
-                            }
-                            createdIds.push(mappedId);
-                            map[asset.id] = mappedId;
-                            return;
-                        } catch (error) {
-                            lastError = error;
-                            if (attempt < maxAttempts) {
-                                await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
-                            }
-                        }
-                    }
-                    throw (
-                        lastError ??
-                        new AppError('DB_WRITE_FAILED', `Failed to import asset: ${asset.id}`)
-                    );
-                })
-            )
-        );
-
-        const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
-        if (failures.length > 0) {
-            throw failures[0].reason;
-        }
-
-        return map;
-    } catch (error) {
-        await Promise.allSettled(createdIds.map((id) => AssetService.delete(id)));
-        throw error;
+    if (kind === 'baked') {
+        return {
+            kind: 'baked',
+            data: asset.data as Uint8Array,
+            fallbackName: `${key}.bin`
+        };
     }
+
+    return {
+        kind: 'light',
+        fields: {
+            name: `${key}.bin`,
+            hash: asset.hash as string,
+            encKey: asset.encKey as string,
+            mimeType: 'application/octet-stream'
+        }
+    };
 }
 
-export function requireMapped(map: Record<string, string>, id: string): string {
-    const mapped = map[id];
-    if (!mapped) {
-        throw new AppError('INVALID_INPUT', `Missing package payload: ${id}`);
+export function importAssetPayloads(
+    assets: Record<string, KeiAssetPayload>,
+    allowLight: boolean
+): Record<string, ImportedAssetPayload> {
+    const imported: Record<string, ImportedAssetPayload> = {};
+    for (const [key, asset] of Object.entries(assets)) {
+        imported[key] = importAssetPayload(key, asset, allowLight);
     }
-    return mapped;
+    return imported;
+}
+
+export function materializeImportedAsset(
+    imported: ImportedAssetPayload,
+    metadata: Pick<AssetFields, 'name' | 'mimeType'>
+): File | AssetFields {
+    if (imported.kind === 'baked') {
+        return new File([imported.data.slice()], metadata.name || imported.fallbackName, {
+            type: metadata.mimeType || 'application/octet-stream'
+        });
+    }
+
+    return {
+        ...imported.fields,
+        name: metadata.name || imported.fields.name,
+        mimeType: metadata.mimeType || imported.fields.mimeType
+    };
 }

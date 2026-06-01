@@ -106,4 +106,33 @@ describe('MonotonicClock', () => {
         const t2 = clock.now();
         expect(t2).toBe(t1 + 1); // Should still be 5001
     });
+
+    it('should make the next local timestamp greater than an observed remote timestamp', async () => {
+        vi.setSystemTime(1000);
+        await clock.init(storage);
+
+        clock.observe(2000);
+
+        expect(clock.now()).toBe(2001);
+    });
+
+    it('should ignore invalid observed timestamps', async () => {
+        vi.setSystemTime(1000);
+        await clock.init(storage);
+
+        clock.observe(Number.NaN);
+        clock.observe(0);
+        clock.observe(-1);
+
+        expect(clock.now()).toBe(1000);
+    });
+
+    it('should ignore observed timestamps too far in the future', async () => {
+        vi.setSystemTime(1000);
+        await clock.init(storage);
+
+        clock.observe(1000 + 25 * 60 * 60 * 1000);
+
+        expect(clock.now()).toBe(1000);
+    });
 });

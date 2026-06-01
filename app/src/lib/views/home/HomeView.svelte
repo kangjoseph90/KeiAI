@@ -12,6 +12,7 @@
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
+    import RoomAvatar from '$lib/components/RoomAvatar.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import {
@@ -44,6 +45,7 @@
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { importCharacterFile } from '$lib/managers';
     import { importPersonaFile } from '$lib/managers/persona';
+    import { isKeiServer } from '$lib/adapters/pb';
     import type { RouteState } from '$lib/router';
     import { MultiRoomService, type PublicMultiRoom } from '$lib/services';
     import { formatPublicKeyFingerprint } from '$lib/crypto';
@@ -253,7 +255,7 @@
         importingCharacter = true;
         try {
             const character = await importCharacterFile(file, {
-                allowLightAssets: false,
+                allowLightAssets: isKeiServer(),
                 select: true
             });
             onNavigate({ view: 'characterStudio', charId: character.id });
@@ -290,7 +292,10 @@
 
         importingPersona = true;
         try {
-            const persona = await importPersonaFile(file, { select: true });
+            const persona = await importPersonaFile(file, {
+                allowLightAssets: isKeiServer(),
+                select: true
+            });
             onNavigate({ view: 'personaStudio', personaId: persona.id });
         } finally {
             importingPersona = false;
@@ -512,8 +517,8 @@
                         config={$appSettings.rooms}
                         layout="grid"
                         childContainerClass="relative ml-6 p-3 my-1"
-                        onCreateFolder={(name, parentId) =>
-                            createGlobalFolder('rooms', name, parentId)}
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createGlobalFolder('rooms', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) => updateGlobalFolder('rooms', id, changes)}
                         onDeleteFolder={(id) => deleteGlobalFolder('rooms', id)}
                         onMoveItem={(itemId, newFolderId, newSortOrder) =>
@@ -547,7 +552,7 @@
                             {@const characterCount = Object.keys(room.characters.refs).length}
                             {@const chatCount = Object.keys(room.chats.refs).length}
                             <div
-                                class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+                                class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 group"
                             >
                                 <div class="flex w-full items-center gap-3">
                                     <button
@@ -555,11 +560,7 @@
                                         onclick={() =>
                                             onNavigate({ view: 'room', roomId: room.id })}
                                     >
-                                        <div
-                                            class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold text-foreground"
-                                        >
-                                            {initial(room.name)}
-                                        </div>
+                                        <RoomAvatar {room} class="size-12 shrink-0" />
                                         <div class="min-w-0">
                                             <h2
                                                 class="truncate text-sm font-semibold text-foreground"
@@ -716,8 +717,8 @@
                         config={$appSettings.multiRooms}
                         layout="grid"
                         childContainerClass="relative ml-6 p-3 my-1"
-                        onCreateFolder={(name, parentId) =>
-                            createGlobalFolder('multiRooms', name, parentId)}
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createGlobalFolder('multiRooms', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
                             updateGlobalFolder('multiRooms', id, changes)}
                         onDeleteFolder={(id) => deleteGlobalFolder('multiRooms', id)}
@@ -810,8 +811,8 @@
                         config={$appSettings.characters}
                         layout="grid"
                         childContainerClass="relative ml-6 p-3 my-1"
-                        onCreateFolder={(name, parentId) =>
-                            createGlobalFolder('characters', name, parentId)}
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createGlobalFolder('characters', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
                             updateGlobalFolder('characters', id, changes)}
                         onDeleteFolder={(id) => deleteGlobalFolder('characters', id)}
@@ -858,9 +859,16 @@
                                         <div
                                             class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
                                         >
-                                            {#if character.avatarAssetId}
+                                            {#if character.avatar}
                                                 <AssetView
-                                                    id={character.avatarAssetId}
+                                                    asset={{
+                                                        scopeType: character.scopeType,
+                                                        scopeId: character.scopeId,
+                                                        ownerTable: 'characters',
+                                                        ownerId: character.id,
+                                                        hash: character.avatar.hash,
+                                                        encKey: character.avatar.encKey
+                                                    }}
                                                     alt={character.name}
                                                     class="size-full object-cover"
                                                 />
@@ -910,8 +918,8 @@
                         config={$appSettings.personas}
                         layout="grid"
                         childContainerClass="relative ml-6 p-3 my-1"
-                        onCreateFolder={(name, parentId) =>
-                            createGlobalFolder('personas', name, parentId)}
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createGlobalFolder('personas', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
                             updateGlobalFolder('personas', id, changes)}
                         onDeleteFolder={(id) => deleteGlobalFolder('personas', id)}
@@ -958,9 +966,16 @@
                                         <div
                                             class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-sm font-semibold"
                                         >
-                                            {#if persona.avatarAssetId}
+                                            {#if persona.avatar}
                                                 <AssetView
-                                                    id={persona.avatarAssetId}
+                                                    asset={{
+                                                        scopeType: persona.scopeType,
+                                                        scopeId: persona.scopeId,
+                                                        ownerTable: 'personas',
+                                                        ownerId: persona.id,
+                                                        hash: persona.avatar.hash,
+                                                        encKey: persona.avatar.encKey
+                                                    }}
                                                     alt={persona.name}
                                                     class="size-full object-cover"
                                                 />

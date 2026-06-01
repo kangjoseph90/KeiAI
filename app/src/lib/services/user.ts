@@ -11,10 +11,8 @@ import { appUser, type UserRecord } from '$lib/adapters/user';
 export type { UserRecord };
 import { clearSession, getActiveSession, setUserSession } from './session';
 export type { MultiRoomSession, Session, UserSession } from './session';
-import { appAsset } from '$lib/adapters/asset';
 import { localDB, TABLES } from '$lib/adapters/db';
 import { appMulti } from '$lib/adapters/multi';
-import { appStorage } from '$lib/adapters/storage';
 import { appKV } from '$lib/adapters/kv';
 import { generateMasterKey, generateIdentityKeyPair } from '$lib/crypto';
 import { generateId } from '$lib/utils/id';
@@ -25,6 +23,7 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { pb } from '$lib/adapters/pb';
 import { PB_URL } from '$lib/config';
 import { buffer } from './content/record_buffer';
+import { AssetService } from './asset';
 
 export interface UserFields {
     name: string;
@@ -242,21 +241,8 @@ export class UserService {
     static async deleteUser(userId: string): Promise<void> {
         await appUser.deleteUser(userId, { origin: 'sync' });
 
-        // Purge all asset artifacts for this user
         const userScope = { scopeType: 'user' as const, scopeId: userId };
-        const [assets, registry] = await Promise.all([
-            appAsset.getAllAssets(userScope),
-            appAsset.getAllRegistry(userScope)
-        ]);
-        const ids = new Set<string>([...assets.map((r) => r.id), ...registry.map((r) => r.id)]);
-        for (const id of ids) {
-            await appStorage.delete(`assets/${id}`).catch(() => undefined);
-            await appAsset.deleteRegistry(id, { origin: 'sync' }).catch(() => undefined);
-        }
-        // Hard-delete all asset metadata records
-        for (const asset of assets) {
-            await appAsset.deleteAsset(asset.id, { origin: 'sync' });
-        }
+        await AssetService.deleteScopeAssets(userScope);
 
         await Promise.all(TABLES.map((table) => buffer.flushTable(table)));
 

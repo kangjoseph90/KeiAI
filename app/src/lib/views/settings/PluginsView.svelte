@@ -257,7 +257,8 @@
             entities={$plugins}
             config={$appSettings.plugins}
             layout="list"
-            onCreateFolder={(name, parentId) => createGlobalFolder('plugins', name, parentId)}
+            onCreateFolder={(name, parentId, sortOrder) =>
+                createGlobalFolder('plugins', name, parentId, sortOrder)}
             onUpdateFolder={(id, changes) => updateGlobalFolder('plugins', id, changes)}
             onDeleteFolder={(id) => deleteGlobalFolder('plugins', id)}
             onMoveItem={(itemId, newFolderId, newSortOrder) =>

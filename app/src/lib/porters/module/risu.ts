@@ -33,7 +33,7 @@ export function risuModuleToKeiPackage(risu: FullRisuModule): KeiModulePackageV1
     const assets = (risu.assets ?? []).map((asset, index) => ({
         id: `asset_${index}`,
         name: asset[0] || `Asset ${index + 1}`,
-        extension: asset[2] || extensionFromPath(asset[1])
+        extension: asset[2] || extensionFromName(asset[1])
     }));
     const assetData = risu.assetData ?? [];
 
@@ -53,7 +53,14 @@ export function risuModuleToKeiPackage(risu: FullRisuModule): KeiModulePackageV1
                 refs: Object.fromEntries(
                     assets.map((asset, index) => [
                         asset.id,
-                        { id: asset.id, name: asset.name, sortOrder: sortOrder(index) }
+                        {
+                            id: asset.id,
+                            name: asset.name,
+                            sortOrder: sortOrder(index),
+                            hash: '',
+                            encKey: '',
+                            mimeType: ''
+                        }
                     ])
                 ),
                 folders: {}
@@ -62,10 +69,12 @@ export function risuModuleToKeiPackage(risu: FullRisuModule): KeiModulePackageV1
         lorebooks,
         scripts,
         charjs: [],
-        assets: assets.map((asset, index) => ({
-            id: asset.id,
-            ...(assetData[index] ? { data: assetData[index] } : {})
-        }))
+        assets: Object.fromEntries(
+            assets.map((asset, index) => [
+                asset.id,
+                assetData[index] ? { data: assetData[index] } : {}
+            ])
+        )
     };
 }
 
@@ -80,20 +89,16 @@ export function keiPackageToRisuModule(pkg: KeiModulePackageV1): FullRisuModule 
         id: 'keiai',
         lorebook: pkg.lorebooks.map(keiLorebookToRisuInternal),
         regex: pkg.scripts.map(keiScriptToRisu),
-        assets: pkg.assets.map((asset) => [
-            pkg.module.assets.refs[asset.id]?.name ?? asset.id,
+        assets: Object.entries(pkg.assets).map(([key, asset]) => [
+            pkg.module.assets.refs[key]?.name ?? key,
             '',
-            extensionFromName(pkg.module.assets.refs[asset.id]?.name ?? asset.id)
+            extensionFromName(pkg.module.assets.refs[key]?.name ?? key)
         ]),
-        assetData: pkg.assets.map((asset) => asset.data ?? new Uint8Array())
+        assetData: Object.values(pkg.assets).map((asset) => asset.data ?? new Uint8Array())
     };
 }
 
 function extensionFromName(value: string): string {
     const match = /\.([a-z0-9]+)$/i.exec(value);
     return match?.[1] ?? 'webp';
-}
-
-function extensionFromPath(value: string): string {
-    return extensionFromName(value);
 }

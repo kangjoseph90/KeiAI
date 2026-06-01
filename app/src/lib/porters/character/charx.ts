@@ -41,8 +41,11 @@ export function writeCharX(pkg: KeiCharacterPackageV1): Uint8Array {
         'module.risum': writeRisuModule(keiPackageToRisuModule(pkg))
     };
 
-    for (const asset of pkg.assets) {
-        if (asset.data) entries[assetPath(pkg, asset.id)] = asset.data;
+    for (const [key, asset] of Object.entries(pkg.assets)) {
+        if (asset.data) entries[assetPath(pkg, key)] = asset.data;
+    }
+    if (pkg.avatar?.data) {
+        entries[assetPath(pkg, '__avatar__')] = pkg.avatar.data;
     }
 
     return zip(entries);

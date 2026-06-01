@@ -1,8 +1,4 @@
-import {
-    AssetBinarySyncEngine,
-    DataRecordSyncEngine,
-    UserRecordSyncEngine
-} from '$lib/services/sync';
+import { AssetSyncEngine, DataRecordSyncEngine, UserRecordSyncEngine } from '$lib/services/sync';
 import type { SyncStatus } from '$lib/services/sync/base';
 import { assetSyncStatus, dataSyncStatus, userSyncStatus } from '../state';
 import { startDataStoreSync, stopDataStoreSync } from './data';
@@ -21,7 +17,7 @@ export function startSyncStatusTracking(): void {
         UserRecordSyncEngine.subscribeStatus((status) => {
             userSyncStatus.set(status);
         }),
-        AssetBinarySyncEngine.subscribeStatus((status) => {
+        AssetSyncEngine.subscribeStatus((status) => {
             assetSyncStatus.set(status);
         })
     ];

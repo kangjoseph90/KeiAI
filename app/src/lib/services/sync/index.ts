@@ -4,8 +4,7 @@
  * Directory layout:
  *   sync/data.ts     - DataRecordSyncEngine:    encrypted app data records
  *   sync/user.ts     - UserRecordSyncEngine:    user profile record
- *   sync/asset/record.ts - AssetRecordSyncEngine:   asset metadata records
- *   sync/asset/binary.ts - AssetBinarySyncEngine:   asset binary upload engine
+ *   sync/asset.ts    - AssetSyncEngine:         asset binary upload engine
  *   sync/multi.ts    - MultiRecordSyncEngine:   plaintext multi-room metadata records
  *   sync/index.ts    - SyncManager:        unified lifecycle (start/stop/reconnect)
  *
@@ -15,18 +14,17 @@
 
 export { DataRecordSyncEngine } from './data';
 export { UserRecordSyncEngine } from './user';
-export { AssetRecordSyncEngine, AssetBinarySyncEngine } from './asset';
+export { AssetSyncEngine } from './asset';
 export { MultiRecordSyncEngine } from './multi';
 export type { SyncState, SyncProgress, SyncStatus } from './base';
 export type { AssetSyncStatus } from './asset';
 
 import { DataRecordSyncEngine } from './data';
 import { UserRecordSyncEngine } from './user';
-import { AssetRecordSyncEngine, AssetBinarySyncEngine } from './asset';
+import { AssetSyncEngine } from './asset';
 import { MultiRecordSyncEngine } from './multi';
 import { appUser } from '$lib/adapters/user';
 import { appMulti } from '$lib/adapters/multi';
-import { appAsset } from '$lib/adapters/asset';
 import { localDB, SYNC_TABLES } from '$lib/adapters/db';
 
 /**
@@ -47,15 +45,13 @@ export class SyncManager {
         this.started = true;
 
         void DataRecordSyncEngine.subscribeRealtime();
-        void AssetRecordSyncEngine.subscribeRealtime();
-        void AssetBinarySyncEngine.start();
+        void AssetSyncEngine.start();
         void MultiRecordSyncEngine.subscribeRealtime();
         void UserRecordSyncEngine.subscribeRealtime();
 
         const pollTimer = setInterval(() => {
             void DataRecordSyncEngine.trigger();
-            void AssetRecordSyncEngine.trigger();
-            void AssetBinarySyncEngine.start();
+            void AssetSyncEngine.start();
             void MultiRecordSyncEngine.trigger();
         }, this.FALLBACK_POLL_INTERVAL_MS);
 
@@ -90,14 +86,10 @@ export class SyncManager {
             for (const event of events) {
                 if (SYNC_TABLES.includes(event.tableName)) {
                     DataRecordSyncEngine.handleLocalWrite(event);
+                    if (event.origin === 'local') {
+                        void AssetSyncEngine.start();
+                    }
                 }
-            }
-        });
-
-        const assetCleanup = appAsset.subscribeWriteEvents((events) => {
-            for (const event of events) {
-                AssetRecordSyncEngine.handleLocalWrite(event);
-                AssetBinarySyncEngine.handleLocalWrite(event);
             }
         });
 
@@ -107,8 +99,7 @@ export class SyncManager {
             () => document.removeEventListener('visibilitychange', visibilityListener),
             userCleanup,
             multiCleanup,
-            dbCleanup,
-            assetCleanup
+            dbCleanup
         ];
     }
 
@@ -119,15 +110,13 @@ export class SyncManager {
         this.cleanups = [];
 
         void DataRecordSyncEngine.unsubscribeRealtime();
-        void AssetRecordSyncEngine.unsubscribeRealtime();
         void MultiRecordSyncEngine.unsubscribeRealtime();
         void UserRecordSyncEngine.unsubscribeRealtime();
 
         DataRecordSyncEngine.stop();
-        AssetRecordSyncEngine.stop();
         MultiRecordSyncEngine.stop();
         UserRecordSyncEngine.stop();
-        AssetBinarySyncEngine.stop();
+        AssetSyncEngine.stop();
 
         this.started = false;
     }
@@ -138,35 +127,25 @@ export class SyncManager {
     static async syncAll(): Promise<void> {
         await Promise.all([
             DataRecordSyncEngine.trigger(),
-            AssetRecordSyncEngine.trigger(),
             MultiRecordSyncEngine.trigger(),
             UserRecordSyncEngine.trigger()
         ]);
-        void AssetBinarySyncEngine.start();
+        void AssetSyncEngine.start();
     }
 
     static async refreshRoomSync(): Promise<void> {
         if (!this.started) return;
 
-        await Promise.all([
-            DataRecordSyncEngine.unsubscribeRealtime(),
-            AssetRecordSyncEngine.unsubscribeRealtime()
-        ]);
-        await Promise.all([
-            DataRecordSyncEngine.subscribeRealtime(),
-            AssetRecordSyncEngine.subscribeRealtime()
-        ]);
-        await Promise.all([DataRecordSyncEngine.trigger(), AssetRecordSyncEngine.trigger()]);
-        void AssetBinarySyncEngine.start();
+        await DataRecordSyncEngine.unsubscribeRealtime();
+        await DataRecordSyncEngine.subscribeRealtime();
+        await DataRecordSyncEngine.trigger();
+        void AssetSyncEngine.start();
     }
 
     /** On come-back-online / tab-focus: re-subscribe if needed, then catch-up pull. */
     private static async resubscribeAndPull(): Promise<void> {
         if (!DataRecordSyncEngine.isSubscribed) {
             await DataRecordSyncEngine.subscribeRealtime();
-        }
-        if (!AssetRecordSyncEngine.isSubscribed) {
-            await AssetRecordSyncEngine.subscribeRealtime();
         }
         if (!MultiRecordSyncEngine.isSubscribed) {
             await MultiRecordSyncEngine.subscribeRealtime();
@@ -177,17 +156,15 @@ export class SyncManager {
 
         await Promise.all([
             DataRecordSyncEngine.trigger(),
-            AssetRecordSyncEngine.trigger(),
             MultiRecordSyncEngine.trigger(),
             UserRecordSyncEngine.trigger()
         ]);
-        void AssetBinarySyncEngine.start();
+        void AssetSyncEngine.start();
     }
 
     private static hasDisconnectedRecordSync(): boolean {
         return (
             !DataRecordSyncEngine.isSubscribed ||
-            !AssetRecordSyncEngine.isSubscribed ||
             !MultiRecordSyncEngine.isSubscribed ||
             !UserRecordSyncEngine.isSubscribed
         );

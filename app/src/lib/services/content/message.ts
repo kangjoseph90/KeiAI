@@ -18,6 +18,7 @@ export interface MessageSwipeFields {
     variables?: Record<string, string>;
     speakerId?: string; // personaId if role is 'user', characterId if role is 'assistant'
     speakerName?: string;
+    attachments?: string[]; // reference ids of chat.inlays
 }
 
 /**

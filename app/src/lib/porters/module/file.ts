@@ -1,7 +1,7 @@
 import { AppError } from '$lib/types/errors';
 import { unzip, zip } from '$lib/utils/zip';
 import type { KeiModulePackageV1 } from './types';
-import { isRecord } from '../utils';
+import { isRecord, type KeiPackageExportMode } from '../utils';
 import {
     keiPackageToRisuModule,
     readRisuModulePackage,
@@ -12,7 +12,9 @@ import {
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 
-export type ModuleFileExport = { kind: 'keimodule' } | { kind: 'risu'; format: 'risum' };
+export type ModuleFileExport =
+    | { kind: 'keimodule'; assetMode: KeiPackageExportMode }
+    | { kind: 'risu'; format: 'risum' };
 
 export async function readModuleFile(file: File): Promise<KeiModulePackageV1> {
     const name = file.name.toLowerCase();
@@ -46,8 +48,8 @@ function writeKeiModule(pkg: KeiModulePackageV1): Uint8Array {
     const entries: Record<string, Uint8Array> = {
         'package.json': TEXT_ENCODER.encode(JSON.stringify(packageJson(pkg), null, 2))
     };
-    for (const asset of pkg.assets) {
-        if (asset.data) entries[`assets/${asset.id}.bin`] = asset.data;
+    for (const [key, asset] of Object.entries(pkg.assets)) {
+        if (asset.data) entries[`assets/${key}.bin`] = asset.data;
     }
     return zip(entries);
 }
@@ -60,19 +62,22 @@ function readModuleJson(
     if (!isRecord(parsed)) throw new AppError('INVALID_INPUT', 'Invalid module JSON');
     if (parsed.kind === 'keiai.module' && parsed.version === 1) {
         const pkg = parsed as unknown as KeiModulePackageV1;
-        return {
-            ...pkg,
-            assets: ((parsed as { assets?: unknown[] }).assets ?? []).map((asset) => {
-                if (!isRecord(asset)) throw new AppError('INVALID_INPUT', 'Invalid module asset');
+        const rawAssets = parsed.assets as Record<string, Record<string, unknown>> | undefined;
+        const assets: Record<string, { data?: Uint8Array; hash?: string; encKey?: string }> = {};
+        if (rawAssets) {
+            for (const [key, asset] of Object.entries(rawAssets)) {
+                if (!isRecord(asset)) {
+                    throw new AppError('INVALID_INPUT', 'Invalid module asset');
+                }
                 const path = typeof asset.path === 'string' ? asset.path : undefined;
-                return {
-                    id: String(asset.id),
-                    ...(path && files[path] ? { data: files[path] } : {}),
-                    ...(typeof asset.hash === 'string' ? { hash: asset.hash } : {}),
-                    ...(typeof asset.encKey === 'string' ? { encKey: asset.encKey } : {})
+                assets[key] = {
+                    data: path ? files[path] : undefined,
+                    hash: typeof asset.hash === 'string' ? asset.hash : undefined,
+                    encKey: typeof asset.encKey === 'string' ? asset.encKey : undefined
                 };
-            })
-        };
+            }
+        }
+        return { ...pkg, assets };
     }
     if (parsed.type === 'risuModule' && isRecord(parsed.module)) {
         return risuModuleToKeiPackage(parsed.module);
@@ -83,11 +88,15 @@ function readModuleJson(
 function packageJson(pkg: KeiModulePackageV1): unknown {
     return {
         ...pkg,
-        assets: pkg.assets.map((asset) => ({
-            id: asset.id,
-            ...(asset.data ? { path: `assets/${asset.id}.bin` } : {}),
-            ...(asset.hash ? { hash: asset.hash } : {}),
-            ...(asset.encKey ? { encKey: asset.encKey } : {})
-        }))
+        assets: Object.fromEntries(
+            Object.entries(pkg.assets).map(([key, asset]) => [
+                key,
+                {
+                    path: asset.data ? `assets/${key}.bin` : undefined,
+                    hash: asset.hash,
+                    encKey: asset.encKey
+                }
+            ])
+        )
     };
 }

@@ -34,7 +34,6 @@ interface ImportedRisuCharacter {
 }
 
 interface ImportedRisuAsset {
-    id: string;
     name: string;
     data: Uint8Array;
     role: 'avatar' | 'resource';
@@ -98,8 +97,8 @@ function readRisuCharacter(
 }
 
 function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPackageV1 {
-    const avatar = risu.assets.find((asset) => asset.role === 'avatar');
-    const resources = risu.assets.filter((asset) => asset.role === 'resource');
+    const avatarAsset = risu.assets.find((asset) => asset.role === 'avatar');
+    const resources = risu.assets.filter((asset) => asset !== avatarAsset);
     const lorebooks = risu.lorebooks.map(
         (lorebook, index): KeiLorebookPayload => ({
             id: portableId('lorebook', index),
@@ -107,6 +106,12 @@ function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPac
         })
     );
     const scripts = risu.scripts;
+
+    // Build list assets as Record<layoutId, { data }>
+    const assetEntries: [string, { data: Uint8Array }][] = resources.map((item, index) => [
+        portableId('asset', index),
+        { data: item.data }
+    ]);
 
     const character: KeiCharacterPayload = {
         name: risu.name || 'Imported Character',
@@ -125,7 +130,6 @@ function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPac
         greetings: createGreetings([risu.firstMessage, ...risu.alternateGreetings]),
         defaultVariables: { ...risu.defaultVariables },
         allowLowLevel: risu.allowLowLevel,
-        ...(avatar ? { avatarAssetId: avatar.id } : {}),
         lorebooks: {
             refs: Object.fromEntries(
                 lorebooks.map((item, index) => [
@@ -147,10 +151,20 @@ function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPac
         charjs: { refs: {}, folders: {} },
         assets: {
             refs: Object.fromEntries(
-                resources.map((item, index) => [
-                    item.id,
-                    { id: item.id, name: item.name, sortOrder: sortOrder(index) }
-                ])
+                resources.map((item, index) => {
+                    const layoutId = portableId('asset', index);
+                    return [
+                        layoutId,
+                        {
+                            id: layoutId,
+                            name: item.name,
+                            sortOrder: sortOrder(index),
+                            hash: '',
+                            encKey: '',
+                            mimeType: ''
+                        }
+                    ];
+                })
             ),
             folders: {}
         }
@@ -163,7 +177,8 @@ function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPac
         lorebooks,
         scripts,
         charjs: [],
-        assets: risu.assets.map((asset) => ({ id: asset.id, data: asset.data }))
+        assets: Object.fromEntries(assetEntries),
+        ...(avatarAsset ? { avatar: { data: avatarAsset.data } } : {})
     };
 }
 
@@ -172,9 +187,9 @@ function createGreetings(contents: string[]): KeiCharacterPayload['greetings'] {
     let prev: string | null = null;
     for (const content of contents.filter(Boolean)) {
         const id = generateId();
-        const sortOrder = generateKeyBetween(prev, null);
-        greetings[id] = { id, content, sortOrder };
-        prev = sortOrder;
+        const sort = generateKeyBetween(prev, null);
+        greetings[id] = { id, content, sortOrder: sort };
+        prev = sort;
     }
     return greetings;
 }
@@ -185,16 +200,24 @@ function resolveAssets(
     defaultImage?: Uint8Array
 ): ImportedRisuAsset[] {
     const assets: ImportedRisuAsset[] = [];
-    for (const [index, asset] of (card.data.assets ?? []).entries()) {
+    for (const [, asset] of (card.data.assets ?? []).entries()) {
         const data = resolveAssetData(asset.uri, files, defaultImage);
         if (!data) continue;
         assets.push({
-            id: portableId('asset', index),
             name: asset.name || asset.type,
             data,
             role: asset.type === 'icon' ? 'avatar' : 'resource'
         });
     }
+
+    if (!assets.some((asset) => asset.role === 'avatar') && defaultImage) {
+        assets.push({
+            name: 'avatar',
+            data: defaultImage,
+            role: 'avatar'
+        });
+    }
+
     return assets;
 }
 

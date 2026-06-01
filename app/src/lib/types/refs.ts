@@ -5,6 +5,8 @@
  * These are strictly application/domain layer concepts, decoupled from DB schema.
  */
 
+import type { AssetFields } from './asset';
+
 /** Ordered reference for 1:N parent→child lists */
 export interface OrderedRef {
     id: string;
@@ -26,10 +28,7 @@ export interface FolderDef {
     parentId?: string; // Nested folders
 }
 
-/** Name-based asset reference for dynamic resolution (e.g., manifest system, AI scripts) */
-export interface AssetRef extends OrderedRef {
-    name: string; // Logical name (e.g., 'avatar', 'happy', 'background_night')
-}
+export interface AssetRef extends OrderedRef, AssetFields {}
 
 /** Grouped ref + folder config for an entity list */
 export interface EntityListConfig<R extends OrderedRef = OrderedRef> {

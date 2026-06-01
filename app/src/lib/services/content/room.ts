@@ -121,11 +121,6 @@ export class RoomService {
         }
     }
 
-    /** Update content fields only — safe entry point for store layer */
-    static async updateContent(id: string, changes: DeepPartial<RoomContent>): Promise<Room> {
-        return this.update(id, changes);
-    }
-
     static async delete(id: string): Promise<void> {
         const record = await buffer.get<RoomRecord>('rooms', id);
         if (!record || record.isDeleted || !canAccessScope(record)) {

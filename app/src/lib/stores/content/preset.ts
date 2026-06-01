@@ -12,7 +12,10 @@ import {
     type Script,
     type PresetContent
 } from '$lib/services';
-import { importPresetFromKei, type KeiPresetPackageV1 } from '$lib/porters/preset';
+import {
+    importPresetPackage as importPresetPackagePorter,
+    type KeiPresetPackageV1
+} from '$lib/porters/preset';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import type { FolderDef } from '$lib/types/refs';
@@ -118,7 +121,7 @@ export async function importPresetPackage(
     } = {}
 ): Promise<Preset> {
     const baseGlobals = getActivePreset()?.globalVariables ?? {};
-    const presetId = await importPresetFromKei({
+    const presetId = await importPresetPackagePorter({
         ...pkg,
         preset: {
             ...pkg.preset,
@@ -170,7 +173,7 @@ export async function updatePresetContent(
     presetId: string,
     changes: DeepPartial<PresetContent>
 ): Promise<void> {
-    const updated = await PresetService.updateContent(presetId, changes);
+    const updated = await PresetService.update(presetId, changes);
     presets.set(presetId, updated);
 }
 
@@ -190,7 +193,7 @@ export async function resolveGlobalVariables(
             toggle.type === 'select' ? '0' : toggle.type === 'checkbox' ? '0' : '';
     }
 
-    const updated = await PresetService.updateContent(presetId, { globalVariables });
+    const updated = await PresetService.update(presetId, { globalVariables });
     presets.set(presetId, updated);
     return updated;
 }

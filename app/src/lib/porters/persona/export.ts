@@ -1,58 +1,60 @@
 import { PersonaService } from '$lib/services';
+import type { AssetOwner } from '$lib/adapters/asset';
 import type { AssetRef } from '$lib/types/refs';
 import { AppError } from '$lib/types/errors';
-import type { KeiPersonaPackageV1, KeiPersonaPayload } from './types';
+import type { KeiPersonaPackageV1 } from './types';
 import {
     createPortableIdMap,
-    exportAsset,
+    exportAssetPayload,
     exportEntityList,
     type KeiPackageExportMode
 } from '../utils';
 
-export type KeiPersonaExportMode = KeiPackageExportMode;
-
-export interface ExportPersonaOptions {
-    mode?: KeiPersonaExportMode;
-}
-
-function collectAssetIds(persona: KeiPersonaPayload): string[] {
-    const ids = new Set<string>();
-    if (persona.avatarAssetId) ids.add(persona.avatarAssetId);
-    for (const id of Object.keys(persona.assets.refs)) {
-        ids.add(id);
-    }
-    return [...ids];
-}
-
-export async function exportPersonaToKei(
+export async function exportPersonaPackage(
     personaId: string,
-    options: ExportPersonaOptions = {}
+    assetMode: KeiPackageExportMode
 ): Promise<KeiPersonaPackageV1> {
-    const mode = options.mode ?? 'light';
-
     const persona = await PersonaService.get(personaId);
     if (!persona) {
         throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
     }
 
-    const assetIds = collectAssetIds(persona);
-    const assetMap = createPortableIdMap(assetIds, 'asset');
+    const owner: AssetOwner = {
+        scopeType: persona.scopeType,
+        scopeId: persona.scopeId,
+        ownerTable: 'personas',
+        ownerId: persona.id
+    };
 
-    const portablePersona: KeiPersonaPayload = {
+    const layoutIds = Object.keys(persona.assets.refs);
+    const assetMap = createPortableIdMap(layoutIds, 'asset');
+
+    const portablePersona = {
         name: persona.name,
         description: persona.description,
-        ...(persona.avatarAssetId ? { avatarAssetId: assetMap[persona.avatarAssetId] } : {}),
+        avatar: persona.avatar,
         assets: exportEntityList<AssetRef>(persona.assets, assetMap, 'asset_folder')
     };
 
-    const assetPayloads = await Promise.all(
-        assetIds.map((id) => exportAsset(id, assetMap[id], mode))
-    );
+    // Export list asset blobs
+    const assets: Record<string, { data?: Uint8Array; hash?: string; encKey?: string }> = {};
+    for (const [layoutId, ref] of Object.entries(persona.assets.refs)) {
+        const portableId = assetMap[layoutId];
+        if (!portableId) continue;
+        assets[portableId] = await exportAssetPayload(ref, owner, assetMode);
+    }
+
+    // Export avatar blob separately
+    let avatar: { data?: Uint8Array; hash?: string; encKey?: string } | undefined;
+    if (persona.avatar) {
+        avatar = await exportAssetPayload(persona.avatar, owner, assetMode);
+    }
 
     return {
         version: 1,
         kind: 'keiai.persona',
         persona: portablePersona,
-        assets: assetPayloads
+        assets,
+        avatar
     };
 }

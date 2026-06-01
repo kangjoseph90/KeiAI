@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hydrateAssets } from '$lib/components/hydrate';
 import { AssetService } from '$lib/services/asset';
+import type { AssetReadLocator } from '$lib/services/asset';
 
 const observers: FakeIntersectionObserver[] = [];
 
@@ -51,6 +52,24 @@ class FakeIntersectionObserver {
     }
 }
 
+const testLocator: AssetReadLocator = {
+    scopeType: 'user',
+    scopeId: 'user-1',
+    ownerTable: 'characters',
+    ownerId: 'char-1',
+    hash: 'hash-1',
+    encKey: 'key-1'
+};
+
+const testLocator2: AssetReadLocator = {
+    scopeType: 'user',
+    scopeId: 'user-1',
+    ownerTable: 'characters',
+    ownerId: 'char-2',
+    hash: 'hash-2',
+    encKey: 'key-2'
+};
+
 vi.mock('$lib/services/asset', () => ({
     AssetService: {
         read: vi.fn(),
@@ -74,7 +93,7 @@ describe('hydrateAssets', () => {
         vi.mocked(AssetService.read).mockResolvedValue('blob:asset-1');
 
         const node = document.createElement('div');
-        node.innerHTML = '<img data-keiai-asset-id="asset-1" alt="" />';
+        node.innerHTML = `<img data-keiai-asset='${JSON.stringify(testLocator)}' alt="" />`;
         document.body.appendChild(node);
 
         const action = hydrateAssets(node);
@@ -84,7 +103,7 @@ describe('hydrateAssets', () => {
         expect(observers).toHaveLength(1);
 
         observers[0].trigger(img);
-        await vi.waitFor(() => expect(AssetService.read).toHaveBeenCalledWith('asset-1'));
+        await vi.waitFor(() => expect(AssetService.read).toHaveBeenCalledWith(testLocator));
         await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
 
         expect(img.src).toContain('blob:asset-1');
@@ -98,14 +117,14 @@ describe('hydrateAssets', () => {
         vi.mocked(AssetService.read).mockResolvedValue('blob:asset-2');
 
         const node = document.createElement('div');
-        node.innerHTML = '<img data-keiai-asset-id="asset-2" alt="" />';
+        node.innerHTML = `<img data-keiai-asset='${JSON.stringify(testLocator2)}' alt="" />`;
         document.body.appendChild(node);
 
         hydrateAssets(node);
         const img = node.querySelector('img') as HTMLImageElement;
 
         observers[0].trigger(img);
-        await vi.waitFor(() => expect(AssetService.read).toHaveBeenCalledWith('asset-2'));
+        await vi.waitFor(() => expect(AssetService.read).toHaveBeenCalledWith(testLocator2));
         await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
 
         const originalLoadCount = vi.mocked(AssetService.read).mock.calls.length;

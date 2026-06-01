@@ -15,9 +15,8 @@ import {
     type Script,
     type CharJS
 } from '$lib/services';
-import { AssetService } from '$lib/services/asset';
 import {
-    importCharacterPackage as importCharacterPackageToDb,
+    importCharacterPackage as importCharacterPackagePorter,
     type KeiCharacterPackageV1
 } from '$lib/porters/character';
 import type { DataScopeType } from '$lib/adapters/db';
@@ -38,6 +37,7 @@ import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
+import type { AssetFields } from '$lib/types/asset';
 
 export interface ImportCharacterPackageOptions {
     scopeType?: DataScopeType;
@@ -171,7 +171,7 @@ export async function updateCharacterContent(
     characterId: string,
     changes: DeepPartial<CharacterContent>
 ): Promise<void> {
-    const updated = await CharacterService.updateContent(characterId, changes);
+    const updated = await CharacterService.update(characterId, changes);
     if (updated.scopeType === 'user') {
         characters.set(characterId, updated);
     } else if (updated.scopeId === get(activeRoomId)) {
@@ -218,7 +218,7 @@ export async function importCharacterPackage(
     } = {}
 ): Promise<Character> {
     const scopeType = get(isMultiRoom) ? 'room' : 'user';
-    const characterId = await importCharacterPackageToDb(pkg, {
+    const characterId = await importCharacterPackagePorter(pkg, {
         scopeType,
         allowLightAssets: options.allowLightAssets
     });
@@ -300,29 +300,50 @@ export async function deleteCharacterGreeting(
 }
 
 export async function updateCharacterAvatar(characterId: string, file: File): Promise<void> {
-    const character = await getCharacter(characterId);
-    if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-    const oldAssetId = character.avatarAssetId;
-
-    const newAssetId = await AssetService.write(file, 'resource', {
-        scopeType: character.scopeType
-    });
-    await updateCharacter(characterId, { avatarAssetId: newAssetId });
-
-    if (oldAssetId) {
-        await AssetService.delete(oldAssetId).catch(() => {});
+    const updated = await CharacterService.updateAvatar(characterId, file);
+    if (updated.scopeType === 'user') {
+        characters.set(characterId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomCharacters.set(characterId, updated);
     }
 }
 
 export async function removeCharacterAvatar(characterId: string): Promise<void> {
-    const character = await getCharacter(characterId);
-    if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-    const oldAssetId = character.avatarAssetId;
+    const updated = await CharacterService.removeAvatar(characterId);
+    if (updated.scopeType === 'user') {
+        characters.set(characterId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomCharacters.set(characterId, updated);
+    }
+}
 
-    if (!oldAssetId) return;
+// ─── Character-owned Asset CRUD ────────────────────────────────────
 
-    await updateCharacter(characterId, { avatarAssetId: undefined });
-    await AssetService.delete(oldAssetId).catch(() => {});
+export async function createCharacterAsset(
+    characterId: string,
+    asset: File | AssetFields
+): Promise<void> {
+    const char = await getCharacter(characterId);
+    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
+
+    const sortOrder = generateSortOrder(char.assets.refs, char.assets.folders);
+    const updated = await CharacterService.createAsset(characterId, asset, sortOrder);
+
+    if (updated.scopeType === 'user') {
+        characters.set(characterId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomCharacters.set(characterId, updated);
+    }
+}
+
+export async function deleteCharacterAsset(characterId: string, assetId: string): Promise<void> {
+    const updated = await CharacterService.deleteAsset(characterId, assetId);
+
+    if (updated.scopeType === 'user') {
+        characters.set(characterId, updated);
+    } else if (updated.scopeId === get(activeRoomId)) {
+        multiRoomCharacters.set(characterId, updated);
+    }
 }
 
 export async function deleteCharacter(characterId: string): Promise<void> {
@@ -547,7 +568,7 @@ export async function updateCharacterCharJS(
 
 // ─── Character-owned Folder & Item Management ──────────────────────
 
-export type CharacterFolderType = 'lorebooks' | 'scripts' | 'modules' | 'charjs';
+export type CharacterFolderType = 'lorebooks' | 'scripts' | 'modules' | 'charjs' | 'assets';
 
 export async function createCharacterFolder(
     characterId: string,

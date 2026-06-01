@@ -42,11 +42,8 @@ vi.mock('$lib/services/content/record_buffer', () => ({
 
 vi.mock('$lib/adapters/asset', () => ({
     appAsset: {
-        getAllAssets: vi.fn(() => Promise.resolve([])),
-        getAllRegistry: vi.fn(() => Promise.resolve([])),
-        softDeleteAsset: vi.fn(() => Promise.resolve()),
-        deleteAsset: vi.fn(() => Promise.resolve()),
-        deleteRegistry: vi.fn(() => Promise.resolve())
+        deleteScopeAssets: vi.fn(() => Promise.resolve()),
+        deleteAsset: vi.fn(() => Promise.resolve())
     }
 }));
 
@@ -296,31 +293,6 @@ describe('MultiRoomService', () => {
             status: 200,
             json: () => Promise.resolve({ room: roomIndex({ isDeleted: true, updatedAt: 3 }) })
         } as Response);
-        vi.mocked(appAsset.getAllAssets).mockResolvedValue([
-            {
-                id: 'asset-1',
-                scopeType: 'room',
-                scopeId: 'room-1',
-                createdAt: 1,
-                updatedAt: 2,
-                isDeleted: false,
-                data: {}
-            }
-        ]);
-        vi.mocked(appAsset.getAllRegistry).mockResolvedValue([
-            {
-                id: 'asset-2',
-                scopeType: 'room',
-                scopeId: 'room-1',
-                createdAt: 1,
-                updatedAt: 2,
-                isDeleted: false,
-                kind: 'resource',
-                status: 'remote',
-                size: 10,
-                accessedAt: 3
-            }
-        ]);
 
         await MultiRoomService.deleteRoom('room-1');
 
@@ -332,11 +304,10 @@ describe('MultiRoomService', () => {
             expect.objectContaining({ id: 'room-1', isDeleted: true }),
             { origin: 'sync' }
         );
-        expect(appAsset.deleteAsset).toHaveBeenCalledWith('asset-1', { origin: 'sync' });
-        expect(appStorage.delete).toHaveBeenCalledWith('assets/asset-1');
-        expect(appStorage.delete).toHaveBeenCalledWith('assets/asset-2');
-        expect(appAsset.deleteRegistry).toHaveBeenCalledWith('asset-1', { origin: 'sync' });
-        expect(appAsset.deleteRegistry).toHaveBeenCalledWith('asset-2', { origin: 'sync' });
+        expect(appAsset.deleteScopeAssets).toHaveBeenCalledWith({
+            scopeType: 'room',
+            scopeId: 'room-1'
+        });
         expect(buffer.flushTable).toHaveBeenCalledWith('rooms');
         expect(buffer.flushTable).toHaveBeenCalledWith('chats');
         expect(buffer.flushTable).toHaveBeenCalledWith('messages');

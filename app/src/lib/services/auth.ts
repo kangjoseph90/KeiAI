@@ -34,12 +34,7 @@ import {
 } from '$lib/crypto';
 import { UserService } from './user';
 import { getActiveSession } from './session';
-import {
-    AssetRecordSyncEngine,
-    DataRecordSyncEngine,
-    MultiRecordSyncEngine,
-    SyncManager
-} from './sync';
+import { DataRecordSyncEngine, MultiRecordSyncEngine, SyncManager } from './sync';
 import { decryptUserProfile, encryptUserProfile } from './sync/user';
 import { AppError } from '$lib/types/errors';
 import { createLogger } from '$lib/adapters/logger';
@@ -374,7 +369,6 @@ export class AuthService {
             await UserService.setActiveUser(userId, { preserveAuth: !!serverRecord });
 
             await DataRecordSyncEngine.resetCursor(userId);
-            await AssetRecordSyncEngine.resetCursor(userId);
             await MultiRecordSyncEngine.resetCursor(userId);
         } catch (e) {
             pb.authStore.clear();
@@ -458,7 +452,6 @@ export class AuthService {
                 await UserService.setActiveUser(authData.record.id, { preserveAuth: true });
 
                 await DataRecordSyncEngine.resetCursor(authData.record.id);
-                await AssetRecordSyncEngine.resetCursor(authData.record.id);
                 await MultiRecordSyncEngine.resetCursor(authData.record.id);
             } catch (err) {
                 // authWithPassword succeeded but local save failed (e.g. ISLAND_MISMATCH).

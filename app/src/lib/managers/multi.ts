@@ -7,7 +7,7 @@ import {
     importPersonaPackage
 } from '$lib/stores';
 import { exportCharacterPackage } from '$lib/porters/character';
-import { exportPersonaToKei } from '$lib/porters/persona';
+import { exportPersonaPackage } from '$lib/porters/persona';
 import { AppError } from '$lib/types/errors';
 
 export async function addRoomCharacterFromLibrary(
@@ -42,7 +42,7 @@ export async function addChatPersonaFromLibrary(
         throw new AppError('INVALID_INPUT', `Room is not a multi room: ${chat.roomId}`);
     }
 
-    const pkg = await exportPersonaToKei(personaId, { mode: 'light' });
+    const pkg = await exportPersonaPackage(personaId, 'light');
     const persona = await importPersonaPackage(pkg, {
         allowLightAssets: true
     });

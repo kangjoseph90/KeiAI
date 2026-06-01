@@ -1,7 +1,9 @@
 import type { Macro } from './types';
-import { AssetService } from '$lib/services/asset';
+import { AssetService, type AssetReadLocator } from '$lib/services/asset';
+import { assetRegistryId } from '$lib/adapters/asset';
+import { ChatService } from '$lib/services';
 
-export type AssetNameIndex = Map<string, Map<string, string[]>>;
+export type AssetNameIndex = Map<string, Map<string, AssetReadLocator[]>>;
 export type RawAssetUrlCache = Map<string, string | null>;
 
 export function createBackgroundMacros(
@@ -40,11 +42,12 @@ export function createDisplayMacros(
         run: ([name]) => {
             if (!name) return '';
 
-            const assetId = resolveAssetName(index, ownerIds, name) ?? name;
+            const resolved = resolveAssetName(index, ownerIds, name);
+            if (!resolved) return '';
 
             return [
                 '<img',
-                ` data-keiai-asset-id="${escapeHtmlAttribute(assetId)}"`,
+                ` data-keiai-asset="${escapeHtmlAttribute(JSON.stringify(resolved))}"`,
                 ` data-keiai-asset-name="${escapeHtmlAttribute(name)}"`,
                 ' alt=""',
                 ' loading="lazy"',
@@ -57,12 +60,25 @@ export function createDisplayMacros(
     macros.set('img', imageMacro);
     macros.set('image', imageMacro);
     macros.set('inlay', {
-        run: ([assetId]) => {
-            if (!assetId) return '';
+        run: async ([inlayId], ctx) => {
+            if (!inlayId || !ctx.chatId) return '';
+            const chat = await ChatService.get(ctx.chatId);
+            const ref = chat?.inlays.refs[inlayId];
+            if (!chat || !ref) return '';
+
+            const locator: AssetReadLocator = {
+                scopeType: chat.scopeType,
+                scopeId: chat.scopeId,
+                ownerTable: 'chats',
+                ownerId: chat.id,
+                hash: ref.hash,
+                encKey: ref.encKey
+            };
 
             return [
                 '<img',
-                ` data-keiai-asset-id="${escapeHtmlAttribute(assetId)}"`,
+                ` data-keiai-asset="${escapeHtmlAttribute(JSON.stringify(locator))}"`,
+                ` data-keiai-inlay-id="${escapeHtmlAttribute(inlayId)}"`,
                 ' alt=""',
                 ' loading="lazy"',
                 ' decoding="async"',
@@ -88,13 +104,18 @@ async function readAssetUrl(
 ): Promise<string> {
     if (!name) return '';
 
-    const assetId = resolveAssetName(index, ownerIds, name) ?? name;
-    const cached = rawUrlCache.get(assetId);
-    if (cached !== undefined) return cached ?? '';
+    const resolved = resolveAssetName(index, ownerIds, name);
+    if (resolved) {
+        const key = assetRegistryId(resolved);
+        const cached = rawUrlCache.get(key);
+        if (cached !== undefined) return cached ?? '';
 
-    const url = await AssetService.read(assetId);
-    rawUrlCache.set(assetId, url);
-    return url ?? '';
+        const url = await AssetService.read(resolved);
+        rawUrlCache.set(key, url);
+        return url ?? '';
+    }
+
+    return '';
 }
 
 /**
@@ -133,7 +154,7 @@ export function resolveAssetName(
     ownerIds: readonly (string | undefined | null)[],
     name: string,
     maxDiff = 4
-): string | null {
+): AssetReadLocator | null {
     const key = normalizeAssetName(name);
     if (!key) return null;
     const effectiveMaxDiff = Math.min(maxDiff, Math.floor(key.length * 0.3));

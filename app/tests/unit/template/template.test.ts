@@ -14,6 +14,7 @@ import {
     type AssetNameIndex,
     type RawAssetUrlCache
 } from '$lib/template/display';
+import type { AssetReadLocator } from '$lib/services/asset';
 import type { PluginInstance } from '$lib/plugins/manager';
 
 const {
@@ -62,8 +63,10 @@ vi.mock('$lib/stores/content/persona', () => ({
     getPersona: mockGetPersona
 }));
 
-vi.mock('$lib/stores/content/chat', () => ({
-    getChat: mockGetChat
+vi.mock('$lib/services', () => ({
+    ChatService: {
+        get: mockGetChat
+    }
 }));
 
 vi.mock('$lib/stores/content/message', () => ({
@@ -120,7 +123,18 @@ describe('template', () => {
             chatNote: 'Talk softly',
             greetingMessageId: 'msg-greeting',
             lastMessageId: 'msg-last',
-            messageCount: 7
+            messageCount: 7,
+            scopeType: 'room',
+            scopeId: 'room-1',
+            inlays: {
+                refs: {
+                    'asset-direct-id': {
+                        hash: 'hash-direct',
+                        encKey: 'key-direct'
+                    }
+                },
+                folders: {}
+            }
         });
         mockGetMessage.mockImplementation(async (id: string) => {
             if (id === 'msg-greeting') {
@@ -435,11 +449,21 @@ describe('template', () => {
     });
 
     it('renders img macros when asset macros are injected', async () => {
-        const assetMap: AssetNameIndex = new Map([['char-1', new Map([['avatar', ['asset-1']]])]]);
+        const mockLocator: AssetReadLocator = {
+            scopeType: 'user',
+            scopeId: 'user-1',
+            ownerTable: 'characters',
+            ownerId: 'char-1',
+            hash: 'asset-1',
+            encKey: 'key-1'
+        };
+        const assetMap: AssetNameIndex = new Map([
+            ['char-1', new Map([['avatar', [mockLocator]]])]
+        ]);
         const cache: RawAssetUrlCache = new Map();
         const macros = createDisplayMacros(assetMap, ['char-1'], cache);
         await expect(runTemplate('{{img::avatar}}', {}, macros)).resolves.toBe(
-            '<img data-keiai-asset-id="asset-1" data-keiai-asset-name="avatar" alt="" loading="lazy" decoding="async" />'
+            '<img data-keiai-asset="{&quot;scopeType&quot;:&quot;user&quot;,&quot;scopeId&quot;:&quot;user-1&quot;,&quot;ownerTable&quot;:&quot;characters&quot;,&quot;ownerId&quot;:&quot;char-1&quot;,&quot;hash&quot;:&quot;asset-1&quot;,&quot;encKey&quot;:&quot;key-1&quot;}" data-keiai-asset-name="avatar" alt="" loading="lazy" decoding="async" />'
         );
     });
 
@@ -447,14 +471,31 @@ describe('template', () => {
         expect(normalizeAssetName('Theme Song.m4p')).toBe('themesong');
         expect(normalizeAssetName('Intro Clip.m4v')).toBe('introclip');
 
-        const ownerMap = new Map([
-            ['dohwasmileone', ['asset-smile']],
-            ['bg', ['asset-bg']]
+        const mockLocatorSmile: AssetReadLocator = {
+            scopeType: 'user',
+            scopeId: 'user-1',
+            ownerTable: 'characters',
+            ownerId: 'char-1',
+            hash: 'asset-smile',
+            encKey: 'key-smile'
+        };
+        const mockLocatorBg: AssetReadLocator = {
+            scopeType: 'user',
+            scopeId: 'user-1',
+            ownerTable: 'characters',
+            ownerId: 'char-1',
+            hash: 'asset-bg',
+            encKey: 'key-bg'
+        };
+
+        const ownerMap = new Map<string, AssetReadLocator[]>([
+            ['dohwasmileone', [mockLocatorSmile]],
+            ['bg', [mockLocatorBg]]
         ]);
         const assetMap: AssetNameIndex = new Map([['char-1', ownerMap]]);
 
-        expect(resolveAssetName(assetMap, ['char-1'], 'dohwa smile onee')).toBe('asset-smile');
-        expect(ownerMap.get('dohwasmileonee')).toEqual(['asset-smile']);
+        expect(resolveAssetName(assetMap, ['char-1'], 'dohwa smile onee')).toBe(mockLocatorSmile);
+        expect(ownerMap.get('dohwasmileonee')).toEqual([mockLocatorSmile]);
         expect(resolveAssetName(assetMap, ['char-1'], 'bq')).toBeNull();
     });
 
@@ -462,8 +503,10 @@ describe('template', () => {
         const assetMap: AssetNameIndex = new Map();
         const cache: RawAssetUrlCache = new Map();
         const macros = createDisplayMacros(assetMap, [], cache);
-        await expect(runTemplate('{{inlay::asset-direct-id}}', {}, macros)).resolves.toBe(
-            '<img data-keiai-asset-id="asset-direct-id" alt="" loading="lazy" decoding="async" />'
+        await expect(
+            runTemplate('{{inlay::asset-direct-id}}', { chatId: 'chat-1' }, macros)
+        ).resolves.toBe(
+            '<img data-keiai-asset="{&quot;scopeType&quot;:&quot;room&quot;,&quot;scopeId&quot;:&quot;room-1&quot;,&quot;ownerTable&quot;:&quot;chats&quot;,&quot;ownerId&quot;:&quot;chat-1&quot;,&quot;hash&quot;:&quot;hash-direct&quot;,&quot;encKey&quot;:&quot;key-direct&quot;}" data-keiai-inlay-id="asset-direct-id" alt="" loading="lazy" decoding="async" />'
         );
     });
 

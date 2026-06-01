@@ -47,12 +47,21 @@
                         class="size-24 rounded-full border-2 border-primary/20 overflow-hidden bg-muted"
                     >
                         <AssetView
-                            id={character.avatarAssetId}
+                            asset={character.avatar
+                                ? {
+                                      scopeType: character.scopeType,
+                                      scopeId: character.scopeId,
+                                      ownerTable: 'characters',
+                                      ownerId: character.id,
+                                      hash: character.avatar.hash,
+                                      encKey: character.avatar.encKey
+                                  }
+                                : null}
                             alt={character.name}
                             class="size-full object-cover"
                             fallback="none"
                         >
-                            {#if !character.avatarAssetId}
+                            {#if !character.avatar}
                                 <div class="flex size-full items-center justify-center">
                                     <User class="size-10 text-muted-foreground/50" />
                                 </div>
@@ -86,7 +95,7 @@
                         <Button
                             variant="destructive"
                             size="sm"
-                            disabled={!character.avatarAssetId}
+                            disabled={!character.avatar}
                             onclick={onRemoveAvatar}
                         >
                             Remove Avatar

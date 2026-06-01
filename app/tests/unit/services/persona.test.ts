@@ -43,6 +43,12 @@ vi.mock('$lib/utils/id', () => ({
     generateId: vi.fn(() => 'persona-123')
 }));
 
+vi.mock('$lib/services/asset', () => ({
+    AssetService: {
+        deleteOwnerAssets: vi.fn()
+    }
+}));
+
 vi.mock('$lib/services/content/record_buffer', () => ({
     buffer: {
         get: vi.fn(),

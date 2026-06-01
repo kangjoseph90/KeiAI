@@ -129,7 +129,7 @@ export async function updateRoomContent(
     roomId: string,
     changes: DeepPartial<RoomContent>
 ): Promise<void> {
-    const updated = await RoomService.updateContent(roomId, changes);
+    const updated = await RoomService.update(roomId, changes);
     if (multiRooms.get(roomId) || (get(isMultiRoom) && get(activeRoomId) === roomId)) {
         multiRooms.set(roomId, updated);
     } else {

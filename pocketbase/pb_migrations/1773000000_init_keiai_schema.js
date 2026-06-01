@@ -93,6 +93,13 @@ migrate(
         new Field({ name: "encryptedDataIV", type: "text", required: true }),
       );
       collection.fields.add(new Field({ name: "isDeleted", type: "bool" }));
+      collection.fields.add(
+        new Field({
+          name: "assetEntries",
+          type: "text",
+          max: 1024 * 1024,
+        }),
+      );
     }
 
     function createUserRecordTable(name, options) {
@@ -184,12 +191,6 @@ migrate(
     }
 
     createUserRecordTable("records", { includeKind: true });
-    createUserRecordTable("assets", {
-      extraFields: [
-        { name: "hash", type: "text", required: true },
-        { name: "status", type: "text", required: true },
-      ],
-    });
 
     // Room metadata stays plaintext enough for discovery, invitations, and key routing.
     const roomIndex = new Collection({
@@ -290,12 +291,6 @@ migrate(
     app.save(freshMembers);
 
     createRoomRecordTable("multi_room_records", { includeKind: true });
-    createRoomRecordTable("multi_room_assets", {
-      extraFields: [
-        { name: "hash", type: "text", required: true },
-        { name: "status", type: "text", required: true },
-      ],
-    });
 
     // ─── 4. Asset catalog and usage ledger ───────────────────────────
     const catalog = new Collection({
@@ -411,11 +406,9 @@ migrate(
   (app) => {
     // DOWN — drop everything
     const tables = [
-      "multi_room_assets",
       "multi_room_records",
       "multi_room_members",
       "multi_room_index",
-      "assets",
       "records",
       "translations",
       "messages",

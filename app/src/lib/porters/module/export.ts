@@ -1,34 +1,20 @@
 import { CharJSService, LorebookService, ModuleService, ScriptService } from '$lib/services';
+import type { AssetOwner } from '$lib/adapters/asset';
 import type { AssetRef } from '$lib/types/refs';
 import { AppError } from '$lib/types/errors';
-import type { KeiModulePackageV1, KeiModulePayload } from './types';
+import { getSessionScope } from '$lib/services/session';
+import type { KeiModulePackageV1 } from './types';
 import {
     createPortableIdMap,
-    exportAsset,
+    exportAssetPayload,
     exportEntityList,
     type KeiPackageExportMode
 } from '../utils';
 
-export type KeiModuleExportMode = KeiPackageExportMode;
-
-export interface ExportModuleOptions {
-    mode?: KeiModuleExportMode;
-}
-
-function collectAssetIds(module: KeiModulePayload): string[] {
-    const ids = new Set<string>();
-    for (const id of Object.keys(module.assets.refs)) {
-        ids.add(id);
-    }
-    return [...ids];
-}
-
-export async function exportModuleToKei(
+export async function exportModulePackage(
     moduleId: string,
-    options: ExportModuleOptions = {}
+    assetMode: KeiPackageExportMode
 ): Promise<KeiModulePackageV1> {
-    const mode = options.mode ?? 'light';
-
     const module = await ModuleService.get(moduleId);
     if (!module) {
         throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
@@ -39,6 +25,14 @@ export async function exportModuleToKei(
         ScriptService.listByOwner(moduleId),
         CharJSService.listByOwner(moduleId)
     ]);
+
+    const scope = getSessionScope('user');
+    const owner: AssetOwner = {
+        scopeType: scope.scopeType,
+        scopeId: scope.scopeId,
+        ownerTable: 'modules',
+        ownerId: module.id
+    };
 
     const lorebookMap = createPortableIdMap(
         lorebooks.map((item) => item.id),
@@ -53,10 +47,10 @@ export async function exportModuleToKei(
         'charjs'
     );
 
-    const assetIds = collectAssetIds(module);
-    const assetMap = createPortableIdMap(assetIds, 'asset');
+    const layoutIds = Object.keys(module.assets.refs);
+    const assetMap = createPortableIdMap(layoutIds, 'asset');
 
-    const portableModule: KeiModulePayload = {
+    const portableModule = {
         name: module.name,
         description: module.description,
         backgroundHTML: module.backgroundHTML,
@@ -68,9 +62,13 @@ export async function exportModuleToKei(
         assets: exportEntityList<AssetRef>(module.assets, assetMap, 'asset_folder')
     };
 
-    const assetPayloads = await Promise.all(
-        assetIds.map((id) => exportAsset(id, assetMap[id], mode))
-    );
+    // Export list asset blobs
+    const assets: Record<string, { data?: Uint8Array; hash?: string; encKey?: string }> = {};
+    for (const [layoutId, ref] of Object.entries(module.assets.refs)) {
+        const portableId = assetMap[layoutId];
+        if (!portableId) continue;
+        assets[portableId] = await exportAssetPayload(ref, owner, assetMode);
+    }
 
     return {
         version: 1,
@@ -94,6 +92,6 @@ export async function exportModuleToKei(
                 id: charjsMap[id]
             })
         ),
-        assets: assetPayloads
+        assets
     };
 }

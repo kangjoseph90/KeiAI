@@ -1,10 +1,11 @@
 import { CharacterService, CharJSService, LorebookService, ScriptService } from '$lib/services';
+import type { AssetOwner } from '$lib/adapters/asset';
 import type { AssetRef } from '$lib/types/refs';
 import { AppError } from '$lib/types/errors';
 import type { KeiCharacterPackageV1, KeiCharacterPayload } from './types';
 import {
     createPortableIdMap,
-    exportAsset,
+    exportAssetPayload,
     exportEntityList,
     type KeiPackageExportMode
 } from '../utils';
@@ -13,15 +14,6 @@ export type CharacterCardV3Format = 'png' | 'charx';
 export type CharacterFileExport =
     | { kind: 'ccv3'; format: CharacterCardV3Format }
     | { kind: 'keichar'; assetMode: KeiPackageExportMode };
-
-function collectAssetIds(character: KeiCharacterPayload): string[] {
-    const ids = new Set<string>();
-    if (character.avatarAssetId) ids.add(character.avatarAssetId);
-    for (const id of Object.keys(character.assets.refs)) {
-        ids.add(id);
-    }
-    return [...ids];
-}
 
 export async function exportCharacterPackage(
     characterId: string,
@@ -38,6 +30,13 @@ export async function exportCharacterPackage(
         CharJSService.listByOwner(characterId)
     ]);
 
+    const owner: AssetOwner = {
+        scopeType: character.scopeType,
+        scopeId: character.scopeId,
+        ownerTable: 'characters',
+        ownerId: character.id
+    };
+
     const lorebookMap = createPortableIdMap(
         lorebooks.map((item) => item.id),
         'lorebook'
@@ -51,8 +50,9 @@ export async function exportCharacterPackage(
         'charjs'
     );
 
-    const assetIds = collectAssetIds(character);
-    const assetMap = createPortableIdMap(assetIds, 'asset');
+    // Asset layoutId mapping for EntityListConfig
+    const layoutIds = Object.keys(character.assets.refs);
+    const assetMap = createPortableIdMap(layoutIds, 'asset');
 
     const portableCharacter: KeiCharacterPayload = {
         name: character.name,
@@ -63,16 +63,26 @@ export async function exportCharacterPackage(
         greetings: { ...character.greetings },
         defaultVariables: { ...character.defaultVariables },
         allowLowLevel: character.allowLowLevel,
-        ...(character.avatarAssetId ? { avatarAssetId: assetMap[character.avatarAssetId] } : {}),
+        avatar: character.avatar,
         lorebooks: exportEntityList(character.lorebooks, lorebookMap, 'lorebook_folder'),
         scripts: exportEntityList(character.scripts, scriptMap, 'script_folder'),
         charjs: exportEntityList(character.charjs, charjsMap, 'charjs_folder'),
         assets: exportEntityList<AssetRef>(character.assets, assetMap, 'asset_folder')
     };
 
-    const assetPayloads = await Promise.all(
-        assetIds.map((id) => exportAsset(id, assetMap[id], assetMode))
-    );
+    // Export list asset blobs keyed by portable layoutId
+    const assets = new Map<string, { data?: Uint8Array; hash?: string; encKey?: string }>();
+    for (const [layoutId, ref] of Object.entries(character.assets.refs)) {
+        const portableId = assetMap[layoutId];
+        if (!portableId) continue;
+        assets.set(portableId, await exportAssetPayload(ref, owner, assetMode));
+    }
+
+    // Export avatar blob separately
+    let avatar: { data?: Uint8Array; hash?: string; encKey?: string } | undefined;
+    if (character.avatar) {
+        avatar = await exportAssetPayload(character.avatar, owner, assetMode);
+    }
 
     return {
         version: 1,
@@ -96,6 +106,7 @@ export async function exportCharacterPackage(
                 id: charjsMap[id]
             })
         ),
-        assets: assetPayloads
+        assets: Object.fromEntries(assets.entries()),
+        avatar
     };
 }

@@ -108,7 +108,8 @@ describe('Chat Store', () => {
         chatNote: '',
         messageCount: 0,
         lorebooks: { refs: {}, folders: {} },
-        personas: { refs: {}, folders: {} }
+        personas: { refs: {}, folders: {} },
+        inlays: { refs: {}, folders: {} }
     };
 
     function putActiveChat(chat: Chat): void {

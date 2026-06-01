@@ -69,7 +69,11 @@ class RecordBuffer {
             return this.seed(key, args.tableName, args.record, args.options);
         }
 
-        existing.record.data = deepMerge(existing.record.data, args.patch);
+        existing.record = {
+            ...existing.record,
+            ...args.record,
+            data: deepMerge(existing.record.data, args.patch)
+        };
         existing.options = args.options;
         existing.version++;
         this.schedule(existing as BufferEntry<DataRecord>);

@@ -8,7 +8,8 @@ export interface KeiCharacterPackageV1 {
     lorebooks: KeiLorebookPayload[];
     scripts: KeiScriptPayload[];
     charjs: KeiCharJSPayload[];
-    assets: KeiAssetPayload[];
+    assets: Record<string, KeiAssetPayload>;
+    avatar?: KeiAssetPayload;
 }
 
 export type KeiCharacterPayload = Omit<CharacterFields, 'modules'>;
@@ -16,6 +17,10 @@ export type KeiLorebookPayload = LorebookFields & { id: string };
 export type KeiScriptPayload = ScriptFields & { id: string };
 export type KeiCharJSPayload = CharJSFields & { id: string };
 
-export interface SerializedKeiCharacterPackageV1 extends Omit<KeiCharacterPackageV1, 'assets'> {
-    assets: SerializedKeiAssetPayload[];
+export interface SerializedKeiCharacterPackageV1 extends Omit<
+    KeiCharacterPackageV1,
+    'assets' | 'avatar'
+> {
+    assets: Record<string, SerializedKeiAssetPayload>;
+    avatar?: SerializedKeiAssetPayload;
 }

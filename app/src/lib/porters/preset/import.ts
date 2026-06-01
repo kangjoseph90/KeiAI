@@ -9,7 +9,7 @@ function assertPackage(pkg: KeiPresetPackageV1): void {
     }
 }
 
-export async function importPresetFromKei(pkg: KeiPresetPackageV1): Promise<string> {
+export async function importPresetPackage(pkg: KeiPresetPackageV1): Promise<string> {
     assertPackage(pkg);
 
     const preset = await PresetService.create({

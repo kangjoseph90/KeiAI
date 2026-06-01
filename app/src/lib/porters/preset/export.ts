@@ -3,7 +3,7 @@ import { AppError } from '$lib/types/errors';
 import type { KeiPresetPackageV1, KeiPresetPayload } from './types';
 import { createPortableIdMap, exportEntityList } from '../utils';
 
-export async function exportPresetToKei(presetId: string): Promise<KeiPresetPackageV1> {
+export async function exportPresetPackage(presetId: string): Promise<KeiPresetPackageV1> {
     const preset = await PresetService.get(presetId);
     if (!preset) {
         throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);

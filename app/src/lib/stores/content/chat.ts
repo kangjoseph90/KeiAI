@@ -28,6 +28,7 @@ import { getPersona } from './persona';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
+import type { AssetFields } from '$lib/types/asset';
 import { createCache } from '$lib/adapters/cache';
 
 /**
@@ -420,9 +421,25 @@ export async function setChatPersonaEnabled(
     await resolveChatSelections(chatId);
 }
 
+// ─── Chat-owned Inlay CRUD ─────────────────────────────────────────
+
+export async function createChatInlay(chatId: string, asset: File | AssetFields): Promise<void> {
+    const chat = await getChat(chatId);
+    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
+
+    const sortOrder = generateSortOrder(chat.inlays.refs, chat.inlays.folders);
+    const updated = await ChatService.createInlay(chatId, asset, sortOrder);
+    roomChats.set(chatId, updated);
+}
+
+export async function deleteChatInlay(chatId: string, assetId: string): Promise<void> {
+    const updated = await ChatService.deleteInlay(chatId, assetId);
+    roomChats.set(chatId, updated);
+}
+
 // ─── Chat-owned Folder & Item Management ──────────────────────
 
-export type ChatFolderType = 'lorebooks' | 'personas';
+export type ChatFolderType = 'lorebooks' | 'personas' | 'inlays';
 
 export async function createChatFolder(
     chatId: string,

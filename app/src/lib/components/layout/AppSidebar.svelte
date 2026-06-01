@@ -18,6 +18,7 @@
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
+    import RoomAvatar from '$lib/components/RoomAvatar.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import {
@@ -182,8 +183,8 @@
                         gridClass="flex flex-col gap-2 items-center w-full"
                         listClass="flex flex-col gap-2 items-center w-full"
                         childContainerClass="relative my-1 py-1.5 flex flex-col gap-2 items-center w-full"
-                        onCreateFolder={(name, parentId) =>
-                            createGlobalFolder('rooms', name, parentId)}
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createGlobalFolder('rooms', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) => updateGlobalFolder('rooms', id, changes)}
                         onDeleteFolder={(id) => deleteGlobalFolder('rooms', id)}
                         onMoveItem={(itemId, newFolderId, newSortOrder) =>
@@ -209,13 +210,13 @@
                         {#snippet item({ entity: room })}
                             {@const selected = route.roomId === room.id}
                             <button
-                                class="relative flex size-10 items-center justify-center overflow-hidden rounded-md border bg-background text-xs font-semibold transition-colors {selected
+                                class="relative flex size-10 items-center justify-center rounded-md border bg-background text-xs font-semibold transition-colors {selected
                                     ? 'border-primary ring-2 ring-primary/20'
-                                    : 'border-transparent hover:border-sidebar-border'}"
+                                    : 'border-transparent hover:border-sidebar-border'} group"
                                 title={room.name}
                                 onclick={() => handleSelectRoom(room.id)}
                             >
-                                {initial(room.name)}
+                                <RoomAvatar {room} class="size-full" />
                             </button>
                         {/snippet}
                     </EntityList>
@@ -298,8 +299,8 @@
                     gridClass="grid grid-cols-3 gap-2"
                     listClass="grid grid-cols-3 gap-2"
                     childContainerClass="relative my-1 py-1.5 pl-2"
-                    onCreateFolder={(name, parentId) =>
-                        createRoomFolder($activeRoom.id, 'characters', name, parentId)}
+                    onCreateFolder={(name, parentId, sortOrder) =>
+                        createRoomFolder($activeRoom.id, 'characters', name, parentId, sortOrder)}
                     onUpdateFolder={(id, changes) =>
                         updateRoomFolder($activeRoom.id, 'characters', id, changes)}
                     onDeleteFolder={(id) => deleteRoomFolder($activeRoom.id, 'characters', id)}
@@ -334,9 +335,16 @@
                                 <div
                                     class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
                                 >
-                                    {#if character.avatarAssetId}
+                                    {#if character.avatar}
                                         <AssetView
-                                            id={character.avatarAssetId}
+                                            asset={{
+                                                scopeType: character.scopeType,
+                                                scopeId: character.scopeId,
+                                                ownerTable: 'characters',
+                                                ownerId: character.id,
+                                                hash: character.avatar.hash,
+                                                encKey: character.avatar.encKey
+                                            }}
                                             alt={character.name}
                                             class="size-full object-cover"
                                         />
@@ -394,8 +402,8 @@
                         entities={filteredChats()}
                         config={$activeRoom.chats}
                         layout="list"
-                        onCreateFolder={(name, parentId) =>
-                            createRoomFolder($activeRoom.id, 'chats', name, parentId)}
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createRoomFolder($activeRoom.id, 'chats', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
                             updateRoomFolder($activeRoom.id, 'chats', id, changes)}
                         onDeleteFolder={(id) => deleteRoomFolder($activeRoom.id, 'chats', id)}

@@ -30,7 +30,7 @@ export async function exportCharacterFile(
     characterId: string,
     request: ExportCharacterFileRequest
 ): Promise<void> {
-    const assetMode = request.kind === 'ccv3' ? 'baked' : request.assetMode;
+    const assetMode = request.kind === 'keichar' ? request.assetMode : 'baked';
     const pkg = await exportCharacterPackage(characterId, assetMode);
     const bytes = await writeCharacterFile(pkg, request);
     const extension = exportExtension(request);
