@@ -15,6 +15,7 @@ import {
     deleteMessage,
     getCharacter,
     getChat,
+    getLastMessage,
     getMessage,
     getRoom,
     updateChat,
@@ -32,6 +33,7 @@ vi.mock('$lib/stores', () => ({
     getActivePreset: vi.fn(),
     getCharacter: vi.fn(),
     getChat: vi.fn(),
+    getLastMessage: vi.fn(),
     getMessage: vi.fn(),
     getRoom: vi.fn(),
     updateChat: vi.fn(),
@@ -43,7 +45,8 @@ vi.mock('$lib/services', () => ({
         listByOwner: vi.fn()
     },
     MessageService: {
-        getMessagesBefore: vi.fn()
+        getMessagesBefore: vi.fn(),
+        create: vi.fn()
     }
 }));
 
@@ -113,6 +116,7 @@ describe('ChatManager', () => {
 
     describe('syncChatGreetings', () => {
         it('creates one greeting message with enabled character greeting swipes', async () => {
+            vi.mocked(getLastMessage).mockResolvedValue(null);
             vi.mocked(createMessage).mockResolvedValue({ id: 'msg-1' } as Message);
 
             await syncChatGreetings('chat-1');
@@ -146,6 +150,7 @@ describe('ChatManager', () => {
         });
 
         it('ignores disabled characters when building greeting swipes', async () => {
+            vi.mocked(getLastMessage).mockResolvedValue(null);
             vi.mocked(getRoom).mockResolvedValue({
                 ...mockRoom,
                 characters: {
@@ -194,6 +199,7 @@ describe('ChatManager', () => {
                 activeSwipeId: 'greet2'
             } as Message;
 
+            vi.mocked(getLastMessage).mockResolvedValue(existingMessage);
             vi.mocked(getChat).mockResolvedValue(chat);
             vi.mocked(getMessage).mockResolvedValue(existingMessage);
 
@@ -284,8 +290,7 @@ describe('ChatManager', () => {
         });
 
         it('returns chat variables from the last message over defaults', async () => {
-            vi.mocked(getChat).mockResolvedValue({ ...mockChat, lastMessageId: 'msg-last' });
-            vi.mocked(getMessage).mockResolvedValue(lastMessage);
+            vi.mocked(getLastMessage).mockResolvedValue(lastMessage);
 
             const variables = await getChatVariables('chat-1');
 
@@ -302,8 +307,7 @@ describe('ChatManager', () => {
         });
 
         it('gets and sets a chat variable on the last active swipe', async () => {
-            vi.mocked(getChat).mockResolvedValue({ ...mockChat, lastMessageId: 'msg-last' });
-            vi.mocked(getMessage).mockResolvedValue(lastMessage);
+            vi.mocked(getLastMessage).mockResolvedValue(lastMessage);
 
             await expect(getChatVariable('chat-1', 'mood')).resolves.toBe('tense');
             await setChatVariable('chat-1', 'mood', 'happy');
@@ -349,7 +353,7 @@ describe('ChatManager', () => {
             vi.mocked(getChat).mockResolvedValue(mockChat);
             vi.mocked(createChat).mockResolvedValue({ ...mockChat, id: 'new-chat-id' });
             vi.mocked(LorebookService.listByOwner).mockResolvedValue([mockLorebook]);
-            vi.mocked(createMessage).mockResolvedValue({} as unknown as Message);
+            vi.mocked(MessageService.create).mockResolvedValue({} as unknown as Message);
             vi.mocked(createChatLorebook).mockResolvedValue({} as unknown as Lorebook);
         });
 
@@ -361,7 +365,14 @@ describe('ChatManager', () => {
                 'room-1',
                 expect.objectContaining({ title: 'Test Chat (Fork)' })
             );
-            expect(createMessage).toHaveBeenCalledTimes(2);
+            expect(MessageService.create).toHaveBeenCalledTimes(2);
+            expect(updateChat).toHaveBeenCalledWith(
+                'new-chat-id',
+                expect.objectContaining({
+                    messageCount: 2,
+                    lastMessageId: undefined
+                })
+            );
             expect(createChatLorebook).toHaveBeenCalledWith(
                 'new-chat-id',
                 expect.objectContaining({ content: 'some content' })

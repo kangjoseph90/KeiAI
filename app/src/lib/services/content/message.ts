@@ -314,23 +314,15 @@ export class MessageService {
 
     static async countByChat(chatId: string): Promise<number> {
         // create and delete bypasses the write queue - doesn't need to flush the queue
-        const records = await localDB.getByIndex<MessageRecord>(
-            'messages',
-            'chatId',
-            chatId,
-            Number.MAX_SAFE_INTEGER
-        );
-        return records.filter((record) => canAccessScope(record)).length;
+        return localDB.countByIndex('messages', 'chatId', chatId);
     }
 
     static async countByChatBefore(chatId: string, beforeSortOrder: string): Promise<number> {
-        const records = await localDB.getRecordsForward<MessageRecord>(
+        return localDB.countRecordsInRange(
             'messages',
             '[chatId+sortOrder]',
             [chatId, ''],
-            [chatId, beforeSortOrder],
-            Number.MAX_SAFE_INTEGER
+            [chatId, beforeSortOrder]
         );
-        return records.filter((record) => canAccessScope(record)).length;
     }
 }

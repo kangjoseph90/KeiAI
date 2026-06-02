@@ -150,6 +150,8 @@ describe('Message Store', () => {
             const newMessage = { ...mockMessage, id: 'new-id' };
 
             vi.mocked(MessageService.create).mockResolvedValue(newMessage);
+            // getLastMessage calls getMessagesBefore when no lastMessageId
+            vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([]);
             roomChats.setAll([
                 { id: mockChatId, roomId: 'room-1', scopeType: 'user', messageCount: 0 } as Chat
             ]);

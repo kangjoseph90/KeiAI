@@ -13,7 +13,7 @@ import type { DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { getCharacter } from './character';
-import { resolveChatSelections } from './chat';
+import { resolveChatSelections, selectChat } from './chat';
 import {
     rooms,
     multiRooms,
@@ -79,6 +79,11 @@ export async function selectRoom(roomId: string): Promise<void> {
         await updateRoom(roomId, {
             characters: { refs: staleCharacterRefs }
         });
+    }
+
+    // Auto-select last active chat
+    if (room.lastActiveChatId && roomChats.get(room.lastActiveChatId)) {
+        await selectChat(room.lastActiveChatId);
     }
 }
 

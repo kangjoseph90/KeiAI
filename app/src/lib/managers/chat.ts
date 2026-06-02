@@ -9,6 +9,7 @@ import {
     getCharacter,
     getChat,
     getMessage,
+    getLastMessage,
     getRoom,
     updateChat,
     updateMessage
@@ -18,6 +19,8 @@ import { AppError } from '$lib/types/errors';
 // ─── Greeting ─────────────────────────────────────
 
 export async function syncChatGreetings(chatId: string): Promise<void> {
+    // getLastMessage recovers lastMessageId ref if missing/stale
+    await getLastMessage(chatId);
     const chat = await getChat(chatId);
     if (!chat) return;
 
@@ -106,10 +109,7 @@ export async function getChatVariable(chatId: string, key: string): Promise<stri
     const variables = await getChatVariables(chatId);
     if (variables[key] !== undefined) return variables[key];
 
-    const chat = await getChat(chatId);
-    if (!chat || !chat.lastMessageId) return null;
-
-    const lastMessage = await getMessage(chat.lastMessageId);
+    const lastMessage = await getLastMessage(chatId);
     if (!lastMessage) return null;
 
     const swipe = lastMessage.swipes[lastMessage.activeSwipeId];
@@ -119,14 +119,8 @@ export async function getChatVariable(chatId: string, key: string): Promise<stri
 }
 
 export async function setChatVariable(chatId: string, key: string, value: string): Promise<void> {
-    const chat = await getChat(chatId);
-    if (!chat || !chat.lastMessageId) return;
-
-    const lastMessage = await getMessage(chat.lastMessageId);
+    const lastMessage = await getLastMessage(chatId);
     if (!lastMessage) return;
-
-    const swipe = lastMessage.swipes[lastMessage.activeSwipeId];
-    if (!swipe) return;
 
     await updateMessage(lastMessage.id, {
         swipes: {
@@ -141,13 +135,9 @@ export async function setChatVariable(chatId: string, key: string, value: string
 
 export async function getChatVariables(chatId: string): Promise<Record<string, string>> {
     const defaults = await getChatDefaultVariables(chatId);
-    const chat = await getChat(chatId);
-    if (!chat) return defaults;
-
-    if (!chat.lastMessageId) return { ...defaults };
-
-    const lastMessage = await getMessage(chat.lastMessageId);
+    const lastMessage = await getLastMessage(chatId);
     if (!lastMessage) return { ...defaults };
+
     const swipe = lastMessage.swipes[lastMessage.activeSwipeId];
     if (!swipe) return { ...defaults };
 
@@ -196,13 +186,8 @@ export async function setChatVariables(
     chatId: string,
     variables: Record<string, string>
 ): Promise<void> {
-    const chat = await getChat(chatId);
-    if (!chat || !chat.lastMessageId) return;
-
-    const lastMessage = await getMessage(chat.lastMessageId);
+    const lastMessage = await getLastMessage(chatId);
     if (!lastMessage) return;
-    const swipe = lastMessage.swipes[lastMessage.activeSwipeId];
-    if (!swipe) return;
 
     await updateMessage(lastMessage.id, {
         swipes: {
@@ -233,6 +218,7 @@ export async function forkChat(messageId: string): Promise<string> {
         personas: _personas,
         lastMessageId: __,
         greetingMessageId: ___,
+        messageCount: ____,
         ...fieldsCopy
     } = originalChat;
 
@@ -249,15 +235,34 @@ export async function forkChat(messageId: string): Promise<string> {
     );
     const allMessages = [...beforeMessages, forkMessage];
 
-    // creation using store CRUD - this ensures lastMessageId is correctly updated
-    // and stores are notified if the new chat is active.
+    // Bulk create messages using MessageService directly
+    let prevSortOrder: string | undefined;
+    let greetingMessageId: string | undefined;
+    let lastMessageId: string | undefined;
+
     for (const msg of allMessages) {
-        await createMessage(newChat.id, {
-            role: msg.role,
-            swipes: msg.swipes,
-            activeSwipeId: msg.activeSwipeId
-        });
+        const created = await MessageService.create(
+            newChat.id,
+            {
+                role: msg.role,
+                swipes: msg.swipes,
+                activeSwipeId: msg.activeSwipeId
+            },
+            prevSortOrder,
+            newChat.scopeType
+        );
+        prevSortOrder = created.sortOrder;
+
+        if (msg.id === originalChat.greetingMessageId) greetingMessageId = created.id;
+        lastMessageId = created.id;
     }
+
+    // Set all refs in a single update
+    await updateChat(newChat.id, {
+        greetingMessageId,
+        lastMessageId,
+        messageCount: allMessages.length
+    });
 
     // Copy chat-specific lorebooks
     const lorebooks = await LorebookService.listByOwner(originalChat.id);

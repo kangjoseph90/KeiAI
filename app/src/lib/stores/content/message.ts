@@ -51,8 +51,47 @@ export async function getLastMessage(chatId: string): Promise<Message | null> {
         if (message && message.chatId === chatId) return message;
     }
 
+    // Recovery: query DB when lastMessageId is missing or stale, and repair the ref
     const [message] = await MessageService.getMessagesBefore(chatId, '\uffff', 1);
+    if (message && chat.lastMessageId !== message.id) {
+        await updateChat(chatId, { lastMessageId: message.id });
+    }
     return message ?? null;
+}
+
+/**
+ * Verifies and repairs chat message refs (lastMessageId, greetingMessageId, messageCount).
+ * Intended to be called once during chat selection.
+ */
+export async function repairChatMessageRefs(chatId: string): Promise<void> {
+    const chat = await getChat(chatId);
+    if (!chat) return;
+
+    const patch: Record<string, unknown> = {};
+
+    // lastMessageId
+    const lastMessage = await getLastMessage(chatId);
+    if (!lastMessage && chat.lastMessageId) {
+        patch.lastMessageId = undefined;
+    }
+
+    // greetingMessageId — verify the referenced message still exists
+    if (chat.greetingMessageId) {
+        const greetingMessage = await getMessage(chat.greetingMessageId);
+        if (!greetingMessage || greetingMessage.chatId !== chatId) {
+            patch.greetingMessageId = undefined;
+        }
+    }
+
+    // messageCount
+    const actualCount = await MessageService.countByChat(chatId);
+    if (chat.messageCount !== actualCount) {
+        patch.messageCount = actualCount;
+    }
+
+    if (Object.keys(patch).length > 0) {
+        await updateChat(chatId, patch);
+    }
 }
 
 // ─── Load ──────────────────────────────────────────────────────────────
@@ -173,11 +212,9 @@ export async function createMessage(
     const chat = await getChat(chatId);
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
-    let prevSortOrder: string | undefined = undefined;
-    if (chat.lastMessageId) {
-        const lastMessage = await getMessage(chat.lastMessageId);
-        if (lastMessage) prevSortOrder = lastMessage.sortOrder;
-    }
+    // getLastMessage recovers lastMessageId ref if missing/stale
+    const lastMessage = await getLastMessage(chatId);
+    const prevSortOrder = lastMessage?.sortOrder;
 
     const newMessage = await MessageService.create(chatId, fields, prevSortOrder, chat.scopeType);
 
@@ -214,14 +251,18 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
     await MessageService.delete(msgId);
     const chat = await getChat(chatId);
     const nextMessageCount = Math.max(0, (chat?.messageCount ?? 1) - 1);
+
+    const patch: Record<string, unknown> = { messageCount: nextMessageCount };
     if (chat?.lastMessageId === msgId) {
         const [lastMessage] = await MessageService.getMessagesBefore(chatId, '\uffff', 1);
-        await updateChat(chatId, {
-            lastMessageId: lastMessage?.id,
-            messageCount: nextMessageCount
-        });
-    } else if (chat) {
-        await updateChat(chatId, { messageCount: nextMessageCount });
+        patch.lastMessageId = lastMessage?.id;
+    }
+    if (chat?.greetingMessageId === msgId) {
+        patch.greetingMessageId = undefined;
+    }
+
+    if (chat) {
+        await updateChat(chatId, patch);
     }
 
     // Store update — only if still viewing this chat
