@@ -1124,7 +1124,11 @@ function migrateR2AssetsToLocal(limit) {
   }
 
   var pageSize = Math.max(1, Math.min(Number(limit) || 50, 200));
-  var rows = [];
+  var rows = arrayOf(
+    new DynamicModel({
+      id: "",
+    }),
+  );
   $app
     .db()
     .newQuery(
@@ -1178,7 +1182,11 @@ function migrateR2AssetsToLocal(limit) {
     }
   }
 
-  var remainingRows = [];
+  var remainingRows = arrayOf(
+    new DynamicModel({
+      id: "",
+    }),
+  );
   $app
     .db()
     .newQuery(
@@ -1213,7 +1221,11 @@ function deleteAssetBytes(hash) {
 }
 
 function hasAssetUsage(hash) {
-  var rows = [];
+  var rows = arrayOf(
+    new DynamicModel({
+      id: "",
+    }),
+  );
   $app
     .db()
     .newQuery("SELECT id FROM asset_usage WHERE hash = {:hash} LIMIT 1")

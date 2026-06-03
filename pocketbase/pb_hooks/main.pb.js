@@ -700,7 +700,12 @@ cronAdd("asset-gc", "0 * * * *", () => {
   var pageSize = 200;
 
   while (true) {
-    var orphans = [];
+    var orphans = arrayOf(
+      new DynamicModel({
+        id: "",
+        hash: "",
+      }),
+    );
     $app
       .db()
       .newQuery(
