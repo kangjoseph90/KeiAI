@@ -16,7 +16,6 @@ import {
     localDB,
     type TableName,
     SYNC_TABLES,
-    type BaseRecord,
     type DataRecord,
     type DataScope,
     type DatabaseWriteEvent
@@ -39,6 +38,11 @@ import {
     isReadyToSync
 } from './utils';
 import type { AssetEntries } from '$lib/types/asset';
+import {
+    cascadeDeleteChildren,
+    cleanupCascadeAssets,
+    type CascadeResult
+} from '$lib/services/content/cascade';
 
 type RemoteCollection = 'records' | 'multi_room_records';
 
@@ -56,6 +60,11 @@ interface AssetReconciliation {
     table: TableName;
     before: DataRecord | undefined;
     after: DataRecord;
+}
+
+interface RealtimeMergeResult {
+    assetReconciliation: AssetReconciliation | null;
+    cascadeTarget: { table: TableName; id: string } | null;
 }
 
 const logger = createLogger('sync:data');
@@ -163,6 +172,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         let correctionError: unknown = null;
         let page = 1;
         const offlineWrites = new Map<string, LocalChange>();
+        const cascadeTargets: Array<{ table: TableName; id: string }> = [];
 
         try {
             while (true) {
@@ -210,7 +220,36 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                         const localAt = local?.updatedAt ?? 0;
                         clock.observe(remoteAt);
 
-                        if (!local || remoteAt > localAt) {
+                        if (!local) {
+                            if (!remote.record.isDeleted) {
+                                const records = grouped.get(remote.table) ?? [];
+                                records.push(remote.record);
+                                grouped.set(remote.table, records);
+                                assetReconciliations.push({
+                                    table: remote.table,
+                                    before: undefined,
+                                    after: remote.record
+                                });
+                            }
+                        } else if (remote.record.isDeleted && !local.isDeleted) {
+                            // Delete-wins: remote deleted beats local live
+                            const records = grouped.get(remote.table) ?? [];
+                            records.push(remote.record);
+                            grouped.set(remote.table, records);
+                            assetReconciliations.push({
+                                table: remote.table,
+                                before: local,
+                                after: remote.record
+                            });
+                            cascadeTargets.push({ table: remote.table, id: remote.record.id });
+                        } else if (local.isDeleted && !remote.record.isDeleted) {
+                            // Delete-wins: local deleted beats remote live — repair push
+                            offlineWrites.set(this.changeKey(remote.table, local.id), {
+                                table: remote.table,
+                                record: local
+                            });
+                        } else if (remoteAt > localAt) {
+                            // Same delete status — LWW remote wins
                             const records = grouped.get(remote.table) ?? [];
                             records.push(remote.record);
                             grouped.set(remote.table, records);
@@ -220,6 +259,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
                                 after: remote.record
                             });
                         } else if (remoteAt < localAt) {
+                            // Same delete status — LWW local wins
                             offlineWrites.set(this.changeKey(remote.table, local.id), {
                                 table: remote.table,
                                 record: local
@@ -245,6 +285,13 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             cursorSafeToAdvance = false;
             syncError = err;
             logger.error(`Failed to pull ${syncScope.collection}`, err);
+        }
+
+        if (cascadeTargets.length > 0) {
+            for (const { table, id } of cascadeTargets) {
+                const cascadeResult = await cascadeDeleteChildren(table, id, { origin: 'local' });
+                await cleanupCascadeAssets(cascadeResult);
+            }
         }
 
         const scannedUnsynced = await this.collectUnsyncedChanges(syncScope.scope, lastSyncTime);
@@ -312,7 +359,40 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             }
 
             try {
-                await batch.send({ requestKey: null });
+                const results = await batch.send({ requestKey: null });
+                // Handle server-enforced deletes (server hook forced isDeleted=true)
+                const reconciliations: AssetReconciliation[] = [];
+                for (let j = 0; j < results.length; j++) {
+                    const result = results[j];
+                    const change = chunk[j];
+                    if (
+                        result.status === 200 &&
+                        result.body?.isDeleted &&
+                        !change.record.isDeleted
+                    ) {
+                        const remote = await this.pbToLocalRecord(
+                            result.body as Record<string, unknown>,
+                            syncScope
+                        );
+                        const local = await localDB.getRecord<DataRecord>(
+                            remote.table,
+                            remote.record.id
+                        );
+                        await localDB.putRecord(remote.table, remote.record, {
+                            origin: 'sync'
+                        });
+                        if (local) {
+                            reconciliations.push({
+                                table: remote.table,
+                                before: local,
+                                after: remote.record
+                            });
+                        }
+                    }
+                }
+                for (const { table, before, after } of reconciliations) {
+                    await this.reconcileAssetRegistry(table, before, after);
+                }
             } catch (err) {
                 logger.error(`Failed to push batch to ${syncScope.collection}`, err);
                 if (!continueOnError) {
@@ -336,7 +416,12 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         event: DatabaseWriteEvent
     ): BufferedRecordWrite<TableName>[] {
         if (event.origin !== 'local' || !SYNC_TABLES.includes(event.tableName)) return [];
-        if (event.operation === 'delete' || event.operation === 'deleteByIndex') return [];
+        if (
+            event.operation === 'delete' ||
+            event.operation === 'deleteByIndex' ||
+            event.operation === 'purge'
+        )
+            return [];
         return event.ids.map((id) => ({ bucket: event.tableName, id }));
     }
 
@@ -379,38 +464,82 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
             const remoteAt = remote.record.updatedAt ?? 0;
             clock.observe(remoteAt);
 
-            const assetReconciliation = await localDB.transaction(
+            const mergeResult = await localDB.transaction(
                 [remote.table],
                 'rw',
-                async (): Promise<AssetReconciliation | null> => {
+                async (): Promise<RealtimeMergeResult> => {
                     const local = await localDB.getRecord<DataRecord>(
                         remote.table,
                         remote.record.id
                     );
                     const localAt = local?.updatedAt ?? 0;
 
-                    if (!local || remoteAt > localAt) {
+                    if (!local) {
+                        if (!remote.record.isDeleted) {
+                            await localDB.putRecord(remote.table, remote.record, {
+                                origin: 'sync'
+                            });
+                            return {
+                                assetReconciliation: {
+                                    table: remote.table,
+                                    before: undefined,
+                                    after: remote.record
+                                },
+                                cascadeTarget: null
+                            };
+                        }
+                    } else if (remote.record.isDeleted && !local.isDeleted) {
+                        // Delete-wins: remote deleted beats local live
                         await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
                         return {
-                            table: remote.table,
-                            before: local,
-                            after: remote.record
+                            assetReconciliation: {
+                                table: remote.table,
+                                before: local,
+                                after: remote.record
+                            },
+                            cascadeTarget: { table: remote.table, id: remote.record.id }
+                        };
+                    } else if (local.isDeleted && !remote.record.isDeleted) {
+                        // Delete-wins: local deleted beats remote live — repair push
+                        void this.pushChangesForActiveScopes([
+                            { table: remote.table, record: local }
+                        ]);
+                    } else if (remoteAt > localAt) {
+                        // Same delete status — LWW remote wins
+                        await localDB.putRecord(remote.table, remote.record, { origin: 'sync' });
+                        return {
+                            assetReconciliation: {
+                                table: remote.table,
+                                before: local,
+                                after: remote.record
+                            },
+                            cascadeTarget: null
                         };
                     } else if (remoteAt < localAt) {
+                        // Same delete status — LWW local wins
                         void this.pushChangesForActiveScopes([
                             { table: remote.table, record: local }
                         ]);
                     }
 
-                    return null;
+                    return { assetReconciliation: null, cascadeTarget: null };
                 }
             );
 
-            if (assetReconciliation) {
+            if (mergeResult.cascadeTarget) {
+                const cascadeResult = await cascadeDeleteChildren(
+                    mergeResult.cascadeTarget.table,
+                    mergeResult.cascadeTarget.id,
+                    { origin: 'local' }
+                );
+                await cleanupCascadeAssets(cascadeResult);
+            }
+
+            if (mergeResult.assetReconciliation) {
                 await this.reconcileAssetRegistry(
-                    assetReconciliation.table,
-                    assetReconciliation.before,
-                    assetReconciliation.after
+                    mergeResult.assetReconciliation.table,
+                    mergeResult.assetReconciliation.before,
+                    mergeResult.assetReconciliation.after
                 );
             }
         } catch (err) {
@@ -420,7 +549,7 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
 
     private async localToPbRecord(
         table: TableName,
-        record: BaseRecord,
+        record: DataRecord,
         syncScope: SyncScope
     ): Promise<Record<string, unknown>> {
         const {

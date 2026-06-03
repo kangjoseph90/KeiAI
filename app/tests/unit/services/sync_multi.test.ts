@@ -22,7 +22,7 @@ const mockBatchCollection = {
 
 const mockBatch = {
     collection: vi.fn(() => mockBatchCollection),
-    send: vi.fn()
+    send: vi.fn().mockResolvedValue([])
 };
 
 vi.mock('$lib/adapters/pb', () => ({
@@ -40,6 +40,7 @@ vi.mock('$lib/adapters/multi', () => ({
         getRoomIndexesByOwner: vi.fn(),
         getRoomIndexesSince: vi.fn(),
         saveRoomIndex: vi.fn(),
+        purgeRoomLocal: vi.fn(),
         getMember: vi.fn(),
         getMembersSince: vi.fn(),
         getMembersByRoomsSince: vi.fn(),
@@ -226,6 +227,107 @@ describe('MultiRecordSyncEngine', () => {
             { origin: 'sync' }
         );
     });
+
+    describe('Room index endpoint-first tombstone', () => {
+        it('remote deleted index always triggers purge', async () => {
+            vi.mocked(mockCollection.getList)
+                .mockResolvedValueOnce({
+                    items: [
+                        {
+                            id: 'room-1',
+                            ownerUserId: userId,
+                            visibility: 'private',
+                            publicName: 'Room',
+                            createdAt: 1,
+                            updatedAt: 2000,
+                            isDeleted: true
+                        }
+                    ],
+                    page: 1,
+                    totalPages: 1
+                } as unknown as { items: unknown[]; page: number; totalPages: number })
+                .mockResolvedValueOnce({
+                    items: [],
+                    page: 1,
+                    totalPages: 1
+                } as unknown as { items: unknown[]; page: number; totalPages: number });
+
+            // No local room index — should still hard-delete
+            vi.mocked(appMulti.getRoomIndex).mockResolvedValue(null);
+            vi.mocked(appMulti.getMember).mockResolvedValue(null);
+
+            await service.trigger();
+
+            // Should hard-delete, not save isDeleted
+            expect(appMulti.purgeRoomLocal).toHaveBeenCalledWith('room-1', { origin: 'sync' });
+        });
+
+        it('local deleted + remote live does not trigger repair push', async () => {
+            vi.mocked(mockCollection.getList)
+                .mockResolvedValueOnce({
+                    items: [
+                        {
+                            id: 'room-1',
+                            ownerUserId: userId,
+                            visibility: 'private',
+                            publicName: 'Room',
+                            createdAt: 1,
+                            updatedAt: 2000
+                        }
+                    ],
+                    page: 1,
+                    totalPages: 1
+                } as unknown as { items: unknown[]; page: number; totalPages: number })
+                .mockResolvedValueOnce({
+                    items: [],
+                    page: 1,
+                    totalPages: 1
+                } as unknown as { items: unknown[]; page: number; totalPages: number });
+
+            // Local has no room index (hard-deleted, not soft-deleted)
+            vi.mocked(appMulti.getRoomIndex).mockResolvedValue(null);
+            vi.mocked(appMulti.getRoomIndexesByOwner).mockResolvedValue([]);
+
+            await service.trigger();
+
+            // Should NOT push — no local room index to push
+            expect(mockBatchCollection.upsert).not.toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'room-1' })
+            );
+        });
+
+        it('push response handles server-enforced deleted room index', async () => {
+            vi.mocked(appMulti.getRoomIndexesByOwner).mockResolvedValue([
+                roomIndex({ updatedAt: 2000 })
+            ]);
+            vi.mocked(appMulti.getRoomIndexesSince).mockResolvedValue([
+                roomIndex({ updatedAt: 2000 })
+            ]);
+            vi.mocked(appMulti.getMembersSince).mockResolvedValue([]);
+            vi.mocked(appMulti.getMembersByRoomsSince).mockResolvedValue([]);
+
+            // Server returns deleted room index in batch response
+            vi.mocked(mockBatch.send).mockResolvedValue([
+                {
+                    status: 200,
+                    body: {
+                        id: 'room-1',
+                        ownerUserId: userId,
+                        visibility: 'private',
+                        publicName: 'Room',
+                        createdAt: 1,
+                        updatedAt: 2500,
+                        isDeleted: true
+                    }
+                }
+            ]);
+
+            await service.trigger();
+
+            // Should hard-delete room locally (not save isDeleted)
+            expect(appMulti.purgeRoomLocal).toHaveBeenCalledWith('room-1', { origin: 'sync' });
+        });
+    });
 });
 
 function roomIndex(overrides: Partial<MultiRoomIndexRecord> = {}): MultiRoomIndexRecord {
@@ -236,7 +338,6 @@ function roomIndex(overrides: Partial<MultiRoomIndexRecord> = {}): MultiRoomInde
         publicName: 'Room',
         createdAt: 1,
         updatedAt: 2,
-        isDeleted: false,
         ...overrides
     };
 }

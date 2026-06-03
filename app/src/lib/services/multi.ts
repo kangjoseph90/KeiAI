@@ -153,7 +153,7 @@ async function assertRoomOwner(roomId: string, userId: string): Promise<MultiRoo
 
 async function getRoomIndex(roomId: string): Promise<MultiRoomIndexRecord> {
     const index = await appMulti.getRoomIndex(roomId);
-    if (!index || index.isDeleted) {
+    if (!index) {
         throw new AppError('NOT_FOUND', `Multi room not found: ${roomId}`);
     }
     return index;
@@ -278,8 +278,7 @@ export class MultiRoomService {
             visibility: params.visibility,
             publicName: params.publicName,
             createdAt: now,
-            updatedAt: now,
-            isDeleted: false
+            updatedAt: now
         };
         const member = createAcceptedMember(roomId, userId, encryptedRoomKey, now);
         const roomData =
@@ -558,16 +557,8 @@ export class MultiRoomService {
     static async deleteRoom(roomId: string): Promise<void> {
         const { userId } = getActiveSession();
         await assertRoomOwner(roomId, userId);
-        const result = await multiRoomApi(
-            'DELETE',
-            `/api/multi-rooms/${encodeURIComponent(roomId)}`,
-            true
-        );
-        if (result.room) {
-            await appMulti.saveRoomIndex(result.room, { origin: 'sync' });
-        } else {
-            await appMulti.purgeRoomLocal(roomId, { origin: 'sync' });
-        }
+        await multiRoomApi('DELETE', `/api/multi-rooms/${encodeURIComponent(roomId)}`, true);
+        await appMulti.purgeRoomLocal(roomId, { origin: 'sync' });
         await this.purgeLocalRoomContent(roomId);
     }
 

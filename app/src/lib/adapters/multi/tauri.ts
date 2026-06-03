@@ -1,5 +1,4 @@
 import Database from '@tauri-apps/plugin-sql';
-import { clock } from '$lib/utils/clock';
 import { MultiWriteEventEmitter } from './events';
 import type {
     IMultiAdapter,
@@ -19,7 +18,6 @@ interface MultiRoomIndexRow {
     publicName: string | null;
     createdAt: number;
     updatedAt: number;
-    isDeleted: number;
 }
 
 interface MultiRoomMemberRow {
@@ -78,8 +76,7 @@ export class TauriMultiAdapter implements IMultiAdapter {
                     visibility TEXT    NOT NULL,
                     publicName TEXT,
                     createdAt  INTEGER NOT NULL,
-                    updatedAt  INTEGER NOT NULL,
-                    isDeleted  INTEGER NOT NULL DEFAULT 0
+                    updatedAt  INTEGER NOT NULL
                 )
             `);
             await db.execute(`
@@ -130,8 +127,7 @@ export class TauriMultiAdapter implements IMultiAdapter {
             visibility: row.visibility,
             publicName: row.publicName ?? undefined,
             createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-            isDeleted: row.isDeleted === 1
+            updatedAt: row.updatedAt
         };
     }
 
@@ -161,16 +157,15 @@ export class TauriMultiAdapter implements IMultiAdapter {
         const db = await this.getSQLite();
         await db.execute(
             `INSERT OR REPLACE INTO multi_room_index
-             (id, ownerUserId, visibility, publicName, createdAt, updatedAt, isDeleted)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+             (id, ownerUserId, visibility, publicName, createdAt, updatedAt)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
             [
                 record.id,
                 record.ownerUserId,
                 record.visibility,
                 record.publicName ?? null,
                 record.createdAt,
-                record.updatedAt,
-                record.isDeleted ? 1 : 0
+                record.updatedAt
             ]
         );
     }
@@ -207,7 +202,7 @@ export class TauriMultiAdapter implements IMultiAdapter {
         const records: MultiRoomIndexRecord[] = [];
         for (const roomId of roomIds) {
             const record = await this.getRoomIndex(roomId);
-            if (record && !record.isDeleted) records.push(record);
+            if (record) records.push(record);
         }
         return records;
     }
@@ -249,17 +244,6 @@ export class TauriMultiAdapter implements IMultiAdapter {
             records.map((record) => record.id),
             options
         );
-    }
-
-    async deleteRoomIndex(roomId: string, options?: MultiWriteOptions): Promise<void> {
-        const record = await this.getRoomIndex(roomId);
-        if (!record) return;
-        await this.writeRoomIndex({
-            ...record,
-            updatedAt: clock.now(),
-            isDeleted: true
-        });
-        this.emitWriteEvent('multi_room_index', 'put', [roomId], options);
     }
 
     async getMember(id: string): Promise<MultiRoomMemberRecord | null> {

@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { LorebookService } from '$lib/services/content/lorebook';
-import type { BaseRecord } from '$lib/adapters/db/types';
+import type { DataRecord } from '$lib/adapters/db/types';
 import { AppError } from '$lib/types/errors';
 
 // Mock dependencies
@@ -77,7 +77,7 @@ describe('LorebookService', () => {
                     scopeId: mockUserId,
                     ownerId: 'owner-1',
                     data: defaultLorebookParams
-                } as unknown as BaseRecord
+                } as unknown as DataRecord
             ];
 
             vi.mocked(localDB.getByIndex).mockResolvedValue(mockRecords);
@@ -100,7 +100,7 @@ describe('LorebookService', () => {
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultLorebookParams
-            } as unknown as BaseRecord;
+            } as unknown as DataRecord;
 
             vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
@@ -157,7 +157,7 @@ describe('LorebookService', () => {
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultLorebookParams
-            } as unknown as BaseRecord;
+            } as unknown as DataRecord;
 
             vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
@@ -188,7 +188,7 @@ describe('LorebookService', () => {
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultLorebookParams
-            } as unknown as BaseRecord;
+            } as unknown as DataRecord;
             vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
             await LorebookService.delete('lb-1');

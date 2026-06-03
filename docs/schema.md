@@ -35,25 +35,28 @@ export interface DataScope {
     scopeId: string; // userId or roomId
 }
 
-export interface BaseRecord extends DataScope {
+export interface DataRecord extends DataScope {
     id: string;
     createdAt: number;
     updatedAt: number;
     isDeleted: boolean;
+    assetEntries?: AssetEntries;
+    data: Record<string, unknown>;
 }
 ```
 
 - `scopeType='user'`: 개인 금고. `scopeId=userId`.
 - `scopeType='room'`: 멀티룸 공유 금고. `scopeId=roomId`.
-- 같은 로컬 테이블 안에 user scope와 room scope 레코드가 공존할 수 있다.
-- 목록 조회는 scope를 반드시 받는다. 예: `localDB.getAll('characters', scope)`.
-- 단일 ID 조회는 sync/정합성/버퍼 작업 때문에 scope를 강제하지 않을 수 있지만, 서비스 레이어는 `canAccessScope()`로 접근 가능성을 확인한다.
+- 모든 동기화 대상 레코드는 `DataRecord` 구조를 따른다.
+- 로컬 DB는 모든 레코드를 plaintext JSON으로 저장한다.
+- `assetEntries`: 레코드가 소유한 에셋 해시 목록.
+- `data`: 도메인별 필드들이 담긴 JSON 객체.
 
 ---
 
 ## 3. 로컬 도메인 테이블
 
-로컬은 도메인별 테이블을 유지한다. 개인/멀티룸을 위해 테이블을 복제하지 않는다.
+로컬은 도메인별 테이블을 유지한다. 모든 테이블은 `DataRecord` 기반이다.
 
 | 테이블 | 역할 | 주요 인덱스/필드 |
 |---|---|---|

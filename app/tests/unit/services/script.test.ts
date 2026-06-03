@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ScriptService } from '$lib/services/content/script';
-import type { BaseRecord } from '$lib/adapters/db/types';
+import type { DataRecord } from '$lib/adapters/db/types';
 import { AppError } from '$lib/types/errors';
 
 // Mock dependencies
@@ -75,7 +75,7 @@ describe('ScriptService', () => {
                     scopeId: mockUserId,
                     ownerId: 'owner-1',
                     data: defaultScriptParams
-                } as unknown as BaseRecord
+                } as unknown as DataRecord
             ];
 
             vi.mocked(localDB.getByIndex).mockResolvedValue(mockRecords);
@@ -98,7 +98,7 @@ describe('ScriptService', () => {
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultScriptParams
-            } as unknown as BaseRecord;
+            } as unknown as DataRecord;
 
             vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
@@ -155,7 +155,7 @@ describe('ScriptService', () => {
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultScriptParams
-            } as unknown as BaseRecord;
+            } as unknown as DataRecord;
 
             vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
@@ -186,7 +186,7 @@ describe('ScriptService', () => {
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultScriptParams
-            } as unknown as BaseRecord;
+            } as unknown as DataRecord;
             vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
             await ScriptService.delete('s-1');

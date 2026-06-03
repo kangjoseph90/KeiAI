@@ -2,7 +2,7 @@ import Database from '@tauri-apps/plugin-sql';
 import type {
     IDatabaseAdapter,
     TableName,
-    BaseRecord,
+    DataRecord,
     DataScope,
     DatabaseWriteEventListener,
     DatabaseWriteOptions,
@@ -60,7 +60,7 @@ interface RecordBindingShape {
 }
 
 // Convert record to DB row bindings safely
-function recordToBindings<T extends BaseRecord>(record: T): DatabaseSqlRow {
+function recordToBindings<T extends DataRecord>(record: T): DatabaseSqlRow {
     const clone: RecordBindingShape = { ...record };
 
     const bindings: DatabaseSqlRow = {
@@ -101,6 +101,13 @@ function parseRecord<T>(row: DatabaseSqlRow): T {
         assetEntries: row.assetEntries ? (JSON.parse(row.assetEntries) as AssetEntries) : undefined,
         data
     } as T;
+}
+
+function scrubSoftDeletedRecord(record: DataRecord, updatedAt: number): void {
+    record.isDeleted = true;
+    record.updatedAt = updatedAt;
+    record.assetEntries = undefined;
+    record.data = {};
 }
 
 function parseCompoundIndex(indexName: string): [string, string] | null {
@@ -200,7 +207,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         await db.execute(sql);
     }
 
-    async getRecord<T extends BaseRecord>(
+    async getRecord<T extends DataRecord>(
         tableName: TableName,
         id: string
     ): Promise<T | undefined> {
@@ -212,7 +219,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         return undefined;
     }
 
-    async putRecord<T extends BaseRecord>(
+    async putRecord<T extends DataRecord>(
         tableName: TableName,
         record: T,
         options?: DatabaseWriteOptions
@@ -243,7 +250,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         this.emitWriteEvent(tableName, 'put', [record.id], options);
     }
 
-    async putRecords<T extends BaseRecord>(
+    async putRecords<T extends DataRecord>(
         tableName: TableName,
         records: T[],
         options?: DatabaseWriteOptions
@@ -328,18 +335,41 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         );
     }
 
+    async deleteByScope(
+        tableName: TableName,
+        scope: DataScope,
+        options?: DatabaseWriteOptions
+    ): Promise<number> {
+        await this.flush();
+        const db = await this.getDb();
+
+        const rows = await db.select<{ id: string }[]>(
+            `SELECT id FROM ${tableName} WHERE scopeType = $1 AND scopeId = $2`,
+            [scope.scopeType, scope.scopeId]
+        );
+        if (rows.length === 0) return 0;
+
+        const ids = rows.map((row) => row.id);
+        const result = await db.execute(
+            `DELETE FROM ${tableName} WHERE scopeType = $1 AND scopeId = $2`,
+            [scope.scopeType, scope.scopeId]
+        );
+
+        this.emitWriteEvent(tableName, 'purge', ids, options);
+        return result.rowsAffected;
+    }
+
     async softDeleteRecord(
         tableName: TableName,
         id: string,
         options?: DatabaseWriteOptions
     ): Promise<void> {
-        const record = await this.getRecord<BaseRecord>(tableName, id);
+        const record = await this.getRecord<DataRecord>(tableName, id);
 
-        if (record) {
-            record.isDeleted = true;
-            record.updatedAt = clock.now();
-            await this.putRecord(tableName, record, options);
-        }
+        if (!record || record.isDeleted) return;
+
+        scrubSoftDeletedRecord(record, clock.now());
+        await this.putRecord(tableName, record, options);
     }
 
     async softDeleteByIndex(
@@ -351,16 +381,15 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         await this.flush();
         const db = await this.getDb();
         const rows = await db.select<DatabaseSqlRow[]>(
-            `SELECT * FROM ${tableName} WHERE ${indexName} = $1`,
+            `SELECT * FROM ${tableName} WHERE ${indexName} = $1 AND isDeleted = 0`,
             [indexValue]
         );
         const now = clock.now();
-        const recordsToUpdate: BaseRecord[] = [];
+        const recordsToUpdate: DataRecord[] = [];
 
         for (const row of rows) {
-            const record = parseRecord<BaseRecord>(row);
-            record.isDeleted = true;
-            record.updatedAt = now;
+            const record = parseRecord<DataRecord>(row);
+            scrubSoftDeletedRecord(record, now);
             recordsToUpdate.push(record);
         }
 
@@ -435,7 +464,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         if (rows.length === 0) return;
 
         await db.execute(
-            `UPDATE ${tableName} SET isDeleted = 1, updatedAt = $3 WHERE ${col1} = $1 AND ${col2} = $2 AND isDeleted = 0`,
+            `UPDATE ${tableName} SET isDeleted = 1, updatedAt = $3, assetEntries = NULL, data = '{}' WHERE ${col1} = $1 AND ${col2} = $2 AND isDeleted = 0`,
             [indexValue[0], indexValue[1], now]
         );
         this.emitWriteEvent(
@@ -446,7 +475,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         );
     }
 
-    async getAll<T extends BaseRecord>(tableName: TableName, scope: DataScope): Promise<T[]> {
+    async getAll<T extends DataRecord>(tableName: TableName, scope: DataScope): Promise<T[]> {
         await this.flush();
         const db = await this.getDb();
         const rows = await db.select<DatabaseSqlRow[]>(
@@ -456,7 +485,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         return rows.map((row) => parseRecord<T>(row));
     }
 
-    async getByIndex<T extends BaseRecord>(
+    async getByIndex<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         indexValue: string,
@@ -472,7 +501,17 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         return rows.map((row) => parseRecord<T>(row));
     }
 
-    async getByCompoundIndex<T extends BaseRecord>(
+    async getScopeIdsByType(tableName: TableName, scopeType: string): Promise<string[]> {
+        await this.flush();
+        const db = await this.getDb();
+        const rows = await db.select<{ scopeId: string | null }[]>(
+            `SELECT DISTINCT scopeId FROM ${tableName} WHERE scopeType = $1`,
+            [scopeType]
+        );
+        return rows.map((row) => row.scopeId).filter((id): id is string => !!id);
+    }
+
+    async getByCompoundIndex<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         indexValue: string[],
@@ -497,7 +536,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         return rows.map((row) => parseRecord<T>(row));
     }
 
-    async getRecordsBackward<T extends BaseRecord>(
+    async getRecordsBackward<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         lowerBound: unknown[],
@@ -534,7 +573,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         );
     }
 
-    async getRecordsForward<T extends BaseRecord>(
+    async getRecordsForward<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         lowerBound: unknown[],
@@ -600,7 +639,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         );
     }
 
-    async getUnsyncedChanges<T extends BaseRecord>(
+    async getUnsyncedChanges<T extends DataRecord>(
         tableName: TableName,
         scope: DataScope,
         sinceUpdatedAt: number

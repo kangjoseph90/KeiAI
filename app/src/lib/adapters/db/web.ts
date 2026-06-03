@@ -8,7 +8,7 @@ import Dexie, { type Table } from 'dexie';
 import type {
     IDatabaseAdapter,
     TableName,
-    BaseRecord,
+    DataRecord,
     DataScope,
     DatabaseWriteEventListener,
     DatabaseWriteOptions,
@@ -26,7 +26,8 @@ import type {
     TranslationRecord,
     CharJSRecord,
     DatabaseWriteOperation,
-    RoomRecord
+    RoomRecord,
+    DataScopeType
 } from './types';
 import { DatabaseWriteEventEmitter } from './events';
 import { clock } from '$lib/utils/clock';
@@ -80,6 +81,13 @@ class DexieStore extends Dexie {
     }
 }
 
+function scrubSoftDeletedRecord(record: DataRecord, updatedAt: number): void {
+    record.isDeleted = true;
+    record.updatedAt = updatedAt;
+    record.assetEntries = undefined;
+    record.data = {};
+}
+
 export class WebDatabaseAdapter implements IDatabaseAdapter {
     private db: DexieStore;
     private readonly writeEvents = new DatabaseWriteEventEmitter();
@@ -92,7 +100,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         return this.writeEvents.subscribe(listener);
     }
 
-    private getTable<T extends BaseRecord>(tableName: TableName): Table<T, string> {
+    private getTable<T extends DataRecord>(tableName: TableName): Table<T, string> {
         return this.db[tableName] as unknown as Table<T, string>;
     }
 
@@ -100,14 +108,14 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         return Promise.resolve();
     }
 
-    async getRecord<T extends BaseRecord>(
+    async getRecord<T extends DataRecord>(
         tableName: TableName,
         id: string
     ): Promise<T | undefined> {
         return await this.getTable<T>(tableName).get(id);
     }
 
-    async putRecord<T extends BaseRecord>(
+    async putRecord<T extends DataRecord>(
         tableName: TableName,
         record: T,
         options?: DatabaseWriteOptions
@@ -116,7 +124,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         this.emitWriteEvent(tableName, 'put', [record.id], options);
     }
 
-    async putRecords<T extends BaseRecord>(
+    async putRecords<T extends DataRecord>(
         tableName: TableName,
         records: T[],
         options?: DatabaseWriteOptions
@@ -135,7 +143,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         id: string,
         options?: DatabaseWriteOptions
     ): Promise<void> {
-        await this.getTable<BaseRecord>(tableName).delete(id);
+        await this.getTable<DataRecord>(tableName).delete(id);
         this.emitWriteEvent(tableName, 'delete', [id], options);
     }
 
@@ -146,7 +154,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         options?: DatabaseWriteOptions
     ): Promise<void> {
         await this.flush();
-        const table = this.getTable<BaseRecord>(tableName);
+        const table = this.getTable<DataRecord>(tableName);
         const ids = (
             (await table.where(indexName).equals(indexValue).primaryKeys()) as string[]
         ).filter((id): id is string => typeof id === 'string');
@@ -154,18 +162,40 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         this.emitWriteEvent(tableName, 'deleteByIndex', ids, options);
     }
 
+    async deleteByScope(
+        tableName: TableName,
+        scope: DataScope,
+        options?: DatabaseWriteOptions
+    ): Promise<number> {
+        await this.flush();
+        const table = this.getTable<DataRecord>(tableName);
+        const ids = (
+            (await table
+                .where('[scopeType+scopeId]')
+                .equals([scope.scopeType, scope.scopeId])
+                .primaryKeys()) as string[]
+        ).filter((id): id is string => typeof id === 'string');
+
+        const count = await table
+            .where('[scopeType+scopeId]')
+            .equals([scope.scopeType, scope.scopeId])
+            .delete();
+
+        this.emitWriteEvent(tableName, 'purge', ids, options);
+        return count;
+    }
+
     async softDeleteRecord(
         tableName: TableName,
         id: string,
         options?: DatabaseWriteOptions
     ): Promise<void> {
-        const record = await this.getRecord<BaseRecord>(tableName, id);
+        const record = await this.getRecord<DataRecord>(tableName, id);
 
-        if (record) {
-            record.isDeleted = true;
-            record.updatedAt = clock.now();
-            await this.putRecord(tableName, record, options);
-        }
+        if (!record || record.isDeleted) return;
+
+        scrubSoftDeletedRecord(record, clock.now());
+        await this.putRecord(tableName, record, options);
     }
 
     async softDeleteByIndex(
@@ -175,12 +205,17 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         options?: DatabaseWriteOptions
     ): Promise<void> {
         await this.flush();
-        const table = this.getTable<BaseRecord>(tableName);
+        const table = this.getTable<DataRecord>(tableName);
         const now = clock.now();
-        const records = await table.where(indexName).equals(indexValue).toArray();
+        const records = await table
+            .where(indexName)
+            .equals(indexValue)
+            .filter((record) => !record.isDeleted)
+            .toArray();
+        if (records.length === 0) return;
+
         for (const record of records) {
-            record.isDeleted = true;
-            record.updatedAt = now;
+            scrubSoftDeletedRecord(record, now);
         }
         await table.bulkPut(records);
         this.emitWriteEvent(
@@ -198,12 +233,17 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         options?: DatabaseWriteOptions
     ): Promise<void> {
         await this.flush();
-        const table = this.getTable<BaseRecord>(tableName);
+        const table = this.getTable<DataRecord>(tableName);
         const now = clock.now();
-        const records = await table.where(indexName).equals(indexValue).toArray();
+        const records = await table
+            .where(indexName)
+            .equals(indexValue)
+            .filter((record) => !record.isDeleted)
+            .toArray();
+        if (records.length === 0) return;
+
         for (const record of records) {
-            record.isDeleted = true;
-            record.updatedAt = now;
+            scrubSoftDeletedRecord(record, now);
         }
         await table.bulkPut(records);
         this.emitWriteEvent(
@@ -214,7 +254,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         );
     }
 
-    async getAll<T extends BaseRecord>(tableName: TableName, scope: DataScope): Promise<T[]> {
+    async getAll<T extends DataRecord>(tableName: TableName, scope: DataScope): Promise<T[]> {
         await this.flush();
         return (await this.getTable<T>(tableName)
             .where('[scopeType+scopeId]')
@@ -224,7 +264,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
             .then((results) => results.reverse())) as T[];
     }
 
-    async getByIndex<T extends BaseRecord>(
+    async getByIndex<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         indexValue: string,
@@ -241,7 +281,26 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
             .toArray()) as T[];
     }
 
-    async getByCompoundIndex<T extends BaseRecord>(
+    async getScopeIdsByType(tableName: TableName, scopeType: DataScopeType): Promise<string[]> {
+        await this.flush();
+        const table = this.getTable<DataRecord>(tableName);
+        // Using compound index [scopeType+scopeId] to scan all keys for a given scopeType.
+        // .keys() returns only the index keys, avoiding full record loads.
+        const keys = (await table
+            .where('[scopeType+scopeId]')
+            .between([scopeType, Dexie.minKey], [scopeType, Dexie.maxKey])
+            .keys()) as unknown as [string, string][];
+
+        const ids = new Set<string>();
+        for (const key of keys) {
+            if (Array.isArray(key) && key[0] === scopeType && key[1]) {
+                ids.add(key[1]);
+            }
+        }
+        return [...ids];
+    }
+
+    async getByCompoundIndex<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         indexValue: string[],
@@ -258,7 +317,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
             .toArray()) as T[];
     }
 
-    async getRecordsBackward<T extends BaseRecord>(
+    async getRecordsBackward<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         lowerBound: unknown[], // e.g. [chatId, 0]
@@ -277,7 +336,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
             .toArray()) as T[];
     }
 
-    async getRecordsForward<T extends BaseRecord>(
+    async getRecordsForward<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         lowerBound: unknown[],
@@ -302,14 +361,14 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         upperBound: unknown[]
     ): Promise<number> {
         await this.flush();
-        return await this.getTable<BaseRecord>(tableName)
+        return await this.getTable<DataRecord>(tableName)
             .where(indexName)
             .between(lowerBound, upperBound, false, false)
             .filter((record) => !record.isDeleted)
             .count();
     }
 
-    async getUnsyncedChanges<T extends BaseRecord>(
+    async getUnsyncedChanges<T extends DataRecord>(
         tableName: TableName,
         scope: DataScope,
         sinceUpdatedAt: number
@@ -337,7 +396,7 @@ export class WebDatabaseAdapter implements IDatabaseAdapter {
         indexValue: string
     ): Promise<number> {
         await this.flush();
-        return await this.getTable<BaseRecord>(tableName)
+        return await this.getTable<DataRecord>(tableName)
             .where(indexName)
             .equals(indexValue)
             .filter((record) => !record.isDeleted)

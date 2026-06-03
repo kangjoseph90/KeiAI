@@ -685,17 +685,19 @@
   - 로컬/서버 모두 단일 generic records 테이블 → 서버는 단순하지만 로컬 도메인 쿼리, 페이지네이션, 인덱싱이 불편하다.
   - 로컬은 도메인 테이블 유지 + scope 격리, 서버는 generic encrypted records → 로컬 실행성과 서버 blind sync 모델을 각각 최적화할 수 있다.
 - 결정:
-  - 로컬 DB는 도메인별 테이블(`characters`, `rooms`, `chats`, `messages`, `lorebooks`, `scripts`, `charjs`, `assets` 등)을 유지하되, 모든 동기화 대상 레코드의 기본 메타데이터를 scope 기반 `BaseRecord`로 통일한다.
+  - 로컬 DB는 도메인별 테이블(`characters`, `rooms`, `chats`, `messages`, `lorebooks`, `scripts`, `charjs`, `assets` 등)을 유지하되, 모든 레코드는 `DataRecord` 구조로 통일한다.
     ```typescript
     export type DataScopeType = 'user' | 'room';
 
-    export interface BaseRecord {
+    export interface DataRecord {
         id: string;
         scopeType: DataScopeType;
         scopeId: string; // userId or roomId
         createdAt: number;
         updatedAt: number;
         isDeleted: boolean;
+        assetEntries?: AssetEntries;
+        data: Record<string, unknown>;
     }
     ```
   - 개인 컨텐츠는 `scopeType='user'`, `scopeId=userId`로 저장한다.
@@ -715,7 +717,7 @@
     - `scopeType='room'`: active room key로 암호화하고 `multi_room_records`에 push/pull한다.
   - 서버의 멀티룸 권한은 `multi_room_records.roomId`와 `multi_room_members`의 accepted membership으로 검사한다. 개인 records는 기존처럼 `userId === auth.id`를 기준으로 검사한다.
   - `multi_room_index`와 `multi_room_members`는 컨텐츠가 아니라 디렉터리/권한/키 교환 메타이므로 별도 테이블로 유지한다.
-  - 에셋도 같은 `BaseRecord` 소유 모델을 사용한다. 개인 에셋은 `scopeType='user'`, 멀티룸 에셋은 `scopeType='room'`이다.
+  - 에셋도 같은 `DataRecord` 소유 모델을 사용한다. 개인 에셋은 `scopeType='user'`, 멀티룸 에셋은 `scopeType='room'`이다.
   - 다만 에셋은 서버 generic content records에 포함하지 않는다. 에셋은 blob 저장, upload queue, registry, hash/status 라이프사이클이 있으므로 별도 asset adapter/sync 모델을 유지한다. 서버도 `assets`와 `multi_room_assets`를 둔다.
 - 결과:
   - 로컬 실행 계층은 개인 모드와 멀티룸 모드를 같은 도메인 서비스, 같은 페이지네이션, 같은 buffer 위에서 실행할 수 있다.

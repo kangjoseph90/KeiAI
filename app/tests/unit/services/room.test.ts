@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { RoomService } from '$lib/services/content/room';
-import type { BaseRecord } from '$lib/adapters/db/types';
+import type { DataRecord } from '$lib/adapters/db/types';
 
 vi.mock('$lib/services/session', () => ({
     getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
@@ -74,7 +74,7 @@ describe('RoomService', () => {
                 isDeleted: false,
                 data: {}
             }
-        ] as unknown as BaseRecord[]);
+        ] as unknown as DataRecord[]);
 
         const rooms = await RoomService.list();
 
@@ -209,10 +209,15 @@ describe('RoomService', () => {
             isDeleted: false,
             data: { name: 'Delete Me' }
         } as never);
-        vi.mocked(localDB.getByIndex).mockResolvedValue([
-            { id: 'chat-1' },
-            { id: 'chat-2' }
-        ] as unknown as BaseRecord[]);
+        vi.mocked(localDB.getByIndex).mockImplementation(async (table: string) => {
+            if (table === 'chats') {
+                return [
+                    { id: 'chat-1', isDeleted: false },
+                    { id: 'chat-2', isDeleted: false }
+                ] as unknown as DataRecord[];
+            }
+            return [] as unknown as DataRecord[];
+        });
         vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
             await callback();
         });
@@ -220,21 +225,25 @@ describe('RoomService', () => {
         await RoomService.delete('room-1');
 
         expect(localDB.transaction).toHaveBeenCalledWith(
-            ['chats', 'messages', 'tool_calls', 'translations', 'rooms'],
+            expect.arrayContaining([
+                'rooms',
+                'chats',
+                'lorebooks',
+                'scripts',
+                'messages',
+                'tool_calls',
+                'translations'
+            ]),
             'rw',
             expect.any(Function)
         );
-        expect(localDB.getByIndex).toHaveBeenCalledWith(
+        expect(localDB.getByIndex).toHaveBeenCalledWith('chats', 'roomId', 'room-1', Infinity);
+        expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
             'chats',
             'roomId',
             'room-1',
-            Number.MAX_SAFE_INTEGER
+            undefined
         );
-        expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('messages', 'chatId', 'chat-1');
-        expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('tool_calls', 'chatId', 'chat-1');
-        expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('translations', 'chatId', 'chat-1');
-        expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('messages', 'chatId', 'chat-2');
-        expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('chats', 'roomId', 'room-1');
         expect(localDB.softDeleteRecord).toHaveBeenCalledWith('rooms', 'room-1');
     });
 });

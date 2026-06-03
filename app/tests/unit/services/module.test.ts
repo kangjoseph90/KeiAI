@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ModuleService, type ModuleFields } from '$lib/services/content/module';
-import type { ModuleRecord, BaseRecord } from '$lib/adapters/db';
+import type { ModuleRecord, DataRecord } from '$lib/adapters/db';
 import { AppError } from '$lib/types/errors';
 
 // Mock dependencies
@@ -36,6 +36,7 @@ vi.mock('$lib/adapters/db', () => ({
         putRecord: vi.fn(),
         softDeleteRecord: vi.fn(),
         softDeleteByIndex: vi.fn(),
+        getByIndex: vi.fn().mockResolvedValue([]),
         transaction: vi.fn()
     }
 }));
@@ -50,6 +51,12 @@ vi.mock('$lib/services/content/record_buffer', () => ({
         update: vi.fn(),
         drop: vi.fn(),
         flushTable: vi.fn()
+    }
+}));
+
+vi.mock('$lib/services/asset', () => ({
+    AssetService: {
+        deleteOwnerAssets: vi.fn()
     }
 }));
 
@@ -200,6 +207,9 @@ describe('ModuleService', () => {
                 data: defaultFields as unknown as Record<string, unknown>
             };
             vi.mocked(buffer.get).mockResolvedValue(mockRecord);
+            vi.mocked(localDB.getByIndex).mockResolvedValue([
+                { id: 'child-1', isDeleted: false }
+            ] as unknown as DataRecord[]);
             vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
                 return callback();
             });
@@ -207,13 +217,28 @@ describe('ModuleService', () => {
             await ModuleService.delete('mod-1');
 
             expect(localDB.transaction).toHaveBeenCalledWith(
-                ['lorebooks', 'scripts', 'charjs', 'modules'],
+                expect.arrayContaining(['modules', 'lorebooks', 'scripts', 'charjs']),
                 'rw',
                 expect.any(Function)
             );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('lorebooks', 'ownerId', 'mod-1');
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('scripts', 'ownerId', 'mod-1');
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('charjs', 'ownerId', 'mod-1');
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'lorebooks',
+                'ownerId',
+                'mod-1',
+                undefined
+            );
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'scripts',
+                'ownerId',
+                'mod-1',
+                undefined
+            );
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'charjs',
+                'ownerId',
+                'mod-1',
+                undefined
+            );
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('modules', 'mod-1');
         });
     });

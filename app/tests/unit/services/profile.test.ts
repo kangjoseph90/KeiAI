@@ -28,7 +28,6 @@ describe('UserService', () => {
         email: 'john@example.com',
         createdAt: 1000,
         updatedAt: 2000,
-        isDeleted: false,
         masterKey: {} as CryptoKey,
         identityKeyPair: {} as CryptoKeyPair
     };

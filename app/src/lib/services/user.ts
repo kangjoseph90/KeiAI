@@ -64,7 +64,7 @@ export class UserService {
     ): Promise<void> {
         if (!userId) return this.clearActiveUser();
         const user = await appUser.getUser(userId);
-        if (!user || user.isDeleted) {
+        if (!user) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
         setUserSession({
@@ -89,7 +89,7 @@ export class UserService {
     /** Get a user view by local user ID. */
     static async getUser(userId: string): Promise<User> {
         const user = await appUser.getUser(userId);
-        if (!user || user.isDeleted) {
+        if (!user) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
         return toUser(user);
@@ -113,7 +113,7 @@ export class UserService {
 
         if (savedUserId) {
             const user = await appUser.getUser(savedUserId);
-            if (user && !user.isDeleted) {
+            if (user) {
                 // Backfill identity key pair if the record predates this feature
                 if (!user.identityKeyPair) {
                     const identityKeyPair = await generateIdentityKeyPair();
@@ -146,7 +146,6 @@ export class UserService {
             avatar,
             createdAt: now,
             updatedAt: now,
-            isDeleted: false,
             masterKey,
             identityKeyPair
         };
@@ -169,7 +168,7 @@ export class UserService {
         const now = clock.now();
 
         // selfHostUrl MUST be updated through migration stage, not through auth flow
-        if (existing && !existing.isDeleted && existing.selfHostUrl !== params.selfHostUrl) {
+        if (existing && existing.selfHostUrl !== params.selfHostUrl) {
             throw new AppError('INVALID_INPUT', 'selfHostUrl cannot be changed through login');
         }
 
@@ -179,7 +178,6 @@ export class UserService {
             avatar: params.avatar ?? existing?.avatar ?? getDefaultAvatarUrl(params.id),
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
-            isDeleted: false,
             masterKey: params.masterKey,
             identityKeyPair: params.identityKeyPair,
             selfHostUrl: params.selfHostUrl, // server specific fields, need to overwrite
@@ -194,7 +192,7 @@ export class UserService {
     /** Update a user view by local user ID. */
     static async updateUser(userId: string, changes: DeepPartial<UserFields>): Promise<User> {
         const user = await appUser.getUser(userId);
-        if (!user || user.isDeleted) {
+        if (!user) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
 
@@ -208,7 +206,7 @@ export class UserService {
     static async getActiveSelfHostUrl(): Promise<string | undefined> {
         const { userId } = getActiveSession();
         const user = await appUser.getUser(userId);
-        if (!user || user.isDeleted) {
+        if (!user) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
         return user.selfHostUrl;
@@ -216,7 +214,7 @@ export class UserService {
 
     static async updateSelfHostUrl(userId: string, hostUrl?: string): Promise<void> {
         const user = await appUser.getUser(userId);
-        if (!user || user.isDeleted) {
+        if (!user) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
         user.selfHostUrl = hostUrl;

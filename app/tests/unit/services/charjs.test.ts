@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CharJSService } from '$lib/services/content/charjs';
-import type { BaseRecord } from '$lib/adapters/db/types';
+import type { DataRecord } from '$lib/adapters/db/types';
 import { AppError } from '$lib/types/errors';
 
 // Mock dependencies
@@ -74,7 +74,7 @@ describe('CharJSService', () => {
                     scopeId: mockUserId,
                     ownerId: 'owner-1',
                     data: defaultCharJSParams
-                } as unknown as BaseRecord
+                } as unknown as DataRecord
             ];
 
             vi.mocked(localDB.getByIndex).mockResolvedValue(mockRecords);
@@ -97,7 +97,7 @@ describe('CharJSService', () => {
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultCharJSParams
-            } as unknown as BaseRecord;
+            } as unknown as DataRecord;
 
             vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
@@ -154,7 +154,7 @@ describe('CharJSService', () => {
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultCharJSParams
-            } as unknown as BaseRecord;
+            } as unknown as DataRecord;
 
             vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
@@ -184,7 +184,7 @@ describe('CharJSService', () => {
                 ownerId: 'owner-1',
                 isDeleted: false,
                 data: defaultCharJSParams
-            } as unknown as BaseRecord;
+            } as unknown as DataRecord;
             vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
             await CharJSService.delete('c-1');

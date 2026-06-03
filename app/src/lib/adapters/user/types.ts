@@ -11,7 +11,7 @@ import type { DatabaseMutationOrigin } from '$lib/adapters/db';
 // ─── Write Event Types ────────────────────────────────────────────────
 
 export type UserTableName = 'users';
-export type UserWriteOperation = 'put' | 'softDelete';
+export type UserWriteOperation = 'put' | 'purge';
 
 export interface UserWriteOptions {
     origin?: DatabaseMutationOrigin;
@@ -41,7 +41,7 @@ export interface IUserAdapter {
     /** Create or update a user record. */
     saveUser(user: UserRecord, options?: UserWriteOptions): Promise<void>;
 
-    /** Soft or hard delete a user from local storage. */
+    /** Hard delete a user from local storage. */
     deleteUser(id: string, options?: UserWriteOptions): Promise<void>;
 
     /** Backup the user's extractable master key to the OS key store. */
@@ -73,7 +73,6 @@ export interface UserRecord {
     avatar: string; // Identicon URL based on user ID
     createdAt: number;
     updatedAt: number;
-    isDeleted: boolean;
     masterKey: CryptoKey; // The live CryptoKey object
     identityKeyPair: CryptoKeyPair; // RSA-OAEP key pair for asymmetric operations (multi-room)
 
