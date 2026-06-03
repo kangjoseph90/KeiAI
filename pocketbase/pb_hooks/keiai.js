@@ -256,8 +256,8 @@ function getOrCreateAssetAccount(app, userId) {
   var collection = app.findCollectionByNameOrId("asset_accounts");
   account = new Record(collection);
   account.set("userId", userId);
-  account.set("usedBytes", "0");
-  account.set("maxBytes", "0");
+  account.set("usedBytes", 0);
+  account.set("maxBytes", 0);
   account.set("createdAt", now);
   account.set("updatedAt", now);
   try {
@@ -643,7 +643,7 @@ function incrementUsage(userId, hash) {
 
         var account = getOrCreateAssetAccount(txApp, userId);
         var used = getNumberField(account, "usedBytes", 0);
-        account.set("usedBytes", String(used + catalogSize));
+        account.set("usedBytes", used + catalogSize);
         account.set("updatedAt", now);
         txApp.save(account);
       }
@@ -670,7 +670,7 @@ function incrementUsage(userId, hash) {
 
     var account = getOrCreateAssetAccount(txApp, userId);
     var used = getNumberField(account, "usedBytes", 0);
-    account.set("usedBytes", String(used + size));
+    account.set("usedBytes", used + size);
     account.set("updatedAt", now);
     txApp.save(account);
   });
@@ -699,7 +699,7 @@ function reconcilePendingAssetUsage(hash) {
       var userId = usage.getString("userId");
       var account = getOrCreateAssetAccount(txApp, userId);
       var used = getNumberField(account, "usedBytes", 0);
-      account.set("usedBytes", String(used + size));
+      account.set("usedBytes", used + size);
       account.set("updatedAt", now);
       txApp.save(account);
     }
@@ -727,7 +727,7 @@ function decrementUsage(userId, hash) {
 
     var account = getOrCreateAssetAccount(txApp, userId);
     var used = getNumberField(account, "usedBytes", 0);
-    account.set("usedBytes", String(Math.max(used - size, 0)));
+    account.set("usedBytes", Math.max(used - size, 0));
     account.set("updatedAt", now);
     txApp.save(account);
   });

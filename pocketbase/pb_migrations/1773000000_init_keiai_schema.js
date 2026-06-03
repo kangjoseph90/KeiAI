@@ -51,6 +51,12 @@ migrate(
     // Configure password auth with username identity
     const freshUsers = app.findCollectionByNameOrId("_pb_users_auth_");
     freshUsers.addIndex("idx_users_username_unique", true, "username", "");
+    freshUsers.addIndex(
+      "idx_users_recovery_auth_token_hash",
+      false,
+      "recoveryAuthTokenHash",
+      "",
+    );
     freshUsers.passwordAuth.enabled = true;
     freshUsers.passwordAuth.identityFields = ["username"];
     app.save(freshUsers);
@@ -72,6 +78,8 @@ migrate(
       '@request.auth.id != "" && (userId = @request.auth.id || @collection.multi_room_index.id ?= roomId && @collection.multi_room_index.ownerUserId ?= @request.auth.id || @collection.multi_room_members.roomId ?= roomId && @collection.multi_room_members.userId ?= @request.auth.id && @collection.multi_room_members.status ?= "accepted")';
     const ownerByRoomRule =
       '@request.auth.id != "" && @collection.multi_room_index.id ?= roomId && @collection.multi_room_index.ownerUserId ?= @request.auth.id && @collection.multi_room_index.isDeleted ?= false';
+    const ownerSelfMemberCreateRule =
+      '@request.auth.id != "" && userId = @request.auth.id && status = "accepted" && @collection.multi_room_index.id ?= roomId && @collection.multi_room_index.ownerUserId ?= @request.auth.id && @collection.multi_room_index.isDeleted ?= false';
     const encryptedPayloadMaxChars = 10 * 1024 * 1024;
 
     function addEncryptedPayloadFields(collection) {
@@ -221,13 +229,19 @@ migrate(
     app
       .db()
       .newQuery(
-        'CREATE INDEX IF NOT EXISTS "idx_multi_room_index_owner" ON "multi_room_index" (ownerUserId, updatedAt)',
+        'CREATE INDEX IF NOT EXISTS "idx_multi_room_index_owner" ON "multi_room_index" (ownerUserId, isDeleted, updatedAt)',
       )
       .execute();
     app
       .db()
       .newQuery(
-        'CREATE INDEX IF NOT EXISTS "idx_multi_room_index_public" ON "multi_room_index" (visibility, publicName)',
+        'CREATE INDEX IF NOT EXISTS "idx_multi_room_index_public" ON "multi_room_index" (visibility, isDeleted, updatedAt)',
+      )
+      .execute();
+    app
+      .db()
+      .newQuery(
+        'CREATE INDEX IF NOT EXISTS "idx_multi_room_index_updated" ON "multi_room_index" (updatedAt)',
       )
       .execute();
 
@@ -276,6 +290,12 @@ migrate(
         'CREATE UNIQUE INDEX IF NOT EXISTS "idx_multi_room_members_room_user" ON "multi_room_members" (roomId, userId)',
       )
       .execute();
+    app
+      .db()
+      .newQuery(
+        'CREATE INDEX IF NOT EXISTS "idx_multi_room_members_updated" ON "multi_room_members" (updatedAt)',
+      )
+      .execute();
 
     const freshRoomIndex = app.findCollectionByNameOrId("multi_room_index");
     freshRoomIndex.listRule = memberMetaRule;
@@ -285,7 +305,7 @@ migrate(
     const freshMembers = app.findCollectionByNameOrId("multi_room_members");
     freshMembers.listRule = memberRowMetaRule;
     freshMembers.viewRule = memberRowMetaRule;
-    freshMembers.createRule = ownerByRoomRule;
+    freshMembers.createRule = ownerSelfMemberCreateRule;
     freshMembers.updateRule = ownerByRoomRule;
     freshMembers.deleteRule = ownerByRoomRule;
     app.save(freshMembers);
@@ -318,6 +338,9 @@ migrate(
         mimeTypes: ["application/octet-stream"],
       }),
     );
+    catalog.fields.add(
+      new Field({ name: "createdAt", type: "number", required: true }),
+    );
 
     app.save(catalog);
 
@@ -325,6 +348,12 @@ migrate(
       .db()
       .newQuery(
         'CREATE UNIQUE INDEX IF NOT EXISTS "idx_asset_catalog_hash" ON "asset_catalog" (hash)',
+      )
+      .execute();
+    app
+      .db()
+      .newQuery(
+        'CREATE INDEX IF NOT EXISTS "idx_asset_catalog_created" ON "asset_catalog" (createdAt)',
       )
       .execute();
 
@@ -345,9 +374,7 @@ migrate(
     usage.fields.add(
       new Field({ name: "refCount", type: "number", required: true, min: 0 }),
     );
-    usage.fields.add(
-      new Field({ name: "size", type: "number" }),
-    );
+    usage.fields.add(new Field({ name: "size", type: "number" }));
     usage.fields.add(
       new Field({ name: "createdAt", type: "number", required: true }),
     );

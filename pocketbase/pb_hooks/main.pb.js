@@ -480,6 +480,7 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
       var record = new Record(collection);
       record.set("hash", hash);
       record.set("size", body.length);
+      record.set("createdAt", Date.now());
       var storedAsset = h.storeAssetBytes(hash, body, null);
       if (storedAsset.file) {
         record.set("data", storedAsset.file);
@@ -570,6 +571,7 @@ routerAdd("PUT", "/api/multi-rooms/{roomId}/assets/{hash}", (e) => {
       var record = new Record(collection);
       record.set("hash", hash);
       record.set("size", body.length);
+      record.set("createdAt", Date.now());
       var storedAsset = h.storeAssetBytes(hash, body, null);
       if (storedAsset.file) {
         record.set("data", storedAsset.file);
@@ -702,9 +704,9 @@ cronAdd("asset-gc", "0 * * * *", () => {
     $app
       .db()
       .newQuery(
-        "SELECT c.id FROM asset_catalog c WHERE NOT EXISTS " +
+        "SELECT c.id, c.hash FROM asset_catalog c WHERE NOT EXISTS " +
           "(SELECT 1 FROM asset_usage u WHERE u.hash = c.hash) " +
-          "AND datetime(c.created) < datetime('now', '-1 hour') LIMIT {:limit}",
+          "AND c.createdAt < (unixepoch() - 3600) * 1000 LIMIT {:limit}",
       )
       .bind({ limit: pageSize })
       .all(orphans);
@@ -713,12 +715,13 @@ cronAdd("asset-gc", "0 * * * *", () => {
 
     for (var i = 0; i < orphans.length; i++) {
       try {
-        var record = $app.findRecordById("asset_catalog", orphans[i].id);
         var h = require(`${__hooks}/keiai.js`);
-        var hash = record.getString("hash");
+        var hash = String(orphans[i].hash || "").toLowerCase();
+        if (!hash) continue;
         if (h.hasAssetUsage(hash)) {
           continue;
         }
+        var record = $app.findRecordById("asset_catalog", orphans[i].id);
         if (!h.deleteAssetBytes(hash)) {
           continue;
         }
