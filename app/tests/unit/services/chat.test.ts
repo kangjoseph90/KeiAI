@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChatService } from '$lib/services/content/chat';
-import type { BaseRecord } from '$lib/adapters/db/types';
+import type { DataRecord } from '$lib/adapters/db/types';
 
 vi.mock('$lib/services/session', () => ({
     getSessionScope: vi.fn((scopeType: 'user' | 'room') => {
@@ -17,11 +17,17 @@ vi.mock('$lib/services/session', () => ({
 
 vi.mock('$lib/adapters/db', () => ({
     localDB: {
-        getByIndex: vi.fn(),
+        getByIndex: vi.fn().mockResolvedValue([]),
         putRecord: vi.fn(),
         transaction: vi.fn(),
         softDeleteRecord: vi.fn(),
         softDeleteByIndex: vi.fn()
+    }
+}));
+
+vi.mock('$lib/services/asset', () => ({
+    AssetService: {
+        deleteOwnerAssets: vi.fn()
     }
 }));
 
@@ -80,7 +86,7 @@ describe('ChatService', () => {
                     isDeleted: false,
                     data: { title: 'Chat 2' }
                 }
-            ] as unknown as BaseRecord[]);
+            ] as unknown as DataRecord[]);
 
             const result = await ChatService.listByRoom('room-1');
 
@@ -214,26 +220,46 @@ describe('ChatService', () => {
             await ChatService.delete('chat-1');
 
             expect(localDB.transaction).toHaveBeenCalledWith(
-                ['lorebooks', 'scripts', 'messages', 'chats', 'tool_calls', 'translations'],
+                expect.arrayContaining([
+                    'chats',
+                    'lorebooks',
+                    'scripts',
+                    'messages',
+                    'tool_calls',
+                    'translations'
+                ]),
                 'rw',
                 expect.any(Function)
             );
             expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
                 'lorebooks',
                 'ownerId',
-                'chat-1'
+                'chat-1',
+                undefined
             );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('scripts', 'ownerId', 'chat-1');
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('messages', 'chatId', 'chat-1');
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'scripts',
+                'ownerId',
+                'chat-1',
+                undefined
+            );
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'messages',
+                'chatId',
+                'chat-1',
+                undefined
+            );
             expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
                 'tool_calls',
                 'chatId',
-                'chat-1'
+                'chat-1',
+                undefined
             );
             expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
                 'translations',
                 'chatId',
-                'chat-1'
+                'chat-1',
+                undefined
             );
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('chats', 'chat-1');
         });

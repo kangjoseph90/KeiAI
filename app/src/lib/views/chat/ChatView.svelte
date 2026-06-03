@@ -61,11 +61,17 @@
     const MESSAGE_PAGE_SIZE = 30;
     const MESSAGE_WINDOW_SIZE = 120;
 
-    // Reset exhaustion flag when active chat changes
+    // Reset state and scroll to bottom when active chat changes
     $effect(() => {
         const _ = $activeChat?.id;
         hasMoreOlder = true;
         hasMoreNewer = false;
+        lastMessageCount = 0;
+        tick().then(() => {
+            if (scrollContainerEl) {
+                scrollContainerEl.scrollTop = 0;
+            }
+        });
     });
 
     async function handleScroll() {

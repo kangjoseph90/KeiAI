@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PresetService, type PresetFields } from '$lib/services/content/preset';
-import { localDB, type PresetRecord } from '$lib/adapters/db';
+import { localDB, type PresetRecord, type DataRecord } from '$lib/adapters/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
 
@@ -39,6 +39,7 @@ vi.mock('$lib/adapters/db', () => ({
         putRecord: vi.fn(),
         softDeleteRecord: vi.fn(),
         softDeleteByIndex: vi.fn(),
+        getByIndex: vi.fn().mockResolvedValue([]),
         transaction: vi.fn((_tables, _mode, cb) => cb())
     }
 }));
@@ -56,7 +57,14 @@ vi.mock('$lib/services/content/record_buffer', () => ({
     }
 }));
 
+vi.mock('$lib/services/asset', () => ({
+    AssetService: {
+        deleteOwnerAssets: vi.fn()
+    }
+}));
+
 import { buffer } from '$lib/services/content/record_buffer';
+import { AssetService } from '$lib/services/asset';
 
 describe('PresetService', () => {
     const mockUserId = 'user-123';
@@ -183,13 +191,31 @@ describe('PresetService', () => {
     describe('delete', () => {
         it('should soft delete the record and its owned scripts', async () => {
             vi.mocked(buffer.get).mockResolvedValue(mockRecord);
+            vi.mocked(localDB.getByIndex).mockResolvedValue([
+                {
+                    id: 'script-1',
+                    scopeType: 'user',
+                    scopeId: 'user-123',
+                    createdAt: 1000,
+                    updatedAt: 1000,
+                    isDeleted: false,
+                    data: {}
+                }
+            ] as unknown as DataRecord[]);
             await PresetService.delete('preset-123');
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('presets', 'preset-123');
             expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
                 'scripts',
                 'ownerId',
-                'preset-123'
+                'preset-123',
+                undefined
             );
+            expect(AssetService.deleteOwnerAssets).toHaveBeenCalledWith({
+                scopeType: 'user',
+                scopeId: 'user-123',
+                ownerTable: 'scripts',
+                ownerId: 'script-1'
+            });
         });
     });
 });

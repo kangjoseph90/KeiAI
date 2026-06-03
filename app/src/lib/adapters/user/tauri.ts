@@ -4,7 +4,6 @@ import { Stronghold } from '@tauri-apps/plugin-stronghold';
 import { appLocalDataDir } from '@tauri-apps/api/path';
 import { Store as TauriStore } from '@tauri-apps/plugin-store';
 import { UserWriteEventEmitter } from './events';
-import { clock } from '$lib/utils/clock';
 import type {
     IUserAdapter,
     UserRecord,
@@ -51,7 +50,7 @@ class UserDexie extends Dexie {
     constructor() {
         super('KeiUsers'); // Same dedicated auth IndexedDB as the web adapter
         this.version(1).stores({
-            users: 'id, username, isDeleted, selfHostUrl, updatedAt'
+            users: 'id, username, selfHostUrl, updatedAt'
         });
     }
 }
@@ -67,7 +66,6 @@ interface SQLiteUserRow {
     avatar: string;
     createdAt: number;
     updatedAt: number;
-    isDeleted: number; // 0 | 1
     selfHostUrl: string | null;
 }
 
@@ -117,7 +115,6 @@ export class TauriUserAdapter implements IUserAdapter {
 					avatar    TEXT    NOT NULL,
 					createdAt INTEGER NOT NULL,
 					updatedAt INTEGER NOT NULL,
-					isDeleted INTEGER NOT NULL DEFAULT 0,
 					selfHostUrl TEXT
 				)
 			`);
@@ -131,8 +128,8 @@ export class TauriUserAdapter implements IUserAdapter {
     private async sqliteSave(user: UserRecord): Promise<void> {
         const db = await this.getSQLite();
         await db.execute(
-            `INSERT OR REPLACE INTO users (id, userId, name, username, email, avatar, createdAt, updatedAt, isDeleted, selfHostUrl)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            `INSERT OR REPLACE INTO users (id, userId, name, username, email, avatar, createdAt, updatedAt, selfHostUrl)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
                 user.id,
                 user.id,
@@ -142,7 +139,6 @@ export class TauriUserAdapter implements IUserAdapter {
                 user.avatar,
                 user.createdAt,
                 user.updatedAt,
-                user.isDeleted ? 1 : 0,
                 user.selfHostUrl ?? null
             ]
         );
@@ -156,7 +152,7 @@ export class TauriUserAdapter implements IUserAdapter {
 
     private async sqliteGetAll(): Promise<SQLiteUserRow[]> {
         const db = await this.getSQLite();
-        return db.select<SQLiteUserRow[]>(`SELECT * FROM users WHERE isDeleted = 0`);
+        return db.select<SQLiteUserRow[]>(`SELECT * FROM users`);
     }
 
     // ── Stronghold (key store) ────────────────────────────────────────────────
@@ -199,7 +195,7 @@ export class TauriUserAdapter implements IUserAdapter {
     async getUser(id: string): Promise<UserRecord | null> {
         // Primary: Dexie
         const user = await this.authDB.users.get(id);
-        if (user && !user.isDeleted) return user;
+        if (user) return user;
 
         // Recovery: SQLite + Stronghold
         const recovered = await this.recoverOne(id);
@@ -212,7 +208,7 @@ export class TauriUserAdapter implements IUserAdapter {
 
     async getAllUsers(): Promise<UserRecord[]> {
         // Primary: Dexie
-        const users = await this.authDB.users.filter((u) => !u.isDeleted).toArray();
+        const users = await this.authDB.users.toArray();
         if (users.length > 0) return users;
 
         // Recovery: SQLite + Stronghold
@@ -260,20 +256,15 @@ export class TauriUserAdapter implements IUserAdapter {
     }
 
     async deleteUser(id: string, options?: UserWriteOptions): Promise<void> {
-        // Soft-delete in both stores
-        const user = await this.getUser(id);
-        if (!user) return;
-
-        user.isDeleted = true;
-        user.updatedAt = clock.now();
-
-        await this.authDB.users.put(user);
-        await this.sqliteSave(user);
+        // Hard-delete in both stores
+        const db = await this.getSQLite();
+        await this.authDB.users.delete(id);
+        await db.execute(`DELETE FROM users WHERE id = $1`, [id]);
 
         // Note: we intentionally leave the Stronghold entry intact.
         // The raw key is harmless without the user record and removal is
         // not required for correctness.
-        this.emitWriteEvent('softDelete', [id], options);
+        this.emitWriteEvent('purge', [id], options);
     }
 
     async backupMasterKey(id: string, rawKey: Uint8Array): Promise<void> {
@@ -330,7 +321,7 @@ export class TauriUserAdapter implements IUserAdapter {
 
     private async recoverOne(id: string): Promise<UserRecord | null> {
         const row = await this.sqliteGetOne(id);
-        if (!row || row.isDeleted) return null;
+        if (!row) return null;
         return this.rebuildFromRow(row);
     }
 
@@ -382,7 +373,6 @@ export class TauriUserAdapter implements IUserAdapter {
             avatar: row.avatar,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
-            isDeleted: row.isDeleted === 1,
             selfHostUrl: row.selfHostUrl ?? undefined,
             masterKey,
             identityKeyPair: { publicKey, privateKey }

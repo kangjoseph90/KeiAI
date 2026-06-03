@@ -17,7 +17,6 @@ export interface MultiRoomIndexRecord {
     publicName?: string;
     createdAt: number;
     updatedAt: number;
-    isDeleted: boolean;
 }
 
 export interface MultiRoomMemberRecord {
@@ -65,7 +64,6 @@ export interface IMultiAdapter {
     getRoomIndexesSince(sinceUpdatedAt: number): Promise<MultiRoomIndexRecord[]>;
     saveRoomIndex(record: MultiRoomIndexRecord, options?: MultiWriteOptions): Promise<void>;
     saveRoomIndexes(records: MultiRoomIndexRecord[], options?: MultiWriteOptions): Promise<void>;
-    deleteRoomIndex(roomId: string, options?: MultiWriteOptions): Promise<void>;
 
     getMember(id: string): Promise<MultiRoomMemberRecord | null>;
     getMembersByUser(userId: string): Promise<MultiRoomMemberRecord[]>;

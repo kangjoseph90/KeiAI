@@ -7,6 +7,12 @@ import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { ToolCallInfo } from './tool';
 import { buffer } from './record_buffer';
+import {
+    cascadeDeleteChildren,
+    getCascadeTables,
+    cleanupCascadeAssets,
+    type CascadeResult
+} from './cascade';
 import type { LLMRole } from '$lib/types/models/llm';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
@@ -226,27 +232,22 @@ export class MessageService {
         }
 
         try {
-            await Promise.all([
-                buffer.flushTable('messages'),
-                buffer.flushTable('tool_calls'),
-                buffer.flushTable('translations')
-            ]);
+            const cascadeTables = getCascadeTables('messages');
+            await Promise.all(
+                (['messages', ...cascadeTables] as const).map((t) => buffer.flushTable(t))
+            );
             buffer.drop('messages', id);
-            await localDB.transaction(
-                ['messages', 'tool_calls', 'translations'],
+            const result = await localDB.transaction(
+                ['messages', ...cascadeTables],
                 'rw',
-                async () => {
-                    const results = await Promise.allSettled([
-                        localDB.softDeleteByIndex('tool_calls', 'messageId', id),
-                        localDB.softDeleteByIndex('translations', 'messageId', id),
-                        localDB.softDeleteRecord('messages', id)
-                    ]);
-                    const failed = results.find((r) => r.status === 'rejected');
-                    if (failed) {
-                        throw failed.reason;
-                    }
+                async (): Promise<CascadeResult> => {
+                    const cascadeResult = await cascadeDeleteChildren('messages', id);
+                    await localDB.softDeleteRecord('messages', id);
+                    return cascadeResult;
                 }
             );
+
+            await cleanupCascadeAssets(result);
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete message', error);
@@ -314,23 +315,15 @@ export class MessageService {
 
     static async countByChat(chatId: string): Promise<number> {
         // create and delete bypasses the write queue - doesn't need to flush the queue
-        const records = await localDB.getByIndex<MessageRecord>(
-            'messages',
-            'chatId',
-            chatId,
-            Number.MAX_SAFE_INTEGER
-        );
-        return records.filter((record) => canAccessScope(record)).length;
+        return localDB.countByIndex('messages', 'chatId', chatId);
     }
 
     static async countByChatBefore(chatId: string, beforeSortOrder: string): Promise<number> {
-        const records = await localDB.getRecordsForward<MessageRecord>(
+        return localDB.countRecordsInRange(
             'messages',
             '[chatId+sortOrder]',
             [chatId, ''],
-            [chatId, beforeSortOrder],
-            Number.MAX_SAFE_INTEGER
+            [chatId, beforeSortOrder]
         );
-        return records.filter((record) => canAccessScope(record)).length;
     }
 }

@@ -142,8 +142,7 @@ describe('MultiRoomService', () => {
                 id: 'room-1',
                 ownerUserId: 'user-1',
                 visibility: 'private',
-                publicName: 'Quiet Room',
-                isDeleted: false
+                publicName: 'Quiet Room'
             })
         );
         expect(appMulti.saveMember).toHaveBeenCalledWith(
@@ -291,7 +290,7 @@ describe('MultiRoomService', () => {
         vi.mocked(appHttp.fetch).mockResolvedValue({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ room: roomIndex({ isDeleted: true, updatedAt: 3 }) })
+            json: () => Promise.resolve({ room: roomIndex({ updatedAt: 3 }) })
         } as Response);
 
         await MultiRoomService.deleteRoom('room-1');
@@ -300,10 +299,7 @@ describe('MultiRoomService', () => {
             method: 'DELETE',
             headers: { Authorization: 'token' }
         });
-        expect(appMulti.saveRoomIndex).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 'room-1', isDeleted: true }),
-            { origin: 'sync' }
-        );
+        expect(appMulti.purgeRoomLocal).toHaveBeenCalledWith('room-1', { origin: 'sync' });
         expect(appAsset.deleteScopeAssets).toHaveBeenCalledWith({
             scopeType: 'room',
             scopeId: 'room-1'
@@ -487,13 +483,11 @@ function roomIndex(overrides: Partial<MultiRoomIndexRecord> = {}): MultiRoomInde
         visibility: 'private',
         publicName: 'Room',
         createdAt: 1,
-        updatedAt: 2,
-        isDeleted: false
+        updatedAt: 2
     };
     return {
         ...base,
-        ...overrides,
-        isDeleted: overrides.isDeleted ?? base.isDeleted
+        ...overrides
     };
 }
 

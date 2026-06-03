@@ -22,7 +22,7 @@ import {
     roomCharacters,
     chatPersonas
 } from '../state';
-import { loadInitialMessages } from './message';
+import { loadInitialMessages, repairChatMessageRefs } from './message';
 import { getRoom, updateRoom } from './room';
 import { getPersona } from './persona';
 import { AppError } from '$lib/types/errors';
@@ -152,6 +152,7 @@ export async function selectChat(chatId: string): Promise<void> {
     roomChats.set(chat.id, chat);
     activeChatId.set(chat.id);
     await loadInitialMessages(chatId, 30);
+    await repairChatMessageRefs(chatId);
 
     const personaIds = Object.keys(chat.personas.refs);
     const [lorebooks, personaEntries] = await Promise.all([
@@ -286,6 +287,13 @@ export async function deleteChat(chatId: string, roomId: string): Promise<void> 
     }
 
     chatSelectionCache.delete(chatId);
+
+    if (room.lastActiveChatId === chatId) {
+        const remainingIds = Object.keys(room.chats.refs).filter((id) => id !== chatId);
+        await updateRoom(roomId, {
+            lastActiveChatId: remainingIds.length > 0 ? remainingIds[0] : undefined
+        });
+    }
 
     if (roomId === get(activeRoomId)) {
         roomChats.delete(chatId);

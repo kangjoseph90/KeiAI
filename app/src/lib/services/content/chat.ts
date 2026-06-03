@@ -6,6 +6,12 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
+import {
+    cascadeDeleteChildren,
+    getCascadeTables,
+    cleanupCascadeAssets,
+    type CascadeResult
+} from './cascade';
 import { AssetService, type AssetOwner } from '../asset';
 import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
 
@@ -311,35 +317,24 @@ export class ChatService {
         }
 
         try {
-            await Promise.all([
-                buffer.flushTable('chats'),
-                buffer.flushTable('messages'),
-                buffer.flushTable('tool_calls'),
-                buffer.flushTable('translations'),
-                buffer.flushTable('lorebooks'),
-                buffer.flushTable('scripts')
-            ]);
+            const cascadeTables = getCascadeTables('chats');
+            await Promise.all(
+                (['chats', ...cascadeTables] as const).map((t) => buffer.flushTable(t))
+            );
 
             buffer.drop('chats', id);
-            await localDB.transaction(
-                ['lorebooks', 'scripts', 'messages', 'chats', 'tool_calls', 'translations'],
+            const result = await localDB.transaction(
+                ['chats', ...cascadeTables],
                 'rw',
-                async () => {
-                    const results = await Promise.allSettled([
-                        localDB.softDeleteByIndex('lorebooks', 'ownerId', id),
-                        localDB.softDeleteByIndex('scripts', 'ownerId', id),
-                        localDB.softDeleteByIndex('messages', 'chatId', id),
-                        localDB.softDeleteByIndex('tool_calls', 'chatId', id),
-                        localDB.softDeleteByIndex('translations', 'chatId', id),
-                        localDB.softDeleteRecord('chats', id)
-                    ]);
-                    const failed = results.find((r) => r.status === 'rejected');
-                    if (failed) {
-                        throw failed.reason;
-                    }
+                async (): Promise<CascadeResult> => {
+                    const cascadeResult = await cascadeDeleteChildren('chats', id);
+                    await localDB.softDeleteRecord('chats', id);
+                    return cascadeResult;
                 }
             );
+
             await AssetService.deleteOwnerAssets(assetOwner(record));
+            await cleanupCascadeAssets(result);
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete chat', error);

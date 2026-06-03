@@ -256,8 +256,8 @@ function getOrCreateAssetAccount(app, userId) {
   var collection = app.findCollectionByNameOrId("asset_accounts");
   account = new Record(collection);
   account.set("userId", userId);
-  account.set("usedBytes", "0");
-  account.set("maxBytes", "0");
+  account.set("usedBytes", 0);
+  account.set("maxBytes", 0);
   account.set("createdAt", now);
   account.set("updatedAt", now);
   try {
@@ -431,6 +431,138 @@ function leaveMultiRoom(auth, roomId) {
   return { status: 200, body: { member: serializeMultiRoomMember(member) } };
 }
 
+// ─── User delete cascade ──────────────────────────────────────────
+
+function findRecordsByUser(app, collectionName, userId) {
+  try {
+    return app.findRecordsByFilter(
+      collectionName,
+      "userId = {:userId}",
+      "",
+      0,
+      0,
+      { userId: userId }
+    );
+  } catch (err) {
+    if (!isNoRowsError(err)) throw err;
+    return [];
+  }
+}
+
+function findOwnedMultiRoomIndexes(app, userId) {
+  try {
+    return app.findRecordsByFilter(
+      "multi_room_index",
+      "ownerUserId = {:ownerUserId} && isDeleted = false",
+      "",
+      0,
+      0,
+      { ownerUserId: userId }
+    );
+  } catch (err) {
+    if (!isNoRowsError(err)) throw err;
+    return [];
+  }
+}
+
+function findMultiRoomMembershipsByUser(app, userId) {
+  try {
+    return app.findRecordsByFilter(
+      "multi_room_members",
+      "userId = {:userId}",
+      "",
+      0,
+      0,
+      { userId: userId }
+    );
+  } catch (err) {
+    if (!isNoRowsError(err)) throw err;
+    return [];
+  }
+}
+
+function findAssetUsagesByUser(app, userId) {
+  try {
+    return app.findRecordsByFilter(
+      "asset_usage",
+      "userId = {:userId}",
+      "",
+      0,
+      0,
+      { userId: userId }
+    );
+  } catch (err) {
+    if (!isNoRowsError(err)) throw err;
+    return [];
+  }
+}
+
+/**
+ * Cascade-delete all data for a user account.
+ *
+ * 1. Hard-delete user-scoped records (asset hooks fire)
+ * 2. User-owned rooms: soft-delete index + hard-delete room records
+ * 3. Non-owned memberships: status='left', clear encryptedRoomKey
+ * 4. Cleanup asset_usage + asset_account
+ * 5. Hard-delete user auth record
+ */
+function deleteUserCascade(userRecord) {
+  var userId = userRecord.id;
+  var now = Date.now();
+
+  // Phase 1: Data cascade in transaction
+  $app.runInTransaction(function (txApp) {
+    // 1. Hard-delete user-scoped records
+    var userRecords = findRecordsByUser(txApp, "records", userId);
+    for (var i = 0; i < userRecords.length; i++) {
+      txApp.delete(userRecords[i]);
+    }
+
+    // 2. User-owned rooms: soft-delete index + hard-delete records
+    var ownedRooms = findOwnedMultiRoomIndexes(txApp, userId);
+    for (var j = 0; j < ownedRooms.length; j++) {
+      var roomId = ownedRooms[j].id;
+      var roomRecords = findMultiRoomRecordsByRoom(
+        txApp,
+        "multi_room_records",
+        roomId
+      );
+      for (var k = 0; k < roomRecords.length; k++) {
+        txApp.delete(roomRecords[k]);
+      }
+      ownedRooms[j].set("isDeleted", true);
+      ownedRooms[j].set("updatedAt", now);
+      txApp.save(ownedRooms[j]);
+    }
+
+    // 3. Non-owned memberships: hard delete
+    var memberships = findMultiRoomMembershipsByUser(txApp, userId);
+    for (var m = 0; m < memberships.length; m++) {
+      txApp.delete(memberships[m]);
+    }
+  });
+
+  // Phase 2: Asset cleanup (outside transaction to avoid nesting issues)
+  var usages = findAssetUsagesByUser($app, userId);
+  for (var u = 0; u < usages.length; u++) {
+    try {
+      $app.delete(usages[u]);
+    } catch (_) {}
+  }
+
+  var account = findAssetAccountWith($app, userId);
+  if (account) {
+    try {
+      $app.delete(account);
+    } catch (_) {}
+  }
+
+  // Phase 3: Hard-delete user auth record
+  $app.delete(userRecord);
+}
+
+// ─── Multi-room lifecycle ──────────────────────────────────────────
+
 function deleteMultiRoom(auth, roomId) {
   var room = findMultiRoomIndex($app, roomId);
   if (!room) {
@@ -511,7 +643,7 @@ function incrementUsage(userId, hash) {
 
         var account = getOrCreateAssetAccount(txApp, userId);
         var used = getNumberField(account, "usedBytes", 0);
-        account.set("usedBytes", String(used + catalogSize));
+        account.set("usedBytes", used + catalogSize);
         account.set("updatedAt", now);
         txApp.save(account);
       }
@@ -538,7 +670,7 @@ function incrementUsage(userId, hash) {
 
     var account = getOrCreateAssetAccount(txApp, userId);
     var used = getNumberField(account, "usedBytes", 0);
-    account.set("usedBytes", String(used + size));
+    account.set("usedBytes", used + size);
     account.set("updatedAt", now);
     txApp.save(account);
   });
@@ -567,7 +699,7 @@ function reconcilePendingAssetUsage(hash) {
       var userId = usage.getString("userId");
       var account = getOrCreateAssetAccount(txApp, userId);
       var used = getNumberField(account, "usedBytes", 0);
-      account.set("usedBytes", String(used + size));
+      account.set("usedBytes", used + size);
       account.set("updatedAt", now);
       txApp.save(account);
     }
@@ -595,7 +727,7 @@ function decrementUsage(userId, hash) {
 
     var account = getOrCreateAssetAccount(txApp, userId);
     var used = getNumberField(account, "usedBytes", 0);
-    account.set("usedBytes", String(Math.max(used - size, 0)));
+    account.set("usedBytes", Math.max(used - size, 0));
     account.set("updatedAt", now);
     txApp.save(account);
   });
@@ -992,7 +1124,11 @@ function migrateR2AssetsToLocal(limit) {
   }
 
   var pageSize = Math.max(1, Math.min(Number(limit) || 50, 200));
-  var rows = [];
+  var rows = arrayOf(
+    new DynamicModel({
+      id: "",
+    }),
+  );
   $app
     .db()
     .newQuery(
@@ -1046,7 +1182,11 @@ function migrateR2AssetsToLocal(limit) {
     }
   }
 
-  var remainingRows = [];
+  var remainingRows = arrayOf(
+    new DynamicModel({
+      id: "",
+    }),
+  );
   $app
     .db()
     .newQuery(
@@ -1081,7 +1221,11 @@ function deleteAssetBytes(hash) {
 }
 
 function hasAssetUsage(hash) {
-  var rows = [];
+  var rows = arrayOf(
+    new DynamicModel({
+      id: "",
+    }),
+  );
   $app
     .db()
     .newQuery("SELECT id FROM asset_usage WHERE hash = {:hash} LIMIT 1")
@@ -1106,6 +1250,7 @@ module.exports = {
   findRecoveryRecord: findRecoveryRecord,
   createOrUpdateJoinRequest: createOrUpdateJoinRequest,
   deleteMultiRoom: deleteMultiRoom,
+  deleteUserCascade: deleteUserCascade,
   getAuthRecord: getAuthRecord,
   getAssetMaxBytes: getAssetMaxBytes,
   getMultiRoomUploadOwner: getMultiRoomUploadOwner,

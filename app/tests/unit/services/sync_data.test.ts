@@ -4,7 +4,7 @@ import { pb } from '$lib/adapters/pb';
 import { localDB } from '$lib/adapters/db';
 import { appKV } from '$lib/adapters/kv';
 import { getActiveSession, hasActiveSession } from '$lib/services/session';
-import type { BaseRecord, DataRecord } from '$lib/adapters/db';
+import type { DataRecord } from '$lib/adapters/db';
 
 // Mock Collection Mock
 const mockCollection = {
@@ -23,7 +23,7 @@ const mockBatchCollection = {
 
 const mockBatch = {
     collection: vi.fn(() => mockBatchCollection),
-    send: vi.fn()
+    send: vi.fn().mockResolvedValue([])
 };
 
 // Mock Dependencies
@@ -76,13 +76,14 @@ vi.mock('$lib/crypto', () => ({
 describe('DataRecordSyncEngine', () => {
     const mockUserId = 'user-123';
     const mockRoomId = 'room-123';
-    const makeRecord = (id: string, updatedAt = 1000): BaseRecord => ({
+    const makeRecord = (id: string, updatedAt = 1000): DataRecord => ({
         id,
         scopeType: 'user',
         scopeId: mockUserId,
         createdAt: 1000,
         updatedAt,
-        isDeleted: false
+        isDeleted: false,
+        data: {}
     });
 
     beforeEach(() => {
@@ -142,7 +143,7 @@ describe('DataRecordSyncEngine', () => {
             vi.mocked(localDB.getRecord).mockResolvedValue({
                 id: 'rec-1',
                 updatedAt: 1500
-            } as BaseRecord);
+            } as DataRecord);
 
             await DataRecordSyncEngine.trigger();
 
@@ -296,6 +297,198 @@ describe('DataRecordSyncEngine', () => {
                 expect.objectContaining({ id: 'existing-1' })
             );
             expect(mockBatch.send).toHaveBeenCalled();
+        });
+    });
+
+    describe('Delete-wins merge', () => {
+        const makeDeletedRecord = (id: string, updatedAt = 1000): DataRecord => ({
+            id,
+            scopeType: 'user',
+            scopeId: mockUserId,
+            createdAt: 1000,
+            updatedAt,
+            isDeleted: true,
+            data: {}
+        });
+
+        it('remote deleted beats local live regardless of timestamp', async () => {
+            const tableName = 'characters';
+            vi.mocked(appKV.get).mockResolvedValue('500');
+
+            const serverRecord = {
+                id: 'rec-1',
+                kind: tableName,
+                userId: mockUserId,
+                updatedAt: 1000,
+                updated: '1000',
+                isDeleted: true,
+                encryptedData: 'base64-data',
+                encryptedDataIV: 'base64-iv'
+            };
+
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [serverRecord],
+                page: 1,
+                totalPages: 1
+            } as unknown as { items: unknown[]; page: number; totalPages: number });
+
+            // Local has live record with NEWER timestamp
+            vi.mocked(localDB.getRecord).mockResolvedValue({
+                ...makeRecord('rec-1', 2000),
+                isDeleted: false
+            });
+
+            await DataRecordSyncEngine.trigger();
+
+            // Remote deleted wins ??local should be soft-deleted
+            expect(localDB.putRecords).toHaveBeenCalledWith(
+                tableName,
+                [expect.objectContaining({ id: 'rec-1', isDeleted: true })],
+                expect.objectContaining({ origin: 'sync' })
+            );
+            // No repair push for this record
+            expect(mockBatchCollection.upsert).not.toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'rec-1' })
+            );
+        });
+
+        it('local deleted beats remote live ??queues repair push', async () => {
+            const tableName = 'characters';
+            vi.mocked(appKV.get).mockResolvedValue('500');
+
+            const serverRecord = {
+                id: 'rec-1',
+                kind: tableName,
+                userId: mockUserId,
+                updatedAt: 2000,
+                updated: '2000',
+                isDeleted: false,
+                encryptedData: 'base64-data',
+                encryptedDataIV: 'base64-iv'
+            };
+
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [serverRecord],
+                page: 1,
+                totalPages: 1
+            } as unknown as { items: unknown[]; page: number; totalPages: number });
+
+            // Local has deleted record with OLDER timestamp
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeDeletedRecord('rec-1', 1000));
+
+            await DataRecordSyncEngine.trigger();
+
+            // Local deleted wins ??should NOT overwrite local with remote
+            expect(localDB.putRecords).not.toHaveBeenCalled();
+            // Should queue repair push
+            expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'rec-1', isDeleted: true })
+            );
+        });
+
+        it('deleted record with no local counterpart is skipped', async () => {
+            const tableName = 'characters';
+            vi.mocked(appKV.get).mockResolvedValue('500');
+
+            const serverRecord = {
+                id: 'rec-1',
+                kind: tableName,
+                userId: mockUserId,
+                updatedAt: 1000,
+                updated: '1000',
+                isDeleted: true,
+                encryptedData: 'base64-data',
+                encryptedDataIV: 'base64-iv'
+            };
+
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [serverRecord],
+                page: 1,
+                totalPages: 1
+            } as unknown as { items: unknown[]; page: number; totalPages: number });
+
+            // No local record
+            vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
+
+            await DataRecordSyncEngine.trigger();
+
+            // Should NOT store a deleted record we never had
+            expect(localDB.putRecords).not.toHaveBeenCalled();
+        });
+
+        it('both deleted uses LWW', async () => {
+            const tableName = 'characters';
+            vi.mocked(appKV.get).mockResolvedValue('500');
+
+            const serverRecord = {
+                id: 'rec-1',
+                kind: tableName,
+                userId: mockUserId,
+                updatedAt: 2000,
+                updated: '2000',
+                isDeleted: true,
+                encryptedData: 'base64-data',
+                encryptedDataIV: 'base64-iv'
+            };
+
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [serverRecord],
+                page: 1,
+                totalPages: 1
+            } as unknown as { items: unknown[]; page: number; totalPages: number });
+
+            // Local also deleted but older
+            vi.mocked(localDB.getRecord).mockResolvedValue(makeDeletedRecord('rec-1', 1000));
+
+            await DataRecordSyncEngine.trigger();
+
+            // Both deleted, remote newer ??LWW applies
+            expect(localDB.putRecords).toHaveBeenCalledWith(
+                tableName,
+                [expect.objectContaining({ id: 'rec-1', isDeleted: true, updatedAt: 2000 })],
+                expect.objectContaining({ origin: 'sync' })
+            );
+        });
+
+        it('push response handles server-enforced delete', async () => {
+            const tableName = 'characters';
+            vi.mocked(appKV.get).mockResolvedValue('500');
+            vi.mocked(mockCollection.getList).mockResolvedValue({
+                items: [],
+                page: 1,
+                totalPages: 1
+            } as unknown as { items: unknown[]; page: number; totalPages: number });
+
+            // Local has an unsynced live record
+            const liveRecord = makeRecord('rec-1', 2000);
+            vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([liveRecord]);
+            vi.mocked(localDB.getRecord).mockResolvedValue(liveRecord);
+
+            // Server returns deleted in batch response
+            vi.mocked(mockBatch.send).mockResolvedValue([
+                {
+                    status: 200,
+                    body: {
+                        id: 'rec-1',
+                        kind: tableName,
+                        userId: mockUserId,
+                        isDeleted: true,
+                        updatedAt: 2500,
+                        updated: '2500',
+                        encryptedData: 'base64-data',
+                        encryptedDataIV: 'base64-iv'
+                    }
+                }
+            ]);
+
+            await DataRecordSyncEngine.trigger();
+
+            // Should apply server-enforced delete locally
+            expect(localDB.putRecord).toHaveBeenCalledWith(
+                tableName,
+                expect.objectContaining({ id: 'rec-1', isDeleted: true }),
+                expect.objectContaining({ origin: 'sync' })
+            );
         });
     });
 });

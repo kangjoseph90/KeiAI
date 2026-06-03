@@ -55,7 +55,8 @@ vi.mock('$lib/services', () => ({
 }));
 
 vi.mock('$lib/stores/content/message', () => ({
-    loadInitialMessages: vi.fn()
+    loadInitialMessages: vi.fn(),
+    repairChatMessageRefs: vi.fn()
 }));
 
 vi.mock('$lib/stores/content/persona', () => ({

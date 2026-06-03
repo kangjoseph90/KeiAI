@@ -9,7 +9,6 @@ import fakeIndexedDB, { IDBKeyRange as FDBKeyRange } from 'fake-indexeddb';
 import Dexie from 'dexie';
 import type {
     IDatabaseAdapter,
-    BaseRecord,
     DataRecord,
     TableName,
     ChatRecord,
@@ -70,7 +69,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             const record = createTestRecord({ id: 'test-1' });
 
             await localDB.putRecord('settings', record);
-            const retrieved = await localDB.getRecord<BaseRecord>('settings', 'test-1');
+            const retrieved = await localDB.getRecord<DataRecord>('settings', 'test-1');
 
             expect(retrieved).toBeDefined();
             expect(retrieved?.id).toBe('test-1');
@@ -78,7 +77,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
         });
 
         it('should return undefined for non-existent record', async () => {
-            const result = await localDB.getRecord<BaseRecord>('settings', 'non-existent');
+            const result = await localDB.getRecord<DataRecord>('settings', 'non-existent');
             expect(result).toBeUndefined();
         });
 
@@ -89,7 +88,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             const updated = createTestRecord({ id: 'test-2', updatedAt: 2000 });
             await localDB.putRecord('settings', updated);
 
-            const retrieved = await localDB.getRecord<BaseRecord>('settings', 'test-2');
+            const retrieved = await localDB.getRecord<DataRecord>('settings', 'test-2');
             expect(retrieved?.updatedAt).toBe(2000);
         });
     });
@@ -104,9 +103,9 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             await localDB.putRecords('settings', records);
 
-            const r1 = await localDB.getRecord<BaseRecord>('settings', 'bulk-1');
-            const r2 = await localDB.getRecord<BaseRecord>('settings', 'bulk-2');
-            const r3 = await localDB.getRecord<BaseRecord>('settings', 'bulk-3');
+            const r1 = await localDB.getRecord<DataRecord>('settings', 'bulk-1');
+            const r2 = await localDB.getRecord<DataRecord>('settings', 'bulk-2');
+            const r3 = await localDB.getRecord<DataRecord>('settings', 'bulk-3');
 
             expect(r1?.id).toBe('bulk-1');
             expect(r2?.id).toBe('bulk-2');
@@ -121,7 +120,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             await localDB.deleteRecord('settings', 'delete-me');
 
-            const result = await localDB.getRecord<BaseRecord>('settings', 'delete-me');
+            const result = await localDB.getRecord<DataRecord>('settings', 'delete-me');
             expect(result).toBeUndefined();
         });
     });
@@ -137,9 +136,9 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             await localDB.putRecords('chats', records);
             await localDB.deleteByIndex('chats', 'roomId', 'room-to-delete');
 
-            const r1 = await localDB.getRecord<BaseRecord>('chats', 'del-1');
-            const r2 = await localDB.getRecord<BaseRecord>('chats', 'del-2');
-            const r3 = await localDB.getRecord<BaseRecord>('chats', 'del-3');
+            const r1 = await localDB.getRecord<DataRecord>('chats', 'del-1');
+            const r2 = await localDB.getRecord<DataRecord>('chats', 'del-2');
+            const r3 = await localDB.getRecord<DataRecord>('chats', 'del-3');
 
             expect(r1).toBeUndefined();
             expect(r2).toBeUndefined();
@@ -149,14 +148,21 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
     describe('softDeleteRecord', () => {
         it('should mark record as deleted without removing it', async () => {
-            const record = createTestRecord({ id: 'soft-del', isDeleted: false });
+            const record = createTestRecord({
+                id: 'soft-del',
+                isDeleted: false,
+                assetEntries: { hash: 'local' },
+                data: { name: 'Keep out' }
+            });
             await localDB.putRecord('settings', record);
 
             await localDB.softDeleteRecord('settings', 'soft-del');
 
-            const result = await localDB.getRecord<BaseRecord>('settings', 'soft-del');
+            const result = await localDB.getRecord<DataRecord>('settings', 'soft-del');
             expect(result).toBeDefined();
             expect(result?.isDeleted).toBe(true);
+            expect(result?.assetEntries).toBeUndefined();
+            expect(result?.data).toEqual({});
         });
 
         it('should update updatedAt on soft delete', async () => {
@@ -166,26 +172,85 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             await localDB.softDeleteRecord('settings', 'soft-del-time');
 
-            const result = await localDB.getRecord<BaseRecord>('settings', 'soft-del-time');
+            const result = await localDB.getRecord<DataRecord>('settings', 'soft-del-time');
             expect(result?.updatedAt).toBeGreaterThan(originalTime);
+        });
+
+        it('should not touch an already deleted record', async () => {
+            const originalTime = Date.now() - 10000;
+            const record = createTestRecord({
+                id: 'soft-del-idempotent',
+                isDeleted: true,
+                updatedAt: originalTime
+            });
+            await localDB.putRecord('settings', record);
+
+            await localDB.softDeleteRecord('settings', 'soft-del-idempotent');
+
+            const result = await localDB.getRecord<DataRecord>('settings', 'soft-del-idempotent');
+            expect(result?.isDeleted).toBe(true);
+            expect(result?.updatedAt).toBe(originalTime);
         });
     });
 
     describe('softDeleteByIndex', () => {
         it('should mark multiple records as deleted by index', async () => {
             const records = [
-                createTestRecord({ id: 'soft-1', roomId: 'target-room', isDeleted: false }),
-                createTestRecord({ id: 'soft-2', roomId: 'target-room', isDeleted: false })
+                createTestRecord({
+                    id: 'soft-1',
+                    roomId: 'target-room',
+                    isDeleted: false,
+                    assetEntries: { hash1: 'local' },
+                    data: { name: 'Soft 1' }
+                }),
+                createTestRecord({
+                    id: 'soft-2',
+                    roomId: 'target-room',
+                    isDeleted: false,
+                    assetEntries: { hash2: 'remote' },
+                    data: { name: 'Soft 2' }
+                })
             ] as ChatRecord[];
 
             await localDB.putRecords('chats', records);
             await localDB.softDeleteByIndex('chats', 'roomId', 'target-room');
 
-            const r1 = await localDB.getRecord<BaseRecord>('chats', 'soft-1');
-            const r2 = await localDB.getRecord<BaseRecord>('chats', 'soft-2');
+            const r1 = await localDB.getRecord<DataRecord>('chats', 'soft-1');
+            const r2 = await localDB.getRecord<DataRecord>('chats', 'soft-2');
 
             expect(r1?.isDeleted).toBe(true);
             expect(r2?.isDeleted).toBe(true);
+            expect(r1?.assetEntries).toBeUndefined();
+            expect(r2?.assetEntries).toBeUndefined();
+            expect(r1?.data).toEqual({});
+            expect(r2?.data).toEqual({});
+        });
+
+        it('should not touch records already deleted by index', async () => {
+            const originalTime = Date.now() - 10000;
+            const records = [
+                createTestRecord({
+                    id: 'soft-index-live',
+                    roomId: 'idempotent-room',
+                    isDeleted: false
+                }),
+                createTestRecord({
+                    id: 'soft-index-deleted',
+                    roomId: 'idempotent-room',
+                    isDeleted: true,
+                    updatedAt: originalTime
+                })
+            ] as ChatRecord[];
+
+            await localDB.putRecords('chats', records);
+            await localDB.softDeleteByIndex('chats', 'roomId', 'idempotent-room');
+
+            const live = await localDB.getRecord<DataRecord>('chats', 'soft-index-live');
+            const deleted = await localDB.getRecord<DataRecord>('chats', 'soft-index-deleted');
+
+            expect(live?.isDeleted).toBe(true);
+            expect(deleted?.isDeleted).toBe(true);
+            expect(deleted?.updatedAt).toBe(originalTime);
         });
     });
 
@@ -200,7 +265,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             await localDB.putRecords('settings', records);
 
-            const results = await localDB.getAll<BaseRecord>('settings', testScope);
+            const results = await localDB.getAll<DataRecord>('settings', testScope);
 
             expect(results).toHaveLength(2);
             expect(results.map((r) => r.id)).toContain('all-1');
@@ -216,7 +281,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             await localDB.putRecords('settings', records);
 
-            const results = await localDB.getAll<BaseRecord>('settings', testScope);
+            const results = await localDB.getAll<DataRecord>('settings', testScope);
 
             expect(results).toHaveLength(1);
             expect(results[0].id).toBe('active');
@@ -232,7 +297,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             await localDB.putRecords('settings', records);
 
-            const results = await localDB.getAll<BaseRecord>('settings', testScope);
+            const results = await localDB.getAll<DataRecord>('settings', testScope);
 
             expect(results[0].id).toBe('newest');
             expect(results[1].id).toBe('new');
@@ -448,7 +513,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             await localDB.putRecords('settings', records);
 
-            const results = await localDB.getUnsyncedChanges<BaseRecord>(
+            const results = await localDB.getUnsyncedChanges<DataRecord>(
                 'settings',
                 testScope,
                 now - 5000
@@ -469,7 +534,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             await localDB.putRecords('settings', [record]);
 
-            const results = await localDB.getUnsyncedChanges<BaseRecord>(
+            const results = await localDB.getUnsyncedChanges<DataRecord>(
                 'settings',
                 testScope,
                 now - 5000
@@ -500,7 +565,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
                 await localDB.putRecord('settings', record);
             });
 
-            const result = await localDB.getRecord<BaseRecord>('settings', 'txn-commit');
+            const result = await localDB.getRecord<DataRecord>('settings', 'txn-commit');
             expect(result?.id).toBe('txn-commit');
         });
 
@@ -513,8 +578,8 @@ describe('WebDatabaseAdapter (Dexie)', () => {
                 await localDB.putRecord('chats', chatRecord as unknown as ChatRecord);
             });
 
-            const char = await localDB.getRecord<BaseRecord>('characters', 'txn-char-1');
-            const chat = await localDB.getRecord<BaseRecord>('chats', 'txn-chat-1');
+            const char = await localDB.getRecord<DataRecord>('characters', 'txn-char-1');
+            const chat = await localDB.getRecord<DataRecord>('chats', 'txn-chat-1');
 
             expect(char).toBeDefined();
             expect(chat).toBeDefined();
@@ -537,7 +602,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
                 // Expected
             }
 
-            const result = await localDB.getRecord<BaseRecord>('settings', 'rollback-test');
+            const result = await localDB.getRecord<DataRecord>('settings', 'rollback-test');
             expect(result?.updatedAt).toBe(100); // Should have original value
         });
     });
@@ -602,6 +667,7 @@ describe('WebDatabaseAdapter (Dexie)', () => {
                     chatId: 'chat-1',
                     messageId: 'msg-1',
                     swipeId: 's1',
+                    assetEntries: { hash1: 'local' },
                     data: { status: 'pending' }
                 }),
                 createTestRecord({
@@ -641,6 +707,47 @@ describe('WebDatabaseAdapter (Dexie)', () => {
 
             expect(afterDeleteMsgOne).toEqual([]);
             expect(afterDeleteMsgTwo.map((record) => record.id)).toEqual(['tool-2']);
+
+            const deletedTool = await localDB.getRecord<DataRecord>('tool_calls', 'tool-1');
+            expect(deletedTool?.assetEntries).toBeUndefined();
+            expect(deletedTool?.data).toEqual({});
+        });
+
+        it('should not touch records already deleted by compound index', async () => {
+            const originalTime = Date.now() - 10000;
+            const records = [
+                createTestRecord({
+                    id: 'tool-compound-live',
+                    chatId: 'chat-1',
+                    messageId: 'msg-idempotent',
+                    swipeId: 's1',
+                    isDeleted: false
+                }),
+                createTestRecord({
+                    id: 'tool-compound-deleted',
+                    chatId: 'chat-1',
+                    messageId: 'msg-idempotent',
+                    swipeId: 's1',
+                    isDeleted: true,
+                    updatedAt: originalTime
+                })
+            ] as ToolCallRecord[];
+
+            await localDB.putRecords('tool_calls', records);
+            await localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
+                'msg-idempotent',
+                's1'
+            ]);
+
+            const live = await localDB.getRecord<DataRecord>('tool_calls', 'tool-compound-live');
+            const deleted = await localDB.getRecord<DataRecord>(
+                'tool_calls',
+                'tool-compound-deleted'
+            );
+
+            expect(live?.isDeleted).toBe(true);
+            expect(deleted?.isDeleted).toBe(true);
+            expect(deleted?.updatedAt).toBe(originalTime);
         });
     });
 
@@ -666,11 +773,54 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             await localDB.putRecord('settings', settingsRecord);
             await localDB.putRecord('personas', personasRecord);
 
-            const settings = await localDB.getRecord<BaseRecord>('settings', 'same-id');
-            const personas = await localDB.getRecord<BaseRecord>('personas', 'same-id');
+            const settings = await localDB.getRecord<DataRecord>('settings', 'same-id');
+            const personas = await localDB.getRecord<DataRecord>('personas', 'same-id');
 
             expect(settings?.updatedAt).toBe(1000);
             expect(personas?.updatedAt).toBe(9999);
+        });
+    });
+
+    describe('getScopeIdsByType', () => {
+        it('should return unique scopeIds for a given scopeType', async () => {
+            const records = [
+                createTestRecord({ id: 'rec-1', scopeType: 'user', scopeId: 'user-a' }),
+                createTestRecord({ id: 'rec-2', scopeType: 'user', scopeId: 'user-b' }),
+                createTestRecord({ id: 'rec-3', scopeType: 'user', scopeId: 'user-a' }), // Same scopeId
+                createTestRecord({ id: 'rec-4', scopeType: 'room', scopeId: 'room-a' })
+            ];
+            await localDB.putRecords('characters', records);
+
+            const userIds = await localDB.getScopeIdsByType('characters', 'user');
+            expect(userIds).toHaveLength(2);
+            expect(userIds).toContain('user-a');
+            expect(userIds).toContain('user-b');
+            expect(userIds).not.toContain('room-a');
+        });
+    });
+
+    describe('deleteByScope', () => {
+        it('should delete all records for a given scope', async () => {
+            const scopeA = { scopeType: 'user' as const, scopeId: 'user-a' };
+            const scopeB = { scopeType: 'user' as const, scopeId: 'user-b' };
+
+            const records = [
+                createTestRecord({ id: 'rec-1', ...scopeA }),
+                createTestRecord({ id: 'rec-2', ...scopeA }),
+                createTestRecord({ id: 'rec-3', ...scopeB })
+            ];
+            await localDB.putRecords('characters', records);
+
+            const count = await localDB.deleteByScope('characters', scopeA);
+            expect(count).toBe(2);
+
+            const rec1 = await localDB.getRecord('characters', 'rec-1');
+            const rec2 = await localDB.getRecord('characters', 'rec-2');
+            const rec3 = await localDB.getRecord('characters', 'rec-3');
+
+            expect(rec1).toBeUndefined();
+            expect(rec2).toBeUndefined();
+            expect(rec3).toBeDefined();
         });
     });
 });

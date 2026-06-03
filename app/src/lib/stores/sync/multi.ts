@@ -3,7 +3,7 @@ import { MultiRoomService, type MultiRoomMember } from '$lib/services';
 import { createLogger } from '$lib/adapters/logger';
 import { getActiveSession, hasActiveSession } from '$lib/services/session';
 import { activeRoomId, multiRoomMembers, multiRoomMetas, multiRooms } from '../state';
-import { getAppSettings, updateSettings } from '../content/settings';
+import { getAppSettings } from '../content/settings';
 import { clearActiveRoom } from '../content/room';
 import { get } from 'svelte/store';
 import { sortByRefs } from '$lib/utils/ordering';
@@ -54,12 +54,7 @@ async function refreshMultiRoomList(): Promise<void> {
     multiRooms.setAll(sortByRefs(rooms, settings.multiRooms.refs));
 }
 
-async function purgeSyncedRoom(roomId: string): Promise<void> {
-    await MultiRoomService.purgeLocalRoomContent(roomId);
-    const settings = await getAppSettings();
-    if (settings.multiRooms.refs[roomId]) {
-        await updateSettings({ multiRooms: { refs: { [roomId]: undefined } } });
-    }
+export async function cleanupMultiRoom(roomId: string): Promise<void> {
     multiRooms.delete(roomId);
     multiRoomMetas.delete(roomId);
     multiRoomMembers.update((current) => {
@@ -89,14 +84,8 @@ export function startMultiStoreSync(): void {
             try {
                 switch (tableName) {
                     case 'multi_room_index': {
-                        const tombstones = await Promise.all(
-                            ids.map((id) => appMulti.getRoomIndex(id))
-                        );
-                        for (const room of tombstones) {
-                            if (room?.isDeleted) {
-                                await purgeSyncedRoom(room.id);
-                            }
-                        }
+                        // Deleted rooms are hard-deleted by sync engine before this event fires.
+                        // Just refresh metas — missing IDs are automatically removed.
                         const metas = await Promise.all(
                             ids.map(async (id) => [id, await getMultiRoomMetaOrNull(id)] as const)
                         );
@@ -109,6 +98,11 @@ export function startMultiStoreSync(): void {
                                 }
                             }
                         });
+                        for (const [id, meta] of metas) {
+                            if (!meta) {
+                                await cleanupMultiRoom(id);
+                            }
+                        }
                         await refreshMultiRoomList();
                         break;
                     }
@@ -121,7 +115,7 @@ export function startMultiStoreSync(): void {
                             );
                             for (const member of members) {
                                 if (member?.userId === userId && member.status !== 'accepted') {
-                                    await purgeSyncedRoom(member.roomId);
+                                    await cleanupMultiRoom(member.roomId);
                                 } else if (
                                     member?.userId === userId &&
                                     member.status === 'accepted'

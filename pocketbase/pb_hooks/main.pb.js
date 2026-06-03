@@ -101,6 +101,69 @@ onRealtimeSubscribeRequest((e) => {
   e.next();
 });
 
+// Delete-wins: prevent resurrection of soft-deleted records
+// (endpoint-only tombstone for multi_room_index)
+
+onRecordUpdateRequest((e) => {
+  var existing = $app.findRecordById("records", e.record.id);
+  if (existing && existing.getBool("isDeleted") && !e.record.getBool("isDeleted")) {
+    e.record.set("isDeleted", true);
+    e.record.set("encryptedData", existing.getString("encryptedData"));
+    e.record.set("encryptedDataIV", existing.getString("encryptedDataIV"));
+    e.record.set("assetEntries", existing.getString("assetEntries") || "");
+    var h = require(`${__hooks}/keiai.js`);
+    e.record.set("updatedAt", Math.max(
+      h.getNumberField(existing, "updatedAt", 0),
+      h.getNumberField(e.record, "updatedAt", 0)
+    ));
+  }
+  e.next();
+}, "records");
+
+onRecordUpdateRequest((e) => {
+  var existing = $app.findRecordById("multi_room_records", e.record.id);
+  if (existing && existing.getBool("isDeleted") && !e.record.getBool("isDeleted")) {
+    e.record.set("isDeleted", true);
+    e.record.set("encryptedData", existing.getString("encryptedData"));
+    e.record.set("encryptedDataIV", existing.getString("encryptedDataIV"));
+    e.record.set("assetEntries", existing.getString("assetEntries") || "");
+    var h = require(`${__hooks}/keiai.js`);
+    e.record.set("updatedAt", Math.max(
+      h.getNumberField(existing, "updatedAt", 0),
+      h.getNumberField(e.record, "updatedAt", 0)
+    ));
+  }
+  e.next();
+}, "multi_room_records");
+
+onRecordUpdateRequest((e) => {
+  var existing = $app.findRecordById("multi_room_index", e.record.id);
+  if (existing) {
+    var h = require(`${__hooks}/keiai.js`);
+    // Block resurrection: existing deleted + incoming live
+    if (existing.getBool("isDeleted") && !e.record.getBool("isDeleted")) {
+      e.record.set("isDeleted", true);
+      e.record.set("updatedAt", Math.max(
+        h.getNumberField(existing, "updatedAt", 0),
+        h.getNumberField(e.record, "updatedAt", 0)
+      ));
+    }
+    // Block ordinary deletion: existing live + incoming deleted
+    if (!existing.getBool("isDeleted") && e.record.getBool("isDeleted")) {
+      e.record.set("isDeleted", false);
+    }
+  }
+  e.next();
+}, "multi_room_index");
+
+onRecordCreateRequest((e) => {
+  // Block tombstone creation via ordinary create
+  if (e.record.getBool("isDeleted")) {
+    e.record.set("isDeleted", false);
+  }
+  e.next();
+}, "multi_room_index");
+
 // Server capabilities
 
 routerAdd("GET", "/api/capabilities", (e) => {
@@ -201,7 +264,7 @@ routerAdd("POST", "/api/recovery/delete", (e) => {
   var result = h.findRecoveryRecord(e, "recovery-delete", 3);
   if (result.error) return result.error;
 
-  $app.delete(result.record);
+  h.deleteUserCascade(result.record);
   return e.json(200, { success: true });
 });
 
@@ -417,6 +480,7 @@ routerAdd("PUT", "/api/assets/{hash}", (e) => {
       var record = new Record(collection);
       record.set("hash", hash);
       record.set("size", body.length);
+      record.set("createdAt", Date.now());
       var storedAsset = h.storeAssetBytes(hash, body, null);
       if (storedAsset.file) {
         record.set("data", storedAsset.file);
@@ -507,6 +571,7 @@ routerAdd("PUT", "/api/multi-rooms/{roomId}/assets/{hash}", (e) => {
       var record = new Record(collection);
       record.set("hash", hash);
       record.set("size", body.length);
+      record.set("createdAt", Date.now());
       var storedAsset = h.storeAssetBytes(hash, body, null);
       if (storedAsset.file) {
         record.set("data", storedAsset.file);
@@ -635,13 +700,18 @@ cronAdd("asset-gc", "0 * * * *", () => {
   var pageSize = 200;
 
   while (true) {
-    var orphans = [];
+    var orphans = arrayOf(
+      new DynamicModel({
+        id: "",
+        hash: "",
+      }),
+    );
     $app
       .db()
       .newQuery(
-        "SELECT c.id FROM asset_catalog c WHERE NOT EXISTS " +
+        "SELECT c.id, c.hash FROM asset_catalog c WHERE NOT EXISTS " +
           "(SELECT 1 FROM asset_usage u WHERE u.hash = c.hash) " +
-          "AND datetime(c.created) < datetime('now', '-1 hour') LIMIT {:limit}",
+          "AND c.createdAt < (unixepoch() - 3600) * 1000 LIMIT {:limit}",
       )
       .bind({ limit: pageSize })
       .all(orphans);
@@ -650,12 +720,13 @@ cronAdd("asset-gc", "0 * * * *", () => {
 
     for (var i = 0; i < orphans.length; i++) {
       try {
-        var record = $app.findRecordById("asset_catalog", orphans[i].id);
         var h = require(`${__hooks}/keiai.js`);
-        var hash = record.getString("hash");
+        var hash = String(orphans[i].hash || "").toLowerCase();
+        if (!hash) continue;
         if (h.hasAssetUsage(hash)) {
           continue;
         }
+        var record = $app.findRecordById("asset_catalog", orphans[i].id);
         if (!h.deleteAssetBytes(hash)) {
           continue;
         }

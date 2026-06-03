@@ -6,6 +6,12 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
+import {
+    cascadeDeleteChildren,
+    getCascadeTables,
+    cleanupCascadeAssets,
+    type CascadeResult
+} from './cascade';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -132,43 +138,23 @@ export class RoomService {
         }
 
         try {
-            await Promise.all([
-                buffer.flushTable('rooms'),
-                buffer.flushTable('chats'),
-                buffer.flushTable('messages'),
-                buffer.flushTable('tool_calls'),
-                buffer.flushTable('translations')
-            ]);
+            const cascadeTables = getCascadeTables('rooms');
+            await Promise.all(
+                (['rooms', ...cascadeTables] as const).map((t) => buffer.flushTable(t))
+            );
 
             buffer.drop('rooms', record.id);
-            await localDB.transaction(
-                ['chats', 'messages', 'tool_calls', 'translations', 'rooms'],
+            const result = await localDB.transaction(
+                ['rooms', ...cascadeTables],
                 'rw',
-                async () => {
-                    const chatIds = (
-                        await localDB.getByIndex('chats', 'roomId', id, Number.MAX_SAFE_INTEGER)
-                    ).map((c) => c.id);
-
-                    const deletePromises: Promise<void>[] = [];
-                    for (const chatId of chatIds) {
-                        deletePromises.push(
-                            localDB.softDeleteByIndex('messages', 'chatId', chatId),
-                            localDB.softDeleteByIndex('tool_calls', 'chatId', chatId),
-                            localDB.softDeleteByIndex('translations', 'chatId', chatId)
-                        );
-                    }
-                    deletePromises.push(
-                        localDB.softDeleteByIndex('chats', 'roomId', id),
-                        localDB.softDeleteRecord('rooms', id)
-                    );
-
-                    const results = await Promise.allSettled(deletePromises);
-                    const failed = results.find((r) => r.status === 'rejected');
-                    if (failed) {
-                        throw failed.reason;
-                    }
+                async (): Promise<CascadeResult> => {
+                    const cascadeResult = await cascadeDeleteChildren('rooms', id);
+                    await localDB.softDeleteRecord('rooms', id);
+                    return cascadeResult;
                 }
             );
+
+            await cleanupCascadeAssets(result);
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete room', error);

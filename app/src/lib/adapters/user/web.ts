@@ -7,7 +7,6 @@ import type {
     UserWriteEventListener,
     UserWriteOperation
 } from './types';
-import { clock } from '$lib/utils/clock';
 
 /**
  * Web User Adapter using Dexie.
@@ -21,7 +20,7 @@ class UserDexie extends Dexie {
     constructor() {
         super('KeiUsers'); // Separate IndexedDB database just for auth
         this.version(1).stores({
-            users: 'id, username, isDeleted, selfHostUrl, updatedAt' // 'id' is Primary Key, others for indexing
+            users: 'id, username, selfHostUrl, updatedAt' // 'id' is Primary Key, others for indexing
         });
     }
 }
@@ -53,7 +52,7 @@ export class WebUserAdapter implements IUserAdapter {
     }
 
     async getAllUsers(): Promise<UserRecord[]> {
-        return await authDB.users.filter((u) => !u.isDeleted).toArray();
+        return await authDB.users.toArray();
     }
 
     async saveUser(user: UserRecord, options?: UserWriteOptions): Promise<void> {
@@ -62,13 +61,8 @@ export class WebUserAdapter implements IUserAdapter {
     }
 
     async deleteUser(id: string, options?: UserWriteOptions): Promise<void> {
-        const user = await this.getUser(id);
-        if (user) {
-            user.isDeleted = true;
-            user.updatedAt = clock.now();
-            await authDB.users.put(user);
-            this.emitWriteEvent('softDelete', [id], options);
-        }
+        await authDB.users.delete(id);
+        this.emitWriteEvent('purge', [id], options);
     }
 
     async backupMasterKey(_id: string, _rawKey: Uint8Array): Promise<void> {

@@ -5,6 +5,12 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
+import {
+    cascadeDeleteChildren,
+    getCascadeTables,
+    cleanupCascadeAssets,
+    type CascadeResult
+} from './cascade';
 import type { LLMModelConfig, LLMParameters, LLMRole, LLMType } from '$lib/types/models/llm';
 import type { EntityListConfig } from '$lib/types/refs';
 
@@ -176,16 +182,23 @@ export class PresetService {
         }
 
         try {
-            await buffer.flushTable('presets');
-            await buffer.flushTable('scripts');
+            const cascadeTables = getCascadeTables('presets');
+            await Promise.all(
+                (['presets', ...cascadeTables] as const).map((t) => buffer.flushTable(t))
+            );
 
             buffer.drop('presets', id);
-            await localDB.transaction(['scripts', 'presets'], 'rw', async () => {
-                await Promise.all([
-                    localDB.softDeleteByIndex('scripts', 'ownerId', id),
-                    localDB.softDeleteRecord('presets', id)
-                ]);
-            });
+            const result = await localDB.transaction(
+                ['presets', ...cascadeTables],
+                'rw',
+                async (): Promise<CascadeResult> => {
+                    const cascadeResult = await cascadeDeleteChildren('presets', id);
+                    await localDB.softDeleteRecord('presets', id);
+                    return cascadeResult;
+                }
+            );
+
+            await cleanupCascadeAssets(result);
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete preset', error);

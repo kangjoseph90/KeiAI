@@ -49,7 +49,6 @@ describe('WebUserAdapter (Dexie)', () => {
             avatar: 'identicon-url',
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            isDeleted: false,
             masterKey: cryptoKey,
             identityKeyPair: {} as CryptoKeyPair,
             ...overrides
@@ -106,25 +105,18 @@ describe('WebUserAdapter (Dexie)', () => {
     });
 
     describe('getAllUsers', () => {
-        it('should return all non-deleted users', async () => {
+        it('should return all users', async () => {
             const user1 = await createTestUser({ id: 'user-1', name: 'User 1' });
             const user2 = await createTestUser({ id: 'user-2', name: 'User 2' });
-            const deletedUser = await createTestUser({
-                id: 'user-3',
-                name: 'Deleted User',
-                isDeleted: true
-            });
 
             await adapter.saveUser(user1);
             await adapter.saveUser(user2);
-            await adapter.saveUser(deletedUser);
 
             const users = await adapter.getAllUsers();
 
             expect(users).toHaveLength(2);
             expect(users.map((u) => u.id)).toContain('user-1');
             expect(users.map((u) => u.id)).toContain('user-2');
-            expect(users.map((u) => u.id)).not.toContain('user-3');
         });
 
         it('should return empty array when no users exist', async () => {
@@ -152,28 +144,17 @@ describe('WebUserAdapter (Dexie)', () => {
     });
 
     describe('deleteUser', () => {
-        it('should soft delete a user', async () => {
-            const user = await createTestUser({ id: 'delete-me', isDeleted: false });
+        it('should hard delete a user', async () => {
+            const user = await createTestUser({ id: 'delete-me' });
 
             await adapter.saveUser(user);
             const beforeDelete = await adapter.getUser('delete-me');
-            expect(beforeDelete?.isDeleted).toBe(false);
+            expect(beforeDelete).toBeDefined();
 
             await adapter.deleteUser('delete-me');
 
             const retrieved = await adapter.getUser('delete-me');
-            expect(retrieved?.isDeleted).toBe(true);
-        });
-
-        it('should update updatedAt on delete', async () => {
-            const originalTime = Date.now() - 10000;
-            const user = await createTestUser({ id: 'delete-time-test', updatedAt: originalTime });
-
-            await adapter.saveUser(user);
-            await adapter.deleteUser('delete-time-test');
-
-            const retrieved = await adapter.getUser('delete-time-test');
-            expect(retrieved?.updatedAt).toBeGreaterThan(originalTime);
+            expect(retrieved).toBeNull();
         });
 
         it('should not throw when deleting non-existent user', async () => {
@@ -342,7 +323,6 @@ describe('IUserAdapter interface contract', () => {
             avatar: 'url',
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            isDeleted: false,
             masterKey: getKey,
             identityKeyPair: {} as CryptoKeyPair
         };

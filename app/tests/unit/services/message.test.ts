@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MessageService } from '$lib/services/content/message';
 import type { MessageFields } from '$lib/services/content/message';
-import type { BaseRecord } from '$lib/adapters/db/types';
+import type { DataRecord } from '$lib/adapters/db/types';
 
 // Mock all dependencies
 vi.mock('$lib/services/session', () => ({
@@ -119,7 +119,7 @@ describe('MessageService', () => {
                     updatedAt: 2000,
                     isDeleted: false,
                     data: makeFields('Msg 2', 'assistant')
-                } as unknown as BaseRecord,
+                } as unknown as DataRecord,
                 {
                     id: 'msg-1',
                     chatId: 'chat-1',
@@ -130,8 +130,8 @@ describe('MessageService', () => {
                     updatedAt: 1000,
                     isDeleted: false,
                     data: makeFields('Msg 1')
-                } as unknown as BaseRecord
-            ] as BaseRecord[];
+                } as unknown as DataRecord
+            ] as DataRecord[];
 
             vi.mocked(localDB.getRecordsBackward).mockResolvedValue(mockRecords);
 
@@ -155,7 +155,7 @@ describe('MessageService', () => {
                 updatedAt: 1000,
                 isDeleted: false,
                 data: makeFields('Hello')
-            } as unknown as BaseRecord;
+            } as unknown as DataRecord;
 
             vi.mocked(buffer.get).mockResolvedValue(mockRecord as never);
 
@@ -228,7 +228,7 @@ describe('MessageService', () => {
                 updatedAt: 1000,
                 isDeleted: false,
                 data: makeFields('Old')
-            } as unknown as BaseRecord;
+            } as unknown as DataRecord;
 
             vi.mocked(buffer.get).mockResolvedValue(existingRecord as never);
 
@@ -263,7 +263,7 @@ describe('MessageService', () => {
                     }
                 }
             }
-        } as unknown as BaseRecord;
+        } as unknown as DataRecord;
 
         beforeEach(() => {
             vi.mocked(buffer.get).mockResolvedValue(existingRecord as never);

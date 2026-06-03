@@ -37,7 +37,6 @@ describe('UserService Session Management', () => {
             avatar: '',
             createdAt: 1,
             updatedAt: 1,
-            isDeleted: false,
             masterKey,
             identityKeyPair
         });

@@ -1,5 +1,4 @@
 import Dexie from 'dexie';
-import { clock } from '$lib/utils/clock';
 import { MultiWriteEventEmitter } from './events';
 import type {
     IMultiAdapter,
@@ -21,13 +20,13 @@ class MultiDexie extends Dexie {
         super('KeiMulti');
         this.version(1).stores({
             roomIndex:
-                'id, ownerUserId, [ownerUserId+updatedAt], updatedAt, isDeleted, visibility, publicName',
+                'id, ownerUserId, [ownerUserId+updatedAt], updatedAt, visibility, publicName',
             members:
                 'id, roomId, userId, [roomId+userId], [userId+updatedAt], [roomId+updatedAt], updatedAt, status'
         });
         this.version(2).stores({
             roomIndex:
-                'id, ownerUserId, [ownerUserId+updatedAt], updatedAt, isDeleted, visibility, publicName',
+                'id, ownerUserId, [ownerUserId+updatedAt], updatedAt, visibility, publicName',
             members:
                 'id, roomId, userId, [roomId+userId], [userId+updatedAt], [roomId+updatedAt], updatedAt, status',
             userKeyTrust: 'userId, username, publicKeyFingerprint, lastSeenAt'
@@ -69,7 +68,7 @@ export class WebMultiAdapter implements IMultiAdapter {
     async getRoomIndexes(roomIds: string[]): Promise<MultiRoomIndexRecord[]> {
         if (roomIds.length === 0) return [];
         return (await multiDB.roomIndex.bulkGet(roomIds)).filter(
-            (record): record is MultiRoomIndexRecord => Boolean(record && !record.isDeleted)
+            (record): record is MultiRoomIndexRecord => Boolean(record)
         );
     }
 
@@ -98,17 +97,6 @@ export class WebMultiAdapter implements IMultiAdapter {
             records.map((record) => record.id),
             options
         );
-    }
-
-    async deleteRoomIndex(roomId: string, options?: MultiWriteOptions): Promise<void> {
-        const record = await this.getRoomIndex(roomId);
-        if (!record) return;
-        await multiDB.roomIndex.put({
-            ...record,
-            updatedAt: clock.now(),
-            isDeleted: true
-        });
-        this.emitWriteEvent('multi_room_index', 'put', [roomId], options);
     }
 
     async getMember(id: string): Promise<MultiRoomMemberRecord | null> {

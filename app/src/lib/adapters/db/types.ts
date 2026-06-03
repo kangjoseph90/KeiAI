@@ -60,7 +60,8 @@ export type DatabaseWriteOperation =
     | 'deleteByIndex'
     | 'softDelete'
     | 'softDeleteByIndex'
-    | 'softDeleteByCompoundIndex';
+    | 'softDeleteByCompoundIndex'
+    | 'purge';
 
 export type DatabaseMutationOrigin = 'local' | 'sync';
 
@@ -86,19 +87,16 @@ export interface DataScope {
 
 export type DataScopeType = 'user' | 'room';
 
-export interface BaseRecord {
+/** Standard record — stores domain fields as plaintext JSON */
+export interface DataRecord {
     id: string;
     scopeType: DataScopeType;
     scopeId: string; // userId or roomId
     createdAt: number;
     updatedAt: number;
     isDeleted: boolean;
-    assetEntries?: AssetEntries;
-}
-
-/** Standard record — stores domain fields as plaintext JSON */
-export interface DataRecord extends BaseRecord {
     data: Record<string, unknown>;
+    assetEntries?: AssetEntries;
 }
 
 // ─── Rooms ──────────────────────────────────────────────────────────
@@ -175,13 +173,13 @@ export interface TranslationRecord extends DataRecord {
 export interface IDatabaseAdapter {
     subscribeWriteEvents(listener: DatabaseWriteEventListener): () => void;
     flush(): Promise<void>;
-    getRecord<T extends BaseRecord>(tableName: TableName, id: string): Promise<T | undefined>;
-    putRecord<T extends BaseRecord>(
+    getRecord<T extends DataRecord>(tableName: TableName, id: string): Promise<T | undefined>;
+    putRecord<T extends DataRecord>(
         tableName: TableName,
         record: T,
         options?: DatabaseWriteOptions
     ): Promise<void>;
-    putRecords<T extends BaseRecord>(
+    putRecords<T extends DataRecord>(
         tableName: TableName,
         records: T[],
         options?: DatabaseWriteOptions
@@ -193,6 +191,11 @@ export interface IDatabaseAdapter {
         indexValue: string,
         options?: DatabaseWriteOptions
     ): Promise<void>;
+    deleteByScope(
+        tableName: TableName,
+        scope: DataScope,
+        options?: DatabaseWriteOptions
+    ): Promise<number>;
     softDeleteRecord(
         tableName: TableName,
         id: string,
@@ -210,22 +213,23 @@ export interface IDatabaseAdapter {
         indexValue: string[],
         options?: DatabaseWriteOptions
     ): Promise<void>;
-    getAll<T extends BaseRecord>(tableName: TableName, scope: DataScope): Promise<T[]>;
-    getByIndex<T extends BaseRecord>(
+    getAll<T extends DataRecord>(tableName: TableName, scope: DataScope): Promise<T[]>;
+    getByIndex<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         indexValue: string,
         limit?: number,
         offset?: number
     ): Promise<T[]>;
-    getByCompoundIndex<T extends BaseRecord>(
+    getScopeIdsByType(tableName: TableName, scopeType: DataScopeType): Promise<string[]>;
+    getByCompoundIndex<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         indexValue: string[],
         limit?: number,
         offset?: number
     ): Promise<T[]>;
-    getRecordsBackward<T extends BaseRecord>(
+    getRecordsBackward<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         lowerBound: unknown[],
@@ -233,7 +237,7 @@ export interface IDatabaseAdapter {
         limit?: number,
         offset?: number
     ): Promise<T[]>;
-    getRecordsForward<T extends BaseRecord>(
+    getRecordsForward<T extends DataRecord>(
         tableName: TableName,
         indexName: string,
         lowerBound: unknown[],
@@ -247,7 +251,7 @@ export interface IDatabaseAdapter {
         lowerBound: unknown[],
         upperBound: unknown[]
     ): Promise<number>;
-    getUnsyncedChanges<T extends BaseRecord>(
+    getUnsyncedChanges<T extends DataRecord>(
         tableName: TableName,
         scope: DataScope,
         sinceUpdatedAt: number

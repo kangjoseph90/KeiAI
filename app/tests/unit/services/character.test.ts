@@ -83,7 +83,7 @@ vi.mock('$lib/services/content/record_buffer', () => ({
 
 import { encrypt, decrypt } from '$lib/crypto';
 import { getActiveSession } from '$lib/services/session';
-import { localDB } from '$lib/adapters/db';
+import { localDB, type DataRecord } from '$lib/adapters/db';
 import { generateId } from '$lib/utils/id';
 import { deepMerge } from '$lib/utils/defaults';
 import { buffer } from '$lib/services/content/record_buffer';
@@ -339,7 +339,9 @@ describe('CharacterService', () => {
 
         beforeEach(() => {
             vi.mocked(buffer.get).mockResolvedValue(mockCharacter as never);
-            vi.mocked(localDB.getByIndex).mockResolvedValue([]);
+            vi.mocked(localDB.getByIndex).mockResolvedValue([
+                { id: 'child-1', isDeleted: false }
+            ] as unknown as DataRecord[]);
             vi.mocked(localDB.transaction).mockImplementation(async (_tables, _mode, callback) => {
                 await callback();
             });
@@ -349,7 +351,7 @@ describe('CharacterService', () => {
             await CharacterService.delete('char-1');
 
             expect(localDB.transaction).toHaveBeenCalledWith(
-                ['lorebooks', 'scripts', 'characters', 'charjs'],
+                expect.arrayContaining(['characters', 'lorebooks', 'scripts', 'charjs']),
                 'rw',
                 expect.any(Function)
             );
@@ -361,14 +363,26 @@ describe('CharacterService', () => {
             expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
                 'lorebooks',
                 'ownerId',
-                'char-1'
+                'char-1',
+                undefined
             );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('scripts', 'ownerId', 'char-1');
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith('charjs', 'ownerId', 'char-1');
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'scripts',
+                'ownerId',
+                'char-1',
+                undefined
+            );
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'charjs',
+                'ownerId',
+                'char-1',
+                undefined
+            );
             expect(localDB.softDeleteByIndex).not.toHaveBeenCalledWith(
                 'messages',
                 'chatId',
-                expect.any(String)
+                expect.any(String),
+                expect.anything()
             );
         });
     });

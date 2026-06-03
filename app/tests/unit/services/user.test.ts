@@ -76,7 +76,6 @@ describe('UserService', () => {
             avatar: '',
             createdAt: 1,
             updatedAt: 1,
-            isDeleted: false,
             masterKey: mockMasterKey,
             identityKeyPair: mockIdentityKeyPair
         });
@@ -102,7 +101,6 @@ describe('UserService', () => {
             expect.objectContaining({
                 id: 'local-id',
                 name: 'Local 1',
-                isDeleted: false,
                 masterKey: mockMasterKey,
                 identityKeyPair: mockIdentityKeyPair
             })
@@ -142,7 +140,6 @@ describe('UserService', () => {
             avatar: '',
             createdAt: 1,
             updatedAt: 1,
-            isDeleted: false,
             selfHostUrl: 'https://sync.example.test',
             username: 'kei',
             masterKey: mockMasterKey,
