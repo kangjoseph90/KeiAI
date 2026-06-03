@@ -306,6 +306,7 @@ export class CharacterService {
 
         const current = parseFields(record);
         const owner = assetOwner(record);
+        const oldAvatar = current.avatar;
 
         let written: AssetFields;
         let status: AssetStatus;
@@ -328,6 +329,15 @@ export class CharacterService {
             avatar: written
         };
 
+        const nextFields = collectAssetFields(updated);
+        const oldAvatarStillExists = oldAvatar
+            ? nextFields.some((f) => f.hash === oldAvatar.hash)
+            : true;
+
+        if (oldAvatar && !oldAvatarStillExists) {
+            delete assetEntries[oldAvatar.hash];
+        }
+
         try {
             buffer.update<CharacterRecord>({
                 tableName: 'characters',
@@ -343,6 +353,10 @@ export class CharacterService {
                 await AssetService.delete({ ...owner, hash: written.hash }).catch(() => undefined);
             }
             throw error;
+        }
+
+        if (oldAvatar && !oldAvatarStillExists) {
+            await AssetService.delete({ ...owner, hash: oldAvatar.hash }).catch(() => undefined);
         }
 
         return { ...updated, id: record.id, scopeType: record.scopeType, scopeId: record.scopeId };
@@ -387,6 +401,12 @@ export class CharacterService {
             },
             patch: { avatar: updated.avatar }
         });
+
+        if (!hashStillExists) {
+            await AssetService.delete({ ...assetOwner(record), hash: oldAvatar.hash }).catch(
+                () => undefined
+            );
+        }
 
         return { ...updated, id: record.id, scopeType: record.scopeType, scopeId: record.scopeId };
     }
