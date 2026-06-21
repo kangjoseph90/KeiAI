@@ -273,16 +273,6 @@ describe('MessageService', () => {
         it('deleteSwipe deletes swipe artifacts and removes the swipe', async () => {
             const result = await MessageService.deleteSwipe('msg-1', 's2');
 
-            expect(localDB.softDeleteByCompoundIndex).toHaveBeenCalledWith(
-                'tool_calls',
-                '[messageId+swipeId]',
-                ['msg-1', 's2']
-            );
-            expect(localDB.softDeleteByCompoundIndex).toHaveBeenCalledWith(
-                'translations',
-                '[messageId+swipeId]',
-                ['msg-1', 's2']
-            );
             expect(buffer.update).toHaveBeenCalledWith(
                 expect.objectContaining({
                     tableName: 'messages',

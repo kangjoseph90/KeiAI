@@ -660,13 +660,12 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             expect(results).toHaveLength(2);
         });
 
-        it('should scope compound swipe queries by messageId and swipeId', async () => {
+        it('should scope queries by messageId', async () => {
             const records = [
                 createTestRecord({
                     id: 'tool-1',
                     chatId: 'chat-1',
                     messageId: 'msg-1',
-                    swipeId: 's1',
                     assetEntries: { hash1: 'local' },
                     data: { status: 'pending' }
                 }),
@@ -674,35 +673,31 @@ describe('WebDatabaseAdapter (Dexie)', () => {
                     id: 'tool-2',
                     chatId: 'chat-1',
                     messageId: 'msg-2',
-                    swipeId: 's1',
                     data: { status: 'pending' }
                 })
             ] as ToolCallRecord[];
 
             await localDB.putRecords('tool_calls', records);
 
-            const msgOneTools = await localDB.getByCompoundIndex<ToolCallRecord>(
+            const msgOneTools = await localDB.getByIndex<ToolCallRecord>(
                 'tool_calls',
-                '[messageId+swipeId]',
-                ['msg-1', 's1']
+                'messageId',
+                'msg-1'
             );
 
             expect(msgOneTools.map((record) => record.id)).toEqual(['tool-1']);
 
-            await localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
-                'msg-1',
-                's1'
-            ]);
+            await localDB.softDeleteByIndex('tool_calls', 'messageId', 'msg-1');
 
-            const afterDeleteMsgOne = await localDB.getByCompoundIndex<ToolCallRecord>(
+            const afterDeleteMsgOne = await localDB.getByIndex<ToolCallRecord>(
                 'tool_calls',
-                '[messageId+swipeId]',
-                ['msg-1', 's1']
+                'messageId',
+                'msg-1'
             );
-            const afterDeleteMsgTwo = await localDB.getByCompoundIndex<ToolCallRecord>(
+            const afterDeleteMsgTwo = await localDB.getByIndex<ToolCallRecord>(
                 'tool_calls',
-                '[messageId+swipeId]',
-                ['msg-2', 's1']
+                'messageId',
+                'msg-2'
             );
 
             expect(afterDeleteMsgOne).toEqual([]);
@@ -713,37 +708,29 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             expect(deletedTool?.data).toEqual({});
         });
 
-        it('should not touch records already deleted by compound index', async () => {
+        it('should not touch records already deleted by index', async () => {
             const originalTime = Date.now() - 10000;
             const records = [
                 createTestRecord({
-                    id: 'tool-compound-live',
+                    id: 'tool-live',
                     chatId: 'chat-1',
                     messageId: 'msg-idempotent',
-                    swipeId: 's1',
                     isDeleted: false
                 }),
                 createTestRecord({
-                    id: 'tool-compound-deleted',
+                    id: 'tool-deleted',
                     chatId: 'chat-1',
                     messageId: 'msg-idempotent',
-                    swipeId: 's1',
                     isDeleted: true,
                     updatedAt: originalTime
                 })
             ] as ToolCallRecord[];
 
             await localDB.putRecords('tool_calls', records);
-            await localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
-                'msg-idempotent',
-                's1'
-            ]);
+            await localDB.softDeleteByIndex('tool_calls', 'messageId', 'msg-idempotent');
 
-            const live = await localDB.getRecord<DataRecord>('tool_calls', 'tool-compound-live');
-            const deleted = await localDB.getRecord<DataRecord>(
-                'tool_calls',
-                'tool-compound-deleted'
-            );
+            const live = await localDB.getRecord<DataRecord>('tool_calls', 'tool-live');
+            const deleted = await localDB.getRecord<DataRecord>('tool_calls', 'tool-deleted');
 
             expect(live?.isDeleted).toBe(true);
             expect(deleted?.isDeleted).toBe(true);

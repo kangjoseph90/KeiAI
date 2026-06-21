@@ -40,7 +40,6 @@ export interface ToolCall extends ToolCallFields {
     id: string; // internal id
     chatId: string;
     messageId: string;
-    swipeId: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────
@@ -63,13 +62,13 @@ function parseFields(record: ToolCallRecord): ToolCallFields {
 // ─── Service ──────────────────────────────────────────────────────────
 
 export class ToolCallService {
-    /** List tool calls for a specific swipe */
-    static async listByMessageSwipe(messageId: string, swipeId: string): Promise<ToolCall[]> {
+    /** List tool calls for a specific message */
+    static async listByMessage(messageId: string): Promise<ToolCall[]> {
         await buffer.flushTable('tool_calls');
-        const records = await localDB.getByCompoundIndex<ToolCallRecord>(
+        const records = await localDB.getByIndex<ToolCallRecord>(
             'tool_calls',
-            '[messageId+swipeId]',
-            [messageId, swipeId],
+            'messageId',
+            messageId,
             Number.MAX_SAFE_INTEGER
         );
         return records
@@ -78,8 +77,7 @@ export class ToolCallService {
                 ...parseFields(record),
                 id: record.id,
                 chatId: record.chatId,
-                messageId: record.messageId,
-                swipeId: record.swipeId
+                messageId: record.messageId
             }));
     }
 
@@ -91,15 +89,13 @@ export class ToolCallService {
             ...parseFields(record),
             id: record.id,
             chatId: record.chatId,
-            messageId: record.messageId,
-            swipeId: record.swipeId
+            messageId: record.messageId
         };
     }
 
     static async create(
         chatId: string,
         messageId: string,
-        swipeId: string,
         fields: DeepPartial<ToolCallFields> = {},
         scopeType: DataScopeType = 'user'
     ): Promise<ToolCall> {
@@ -116,7 +112,6 @@ export class ToolCallService {
                 scopeId: scope.scopeId,
                 chatId,
                 messageId,
-                swipeId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
@@ -128,7 +123,7 @@ export class ToolCallService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create tool call', error);
         }
 
-        return { ...resolved, id, chatId, messageId, swipeId };
+        return { ...resolved, id, chatId, messageId };
     }
 
     static async update(id: string, changes: DeepPartial<ToolCallFields>): Promise<ToolCall> {
@@ -151,8 +146,7 @@ export class ToolCallService {
                 ...updated,
                 id: record.id,
                 chatId: record.chatId,
-                messageId: record.messageId,
-                swipeId: record.swipeId
+                messageId: record.messageId
             };
         } catch (error) {
             if (error instanceof AppError) throw error;

@@ -292,21 +292,6 @@ export class MessageService {
         const nextActiveId =
             message.activeSwipeId === swipeId ? (remainingIds[0] ?? '') : message.activeSwipeId;
 
-        // Cleanup associated data
-        await Promise.all([buffer.flushTable('tool_calls'), buffer.flushTable('translations')]);
-        await localDB.transaction(['tool_calls', 'translations'], 'rw', async () => {
-            await Promise.all([
-                localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
-                    messageId,
-                    swipeId
-                ]),
-                localDB.softDeleteByCompoundIndex('translations', '[messageId+swipeId]', [
-                    messageId,
-                    swipeId
-                ])
-            ]);
-        });
-
         return this.update(messageId, {
             swipes: { [swipeId]: undefined },
             activeSwipeId: nextActiveId

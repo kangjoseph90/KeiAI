@@ -17,7 +17,6 @@ export interface Translation extends TranslationFields {
     id: string;
     chatId: string;
     messageId: string;
-    swipeId: string;
 }
 
 const defaultTranslationFields: TranslationFields = {
@@ -30,12 +29,12 @@ function parseFields(record: TranslationRecord): TranslationFields {
 }
 
 export class TranslationService {
-    static async listByMessageSwipe(messageId: string, swipeId: string): Promise<Translation[]> {
+    static async listByMessage(messageId: string): Promise<Translation[]> {
         await buffer.flushTable('translations');
-        const records = await localDB.getByCompoundIndex<TranslationRecord>(
+        const records = await localDB.getByIndex<TranslationRecord>(
             'translations',
-            '[messageId+swipeId]',
-            [messageId, swipeId],
+            'messageId',
+            messageId,
             Number.MAX_SAFE_INTEGER
         );
         return records
@@ -44,8 +43,7 @@ export class TranslationService {
                 ...parseFields(record),
                 id: record.id,
                 chatId: record.chatId,
-                messageId: record.messageId,
-                swipeId: record.swipeId
+                messageId: record.messageId
             }));
     }
 
@@ -57,15 +55,13 @@ export class TranslationService {
             ...parseFields(record),
             id: record.id,
             chatId: record.chatId,
-            messageId: record.messageId,
-            swipeId: record.swipeId
+            messageId: record.messageId
         };
     }
 
     static async create(
         chatId: string,
         messageId: string,
-        swipeId: string,
         fields: DeepPartial<TranslationFields> = {},
         scopeType: DataScopeType = 'user'
     ): Promise<Translation> {
@@ -82,7 +78,6 @@ export class TranslationService {
                 scopeId: scope.scopeId,
                 chatId,
                 messageId,
-                swipeId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
@@ -94,7 +89,7 @@ export class TranslationService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create translation', error);
         }
 
-        return { ...resolved, id, chatId, messageId, swipeId };
+        return { ...resolved, id, chatId, messageId };
     }
 
     static async update(id: string, changes: DeepPartial<TranslationFields>): Promise<Translation> {
@@ -117,8 +112,7 @@ export class TranslationService {
                 ...updated,
                 id: record.id,
                 chatId: record.chatId,
-                messageId: record.messageId,
-                swipeId: record.swipeId
+                messageId: record.messageId
             };
         } catch (error) {
             if (error instanceof AppError) throw error;

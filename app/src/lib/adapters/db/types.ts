@@ -152,20 +152,16 @@ export type PresetRecord = DataRecord;
 
 // ─── Tool Calls ──────────────────────────────────────────────────────
 
-// swipeId is message-local; use [messageId+swipeId] for lookups.
 export interface ToolCallRecord extends DataRecord {
     chatId: string;
     messageId: string;
-    swipeId: string;
 }
 
 // ─── Translations ───────────────────────────────────────────────────
 
-// swipeId is message-local; use [messageId+swipeId] for lookups.
 export interface TranslationRecord extends DataRecord {
     chatId: string;
     messageId: string;
-    swipeId: string;
 }
 
 // ─── Adapter Interface ──────────────────────────────────────────────
