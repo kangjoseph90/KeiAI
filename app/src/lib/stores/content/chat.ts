@@ -19,6 +19,7 @@ import {
     activeRoomId,
     chatSelections,
     messageIndexes,
+    translations,
     roomCharacters,
     chatPersonas
 } from '../state';
@@ -149,6 +150,7 @@ export async function selectChat(chatId: string): Promise<void> {
     chatSelections.set(null);
     chatLorebooks.clear();
     messageIndexes.set(new Map());
+    translations.clear();
     roomChats.set(chat.id, chat);
     activeChatId.set(chat.id);
     await loadInitialMessages(chatId, 30);
@@ -186,6 +188,7 @@ export function clearActiveChat(): void {
     chatLorebooks.clear();
     messages.clear();
     messageIndexes.set(new Map());
+    translations.clear();
 }
 
 export async function createChat(

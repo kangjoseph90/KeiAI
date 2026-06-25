@@ -20,6 +20,7 @@ import type {
     Lorebook,
     Script,
     CharJS,
+    Translation,
     MultiRoom,
     MultiRoomMember
 } from '$lib/services';
@@ -144,6 +145,14 @@ export const messages = new EntityStore<Message>({
     sortFn: (a, b) => compareSortOrder(a.sortOrder, b.sortOrder)
 });
 export const messageIndexes = writable(new Map<string, number>());
+export const translations = new EntityStore<Translation>();
+export const translationsByHash = derived(translations, ($translations) => {
+    const byHash = new Map<string, Translation>();
+    for (const translation of $translations) {
+        byHash.set(translation.sourceHash, translation);
+    }
+    return byHash;
+});
 
 // ─── Character Studio Context───────────────────────────────────────
 export const activeCharacterId = writable<string | null>(null);

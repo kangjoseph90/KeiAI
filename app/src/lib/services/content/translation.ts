@@ -7,10 +7,8 @@ import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
 
 export interface TranslationFields {
-    targetLang: string;
+    sourceHash: string;
     text: string;
-    methodKey?: string;
-    sourceHash?: string;
 }
 
 export interface Translation extends TranslationFields {
@@ -20,7 +18,7 @@ export interface Translation extends TranslationFields {
 }
 
 const defaultTranslationFields: TranslationFields = {
-    targetLang: '',
+    sourceHash: '',
     text: ''
 };
 
@@ -47,6 +45,32 @@ export class TranslationService {
             }));
     }
 
+    static async listByMessages(messageIds: string[]): Promise<Translation[]> {
+        if (messageIds.length === 0) return [];
+
+        await buffer.flushTable('translations');
+        const recordGroups = await Promise.all(
+            messageIds.map((messageId) =>
+                localDB.getByIndex<TranslationRecord>(
+                    'translations',
+                    'messageId',
+                    messageId,
+                    Number.MAX_SAFE_INTEGER
+                )
+            )
+        );
+
+        return recordGroups
+            .flat()
+            .filter((record) => canAccessScope(record))
+            .map((record) => ({
+                ...parseFields(record),
+                id: record.id,
+                chatId: record.chatId,
+                messageId: record.messageId
+            }));
+    }
+
     static async get(id: string): Promise<Translation | null> {
         const record = await buffer.get<TranslationRecord>('translations', id);
         if (!record || record.isDeleted || !canAccessScope(record)) return null;
@@ -62,11 +86,9 @@ export class TranslationService {
     static async create(
         chatId: string,
         messageId: string,
-        fields: DeepPartial<TranslationFields> = {},
+        fields: TranslationFields,
         scopeType: DataScopeType = 'user'
     ): Promise<Translation> {
-        const resolved: TranslationFields = deepMerge(defaultTranslationFields, fields);
-
         const scope = getSessionScope(scopeType);
         const id = generateId();
         const now = clock.now();
@@ -81,7 +103,7 @@ export class TranslationService {
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                data: resolved as unknown as Record<string, unknown>
+                data: fields as unknown as Record<string, unknown>
             };
             await localDB.putRecord<TranslationRecord>('translations', newRecord);
         } catch (error) {
@@ -89,7 +111,7 @@ export class TranslationService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create translation', error);
         }
 
-        return { ...resolved, id, chatId, messageId };
+        return { ...fields, id, chatId, messageId };
     }
 
     static async update(id: string, changes: DeepPartial<TranslationFields>): Promise<Translation> {

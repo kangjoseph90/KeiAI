@@ -21,6 +21,11 @@ import { messages, activeChatId, messageIndexes, activeChat } from '../state';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
 import { getChat, updateChat } from './chat';
+import {
+    addTranslationsForMessages,
+    dropTranslationsForMessages,
+    loadTranslationsForMessages
+} from './translation';
 
 // ─── Getter ────────────────────────────────────────────────────────────
 
@@ -104,6 +109,10 @@ export async function loadInitialMessages(chatId: string, limit = 50): Promise<v
     const initialMsgs = await MessageService.getMessagesBefore(chatId, '\uffff', limit);
     if (get(activeChatId) === chatId) {
         messages.setAll(initialMsgs);
+        await loadTranslationsForMessages(
+            chatId,
+            initialMsgs.map((msg) => msg.id)
+        );
         await refreshMessageIndexes(chatId);
     }
 }
@@ -120,6 +129,10 @@ export async function loadOlderMessages(chatId: string, limit = 50): Promise<num
         messages.batch(() => {
             for (const msg of olderMsgs) messages.set(msg.id, msg);
         });
+        await addTranslationsForMessages(
+            chatId,
+            olderMsgs.map((msg) => msg.id)
+        );
         await refreshMessageIndexes(chatId);
         return olderMsgs.length;
     }
@@ -139,6 +152,10 @@ export async function loadNewerMessages(chatId: string, limit = 50): Promise<num
         messages.batch(() => {
             for (const msg of newerMsgs) messages.set(msg.id, msg);
         });
+        await addTranslationsForMessages(
+            chatId,
+            newerMsgs.map((msg) => msg.id)
+        );
         await refreshMessageIndexes(chatId);
         return newerMsgs.length;
     }
@@ -157,6 +174,7 @@ export async function dropOlderMessages(chatId: string, count: number): Promise<
     messages.batch(() => {
         for (const id of ids) messages.delete(id);
     });
+    dropTranslationsForMessages(ids);
     await refreshMessageIndexes(chatId);
 }
 
@@ -171,6 +189,7 @@ export async function dropNewerMessages(chatId: string, count: number): Promise<
     messages.batch(() => {
         for (const id of ids) messages.delete(id);
     });
+    dropTranslationsForMessages(ids);
     await refreshMessageIndexes(chatId);
 }
 
@@ -269,6 +288,7 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
     if (get(activeChatId) !== chatId) return;
 
     messages.delete(msgId);
+    dropTranslationsForMessages([msgId]);
     await refreshMessageIndexes(chatId);
 }
 

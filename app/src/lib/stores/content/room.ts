@@ -27,6 +27,7 @@ import {
     chatSelections,
     messages,
     messageIndexes,
+    translations,
     multiRoomCharacters,
     multiRoomPersonas
 } from '../state';
@@ -101,6 +102,7 @@ export function clearActiveRoom(): void {
     chatLorebooks.clear();
     messages.clear();
     messageIndexes.set(new Map());
+    translations.clear();
 }
 
 export async function createRoom(fields: DeepPartial<RoomFields> = {}): Promise<Room> {

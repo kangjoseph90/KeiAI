@@ -65,6 +65,8 @@ export const chatSelections = readonly(StoreState.chatSelections);
 export const chatLorebooks = readonly(StoreState.chatLorebooks);
 export const chatPersonas = readonly(StoreState.chatPersonas);
 export const messages = readonly(StoreState.messages);
+export const translations = readonly(StoreState.translations);
+export const translationsByHash = readonly(StoreState.translationsByHash);
 export const chatTasks = readonly(StoreState.chatTasks);
 export const chatAssetsMap = readonly(StoreState.chatAssetsMap);
 // ─── Re-export derived stores directly (already read-only) ──────────
@@ -98,6 +100,7 @@ export * from './content/chat';
 export * from './content/module';
 export * from './content/plugin';
 export * from './content/message';
+export * from './content/translation';
 export * from './content/merged';
 export * from './tasks/chat';
 export * from './auth';
