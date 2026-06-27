@@ -7,6 +7,7 @@ type VisitState = 'visiting' | 'visited';
 export function validateWorkflow(workflow: WorkflowDefinition): void {
     validateSingleOutput(workflow);
     validateAgentSlots(workflow);
+    validateInputValues(workflow);
 
     const states = new Map<string, VisitState>();
     const path: string[] = [];
@@ -86,6 +87,29 @@ function validateAgentSlots(workflow: WorkflowDefinition): void {
                 );
             }
             names.add(name);
+        }
+    }
+}
+
+function validateInputValues(workflow: WorkflowDefinition): void {
+    for (const node of Object.values(workflow.nodes)) {
+        for (const inputId of Object.keys(node.inputValues)) {
+            if (!(inputId in node.inputs)) {
+                throw new AppError(
+                    'INVALID_INPUT',
+                    `Workflow input value has no matching input: ${node.id}.${inputId}`
+                );
+            }
+        }
+
+        if (
+            node.class === 'Agent' &&
+            Object.keys(node.inputs).some((inputId) => !(inputId in node.inputValues))
+        ) {
+            throw new AppError(
+                'INVALID_INPUT',
+                `Agent inputs and input values do not match: ${node.id}`
+            );
         }
     }
 }

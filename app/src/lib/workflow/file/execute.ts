@@ -26,7 +26,7 @@ export async function* executeFileReadNode({
 }: WorkflowNodeExecutionContext<FileReadNode>): WorkflowNodeStream {
     throwIfAborted(signal);
     const [path, target] = await Promise.all([
-        resolvePath(node.path, inputs.path),
+        resolvePath(inputs.path),
         resolveNamespace(node.namespace, ctx)
     ]);
     throwIfAborted(signal);
@@ -50,7 +50,7 @@ export async function* executeFileWriteNode({
     }
 
     const [path, content, target] = await Promise.all([
-        resolvePath(node.path, inputs.path),
+        resolvePath(inputs.path),
         contentInput.final(),
         resolveNamespace(node.namespace, ctx)
     ]);
@@ -61,8 +61,8 @@ export async function* executeFileWriteNode({
     yield { content };
 }
 
-async function resolvePath(staticPath: string, input?: WorkflowInputStream): Promise<string> {
-    const path = input ? await input.final() : staticPath;
+async function resolvePath(input?: WorkflowInputStream): Promise<string> {
+    const path = input ? await input.final() : '';
     if (!path.trim()) throw new AppError('INVALID_INPUT', 'File path is required');
     return path;
 }

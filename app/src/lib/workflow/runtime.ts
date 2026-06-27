@@ -7,8 +7,7 @@ import type {
     WorkflowInputStream,
     WorkflowNodeExecutionContext,
     WorkflowNodeStream,
-    WorkflowNodeStreamState,
-    WorkflowRunEvent
+    WorkflowNodeStreamState
 } from './types';
 import type { Macro } from '$lib/template';
 import type { RuntimeContext } from '$lib/types/context';
@@ -19,13 +18,11 @@ export interface WorkflowRuntimeOptions {
     localMacros?: ReadonlyMap<string, Macro>;
     messages?: PagedMessages;
     signal?: AbortSignal;
-    onEvent?: (event: WorkflowRunEvent) => void;
 }
 
 interface NodeRuntime {
     done: Promise<string>;
-    latest: string;
-    hasValue: boolean;
+    latest?: WorkflowNodeStreamState;
     finished: boolean;
     error: unknown;
     subscribers: Set<NodeRuntimeSubscriber>;
@@ -43,7 +40,6 @@ export class WorkflowRuntime {
     readonly #localMacros: ReadonlyMap<string, Macro> | undefined;
     readonly #messages: PagedMessages | undefined;
     readonly #signal: AbortSignal;
-    readonly #onEvent: ((event: WorkflowRunEvent) => void) | undefined;
     readonly #runtimes = new Map<string, NodeRuntime>();
 
     constructor(workflow: WorkflowDefinition, options: WorkflowRuntimeOptions = {}) {
@@ -53,27 +49,42 @@ export class WorkflowRuntime {
         this.#localMacros = options.localMacros;
         this.#messages = options.messages;
         this.#signal = options.signal ?? new AbortController().signal;
-        this.#onEvent = options.onEvent;
     }
 
-    /** Streams the workflow's single Output node to completion. */
-    run(): WorkflowNodeStream {
-        return this.#streamNode(getWorkflowOutputNodeId(this.#workflow));
+    /** Runs every node, exposes only Output, and completes after every path settles. */
+    async *run(): WorkflowNodeStream {
+        const outputNodeId = getWorkflowOutputNodeId(this.#workflow);
+        const nodeIds = [
+            outputNodeId,
+            ...Object.keys(this.#workflow.nodes).filter((nodeId) => nodeId !== outputNodeId)
+        ];
+        const runs = nodeIds.map((nodeId) => this.#getOrCreateRuntime(nodeId).done);
+        let outputFailure: { error: unknown } | undefined;
+        let results: PromiseSettledResult<string>[] = [];
+
+        try {
+            for await (const state of this.#streamNode(outputNodeId)) {
+                yield state;
+            }
+        } catch (error) {
+            outputFailure = { error };
+        } finally {
+            results = await Promise.allSettled(runs);
+        }
+
+        if (outputFailure) throw outputFailure.error;
+
+        const failed = results.find(
+            (result): result is PromiseRejectedResult => result.status === 'rejected'
+        );
+        if (failed) throw failed.reason;
     }
 
-    /** Resolves a node's final content, executing upstream on demand. */
-    runNode(nodeId: string): Promise<string> {
-        return this.#getOrCreateRuntime(nodeId).done;
-    }
-
-    async #runNode(nodeId: string): Promise<string> {
+    async #runNode(nodeId: string, runtime: NodeRuntime): Promise<string> {
         const node = this.#workflow.nodes[nodeId];
         if (!node) {
             throw new AppError('NOT_FOUND', `Workflow node not found: ${nodeId}`);
         }
-        const runtime = this.#getRuntime(nodeId);
-        this.#emit({ type: 'nodeStart', nodeId });
-
         try {
             const inputs = this.#resolveInputs(node);
             let finalContent = '';
@@ -87,20 +98,16 @@ export class WorkflowRuntime {
                 signal: this.#signal
             })) {
                 finalContent = state.content;
-                this.#publish(nodeId, state);
-                this.#emit({ type: 'nodeOutput', nodeId, content: finalContent });
+                this.#publish(runtime, state);
             }
 
             runtime.finished = true;
             this.#closeSubscribers(runtime);
-            this.#emit({ type: 'nodeEnd', nodeId, content: finalContent });
             return finalContent;
         } catch (error) {
             runtime.finished = true;
             runtime.error = error;
             this.#failSubscribers(runtime, error);
-            const message = error instanceof Error ? error.message : 'Unknown workflow node error';
-            this.#emit({ type: 'nodeError', nodeId, error: message });
             throw error;
         }
     }
@@ -110,10 +117,22 @@ export class WorkflowRuntime {
     ): Record<string, WorkflowInputStream> {
         const inputs: Record<string, WorkflowInputStream> = {};
         for (const [inputName, connection] of Object.entries(node.inputs)) {
-            if (!connection) continue;
-            inputs[inputName] = this.#resolveConnection(connection);
+            if (connection) {
+                inputs[inputName] = this.#resolveConnection(connection);
+            } else if (inputName in node.inputValues) {
+                inputs[inputName] = this.#resolveLiteral(node.inputValues[inputName]);
+            }
         }
         return inputs;
+    }
+
+    #resolveLiteral(content: string): WorkflowInputStream {
+        return {
+            stream: async function* () {
+                yield { content };
+            },
+            final: async () => content
+        };
     }
 
     #resolveConnection(connection: Exclude<InputPort, null>): WorkflowInputStream {
@@ -125,7 +144,7 @@ export class WorkflowRuntime {
         }
         return {
             stream: () => this.#streamNode(connection.sourceNode),
-            final: () => this.runNode(connection.sourceNode)
+            final: () => this.#getOrCreateRuntime(connection.sourceNode).done
         };
     }
 
@@ -134,32 +153,20 @@ export class WorkflowRuntime {
         if (existing) return existing;
 
         const runtime: NodeRuntime = {
-            latest: '',
-            hasValue: false,
             finished: false,
             error: undefined,
             subscribers: new Set(),
             done: Promise.resolve('')
         };
         this.#runtimes.set(nodeId, runtime);
-        runtime.done = this.#runNode(nodeId);
+        runtime.done = this.#runNode(nodeId, runtime);
         void runtime.done.catch(() => undefined);
 
         return runtime;
     }
 
-    #getRuntime(nodeId: string): NodeRuntime {
-        const runtime = this.#runtimes.get(nodeId);
-        if (!runtime) {
-            throw new AppError('NOT_FOUND', `Workflow node runtime not found: ${nodeId}`);
-        }
-        return runtime;
-    }
-
-    #publish(nodeId: string, state: WorkflowNodeStreamState): void {
-        const runtime = this.#getRuntime(nodeId);
-        runtime.latest = state.content;
-        runtime.hasValue = true;
+    #publish(runtime: NodeRuntime, state: WorkflowNodeStreamState): void {
+        runtime.latest = state;
         for (const subscriber of runtime.subscribers) {
             subscriber.push(state);
         }
@@ -168,11 +175,9 @@ export class WorkflowRuntime {
     async *#streamNode(nodeId: string): WorkflowNodeStream {
         const runtime = this.#getOrCreateRuntime(nodeId);
 
-        if (runtime.hasValue) {
-            yield { content: runtime.latest };
-        }
         if (runtime.finished) {
             if (runtime.error) throw runtime.error;
+            if (runtime.latest) yield runtime.latest;
             return;
         }
 
@@ -203,6 +208,7 @@ export class WorkflowRuntime {
         };
 
         runtime.subscribers.add(subscriber);
+        if (runtime.latest) queue.push(runtime.latest);
 
         try {
             while (true) {
@@ -236,16 +242,4 @@ export class WorkflowRuntime {
         }
         runtime.subscribers.clear();
     }
-
-    #emit(event: WorkflowRunEvent): void {
-        this.#onEvent?.(event);
-    }
-}
-
-/** Convenience wrapper: build a runtime and stream its output node. */
-export function runWorkflow(
-    workflow: WorkflowDefinition,
-    options: WorkflowRuntimeOptions = {}
-): WorkflowNodeStream {
-    return new WorkflowRuntime(workflow, options).run();
 }

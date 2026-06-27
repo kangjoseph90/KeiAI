@@ -31,7 +31,8 @@ export function createDefaultChatWorkflow(
         memoryRatio: options.memoryRatio ?? 0.2,
         lorebookScanDepth: options.lorebookScanDepth ?? 5,
         slotNames: {},
-        inputs: {}
+        inputs: {},
+        inputValues: {}
     };
 
     return {
@@ -47,7 +48,8 @@ export function createDefaultChatWorkflow(
                         sourceNode: agent.id,
                         sourcePort: 0
                     }
-                }
+                },
+                inputValues: {}
             }
         }
     };
@@ -79,7 +81,8 @@ export function createDefaultTranslationWorkflow(): WorkflowDefinition {
         memoryRatio: 0.2,
         lorebookScanDepth: 5,
         slotNames: {},
-        inputs: {}
+        inputs: {},
+        inputValues: {}
     };
 
     return {
@@ -95,7 +98,8 @@ export function createDefaultTranslationWorkflow(): WorkflowDefinition {
                         sourceNode: agent.id,
                         sourcePort: 0
                     }
-                }
+                },
+                inputValues: {}
             }
         }
     };

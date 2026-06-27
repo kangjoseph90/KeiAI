@@ -116,7 +116,8 @@ vi.mock('$lib/stores', () => ({
                     memoryRatio: 0.2,
                     lorebookScanDepth: 5,
                     slotNames: {},
-                    inputs: {}
+                    inputs: {},
+                    inputValues: {}
                 },
                 output: {
                     id: 'output',
@@ -128,7 +129,8 @@ vi.mock('$lib/stores', () => ({
                             sourceNode: 'agent',
                             sourcePort: 0
                         }
-                    }
+                    },
+                    inputValues: {}
                 }
             }
         }

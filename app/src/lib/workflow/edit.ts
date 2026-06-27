@@ -142,6 +142,7 @@ export function createAgentInput(
 
     node.inputs[inputId] = null;
     node.slotNames[inputId] = normalizedName;
+    node.inputValues[inputId] = '';
 
     return { ...createEditResult(workflow, next), inputId };
 }
@@ -167,6 +168,7 @@ export function deleteAgentInput(
     const node = requireAgentInput(next, nodeId, inputId);
     delete node.inputs[inputId];
     delete node.slotNames[inputId];
+    delete node.inputValues[inputId];
     return createEditResult(workflow, next);
 }
 

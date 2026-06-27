@@ -39,7 +39,8 @@ export const STRING_NODE_DEFINITION: WorkflowNodeDefinition<StringNode> = {
         class: 'String',
         position: { x: 0, y: 0 },
         content: '',
-        inputs: {}
+        inputs: {},
+        inputValues: {}
     })
 };
 
@@ -49,7 +50,8 @@ export const CONCAT_NODE_DEFINITION: WorkflowNodeDefinition<StringConcatNode> = 
     category: 'operator',
     inputs: {
         a: { name: 'A', required: false },
-        b: { name: 'B', required: false }
+        b: { name: 'B', required: false },
+        separator: { name: 'Separator', required: false }
     },
     outputs: {
         0: { name: 'content' }
@@ -59,10 +61,15 @@ export const CONCAT_NODE_DEFINITION: WorkflowNodeDefinition<StringConcatNode> = 
         name: 'Concat',
         class: 'Concat',
         position: { x: 0, y: 0 },
-        separator: '',
         inputs: {
             a: null,
-            b: null
+            b: null,
+            separator: null
+        },
+        inputValues: {
+            a: '',
+            b: '',
+            separator: ''
         }
     })
 };
@@ -82,7 +89,8 @@ export const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
         position: { x: 0, y: 0 },
         inputs: {
             content: null
-        }
+        },
+        inputValues: {}
     })
 };
 
@@ -91,7 +99,7 @@ export const FILE_READ_NODE_DEFINITION: WorkflowNodeDefinition<FileReadNode> = {
     label: 'File Read',
     category: 'file',
     inputs: {
-        path: { name: 'Path', required: false }
+        path: { name: 'Path', required: true }
     },
     outputs: {
         0: { name: 'content' }
@@ -101,10 +109,12 @@ export const FILE_READ_NODE_DEFINITION: WorkflowNodeDefinition<FileReadNode> = {
         name: 'File Read',
         class: 'FileRead',
         position: { x: 0, y: 0 },
-        path: '',
         namespace: 'global',
         inputs: {
             path: null
+        },
+        inputValues: {
+            path: ''
         }
     })
 };
@@ -114,22 +124,23 @@ export const FILE_WRITE_NODE_DEFINITION: WorkflowNodeDefinition<FileWriteNode> =
     label: 'File Write',
     category: 'file',
     inputs: {
-        path: { name: 'Path', required: false },
+        path: { name: 'Path', required: true },
         content: { name: 'Content', required: true }
     },
-    outputs: {
-        0: { name: 'content' }
-    },
+    outputs: {},
     createDefault: (id) => ({
         id,
         name: 'File Write',
         class: 'FileWrite',
         position: { x: 0, y: 0 },
-        path: '',
         namespace: 'global',
         inputs: {
             path: null,
             content: null
+        },
+        inputValues: {
+            path: '',
+            content: ''
         }
     })
 };
@@ -155,7 +166,8 @@ export const AGENT_NODE_DEFINITION: WorkflowNodeDefinition<AgentNode> = {
         memoryRatio: 0.2,
         lorebookScanDepth: 5,
         slotNames: {},
-        inputs: {}
+        inputs: {},
+        inputValues: {}
     })
 };
 

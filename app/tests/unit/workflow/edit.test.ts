@@ -106,6 +106,7 @@ describe('workflow edits', () => {
         if (disconnectedAgent.class !== 'Agent') throw new Error('Expected Agent node');
         expect(disconnectedAgent.inputs[created.inputId]).toBeNull();
         expect(disconnectedAgent.slotNames[created.inputId]).toBe('sourceText');
+        expect(disconnectedAgent.inputValues[created.inputId]).toBe('');
         expectPatchApplies(source.workflow, created);
         expectPatchApplies(created.workflow, connected);
         expectPatchApplies(connected.workflow, disconnected);
@@ -128,6 +129,7 @@ describe('workflow edits', () => {
         if (deletedAgent.class !== 'Agent') throw new Error('Expected Agent node');
         expect(created.inputId in deletedAgent.inputs).toBe(false);
         expect(created.inputId in deletedAgent.slotNames).toBe(false);
+        expect(created.inputId in deletedAgent.inputValues).toBe(false);
         expectPatchApplies(renamed.workflow, deleted);
     });
 

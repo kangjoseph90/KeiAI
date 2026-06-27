@@ -1,11 +1,11 @@
 import { executeAgentNode } from './agent/execute';
 import { executeFileReadNode, executeFileWriteNode } from './file/execute';
+import { AppError } from '$lib/types/errors';
 import type {
     AgentNode,
     OutputNode,
     StringConcatNode,
     StringNode,
-    WorkflowNode,
     WorkflowNodeExecutionContext,
     WorkflowNodeStream
 } from './types';
@@ -59,21 +59,25 @@ async function* executeConcatNode({
     signal
 }: WorkflowNodeExecutionContext<StringConcatNode>): WorkflowNodeStream {
     throwIfAborted(signal);
-    const inputNames = Object.keys(node.inputs);
-    const values = await Promise.all(inputNames.map((name) => inputs[name]?.final() ?? ''));
-    const content = values.join(node.separator);
+    const [a, b, separator] = await Promise.all([
+        inputs.a?.final() ?? '',
+        inputs.b?.final() ?? '',
+        inputs.separator?.final() ?? ''
+    ]);
+    throwIfAborted(signal);
+    const content = [a, b].join(separator);
     yield { content };
 }
 
 async function* executeOutputNode({
+    node,
     inputs,
     signal
 }: WorkflowNodeExecutionContext<OutputNode>): WorkflowNodeStream {
     throwIfAborted(signal);
-    const input = firstInput(inputs);
+    const input = inputs.content;
     if (!input) {
-        yield { content: '' };
-        return;
+        throw new AppError('INVALID_INPUT', `Output content input is required: ${node.id}`);
     }
 
     for await (const state of input.stream()) {
@@ -82,14 +86,8 @@ async function* executeOutputNode({
     }
 }
 
-function firstInput(inputs: WorkflowNodeExecutionContext['inputs']) {
-    return Object.values(inputs)[0];
-}
-
 function throwIfAborted(signal: AbortSignal): void {
     if (signal.aborted) {
         throw new DOMException('Workflow run aborted', 'AbortError');
     }
 }
-
-export type { WorkflowNode };

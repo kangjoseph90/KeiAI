@@ -54,12 +54,6 @@ export interface WorkflowInputStream {
     final(): Promise<string>;
 }
 
-export type WorkflowRunEvent =
-    | { type: 'nodeStart'; nodeId: string }
-    | { type: 'nodeOutput'; nodeId: string; content: string }
-    | { type: 'nodeEnd'; nodeId: string; content: string }
-    | { type: 'nodeError'; nodeId: string; error: string };
-
 export interface WorkflowNodeExecutionContext<TNode extends WorkflowNode = WorkflowNode> {
     node: TNode;
     inputs: Record<string, WorkflowInputStream>;
@@ -73,13 +67,11 @@ export type FileNamespace = 'global' | 'room' | 'chat';
 
 export interface FileReadNode extends BaseNode {
     class: 'FileRead';
-    path: string;
     namespace: FileNamespace;
 }
 
 export interface FileWriteNode extends BaseNode {
     class: 'FileWrite';
-    path: string;
     namespace: FileNamespace;
 }
 
@@ -89,7 +81,6 @@ export interface OutputNode extends BaseNode {
 
 export interface StringConcatNode extends BaseNode {
     class: 'Concat';
-    separator: string;
 }
 
 export interface StringNode extends BaseNode {
@@ -119,4 +110,5 @@ export interface BaseNode {
     name: string;
     position: WorkflowNodePosition;
     inputs: Record<string, InputPort>;
+    inputValues: Record<string, string>;
 }

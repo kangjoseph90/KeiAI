@@ -49,8 +49,8 @@ describe('workflow file executors', () => {
                     class: 'FileRead',
                     position: { x: 0, y: 0 },
                     namespace: 'chat',
-                    path: 'fallback.txt',
-                    inputs: { path: { sourceNode: 'path', sourcePort: 0 } }
+                    inputs: { path: { sourceNode: 'path', sourcePort: 0 } },
+                    inputValues: { path: 'fallback.txt' }
                 },
                 inputs: { path: input('dynamic.txt') },
                 ctx: { chatId: 'chat-1' },
@@ -74,10 +74,10 @@ describe('workflow file executors', () => {
                     class: 'FileWrite',
                     position: { x: 0, y: 0 },
                     namespace: 'room',
-                    path: 'result.txt',
-                    inputs: { path: null, content: { sourceNode: 'agent', sourcePort: 0 } }
+                    inputs: { path: null, content: { sourceNode: 'agent', sourcePort: 0 } },
+                    inputValues: { path: 'result.txt', content: '' }
                 },
-                inputs: { content },
+                inputs: { path: input('result.txt'), content },
                 ctx: { roomId: 'room-1' },
                 signal: new AbortController().signal
             })

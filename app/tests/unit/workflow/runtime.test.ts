@@ -1,7 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import { WorkflowRuntime, type WorkflowDefinition, type WorkflowRunEvent } from '$lib/workflow';
+import { WorkflowRuntime, type WorkflowDefinition } from '$lib/workflow';
 
 describe('WorkflowRuntime', () => {
+    it('uses literal input values and lets connected edges take precedence', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                source: {
+                    id: 'source',
+                    name: 'Source',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    content: 'edge',
+                    inputs: {},
+                    inputValues: {}
+                },
+                concat: {
+                    id: 'concat',
+                    name: 'Concat',
+                    class: 'Concat',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        a: { sourceNode: 'source', sourcePort: 0 },
+                        b: null,
+                        separator: null
+                    },
+                    inputValues: { a: 'stored literal', b: 'literal', separator: ':' }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'concat', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe(
+            'edge:literal'
+        );
+    });
+
     it('runs string nodes through concat and output', async () => {
         const workflow: WorkflowDefinition = {
             nodes: {
@@ -11,7 +51,8 @@ describe('WorkflowRuntime', () => {
                     class: 'String',
                     position: { x: 0, y: 0 },
                     content: 'hello',
-                    inputs: {}
+                    inputs: {},
+                    inputValues: {}
                 },
                 world: {
                     id: 'world',
@@ -19,18 +60,20 @@ describe('WorkflowRuntime', () => {
                     class: 'String',
                     position: { x: 0, y: 0 },
                     content: 'world',
-                    inputs: {}
+                    inputs: {},
+                    inputValues: {}
                 },
                 concat: {
                     id: 'concat',
                     name: 'Concat',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
-                    separator: ' ',
                     inputs: {
                         a: { sourceNode: 'hello', sourcePort: 0 },
-                        b: { sourceNode: 'world', sourcePort: 0 }
-                    }
+                        b: { sourceNode: 'world', sourcePort: 0 },
+                        separator: null
+                    },
+                    inputValues: { a: '', b: '', separator: ' ' }
                 },
                 output: {
                     id: 'output',
@@ -39,7 +82,8 @@ describe('WorkflowRuntime', () => {
                     position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'concat', sourcePort: 0 }
-                    }
+                    },
+                    inputValues: {}
                 }
             }
         };
@@ -49,8 +93,7 @@ describe('WorkflowRuntime', () => {
         );
     });
 
-    it('runs a shared upstream node once for fan-out before the single output', async () => {
-        const events: WorkflowRunEvent[] = [];
+    it('shares an upstream node across fan-out paths', async () => {
         const workflow: WorkflowDefinition = {
             nodes: {
                 source: {
@@ -59,27 +102,32 @@ describe('WorkflowRuntime', () => {
                     class: 'String',
                     position: { x: 0, y: 0 },
                     content: 'shared',
-                    inputs: {}
+                    inputs: {},
+                    inputValues: {}
                 },
                 left: {
                     id: 'left',
                     name: 'Left',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
-                    separator: '',
                     inputs: {
-                        content: { sourceNode: 'source', sourcePort: 0 }
-                    }
+                        a: { sourceNode: 'source', sourcePort: 0 },
+                        b: null,
+                        separator: null
+                    },
+                    inputValues: { a: '', b: '', separator: '' }
                 },
                 right: {
                     id: 'right',
                     name: 'Right',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
-                    separator: '',
                     inputs: {
-                        content: { sourceNode: 'source', sourcePort: 0 }
-                    }
+                        a: { sourceNode: 'source', sourcePort: 0 },
+                        b: null,
+                        separator: null
+                    },
+                    inputValues: { a: '', b: '', separator: '' }
                 },
                 output: {
                     id: 'output',
@@ -87,21 +135,15 @@ describe('WorkflowRuntime', () => {
                     class: 'Output',
                     position: { x: 0, y: 0 },
                     inputs: {
-                        a: { sourceNode: 'left', sourcePort: 0 },
-                        b: { sourceNode: 'right', sourcePort: 0 }
-                    }
+                        content: { sourceNode: 'left', sourcePort: 0 }
+                    },
+                    inputValues: {}
                 }
             }
         };
-        const runtime = new WorkflowRuntime(workflow, {
-            onEvent: (event) => events.push(event)
-        });
+        const runtime = new WorkflowRuntime(workflow);
 
-        await expect(runtime.runNode('output')).resolves.toBe('shared');
-
-        expect(
-            events.filter((event) => event.type === 'nodeStart' && event.nodeId === 'source')
-        ).toHaveLength(1);
+        await expect(collectFinal(runtime.run())).resolves.toBe('shared');
     });
 
     it('passes local macros to node executors without final re-rendering', async () => {
@@ -113,7 +155,8 @@ describe('WorkflowRuntime', () => {
                     class: 'String',
                     position: { x: 0, y: 0 },
                     content: 'Translate to {{targetlang}}',
-                    inputs: {}
+                    inputs: {},
+                    inputValues: {}
                 },
                 output: {
                     id: 'output',
@@ -122,7 +165,8 @@ describe('WorkflowRuntime', () => {
                     position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'source', sourcePort: 0 }
-                    }
+                    },
+                    inputValues: {}
                 }
             }
         };
@@ -150,20 +194,24 @@ describe('WorkflowRuntime', () => {
                     name: 'A',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
-                    separator: '',
                     inputs: {
-                        value: { sourceNode: 'b', sourcePort: 0 }
-                    }
+                        a: { sourceNode: 'b', sourcePort: 0 },
+                        b: null,
+                        separator: null
+                    },
+                    inputValues: { a: '', b: '', separator: '' }
                 },
                 b: {
                     id: 'b',
                     name: 'B',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
-                    separator: '',
                     inputs: {
-                        value: { sourceNode: 'a', sourcePort: 0 }
-                    }
+                        a: { sourceNode: 'a', sourcePort: 0 },
+                        b: null,
+                        separator: null
+                    },
+                    inputValues: { a: '', b: '', separator: '' }
                 },
                 output: {
                     id: 'output',
@@ -172,7 +220,8 @@ describe('WorkflowRuntime', () => {
                     position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'a', sourcePort: 0 }
-                    }
+                    },
+                    inputValues: {}
                 }
             }
         };
@@ -192,7 +241,8 @@ describe('WorkflowRuntime', () => {
                     position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'missing', sourcePort: 0 }
-                    }
+                    },
+                    inputValues: {}
                 }
             }
         };
@@ -209,7 +259,8 @@ describe('WorkflowRuntime', () => {
                     class: 'String',
                     position: { x: 0, y: 0 },
                     content: 'text',
-                    inputs: {}
+                    inputs: {},
+                    inputValues: {}
                 }
             }
         };
@@ -221,7 +272,8 @@ describe('WorkflowRuntime', () => {
                     class: 'String',
                     position: { x: 0, y: 0 },
                     content: 'text',
-                    inputs: {}
+                    inputs: {},
+                    inputValues: {}
                 },
                 first: {
                     id: 'first',
@@ -230,7 +282,8 @@ describe('WorkflowRuntime', () => {
                     position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'source', sourcePort: 0 }
-                    }
+                    },
+                    inputValues: {}
                 },
                 second: {
                     id: 'second',
@@ -239,7 +292,8 @@ describe('WorkflowRuntime', () => {
                     position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'source', sourcePort: 0 }
-                    }
+                    },
+                    inputValues: {}
                 }
             }
         };
@@ -249,6 +303,25 @@ describe('WorkflowRuntime', () => {
         );
         expect(() => new WorkflowRuntime(twoOutputs)).toThrow(
             'Workflow must have exactly one Output node, found 2'
+        );
+    });
+
+    it('rejects an Output node without content', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: null },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).rejects.toThrow(
+            'Output content input is required: output'
         );
     });
 });
