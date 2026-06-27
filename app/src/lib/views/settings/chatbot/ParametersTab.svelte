@@ -12,7 +12,6 @@
     } from '$lib/types/models/llm';
     import { pluginManager } from '$lib/plugins';
     import type { Preset } from '$lib/services/content/preset';
-    import { getFirstAgentNode } from '$lib/workflow/defaults';
 
     interface Props {
         preset: Preset;
@@ -20,7 +19,6 @@
 
     let { preset }: Props = $props();
     let advancedOpen = $state(false);
-    const agent = $derived(getFirstAgentNode(preset.chatWorkflow));
 
     const commonParams: LLMParameter[] = [
         'temperature',
@@ -70,89 +68,9 @@
             }
         });
     }
-
-    function updateAgent(changes: Record<string, unknown>) {
-        if (!agent) return;
-        updatePreset(preset.id, {
-            chatWorkflow: {
-                nodes: {
-                    [agent.id]: changes
-                }
-            }
-        });
-    }
 </script>
 
 <div class="flex flex-col gap-6">
-    <Card>
-        <CardHeader>
-            <CardTitle class="text-base">Context & Response Limits</CardTitle>
-        </CardHeader>
-        <CardContent class="grid grid-cols-2 gap-6">
-            <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                    <Label>Max Context</Label>
-                    <span class="text-xs font-mono">{agent?.maxContext ?? '-'}</span>
-                </div>
-                <Input
-                    type="number"
-                    value={agent?.maxContext ?? 0}
-                    oninput={(e) => updateAgent({ maxContext: parseInt(e.currentTarget.value) })}
-                />
-                <p class="text-[10px] text-muted-foreground">
-                    Total tokens allowed for the entire prompt.
-                </p>
-            </div>
-            <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                    <Label>Max Response</Label>
-                    <span class="text-xs font-mono">{agent?.maxResponse ?? '-'}</span>
-                </div>
-                <Input
-                    type="number"
-                    value={agent?.maxResponse ?? 0}
-                    oninput={(e) => updateAgent({ maxResponse: parseInt(e.currentTarget.value) })}
-                />
-                <p class="text-[10px] text-muted-foreground">
-                    Limit for the AI's generated response.
-                </p>
-            </div>
-            <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                    <Label>Lorebook Ratio</Label>
-                    <span class="text-xs font-mono">{agent?.lorebookRatio ?? '-'}</span>
-                </div>
-                <Input
-                    type="number"
-                    step="0.05"
-                    value={agent?.lorebookRatio ?? 0}
-                    oninput={(e) =>
-                        updateAgent({
-                            lorebookRatio: parseFloat(e.currentTarget.value)
-                        })}
-                />
-                <p class="text-[10px] text-muted-foreground">
-                    Budget allocated for lorebook entries (0.0 - 1.0).
-                </p>
-            </div>
-            <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                    <Label>Memory Ratio</Label>
-                    <span class="text-xs font-mono">{agent?.memoryRatio ?? '-'}</span>
-                </div>
-                <Input
-                    type="number"
-                    step="0.05"
-                    value={agent?.memoryRatio ?? 0}
-                    oninput={(e) => updateAgent({ memoryRatio: parseFloat(e.currentTarget.value) })}
-                />
-                <p class="text-[10px] text-muted-foreground">
-                    Budget allocated for memory/summary (0.0 - 1.0).
-                </p>
-            </div>
-        </CardContent>
-    </Card>
-
     <Card>
         <CardHeader>
             <CardTitle class="text-base">Generation Parameters</CardTitle>

@@ -74,9 +74,7 @@ export const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
     inputs: {
         content: { name: 'Content', required: true }
     },
-    outputs: {
-        0: { name: 'content' }
-    },
+    outputs: {},
     createDefault: (id) => ({
         id,
         name: 'Output',

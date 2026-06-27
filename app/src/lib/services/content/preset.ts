@@ -13,17 +13,10 @@ import {
 } from './cascade';
 import type { LLMModelConfig, LLMParameters, LLMType } from '$lib/types/models/llm';
 import type { EntityListConfig } from '$lib/types/refs';
-import type {
-    AgentNode,
-    PromptBlock,
-    PromptBlockFields,
-    WorkflowDefinition
-} from '$lib/workflow/types';
-import { createDefaultChatWorkflow, getFirstAgentNode } from '$lib/workflow/defaults';
+import type { WorkflowDefinition } from '$lib/workflow/types';
+import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
-
-export type { PromptBlock, PromptBlockFields };
 
 export type PresetCustomToggleFields =
     | { key?: string; label?: string; type: 'group' | 'groupEnd' | 'caption' | 'divider' }
@@ -83,14 +76,6 @@ export const defaultPresetFields: PresetFields = {
 
 function parseFields(record: PresetRecord): PresetFields {
     return deepMerge(defaultPresetFields, record.data as DeepPartial<PresetFields>);
-}
-
-function requireChatAgent(preset: PresetFields): AgentNode {
-    const agent = getFirstAgentNode(preset.chatWorkflow);
-    if (!agent) {
-        throw new AppError('INVALID_INPUT', 'Preset chat workflow has no agent node');
-    }
-    return agent;
 }
 
 // ─── Service ───────────────────────────────────────────────────────────
@@ -187,73 +172,6 @@ export class PresetService {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete preset', error);
         }
-    }
-
-    // ─── Block CRUD ───────────────────────────────────────────────────
-
-    static async createBlock(
-        presetId: string,
-        fields: DeepPartial<PromptBlockFields> & { sortOrder: string }
-    ): Promise<{ blockId: string; preset: Preset }> {
-        const blockId = generateId();
-        const current = await this.get(presetId);
-        if (!current) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
-        const agent = requireChatAgent(current);
-        const preset = await this.update(presetId, {
-            chatWorkflow: {
-                nodes: {
-                    [agent.id]: {
-                        promptBlocks: {
-                            [blockId]: {
-                                ...fields,
-                                id: blockId,
-                                enabled: true
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        return { blockId, preset };
-    }
-
-    static async updateBlock(
-        presetId: string,
-        blockId: string,
-        changes: DeepPartial<PromptBlock>
-    ): Promise<Preset> {
-        const current = await this.get(presetId);
-        if (!current) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
-        const agent = requireChatAgent(current);
-        return this.update(presetId, {
-            chatWorkflow: {
-                nodes: {
-                    [agent.id]: {
-                        promptBlocks: {
-                            [blockId]: changes
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    static async deleteBlock(presetId: string, blockId: string): Promise<Preset> {
-        const current = await this.get(presetId);
-        if (!current) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
-        const agent = requireChatAgent(current);
-        return this.update(presetId, {
-            chatWorkflow: {
-                nodes: {
-                    [agent.id]: {
-                        promptBlocks: {
-                            [blockId]: undefined
-                        }
-                    }
-                }
-            }
-        });
     }
 
     // ─── Custom Toggle CRUD ───────────────────────────────────────────

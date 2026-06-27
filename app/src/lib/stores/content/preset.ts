@@ -4,8 +4,6 @@ import {
     ScriptService,
     type PresetFields,
     type Preset,
-    type PromptBlock,
-    type PromptBlockFields,
     type PresetCustomToggle,
     type PresetCustomToggleFields,
     type ScriptFields,
@@ -237,36 +235,6 @@ export async function deletePreset(presetId: string): Promise<void> {
 }
 
 // ─── Block Actions ───────────────────────────────────────────────────
-
-export async function createPromptBlock(
-    presetId: string,
-    fields: DeepPartial<PromptBlockFields> & { sortOrder: string }
-): Promise<string> {
-    const { blockId, preset } = await PresetService.createBlock(presetId, fields);
-
-    // Update Store
-    presets.set(presetId, preset);
-
-    return blockId;
-}
-
-export async function updatePromptBlock(
-    presetId: string,
-    blockId: string,
-    changes: DeepPartial<PromptBlock>
-): Promise<void> {
-    const updated = await PresetService.updateBlock(presetId, blockId, changes);
-
-    // Update Store
-    presets.set(presetId, updated);
-}
-
-export async function deletePromptBlock(presetId: string, blockId: string): Promise<void> {
-    const updated = await PresetService.deleteBlock(presetId, blockId);
-
-    // Update Store
-    presets.set(presetId, updated);
-}
 
 export async function createPresetCustomToggle(
     presetId: string,

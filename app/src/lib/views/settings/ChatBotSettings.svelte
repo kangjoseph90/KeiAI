@@ -6,25 +6,26 @@
     import { Badge } from '$lib/components/ui/badge';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import { Button } from '$lib/components/ui/button';
-    import { activePreset } from '$lib/stores';
+    import { activePreset, updatePreset } from '$lib/stores';
+    import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
 
     // Sub-components
     import ModelTab from './chatbot/ModelTab.svelte';
     import ParametersTab from './chatbot/ParametersTab.svelte';
-    import PromptTab from './chatbot/PromptTab.svelte';
     import PresetsTab from './chatbot/PresetsTab.svelte';
     import CustomModelsTab from './chatbot/CustomModelsTab.svelte';
     import ScriptsTab from './chatbot/ScriptsTab.svelte';
 
-    type Tab = 'model' | 'parameters' | 'prompt' | 'scripts' | 'presets' | 'custom';
+    type Tab = 'model' | 'parameters' | 'workflow' | 'scripts' | 'presets' | 'custom';
     let activeTab = $state<Tab>('model');
+    let workflowEditorOpen = $state(false);
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
     <!-- Header with Tabs -->
     <div class="flex items-center justify-between mb-6 shrink-0">
         <div class="flex items-center gap-1 bg-muted/50 p-1 rounded-lg">
-            {#each ['model', 'parameters', 'prompt', 'scripts', 'presets', 'custom'] as tab (tab)}
+            {#each ['model', 'parameters', 'workflow', 'scripts', 'presets', 'custom'] as tab (tab)}
                 <button
                     class="px-4 py-1.5 text-sm font-medium rounded-md transition-colors {activeTab ===
                     tab
@@ -60,8 +61,20 @@
                     <ModelTab preset={$activePreset!} />
                 {:else if activeTab === 'parameters'}
                     <ParametersTab preset={$activePreset!} />
-                {:else if activeTab === 'prompt'}
-                    <PromptTab preset={$activePreset!} />
+                {:else if activeTab === 'workflow'}
+                    <div
+                        class="flex min-h-64 flex-col items-center justify-center gap-4 rounded-lg border bg-card p-8 text-center"
+                    >
+                        <div>
+                            <h3 class="font-semibold">Chat Workflow</h3>
+                            <p class="mt-1 text-sm text-muted-foreground">
+                                Edit agents, prompts, nodes, and connections in the workflow editor.
+                            </p>
+                        </div>
+                        <Button onclick={() => (workflowEditorOpen = true)}
+                            >Open Workflow Editor</Button
+                        >
+                    </div>
                 {:else if activeTab === 'scripts'}
                     <ScriptsTab preset={$activePreset!} />
                 {:else if activeTab === 'presets'}
@@ -73,3 +86,12 @@
         </ScrollArea>
     {/if}
 </div>
+
+{#if $activePreset}
+    <WorkflowEditorModal
+        bind:open={workflowEditorOpen}
+        workflow={$activePreset.chatWorkflow}
+        title="Chat Workflow"
+        onPatch={(patch) => updatePreset($activePreset!.id, { chatWorkflow: patch })}
+    />
+{/if}

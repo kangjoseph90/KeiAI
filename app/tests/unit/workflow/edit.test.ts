@@ -80,6 +80,15 @@ describe('workflow edits', () => {
         expectPatchApplies(connected.workflow, disconnected);
     });
 
+    it('does not allow the terminal Output node to be used as a source', () => {
+        const workflow = createDefaultChatWorkflow();
+        const concat = createNode(workflow, 'Concat');
+
+        expect(() => connectNodes(concat.workflow, concat.nodeId, 'a', 'output')).toThrow(
+            'Workflow output port not found: output.0'
+        );
+    });
+
     it('keeps named Agent inputs when their connections are removed', () => {
         const workflow = createDefaultChatWorkflow();
         const source = createNode(workflow, 'String');

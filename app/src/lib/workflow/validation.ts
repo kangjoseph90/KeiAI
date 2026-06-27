@@ -1,4 +1,5 @@
 import { AppError } from '$lib/types/errors';
+import { WORKFLOW_NODE_DEFINITIONS } from './registry';
 import type { WorkflowDefinition } from './types';
 
 type VisitState = 'visiting' | 'visited';
@@ -30,6 +31,16 @@ export function validateWorkflow(workflow: WorkflowDefinition): void {
 
         for (const connection of Object.values(node.inputs)) {
             if (connection) {
+                const source = workflow.nodes[connection.sourceNode];
+                if (
+                    source &&
+                    !(connection.sourcePort in WORKFLOW_NODE_DEFINITIONS[source.class].outputs)
+                ) {
+                    throw new AppError(
+                        'NOT_FOUND',
+                        `Workflow output port not found: ${connection.sourceNode}.${connection.sourcePort}`
+                    );
+                }
                 visit(connection.sourceNode);
             }
         }
