@@ -9,6 +9,7 @@ describe('WorkflowRuntime', () => {
                     id: 'hello',
                     name: 'Hello',
                     class: 'String',
+                    position: { x: 0, y: 0 },
                     content: 'hello',
                     inputs: {}
                 },
@@ -16,6 +17,7 @@ describe('WorkflowRuntime', () => {
                     id: 'world',
                     name: 'World',
                     class: 'String',
+                    position: { x: 0, y: 0 },
                     content: 'world',
                     inputs: {}
                 },
@@ -23,6 +25,7 @@ describe('WorkflowRuntime', () => {
                     id: 'concat',
                     name: 'Concat',
                     class: 'Concat',
+                    position: { x: 0, y: 0 },
                     separator: ' ',
                     inputs: {
                         a: { sourceNode: 'hello', sourcePort: 0 },
@@ -33,6 +36,7 @@ describe('WorkflowRuntime', () => {
                     id: 'output',
                     name: 'Output',
                     class: 'Output',
+                    position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'concat', sourcePort: 0 }
                     }
@@ -53,6 +57,7 @@ describe('WorkflowRuntime', () => {
                     id: 'source',
                     name: 'Source',
                     class: 'String',
+                    position: { x: 0, y: 0 },
                     content: 'shared',
                     inputs: {}
                 },
@@ -60,6 +65,7 @@ describe('WorkflowRuntime', () => {
                     id: 'left',
                     name: 'Left',
                     class: 'Concat',
+                    position: { x: 0, y: 0 },
                     separator: '',
                     inputs: {
                         content: { sourceNode: 'source', sourcePort: 0 }
@@ -69,6 +75,7 @@ describe('WorkflowRuntime', () => {
                     id: 'right',
                     name: 'Right',
                     class: 'Concat',
+                    position: { x: 0, y: 0 },
                     separator: '',
                     inputs: {
                         content: { sourceNode: 'source', sourcePort: 0 }
@@ -78,6 +85,7 @@ describe('WorkflowRuntime', () => {
                     id: 'output',
                     name: 'Output',
                     class: 'Output',
+                    position: { x: 0, y: 0 },
                     inputs: {
                         a: { sourceNode: 'left', sourcePort: 0 },
                         b: { sourceNode: 'right', sourcePort: 0 }
@@ -103,6 +111,7 @@ describe('WorkflowRuntime', () => {
                     id: 'source',
                     name: 'Source',
                     class: 'String',
+                    position: { x: 0, y: 0 },
                     content: 'Translate to {{targetlang}}',
                     inputs: {}
                 },
@@ -110,6 +119,7 @@ describe('WorkflowRuntime', () => {
                     id: 'output',
                     name: 'Output',
                     class: 'Output',
+                    position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'source', sourcePort: 0 }
                     }
@@ -129,9 +139,7 @@ describe('WorkflowRuntime', () => {
 
         // The runtime no longer renders templates on node output — that is the
         // task runner's responsibility, where the correct context is available.
-        await expect(collectFinal(runtime.run())).resolves.toBe(
-            'Translate to {{targetlang}}'
-        );
+        await expect(collectFinal(runtime.run())).resolves.toBe('Translate to {{targetlang}}');
     });
 
     it('rejects cyclic graphs before running', () => {
@@ -141,6 +149,7 @@ describe('WorkflowRuntime', () => {
                     id: 'a',
                     name: 'A',
                     class: 'Concat',
+                    position: { x: 0, y: 0 },
                     separator: '',
                     inputs: {
                         value: { sourceNode: 'b', sourcePort: 0 }
@@ -150,6 +159,7 @@ describe('WorkflowRuntime', () => {
                     id: 'b',
                     name: 'B',
                     class: 'Concat',
+                    position: { x: 0, y: 0 },
                     separator: '',
                     inputs: {
                         value: { sourceNode: 'a', sourcePort: 0 }
@@ -159,6 +169,7 @@ describe('WorkflowRuntime', () => {
                     id: 'output',
                     name: 'Output',
                     class: 'Output',
+                    position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'a', sourcePort: 0 }
                     }
@@ -178,6 +189,7 @@ describe('WorkflowRuntime', () => {
                     id: 'output',
                     name: 'Output',
                     class: 'Output',
+                    position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'missing', sourcePort: 0 }
                     }
@@ -195,6 +207,7 @@ describe('WorkflowRuntime', () => {
                     id: 'source',
                     name: 'Source',
                     class: 'String',
+                    position: { x: 0, y: 0 },
                     content: 'text',
                     inputs: {}
                 }
@@ -206,6 +219,7 @@ describe('WorkflowRuntime', () => {
                     id: 'source',
                     name: 'Source',
                     class: 'String',
+                    position: { x: 0, y: 0 },
                     content: 'text',
                     inputs: {}
                 },
@@ -213,6 +227,7 @@ describe('WorkflowRuntime', () => {
                     id: 'first',
                     name: 'First',
                     class: 'Output',
+                    position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'source', sourcePort: 0 }
                     }
@@ -221,6 +236,7 @@ describe('WorkflowRuntime', () => {
                     id: 'second',
                     name: 'Second',
                     class: 'Output',
+                    position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'source', sourcePort: 0 }
                     }

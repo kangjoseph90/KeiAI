@@ -68,6 +68,7 @@ describe('executeAgentNode', () => {
                     id: 'source',
                     name: 'Source',
                     class: 'String',
+                    position: { x: 0, y: 0 },
                     content: 'hello',
                     inputs: {}
                 },
@@ -75,6 +76,7 @@ describe('executeAgentNode', () => {
                     id: 'agent',
                     name: 'Agent',
                     class: 'Agent',
+                    position: { x: 0, y: 0 },
                     llmType: 'chat',
                     maxContext: 1000,
                     maxResponse: 100,
@@ -92,9 +94,11 @@ describe('executeAgentNode', () => {
                             enabled: true
                         }
                     },
+                    slotNames: {
+                        input_source: 'source'
+                    },
                     inputs: {
-                        source: {
-                            slotName: 'source',
+                        input_source: {
                             sourceNode: 'source',
                             sourcePort: 0
                         }
@@ -104,6 +108,7 @@ describe('executeAgentNode', () => {
                     id: 'output',
                     name: 'Output',
                     class: 'Output',
+                    position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'agent', sourcePort: 0 }
                     }
@@ -142,6 +147,7 @@ describe('executeAgentNode', () => {
                     id: 'source',
                     name: 'Source',
                     class: 'String',
+                    position: { x: 0, y: 0 },
                     content: 'hello',
                     inputs: {}
                 },
@@ -149,6 +155,7 @@ describe('executeAgentNode', () => {
                     id: 'agent',
                     name: 'Agent',
                     class: 'Agent',
+                    position: { x: 0, y: 0 },
                     llmType: 'chat',
                     maxContext: 1000,
                     maxResponse: 100,
@@ -166,9 +173,11 @@ describe('executeAgentNode', () => {
                             enabled: true
                         }
                     },
+                    slotNames: {
+                        input_source: 'source'
+                    },
                     inputs: {
-                        source: {
-                            slotName: 'source',
+                        input_source: {
                             sourceNode: 'source',
                             sourcePort: 0
                         }
@@ -178,6 +187,7 @@ describe('executeAgentNode', () => {
                     id: 'output',
                     name: 'Output',
                     class: 'Output',
+                    position: { x: 0, y: 0 },
                     inputs: {
                         content: { sourceNode: 'agent', sourcePort: 0 }
                     }

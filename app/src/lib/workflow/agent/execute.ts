@@ -67,9 +67,9 @@ async function buildAgentLocalMacros(
 ): Promise<Map<string, Macro>> {
     const slots = new Map<string, string>();
 
-    for (const [inputName, input] of Object.entries(inputs)) {
-        const connection = node.inputs[inputName];
-        const slotName = connection?.slotName?.trim() || inputName;
+    for (const [inputId, input] of Object.entries(inputs)) {
+        const slotName = node.slotNames[inputId];
+        if (!slotName) throw new Error(`Agent input slot name not found: ${inputId}`);
         slots.set(slotName, await input.final());
     }
 

@@ -37,6 +37,7 @@ export const STRING_NODE_DEFINITION: WorkflowNodeDefinition<StringNode> = {
         id,
         name: 'String',
         class: 'String',
+        position: { x: 0, y: 0 },
         content: '',
         inputs: {}
     })
@@ -57,6 +58,7 @@ export const CONCAT_NODE_DEFINITION: WorkflowNodeDefinition<StringConcatNode> = 
         id,
         name: 'Concat',
         class: 'Concat',
+        position: { x: 0, y: 0 },
         separator: '',
         inputs: {
             a: null,
@@ -79,6 +81,7 @@ export const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
         id,
         name: 'Output',
         class: 'Output',
+        position: { x: 0, y: 0 },
         inputs: {
             content: null
         }
@@ -99,6 +102,7 @@ export const FILE_READ_NODE_DEFINITION: WorkflowNodeDefinition<FileReadNode> = {
         id,
         name: 'File Read',
         class: 'FileRead',
+        position: { x: 0, y: 0 },
         source: '',
         scope: 'user',
         inputs: {
@@ -122,6 +126,7 @@ export const FILE_WRITE_NODE_DEFINITION: WorkflowNodeDefinition<FileWriteNode> =
         id,
         name: 'File Write',
         class: 'FileWrite',
+        position: { x: 0, y: 0 },
         source: '',
         scope: 'user',
         inputs: {
@@ -143,6 +148,7 @@ export const AGENT_NODE_DEFINITION: WorkflowNodeDefinition<AgentNode> = {
         id,
         name: 'Agent',
         class: 'Agent',
+        position: { x: 0, y: 0 },
         llmType: 'chat',
         promptBlocks: {},
         maxContext: 60000,
@@ -150,6 +156,7 @@ export const AGENT_NODE_DEFINITION: WorkflowNodeDefinition<AgentNode> = {
         lorebookRatio: 0.2,
         memoryRatio: 0.2,
         lorebookScanDepth: 5,
+        slotNames: {},
         inputs: {}
     })
 };
@@ -162,3 +169,20 @@ export const WORKFLOW_NODE_DEFINITIONS = {
     FileWrite: FILE_WRITE_NODE_DEFINITION,
     Agent: AGENT_NODE_DEFINITION
 } satisfies Record<WorkflowNodeClass, WorkflowNodeDefinition<WorkflowNode>>;
+
+export function createDefaultWorkflowNode(nodeClass: WorkflowNodeClass, id: string): WorkflowNode {
+    switch (nodeClass) {
+        case 'String':
+            return STRING_NODE_DEFINITION.createDefault(id);
+        case 'Concat':
+            return CONCAT_NODE_DEFINITION.createDefault(id);
+        case 'Output':
+            return OUTPUT_NODE_DEFINITION.createDefault(id);
+        case 'FileRead':
+            return FILE_READ_NODE_DEFINITION.createDefault(id);
+        case 'FileWrite':
+            return FILE_WRITE_NODE_DEFINITION.createDefault(id);
+        case 'Agent':
+            return AGENT_NODE_DEFINITION.createDefault(id);
+    }
+}

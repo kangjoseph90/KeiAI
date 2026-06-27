@@ -5,6 +5,7 @@ type VisitState = 'visiting' | 'visited';
 
 export function validateWorkflow(workflow: WorkflowDefinition): void {
     validateSingleOutput(workflow);
+    validateAgentSlots(workflow);
 
     const states = new Map<string, VisitState>();
     const path: string[] = [];
@@ -39,6 +40,42 @@ export function validateWorkflow(workflow: WorkflowDefinition): void {
 
     for (const nodeId of Object.keys(workflow.nodes)) {
         visit(nodeId);
+    }
+}
+
+function validateAgentSlots(workflow: WorkflowDefinition): void {
+    for (const node of Object.values(workflow.nodes)) {
+        if (node.class !== 'Agent') continue;
+
+        const inputIds = Object.keys(node.inputs);
+        const slotIds = Object.keys(node.slotNames);
+        if (
+            inputIds.length !== slotIds.length ||
+            inputIds.some((inputId) => !(inputId in node.slotNames))
+        ) {
+            throw new AppError(
+                'INVALID_INPUT',
+                `Agent inputs and slot names do not match: ${node.id}`
+            );
+        }
+
+        const names = new Set<string>();
+        for (const inputId of inputIds) {
+            const name = node.slotNames[inputId];
+            if (!name || name !== name.trim()) {
+                throw new AppError(
+                    'INVALID_INPUT',
+                    `Agent input slot name is invalid: ${node.id}.${inputId}`
+                );
+            }
+            if (names.has(name)) {
+                throw new AppError(
+                    'INVALID_INPUT',
+                    `Agent input slot name is duplicated: ${node.id}.${name}`
+                );
+            }
+            names.add(name);
+        }
     }
 }
 

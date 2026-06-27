@@ -107,6 +107,7 @@ vi.mock('$lib/stores', () => ({
                     id: 'agent',
                     name: 'Agent',
                     class: 'Agent',
+                    position: { x: 0, y: 0 },
                     llmType: 'chat',
                     promptBlocks: {},
                     maxContext: 60000,
@@ -114,12 +115,14 @@ vi.mock('$lib/stores', () => ({
                     lorebookRatio: 0.2,
                     memoryRatio: 0.2,
                     lorebookScanDepth: 5,
+                    slotNames: {},
                     inputs: {}
                 },
                 output: {
                     id: 'output',
                     name: 'Output',
                     class: 'Output',
+                    position: { x: 360, y: 0 },
                     inputs: {
                         content: {
                             sourceNode: 'agent',

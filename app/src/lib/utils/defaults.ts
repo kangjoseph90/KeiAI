@@ -60,3 +60,32 @@ export type DeepPartial<T> = T extends object
                   : T[K];
       }
     : T;
+
+export const NO_CHANGE = Symbol('NO_CHANGE');
+
+export function createPatch(before: unknown, after: unknown): unknown | typeof NO_CHANGE {
+    if (Object.is(before, after)) return NO_CHANGE;
+    if (!isPlainObject(before) || !isPlainObject(after)) return after;
+
+    const patch: Record<string, unknown> = {};
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+
+    for (const key of keys) {
+        const beforeHasKey = Object.prototype.hasOwnProperty.call(before, key);
+        const afterHasKey = Object.prototype.hasOwnProperty.call(after, key);
+
+        if (!afterHasKey) {
+            patch[key] = undefined;
+            continue;
+        }
+        if (!beforeHasKey) {
+            patch[key] = after[key];
+            continue;
+        }
+
+        const nested = createPatch(before[key], after[key]);
+        if (nested !== NO_CHANGE) patch[key] = nested;
+    }
+
+    return Object.keys(patch).length === 0 ? NO_CHANGE : patch;
+}

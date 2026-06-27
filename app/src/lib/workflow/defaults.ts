@@ -20,6 +20,7 @@ export function createDefaultChatWorkflow(
         id: DEFAULT_CHAT_AGENT_ID,
         name: options.agentName ?? 'Chat Agent',
         class: 'Agent',
+        position: { x: 0, y: 0 },
         llmType: 'chat',
         promptBlocks: options.promptBlocks ?? {},
         maxContext: options.maxContext ?? 60000,
@@ -27,6 +28,7 @@ export function createDefaultChatWorkflow(
         lorebookRatio: options.lorebookRatio ?? 0.2,
         memoryRatio: options.memoryRatio ?? 0.2,
         lorebookScanDepth: options.lorebookScanDepth ?? 5,
+        slotNames: {},
         inputs: {}
     };
 
@@ -37,6 +39,7 @@ export function createDefaultChatWorkflow(
                 id: DEFAULT_CHAT_OUTPUT_ID,
                 name: 'Output',
                 class: 'Output',
+                position: { x: 360, y: 0 },
                 inputs: {
                     content: {
                         sourceNode: agent.id,
