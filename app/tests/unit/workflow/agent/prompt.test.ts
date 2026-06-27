@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildPrompt, type PromptInput } from '$lib/tasks/chat/prompt';
+import { buildPrompt, type AgentPromptConfig, type PromptInput } from '$lib/workflow/agent/prompt';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
-import type { Character, Chat, Message, Persona, Preset, PromptBlock } from '$lib/services';
-import type { LLMModelConfig } from '$lib/types/models/llm';
-import type { Macro, TemplateContext } from '$lib/template';
+import type { Character, Chat, Message, Persona } from '$lib/services';
+import type { Macro } from '$lib/template';
+import type { RuntimeContext } from '$lib/types/context';
+import type { PromptBlock } from '$lib/workflow/types';
 
 const { mockCollectTemplateMacros, mockRunTemplate, mockRunPipeline, mockTokenCount } = vi.hoisted(
     () => ({
@@ -14,11 +15,15 @@ const { mockCollectTemplateMacros, mockRunTemplate, mockRunPipeline, mockTokenCo
     })
 );
 
-vi.mock('$lib/template', () => ({
-    collectTemplateMacros: mockCollectTemplateMacros,
-    runTemplate: mockRunTemplate,
-    createDryRunMacros: vi.fn(() => new Map())
-}));
+// collectTemplateMacros / runTemplate are impure; the rest of $lib/template is pure.
+vi.mock('$lib/template', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('$lib/template')>();
+    return {
+        ...actual,
+        collectTemplateMacros: mockCollectTemplateMacros,
+        runTemplate: mockRunTemplate
+    };
+});
 
 vi.mock('$lib/pipeline', () => ({
     runPipeline: mockRunPipeline
@@ -29,8 +34,6 @@ vi.mock('$lib/llm/tokenizer', () => ({
         count: mockTokenCount
     }
 }));
-
-const model: LLMModelConfig = { id: 'mock::default', provider: 'mock' };
 
 const character: Character = {
     id: 'char-1',
@@ -73,26 +76,14 @@ const persona: Persona = {
     assets: { refs: {}, folders: {} }
 };
 
-function makePreset(promptBlocks: Record<string, PromptBlock>): Preset {
+function makePreset(promptBlocks: Record<string, PromptBlock>): AgentPromptConfig {
     return {
-        id: 'preset-1',
-        name: 'Test Preset',
-        description: '',
-        models: {
-            chat: model,
-            aux: model
-        },
-        parameters: {},
         promptBlocks,
         maxResponse: 6000,
         maxContext: 60000,
         lorebookRatio: 0.2,
         lorebookScanDepth: 5,
-        memoryRatio: 0.2,
-        defaultVariables: {},
-        globalVariables: {},
-        customToggles: {},
-        scripts: { refs: {}, folders: {} }
+        memoryRatio: 0.2
     };
 }
 
@@ -123,16 +114,24 @@ function makeMessage(
     };
 }
 
-function buildTestPrompt(
-    input: Omit<PromptInput, 'tokenizer' | 'context'> & { context?: TemplateContext }
-) {
-    const defaultContext: TemplateContext = {
+type BuildTestPromptInput = Omit<PromptInput, 'agent' | 'tokenizer' | 'ctx'> & {
+    agent?: AgentPromptConfig;
+    preset?: AgentPromptConfig;
+    ctx?: RuntimeContext;
+};
+
+function buildTestPrompt(input: BuildTestPromptInput) {
+    const defaultContext: RuntimeContext = {
         characterId: character.id,
         chatId: chat.id
     };
+    const agent = input.agent ?? input.preset;
+    if (!agent) throw new Error('buildTestPrompt requires agent or preset');
+
     return buildPrompt({
         ...input,
-        context: input.context ?? defaultContext,
+        agent,
+        ctx: input.ctx ?? defaultContext,
         tokenizer: 'o200k_base'
     });
 }
@@ -142,7 +141,7 @@ describe('buildPrompt', () => {
         vi.clearAllMocks();
         mockCollectTemplateMacros.mockResolvedValue(new Map());
         mockRunTemplate.mockImplementation(
-            async (text: string, ctx?: TemplateContext, macros?: ReadonlyMap<string, Macro>) => {
+            async (text: string, ctx?: RuntimeContext, macros?: ReadonlyMap<string, Macro>) => {
                 const slot = macros?.get('slot');
                 if (text === '{{slot}}' && slot) return slot.run([], ctx ?? {});
                 return text;
@@ -181,7 +180,7 @@ describe('buildPrompt', () => {
             }
         });
 
-        const context: TemplateContext = {
+        const ctx: RuntimeContext = {
             characterId: 'char-1',
             chatId: 'chat-1'
         };
@@ -193,15 +192,15 @@ describe('buildPrompt', () => {
             persona,
             lorebooks: [],
             messages,
-            context
+            ctx
         });
 
         expect(slice).toHaveBeenCalledWith(-10, -1);
         expect(mockRunPipeline).toHaveBeenCalledTimes(2);
         expect(prompt).toEqual([
             { role: 'system', content: 'rules' },
-            { role: 'user', content: 'hello', thought: undefined },
-            { role: 'assistant', content: 'hi', thought: undefined }
+            { role: 'user', content: 'hello' },
+            { role: 'assistant', content: 'hi' }
         ]);
     });
 
@@ -235,28 +234,22 @@ describe('buildPrompt', () => {
         const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([]);
         const messages = { slice } as unknown as PagedMessages;
         const preset = makePreset({
-            character: {
-                id: 'character',
-                name: 'Character',
-                type: 'character',
+            text: {
+                id: 'text',
+                name: 'Text',
+                type: 'text',
                 role: 'system',
+                content: '{{character}}\n{{characternote}}\n{{chatnote}}',
                 sortOrder: 'a',
                 enabled: true
             },
-            characterNote: {
-                id: 'characterNote',
-                name: 'Character Note',
-                type: 'characterNote',
+            text2: {
+                id: 'text2',
+                name: 'Text 2',
+                type: 'text',
                 role: 'system',
+                content: 'static',
                 sortOrder: 'b',
-                enabled: true
-            },
-            chatNote: {
-                id: 'chatNote',
-                name: 'Chat Note',
-                type: 'chatNote',
-                role: 'system',
-                sortOrder: 'c',
                 enabled: true
             }
         });
@@ -272,9 +265,8 @@ describe('buildPrompt', () => {
 
         expect(slice).not.toHaveBeenCalled();
         expect(prompt).toEqual([
-            { role: 'system', content: 'character' },
-            { role: 'system', content: 'character note' },
-            { role: 'system', content: 'chat note' }
+            { role: 'system', content: '{{character}}\n{{characternote}}\n{{chatnote}}' },
+            { role: 'system', content: 'static' }
         ]);
     });
 
@@ -297,7 +289,7 @@ describe('buildPrompt', () => {
         });
 
         mockRunTemplate.mockImplementation(
-            async (text: string, ctx?: TemplateContext, macros?: ReadonlyMap<string, Macro>) => {
+            async (text: string, ctx?: RuntimeContext, macros?: ReadonlyMap<string, Macro>) => {
                 const slot = macros?.get('slot');
                 const resolved = text === '{{slot}}' && slot ? await slot.run([], ctx ?? {}) : text;
                 return `template(${resolved})`;
@@ -333,8 +325,86 @@ describe('buildPrompt', () => {
         expect(prompt).toEqual([
             {
                 role: 'user',
-                content: 'template(request(template({{char}} says hi)))',
-                thought: undefined
+                content: 'template(request(template({{char}} says hi)))'
+            }
+        ]);
+    });
+
+    it('uses bare slot only for the formatted content and delegates named slots', async () => {
+        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([
+            {
+                message: makeMessage('msg-1', 'assistant', 'hello', {
+                    id: 'char-2',
+                    name: 'Alice'
+                }),
+                index: 0
+            }
+        ]);
+        const messages = { slice } as unknown as PagedMessages;
+        const preset = makePreset({
+            history: {
+                id: 'history',
+                name: 'History',
+                type: 'history',
+                start: -10,
+                end: -1,
+                format: '원본: {{slot}}\n입력: {{slot::source}}\n이름: {{name}}',
+                sortOrder: 'a',
+                enabled: true
+            }
+        });
+        const localMacros = new Map<string, Macro>([
+            [
+                'slot',
+                {
+                    recursive: true,
+                    run: (args) => {
+                        if (args.length !== 1) throw new Error('named slot required');
+                        if (args[0] === 'source') return 'external input';
+                        throw new Error('slot not handled');
+                    }
+                }
+            ]
+        ]);
+
+        mockRunTemplate.mockImplementation(
+            async (text: string, ctx?: RuntimeContext, macros?: ReadonlyMap<string, Macro>) => {
+                const macroCtx = ctx ?? {};
+                let output = text;
+                const slot = macros?.get('slot');
+                if (slot) {
+                    if (output.includes('{{slot::source}}')) {
+                        output = output.replaceAll(
+                            '{{slot::source}}',
+                            await slot.run(['source'], macroCtx)
+                        );
+                    }
+                    if (output.includes('{{slot}}')) {
+                        output = output.replaceAll('{{slot}}', await slot.run([], macroCtx));
+                    }
+                }
+                const name = macros?.get('name');
+                if (name && output.includes('{{name}}')) {
+                    output = output.replaceAll('{{name}}', await name.run([], macroCtx));
+                }
+                return output;
+            }
+        );
+
+        const prompt = await buildTestPrompt({
+            character,
+            chat,
+            preset,
+            persona,
+            lorebooks: [],
+            messages,
+            localMacros
+        });
+
+        expect(prompt).toEqual([
+            {
+                role: 'assistant',
+                content: '원본: hello\n입력: external input\n이름: Alice'
             }
         ]);
     });
@@ -481,7 +551,7 @@ describe('buildPrompt', () => {
 
         expect(at).toHaveBeenCalledWith(1);
         expect(at).toHaveBeenCalledWith(0);
-        expect(prompt).toEqual([{ role: 'assistant', content: 'ok', thought: undefined }]);
+        expect(prompt).toEqual([{ role: 'assistant', content: 'ok' }]);
     });
 
     it('throws when unbounded history has messages but the latest does not fit', async () => {

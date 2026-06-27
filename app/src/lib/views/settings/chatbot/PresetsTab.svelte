@@ -108,17 +108,6 @@
                                 size="sm"
                                 variant="outline"
                                 class="gap-1"
-                                onclick={() =>
-                                    exportPresetFile(preset.id, { kind: 'risu', format: 'risup' })}
-                                title="Export Risu Preset"
-                            >
-                                <Download class="size-4" />
-                                Risu Preset
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                class="gap-1"
                                 onclick={() => exportPresetFile(preset.id, { kind: 'keipreset' })}
                                 title="Export Kei Preset"
                             >

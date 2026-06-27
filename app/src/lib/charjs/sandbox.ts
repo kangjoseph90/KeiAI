@@ -12,9 +12,11 @@ import { emitEvent } from '$lib/events';
 import { getChatVariable, setChatVariable } from '$lib/managers';
 import { generateId } from '$lib/utils/id';
 import { getAppSettings } from '$lib/stores/content/settings';
-import { getActivePreset } from '$lib/stores/content/preset';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
 import type { OpenAIChat } from '$lib/llm/types';
+
+const DEFAULT_AUX_LLM_TYPE = 'aux';
+const DEFAULT_AUX_MAX_RESPONSE = 4096;
 
 export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance): void {
     const keiObj = ctx.newObject();
@@ -200,8 +202,9 @@ function injectLowLevelAPIs(
         // allow low level permission is included in character import - warning ui when importing
     }
 
-    const callLLMFn = ctx.newFunction('callLLM', (typeHandle, messagesHandle) => {
-        const type = ctx.getString(typeHandle);
+    const callLLMFn = ctx.newFunction('callLLM', (typeHandle, messagesHandle, optionsHandle) => {
+        const options = readLLMCallOptions(optionsHandle ? ctx.dump(optionsHandle) : undefined);
+        const type = options.type ?? ctx.getString(typeHandle) ?? DEFAULT_AUX_LLM_TYPE;
         const messages = ctx.dump(messagesHandle) as OpenAIChat[];
         const promise = ctx.newPromise();
 
@@ -209,12 +212,11 @@ function injectLowLevelAPIs(
             await requirePermission();
 
             const settings = await getAppSettings();
-            const preset = getActivePreset();
-            if (!preset) {
+            if (!settings.presetId) {
                 throw new Error('No active preset selected');
             }
 
-            const modelConfig = resolveLLMModelConfig(type, preset);
+            const modelConfig = await resolveLLMModelConfig(type, settings.presetId);
             if (!modelConfig) {
                 throw new Error(`No model configured for LLM type: ${type}`);
             }
@@ -226,8 +228,8 @@ function injectLowLevelAPIs(
 
             let content = '';
             for await (const chunk of handler.stream(messages, new AbortController().signal, {
-                parameters: resolveLLMParameters(type, preset) ?? {},
-                maxResponse: preset.maxResponse
+                parameters: (await resolveLLMParameters(type, settings.presetId)) ?? {},
+                maxResponse: options.maxResponse ?? DEFAULT_AUX_MAX_RESPONSE
             })) {
                 content = chunk.content;
             }
@@ -246,4 +248,16 @@ function injectLowLevelAPIs(
     });
     ctx.setProp(keiObj, 'callLLM', callLLMFn);
     callLLMFn.dispose();
+}
+
+function readLLMCallOptions(value: unknown): { type?: string; maxResponse?: number } {
+    if (!value || typeof value !== 'object') return {};
+    const record = value as Record<string, unknown>;
+    return {
+        type: typeof record.type === 'string' && record.type.trim() ? record.type : undefined,
+        maxResponse:
+            typeof record.maxResponse === 'number' && Number.isFinite(record.maxResponse)
+                ? record.maxResponse
+                : undefined
+    };
 }

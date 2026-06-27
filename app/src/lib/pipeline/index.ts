@@ -12,10 +12,11 @@
  */
 
 import { collectPipelineHandlers } from './handler';
-import type { PipelineContext, PipelineHandler, PipelinePhase, PipelinePhaseType } from './types';
+import type { PipelineHandler, PipelinePhase, PipelinePhaseType } from './types';
 import { isSafeMode } from '$lib/config';
 export { collectPipelineHandlers };
 import { createLogger } from '$lib/adapters/logger';
+import type { RuntimeContext } from '$lib/types/context';
 
 const logger = createLogger('pipeline');
 
@@ -23,35 +24,35 @@ export async function runPipeline<K extends keyof PipelinePhaseType>(
     chatId: string,
     phase: K,
     data: PipelinePhaseType[K],
-    context: PipelineContext
+    ctx: RuntimeContext
 ): Promise<PipelinePhaseType[K]>;
 export async function runPipeline<P extends string, T>(
     chatId: string,
     phase: PipelinePhase<P>,
     data: T,
-    context: PipelineContext
+    ctx: RuntimeContext
 ): Promise<T>;
 export async function runPipeline(
     chatId: string,
     phase: string,
     data: unknown,
-    context: PipelineContext
+    ctx: RuntimeContext
 ): Promise<unknown> {
     if (isSafeMode()) return data;
-    const handlers = await collectPipelineHandlers(chatId, phase, context.characterId);
-    return runPipelineHandlers(handlers, data, context);
+    const handlers = await collectPipelineHandlers(chatId, phase, ctx.characterId);
+    return runPipelineHandlers(handlers, data, ctx);
 }
 
 export async function runPipelineHandlers<K extends string, T>(
     handlers: PipelineHandler<T, K>[],
     data: T,
-    context: PipelineContext
+    ctx: RuntimeContext
 ): Promise<T> {
     if (isSafeMode()) return data;
     let result = data;
     for (const handler of handlers) {
         try {
-            const next = await handler.run(result, context);
+            const next = await handler.run(result, ctx);
             if (next !== undefined) {
                 if (isSameType(result, next)) {
                     result = next;

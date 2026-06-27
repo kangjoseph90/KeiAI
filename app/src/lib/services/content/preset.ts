@@ -11,33 +11,19 @@ import {
     cleanupCascadeAssets,
     type CascadeResult
 } from './cascade';
-import type { LLMModelConfig, LLMParameters, LLMRole, LLMType } from '$lib/types/models/llm';
+import type { LLMModelConfig, LLMParameters, LLMType } from '$lib/types/models/llm';
 import type { EntityListConfig } from '$lib/types/refs';
+import type {
+    AgentNode,
+    PromptBlock,
+    PromptBlockFields,
+    WorkflowDefinition
+} from '$lib/workflow/types';
+import { createDefaultChatWorkflow, getFirstAgentNode } from '$lib/workflow/defaults';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
-export type PromptBlockFields =
-    | { name: string; type: 'text'; role: LLMRole; content: string }
-    | { name: string; type: 'character'; role: LLMRole; format?: string }
-    | { name: string; type: 'persona'; role: LLMRole; format?: string }
-    | {
-          name: string;
-          type: 'lorebook';
-          minDepth?: number;
-          maxDepth?: number;
-          reverseOrder?: boolean;
-          format?: string;
-      }
-    | { name: string; type: 'memory'; role: LLMRole; format?: string }
-    | { name: string; type: 'characterNote'; role: LLMRole; format?: string }
-    | { name: string; type: 'chatNote'; role: LLMRole; format?: string }
-    | { name: string; type: 'history'; start?: number; end?: number; format?: string };
-
-export type PromptBlock = PromptBlockFields & {
-    id: string;
-    sortOrder: string;
-    enabled: boolean;
-};
+export type { PromptBlock, PromptBlockFields };
 
 export type PresetCustomToggleFields =
     | { key?: string; label?: string; type: 'group' | 'groupEnd' | 'caption' | 'divider' }
@@ -55,12 +41,7 @@ export interface PresetContent {
     description: string;
     models: Partial<Record<LLMType, LLMModelConfig>>;
     parameters: Partial<Record<LLMType, LLMParameters>>;
-    promptBlocks: Record<string, PromptBlock>;
-    maxResponse: number;
-    maxContext: number;
-    lorebookRatio: number;
-    memoryRatio: number;
-    lorebookScanDepth: number;
+    chatWorkflow: WorkflowDefinition;
     defaultVariables: Record<string, string>;
     globalVariables: Record<string, string>;
     customToggles: Record<string, PresetCustomToggle>;
@@ -91,12 +72,7 @@ export const defaultPresetFields: PresetFields = {
             top_p: 0.9
         }
     },
-    promptBlocks: {},
-    maxResponse: 6000,
-    maxContext: 60000,
-    lorebookRatio: 0.2,
-    memoryRatio: 0.2,
-    lorebookScanDepth: 5,
+    chatWorkflow: createDefaultChatWorkflow(),
     defaultVariables: {},
     globalVariables: {},
     customToggles: {},
@@ -107,6 +83,14 @@ export const defaultPresetFields: PresetFields = {
 
 function parseFields(record: PresetRecord): PresetFields {
     return deepMerge(defaultPresetFields, record.data as DeepPartial<PresetFields>);
+}
+
+function requireChatAgent(preset: PresetFields): AgentNode {
+    const agent = getFirstAgentNode(preset.chatWorkflow);
+    if (!agent) {
+        throw new AppError('INVALID_INPUT', 'Preset chat workflow has no agent node');
+    }
+    return agent;
 }
 
 // ─── Service ───────────────────────────────────────────────────────────
@@ -212,12 +196,21 @@ export class PresetService {
         fields: DeepPartial<PromptBlockFields> & { sortOrder: string }
     ): Promise<{ blockId: string; preset: Preset }> {
         const blockId = generateId();
+        const current = await this.get(presetId);
+        if (!current) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
+        const agent = requireChatAgent(current);
         const preset = await this.update(presetId, {
-            promptBlocks: {
-                [blockId]: {
-                    ...fields,
-                    id: blockId,
-                    enabled: true
+            chatWorkflow: {
+                nodes: {
+                    [agent.id]: {
+                        promptBlocks: {
+                            [blockId]: {
+                                ...fields,
+                                id: blockId,
+                                enabled: true
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -230,17 +223,35 @@ export class PresetService {
         blockId: string,
         changes: DeepPartial<PromptBlock>
     ): Promise<Preset> {
+        const current = await this.get(presetId);
+        if (!current) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
+        const agent = requireChatAgent(current);
         return this.update(presetId, {
-            promptBlocks: {
-                [blockId]: changes
+            chatWorkflow: {
+                nodes: {
+                    [agent.id]: {
+                        promptBlocks: {
+                            [blockId]: changes
+                        }
+                    }
+                }
             }
         });
     }
 
     static async deleteBlock(presetId: string, blockId: string): Promise<Preset> {
+        const current = await this.get(presetId);
+        if (!current) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
+        const agent = requireChatAgent(current);
         return this.update(presetId, {
-            promptBlocks: {
-                [blockId]: undefined
+            chatWorkflow: {
+                nodes: {
+                    [agent.id]: {
+                        promptBlocks: {
+                            [blockId]: undefined
+                        }
+                    }
+                }
             }
         });
     }

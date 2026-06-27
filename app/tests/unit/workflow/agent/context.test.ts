@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { toMessageContext, toRoleContext } from '$lib/tasks/chat/context';
+import { toMessageContext, toRoleContext } from '$lib/workflow/agent/context';
 import type { Message } from '$lib/services';
-import type { TemplateContext } from '$lib/template';
+import type { RuntimeContext } from '$lib/types/context';
 
-const baseContext: TemplateContext = {
+const baseContext: RuntimeContext = {
     chatId: 'chat-1',
     characterId: 'char-default',
     personaId: 'persona-default'

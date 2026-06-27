@@ -21,6 +21,7 @@
         activeChat,
         activeRoom,
         chatSelections,
+        appSettings,
         roomCharacters,
         chatPersonas,
         displayMessages,
@@ -38,11 +39,11 @@
     import { ToolCallService } from '$lib/services/content/tool';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate } from '$lib/template';
-    import type { TemplateContext } from '$lib/template';
     import { navigate } from '$lib/router';
     import { createLogger } from '$lib/adapters/logger';
     import { tick } from 'svelte';
     import { forkChat, getChatVariables, prepareNextSwipe, syncChatGreetings } from '$lib/managers';
+    import type { RuntimeContext } from '$lib/types/context';
 
     let { roomId, chatId }: { roomId: string; chatId?: string } = $props();
 
@@ -173,7 +174,9 @@
     async function handleSendMessage() {
         if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
         if (!selectedPersona) return;
-        const templateCtx: TemplateContext = {
+        const ctx: RuntimeContext = {
+            roomId,
+            presetId: $appSettings?.presetId,
             characterId: defaultCharacter?.id,
             personaId: selectedPersona.id,
             chatId: $activeChat.id,
@@ -181,9 +184,9 @@
             speakerName: selectedPersona.name,
             role: 'user'
         };
-        const templated = await runTemplate(newMessageText, templateCtx);
-        const piped = await runPipeline($activeChat.id, 'input', templated, templateCtx);
-        const processedText = await runTemplate(piped, templateCtx);
+        const templated = await runTemplate(newMessageText, ctx);
+        const piped = await runPipeline($activeChat.id, 'input', templated, ctx);
+        const processedText = await runTemplate(piped, ctx);
         newMessageText = '';
 
         const variables = await getChatVariables($activeChat.id);

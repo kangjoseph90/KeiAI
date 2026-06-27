@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { resolveLorebookEntries } from '$lib/tasks/chat/lorebook';
+import { resolveLorebookEntries } from '$lib/workflow/agent/lorebook';
 import { runTemplate } from '$lib/template';
 import type { Lorebook, PagedMessages } from '$lib/services';
-import type { TemplateContext } from '$lib/template';
+import type { RuntimeContext } from '$lib/types/context';
 
-// Mock dependencies
-vi.mock('$lib/template', () => ({
-    runTemplate: vi.fn((content) => content),
-    createDryRunMacros: vi.fn(() => new Map())
-}));
+// Only runTemplate needs faking; the rest of $lib/template is pure.
+vi.mock('$lib/template', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('$lib/template')>();
+    return { ...actual, runTemplate: vi.fn((content: string) => content) };
+});
 
 describe('Lorebook Resolver (resolveLorebookEntries)', () => {
-    const mockTemplateCtx: TemplateContext = {
+    const mockTemplateCtx: RuntimeContext = {
         characterId: 'char-1',
         chatId: 'chat-1'
     };
@@ -75,7 +75,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx
+            ctx: mockTemplateCtx
         });
 
         // Last message is 'banana', scanDepth is 1, so 'apple' should NOT be found
@@ -86,7 +86,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages: messages2,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx
+            ctx: mockTemplateCtx
         });
 
         // Last message is 'apple', so it should be found
@@ -110,7 +110,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx
+            ctx: mockTemplateCtx
         });
 
         // Round 1: A matches 'apple'
@@ -136,7 +136,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx
+            ctx: mockTemplateCtx
         });
 
         // A should be active, but B should NOT because it only looks at history
@@ -159,7 +159,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages: createMockMessages(['apple']),
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx
+            ctx: mockTemplateCtx
         });
         expect(res1).toHaveLength(0);
 
@@ -168,7 +168,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages: createMockMessages(['apple and banana']),
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx
+            ctx: mockTemplateCtx
         });
         expect(res2).toHaveLength(1);
     });
@@ -194,7 +194,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx
+            ctx: mockTemplateCtx
         });
 
         // Round 1: A matches 'apple'
@@ -213,7 +213,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx
+            ctx: mockTemplateCtx
         });
 
         expect(resolved).toHaveLength(1);
@@ -231,7 +231,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
             lorebooks,
             messages,
             defaultScanDepth: 5,
-            templateCtx: mockTemplateCtx
+            ctx: mockTemplateCtx
         });
 
         expect(resolved).toHaveLength(1);

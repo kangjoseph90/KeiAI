@@ -2,7 +2,8 @@ import { applyRegexScript } from '$lib/pipeline/regex';
 import { getMergedScripts } from '$lib/stores';
 import { collectCharJSInstances, invokeHandler } from '$lib/charjs';
 import { pluginManager } from '$lib/plugins';
-import type { PipelinePhase, PipelinePhaseType, PipelineContext, PipelineHandler } from './types';
+import type { PipelinePhase, PipelinePhaseType, PipelineHandler } from './types';
+import type { RuntimeContext } from '$lib/types/context';
 
 export async function collectPipelineHandlers<K extends keyof PipelinePhaseType>(
     chatId: string,
@@ -46,7 +47,7 @@ async function collectRegexHandlers(
             id: s.id,
             phase: s.phase,
             order: s.advanced ? s.order : 100,
-            run: async (data: unknown, _context: PipelineContext) => {
+            run: async (data: unknown, ctx: RuntimeContext) => {
                 // Regex handlers only execute safely when data is a string
                 if (typeof data === 'string') {
                     return await applyRegexScript(s, data);
@@ -73,8 +74,8 @@ async function collectCharJSHandlers(
                 id: `charjs:${instance.charjs.id}:${phase}`,
                 phase,
                 order: h.order,
-                run: async (data: unknown, context: PipelineContext) => {
-                    const result = await invokeHandler(instance, h.fnHandle, data, context);
+                run: async (data: unknown, ctx: RuntimeContext) => {
+                    const result = await invokeHandler(instance, h.fnHandle, data, ctx);
                     return result !== undefined ? result : data;
                 }
             });
@@ -95,8 +96,8 @@ async function collectPluginHandlers(
                 id: `plugin:${instance.pluginId}:${handler.fnId}:${phase}`,
                 phase,
                 order: handler.order,
-                run: async (data: unknown, context: PipelineContext) => {
-                    const result = await instance.broker.invoke(handler.fnId, [data, context]);
+                run: async (data: unknown, ctx: RuntimeContext) => {
+                    const result = await instance.broker.invoke(handler.fnId, [data, ctx]);
                     return result !== undefined ? result : data;
                 }
             });

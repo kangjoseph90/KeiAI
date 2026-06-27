@@ -5,32 +5,43 @@
  * History is loaded lazily through PagedMessages when a history block needs it.
  */
 
-import type { PromptBlock } from '$lib/services/content/preset';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
-import type { Character, Chat, Preset, Persona, Lorebook } from '$lib/services';
+import type { Character, Chat, Persona, Lorebook } from '$lib/services';
 import type { OpenAIChat } from '../../llm/types';
 import type { LLMRole, LLMTokenizer } from '$lib/types/models/llm';
 import { runPipeline } from '$lib/pipeline';
-import { runTemplate, createDryRunMacros } from '$lib/template';
-import type { TemplateContext, Macro } from '$lib/template';
+import { runTemplate, createDryRunMacros, mergeLocalMacros } from '$lib/template';
+import type { Macro } from '$lib/template';
 import { TokenCounter } from '$lib/llm/tokenizer';
 import { AppError } from '$lib/types/errors';
 import type { Message } from '$lib/services/content/message';
 import { resolveLorebookEntries } from './lorebook';
 import { toMessageContext, toRoleContext } from './context';
 import { compareSortOrder } from '$lib/utils/ordering';
+import type { RuntimeContext } from '$lib/types/context';
+import type { PromptBlock } from '../types';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
 export interface PromptInput {
-    character: Character;
-    chat: Chat;
-    preset: Preset;
-    persona: Persona;
+    character?: Character;
+    chat?: Chat;
+    agent: AgentPromptConfig;
+    persona?: Persona;
     lorebooks: Lorebook[];
     messages: PagedMessages;
     tokenizer: LLMTokenizer;
-    context: TemplateContext;
+    ctx: RuntimeContext;
+    localMacros?: ReadonlyMap<string, Macro>;
+}
+
+export interface AgentPromptConfig {
+    promptBlocks: Record<string, PromptBlock>;
+    maxContext: number;
+    maxResponse: number;
+    lorebookRatio: number;
+    memoryRatio: number;
+    lorebookScanDepth: number;
 }
 
 type PromptBlockResult = {
@@ -54,9 +65,9 @@ type LorebookBucketEntry = {
 // ─── Builder ──────────────────────────────────────────────────────────────────
 
 export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
-    const blocks = getEnabledPromptBlocks(input.preset.promptBlocks);
+    const blocks = getEnabledPromptBlocks(input.agent.promptBlocks);
 
-    const budget = createPromptBudget(input.preset);
+    const budget = createPromptBudget(input.agent);
     const result = new Map<string, PromptBlockResult>();
     const unboundedHistoryBlocks = blocks.filter(isUnboundedHistoryBlock);
 
@@ -97,21 +108,6 @@ export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
         budget.used += tokens;
     }
 
-    for (const block of blocks.filter(isMemoryBlock)) {
-        const blockBudget = getMemoryBudget(block, budget);
-        const res = await buildMemoryBlock(block, input, blockBudget);
-
-        if (res.tokens > blockBudget) {
-            throw new AppError(
-                'INVALID_INPUT',
-                `Prompt budget exceeded while processing dynamic block: ${block.name}`
-            );
-        }
-
-        result.set(block.id, res);
-        budget.used += res.tokens;
-    }
-
     for (const block of unboundedHistoryBlocks) {
         const remainingBudget = Math.max(0, budget.input - budget.used);
         const res = await buildUnboundedHistoryBlock(block, input, remainingBudget);
@@ -127,7 +123,7 @@ export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
 
 async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<PromptBlockResult> {
     let messages: OpenAIChat[] = [];
-    const dryRunMacros = createDryRunMacros();
+    const templateMacros = mergeLocalMacros(input.localMacros, createDryRunMacros());
 
     switch (block.type) {
         case 'text':
@@ -135,59 +131,8 @@ async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<
                 block.role,
                 await runTemplate(
                     block.content,
-                    toRoleContext(input.context, block.role),
-                    dryRunMacros
-                )
-            );
-            break;
-
-        case 'character':
-            messages = makeMessage(
-                block.role,
-                await renderWithFormat(
-                    input.character.description,
-                    block.format,
-                    toRoleContext(input.context, block.role),
-                    input.character.name,
-                    dryRunMacros
-                )
-            );
-            break;
-        case 'characterNote':
-            messages = makeMessage(
-                block.role,
-                await renderWithFormat(
-                    input.character.characterNote,
-                    block.format,
-                    toRoleContext(input.context, block.role),
-                    input.character.name,
-                    dryRunMacros
-                )
-            );
-            break;
-
-        case 'persona':
-            messages = makeMessage(
-                block.role,
-                await renderWithFormat(
-                    input.persona.description,
-                    block.format,
-                    toRoleContext(input.context, block.role),
-                    input.persona.name,
-                    dryRunMacros
-                )
-            );
-            break;
-
-        case 'chatNote':
-            messages = makeMessage(
-                block.role,
-                await renderWithFormat(
-                    input.chat.chatNote,
-                    block.format,
-                    toRoleContext(input.context, block.role),
-                    undefined,
-                    dryRunMacros
+                    toRoleContext(input.ctx, block.role),
+                    templateMacros
                 )
             );
             break;
@@ -199,32 +144,14 @@ async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<
                 const rendered = await renderHistoryMessage(
                     message,
                     index,
-                    input.context,
-                    block.format
+                    input.ctx,
+                    block.format,
+                    input.localMacros
                 );
                 if (rendered) messages.push(rendered);
             }
             break;
         }
-    }
-
-    const tokens = await countMessages(messages, input.tokenizer);
-    return { messages, tokens };
-}
-
-async function buildMemoryBlock(
-    block: PromptBlock,
-    input: PromptInput,
-    budget: number
-): Promise<PromptBlockResult> {
-    if (budget <= 0) return { messages: [], tokens: 0 };
-
-    const messages: OpenAIChat[] = [];
-
-    switch (block.type) {
-        case 'memory':
-            // TODO: Process memory summaries until reaching `budget`
-            break;
     }
 
     const tokens = await countMessages(messages, input.tokenizer);
@@ -247,8 +174,9 @@ async function buildLorebookBlocks(
     const activeLorebooks = await resolveLorebookEntries({
         lorebooks: input.lorebooks,
         messages: input.messages,
-        defaultScanDepth: input.preset?.lorebookScanDepth ?? 0,
-        templateCtx: input.context
+        defaultScanDepth: input.agent.lorebookScanDepth,
+        ctx: input.ctx,
+        localMacros: input.localMacros
     });
 
     let used = 0;
@@ -257,13 +185,13 @@ async function buildLorebookBlocks(
         const block = blocks.find((candidate) => isDepthInRange(lorebook.depth, candidate));
         if (!block) continue;
 
-        const dryRunMacros = createDryRunMacros();
+        const templateMacros = mergeLocalMacros(input.localMacros, createDryRunMacros());
         const content = await renderWithFormat(
             lorebook.content,
             block.format,
-            toRoleContext(input.context, lorebook.role),
+            toRoleContext(input.ctx, lorebook.role),
             undefined,
-            dryRunMacros
+            templateMacros
         );
         const messages = makeMessage(lorebook.role, content);
         const tokens = await countMessages(messages, input.tokenizer);
@@ -314,8 +242,9 @@ async function buildUnboundedHistoryBlock(
         const rendered = await renderHistoryMessage(
             indexed.message,
             indexed.index,
-            input.context,
-            block.format
+            input.ctx,
+            block.format,
+            input.localMacros
         );
         if (!rendered) continue;
 
@@ -367,8 +296,8 @@ function makeMessage(role: LLMRole, content: string): OpenAIChat[] {
     return [{ role, content: trimmed }];
 }
 
-function createPromptBudget(preset: Preset): PromptBudget {
-    const input = preset.maxContext - preset.maxResponse;
+function createPromptBudget(agent: AgentPromptConfig): PromptBudget {
+    const input = agent.maxContext - agent.maxResponse;
     if (input <= 0) {
         throw new AppError('INVALID_INPUT', 'Prompt input budget must be greater than zero');
     }
@@ -376,13 +305,9 @@ function createPromptBudget(preset: Preset): PromptBudget {
     return {
         input,
         used: 0,
-        lorebookCap: Math.floor(input * preset.lorebookRatio),
-        memoryCap: Math.floor(input * preset.memoryRatio)
+        lorebookCap: Math.floor(input * agent.lorebookRatio),
+        memoryCap: Math.floor(input * agent.memoryRatio)
     };
-}
-
-function isMemoryBlock(block: PromptBlock): boolean {
-    return block.type === 'memory';
 }
 
 function isLorebookBlock(block: PromptBlock): block is LorebookPromptBlock {
@@ -399,13 +324,7 @@ function isUnboundedHistoryBlock(block: PromptBlock): boolean {
 
 function isFixedBlock(block: PromptBlock): boolean {
     if (block.type === 'history') return isBoundedHistory(block);
-    return block.type !== 'lorebook' && block.type !== 'memory';
-}
-
-function getMemoryBudget(block: PromptBlock, budget: PromptBudget): number {
-    const remaining = Math.max(0, budget.input - budget.used);
-    if (block.type === 'memory') return Math.min(budget.memoryCap, remaining);
-    return 0;
+    return block.type !== 'lorebook';
 }
 
 function getLorebookBudget(budget: PromptBudget): number {
@@ -459,53 +378,63 @@ function isDepthInRange(depth: number, block: LorebookPromptBlock): boolean {
 async function renderHistoryMessage(
     message: Message,
     messageIndex: number,
-    templateCtx: TemplateContext,
-    format?: string
+    ctx: RuntimeContext,
+    format?: string,
+    localMacros?: ReadonlyMap<string, Macro>
 ): Promise<OpenAIChat | null> {
     const activeSwipe = message.swipes[message.activeSwipeId];
     if (!activeSwipe) return null;
 
-    const messageCtx = toMessageContext(message, messageIndex, templateCtx);
-    const dryRunMacros = createDryRunMacros();
+    const messageCtx = toMessageContext(message, messageIndex, ctx);
+    const templateMacros = mergeLocalMacros(localMacros, createDryRunMacros());
 
     const templated = await renderWithFormat(
         activeSwipe.content,
         format,
         messageCtx,
         activeSwipe.speakerName,
-        dryRunMacros
+        templateMacros
     );
 
     const processed = await runPipeline(
-        templateCtx.chatId ?? message.chatId,
+        ctx.chatId ?? message.chatId,
         'request',
         templated,
         messageCtx
     );
 
-    const content = await runTemplate(processed, messageCtx, dryRunMacros);
+    const content = await runTemplate(processed, messageCtx, templateMacros);
 
     return {
         role: message.role,
-        content,
-        thought: activeSwipe.thought
+        content
     };
 }
 
 async function renderWithFormat(
     content: string,
     format: string | undefined,
-    ctx: TemplateContext,
+    ctx: RuntimeContext,
     name?: string,
     overrides?: ReadonlyMap<string, Macro>
 ): Promise<string> {
     const localMacros = new Map<string, Macro>(overrides);
+    const upstreamSlot = localMacros.get('slot');
     localMacros.set('slot', {
-        run: () => content,
+        run: (args, macroCtx) => {
+            if (args.length === 0) return content;
+            if (upstreamSlot) return upstreamSlot.run(args, macroCtx);
+            throw new Error('slot not handled');
+        },
         recursive: true
     });
     localMacros.set('name', {
-        run: () => name ?? '',
+        run: (args) => {
+            if (args.length !== 0) {
+                throw new Error('Format name macro must be called as {{name}}');
+            }
+            return name ?? '';
+        },
         recursive: true
     });
 

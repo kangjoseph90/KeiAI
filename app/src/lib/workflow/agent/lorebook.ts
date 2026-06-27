@@ -1,12 +1,15 @@
 import type { Lorebook, PagedMessages } from '$lib/services';
-import { runTemplate, createDryRunMacros, type TemplateContext } from '$lib/template';
+import { runTemplate, createDryRunMacros, mergeLocalMacros } from '$lib/template';
+import type { Macro } from '$lib/template';
+import type { RuntimeContext } from '$lib/types/context';
 import { toMessageContext } from './context';
 
 export interface ResolveLorebookInput {
     lorebooks: Lorebook[];
     messages: PagedMessages;
     defaultScanDepth: number;
-    templateCtx: TemplateContext;
+    ctx: RuntimeContext;
+    localMacros?: ReadonlyMap<string, Macro>;
 }
 
 const MAX_RECURSIVE_ROUNDS = 20;
@@ -78,14 +81,14 @@ async function buildScanHistory(input: ResolveLorebookInput): Promise<string[]> 
     if (maxScanDepth <= 0) return [];
 
     const messages = await input.messages.slice(-maxScanDepth);
-    const dryRunMacros = createDryRunMacros();
+    const dryRunMacros = mergeLocalMacros(input.localMacros, createDryRunMacros());
     const rendered = await Promise.all(
         messages.map(({ message, index }) => {
             const activeSwipe = message.swipes[message.activeSwipeId];
             if (!activeSwipe) return '';
             return runTemplate(
                 activeSwipe.content,
-                toMessageContext(message, index, input.templateCtx),
+                toMessageContext(message, index, input.ctx),
                 dryRunMacros
             );
         })
@@ -101,11 +104,9 @@ async function buildRecursiveSources(
     const recursiveLorebooks = lorebooks.filter((lorebook) => lorebook.recursive);
     if (recursiveLorebooks.length === 0) return [];
 
-    const dryRunMacros = createDryRunMacros();
+    const dryRunMacros = mergeLocalMacros(input.localMacros, createDryRunMacros());
     const rendered = await Promise.all(
-        recursiveLorebooks.map((lorebook) =>
-            runTemplate(lorebook.content, input.templateCtx, dryRunMacros)
-        )
+        recursiveLorebooks.map((lorebook) => runTemplate(lorebook.content, input.ctx, dryRunMacros))
     );
 
     return rendered.filter((source) => source.trim().length > 0);

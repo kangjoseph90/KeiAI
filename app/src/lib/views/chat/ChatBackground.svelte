@@ -2,6 +2,7 @@
     import { onDestroy } from 'svelte';
     import { SvelteMap } from 'svelte/reactivity';
     import {
+        activeRoom,
         appSettings,
         chatAssetsMap,
         getActiveModulesForCharacter,
@@ -11,7 +12,6 @@
     import type { Character, Module } from '$lib/services';
     import { runPipeline } from '$lib/pipeline';
     import { createDryRunMacros, runTemplate } from '$lib/template';
-    import type { TemplateContext } from '$lib/template';
     import { createBackgroundMacros, type RawAssetUrlCache } from '$lib/template/display';
     import {
         scopeStyleBlocks,
@@ -22,6 +22,7 @@
     import { parseMarkdownAsync } from '$lib/markdown';
     import { hydrateAssets } from '$lib/components/hydrate';
     import { AssetService } from '$lib/services/asset';
+    import type { RuntimeContext } from '$lib/types/context';
 
     let {
         chatId,
@@ -52,7 +53,9 @@
             ])
         ).filter((id): id is string => !!id);
 
-        const templateCtx: TemplateContext = {
+        const ctx: RuntimeContext = {
+            roomId: $activeRoom?.id,
+            presetId: $appSettings?.presetId,
             characterId: character?.id,
             chatId,
             role: 'assistant',
@@ -61,9 +64,9 @@
         };
         const dryRunMacros = createDryRunMacros();
         const backgroundMacros = createBackgroundMacros($chatAssetsMap, ownerIds, rawAssetUrlCache);
-        const templated = await runTemplate(html, templateCtx, dryRunMacros);
-        const processed = await runPipeline(chatId, 'display', templated, templateCtx);
-        const rendered = await runTemplate(processed, templateCtx, backgroundMacros);
+        const templated = await runTemplate(html, ctx, dryRunMacros);
+        const processed = await runPipeline(chatId, 'display', templated, ctx);
+        const rendered = await runTemplate(processed, ctx, backgroundMacros);
         const scopedHtml = scopeStyleBlocks(
             rendered,
             `[data-keiai-background-scope="${backgroundScope.replace(/"/g, '\\"')}"]`

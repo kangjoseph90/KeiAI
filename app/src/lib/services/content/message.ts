@@ -5,7 +5,6 @@ import { generateKeyBetween } from 'fractional-indexing';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import type { ToolCallInfo } from './tool';
 import { buffer } from './record_buffer';
 import {
     cascadeDeleteChildren,
@@ -19,8 +18,6 @@ import type { LLMRole } from '$lib/types/models/llm';
 
 export interface MessageSwipeFields {
     content: string;
-    thought?: string;
-    toolCalls?: Record<string, ToolCallInfo>;
     variables?: Record<string, string>;
     speakerId?: string; // personaId if role is 'user', characterId if role is 'assistant'
     speakerName?: string;

@@ -9,7 +9,9 @@
     import { type LLMRole } from '$lib/types/models/llm';
     import { generateSortOrder } from '$lib/utils/ordering';
     import type { DeepPartial } from '$lib/utils/defaults';
-    import type { Preset, PromptBlock, PromptBlockFields } from '$lib/services/content/preset';
+    import type { Preset } from '$lib/services/content/preset';
+    import type { PromptBlock, PromptBlockFields } from '$lib/workflow/types';
+    import { getFirstAgentNode } from '$lib/workflow/defaults';
     import { SvelteSet } from 'svelte/reactivity';
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
 
@@ -19,6 +21,8 @@
 
     let { preset }: Props = $props();
     let expandedBlocks = $state<Set<string>>(new Set());
+    const agent = $derived(getFirstAgentNode(preset.chatWorkflow));
+    const promptBlocks = $derived(agent?.promptBlocks ?? {});
 
     function toggleExpand(blockId: string) {
         const next = new SvelteSet(expandedBlocks);
@@ -31,7 +35,7 @@
     }
 
     async function handleAddBlock() {
-        const blocks = Object.values(preset.promptBlocks);
+        const blocks = Object.values(promptBlocks);
         await createPromptBlock(preset.id, {
             name: 'New Block',
             type: 'text',
@@ -48,7 +52,8 @@
     }
 
     function changeBlockType(blockId: string, type: PromptBlock['type']) {
-        const oldBlock = preset.promptBlocks[blockId];
+        const oldBlock = promptBlocks[blockId];
+        if (!oldBlock) return;
         const base = { name: oldBlock.name, type };
 
         let update: Partial<PromptBlockFields> = base;
@@ -59,8 +64,6 @@
             update = { ...base, start: undefined, end: undefined };
         } else if (type === 'lorebook') {
             update = { ...base, minDepth: undefined, maxDepth: undefined, reverseOrder: false };
-        } else {
-            update = { ...base, role: 'system' };
         }
 
         updatePromptBlock(preset.id, blockId, update as DeepPartial<PromptBlock>);
@@ -76,7 +79,7 @@
     </div>
 
     <div class="flex flex-col gap-3">
-        <SortableList entities={Object.values(preset.promptBlocks)} onReorder={handleReorderBlock}>
+        <SortableList entities={Object.values(promptBlocks)} onReorder={handleReorderBlock}>
             {#snippet item({ entity: block })}
                 <Card class="py-3 ${!block.enabled ? 'opacity-60' : ''}">
                     <CardContent class="p-2.5 flex flex-col gap-2">
@@ -128,13 +131,8 @@
                                         )}
                                 >
                                     <option value="text">Text</option>
-                                    <option value="character">Character</option>
-                                    <option value="persona">Persona</option>
                                     <option value="lorebook">Lorebook</option>
-                                    <option value="memory">Memory</option>
                                     <option value="history">History</option>
-                                    <option value="characterNote">Char Note</option>
-                                    <option value="chatNote">Chat Note</option>
                                 </select>
                             </div>
                             <div class="flex items-center gap-1 shrink-0">
@@ -347,12 +345,6 @@
                                                 >Reverse Order</Label
                                             >
                                         </div>
-                                    </div>
-                                {:else}
-                                    <div
-                                        class="bg-muted/30 rounded p-1.5 text-[10px] text-muted-foreground italic"
-                                    >
-                                        Dynamic block: {block.type}
                                     </div>
                                 {/if}
 

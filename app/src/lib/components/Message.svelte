@@ -14,9 +14,6 @@
         Pencil,
         Trash2,
         X,
-        Brain,
-        ChevronDown,
-        ChevronUp,
         ChevronLeft,
         ChevronRight,
         GitBranch,
@@ -24,19 +21,18 @@
         RefreshCw
     } from 'lucide-svelte';
     import { onDestroy, onMount } from 'svelte';
-    import ToolCallGroup from './ToolCallGroup.svelte';
     import AssetView from './AssetView.svelte';
     import type { AssetReadLocator } from '$lib/services/asset';
     import type { ToolCall } from '$lib/services/content/tool';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate, createDryRunMacros } from '$lib/template';
-    import type { TemplateContext } from '$lib/template';
     import { parseMarkdownAsync } from '$lib/markdown';
     import morphdom from 'morphdom';
     import type { Action } from 'svelte/action';
     import { hydrateAssets } from '$lib/components/hydrate';
     import { SvelteMap } from 'svelte/reactivity';
     import {
+        activeRoom,
         appSettings,
         chatAssetsMap,
         getActiveModulesForCharacter,
@@ -53,6 +49,7 @@
         sanitizeWithStyle
     } from '$lib/utils/style';
     import { AssetService } from '$lib/services/asset';
+    import type { RuntimeContext } from '$lib/types/context';
 
     // ── Props ─────────────────────────────────────────────────────────────────
 
@@ -98,7 +95,6 @@
 
     // ── State ─────────────────────────────────────────────────────────────────
 
-    let thoughtExpanded = $state(false);
     let copied = $state(false);
 
     // Render pipeline internals
@@ -121,6 +117,7 @@
 
     /** The swipe that is currently active for this message. */
     let activeSwipe = $derived(message.swipes[message.activeSwipeId]);
+    let currentContent = $derived(activeSwipe?.content ?? '');
 
     /** Swipes sorted by creation time for consistent navigation. */
     let sortedSwipes = $derived(
@@ -241,7 +238,7 @@
             .join('\n');
     }
 
-    async function renderMessageCSS(templateCtx: TemplateContext, ownerIds: string[]) {
+    async function renderMessageCSS(ctx: RuntimeContext, ownerIds: string[]) {
         const source = messageCssSource();
         if (!source.trim()) {
             messageStyleHtml = '';
@@ -249,9 +246,9 @@
         }
 
         const displayMacros = createDisplayMacros($chatAssetsMap, ownerIds, rawAssetUrlCache);
-        const templated = await runTemplate(source, templateCtx);
-        const processed = await runPipeline(message.chatId, 'display', templated, templateCtx);
-        const withAssets = await runTemplate(processed, templateCtx, displayMacros);
+        const templated = await runTemplate(source, ctx);
+        const processed = await runPipeline(message.chatId, 'display', templated, ctx);
+        const withAssets = await runTemplate(processed, ctx, displayMacros);
         const scopeSelector = `[data-keiai-message-scope="${messageScope.replace(/"/g, '\\"')}"]`;
         const css = scopeCss(stripStyleTags(withAssets), scopeSelector);
         messageStyleHtml = `<style>${css}</style>`;
@@ -277,7 +274,9 @@
                 ])
             ).filter((id): id is string => !!id);
 
-            const templateCtx: TemplateContext = {
+            const ctx: RuntimeContext = {
+                roomId: $activeRoom?.id,
+                presetId: $appSettings?.presetId,
                 characterId: displayCharacterId,
                 personaId: displayPersonaId,
                 chatId: message.chatId,
@@ -291,10 +290,10 @@
             // Do not render display macros before display pipeline
             const dryRunMacros = createDryRunMacros();
             const displayMacros = createDisplayMacros($chatAssetsMap, ownerIds, rawAssetUrlCache);
-            const templated = await runTemplate(contentToRender, templateCtx, dryRunMacros);
-            const processed = await runPipeline(message.chatId, 'display', templated, templateCtx);
-            const rendered = await runTemplate(processed, templateCtx, displayMacros);
-            await renderMessageCSS(templateCtx, ownerIds);
+            const templated = await runTemplate(contentToRender, ctx, dryRunMacros);
+            const processed = await runPipeline(message.chatId, 'display', templated, ctx);
+            const rendered = await runTemplate(processed, ctx, displayMacros);
+            await renderMessageCSS(ctx, ownerIds);
             const protectedHtml = protectHtmlStyles(rendered);
             const rawHtml = await parseMarkdownAsync(protectedHtml.text);
             const restoredHtml = restoreHtmlStyles(rawHtml as string, protectedHtml.styles);
@@ -314,8 +313,6 @@
     }
 
     function refreshDisplay() {
-        const currentContent = activeSwipe?.content ?? '';
-
         // If completely done or error, render immediately without throttling
         if (message.displayStatus !== 'generating') {
             if (renderTimeout) {
@@ -339,13 +336,13 @@
         } else if (!renderTimeout) {
             renderTimeout = setTimeout(() => {
                 renderTimeout = null;
-                executeRender(activeSwipe?.content ?? ''); // Use latest content when timeout fires
+                executeRender(currentContent); // Use latest content when timeout fires
             }, RENDER_THROTTLE_MS - timeSinceLastRender);
         }
     }
 
     $effect(() => {
-        const current = activeSwipe?.content ?? '';
+        const current = currentContent;
         const status = message.displayStatus;
         const cssSource = messageCssSource();
 
@@ -449,40 +446,13 @@
 
             <!-- Message Content -->
         {:else}
-            <!-- Thought Process (Character only) -->
-            {#if !isUser && activeSwipe?.thought}
-                <div class="mb-1 w-full overflow-hidden rounded-xl border bg-muted/20">
-                    <button
-                        class="flex w-full items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:bg-muted/40"
-                        onclick={() => (thoughtExpanded = !thoughtExpanded)}
-                    >
-                        <div class="flex items-center gap-1.5">
-                            <Brain class="size-3 text-primary/70" />
-                            Thinking Process
-                        </div>
-                        {#if thoughtExpanded}
-                            <ChevronUp class="size-3" />
-                        {:else}
-                            <ChevronDown class="size-3" />
-                        {/if}
-                    </button>
-                    {#if thoughtExpanded}
-                        <div
-                            class="px-3 pb-3 pt-1 text-xs italic leading-relaxed text-muted-foreground/80"
-                        >
-                            {activeSwipe.thought || 'Processing thinking...'}
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-
             <!-- Bubble -->
             <div
                 class="relative rounded-2xl px-4 py-2.5 text-sm {isUser
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted text-foreground'}"
             >
-                {#if message.displayStatus === 'generating' && !activeSwipe?.content}
+                {#if message.displayStatus === 'generating' && !currentContent}
                     <span class="flex items-center gap-1.5 text-muted-foreground">
                         <Loader2 class="size-3 animate-spin" /> Thinking...
                     </span>
@@ -497,28 +467,18 @@
                             ? '**:text-primary-foreground prose-invert'
                             : 'dark:prose-invert'}"
                     ></div>
-                {:else if activeSwipe?.content}
+                {:else if currentContent}
                     <div
                         class="prose prose-sm max-w-none whitespace-pre-wrap {isUser
                             ? '**:text-primary-foreground prose-invert'
                             : 'dark:prose-invert'}"
                     >
-                        {activeSwipe.content}
+                        {currentContent}
                     </div>
                 {:else}
                     <div class="min-h-5"></div>
                 {/if}
             </div>
-
-            <!-- Tool Calls (Character only) -->
-            {#if !isUser && activeSwipe?.toolCalls && Object.keys(activeSwipe.toolCalls).length > 0 && message.displayStatus !== 'generating'}
-                <ToolCallGroup
-                    toolCalls={activeSwipe.toolCalls}
-                    {onLoadDetail}
-                    onApprove={(id) => onResolveTool(id, 'approve')}
-                    onReject={(id) => onResolveTool(id, 'reject')}
-                />
-            {/if}
 
             <!-- Single Action Row (hover) -->
             {#if message.displayStatus === 'completed'}

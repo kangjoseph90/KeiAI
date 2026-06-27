@@ -328,7 +328,7 @@ Pipeline steps:
 9. `prepareNextSwipe()` — create active swipe with `speakerId`, `speakerName`, and variables.
 10. Register ChatTask (messageId + AbortController).
 11. `buildPrompt()` — async pure prompt assembly over `PagedMessages`.
-12. Apply prompt-phase pipeline handlers with the resolved `TemplateContext`.
+12. Apply prompt-phase pipeline handlers with the resolved `RuntimeContext`.
 13. `selectLLMHandler()` → stream chunks.
 14. Per chunk: `updateMessageSwipe()` with streamed content/thought.
 15. Final output pass: `runTemplate()` → output pipeline → `runTemplate()` → `updateMessageSwipe()`.
@@ -355,7 +355,7 @@ The CharJS sandbox exposes `KeiAPI.getVar(key)` / `KeiAPI.setVar(key, value)`, w
 
 ### Prompt, Template, and Pipeline Context
 
-All prompt/template/pipeline execution uses `TemplateContext`. The default philosophy is "use the most specific context available."
+All prompt/template/pipeline execution uses `RuntimeContext`. The default philosophy is "use the most specific context available."
 
 | Scope                   | Context rule                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------- |

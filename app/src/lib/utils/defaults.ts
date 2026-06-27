@@ -56,7 +56,7 @@ export type DeepPartial<T> = T extends object
               : NonNullable<T[K]> extends unknown[]
                 ? T[K]
                 : NonNullable<T[K]> extends object
-                  ? DeepPartial<NonNullable<T[K]>>
+                  ? DeepPartial<NonNullable<T[K]>> | Extract<T[K], null>
                   : T[K];
       }
     : T;

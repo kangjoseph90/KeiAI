@@ -4,7 +4,6 @@ import { guestSDK } from './sdk';
 import type { Plugin } from '$lib/services/content/plugin';
 import { getPlugin, updatePlugin } from '$lib/stores/content/plugin';
 import { getAppSettings } from '$lib/stores/content/settings';
-import { getActivePreset } from '$lib/stores/content/preset';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
 import type { LLMTokenizer, LLMTypeDefinition, PluginLLMModel } from '$lib/types/models/llm';
@@ -14,6 +13,8 @@ import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$
 const logger = createLogger('plugins:manager');
 const PLUGIN_READY_TIMEOUT_MS = 5_000;
 const PLUGIN_UNLOAD_TIMEOUT_MS = 1_000;
+const DEFAULT_AUX_LLM_TYPE = 'aux';
+const DEFAULT_AUX_MAX_RESPONSE = 4096;
 
 export interface PluginInstance {
     pluginId: string;
@@ -294,18 +295,20 @@ export class PluginManager {
         async function* streamLLM(
             type: unknown,
             messages: unknown,
-            signal: unknown
+            signal: unknown,
+            options: unknown
         ): AsyncIterable<LLMStreamContent> {
             const abortSignal = signal instanceof AbortSignal ? signal : undefined;
+            const callOptions = readLLMCallOptions(options);
+            const llmType = callOptions.type ?? String(type || DEFAULT_AUX_LLM_TYPE);
             const settings = await getAppSettings();
-            const preset = getActivePreset();
-            if (!preset) {
+            if (!settings.presetId) {
                 throw new Error('No active preset selected');
             }
 
-            const modelConfig = resolveLLMModelConfig(String(type), preset);
+            const modelConfig = await resolveLLMModelConfig(llmType, settings.presetId);
             if (!modelConfig) {
-                throw new Error(`No model configured for LLM type: ${String(type)}`);
+                throw new Error(`No model configured for LLM type: ${llmType}`);
             }
 
             const handler = selectLLMHandler(modelConfig, settings);
@@ -313,26 +316,29 @@ export class PluginManager {
                 throw new Error('Failed to create LLM handler');
             }
 
-            const parameters = resolveLLMParameters(String(type), preset) ?? {};
+            const parameters = (await resolveLLMParameters(llmType, settings.presetId)) ?? {};
             yield* handler.stream(
                 messages as OpenAIChat[],
                 abortSignal ?? new AbortController().signal,
                 {
                     parameters,
-                    maxResponse: preset.maxResponse
+                    maxResponse: callOptions.maxResponse ?? DEFAULT_AUX_MAX_RESPONSE
                 }
             );
         }
 
         broker.expose('core.streamLLM', streamLLM);
 
-        broker.expose('core.callLLM', async (type: unknown, messages: unknown, signal: unknown) => {
-            let content = '';
-            for await (const chunk of streamLLM(type, messages, signal)) {
-                content = chunk.content;
+        broker.expose(
+            'core.callLLM',
+            async (type: unknown, messages: unknown, signal: unknown, options: unknown) => {
+                let content = '';
+                for await (const chunk of streamLLM(type, messages, signal, options)) {
+                    content = chunk.content;
+                }
+                return content;
             }
-            return content;
-        });
+        );
     }
 
     /**
@@ -385,3 +391,15 @@ export class PluginManager {
 }
 
 export const pluginManager = new PluginManager();
+
+function readLLMCallOptions(value: unknown): { type?: string; maxResponse?: number } {
+    if (!value || typeof value !== 'object') return {};
+    const record = value as Record<string, unknown>;
+    return {
+        type: typeof record.type === 'string' && record.type.trim() ? record.type : undefined,
+        maxResponse:
+            typeof record.maxResponse === 'number' && Number.isFinite(record.maxResponse)
+                ? record.maxResponse
+                : undefined
+    };
+}

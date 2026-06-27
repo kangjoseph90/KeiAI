@@ -1,11 +1,12 @@
 import { collectTemplateMacros, pushLocalMacros } from './macro';
 import { interpretTemplate } from './interpreter';
 import { parseTemplate } from './parser';
-import type { Macro, TemplateContext } from './types';
+import type { Macro } from './types';
+import type { RuntimeContext } from '$lib/types/context';
 
 export async function runTemplate(
     text: string,
-    ctx: TemplateContext,
+    ctx: RuntimeContext,
     localMacros?: ReadonlyMap<string, Macro>
 ): Promise<string> {
     const resolved = await collectTemplateMacros(ctx);
@@ -16,7 +17,7 @@ export async function runTemplate(
     return interpretTemplate(parsed, ctx, resolved);
 }
 
-export { collectTemplateMacros, createDryRunMacros } from './macro';
+export { collectTemplateMacros, createDryRunMacros, mergeLocalMacros } from './macro';
 export { interpretTemplate, parseTemplate };
 export type {
     BlockNode,
@@ -25,7 +26,6 @@ export type {
     MacroRegistry,
     MacroNode,
     Template,
-    TemplateContext,
     TemplateNode,
     TextNode
 } from './types';

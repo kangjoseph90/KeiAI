@@ -1,16 +1,16 @@
-import type { TemplateContext } from '$lib/template';
 import type { Message } from '$lib/services/content/message';
 import type { LLMRole } from '$lib/types/models/llm';
+import type { RuntimeContext } from '$lib/types/context';
 
-export function toRoleContext(ctx: TemplateContext, role: LLMRole): TemplateContext {
+export function toRoleContext(ctx: RuntimeContext, role: LLMRole): RuntimeContext {
     return { ...ctx, role };
 }
 
 export function toMessageContext(
     message: Message,
     messageIndex: number,
-    ctx: TemplateContext
-): TemplateContext {
+    ctx: RuntimeContext
+): RuntimeContext {
     const activeSwipe = message.swipes[message.activeSwipeId];
     return {
         ...ctx,
