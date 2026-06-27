@@ -2,9 +2,8 @@
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-    import { updatePreset } from '$lib/stores';
+    import { appSettings, updatePreset } from '$lib/stores';
     import {
-        BUILT_IN_LLM_TYPES,
         type LLMParameter,
         type LLMType,
         type LLMTypeDefinition,
@@ -12,6 +11,7 @@
     } from '$lib/types/models/llm';
     import { pluginManager } from '$lib/plugins';
     import type { Preset } from '$lib/services/content/preset';
+    import { getWorkflowLLMTypes } from '$lib/workflow/agent/llm';
 
     interface Props {
         preset: Preset;
@@ -29,19 +29,23 @@
         'frequency_penalty'
     ];
 
-    function collectLLMTypes(): LLMTypeDefinition[] {
-        const types = [
-            ...BUILT_IN_LLM_TYPES,
-            ...pluginManager.getInstances().flatMap((instance) => [...instance.llmTypes.values()])
-        ];
+    let llmTypes = $derived.by(() => {
+        const definitions: Record<string, LLMTypeDefinition> = {};
+        const allTypes = [
+            ...pluginManager.getInstances().flatMap((inst) => [...inst.llmTypes.values()]),
+            ...[preset.chatWorkflow, $appSettings?.translation.workflow].flatMap(
+                getWorkflowLLMTypes
+            )
+        ].filter((d) => d.type !== 'chat' && d.type !== 'aux');
 
-        const seen: Record<string, boolean> = {};
-        return types.filter((type) => {
-            if (seen[type.type]) return false;
-            seen[type.type] = true;
-            return true;
-        });
-    }
+        for (const d of allTypes) {
+            definitions[d.type] = {
+                type: d.type,
+                description: definitions[d.type]?.description ?? d.description
+            };
+        }
+        return Object.values(definitions);
+    });
 
     function enableOverride(type: LLMType) {
         updatePreset(preset.id, {
@@ -113,12 +117,12 @@
 
         {#if advancedOpen}
             <CardContent class="flex flex-col gap-4">
-                {#each collectLLMTypes() as role (role.type)}
+                {#each llmTypes as role (role.type)}
                     {@const params = preset.parameters[role.type]}
                     <div class="rounded-md border p-4">
                         <div class="flex items-start justify-between gap-4">
                             <div>
-                                <h4 class="text-sm font-semibold">{role.label}</h4>
+                                <h4 class="text-sm font-semibold">{role.type}</h4>
                                 {#if role.description}
                                     <p class="mt-1 text-xs text-muted-foreground">
                                         {role.description}

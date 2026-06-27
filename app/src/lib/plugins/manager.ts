@@ -277,11 +277,10 @@ export class PluginManager {
 
         broker.expose('core.registerLLMType', (type: unknown, opts: unknown) => {
             const llmType = String(type);
-            const options = (opts || {}) as { label?: string; description?: string };
+            const options = (opts || {}) as { description?: string };
 
             instance.llmTypes.set(llmType, {
                 type: llmType,
-                label: options.label || String(type),
                 description: options.description
             });
 
