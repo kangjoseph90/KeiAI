@@ -34,12 +34,14 @@ export interface ParentChildRelation {
 export const PARENT_CHILD: readonly ParentChildRelation[] = [
     // rooms → chats
     { parent: 'rooms', child: 'chats', fk: 'roomId' },
+    { parent: 'rooms', child: 'files', fk: 'ownerId' },
     // chats → owned resources + messages + chat-level tables
     { parent: 'chats', child: 'lorebooks', fk: 'ownerId' },
     { parent: 'chats', child: 'scripts', fk: 'ownerId' },
     { parent: 'chats', child: 'messages', fk: 'chatId', recurse: false },
     { parent: 'chats', child: 'tool_calls', fk: 'chatId' },
     { parent: 'chats', child: 'translations', fk: 'chatId' },
+    { parent: 'chats', child: 'files', fk: 'ownerId' },
     // characters → owned resources
     { parent: 'characters', child: 'lorebooks', fk: 'ownerId' },
     { parent: 'characters', child: 'scripts', fk: 'ownerId' },

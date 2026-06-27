@@ -91,7 +91,7 @@ export const FILE_READ_NODE_DEFINITION: WorkflowNodeDefinition<FileReadNode> = {
     label: 'File Read',
     category: 'file',
     inputs: {
-        source: { name: 'Source', required: false }
+        path: { name: 'Path', required: false }
     },
     outputs: {
         0: { name: 'content' }
@@ -101,10 +101,10 @@ export const FILE_READ_NODE_DEFINITION: WorkflowNodeDefinition<FileReadNode> = {
         name: 'File Read',
         class: 'FileRead',
         position: { x: 0, y: 0 },
-        source: '',
-        scope: 'user',
+        path: '',
+        namespace: 'global',
         inputs: {
-            source: null
+            path: null
         }
     })
 };
@@ -114,7 +114,7 @@ export const FILE_WRITE_NODE_DEFINITION: WorkflowNodeDefinition<FileWriteNode> =
     label: 'File Write',
     category: 'file',
     inputs: {
-        source: { name: 'Source', required: false },
+        path: { name: 'Path', required: false },
         content: { name: 'Content', required: true }
     },
     outputs: {
@@ -125,10 +125,10 @@ export const FILE_WRITE_NODE_DEFINITION: WorkflowNodeDefinition<FileWriteNode> =
         name: 'File Write',
         class: 'FileWrite',
         position: { x: 0, y: 0 },
-        source: '',
-        scope: 'user',
+        path: '',
+        namespace: 'global',
         inputs: {
-            source: null,
+            path: null,
             content: null
         }
     })

@@ -178,6 +178,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 `;
         sql += `CREATE INDEX IF NOT EXISTS "idx_charjs_ownerId" ON charjs (ownerId);
 `;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_files_ownerId" ON files (ownerId);
+`;
 
         // Compound index strictly required for pagination performance in messages
         sql += `CREATE INDEX IF NOT EXISTS "idx_messages_chatId_sortOrder" ON messages (chatId, sortOrder);

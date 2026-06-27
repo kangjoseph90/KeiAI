@@ -69,18 +69,18 @@ export interface WorkflowNodeExecutionContext<TNode extends WorkflowNode = Workf
     signal: AbortSignal;
 }
 
-export type FileScope = 'user' | 'room' | 'chat';
+export type FileNamespace = 'global' | 'room' | 'chat';
 
 export interface FileReadNode extends BaseNode {
     class: 'FileRead';
-    source: string; // file name / path
-    scope: FileScope;
+    path: string;
+    namespace: FileNamespace;
 }
 
 export interface FileWriteNode extends BaseNode {
     class: 'FileWrite';
-    source: string;
-    scope: FileScope;
+    path: string;
+    namespace: FileNamespace;
 }
 
 export interface OutputNode extends BaseNode {

@@ -22,6 +22,7 @@
         updateNode,
         type WorkflowDefinition,
         type WorkflowEditResult,
+        type WorkflowNodeChanges,
         type WorkflowNodeClass
     } from '$lib/workflow';
     import WorkflowNodeComponent, {
@@ -53,7 +54,8 @@
             data: {
                 node,
                 onEditPrompt,
-                onAddSlot: addAgentSlot
+                onAddSlot: addAgentSlot,
+                onUpdateNode: editNode
             } satisfies WorkflowNodeData
         }));
         edges = createEdges(workflow);
@@ -71,6 +73,10 @@
         let name = `input${index}`;
         while (Object.values(node.slotNames).includes(name)) name = `input${++index}`;
         return onEdit(createAgentInput(workflow, nodeId, name));
+    }
+
+    function editNode(nodeId: string, changes: WorkflowNodeChanges) {
+        return onEdit(updateNode(workflow, nodeId, changes));
     }
 
     function handleConnect(connection: Connection) {

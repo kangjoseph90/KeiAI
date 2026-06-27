@@ -619,6 +619,21 @@ describe('WebDatabaseAdapter (Dexie)', () => {
         });
     });
 
+    describe('files table', () => {
+        it('should index files by namespace owner', async () => {
+            const record = createTestRecord({
+                id: 'file-1',
+                ownerId: 'chat-1',
+                data: { namespace: 'chat', path: 'summary.txt', content: 'hello' }
+            });
+
+            await localDB.putRecord('files', record);
+
+            const files = await localDB.getByIndex<DataRecord>('files', 'ownerId', 'chat-1');
+            expect(files.map((file) => file.id)).toEqual(['file-1']);
+        });
+    });
+
     describe('chat table', () => {
         it('should store and retrieve chat records with roomId', async () => {
             const record = createTestRecord({ id: 'chat-1', roomId: 'room-1' });

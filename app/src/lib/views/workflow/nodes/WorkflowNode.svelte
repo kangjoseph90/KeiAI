@@ -1,11 +1,12 @@
 <script lang="ts" module>
     import type { Node } from '@xyflow/svelte';
-    import type { WorkflowNode } from '$lib/workflow';
+    import type { WorkflowNode, WorkflowNodeChanges } from '$lib/workflow';
 
     export interface WorkflowNodeData extends Record<string, unknown> {
         node: WorkflowNode;
         onEditPrompt: (nodeId: string) => void;
         onAddSlot: (nodeId: string) => void;
+        onUpdateNode: (nodeId: string, changes: WorkflowNodeChanges) => void;
     }
 
     export type WorkflowCanvasNode = Node<WorkflowNodeData, 'workflow'>;
@@ -47,6 +48,34 @@
     </div>
 
     <div class="flex min-h-12 flex-col gap-1.5 p-3">
+        {#if data.node.class === 'FileRead' || data.node.class === 'FileWrite'}
+            <label class="nodrag flex flex-col gap-1 text-[10px] text-muted-foreground">
+                Namespace
+                <select
+                    class="h-7 rounded border bg-background px-2 text-xs text-foreground"
+                    value={data.node.namespace}
+                    onchange={(event) =>
+                        data.onUpdateNode(data.node.id, {
+                            namespace: event.currentTarget.value as 'global' | 'room' | 'chat'
+                        })}
+                >
+                    <option value="global">global</option>
+                    <option value="room">room</option>
+                    <option value="chat">chat</option>
+                </select>
+            </label>
+            <label class="nodrag mb-2 flex flex-col gap-1 text-[10px] text-muted-foreground">
+                Path
+                <input
+                    class="h-7 rounded border bg-background px-2 text-xs text-foreground"
+                    value={data.node.path}
+                    placeholder="path/to/file.txt"
+                    onchange={(event) =>
+                        data.onUpdateNode(data.node.id, { path: event.currentTarget.value })}
+                />
+            </label>
+        {/if}
+
         {#each Object.keys(data.node.inputs) as inputId (inputId)}
             <div class="relative flex h-5 items-center text-xs text-muted-foreground">
                 <Handle

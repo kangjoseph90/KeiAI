@@ -1,9 +1,7 @@
-import { AppError } from '$lib/types/errors';
 import { executeAgentNode } from './agent/execute';
+import { executeFileReadNode, executeFileWriteNode } from './file/execute';
 import type {
     AgentNode,
-    FileReadNode,
-    FileWriteNode,
     OutputNode,
     StringConcatNode,
     StringNode,
@@ -82,20 +80,6 @@ async function* executeOutputNode({
         throwIfAborted(signal);
         yield state;
     }
-}
-
-function executeFileReadNode({
-    signal
-}: WorkflowNodeExecutionContext<FileReadNode>): WorkflowNodeStream {
-    throwIfAborted(signal);
-    throw new AppError('INVALID_INPUT', 'FileRead node executor is not implemented yet');
-}
-
-function executeFileWriteNode({
-    signal
-}: WorkflowNodeExecutionContext<FileWriteNode>): WorkflowNodeStream {
-    throwIfAborted(signal);
-    throw new AppError('INVALID_INPUT', 'FileWrite node executor is not implemented yet');
 }
 
 function firstInput(inputs: WorkflowNodeExecutionContext['inputs']) {
