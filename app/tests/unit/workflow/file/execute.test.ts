@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { executeFileReadNode, executeFileWriteNode } from '$lib/workflow/file/execute';
-import type { WorkflowInputStream } from '$lib/workflow';
+import type { WorkflowInput, WorkflowNodeEvent, WorkflowOutput } from '$lib/workflow';
 
 const mocks = vi.hoisted(() => ({
     getByPath: vi.fn(),
@@ -38,58 +38,55 @@ describe('workflow file executors', () => {
         mocks.upsert.mockResolvedValue(undefined);
     });
 
-    it('reads once and yields the stored content once', async () => {
+    it('reads once and pushes the stored content once', async () => {
         mocks.getByPath.mockResolvedValue({ content: 'saved content' });
 
-        const states = await collect(
-            executeFileReadNode({
-                node: {
-                    id: 'read',
-                    name: 'Read',
-                    class: 'FileRead',
-                    position: { x: 0, y: 0 },
-                    namespace: 'chat',
-                    inputs: { path: { sourceNode: 'path', sourcePort: 0 } },
-                    inputValues: { path: 'fallback.txt' }
-                },
-                inputs: { path: input('dynamic.txt') },
-                ctx: { chatId: 'chat-1' },
-                signal: new AbortController().signal
-            })
-        );
+        const { output, events } = capture();
 
-        expect(states).toEqual([
-            { content: 'saved content', type: 'string', value: 'saved content' }
-        ]);
+        await executeFileReadNode({
+            node: {
+                id: 'read',
+                name: 'Read',
+                class: 'FileRead',
+                position: { x: 0, y: 0 },
+                namespace: 'chat',
+                inputs: { path: { sourceNode: 'path', sourcePort: 0 } },
+                inputValues: { path: 'fallback.txt' }
+            },
+            inputs: { path: input('dynamic.txt') },
+            ctx: { chatId: 'chat-1' },
+            output,
+            signal: new AbortController().signal
+        });
+
+        expect(events).toEqual([{ status: 'value', value: 'saved content' }]);
         expect(mocks.getByPath).toHaveBeenCalledOnce();
         expect(mocks.getByPath).toHaveBeenCalledWith('chat', 'chat-1', 'dynamic.txt');
     });
 
-    it('waits for final content, writes once, and yields once', async () => {
+    it('waits for final content, writes once, and pushes once', async () => {
         const content = input('final content');
 
-        const states = await collect(
-            executeFileWriteNode({
-                node: {
-                    id: 'write',
-                    name: 'Write',
-                    class: 'FileWrite',
-                    position: { x: 0, y: 0 },
-                    namespace: 'room',
-                    inputs: { path: null, content: { sourceNode: 'agent', sourcePort: 0 } },
-                    inputValues: { path: 'result.txt', content: '' }
-                },
-                inputs: { path: input('result.txt'), content },
-                ctx: { roomId: 'room-1' },
-                signal: new AbortController().signal
-            })
-        );
+        const { output, events } = capture();
 
-        expect(states).toEqual([
-            { content: 'final content', type: 'string', value: 'final content' }
-        ]);
-        expect(content.final).toHaveBeenCalledOnce();
-        expect(content.stream).not.toHaveBeenCalled();
+        await executeFileWriteNode({
+            node: {
+                id: 'write',
+                name: 'Write',
+                class: 'FileWrite',
+                position: { x: 0, y: 0 },
+                namespace: 'room',
+                inputs: { path: null, content: { sourceNode: 'agent', sourcePort: 0 } },
+                inputValues: { path: 'result.txt', content: '' }
+            },
+            inputs: { path: input('result.txt'), content },
+            ctx: { roomId: 'room-1' },
+            output,
+            signal: new AbortController().signal
+        });
+
+        expect(events).toEqual([{ status: 'value', value: 'final content' }]);
+        expect(content.doneCount).toBe(1);
         expect(mocks.upsert).toHaveBeenCalledOnce();
         expect(mocks.upsert).toHaveBeenCalledWith(
             'room',
@@ -101,17 +98,27 @@ describe('workflow file executors', () => {
     });
 });
 
-function input(content: string): WorkflowInputStream {
+function input(content: string): WorkflowInput & { doneCount: number } {
+    let doneCount = 0;
     return {
-        stream: vi.fn(() => emptyStream()),
-        final: vi.fn(async () => content)
+        subscribe: () => undefined,
+        get done(): Promise<WorkflowNodeEvent> {
+            doneCount += 1;
+            return Promise.resolve({ status: 'value', value: content });
+        },
+        get doneCount(): number {
+            return doneCount;
+        }
     };
 }
 
-async function* emptyStream() {}
-
-async function collect(stream: AsyncIterable<{ content: string; type: string; value: unknown }>) {
-    const states: Array<{ content: string; type: string; value: unknown }> = [];
-    for await (const state of stream) states.push(state);
-    return states;
+function capture(): {
+    output: WorkflowOutput;
+    events: WorkflowNodeEvent[];
+} {
+    const events: WorkflowNodeEvent[] = [];
+    const output = {
+        emit: (event: WorkflowNodeEvent) => events.push(event)
+    };
+    return { output, events };
 }

@@ -24,6 +24,7 @@
         CircleDot,
         FileInput,
         FileOutput,
+        GitBranch,
         GitMerge,
         Hash,
         Plus,
@@ -70,6 +71,8 @@
                 return 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300';
             case 'operator':
                 return 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300';
+            case 'flow':
+                return 'border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300';
             case 'file':
                 return 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300';
             case 'output':
@@ -83,6 +86,8 @@
                 return '!bg-violet-500';
             case 'operator':
                 return '!bg-sky-500';
+            case 'flow':
+                return '!bg-fuchsia-500';
             case 'file':
                 return '!bg-amber-500';
             case 'output':
@@ -114,6 +119,8 @@
                 <Hash class="size-4" />
             {:else if data.node.class === 'BooleanLogic' || data.node.class === 'BooleanNot'}
                 <CircleDot class="size-4" />
+            {:else if data.node.class === 'Gate' || data.node.class === 'Ungate'}
+                <GitBranch class="size-4" />
             {:else if data.node.class === 'FileRead'}
                 <FileInput class="size-4" />
             {:else if data.node.class === 'FileWrite'}

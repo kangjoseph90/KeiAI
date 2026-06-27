@@ -5,69 +5,72 @@ import {
     executeBooleanNode,
     executeBooleanNotNode,
     executeConcatNode,
+    executeGateNode,
     executeNumberCompareNode,
     executeNumberMathNode,
     executeNumberNode,
     executeStringIncludesNode,
     executeStringLengthNode,
-    executeStringNode
+    executeStringNode,
+    executeUngateNode
 } from './operator/execute';
 import { AppError } from '$lib/types/errors';
-import type { OutputNode, WorkflowNodeExecutionContext, WorkflowNodeStream } from './types';
-import { createWorkflowStreamState } from './value';
+import type {
+    OutputNode,
+    WorkflowNode,
+    WorkflowNodeClass,
+    WorkflowNodeExecutionContext
+} from './types';
+import { createWorkflowValueEvent, throwIfAborted, workflowValueToString } from './util';
 
-export function executeWorkflowNode(context: WorkflowNodeExecutionContext): WorkflowNodeStream {
-    switch (context.node.class) {
-        case 'String':
-            return executeStringNode({ ...context, node: context.node });
-        case 'Number':
-            return executeNumberNode({ ...context, node: context.node });
-        case 'Boolean':
-            return executeBooleanNode({ ...context, node: context.node });
-        case 'Concat':
-            return executeConcatNode({ ...context, node: context.node });
-        case 'StringLength':
-            return executeStringLengthNode({ ...context, node: context.node });
-        case 'StringIncludes':
-            return executeStringIncludesNode({ ...context, node: context.node });
-        case 'NumberMath':
-            return executeNumberMathNode({ ...context, node: context.node });
-        case 'NumberCompare':
-            return executeNumberCompareNode({ ...context, node: context.node });
-        case 'BooleanLogic':
-            return executeBooleanLogicNode({ ...context, node: context.node });
-        case 'BooleanNot':
-            return executeBooleanNotNode({ ...context, node: context.node });
-        case 'Output':
-            return executeOutputNode({ ...context, node: context.node });
-        case 'FileRead':
-            return executeFileReadNode({ ...context, node: context.node });
-        case 'FileWrite':
-            return executeFileWriteNode({ ...context, node: context.node });
-        case 'Agent':
-            return executeAgentNode({ ...context, node: context.node });
-    }
+type WorkflowNodeExecutor<TNode extends WorkflowNode = WorkflowNode> = (
+    context: WorkflowNodeExecutionContext<TNode>
+) => void | Promise<void>;
+
+// Registry mapping WorkflowNodeClass to respective executors, keeping dynamic dispatch type-safe.
+const WORKFLOW_NODE_EXECUTORS = {
+    String: executeStringNode,
+    Number: executeNumberNode,
+    Boolean: executeBooleanNode,
+    Concat: executeConcatNode,
+    StringLength: executeStringLengthNode,
+    StringIncludes: executeStringIncludesNode,
+    NumberMath: executeNumberMathNode,
+    NumberCompare: executeNumberCompareNode,
+    BooleanLogic: executeBooleanLogicNode,
+    BooleanNot: executeBooleanNotNode,
+    Gate: executeGateNode,
+    Ungate: executeUngateNode,
+    Output: executeOutputNode,
+    FileRead: executeFileReadNode,
+    FileWrite: executeFileWriteNode,
+    Agent: executeAgentNode
+} as Record<WorkflowNodeClass, WorkflowNodeExecutor<WorkflowNode>>;
+
+export function executeWorkflowNode(context: WorkflowNodeExecutionContext): void | Promise<void> {
+    return WORKFLOW_NODE_EXECUTORS[context.node.class](context);
 }
 
-async function* executeOutputNode({
+async function executeOutputNode({
     node,
     inputs,
+    output,
     signal
-}: WorkflowNodeExecutionContext<OutputNode>): WorkflowNodeStream {
+}: WorkflowNodeExecutionContext<OutputNode>): Promise<void> {
     throwIfAborted(signal);
     const input = inputs.content;
     if (!input) {
         throw new AppError('INVALID_INPUT', `Output content input is required: ${node.id}`);
     }
 
-    for await (const state of input.stream()) {
-        throwIfAborted(signal);
-        yield createWorkflowStreamState(state.content, 'string');
-    }
-}
+    // Passthrough: stream every intermediate value.
+    input.subscribe((value) => {
+        output.emit(createWorkflowValueEvent(workflowValueToString(value)));
+    });
 
-function throwIfAborted(signal: AbortSignal): void {
-    if (signal.aborted) {
-        throw new DOMException('Workflow run aborted', 'AbortError');
+    const result = await input.done;
+    throwIfAborted(signal);
+    if (result.status !== 'value') {
+        output.emit(result);
     }
 }

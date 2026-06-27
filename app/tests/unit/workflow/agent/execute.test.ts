@@ -281,7 +281,7 @@ describe('executeAgentNode', () => {
 
         await expect(iterator.next()).resolves.toEqual({
             done: false,
-            value: { content: 'chat output', type: 'string', value: 'chat output' }
+            value: 'chat output'
         });
 
         let completed = false;
@@ -295,12 +295,72 @@ describe('executeAgentNode', () => {
         releaseAgent?.();
         await expect(completion).resolves.toEqual({ done: true, value: undefined });
     });
+
+    it('streams every cumulative LLM chunk to Output in order', async () => {
+        // Multi-token: mock LLM yields cumulative content ('He', 'Hello', 'Hello!').
+        // Each chunk must reach run() as a separate value event, in order.
+        mockSelectLLMHandler.mockReturnValue({
+            stream: vi.fn(async function* () {
+                yield { content: 'He' };
+                yield { content: 'Hello' };
+                yield { content: 'Hello!' };
+            })
+        });
+
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                agent: {
+                    id: 'agent',
+                    name: 'Agent',
+                    class: 'Agent',
+                    position: { x: 0, y: 0 },
+                    llmType: 'chat',
+                    maxContext: 1000,
+                    maxResponse: 100,
+                    lorebookRatio: 0.2,
+                    memoryRatio: 0.2,
+                    lorebookScanDepth: 0,
+                    promptBlocks: {
+                        instruction: {
+                            id: 'instruction',
+                            name: 'Instruction',
+                            type: 'text',
+                            role: 'user',
+                            content: 'greet',
+                            sortOrder: 'a',
+                            enabled: true
+                        }
+                    },
+                    slotNames: {},
+                    inputs: {},
+                    inputValues: {}
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'agent', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        const values: string[] = [];
+        for await (const value of new WorkflowRuntime(workflow, {
+            ctx: { presetId: 'preset-1' },
+            messages: {} as PagedMessages
+        }).run()) {
+            values.push(value);
+        }
+        expect(values).toEqual(['He', 'Hello', 'Hello!']);
+    });
 });
 
-async function collectFinal(stream: AsyncIterable<{ content: string }>): Promise<string> {
+async function collectFinal(stream: AsyncIterable<string>): Promise<string> {
     let final = '';
-    for await (const state of stream) {
-        final = state.content;
+    for await (const value of stream) {
+        final = value;
     }
     return final;
 }

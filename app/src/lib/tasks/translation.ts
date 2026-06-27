@@ -91,8 +91,7 @@ export async function runTranslation(
         });
 
         let finalContent = '';
-        for await (const state of runtime.run()) {
-            finalContent = state.content;
+        for await (finalContent of runtime.run()) {
             await updateTranslation(translation.id, { text: finalContent });
         }
 

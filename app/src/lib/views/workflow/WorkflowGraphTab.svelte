@@ -54,6 +54,7 @@
         { label: 'Strings', classes: ['Concat', 'StringLength', 'StringIncludes'] },
         { label: 'Numbers', classes: ['NumberMath', 'NumberCompare'] },
         { label: 'Booleans', classes: ['BooleanLogic', 'BooleanNot'] },
+        { label: 'Flow', classes: ['Gate', 'Ungate'] },
         { label: 'Files', classes: ['FileRead', 'FileWrite'] },
         { label: 'Result', classes: ['Output'] }
     ];

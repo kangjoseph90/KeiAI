@@ -4,69 +4,83 @@ import { RoomService } from '$lib/services/content/room';
 import { getActiveSession } from '$lib/services/session';
 import { AppError } from '$lib/types/errors';
 import type { DataScopeType } from '$lib/adapters/db';
-import type { FileNamespace } from '../types';
-import type {
-    FileReadNode,
-    FileWriteNode,
-    WorkflowInputStream,
-    WorkflowNodeExecutionContext,
-    WorkflowNodeStream
-} from '../types';
-import { createWorkflowStreamState, workflowValueToString } from '../value';
+import type { FileNamespace, WorkflowInput, WorkflowNodeEvent } from '../types';
+import type { FileReadNode, FileWriteNode, WorkflowNodeExecutionContext } from '../types';
+import {
+    createWorkflowValueEvent,
+    requireInput,
+    throwIfAborted,
+    workflowValueToString
+} from '../util';
 
 interface ResolvedFileNamespace {
     namespaceId: string;
     scopeType: DataScopeType;
 }
 
-export async function* executeFileReadNode({
+export async function executeFileReadNode({
     node,
     inputs,
     ctx,
+    output,
     signal
-}: WorkflowNodeExecutionContext<FileReadNode>): WorkflowNodeStream {
+}: WorkflowNodeExecutionContext<FileReadNode>): Promise<void> {
     throwIfAborted(signal);
-    const [path, target] = await Promise.all([
-        resolvePath(inputs.path),
+    const [pathResult, target] = await Promise.all([
+        resolvePathResult(inputs.path),
         resolveNamespace(node.namespace, ctx)
     ]);
     throwIfAborted(signal);
 
+    if (pathResult.status !== 'value') {
+        output.emit(pathResult);
+        return;
+    }
+
+    const path = workflowValueToString(pathResult.value);
     const file = await FileService.getByPath(node.namespace, target.namespaceId, path);
     if (!file) throw new AppError('NOT_FOUND', `File not found: ${node.namespace}:${path}`);
 
-    yield createWorkflowStreamState(file.content, 'string');
+    output.emit(createWorkflowValueEvent(file.content));
 }
 
-export async function* executeFileWriteNode({
+export async function executeFileWriteNode({
     node,
     inputs,
     ctx,
+    output,
     signal
-}: WorkflowNodeExecutionContext<FileWriteNode>): WorkflowNodeStream {
+}: WorkflowNodeExecutionContext<FileWriteNode>): Promise<void> {
     throwIfAborted(signal);
-    const contentInput = inputs.content;
-    if (!contentInput) {
-        throw new AppError('INVALID_INPUT', `FileWrite content input is required: ${node.id}`);
-    }
-
-    const [path, rawContent, target] = await Promise.all([
-        resolvePath(inputs.path),
-        contentInput.final(),
+    const [pathResult, contentResult, target] = await Promise.all([
+        resolvePathResult(inputs.path),
+        requireInput(inputs.content, `FileWrite content input is required: ${node.id}`),
         resolveNamespace(node.namespace, ctx)
     ]);
     throwIfAborted(signal);
 
-    const content = workflowValueToString(rawContent);
+    if (pathResult.status !== 'value') {
+        output.emit(pathResult);
+        return;
+    }
+    if (contentResult.status !== 'value') {
+        output.emit(contentResult);
+        return;
+    }
+
+    const path = workflowValueToString(pathResult.value);
+    const content = workflowValueToString(contentResult.value);
     await FileService.upsert(node.namespace, target.namespaceId, path, content, target.scopeType);
     throwIfAborted(signal);
-    yield createWorkflowStreamState(content, 'string');
+    output.emit(createWorkflowValueEvent(content));
 }
 
-async function resolvePath(input?: WorkflowInputStream): Promise<string> {
-    const path = input ? workflowValueToString(await input.final()) : '';
+async function resolvePathResult(input: WorkflowInput | undefined): Promise<WorkflowNodeEvent> {
+    const result = await requireInput(input, 'File path is required');
+    if (result.status !== 'value') return result;
+    const path = workflowValueToString(result.value);
     if (!path.trim()) throw new AppError('INVALID_INPUT', 'File path is required');
-    return path;
+    return result;
 }
 
 async function resolveNamespace(
@@ -93,8 +107,4 @@ async function resolveNamespace(
             return { namespaceId: chat.id, scopeType: chat.scopeType };
         }
     }
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-    if (signal.aborted) throw new DOMException('Workflow run aborted', 'AbortError');
 }

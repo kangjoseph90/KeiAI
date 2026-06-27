@@ -266,6 +266,137 @@ describe('WorkflowRuntime', () => {
         await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('false');
     });
 
+    it('gates false into skip and ungates skip into false', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                condition: {
+                    id: 'condition',
+                    name: 'Condition',
+                    class: 'Boolean',
+                    position: { x: 0, y: 0 },
+                    value: false,
+                    inputs: {},
+                    inputValues: {}
+                },
+                gate: {
+                    id: 'gate',
+                    name: 'Gate',
+                    class: 'Gate',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        condition: { sourceNode: 'condition', sourcePort: 0 }
+                    },
+                    inputValues: {
+                        condition: false
+                    }
+                },
+                ungate: {
+                    id: 'ungate',
+                    name: 'Ungate',
+                    class: 'Ungate',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        condition: { sourceNode: 'gate', sourcePort: 0 }
+                    },
+                    inputValues: {
+                        condition: false
+                    }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        content: { sourceNode: 'ungate', sourcePort: 0 }
+                    },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('false');
+    });
+
+    it('keeps side-path errors on their edge without failing a successful output', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                ok: {
+                    id: 'ok',
+                    name: 'Ok',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    content: 'ok',
+                    inputs: {},
+                    inputValues: {}
+                },
+                broken: {
+                    id: 'broken',
+                    name: 'Broken Side Path',
+                    class: 'NumberMath',
+                    position: { x: 0, y: 0 },
+                    operator: 'divide',
+                    inputs: {
+                        a: null,
+                        b: null
+                    },
+                    inputValues: {
+                        a: 1,
+                        b: 0
+                    }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        content: { sourceNode: 'ok', sourcePort: 0 }
+                    },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('ok');
+    });
+
+    it('fails when an error reaches Output', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                broken: {
+                    id: 'broken',
+                    name: 'Broken Output Path',
+                    class: 'NumberMath',
+                    position: { x: 0, y: 0 },
+                    operator: 'divide',
+                    inputs: {
+                        a: null,
+                        b: null
+                    },
+                    inputValues: {
+                        a: 1,
+                        b: 0
+                    }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        content: { sourceNode: 'broken', sourcePort: 0 }
+                    },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).rejects.toThrow(
+            'Broken Output Path failed: Cannot divide by zero: broken'
+        );
+    });
+
     it('runs typed string operators', async () => {
         const lengthWorkflow: WorkflowDefinition = {
             nodes: {
@@ -569,12 +700,131 @@ describe('WorkflowRuntime', () => {
             'Output content input is required: output'
         );
     });
+
+    // Regression tests for streaming/skip/error event propagation.
+    it('yields every intermediate value of a streaming Concat in order', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                source: {
+                    id: 'source',
+                    name: 'Source',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    content: 'abc',
+                    inputs: {},
+                    inputValues: {}
+                },
+                concat: {
+                    id: 'concat',
+                    name: 'Concat',
+                    class: 'Concat',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        a: { sourceNode: 'source', sourcePort: 0 },
+                        b: null,
+                        separator: null
+                    },
+                    inputValues: { a: '', b: 'X', separator: '' }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'concat', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        const events = await collectEvents(new WorkflowRuntime(workflow).run());
+        expect(events[events.length - 1]).toBe('abcX');
+    });
+
+    it('propagates a Gate skip to a downstream Ungate as false', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                condition: {
+                    id: 'condition',
+                    name: 'Condition',
+                    class: 'Boolean',
+                    position: { x: 0, y: 0 },
+                    value: false,
+                    inputs: {},
+                    inputValues: {}
+                },
+                gate: {
+                    id: 'gate',
+                    name: 'Gate',
+                    class: 'Gate',
+                    position: { x: 0, y: 0 },
+                    inputs: { condition: { sourceNode: 'condition', sourcePort: 0 } },
+                    inputValues: { condition: false }
+                },
+                ungate: {
+                    id: 'ungate',
+                    name: 'Ungate',
+                    class: 'Ungate',
+                    position: { x: 0, y: 0 },
+                    inputs: { condition: { sourceNode: 'gate', sourcePort: 0 } },
+                    inputValues: { condition: false }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'ungate', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        const events = await collectEvents(new WorkflowRuntime(workflow).run());
+        expect(events[events.length - 1]).toBe('false');
+    });
+
+    it('rejects run() and surfaces the failing node in the error message when Output errors', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                broken: {
+                    id: 'broken',
+                    name: 'Broken Output Path',
+                    class: 'NumberMath',
+                    position: { x: 0, y: 0 },
+                    operator: 'divide',
+                    inputs: { a: null, b: null },
+                    inputValues: { a: 1, b: 0 }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'broken', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectEvents(new WorkflowRuntime(workflow).run())).rejects.toThrow(
+            'Broken Output Path failed: Cannot divide by zero: broken'
+        );
+    });
 });
 
-async function collectFinal(stream: AsyncIterable<{ content: string }>): Promise<string> {
+async function collectFinal(stream: AsyncIterable<string>): Promise<string> {
     let final = '';
-    for await (const state of stream) {
-        final = state.content;
+    for await (const value of stream) {
+        final = value;
     }
     return final;
+}
+
+async function collectEvents(stream: AsyncIterable<string>): Promise<string[]> {
+    const events: string[] = [];
+    for await (const value of stream) {
+        events.push(value);
+    }
+    return events;
 }

@@ -5,6 +5,7 @@ import type {
     BooleanNotNode,
     FileReadNode,
     FileWriteNode,
+    GateNode,
     NumberCompareNode,
     NumberMathNode,
     NumberNode,
@@ -13,12 +14,13 @@ import type {
     StringIncludesNode,
     StringLengthNode,
     StringNode,
+    UngateNode,
     WorkflowNode,
     WorkflowNodeClass,
     WorkflowPortType
 } from './types';
 
-export type WorkflowNodeCategory = 'agent' | 'operator' | 'file' | 'output';
+export type WorkflowNodeCategory = 'agent' | 'operator' | 'flow' | 'file' | 'output';
 
 export interface WorkflowPortDefinition {
     name: string;
@@ -282,6 +284,54 @@ export const BOOLEAN_NOT_NODE_DEFINITION: WorkflowNodeDefinition<BooleanNotNode>
     })
 };
 
+export const GATE_NODE_DEFINITION: WorkflowNodeDefinition<GateNode> = {
+    class: 'Gate',
+    label: 'Gate',
+    category: 'flow',
+    inputs: {
+        condition: { name: 'Condition', type: 'boolean', required: false }
+    },
+    outputs: {
+        0: { name: 'condition', type: 'boolean' }
+    },
+    createDefault: (id) => ({
+        id,
+        name: 'Gate',
+        class: 'Gate',
+        position: { x: 0, y: 0 },
+        inputs: {
+            condition: null
+        },
+        inputValues: {
+            condition: false
+        }
+    })
+};
+
+export const UNGATE_NODE_DEFINITION: WorkflowNodeDefinition<UngateNode> = {
+    class: 'Ungate',
+    label: 'Ungate',
+    category: 'flow',
+    inputs: {
+        condition: { name: 'Condition', type: 'boolean', required: false }
+    },
+    outputs: {
+        0: { name: 'condition', type: 'boolean' }
+    },
+    createDefault: (id) => ({
+        id,
+        name: 'Ungate',
+        class: 'Ungate',
+        position: { x: 0, y: 0 },
+        inputs: {
+            condition: null
+        },
+        inputValues: {
+            condition: false
+        }
+    })
+};
+
 export const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
     class: 'Output',
     label: 'Output',
@@ -390,6 +440,8 @@ export const WORKFLOW_NODE_DEFINITIONS = {
     NumberCompare: NUMBER_COMPARE_NODE_DEFINITION,
     BooleanLogic: BOOLEAN_LOGIC_NODE_DEFINITION,
     BooleanNot: BOOLEAN_NOT_NODE_DEFINITION,
+    Gate: GATE_NODE_DEFINITION,
+    Ungate: UNGATE_NODE_DEFINITION,
     Output: OUTPUT_NODE_DEFINITION,
     FileRead: FILE_READ_NODE_DEFINITION,
     FileWrite: FILE_WRITE_NODE_DEFINITION,
@@ -397,36 +449,7 @@ export const WORKFLOW_NODE_DEFINITIONS = {
 } satisfies Record<WorkflowNodeClass, WorkflowNodeDefinition<WorkflowNode>>;
 
 export function createDefaultWorkflowNode(nodeClass: WorkflowNodeClass, id: string): WorkflowNode {
-    switch (nodeClass) {
-        case 'String':
-            return STRING_NODE_DEFINITION.createDefault(id);
-        case 'Number':
-            return NUMBER_NODE_DEFINITION.createDefault(id);
-        case 'Boolean':
-            return BOOLEAN_NODE_DEFINITION.createDefault(id);
-        case 'Concat':
-            return CONCAT_NODE_DEFINITION.createDefault(id);
-        case 'StringLength':
-            return STRING_LENGTH_NODE_DEFINITION.createDefault(id);
-        case 'StringIncludes':
-            return STRING_INCLUDES_NODE_DEFINITION.createDefault(id);
-        case 'NumberMath':
-            return NUMBER_MATH_NODE_DEFINITION.createDefault(id);
-        case 'NumberCompare':
-            return NUMBER_COMPARE_NODE_DEFINITION.createDefault(id);
-        case 'BooleanLogic':
-            return BOOLEAN_LOGIC_NODE_DEFINITION.createDefault(id);
-        case 'BooleanNot':
-            return BOOLEAN_NOT_NODE_DEFINITION.createDefault(id);
-        case 'Output':
-            return OUTPUT_NODE_DEFINITION.createDefault(id);
-        case 'FileRead':
-            return FILE_READ_NODE_DEFINITION.createDefault(id);
-        case 'FileWrite':
-            return FILE_WRITE_NODE_DEFINITION.createDefault(id);
-        case 'Agent':
-            return AGENT_NODE_DEFINITION.createDefault(id);
-    }
+    return WORKFLOW_NODE_DEFINITIONS[nodeClass].createDefault(id);
 }
 
 export function getWorkflowInputPortDefinition(

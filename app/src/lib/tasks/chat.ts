@@ -123,9 +123,7 @@ export async function runChat(
         });
 
         let finalContent = '';
-        for await (const state of runtime.run()) {
-            finalContent = state.content;
-
+        for await (finalContent of runtime.run()) {
             await updateMessageSwipe(preparedMessage.id, targetSwipeId, {
                 content: finalContent
             });

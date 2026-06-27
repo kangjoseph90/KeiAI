@@ -28,6 +28,8 @@ export type WorkflowNode =
     | BooleanNode
     | BooleanLogicNode
     | BooleanNotNode
+    | GateNode
+    | UngateNode
     | NumberNode
     | NumberCompareNode
     | NumberMathNode
@@ -55,22 +57,47 @@ export type WorkflowPortType = 'string' | 'number' | 'boolean';
 
 export type WorkflowValue = string | number | boolean;
 
-export interface WorkflowNodeStreamState {
+export interface WorkflowValueEvent {
+    status: 'value';
     value: WorkflowValue;
-    type: WorkflowPortType;
-    content: string;
 }
 
-export type WorkflowNodeStream = AsyncIterable<WorkflowNodeStreamState>;
+export type WorkflowNodeEvent =
+    | WorkflowValueEvent
+    | {
+          status: 'skip';
+          message?: string;
+      }
+    | {
+          status: 'error';
+          error: unknown;
+          message: string;
+          nodeId?: string;
+          nodeName?: string;
+      };
 
-export interface WorkflowInputStream {
-    stream(): WorkflowNodeStream;
-    final(): Promise<WorkflowValue>;
+/**
+ * Upstream input port. `subscribe` for streaming/passthrough/recombinant nodes,
+ * `done` for discrete nodes needing only the final value.
+ */
+export interface WorkflowInput {
+    subscribe(onValue: (value: WorkflowValue) => void): void;
+    done: Promise<WorkflowNodeEvent>;
+}
+
+/**
+ * Output port. `emit` pushes any WorkflowNodeEvent.
+ * Value events are streamed; skip/error events are terminal.
+ * If the executor returns without emitting a terminal event, the runtime auto-completes.
+ */
+export interface WorkflowOutput {
+    emit(event: WorkflowNodeEvent): void;
 }
 
 export interface WorkflowNodeExecutionContext<TNode extends WorkflowNode = WorkflowNode> {
     node: TNode;
-    inputs: Record<string, WorkflowInputStream>;
+    inputs: Record<string, WorkflowInput>;
+    output: WorkflowOutput;
     ctx?: RuntimeContext;
     localMacros?: ReadonlyMap<string, Macro>;
     messages?: PagedMessages;
@@ -150,6 +177,14 @@ export interface BooleanLogicNode extends BaseNode {
 
 export interface BooleanNotNode extends BaseNode {
     class: 'BooleanNot';
+}
+
+export interface GateNode extends BaseNode {
+    class: 'Gate';
+}
+
+export interface UngateNode extends BaseNode {
+    class: 'Ungate';
 }
 
 export interface AgentNode extends BaseNode {

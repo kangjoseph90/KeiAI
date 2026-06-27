@@ -419,7 +419,7 @@ describe('Chat Pipeline', () => {
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
-        expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Prompt error');
+        expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Agent failed: Prompt error');
     });
 
     it('should reject generation when the character ref is missing in room', async () => {
@@ -515,7 +515,7 @@ describe('Chat Pipeline', () => {
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
-        expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Network fail');
+        expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Agent failed: Network fail');
         expect(clearChatTask).not.toHaveBeenCalled();
     });
 

@@ -104,8 +104,8 @@ describe('translation task', () => {
             text: '안녕하세요'
         });
         mocks.runtimeStream.mockImplementation(async function* () {
-            yield { content: '안녕' };
-            yield { content: '안녕하세요' };
+            yield '안녕';
+            yield '안녕하세요';
         });
     });
 
@@ -168,7 +168,7 @@ describe('translation task', () => {
 
     it('keeps a failed task available for the UI to dismiss', async () => {
         mocks.runtimeStream.mockImplementation(async function* () {
-            yield { content: 'partial' };
+            yield 'partial';
             throw new Error('provider failed');
         });
 
