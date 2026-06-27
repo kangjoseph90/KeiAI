@@ -23,6 +23,7 @@
         disconnectNodeInput,
         renameAgentInput,
         updateNode,
+        canConnectWorkflowNodes,
         validateWorkflow,
         type WorkflowDefinition,
         type WorkflowEditResult,
@@ -49,7 +50,10 @@
     const nodeTypes = { workflow: WorkflowNodeComponent } satisfies NodeTypes;
     const nodeGroups: Array<{ label: string; classes: WorkflowNodeClass[] }> = [
         { label: 'Agent', classes: ['Agent'] },
-        { label: 'Operators', classes: ['String', 'Concat'] },
+        { label: 'Values', classes: ['String', 'Number', 'Boolean'] },
+        { label: 'Strings', classes: ['Concat', 'StringLength', 'StringIncludes'] },
+        { label: 'Numbers', classes: ['NumberMath', 'NumberCompare'] },
+        { label: 'Booleans', classes: ['BooleanLogic', 'BooleanNot'] },
         { label: 'Files', classes: ['FileRead', 'FileWrite'] },
         { label: 'Result', classes: ['Output'] }
     ];
@@ -113,9 +117,34 @@
         return onEdit(deleteAgentInput(workflow, nodeId, inputId));
     }
 
+    $effect(() => {
+        const handleKeydown = (event: KeyboardEvent) => {
+            if (event.key !== 'Delete') return;
+            if (shouldIgnoreDeleteKey(event.target)) return;
+            if (!selectedNode) return;
+
+            event.preventDefault();
+            void deleteSelectedNode();
+        };
+
+        window.addEventListener('keydown', handleKeydown);
+        return () => window.removeEventListener('keydown', handleKeydown);
+    });
+
     function handleConnect(connection: Connection) {
         if (!connection.source || !connection.target || !connection.targetHandle) return;
         const sourcePort = Number(connection.sourceHandle ?? 0);
+        if (
+            !canConnectWorkflowNodes(
+                workflow,
+                connection.target,
+                connection.targetHandle,
+                connection.source,
+                sourcePort
+            )
+        ) {
+            return;
+        }
         return onEdit(
             connectNodes(
                 workflow,
@@ -127,6 +156,18 @@
         );
     }
 
+    function isValidConnection(connection: Connection | Edge): boolean {
+        if (!connection.source || !connection.target || !connection.targetHandle) return false;
+        const sourcePort = Number(connection.sourceHandle ?? 0);
+        return canConnectWorkflowNodes(
+            workflow,
+            connection.target,
+            connection.targetHandle,
+            connection.source,
+            sourcePort
+        );
+    }
+
     function handleDelete(event: { nodes: WorkflowCanvasNode[]; edges: Edge[] }) {
         for (const edge of event.edges) {
             if (edge.targetHandle && workflow.nodes[edge.target]) {
@@ -134,18 +175,28 @@
             }
         }
         for (const node of event.nodes) {
-            const workflowNode = workflow.nodes[node.id];
-            if (workflowNode && workflowNode.class !== 'Output') {
-                void onEdit(deleteNode(workflow, node.id));
-            }
+            void deleteWorkflowNode(node.id);
         }
     }
 
     function deleteSelectedNode() {
-        if (!selectedNode || selectedNode.class === 'Output') return;
-        const result = deleteNode(workflow, selectedNode.id);
+        if (!selectedNode) return;
+        return deleteWorkflowNode(selectedNode.id);
+    }
+
+    function deleteWorkflowNode(nodeId: string) {
+        const node = workflow.nodes[nodeId];
+        if (!node || node.class === 'Output') return;
+        if (node.class === 'Agent' && !confirm(`Delete agent node "${node.name}"?`)) return;
+
+        const result = deleteNode(workflow, nodeId);
         onSelectNode(null);
         return onEdit(result);
+    }
+
+    function shouldIgnoreDeleteKey(target: EventTarget | null): boolean {
+        if (!(target instanceof HTMLElement)) return false;
+        return Boolean(target.closest('input, textarea, select, button, [contenteditable="true"]'));
     }
 
     function createEdges(value: WorkflowDefinition): Edge[] {
@@ -172,7 +223,11 @@
         for (const node of Object.values(value.nodes)) {
             const definition = WORKFLOW_NODE_DEFINITIONS[node.class];
             for (const [inputId, port] of Object.entries(definition.inputs)) {
-                if (port.required && !node.inputs[inputId] && !node.inputValues[inputId]?.trim()) {
+                if (
+                    port.required &&
+                    !node.inputs[inputId] &&
+                    !hasRequiredInputValue(node.inputValues[inputId])
+                ) {
                     result.push({
                         nodeId: node.id,
                         message: `${node.name}: ${port.name} input is required`
@@ -196,17 +251,20 @@
     function isOutputNode(node: WorkflowDefinition['nodes'][string]) {
         return node.class === 'Output';
     }
+
+    function hasRequiredInputValue(value: unknown): boolean {
+        return typeof value === 'string' ? value.trim().length > 0 : value !== undefined;
+    }
 </script>
 
 <div class="relative min-h-0 flex-1 overflow-hidden rounded-lg border bg-muted/20">
     <div
-        class="absolute left-3 top-3 z-10 flex items-stretch rounded-lg border bg-background/95 p-1 shadow-sm backdrop-blur"
+        class="absolute left-3 top-3 z-10 flex max-h-[calc(100%-6rem)] w-44 flex-col gap-2 overflow-y-auto rounded-xl border bg-background/95 p-2 shadow-sm backdrop-blur"
     >
-        {#each nodeGroups as group, groupIndex (group.label)}
-            {#if groupIndex > 0}<div class="mx-1 w-px bg-border"></div>{/if}
-            <div class="flex items-center gap-0.5">
+        {#each nodeGroups as group (group.label)}
+            <div class="flex flex-col gap-1">
                 <span
-                    class="px-1.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground"
+                    class="px-1.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
                 >
                     {group.label}
                 </span>
@@ -214,7 +272,7 @@
                     <Button
                         size="sm"
                         variant="ghost"
-                        class="h-7 gap-1 px-2 text-xs"
+                        class="h-7 justify-start gap-1.5 px-2 text-xs"
                         disabled={nodeClass === 'Output' &&
                             Object.values(workflow.nodes).some(isOutputNode)}
                         onclick={() => addWorkflowNode(nodeClass)}
@@ -288,6 +346,7 @@
         fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
         minZoom={0.25}
         maxZoom={2}
+        {isValidConnection}
         onconnect={handleConnect}
         onnodeclick={({ node }) => onSelectNode(node.id)}
         onnodedragstart={({ targetNode }) => targetNode && onSelectNode(targetNode.id)}

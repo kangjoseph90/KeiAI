@@ -2,7 +2,8 @@ import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
 import { deepMerge, createPatch, NO_CHANGE } from '$lib/utils/defaults';
 import { generateId } from '$lib/utils/id';
-import { WORKFLOW_NODE_DEFINITIONS, createDefaultWorkflowNode } from './registry';
+import { createDefaultWorkflowNode } from './registry';
+import { validateWorkflowConnection } from './validation';
 import type {
     AgentNode,
     PromptBlock,
@@ -110,20 +111,8 @@ export function connectNodes(
 ): WorkflowEditResult {
     const next = structuredClone(workflow);
     const target = requireNode(next, targetNodeId);
-    const source = requireNode(next, sourceNodeId);
-
-    if (!(targetInput in target.inputs)) {
-        throw new AppError('NOT_FOUND', `Workflow input not found: ${targetNodeId}.${targetInput}`);
-    }
-    if (!Number.isInteger(sourcePort) || sourcePort < 0) {
-        throw new AppError('INVALID_INPUT', `Invalid workflow source port: ${sourcePort}`);
-    }
-    if (!(sourcePort in WORKFLOW_NODE_DEFINITIONS[source.class].outputs)) {
-        throw new AppError(
-            'NOT_FOUND',
-            `Workflow output port not found: ${sourceNodeId}.${sourcePort}`
-        );
-    }
+    requireNode(next, sourceNodeId);
+    validateWorkflowConnection(next, targetNodeId, targetInput, sourceNodeId, sourcePort);
 
     target.inputs[targetInput] = { sourceNode: sourceNodeId, sourcePort };
 

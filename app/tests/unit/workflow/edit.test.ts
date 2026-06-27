@@ -89,6 +89,27 @@ describe('workflow edits', () => {
         );
     });
 
+    it('rejects connections with incompatible port types', () => {
+        const workflow = createDefaultChatWorkflow();
+        const source = createNode(workflow, 'String');
+        const math = createNode(source.workflow, 'NumberMath');
+
+        expect(() => connectNodes(math.workflow, math.nodeId, 'a', source.nodeId)).toThrow(
+            `Workflow port type mismatch: ${source.nodeId}.0 (string) -> ${math.nodeId}.a (number)`
+        );
+    });
+
+    it('rejects connections that would create a cycle', () => {
+        const workflow = createDefaultChatWorkflow();
+        const left = createNode(workflow, 'Concat');
+        const right = createNode(left.workflow, 'Concat');
+        const connected = connectNodes(right.workflow, right.nodeId, 'a', left.nodeId);
+
+        expect(() => connectNodes(connected.workflow, left.nodeId, 'a', right.nodeId)).toThrow(
+            `Workflow connection would create a cycle: ${right.nodeId} -> ${left.nodeId}`
+        );
+    });
+
     it('keeps named Agent inputs when their connections are removed', () => {
         const workflow = createDefaultChatWorkflow();
         const source = createNode(workflow, 'String');

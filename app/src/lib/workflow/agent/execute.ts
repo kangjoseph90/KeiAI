@@ -4,6 +4,7 @@ import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$
 import { AppError } from '$lib/types/errors';
 import type { Macro } from '$lib/template';
 import type { AgentNode, WorkflowNodeExecutionContext, WorkflowNodeStream } from '../types';
+import { createWorkflowStreamState, workflowValueToString } from '../value';
 import { buildPrompt } from './prompt';
 import { serializeStreamContent } from './llm';
 
@@ -56,7 +57,7 @@ export async function* executeAgentNode({
         maxResponse: node.maxResponse
     })) {
         throwIfAborted(signal);
-        yield { content: serializeStreamContent(state) };
+        yield createWorkflowStreamState(serializeStreamContent(state), 'string');
     }
 }
 
@@ -70,7 +71,7 @@ async function buildAgentLocalMacros(
     for (const [inputId, input] of Object.entries(inputs)) {
         const slotName = node.slotNames[inputId];
         if (!slotName) throw new Error(`Agent input slot name not found: ${inputId}`);
-        slots.set(slotName, await input.final());
+        slots.set(slotName, workflowValueToString(await input.final()));
     }
 
     const macros = new Map<string, Macro>(localMacros);

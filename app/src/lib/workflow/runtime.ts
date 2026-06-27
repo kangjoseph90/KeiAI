@@ -6,9 +6,17 @@ import type {
     WorkflowDefinition,
     WorkflowInputStream,
     WorkflowNodeExecutionContext,
+    WorkflowPortType,
+    WorkflowValue,
     WorkflowNodeStream,
     WorkflowNodeStreamState
 } from './types';
+import { coerceWorkflowValue, createWorkflowStreamState } from './value';
+import {
+    canConnectWorkflowPortTypes,
+    getWorkflowInputPortDefinition,
+    getWorkflowOutputPortDefinition
+} from './registry';
 import type { Macro } from '$lib/template';
 import type { RuntimeContext } from '$lib/types/context';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
@@ -21,7 +29,7 @@ export interface WorkflowRuntimeOptions {
 }
 
 interface NodeRuntime {
-    done: Promise<string>;
+    done: Promise<WorkflowValue>;
     latest?: WorkflowNodeStreamState;
     finished: boolean;
     error: unknown;
@@ -60,7 +68,7 @@ export class WorkflowRuntime {
         ];
         const runs = nodeIds.map((nodeId) => this.#getOrCreateRuntime(nodeId).done);
         let outputFailure: { error: unknown } | undefined;
-        let results: PromiseSettledResult<string>[] = [];
+        let results: PromiseSettledResult<WorkflowValue>[] = [];
 
         try {
             for await (const state of this.#streamNode(outputNodeId)) {
@@ -80,14 +88,14 @@ export class WorkflowRuntime {
         if (failed) throw failed.reason;
     }
 
-    async #runNode(nodeId: string, runtime: NodeRuntime): Promise<string> {
+    async #runNode(nodeId: string, runtime: NodeRuntime): Promise<WorkflowValue> {
         const node = this.#workflow.nodes[nodeId];
         if (!node) {
             throw new AppError('NOT_FOUND', `Workflow node not found: ${nodeId}`);
         }
         try {
             const inputs = this.#resolveInputs(node);
-            let finalContent = '';
+            let finalValue: WorkflowValue = '';
 
             for await (const state of executeWorkflowNode({
                 node,
@@ -97,13 +105,13 @@ export class WorkflowRuntime {
                 messages: this.#messages,
                 signal: this.#signal
             })) {
-                finalContent = state.content;
+                finalValue = state.value;
                 this.#publish(runtime, state);
             }
 
             runtime.finished = true;
             this.#closeSubscribers(runtime);
-            return finalContent;
+            return finalValue;
         } catch (error) {
             runtime.finished = true;
             runtime.error = error;
@@ -117,35 +125,65 @@ export class WorkflowRuntime {
     ): Record<string, WorkflowInputStream> {
         const inputs: Record<string, WorkflowInputStream> = {};
         for (const [inputName, connection] of Object.entries(node.inputs)) {
+            const input = getWorkflowInputPortDefinition(node, inputName);
+            const inputType = input?.type ?? 'string';
             if (connection) {
-                inputs[inputName] = this.#resolveConnection(connection);
+                inputs[inputName] = this.#resolveConnection(connection, inputType);
             } else if (inputName in node.inputValues) {
-                inputs[inputName] = this.#resolveLiteral(node.inputValues[inputName]);
+                inputs[inputName] = this.#resolveLiteral(node.inputValues[inputName], inputType);
             }
         }
         return inputs;
     }
 
-    #resolveLiteral(content: string): WorkflowInputStream {
+    #resolveLiteral(value: WorkflowValue, type: WorkflowPortType): WorkflowInputStream {
+        const typedValue = coerceWorkflowValue(value, type);
         return {
             stream: async function* () {
-                yield { content };
+                yield createWorkflowStreamState(typedValue, type);
             },
-            final: async () => content
+            final: async () => typedValue
         };
     }
 
-    #resolveConnection(connection: Exclude<InputPort, null>): WorkflowInputStream {
-        if (connection.sourcePort !== 0) {
+    #resolveConnection(
+        connection: Exclude<InputPort, null>,
+        targetType: WorkflowPortType
+    ): WorkflowInputStream {
+        const source = this.#workflow.nodes[connection.sourceNode];
+        const output = source
+            ? getWorkflowOutputPortDefinition(source, connection.sourcePort)
+            : undefined;
+        if (!source || !output) {
+            throw new AppError(
+                'NOT_FOUND',
+                `Workflow output port not found: ${connection.sourceNode}.${connection.sourcePort}`
+            );
+        }
+        if (!canConnectWorkflowPortTypes(output.type, targetType)) {
             throw new AppError(
                 'INVALID_INPUT',
-                `Only sourcePort 0 is supported by the string-only workflow runtime: ${connection.sourcePort}`
+                `Workflow port type mismatch: ${connection.sourceNode}.${connection.sourcePort} (${output.type}) -> ${targetType}`
             );
         }
         return {
-            stream: () => this.#streamNode(connection.sourceNode),
-            final: () => this.#getOrCreateRuntime(connection.sourceNode).done
+            stream: () => this.#coerceStream(this.#streamNode(connection.sourceNode), targetType),
+            final: async () =>
+                coerceWorkflowValue(
+                    await this.#getOrCreateRuntime(connection.sourceNode).done,
+                    targetType
+                )
         };
+    }
+
+    async *#coerceStream(
+        stream: WorkflowNodeStream,
+        targetType: WorkflowPortType
+    ): WorkflowNodeStream {
+        for await (const state of stream) {
+            const value = coerceWorkflowValue(state.value, targetType);
+            yield createWorkflowStreamState(value, targetType);
+        }
     }
 
     #getOrCreateRuntime(nodeId: string): NodeRuntime {

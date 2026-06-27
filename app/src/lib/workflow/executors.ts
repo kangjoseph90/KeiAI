@@ -1,72 +1,52 @@
 import { executeAgentNode } from './agent/execute';
 import { executeFileReadNode, executeFileWriteNode } from './file/execute';
+import {
+    executeBooleanLogicNode,
+    executeBooleanNode,
+    executeBooleanNotNode,
+    executeConcatNode,
+    executeNumberCompareNode,
+    executeNumberMathNode,
+    executeNumberNode,
+    executeStringIncludesNode,
+    executeStringLengthNode,
+    executeStringNode
+} from './operator/execute';
 import { AppError } from '$lib/types/errors';
-import type {
-    AgentNode,
-    OutputNode,
-    StringConcatNode,
-    StringNode,
-    WorkflowNodeExecutionContext,
-    WorkflowNodeStream
-} from './types';
+import type { OutputNode, WorkflowNodeExecutionContext, WorkflowNodeStream } from './types';
+import { createWorkflowStreamState } from './value';
 
 export function executeWorkflowNode(context: WorkflowNodeExecutionContext): WorkflowNodeStream {
     switch (context.node.class) {
         case 'String':
-            return executeStringNode({
-                ...context,
-                node: context.node
-            });
+            return executeStringNode({ ...context, node: context.node });
+        case 'Number':
+            return executeNumberNode({ ...context, node: context.node });
+        case 'Boolean':
+            return executeBooleanNode({ ...context, node: context.node });
         case 'Concat':
-            return executeConcatNode({
-                ...context,
-                node: context.node
-            });
+            return executeConcatNode({ ...context, node: context.node });
+        case 'StringLength':
+            return executeStringLengthNode({ ...context, node: context.node });
+        case 'StringIncludes':
+            return executeStringIncludesNode({ ...context, node: context.node });
+        case 'NumberMath':
+            return executeNumberMathNode({ ...context, node: context.node });
+        case 'NumberCompare':
+            return executeNumberCompareNode({ ...context, node: context.node });
+        case 'BooleanLogic':
+            return executeBooleanLogicNode({ ...context, node: context.node });
+        case 'BooleanNot':
+            return executeBooleanNotNode({ ...context, node: context.node });
         case 'Output':
-            return executeOutputNode({
-                ...context,
-                node: context.node
-            });
+            return executeOutputNode({ ...context, node: context.node });
         case 'FileRead':
-            return executeFileReadNode({
-                ...context,
-                node: context.node
-            });
+            return executeFileReadNode({ ...context, node: context.node });
         case 'FileWrite':
-            return executeFileWriteNode({
-                ...context,
-                node: context.node
-            });
+            return executeFileWriteNode({ ...context, node: context.node });
         case 'Agent':
-            return executeAgentNode({
-                ...context,
-                node: context.node
-            });
+            return executeAgentNode({ ...context, node: context.node });
     }
-}
-
-async function* executeStringNode({
-    node,
-    signal
-}: WorkflowNodeExecutionContext<StringNode>): WorkflowNodeStream {
-    throwIfAborted(signal);
-    yield { content: node.content };
-}
-
-async function* executeConcatNode({
-    node,
-    inputs,
-    signal
-}: WorkflowNodeExecutionContext<StringConcatNode>): WorkflowNodeStream {
-    throwIfAborted(signal);
-    const [a, b, separator] = await Promise.all([
-        inputs.a?.final() ?? '',
-        inputs.b?.final() ?? '',
-        inputs.separator?.final() ?? ''
-    ]);
-    throwIfAborted(signal);
-    const content = [a, b].join(separator);
-    yield { content };
 }
 
 async function* executeOutputNode({
@@ -82,7 +62,7 @@ async function* executeOutputNode({
 
     for await (const state of input.stream()) {
         throwIfAborted(signal);
-        yield state;
+        yield createWorkflowStreamState(state.content, 'string');
     }
 }
 

@@ -12,6 +12,7 @@ import type {
     WorkflowNodeExecutionContext,
     WorkflowNodeStream
 } from '../types';
+import { createWorkflowStreamState, workflowValueToString } from '../value';
 
 interface ResolvedFileNamespace {
     namespaceId: string;
@@ -34,7 +35,7 @@ export async function* executeFileReadNode({
     const file = await FileService.getByPath(node.namespace, target.namespaceId, path);
     if (!file) throw new AppError('NOT_FOUND', `File not found: ${node.namespace}:${path}`);
 
-    yield { content: file.content };
+    yield createWorkflowStreamState(file.content, 'string');
 }
 
 export async function* executeFileWriteNode({
@@ -49,20 +50,21 @@ export async function* executeFileWriteNode({
         throw new AppError('INVALID_INPUT', `FileWrite content input is required: ${node.id}`);
     }
 
-    const [path, content, target] = await Promise.all([
+    const [path, rawContent, target] = await Promise.all([
         resolvePath(inputs.path),
         contentInput.final(),
         resolveNamespace(node.namespace, ctx)
     ]);
     throwIfAborted(signal);
 
+    const content = workflowValueToString(rawContent);
     await FileService.upsert(node.namespace, target.namespaceId, path, content, target.scopeType);
     throwIfAborted(signal);
-    yield { content };
+    yield createWorkflowStreamState(content, 'string');
 }
 
 async function resolvePath(input?: WorkflowInputStream): Promise<string> {
-    const path = input ? await input.final() : '';
+    const path = input ? workflowValueToString(await input.final()) : '';
     if (!path.trim()) throw new AppError('INVALID_INPUT', 'File path is required');
     return path;
 }

@@ -281,7 +281,7 @@ describe('executeAgentNode', () => {
 
         await expect(iterator.next()).resolves.toEqual({
             done: false,
-            value: { content: 'chat output' }
+            value: { content: 'chat output', type: 'string', value: 'chat output' }
         });
 
         let completed = false;

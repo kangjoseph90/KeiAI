@@ -93,6 +93,251 @@ describe('WorkflowRuntime', () => {
         );
     });
 
+    it('coerces number and boolean outputs into string inputs', async () => {
+        const numberWorkflow: WorkflowDefinition = {
+            nodes: {
+                count: {
+                    id: 'count',
+                    name: 'Count',
+                    class: 'Number',
+                    position: { x: 0, y: 0 },
+                    value: 42,
+                    inputs: {},
+                    inputValues: {}
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        content: { sourceNode: 'count', sourcePort: 0 }
+                    },
+                    inputValues: {}
+                }
+            }
+        };
+        const booleanWorkflow: WorkflowDefinition = {
+            nodes: {
+                enabled: {
+                    id: 'enabled',
+                    name: 'Enabled',
+                    class: 'Boolean',
+                    position: { x: 0, y: 0 },
+                    value: true,
+                    inputs: {},
+                    inputValues: {}
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        content: { sourceNode: 'enabled', sourcePort: 0 }
+                    },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(numberWorkflow).run())).resolves.toBe('42');
+        await expect(collectFinal(new WorkflowRuntime(booleanWorkflow).run())).resolves.toBe(
+            'true'
+        );
+    });
+
+    it('runs typed number and boolean operators', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                value: {
+                    id: 'value',
+                    name: 'Value',
+                    class: 'Number',
+                    position: { x: 0, y: 0 },
+                    value: 5,
+                    inputs: {},
+                    inputValues: {}
+                },
+                math: {
+                    id: 'math',
+                    name: 'Math',
+                    class: 'NumberMath',
+                    position: { x: 0, y: 0 },
+                    operator: 'multiply',
+                    inputs: {
+                        a: { sourceNode: 'value', sourcePort: 0 },
+                        b: null
+                    },
+                    inputValues: {
+                        a: 0,
+                        b: 3
+                    }
+                },
+                compare: {
+                    id: 'compare',
+                    name: 'Compare',
+                    class: 'NumberCompare',
+                    position: { x: 0, y: 0 },
+                    operator: 'greaterThan',
+                    inputs: {
+                        a: { sourceNode: 'math', sourcePort: 0 },
+                        b: null
+                    },
+                    inputValues: {
+                        a: 0,
+                        b: 10
+                    }
+                },
+                not: {
+                    id: 'not',
+                    name: 'Not',
+                    class: 'BooleanNot',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        value: { sourceNode: 'compare', sourcePort: 0 }
+                    },
+                    inputValues: {
+                        value: false
+                    }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        content: { sourceNode: 'not', sourcePort: 0 }
+                    },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('false');
+    });
+
+    it('runs extended boolean logic operators', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                xor: {
+                    id: 'xor',
+                    name: 'Xor',
+                    class: 'BooleanLogic',
+                    position: { x: 0, y: 0 },
+                    operator: 'xor',
+                    inputs: {
+                        a: null,
+                        b: null
+                    },
+                    inputValues: {
+                        a: true,
+                        b: false
+                    }
+                },
+                nor: {
+                    id: 'nor',
+                    name: 'Nor',
+                    class: 'BooleanLogic',
+                    position: { x: 0, y: 0 },
+                    operator: 'nor',
+                    inputs: {
+                        a: { sourceNode: 'xor', sourcePort: 0 },
+                        b: null
+                    },
+                    inputValues: {
+                        a: false,
+                        b: false
+                    }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        content: { sourceNode: 'nor', sourcePort: 0 }
+                    },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('false');
+    });
+
+    it('runs typed string operators', async () => {
+        const lengthWorkflow: WorkflowDefinition = {
+            nodes: {
+                source: {
+                    id: 'source',
+                    name: 'Source',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    content: 'hello world',
+                    inputs: {},
+                    inputValues: {}
+                },
+                length: {
+                    id: 'length',
+                    name: 'Length',
+                    class: 'StringLength',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        value: { sourceNode: 'source', sourcePort: 0 }
+                    },
+                    inputValues: {
+                        value: ''
+                    }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        content: { sourceNode: 'length', sourcePort: 0 }
+                    },
+                    inputValues: {}
+                }
+            }
+        };
+        const includesWorkflow: WorkflowDefinition = {
+            nodes: {
+                includes: {
+                    id: 'includes',
+                    name: 'Includes',
+                    class: 'StringIncludes',
+                    position: { x: 0, y: 0 },
+                    caseSensitive: false,
+                    inputs: {
+                        text: null,
+                        search: null
+                    },
+                    inputValues: {
+                        text: 'Hello World',
+                        search: 'world'
+                    }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        content: { sourceNode: 'includes', sourcePort: 0 }
+                    },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(lengthWorkflow).run())).resolves.toBe('11');
+        await expect(collectFinal(new WorkflowRuntime(includesWorkflow).run())).resolves.toBe(
+            'true'
+        );
+    });
+
     it('shares an upstream node across fan-out paths', async () => {
         const workflow: WorkflowDefinition = {
             nodes: {

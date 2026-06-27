@@ -1,6 +1,6 @@
 <script module lang="ts">
     import type { Node, NodeProps } from '@xyflow/svelte';
-    import type { WorkflowNode, WorkflowNodeChanges } from '$lib/workflow';
+    import type { WorkflowNode, WorkflowNodeChanges, WorkflowValue } from '$lib/workflow';
 
     export interface WorkflowNodeData extends Record<string, unknown> {
         node: WorkflowNode;
@@ -21,16 +21,18 @@
         Bot,
         Braces,
         CheckCircle2,
+        CircleDot,
         FileInput,
         FileOutput,
         GitMerge,
+        Hash,
         Plus,
         Settings2,
-        TriangleAlert,
-        X
+        TriangleAlert
     } from 'lucide-svelte';
     import { WORKFLOW_NODE_DEFINITIONS } from '$lib/workflow';
     import type { LLMType } from '$lib/types/models/llm';
+    import WorkflowInputRow from './WorkflowInputRow.svelte';
 
     type AgentNumberField =
         | 'maxContext'
@@ -51,7 +53,7 @@
         updateNodeInternals(id);
     });
 
-    function updateInputValue(inputId: string, value: string) {
+    function updateInputValue(inputId: string, value: WorkflowValue) {
         data.onUpdateNode(data.node.id, { inputValues: { [inputId]: value } });
     }
 
@@ -102,8 +104,16 @@
                 <Bot class="size-4" />
             {:else if data.node.class === 'String'}
                 <Braces class="size-4" />
-            {:else if data.node.class === 'Concat'}
+            {:else if data.node.class === 'Number'}
+                <Hash class="size-4" />
+            {:else if data.node.class === 'Boolean'}
+                <CircleDot class="size-4" />
+            {:else if data.node.class === 'Concat' || data.node.class === 'StringLength' || data.node.class === 'StringIncludes'}
                 <GitMerge class="size-4" />
+            {:else if data.node.class === 'NumberMath' || data.node.class === 'NumberCompare'}
+                <Hash class="size-4" />
+            {:else if data.node.class === 'BooleanLogic' || data.node.class === 'BooleanNot'}
+                <CircleDot class="size-4" />
             {:else if data.node.class === 'FileRead'}
                 <FileInput class="size-4" />
             {:else if data.node.class === 'FileWrite'}
@@ -204,6 +214,104 @@
                         data.onUpdateNode(data.node.id, { content: event.currentTarget.value })}
                 ></textarea>
             </label>
+        {:else if data.node.class === 'Number'}
+            <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                Value
+                <input
+                    type="number"
+                    class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                    value={data.node.value}
+                    onchange={(event) =>
+                        data.onUpdateNode(data.node.id, {
+                            value: Number(event.currentTarget.value)
+                        })}
+                />
+            </label>
+        {:else if data.node.class === 'Boolean'}
+            <label
+                class="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5 text-xs text-muted-foreground"
+            >
+                Value
+                <input
+                    type="checkbox"
+                    class="nodrag size-4"
+                    checked={data.node.value}
+                    onchange={(event) =>
+                        data.onUpdateNode(data.node.id, {
+                            value: event.currentTarget.checked
+                        })}
+                />
+            </label>
+        {:else if data.node.class === 'NumberMath'}
+            <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                Operator
+                <select
+                    class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                    value={data.node.operator}
+                    onchange={(event) =>
+                        data.onUpdateNode(data.node.id, {
+                            operator: event.currentTarget.value as typeof data.node.operator
+                        })}
+                >
+                    <option value="add">add</option>
+                    <option value="subtract">subtract</option>
+                    <option value="multiply">multiply</option>
+                    <option value="divide">divide</option>
+                </select>
+            </label>
+        {:else if data.node.class === 'NumberCompare'}
+            <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                Operator
+                <select
+                    class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                    value={data.node.operator}
+                    onchange={(event) =>
+                        data.onUpdateNode(data.node.id, {
+                            operator: event.currentTarget.value as typeof data.node.operator
+                        })}
+                >
+                    <option value="equal">equal</option>
+                    <option value="notEqual">not equal</option>
+                    <option value="greaterThan">greater than</option>
+                    <option value="greaterThanOrEqual">greater than or equal</option>
+                    <option value="lessThan">less than</option>
+                    <option value="lessThanOrEqual">less than or equal</option>
+                </select>
+            </label>
+        {:else if data.node.class === 'BooleanLogic'}
+            <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                Operator
+                <select
+                    class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                    value={data.node.operator}
+                    onchange={(event) =>
+                        data.onUpdateNode(data.node.id, {
+                            operator: event.currentTarget.value as typeof data.node.operator
+                        })}
+                >
+                    <option value="and">and</option>
+                    <option value="or">or</option>
+                    <option value="xor">xor</option>
+                    <option value="nand">nand</option>
+                    <option value="nor">nor</option>
+                    <option value="xnor">xnor</option>
+                </select>
+            </label>
+        {:else if data.node.class === 'StringIncludes'}
+            <label
+                class="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5 text-xs text-muted-foreground"
+            >
+                Case sensitive
+                <input
+                    type="checkbox"
+                    class="nodrag size-4"
+                    checked={data.node.caseSensitive}
+                    onchange={(event) =>
+                        data.onUpdateNode(data.node.id, {
+                            caseSensitive: event.currentTarget.checked
+                        })}
+                />
+            </label>
         {:else if data.node.class === 'FileRead' || data.node.class === 'FileWrite'}
             <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
                 Namespace
@@ -234,59 +342,16 @@
                 {#each inputEntries as [inputId, connection] (inputId)}
                     {@const port = definition.inputs[inputId]}
                     {@const hasLiteral = inputId in data.node.inputValues}
-                    <div class="relative -mx-3 flex min-h-7 items-center gap-2 px-3 text-xs">
-                        <Handle
-                            type="target"
-                            id={inputId}
-                            position={Position.Left}
-                            class="!left-0 !size-3 !border-2 !border-card {connection
-                                ? '!bg-primary'
-                                : '!bg-muted-foreground'}"
-                        />
-                        {#if data.node.class === 'Agent'}
-                            <input
-                                class="nodrag w-20 shrink-0 bg-transparent text-xs text-muted-foreground outline-none"
-                                value={data.node.slotNames[inputId]}
-                                aria-label="Input name"
-                                onchange={(event) =>
-                                    data.onRenameSlot(
-                                        data.node.id,
-                                        inputId,
-                                        event.currentTarget.value
-                                    )}
-                            />
-                        {:else}
-                            <span class="w-16 shrink-0 truncate text-muted-foreground">
-                                {port?.name ?? inputId}{#if port?.required}<span
-                                        class="text-destructive">*</span
-                                    >{/if}
-                            </span>
-                        {/if}
-                        {#if hasLiteral}
-                            <input
-                                class="nodrag h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
-                                value={data.node.inputValues[inputId]}
-                                disabled={connection !== null}
-                                placeholder={connection ? 'Connected' : 'String'}
-                                onchange={(event) =>
-                                    updateInputValue(inputId, event.currentTarget.value)}
-                            />
-                        {:else}
-                            <span
-                                class="min-w-0 flex-1 text-right text-[9px] text-muted-foreground/60"
-                            >
-                                {connection ? 'linked' : 'string'}
-                            </span>
-                        {/if}
-                        {#if data.node.class === 'Agent'}
-                            <button
-                                class="nodrag -mr-1 rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
-                                title="Delete input"
-                                onclick={() => data.onDeleteSlot(data.node.id, inputId)}
-                                ><X class="size-3" /></button
-                            >
-                        {/if}
-                    </div>
+                    <WorkflowInputRow
+                        node={data.node}
+                        {inputId}
+                        {connection}
+                        {port}
+                        {hasLiteral}
+                        onUpdateInputValue={updateInputValue}
+                        onRenameSlot={data.onRenameSlot}
+                        onDeleteSlot={data.onDeleteSlot}
+                    />
                 {/each}
                 {#if data.node.class === 'Agent'}
                     <button
@@ -309,6 +374,7 @@
                 {#each outputEntries as [outputId, port] (outputId)}
                     <div class="relative -mx-3 flex h-6 items-center justify-end px-3 text-xs">
                         <span class="text-muted-foreground">{port.name}</span>
+                        <span class="ml-1 text-[9px] text-muted-foreground/50">{port.type}</span>
                         <Handle
                             type="source"
                             id={outputId}

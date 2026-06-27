@@ -25,8 +25,16 @@ export type PromptBlock = PromptBlockFields & {
 export type WorkflowNode =
     | FileReadNode
     | FileWriteNode
+    | BooleanNode
+    | BooleanLogicNode
+    | BooleanNotNode
+    | NumberNode
+    | NumberCompareNode
+    | NumberMathNode
     | OutputNode
     | StringConcatNode
+    | StringIncludesNode
+    | StringLengthNode
     | StringNode
     | AgentNode;
 
@@ -43,7 +51,13 @@ export interface WorkflowNodePosition {
     y: number;
 }
 
+export type WorkflowPortType = 'string' | 'number' | 'boolean';
+
+export type WorkflowValue = string | number | boolean;
+
 export interface WorkflowNodeStreamState {
+    value: WorkflowValue;
+    type: WorkflowPortType;
     content: string;
 }
 
@@ -51,7 +65,7 @@ export type WorkflowNodeStream = AsyncIterable<WorkflowNodeStreamState>;
 
 export interface WorkflowInputStream {
     stream(): WorkflowNodeStream;
-    final(): Promise<string>;
+    final(): Promise<WorkflowValue>;
 }
 
 export interface WorkflowNodeExecutionContext<TNode extends WorkflowNode = WorkflowNode> {
@@ -83,9 +97,59 @@ export interface StringConcatNode extends BaseNode {
     class: 'Concat';
 }
 
+export interface StringLengthNode extends BaseNode {
+    class: 'StringLength';
+}
+
+export interface StringIncludesNode extends BaseNode {
+    class: 'StringIncludes';
+    caseSensitive: boolean;
+}
+
 export interface StringNode extends BaseNode {
     class: 'String';
     content: string;
+}
+
+export interface NumberNode extends BaseNode {
+    class: 'Number';
+    value: number;
+}
+
+export type NumberMathOperator = 'add' | 'subtract' | 'multiply' | 'divide';
+
+export interface NumberMathNode extends BaseNode {
+    class: 'NumberMath';
+    operator: NumberMathOperator;
+}
+
+export type NumberCompareOperator =
+    | 'equal'
+    | 'notEqual'
+    | 'greaterThan'
+    | 'greaterThanOrEqual'
+    | 'lessThan'
+    | 'lessThanOrEqual';
+
+export interface NumberCompareNode extends BaseNode {
+    class: 'NumberCompare';
+    operator: NumberCompareOperator;
+}
+
+export interface BooleanNode extends BaseNode {
+    class: 'Boolean';
+    value: boolean;
+}
+
+export type BooleanLogicOperator = 'and' | 'or' | 'xor' | 'nand' | 'nor' | 'xnor';
+
+export interface BooleanLogicNode extends BaseNode {
+    class: 'BooleanLogic';
+    operator: BooleanLogicOperator;
+}
+
+export interface BooleanNotNode extends BaseNode {
+    class: 'BooleanNot';
 }
 
 export interface AgentNode extends BaseNode {
@@ -110,5 +174,5 @@ export interface BaseNode {
     name: string;
     position: WorkflowNodePosition;
     inputs: Record<string, InputPort>;
-    inputValues: Record<string, string>;
+    inputValues: Record<string, WorkflowValue>;
 }

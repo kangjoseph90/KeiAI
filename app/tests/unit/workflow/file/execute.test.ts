@@ -58,7 +58,9 @@ describe('workflow file executors', () => {
             })
         );
 
-        expect(states).toEqual([{ content: 'saved content' }]);
+        expect(states).toEqual([
+            { content: 'saved content', type: 'string', value: 'saved content' }
+        ]);
         expect(mocks.getByPath).toHaveBeenCalledOnce();
         expect(mocks.getByPath).toHaveBeenCalledWith('chat', 'chat-1', 'dynamic.txt');
     });
@@ -83,7 +85,9 @@ describe('workflow file executors', () => {
             })
         );
 
-        expect(states).toEqual([{ content: 'final content' }]);
+        expect(states).toEqual([
+            { content: 'final content', type: 'string', value: 'final content' }
+        ]);
         expect(content.final).toHaveBeenCalledOnce();
         expect(content.stream).not.toHaveBeenCalled();
         expect(mocks.upsert).toHaveBeenCalledOnce();
@@ -106,8 +110,8 @@ function input(content: string): WorkflowInputStream {
 
 async function* emptyStream() {}
 
-async function collect(stream: AsyncIterable<{ content: string }>) {
-    const states: Array<{ content: string }> = [];
+async function collect(stream: AsyncIterable<{ content: string; type: string; value: unknown }>) {
+    const states: Array<{ content: string; type: string; value: unknown }> = [];
     for await (const state of stream) states.push(state);
     return states;
 }
