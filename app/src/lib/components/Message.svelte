@@ -18,7 +18,8 @@
         ChevronRight,
         GitBranch,
         Copy,
-        RefreshCw
+        RefreshCw,
+        Languages
     } from 'lucide-svelte';
     import { onDestroy, onMount } from 'svelte';
     import AssetView from './AssetView.svelte';
@@ -38,8 +39,17 @@
         getActiveModulesForCharacter,
         roomCharacters,
         chatPersonas,
-        modules
+        modules,
+        translationTasks,
+        translationsByMessage
     } from '$lib/stores';
+    import {
+        createTranslationSourceHash,
+        dismissTranslation,
+        runTranslation,
+        stopTranslation
+    } from '$lib/tasks';
+    import { getErrorMessage } from '$lib/types/errors';
     import { createDisplayMacros, type RawAssetUrlCache } from '$lib/template/display';
     import {
         scopeCss,
@@ -96,6 +106,8 @@
     // ── State ─────────────────────────────────────────────────────────────────
 
     let copied = $state(false);
+    let translationSourceHash = $state('');
+    let translationActionError = $state('');
 
     // Render pipeline internals
     let displayContent = $state('');
@@ -118,6 +130,21 @@
     /** The swipe that is currently active for this message. */
     let activeSwipe = $derived(message.swipes[message.activeSwipeId]);
     let currentContent = $derived(activeSwipe?.content ?? '');
+    let translationTask = $derived($translationTasks.get(message.id));
+    let matchingTranslationTask = $derived(
+        translationTask?.sourceHash === translationSourceHash ? translationTask : undefined
+    );
+    let cachedTranslation = $derived(
+        $translationsByMessage
+            .get(message.id)
+            ?.find((translation) => translation.sourceHash === translationSourceHash) ?? null
+    );
+    let translatedContent = $derived(cachedTranslation?.text ?? '');
+    let translationError = $derived(
+        matchingTranslationTask?.status === 'error'
+            ? matchingTranslationTask.errorMessage
+            : translationActionError
+    );
 
     /** Swipes sorted by creation time for consistent navigation. */
     let sortedSwipes = $derived(
@@ -219,6 +246,18 @@
         copied = true;
         onCopy();
         setTimeout(() => (copied = false), 2000);
+    }
+
+    async function handleTranslate() {
+        translationActionError = '';
+        try {
+            await runTranslation(message.id, {
+                force: cachedTranslation !== null
+            });
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            translationActionError = getErrorMessage(error, 'Translation failed');
+        }
     }
 
     // ── Markdown ──────────────────────────────────────────────────────────────
@@ -373,6 +412,18 @@
         }
     });
 
+    $effect(() => {
+        const source = currentContent;
+        const targetLanguage = $appSettings?.translation.targetLanguage.trim() ?? '';
+        translationSourceHash = '';
+
+        if (source && targetLanguage) {
+            void createTranslationSourceHash(source, targetLanguage).then((sourceHash) => {
+                translationSourceHash = sourceHash;
+            });
+        }
+    });
+
     onMount(() => {
         refreshDisplay();
     });
@@ -480,6 +531,35 @@
                 {/if}
             </div>
 
+            {#if matchingTranslationTask?.status === 'generating' || translatedContent}
+                <div
+                    class="w-full rounded-xl border border-border/70 bg-background/70 px-4 py-2.5 text-sm text-foreground"
+                >
+                    {#if matchingTranslationTask?.status === 'generating' && !translatedContent}
+                        <span class="flex items-center gap-1.5 text-muted-foreground">
+                            <Loader2 class="size-3 animate-spin" /> Translating...
+                        </span>
+                    {:else}
+                        <div class="whitespace-pre-wrap">{translatedContent}</div>
+                    {/if}
+                </div>
+            {/if}
+
+            {#if translationError}
+                <div class="flex items-center gap-2 text-xs text-destructive">
+                    <AlertCircle class="size-3" />
+                    <span>{translationError}</span>
+                    <button
+                        class="rounded p-0.5 hover:bg-destructive/10"
+                        aria-label="Dismiss translation error"
+                        onclick={() => {
+                            translationActionError = '';
+                            dismissTranslation(message.id);
+                        }}><X class="size-3" /></button
+                    >
+                </div>
+            {/if}
+
             <!-- Single Action Row (hover) -->
             {#if message.displayStatus === 'completed'}
                 <div
@@ -523,6 +603,28 @@
                             <Copy class="size-3" />
                         {/if}
                     </Button>
+
+                    {#if matchingTranslationTask?.status === 'generating'}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+                            onclick={() => stopTranslation(message.id)}
+                            title="Stop translation"
+                        >
+                            <Loader2 class="size-3 animate-spin" />
+                        </Button>
+                    {:else}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+                            onclick={handleTranslate}
+                            title={cachedTranslation ? 'Retranslate' : 'Translate'}
+                        >
+                            <Languages class="size-3" />
+                        </Button>
+                    {/if}
 
                     {#if !isUser}
                         <!-- Regenerate: last char message only -->

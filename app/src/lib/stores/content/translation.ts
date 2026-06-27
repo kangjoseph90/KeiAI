@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { TranslationService, type Translation, type TranslationFields } from '$lib/services';
-import { activeChatId, messages, translations } from '../state';
+import { activeChatId, messages, translations, translationsByMessage } from '../state';
 import type { DeepPartial } from '$lib/utils/defaults';
 
 // ─── Getter ─────────────────────────────────────────────────────────
@@ -14,6 +14,14 @@ export async function getTranslation(translationId: string): Promise<Translation
         translations.set(fetched.id, fetched);
     }
     return fetched;
+}
+
+export function findLoadedTranslation(messageId: string, sourceHash: string): Translation | null {
+    return (
+        get(translationsByMessage)
+            .get(messageId)
+            ?.find((translation) => translation.sourceHash === sourceHash) ?? null
+    );
 }
 
 // ─── Load ───────────────────────────────────────────────────────────

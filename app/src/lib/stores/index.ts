@@ -66,8 +66,9 @@ export const chatLorebooks = readonly(StoreState.chatLorebooks);
 export const chatPersonas = readonly(StoreState.chatPersonas);
 export const messages = readonly(StoreState.messages);
 export const translations = readonly(StoreState.translations);
-export const translationsByHash = readonly(StoreState.translationsByHash);
+export const translationsByMessage = readonly(StoreState.translationsByMessage);
 export const chatTasks = readonly(StoreState.chatTasks);
+export const translationTasks = readonly(StoreState.translationTasks);
 export const chatAssetsMap = readonly(StoreState.chatAssetsMap);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
@@ -88,7 +89,7 @@ export {
     isSyncLinked
 } from './state';
 
-export type { DisplayMessage, DisplayMessageStatus, TaskStatus } from './types';
+export type { DisplayMessage, DisplayMessageStatus, TaskStatus, TranslationTask } from './types';
 
 export * from './content/settings';
 export * from './content/room';
@@ -103,6 +104,7 @@ export * from './content/message';
 export * from './content/translation';
 export * from './content/merged';
 export * from './tasks/chat';
+export * from './tasks/translation';
 export * from './auth';
 export * from './user';
 export * from './sync';

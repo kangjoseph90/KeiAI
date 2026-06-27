@@ -109,6 +109,7 @@ describe('SettingsService', () => {
             const result = await SettingsService.get();
 
             expect(result.theme).toBe('system');
+            expect(result.translation.workflow).toEqual({ nodes: {} });
         });
     });
 

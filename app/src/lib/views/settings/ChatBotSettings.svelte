@@ -6,7 +6,9 @@
     import { Badge } from '$lib/components/ui/badge';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import { Button } from '$lib/components/ui/button';
-    import { activePreset, updatePreset } from '$lib/stores';
+    import { Input } from '$lib/components/ui/input';
+    import { Label } from '$lib/components/ui/label';
+    import { activePreset, appSettings, updatePreset, updateSettings } from '$lib/stores';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
 
     // Sub-components
@@ -18,7 +20,8 @@
 
     type Tab = 'model' | 'parameters' | 'workflow' | 'scripts' | 'presets' | 'custom';
     let activeTab = $state<Tab>('model');
-    let workflowEditorOpen = $state(false);
+    let chatWorkflowEditorOpen = $state(false);
+    let translationWorkflowEditorOpen = $state(false);
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
@@ -62,18 +65,49 @@
                 {:else if activeTab === 'parameters'}
                     <ParametersTab preset={$activePreset!} />
                 {:else if activeTab === 'workflow'}
-                    <div
-                        class="flex min-h-64 flex-col items-center justify-center gap-4 rounded-lg border bg-card p-8 text-center"
-                    >
-                        <div>
-                            <h3 class="font-semibold">Chat Workflow</h3>
-                            <p class="mt-1 text-sm text-muted-foreground">
-                                Edit agents, prompts, nodes, and connections in the workflow editor.
-                            </p>
-                        </div>
-                        <Button onclick={() => (workflowEditorOpen = true)}
-                            >Open Workflow Editor</Button
+                    <div class="grid gap-4 lg:grid-cols-2">
+                        <div
+                            class="flex min-h-64 flex-col items-center justify-center gap-4 rounded-lg border bg-card p-8 text-center"
                         >
+                            <div>
+                                <h3 class="font-semibold">Chat Workflow</h3>
+                                <p class="mt-1 text-sm text-muted-foreground">
+                                    Generates the next assistant message.
+                                </p>
+                            </div>
+                            <Button onclick={() => (chatWorkflowEditorOpen = true)}
+                                >Open Workflow Editor</Button
+                            >
+                        </div>
+
+                        <div
+                            class="flex min-h-64 flex-col items-center justify-center gap-4 rounded-lg border bg-card p-8 text-center"
+                        >
+                            <div>
+                                <h3 class="font-semibold">Translation Workflow</h3>
+                                <p class="mt-1 text-sm text-muted-foreground">
+                                    Translates a selected message using source and target language
+                                    macros.
+                                </p>
+                            </div>
+                            <div class="flex w-full max-w-xs flex-col gap-1.5 text-left">
+                                <Label for="translation-target-language">Target Language</Label>
+                                <Input
+                                    id="translation-target-language"
+                                    value={$appSettings?.translation.targetLanguage ?? ''}
+                                    placeholder="e.g. Korean"
+                                    onchange={(event) =>
+                                        updateSettings({
+                                            translation: {
+                                                targetLanguage: event.currentTarget.value
+                                            }
+                                        })}
+                                />
+                            </div>
+                            <Button onclick={() => (translationWorkflowEditorOpen = true)}
+                                >Open Workflow Editor</Button
+                            >
+                        </div>
                     </div>
                 {:else if activeTab === 'scripts'}
                     <ScriptsTab preset={$activePreset!} />
@@ -89,9 +123,18 @@
 
 {#if $activePreset}
     <WorkflowEditorModal
-        bind:open={workflowEditorOpen}
+        bind:open={chatWorkflowEditorOpen}
         workflow={$activePreset.chatWorkflow}
         title="Chat Workflow"
         onPatch={(patch) => updatePreset($activePreset!.id, { chatWorkflow: patch })}
+    />
+{/if}
+
+{#if $appSettings}
+    <WorkflowEditorModal
+        bind:open={translationWorkflowEditorOpen}
+        workflow={$appSettings.translation.workflow}
+        title="Translation Workflow"
+        onPatch={(patch) => updateSettings({ translation: { workflow: patch } })}
     />
 {/if}

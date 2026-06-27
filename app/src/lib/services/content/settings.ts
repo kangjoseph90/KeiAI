@@ -31,6 +31,7 @@ import type { TTSProvider } from '$lib/types/models/tts';
 import type { ImageGenProvider } from '$lib/types/models/imagegen';
 import type { STTProvider } from '$lib/types/models/stt';
 import type { RerankerProvider } from '$lib/types/models/reranker';
+import type { WorkflowDefinition } from '$lib/workflow/types';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -42,6 +43,10 @@ export interface AppSettingsContent {
          * When false, the previous content is discarded (destructive reroll).
          */
         saveMessagesOnSwipe: boolean;
+    };
+    translation: {
+        targetLanguage: string;
+        workflow: WorkflowDefinition;
     };
     openai: OpenAIProviderConfig;
     anthropic: AnthropicProviderConfig;
@@ -84,6 +89,10 @@ export const defaultSettings: AppSettings = {
     theme: 'system',
     chat: {
         saveMessagesOnSwipe: true
+    },
+    translation: {
+        targetLanguage: '',
+        workflow: { nodes: {} }
     },
     openai: {
         tts: {

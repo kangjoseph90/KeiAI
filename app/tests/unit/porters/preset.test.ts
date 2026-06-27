@@ -6,7 +6,7 @@ import {
 } from '$lib/porters/preset';
 import { readRisuPresetJson } from '$lib/porters/preset/risu';
 import { PresetService, ScriptService, type Preset, type Script } from '$lib/services';
-import { createDefaultChatWorkflow, getFirstAgentNode } from '$lib/workflow/defaults';
+import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
 
 vi.mock('$lib/services', () => ({
     PresetService: {
@@ -84,9 +84,11 @@ describe('preset porters', () => {
         expect(pkg.kind).toBe('keiai.preset');
         expect(pkg.preset.name).toBe('Test Preset');
         expect(pkg.preset.models?.chat?.provider).toBe('openai');
-        const agent = getFirstAgentNode(pkg.preset.chatWorkflow);
-        expect(agent?.promptBlocks.block_1?.type).toBe('text');
-        expect((agent?.promptBlocks.block_1 as { content: string } | undefined)?.content).toBe(
+        const agent = pkg.preset.chatWorkflow.nodes.chat_agent;
+        expect(agent?.class).toBe('Agent');
+        if (agent?.class !== 'Agent') throw new Error('Expected chat Agent node');
+        expect(agent.promptBlocks.block_1?.type).toBe('text');
+        expect((agent.promptBlocks.block_1 as { content: string } | undefined)?.content).toBe(
             'You are helpful.'
         );
         expect(pkg.preset.scripts.refs.script_0?.id).toBe('script_0');
@@ -135,9 +137,10 @@ describe('preset porters', () => {
             ]
         });
 
-        const agent = getFirstAgentNode(pkg.preset.chatWorkflow);
-        expect(agent).not.toBeNull();
-        const blocks = Object.values(agent?.promptBlocks ?? {});
+        const agent = pkg.preset.chatWorkflow.nodes.chat_agent;
+        expect(agent?.class).toBe('Agent');
+        if (agent?.class !== 'Agent') throw new Error('Expected chat Agent node');
+        const blocks = Object.values(agent.promptBlocks);
 
         expect(blocks).toHaveLength(1);
         expect(blocks[0]).toEqual(
@@ -157,9 +160,10 @@ describe('preset porters', () => {
             ]
         });
 
-        const agent = getFirstAgentNode(pkg.preset.chatWorkflow);
-        expect(agent).not.toBeNull();
-        const blocks = Object.values(agent?.promptBlocks ?? {});
+        const agent = pkg.preset.chatWorkflow.nodes.chat_agent;
+        expect(agent?.class).toBe('Agent');
+        if (agent?.class !== 'Agent') throw new Error('Expected chat Agent node');
+        const blocks = Object.values(agent.promptBlocks);
 
         expect(blocks).toHaveLength(1);
         expect(blocks[0]).toEqual(

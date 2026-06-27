@@ -1,4 +1,4 @@
-import { loadSettings } from './content/settings';
+import { loadSettings, updateSettings } from './content/settings';
 import { loadModules } from './content/module';
 import { loadPlugins } from './content/plugin';
 import { loadPersonas } from './content/persona';
@@ -8,6 +8,10 @@ import { addRoomCharacter, createRoom, loadRooms } from './content/room';
 import { createPersona } from './content/persona';
 import { createPreset } from './content/preset';
 import { loadMultiRooms } from './content/multi';
+import {
+    createDefaultChatWorkflow,
+    createDefaultTranslationWorkflow
+} from '$lib/workflow/defaults';
 
 export async function loadGlobalState() {
     await loadSettings();
@@ -30,10 +34,13 @@ export async function loadGlobalState() {
 export async function initDefaultContents(): Promise<void> {
     const [, preset, character, room] = await Promise.all([
         createPersona(),
-        createPreset(),
+        createPreset({ chatWorkflow: createDefaultChatWorkflow() }),
         createCharacter(),
         createRoom()
     ]);
     await addRoomCharacter(room.id, character.id);
     await selectPreset(preset.id);
+    await updateSettings({
+        translation: { workflow: createDefaultTranslationWorkflow() }
+    });
 }

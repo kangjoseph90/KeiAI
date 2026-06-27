@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { createAgentInput, createDefaultChatWorkflow, validateWorkflow } from '$lib/workflow';
+import {
+    createAgentInput,
+    createDefaultChatWorkflow,
+    createDefaultTranslationWorkflow,
+    validateWorkflow
+} from '$lib/workflow';
+
+describe('default workflows', () => {
+    it('creates a valid translation workflow with one Agent and one Output', () => {
+        const workflow = createDefaultTranslationWorkflow();
+
+        expect(() => validateWorkflow(workflow)).not.toThrow();
+        expect(workflow.nodes.translation_agent).toMatchObject({
+            class: 'Agent',
+            llmType: 'translation'
+        });
+        expect(workflow.nodes.translation_output).toMatchObject({ class: 'Output' });
+    });
+});
 
 describe('validateWorkflow Agent inputs', () => {
     it('accepts matching input ids with unique slot names', () => {

@@ -20,13 +20,17 @@
     import { exportPresetFile, importPresetFile } from '$lib/managers/preset';
     import type { PresetFileExport } from '$lib/porters/preset';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
 
     let newPresetName = $state('');
     let importInput = $state<HTMLInputElement>();
 
     async function handleCreatePreset() {
         if (!newPresetName.trim()) return;
-        const preset = await createPreset({ name: newPresetName });
+        const preset = await createPreset({
+            name: newPresetName,
+            chatWorkflow: createDefaultChatWorkflow()
+        });
         await selectPreset(preset.id);
         newPresetName = '';
     }

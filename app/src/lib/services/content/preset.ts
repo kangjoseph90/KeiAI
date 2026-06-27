@@ -14,7 +14,6 @@ import {
 import type { LLMModelConfig, LLMParameters, LLMType } from '$lib/types/models/llm';
 import type { EntityListConfig } from '$lib/types/refs';
 import type { WorkflowDefinition } from '$lib/workflow/types';
-import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -65,7 +64,7 @@ export const defaultPresetFields: PresetFields = {
             top_p: 0.9
         }
     },
-    chatWorkflow: createDefaultChatWorkflow(),
+    chatWorkflow: { nodes: {} },
     defaultVariables: {},
     globalVariables: {},
     customToggles: {},

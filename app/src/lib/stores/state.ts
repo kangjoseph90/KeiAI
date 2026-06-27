@@ -25,7 +25,7 @@ import type {
     MultiRoomMember
 } from '$lib/services';
 import type { AssetSyncStatus, SyncStatus } from '$lib/services';
-import type { DisplayMessage, ChatTask } from './types';
+import type { DisplayMessage, ChatTask, TranslationTask } from './types';
 import { EntityStore } from './entity_store';
 import { compareSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { EntityListConfig, AssetRef } from '$lib/types/refs';
@@ -146,12 +146,14 @@ export const messages = new EntityStore<Message>({
 });
 export const messageIndexes = writable(new Map<string, number>());
 export const translations = new EntityStore<Translation>();
-export const translationsByHash = derived(translations, ($translations) => {
-    const byHash = new Map<string, Translation>();
+export const translationsByMessage = derived(translations, ($translations) => {
+    const byMessage = new Map<string, Translation[]>();
     for (const translation of $translations) {
-        byHash.set(translation.sourceHash, translation);
+        const existing = byMessage.get(translation.messageId);
+        if (existing) existing.push(translation);
+        else byMessage.set(translation.messageId, [translation]);
     }
-    return byHash;
+    return byMessage;
 });
 
 // ─── Character Studio Context───────────────────────────────────────
@@ -205,6 +207,7 @@ export const presetScripts = new EntityStore<Script>();
  * Managed by chatTask store logic.
  */
 export const chatTasks = writable<Map<string, ChatTask>>(new Map());
+export const translationTasks = writable<Map<string, TranslationTask>>(new Map());
 
 /** True when the currently active chat has an in-flight task. */
 export const isChatRunning = derived([chatTasks, activeChat], ([tasks, chat]) =>

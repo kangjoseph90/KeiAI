@@ -11,6 +11,11 @@ vi.mock('$lib/stores/content/preset', () => ({
     selectPreset: vi.fn()
 }));
 
+vi.mock('$lib/stores/content/settings', () => ({
+    loadSettings: vi.fn(),
+    updateSettings: vi.fn()
+}));
+
 vi.mock('$lib/stores/content/character', () => ({
     createCharacter: vi.fn()
 }));
@@ -24,6 +29,7 @@ import { createPersona } from '$lib/stores/content/persona';
 import { createPreset, selectPreset } from '$lib/stores/content/preset';
 import { createCharacter } from '$lib/stores/content/character';
 import { addRoomCharacter, createRoom } from '$lib/stores/content/room';
+import { updateSettings } from '$lib/stores/content/settings';
 
 describe('Init Store', () => {
     beforeEach(() => {
@@ -34,6 +40,7 @@ describe('Init Store', () => {
         vi.mocked(createRoom).mockResolvedValue({ id: 'room-1' } as never);
         vi.mocked(addRoomCharacter).mockResolvedValue(undefined);
         vi.mocked(selectPreset).mockResolvedValue(undefined);
+        vi.mocked(updateSettings).mockResolvedValue(undefined);
     });
 
     describe('initDefaultContents', () => {
@@ -47,7 +54,14 @@ describe('Init Store', () => {
         it('should call createPreset', async () => {
             await initDefaultContents();
 
-            expect(createPreset).toHaveBeenCalledWith();
+            expect(createPreset).toHaveBeenCalledWith({
+                chatWorkflow: expect.objectContaining({
+                    nodes: expect.objectContaining({
+                        chat_agent: expect.objectContaining({ class: 'Agent' }),
+                        output: expect.objectContaining({ class: 'Output' })
+                    })
+                })
+            });
             expect(createPreset).toHaveBeenCalledTimes(1);
         });
 
@@ -79,6 +93,21 @@ describe('Init Store', () => {
 
             expect(addRoomCharacter).toHaveBeenCalledWith('room-1', 'char-1');
             expect(selectPreset).toHaveBeenCalledWith('preset-1');
+        });
+
+        it('should initialize the default translation workflow', async () => {
+            await initDefaultContents();
+
+            expect(updateSettings).toHaveBeenCalledWith({
+                translation: {
+                    workflow: expect.objectContaining({
+                        nodes: expect.objectContaining({
+                            translation_agent: expect.objectContaining({ class: 'Agent' }),
+                            translation_output: expect.objectContaining({ class: 'Output' })
+                        })
+                    })
+                }
+            });
         });
 
         it('should propagate errors from persona creation', async () => {
