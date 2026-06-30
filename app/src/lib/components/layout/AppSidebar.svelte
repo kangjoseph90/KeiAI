@@ -15,11 +15,13 @@
         Search,
         Settings,
         Trash2,
+        User,
         UserCircle,
         UserPlus,
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
+    import ResourcePickerDialog from '$lib/components/ResourcePickerDialog.svelte';
     import RoomAvatar from '$lib/components/RoomAvatar.svelte';
     import { Button } from '$lib/components/ui/button';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -75,7 +77,7 @@
     let { collapsed = false, route, onToggle, onNavigate }: Props = $props();
 
     let chatSearch = $state('');
-    let characterToAdd = $state('');
+    let characterPickerOpen = $state(false);
     let editingChatId = $state<string | null>(null);
     let editingChatTitle = $state('');
     let switchingUserId = $state<string | null>(null);
@@ -87,11 +89,12 @@
         return $roomChats.filter((chat) => chat.title.toLowerCase().includes(query));
     });
 
-    const attachableCharacters = $derived(() => {
-        const attached = new Set($roomCharacters.map((character) => character.id));
-        const source = $isMultiRoom ? $multiRoomCharacters : $characters;
-        return source.filter((character) => !attached.has(character.id));
-    });
+    const pickerCharacters = $derived($isMultiRoom ? $multiRoomCharacters : $characters);
+    const characterPickerConfig = $derived(
+        $isMultiRoom
+            ? { refs: {}, folders: {} }
+            : ($appSettings?.characters ?? { refs: {}, folders: {} })
+    );
 
     const otherUsers = $derived(() =>
         $localUsers.filter((user) => user.id !== $activeUser?.id).reverse()
@@ -129,10 +132,11 @@
         await setChatDefaultCharacter($activeChat.id, characterId);
     }
 
-    async function handleAddCharacter() {
-        if (!$activeRoom || !characterToAdd) return;
-        await addRoomCharacter($activeRoom.id, characterToAdd);
-        characterToAdd = '';
+    async function handleAddCharacters(characterIds: string[]) {
+        if (!$activeRoom) return;
+        for (const characterId of characterIds) {
+            await addRoomCharacter($activeRoom.id, characterId);
+        }
         if (!$activeChat) return;
         await syncChatGreetings($activeChat.id);
     }
@@ -381,28 +385,20 @@
 
             <div class="border-b border-sidebar-border p-3">
                 <div class="mb-2 flex items-center justify-between">
-                    <p class="text-[11px] font-semibold uppercase text-muted-foreground">
-                        Characters
+                    <p
+                        class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
+                    >
+                        <User class="size-3" /> Characters
                     </p>
-                </div>
-                <div class="mb-2 flex gap-1.5">
-                    <select
-                        class="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
-                        bind:value={characterToAdd}
-                    >
-                        <option value="">Add character...</option>
-                        {#each attachableCharacters() as character (character.id)}
-                            <option value={character.id}>{character.name}</option>
-                        {/each}
-                    </select>
                     <Button
-                        variant="secondary"
-                        size="icon"
-                        class="size-8 shrink-0"
-                        onclick={handleAddCharacter}
-                        disabled={!characterToAdd}
+                        variant="ghost"
+                        size="icon-sm"
+                        class="size-6 text-muted-foreground hover:text-foreground"
+                        title="Add characters"
+                        aria-label="Add characters"
+                        onclick={() => (characterPickerOpen = true)}
                     >
-                        <Plus class="size-4" />
+                        <Plus class="size-3.5" />
                     </Button>
                 </div>
                 <EntityList
@@ -413,9 +409,7 @@
                     listClass="grid grid-cols-3 gap-2"
                     childContainerClass="relative my-1 py-1.5 pl-2"
                     onItemClick={(character) => {
-                        const ref = $activeRoom.characters.refs[character.id];
-                        const disabled = ref?.enabled === false;
-                        if (!disabled && $activeChat) {
+                        if ($activeChat) {
                             void handleSelectCharacter(character.id);
                         }
                     }}
@@ -439,17 +433,13 @@
                         </div>
                     {/snippet}
                     {#snippet item({ entity: character })}
-                        {@const ref = $activeRoom.characters.refs[character.id]}
-                        {@const disabled = ref?.enabled === false}
                         {@const selected = $chatSelections?.characterId === character.id}
                         {@const isDefault = $activeChat?.defaultCharacterId === character.id}
                         <div class="group relative">
                             <div
                                 class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors {selected
                                     ? 'border-primary ring-2 ring-primary/20'
-                                    : 'hover:bg-sidebar-accent'} {disabled
-                                    ? 'opacity-40 cursor-not-allowed'
-                                    : ''}"
+                                    : 'hover:bg-sidebar-accent'}"
                                 title={character.name}
                             >
                                 <div
@@ -486,7 +476,7 @@
                                     ? 'text-primary opacity-100'
                                     : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
                                 title="Set default character"
-                                disabled={disabled || !$activeChat}
+                                disabled={!$activeChat}
                                 onclick={() => handleSetDefaultCharacter(character.id)}
                             >
                                 <Pin class="size-3" />
@@ -747,3 +737,16 @@
         </div>
     {/if}
 </aside>
+
+<ResourcePickerDialog
+    bind:open={characterPickerOpen}
+    title="Add characters"
+    description="Choose who belongs in this room. You can add several at once."
+    singularLabel="character"
+    resourceLabel="characters"
+    resources={pickerCharacters}
+    config={characterPickerConfig}
+    attachedIds={$roomCharacters.map((character) => character.id)}
+    ownerTable="characters"
+    onAdd={handleAddCharacters}
+/>

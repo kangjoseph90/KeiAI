@@ -63,12 +63,12 @@ export async function runChat(
         if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
 
         const characterRef = room.characters.refs[characterId];
-        if (!characterRef || characterRef.enabled === false) {
+        if (!characterRef) {
             throw new AppError('INVALID_INPUT', `Character is not available: ${characterId}`);
         }
 
         const personaRef = chat.personas.refs[personaId];
-        if (!personaRef || personaRef.enabled === false) {
+        if (!personaRef) {
             throw new AppError('INVALID_INPUT', `Persona is not available: ${personaId}`);
         }
 

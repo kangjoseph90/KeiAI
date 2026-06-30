@@ -9,8 +9,8 @@
  *         for child IDs (order + folder managed by parent).
  *         High-volume exceptions use local FK indexes:
  *         chats.roomId, messages.[chatId+sortOrder].
- *   N:M — Consumer's data blob holds EntityListConfig<ResourceRef>
- *         with per-context enabled state.
+ *   N:M — Consumer's data blob holds EntityListConfig<OrderedRef> when membership is binary,
+ *         or EntityListConfig<ResourceRef> when per-context enabled state is required.
  */
 
 import type { AssetEntries } from '$lib/types/asset';

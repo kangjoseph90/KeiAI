@@ -29,9 +29,9 @@ export async function syncChatGreetings(chatId: string): Promise<void> {
     const room = await getRoom(chat.roomId);
     if (!room) return;
 
-    const refs = Object.values(room.characters.refs)
-        .filter((ref) => ref.enabled !== false)
-        .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder));
+    const refs = Object.values(room.characters.refs).sort((a, b) =>
+        compareSortOrder(a.sortOrder, b.sortOrder)
+    );
 
     const characters = await Promise.all(refs.map((ref) => getCharacter(ref.id)));
     const variables = await getChatDefaultVariables(chat.id);
@@ -165,9 +165,9 @@ export async function getChatDefaultVariables(chatId: string): Promise<Record<st
     const room = await getRoom(chat.roomId);
     if (!room) return {};
 
-    const refs = Object.values(room.characters.refs)
-        .filter((ref) => ref.enabled !== false)
-        .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder));
+    const refs = Object.values(room.characters.refs).sort((a, b) =>
+        compareSortOrder(a.sortOrder, b.sortOrder)
+    );
 
     const entries = await Promise.all(
         refs.map(async (ref) => [ref.id, await getCharacter(ref.id)] as const)

@@ -59,8 +59,8 @@ describe('ChatManager', () => {
         chats: { refs: {}, folders: {} },
         characters: {
             refs: {
-                'char-1': { id: 'char-1', sortOrder: 'a', enabled: true },
-                'char-2': { id: 'char-2', sortOrder: 'b', enabled: true }
+                'char-1': { id: 'char-1', sortOrder: 'a' },
+                'char-2': { id: 'char-2', sortOrder: 'b' }
             },
             folders: {}
         }
@@ -115,7 +115,7 @@ describe('ChatManager', () => {
     });
 
     describe('syncChatGreetings', () => {
-        it('creates one greeting message with enabled character greeting swipes', async () => {
+        it('creates one greeting message with attached character greeting swipes', async () => {
             vi.mocked(getLastMessage).mockResolvedValue(null);
             vi.mocked(createMessage).mockResolvedValue({ id: 'msg-1' } as Message);
 
@@ -149,14 +149,13 @@ describe('ChatManager', () => {
             });
         });
 
-        it('ignores disabled characters when building greeting swipes', async () => {
+        it('builds greeting swipes only for attached characters', async () => {
             vi.mocked(getLastMessage).mockResolvedValue(null);
             vi.mocked(getRoom).mockResolvedValue({
                 ...mockRoom,
                 characters: {
                     refs: {
-                        'char-1': { id: 'char-1', sortOrder: 'a', enabled: true },
-                        'char-2': { id: 'char-2', sortOrder: 'b', enabled: false }
+                        'char-1': { id: 'char-1', sortOrder: 'a' }
                     },
                     folders: {}
                 }
@@ -265,20 +264,19 @@ describe('ChatManager', () => {
             activeSwipeId: 's1'
         } as Message;
 
-        it('merges enabled character defaults in room order', async () => {
+        it('merges attached character defaults in room order', async () => {
             const variables = await getChatDefaultVariables('chat-1');
 
             expect(variables).toEqual({ mood: 'calm', shared: 'beta', energy: 'high' });
         });
 
-        it('skips disabled and missing characters when merging defaults', async () => {
+        it('skips missing characters when merging defaults', async () => {
             vi.mocked(getRoom).mockResolvedValue({
                 ...mockRoom,
                 characters: {
                     refs: {
-                        'char-2': { id: 'char-2', sortOrder: 'a', enabled: false },
-                        missing: { id: 'missing', sortOrder: 'b', enabled: true },
-                        'char-1': { id: 'char-1', sortOrder: 'c', enabled: true }
+                        missing: { id: 'missing', sortOrder: 'b' },
+                        'char-1': { id: 'char-1', sortOrder: 'c' }
                     },
                     folders: {}
                 }

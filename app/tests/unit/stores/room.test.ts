@@ -9,7 +9,6 @@ import {
     moveRoomItem,
     removeRoomCharacter,
     selectRoom,
-    setRoomCharacterEnabled,
     updateRoom
 } from '$lib/stores/content/room';
 import {
@@ -89,8 +88,8 @@ describe('Room Store', () => {
         },
         characters: {
             refs: {
-                'char-1': { id: 'char-1', sortOrder: 'a', enabled: true },
-                staleChar: { id: 'staleChar', sortOrder: 'b', enabled: true }
+                'char-1': { id: 'char-1', sortOrder: 'a' },
+                staleChar: { id: 'staleChar', sortOrder: 'b' }
             },
             folders: {}
         }
@@ -240,14 +239,14 @@ describe('Room Store', () => {
         expect(RoomService.delete).toHaveBeenCalledWith('room-1');
     });
 
-    it('adds an enabled character ref to the active room and visible character list', async () => {
+    it('adds a character ref to the active room and visible character list', async () => {
         const roomWithoutCharacters = { ...mockRoom, characters: { refs: {}, folders: {} } };
         rooms.set(roomWithoutCharacters.id, roomWithoutCharacters);
         activeRoomId.set(roomWithoutCharacters.id);
         vi.mocked(RoomService.update).mockResolvedValue({
             ...mockRoom,
             characters: {
-                refs: { 'char-1': { id: 'char-1', sortOrder: 'sort-order', enabled: true } },
+                refs: { 'char-1': { id: 'char-1', sortOrder: 'sort-order' } },
                 folders: {}
             }
         });
@@ -259,8 +258,7 @@ describe('Room Store', () => {
                 refs: {
                     'char-1': expect.objectContaining({
                         id: 'char-1',
-                        sortOrder: 'sort-order',
-                        enabled: true
+                        sortOrder: 'sort-order'
                     })
                 }
             }
@@ -283,29 +281,6 @@ describe('Room Store', () => {
         expect(RoomService.update).toHaveBeenCalledWith('room-1', {
             characters: { refs: { 'char-1': undefined } }
         });
-        expect(resolveChatSelections).toHaveBeenCalledWith('chat-1');
-    });
-
-    it('disabling a character resolves chat selections', async () => {
-        const selectedChat = {
-            ...mockChat,
-            defaultCharacterId: 'char-1'
-        };
-        roomChats.set(selectedChat.id, selectedChat);
-        activeChatId.set(selectedChat.id);
-
-        await setRoomCharacterEnabled('room-1', 'char-1', false);
-
-        expect(RoomService.update).toHaveBeenCalledWith(
-            'room-1',
-            expect.objectContaining({
-                characters: {
-                    refs: {
-                        'char-1': expect.objectContaining({ enabled: false })
-                    }
-                }
-            })
-        );
         expect(resolveChatSelections).toHaveBeenCalledWith('chat-1');
     });
 

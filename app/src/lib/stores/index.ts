@@ -7,7 +7,7 @@
  *
  * Relationship patterns:
  *   1:N (parent→child): Parent's blob holds OrderedRef[] → fetch children by ID batch
- *   N:M (consumer→resource): Consumer's blob holds ResourceRef[] → load with enabled state
+ *   N:M (consumer→resource): Consumer's blob holds ordered refs, optionally with context state
  *   Owned (ownerId FK): Lorebooks, scripts owned by character/chat/module → listByOwner()
  *   Exception: messages use chatId FK + createdAt ordering
  *

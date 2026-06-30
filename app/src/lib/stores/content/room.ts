@@ -7,7 +7,7 @@ import {
     type RoomFields,
     type RoomContent
 } from '$lib/services';
-import type { ResourceRef, FolderDef } from '$lib/types/refs';
+import type { FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
@@ -182,8 +182,7 @@ export async function addRoomCharacter(roomId: string, characterId: string): Pro
                 [characterId]: {
                     ...existing,
                     id: characterId,
-                    sortOrder,
-                    enabled: existing?.enabled ?? true
+                    sortOrder
                 }
             }
         }
@@ -204,37 +203,6 @@ export async function removeRoomCharacter(roomId: string, characterId: string): 
 
     await updateRoom(roomId, {
         characters: { refs: { [characterId]: undefined } }
-    });
-
-    const activeId = get(activeChatId);
-    if (activeId) {
-        const activeC = get(activeChat);
-        if (activeC?.roomId === roomId) {
-            await resolveChatSelections(activeId);
-        }
-    }
-}
-
-export async function setRoomCharacterEnabled(
-    roomId: string,
-    characterId: string,
-    enabled: boolean
-): Promise<void> {
-    const room = await getRoom(roomId);
-    if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
-
-    const existing = room.characters.refs[characterId];
-    if (!existing) return;
-
-    await updateRoom(roomId, {
-        characters: {
-            refs: {
-                [characterId]: {
-                    ...existing,
-                    enabled
-                }
-            }
-        }
     });
 
     const activeId = get(activeChatId);

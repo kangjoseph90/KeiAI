@@ -1,7 +1,7 @@
 import { clock } from '$lib/utils/clock';
 import { canAccessScope, getSessionScope } from '../session';
 import { localDB, type ChatRecord, type DataScopeType } from '$lib/adapters/db';
-import type { AssetRef, EntityListConfig, ResourceRef } from '$lib/types/refs';
+import type { AssetRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -29,7 +29,7 @@ export interface ChatRefs {
     defaultPersonaId?: string;
     defaultCharacterId?: string;
     lorebooks: EntityListConfig;
-    personas: EntityListConfig<ResourceRef>;
+    personas: EntityListConfig;
     inlays: EntityListConfig<AssetRef>;
 }
 

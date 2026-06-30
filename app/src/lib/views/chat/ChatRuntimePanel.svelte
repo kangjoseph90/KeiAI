@@ -12,6 +12,7 @@
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
+    import ResourcePickerDialog from '$lib/components/ResourcePickerDialog.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Badge } from '$lib/components/ui/badge';
     import { Input } from '$lib/components/ui/input';
@@ -23,6 +24,7 @@
     import {
         activeChat,
         addChatPersona,
+        appSettings,
         chatPersonas,
         chatLorebooks,
         chatSelections,
@@ -56,15 +58,16 @@
     let { chatId }: Props = $props();
 
     let newChatLorebookName = $state('');
-    let personaToAdd = $state('');
+    let personaPickerOpen = $state(false);
     let inlayFileInput = $state<HTMLInputElement>();
     let variables = $state<[string, string][]>([]);
 
-    const attachablePersonas = $derived(() => {
-        const attached = new Set($chatPersonas.map((persona) => persona.id));
-        const source = $isMultiRoom ? $multiRoomPersonas : $personas;
-        return source.filter((persona) => !attached.has(persona.id));
-    });
+    const pickerPersonas = $derived($isMultiRoom ? $multiRoomPersonas : $personas);
+    const personaPickerConfig = $derived(
+        $isMultiRoom
+            ? { refs: {}, folders: {} }
+            : ($appSettings?.personas ?? { refs: {}, folders: {} })
+    );
 
     async function updateChat(changes: DeepPartial<ChatContent>) {
         if (!$activeChat) return;
@@ -116,10 +119,11 @@
         await setChatDefaultPersona(chatId, personaId);
     }
 
-    async function handlePersonaAdd() {
-        if (!$activeChat || !personaToAdd) return;
-        await addChatPersona(chatId, personaToAdd);
-        personaToAdd = '';
+    async function handlePersonasAdd(personaIds: string[]) {
+        if (!$activeChat) return;
+        for (const personaId of personaIds) {
+            await addChatPersona(chatId, personaId);
+        }
     }
 
     async function handlePersonaRemove(personaId: string) {
@@ -145,30 +149,22 @@
         <div class="p-4 space-y-6 pb-20">
             <!-- Persona Summary -->
             {#if $activeChat}
-                <section class="space-y-3">
-                    <Label
-                        class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"
-                    >
-                        <User class="size-3" /> Personas
-                    </Label>
-                    <div class="mb-2 flex gap-1.5">
-                        <select
-                            class="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
-                            bind:value={personaToAdd}
+                <section class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <Label
+                            class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
                         >
-                            <option value="">Add persona...</option>
-                            {#each attachablePersonas() as persona (persona.id)}
-                                <option value={persona.id}>{persona.name}</option>
-                            {/each}
-                        </select>
+                            <User class="size-3" /> Personas
+                        </Label>
                         <Button
-                            variant="secondary"
-                            size="icon"
-                            class="size-8 shrink-0"
-                            onclick={handlePersonaAdd}
-                            disabled={!personaToAdd}
+                            variant="ghost"
+                            size="icon-sm"
+                            class="size-6 text-muted-foreground hover:text-foreground"
+                            title="Add personas"
+                            aria-label="Add personas"
+                            onclick={() => (personaPickerOpen = true)}
                         >
-                            <Plus class="size-4" />
+                            <Plus class="size-3.5" />
                         </Button>
                     </div>
                     <EntityList
@@ -176,11 +172,7 @@
                         config={$activeChat.personas}
                         layout="grid"
                         onItemClick={(persona) => {
-                            const ref = $activeChat.personas.refs[persona.id];
-                            const disabled = ref?.enabled === false;
-                            if (!disabled) {
-                                void handlePersonaSelect(persona.id);
-                            }
+                            void handlePersonaSelect(persona.id);
                         }}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createChatFolder(chatId, 'personas', name, parentId, sortOrder)}
@@ -198,17 +190,13 @@
                             </div>
                         {/snippet}
                         {#snippet item({ entity: persona })}
-                            {@const ref = $activeChat.personas.refs[persona.id]}
-                            {@const disabled = ref?.enabled === false}
                             {@const selected = $chatSelections?.personaId === persona.id}
                             {@const isDefault = $activeChat.defaultPersonaId === persona.id}
                             <div class="group relative">
                                 <div
                                     class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors cursor-pointer {selected
                                         ? 'border-primary ring-2 ring-primary/20'
-                                        : 'hover:bg-sidebar-accent'} {disabled
-                                        ? 'opacity-40 cursor-not-allowed'
-                                        : ''}"
+                                        : 'hover:bg-sidebar-accent'}"
                                     title={persona.name}
                                 >
                                     <div
@@ -245,7 +233,6 @@
                                         ? 'text-primary opacity-100'
                                         : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
                                     title="Set default persona"
-                                    {disabled}
                                     onclick={() => handleSetDefaultPersona(persona.id)}
                                 >
                                     <Pin class="size-3" />
@@ -468,3 +455,16 @@
         </Button>
     </div>
 </div>
+
+<ResourcePickerDialog
+    bind:open={personaPickerOpen}
+    title="Add personas"
+    description="Choose the personas available in this chat. You can add several at once."
+    singularLabel="persona"
+    resourceLabel="personas"
+    resources={pickerPersonas}
+    config={personaPickerConfig}
+    attachedIds={$chatPersonas.map((persona) => persona.id)}
+    ownerTable="personas"
+    onAdd={handlePersonasAdd}
+/>

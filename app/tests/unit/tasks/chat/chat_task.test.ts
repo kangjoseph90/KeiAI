@@ -68,7 +68,7 @@ vi.mock('$lib/stores', () => ({
         defaultPersonaId: 'persona-1',
         lorebooks: { refs: {}, folders: {} },
         personas: {
-            refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
+            refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a0' } },
             folders: {}
         },
         inlays: { refs: {}, folders: {} }
@@ -77,7 +77,7 @@ vi.mock('$lib/stores', () => ({
         id: 'room-1',
         name: 'Room 1',
         chats: { refs: {}, folders: {} },
-        characters: { refs: { 'char-1': { enabled: true, sortOrder: 'a0' } }, folders: {} }
+        characters: { refs: { 'char-1': { id: 'char-1', sortOrder: 'a0' } }, folders: {} }
     }),
     getCharacter: vi.fn().mockResolvedValue({
         id: 'char-1',
@@ -149,7 +149,7 @@ vi.mock('$lib/stores/content/chat', () => ({
         defaultPersonaId: 'persona-1',
         lorebooks: { refs: {}, folders: {} },
         personas: {
-            refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
+            refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a0' } },
             folders: {}
         },
         inlays: { refs: {}, folders: {} }
@@ -441,7 +441,7 @@ describe('Chat Pipeline', () => {
         expect(createMessage).not.toHaveBeenCalled();
     });
 
-    it('should reject generation when the persona ref is disabled in the chat', async () => {
+    it('should reject generation when the persona ref is detached from the chat', async () => {
         vi.mocked(getChat).mockResolvedValueOnce({
             id: mockChatId,
             roomId: 'room-1',
@@ -452,10 +452,7 @@ describe('Chat Pipeline', () => {
             messageCount: 0,
             defaultCharacterId: 'char-1',
             lorebooks: { refs: {}, folders: {} },
-            personas: {
-                refs: { 'persona-1': { id: 'persona-1', enabled: false, sortOrder: 'a0' } },
-                folders: {}
-            },
+            personas: { refs: {}, folders: {} },
             inlays: { refs: {}, folders: {} }
         } as Chat);
 
@@ -566,7 +563,7 @@ describe('Chat Pipeline', () => {
                 lastMessageId: targetMessageId,
                 lorebooks: { refs: {}, folders: {} },
                 personas: {
-                    refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
+                    refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a0' } },
                     folders: {}
                 },
                 inlays: { refs: {}, folders: {} }

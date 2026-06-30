@@ -1,7 +1,7 @@
 import { clock } from '$lib/utils/clock';
 import { canAccessScope, getSessionScope } from '../session';
 import { localDB, type DataScopeType, type RoomRecord } from '$lib/adapters/db';
-import type { ResourceRef, EntityListConfig } from '$lib/types/refs';
+import type { EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -22,7 +22,7 @@ export interface RoomContent {
 export interface RoomRefs {
     lastActiveChatId?: string;
     chats: EntityListConfig;
-    characters: EntityListConfig<ResourceRef>;
+    characters: EntityListConfig;
 }
 
 export interface RoomFields extends RoomContent, RoomRefs {}

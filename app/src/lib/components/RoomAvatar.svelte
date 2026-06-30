@@ -14,7 +14,7 @@
     // Get the character IDs in this room
     const roomCharIds = $derived(() => {
         const refs = room.characters?.refs || {};
-        return Object.keys(refs).filter((id) => refs[id]?.enabled);
+        return Object.keys(refs);
     });
 
     // Lookup the characters in the characters store
