@@ -36,12 +36,14 @@ import type { DataScopeType, TableName } from '$lib/adapters/db';
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
 export const activeUser = writable<User | null>(null);
+export const localUsers = writable<User[]>([]);
 
 /** Tracks whether the PocketBase auth token is valid. */
 export const pbConnected = writable<boolean>(false);
 export const dataSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const userSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const assetSyncStatus = writable<AssetSyncStatus>({ state: 'idle', pendingCount: 0 });
+export const migrationLocked = writable(false);
 
 // ─── Derived Auth State ──────────────────────────────────────────────
 export const isLoggedIn = derived(

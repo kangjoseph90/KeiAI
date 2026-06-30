@@ -15,14 +15,18 @@
         Search,
         Settings,
         Trash2,
+        UserCircle,
+        UserPlus,
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import RoomAvatar from '$lib/components/RoomAvatar.svelte';
     import { Button } from '$lib/components/ui/button';
+    import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import { Input } from '$lib/components/ui/input';
     import {
         activeChat,
+        activeUser,
         activePreset,
         activeRoom,
         addRoomCharacter,
@@ -36,6 +40,8 @@
         deleteGlobalFolder,
         deleteRoomFolder,
         isMultiRoom,
+        localUsers,
+        migrationLocked,
         moveGlobalItem,
         moveRoomItem,
         multiRoomCharacters,
@@ -47,7 +53,10 @@
         setChatSelectedCharacter,
         updateChat,
         updateGlobalFolder,
-        updateRoomFolder
+        updateRoomFolder,
+        loadLocalUsers,
+        switchLocalUser,
+        createAndSwitchLocalUser
     } from '$lib/stores';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { getFolderColorClass } from '$lib/components/entitylist/folders';
@@ -69,6 +78,8 @@
     let characterToAdd = $state('');
     let editingChatId = $state<string | null>(null);
     let editingChatTitle = $state('');
+    let switchingUserId = $state<string | null>(null);
+    let creatingUser = $state(false);
 
     const filteredChats = $derived(() => {
         const query = chatSearch.trim().toLowerCase();
@@ -80,6 +91,14 @@
         const attached = new Set($roomCharacters.map((character) => character.id));
         const source = $isMultiRoom ? $multiRoomCharacters : $characters;
         return source.filter((character) => !attached.has(character.id));
+    });
+
+    const otherUsers = $derived(() =>
+        $localUsers.filter((user) => user.id !== $activeUser?.id).reverse()
+    );
+
+    $effect(() => {
+        void loadLocalUsers();
     });
 
     async function handleCreateChat() {
@@ -151,6 +170,18 @@
 
     async function handleToggleChange(key: string, value: string) {
         await setGlobalVariable(`toggle_${key}`, value);
+    }
+
+    async function handleSwitchUser(userId: string) {
+        if ($migrationLocked || switchingUserId || creatingUser) return;
+        switchingUserId = userId;
+        await switchLocalUser(userId);
+    }
+
+    async function handleCreateUser() {
+        if ($migrationLocked || switchingUserId || creatingUser) return;
+        creatingUser = true;
+        await createAndSwitchLocalUser();
     }
 
     function startRenameChat(chatId: string, title: string) {
@@ -230,15 +261,6 @@
         </div>
 
         <div class="flex flex-col items-center gap-2 border-t border-sidebar-border p-2">
-            <Button
-                variant="ghost"
-                size="icon"
-                class="size-9"
-                title="Settings"
-                onclick={() => onNavigate({ view: 'settings' })}
-            >
-                <Settings class="size-4" />
-            </Button>
             {#if $activeRoom}
                 <Button
                     variant="ghost"
@@ -254,6 +276,92 @@
                     {/if}
                 </Button>
             {/if}
+            <Button
+                variant="ghost"
+                size="icon"
+                class="size-9"
+                title="Settings"
+                onclick={() => onNavigate({ view: 'settings' })}
+            >
+                <Settings class="size-4" />
+            </Button>
+            <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        class="size-9 overflow-hidden rounded-md"
+                        title={$activeUser?.name ?? 'Current user'}
+                    >
+                        {#if $activeUser?.avatar}
+                            <img
+                                src={$activeUser.avatar}
+                                alt={$activeUser.name}
+                                class="size-6 rounded-full object-cover"
+                            />
+                        {:else}
+                            <UserCircle class="size-4" />
+                        {/if}
+                    </Button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content side="right" align="end" sideOffset={10} class="w-64 p-2">
+                    {#if $activeUser}
+                        <DropdownMenu.Item
+                            class="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm"
+                            disabled={$migrationLocked || creatingUser || switchingUserId !== null}
+                            onclick={() => onNavigate({ view: 'settings', settingsTab: 'profile' })}
+                        >
+                            <img
+                                src={$activeUser.avatar}
+                                alt={$activeUser.name}
+                                class="size-9 shrink-0 rounded-full object-cover ring-2 ring-primary/25"
+                            />
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate font-medium">{$activeUser.name}</p>
+                                <p class="truncate text-[11px] text-muted-foreground">Current</p>
+                            </div>
+                        </DropdownMenu.Item>
+                    {/if}
+
+                    {#if otherUsers().length > 0}
+                        <DropdownMenu.Separator class="my-2" />
+                        {#each otherUsers() as user (user.id)}
+                            <DropdownMenu.Item
+                                class="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm"
+                                disabled={$migrationLocked ||
+                                    creatingUser ||
+                                    switchingUserId !== null}
+                                onclick={() => handleSwitchUser(user.id)}
+                            >
+                                <img
+                                    src={user.avatar}
+                                    alt={user.name}
+                                    class="size-9 shrink-0 rounded-full object-cover"
+                                />
+                                <div class="min-w-0 flex-1">
+                                    <p class="truncate font-medium">{user.name}</p>
+                                </div>
+                            </DropdownMenu.Item>
+                        {/each}
+                    {/if}
+
+                    <DropdownMenu.Separator class="my-2" />
+                    <DropdownMenu.Item
+                        class="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm"
+                        disabled={$migrationLocked || creatingUser || switchingUserId !== null}
+                        onclick={handleCreateUser}
+                    >
+                        <div
+                            class="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+                        >
+                            <UserPlus class="size-4" />
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <p class="truncate font-medium">New user</p>
+                        </div>
+                    </DropdownMenu.Item>
+                </DropdownMenu.Content>
+            </DropdownMenu.Root>
         </div>
     </div>
 

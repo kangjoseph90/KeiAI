@@ -30,7 +30,24 @@ export interface HostCapabilities {
     protocol: number;
 }
 
+type MigrationLockListener = (locked: boolean) => void;
+
 export class MigrationService {
+    private static locked = false;
+    private static lockListeners = new Set<MigrationLockListener>();
+
+    static isLocked(): boolean {
+        return this.locked;
+    }
+
+    static onLockChange(listener: MigrationLockListener): () => void {
+        this.lockListeners.add(listener);
+        listener(this.locked);
+        return () => {
+            this.lockListeners.delete(listener);
+        };
+    }
+
     /**
      * checks if the provided host is valid PB server
      * @param hostUrl
@@ -78,6 +95,8 @@ export class MigrationService {
     }
 
     private static lock(): void {
+        this.locked = true;
+        this.emitLockChange();
         SyncManager.stopAutoSync();
         AssetService.stopEviction();
     }
@@ -85,6 +104,8 @@ export class MigrationService {
     private static unlock(): void {
         SyncManager.startAutoSync();
         AssetService.resumeEviction();
+        this.locked = false;
+        this.emitLockChange();
     }
 
     private static async migrateTo(
@@ -175,5 +196,11 @@ export class MigrationService {
 
     private static emitProgress(options: MigrationOptions, progress: MigrationProgress): void {
         options.onProgress?.({ ...progress });
+    }
+
+    private static emitLockChange(): void {
+        for (const listener of this.lockListeners) {
+            listener(this.locked);
+        }
     }
 }

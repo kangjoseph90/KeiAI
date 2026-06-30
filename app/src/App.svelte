@@ -90,7 +90,8 @@
             prevRoute.chatId === r.chatId &&
             prevRoute.personaId === r.personaId &&
             prevRoute.pluginId === r.pluginId &&
-            prevRoute.moduleId === r.moduleId
+            prevRoute.moduleId === r.moduleId &&
+            prevRoute.settingsTab === r.settingsTab
         ) {
             prevRoute = r;
             return;
@@ -174,13 +175,15 @@
             <p class="text-muted-foreground text-sm">Initializing Secure Local Session...</p>
         </div>
     {:else}
-        <!-- Sidebar -->
-        <AppSidebar
-            collapsed={sidebarCollapsed}
-            route={$route}
-            onToggle={() => (sidebarCollapsed = !sidebarCollapsed)}
-            onNavigate={(r) => navigate(r)}
-        />
+        {#if $route.view !== 'settings'}
+            <!-- Sidebar -->
+            <AppSidebar
+                collapsed={sidebarCollapsed}
+                route={$route}
+                onToggle={() => (sidebarCollapsed = !sidebarCollapsed)}
+                onNavigate={(r) => navigate(r)}
+            />
+        {/if}
 
         <!-- Main Content -->
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -198,7 +201,11 @@
                 {/await}
             {:else if $route.view === 'settings'}
                 {#await import('$lib/views/settings/SettingsView.svelte') then m}
-                    <m.default pluginId={$route.pluginId} moduleId={$route.moduleId} />
+                    <m.default
+                        settingsTab={$route.settingsTab}
+                        pluginId={$route.pluginId}
+                        moduleId={$route.moduleId}
+                    />
                 {/await}
             {:else}
                 {#await import('$lib/views/home/HomeView.svelte') then m}

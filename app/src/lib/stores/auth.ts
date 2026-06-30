@@ -14,7 +14,7 @@
  * since stores/index.ts re-exports from this file indirectly via views.
  */
 
-import { activeUser, pbConnected } from './state';
+import { activeUser, migrationLocked, pbConnected } from './state';
 import { AuthService, MigrationService, UserService, type MigrationOptions } from '$lib/services';
 import { SyncManager } from '$lib/services/sync';
 import { loadUser } from './user';
@@ -28,6 +28,10 @@ pbConnected.set(AuthService.isPbConnected());
 
 AuthService.onPbAuthChange((isValid) => {
     pbConnected.set(isValid);
+});
+
+MigrationService.onLockChange((locked) => {
+    migrationLocked.set(locked);
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────

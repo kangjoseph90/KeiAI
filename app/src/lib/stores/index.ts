@@ -25,10 +25,12 @@ import * as StoreState from './state';
 
 export const appSettings = readonly(StoreState.appSettings);
 export const activeUser = readonly(StoreState.activeUser);
+export const localUsers = readonly(StoreState.localUsers);
 export const pbConnected = readonly(StoreState.pbConnected);
 export const dataSyncStatus = readonly(StoreState.dataSyncStatus);
 export const userSyncStatus = readonly(StoreState.userSyncStatus);
 export const assetSyncStatus = readonly(StoreState.assetSyncStatus);
+export const migrationLocked = readonly(StoreState.migrationLocked);
 export const characters = readonly(StoreState.characters);
 export const rooms = readonly(StoreState.rooms);
 export const multiRooms = readonly(StoreState.multiRooms);

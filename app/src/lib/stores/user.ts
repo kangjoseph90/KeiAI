@@ -4,9 +4,17 @@
  * UI imports these functions; they call UserService + update Svelte stores.
  */
 
-import { getActiveSession, UserService, type UserFields } from '$lib/services';
-import { activeUser } from './state';
+import {
+    getActiveSession,
+    MigrationService,
+    toUser,
+    UserService,
+    type UserFields
+} from '$lib/services';
+import { SyncManager } from '$lib/services/sync';
+import { activeUser, localUsers } from './state';
 import type { DeepPartial } from '$lib/utils/defaults';
+import { initDefaultContents } from './init';
 
 /**
  * Load (or refresh) the current user's user record into the activeUser store.
@@ -17,9 +25,18 @@ export async function loadUser(): Promise<void> {
         const { userId } = getActiveSession();
         const user = await UserService.getUser(userId);
         activeUser.set(user);
+        await loadLocalUsers();
     } catch {
         // Session may not be initialized yet
     }
+}
+
+/**
+ * Load every local identity for the account switcher.
+ */
+export async function loadLocalUsers(): Promise<void> {
+    const users = await UserService.getAllUsers();
+    localUsers.set(users.map(toUser).sort((a, b) => a.name.localeCompare(b.name)));
 }
 
 /**
@@ -30,4 +47,33 @@ export async function updateUser(changes: DeepPartial<UserFields>): Promise<void
     const { userId } = getActiveSession();
     const updated = await UserService.updateUser(userId, changes);
     activeUser.set(updated);
+    await loadLocalUsers();
+}
+
+/**
+ * Switch to another local identity. Reloading keeps scoped stores, sync state,
+ * and route context from bleeding across users.
+ */
+export async function switchLocalUser(userId: string): Promise<void> {
+    if (MigrationService.isLocked()) return;
+
+    const { userId: currentUserId } = getActiveSession();
+    if (userId === currentUserId) return;
+
+    SyncManager.stopAutoSync();
+    await UserService.setActiveUser(userId);
+    window.location.reload();
+}
+
+/**
+ * Create a fresh local identity, seed its default content, and make it active.
+ */
+export async function createAndSwitchLocalUser(): Promise<void> {
+    if (MigrationService.isLocked()) return;
+
+    SyncManager.stopAutoSync();
+    const user = await UserService.createUser();
+    await UserService.setActiveUser(user.id);
+    await initDefaultContents();
+    window.location.reload();
 }

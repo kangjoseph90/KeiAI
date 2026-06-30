@@ -22,21 +22,27 @@
     import { Separator } from '$lib/components/ui/separator';
     import { appSettings, updateSettings, activeRoom, activeChat } from '$lib/stores';
     import { navigate } from '$lib/router';
+    import type { SettingsTab } from '$lib/router';
     import AccountSettings from './AccountSettings.svelte';
     import ProfileSettings from './ProfileSettings.svelte';
     import ChatBotSettings from './ChatBotSettings.svelte';
     import PluginsView from './PluginsView.svelte';
     import ModulesView from './ModulesView.svelte';
 
-    type SettingTab = 'profile' | 'account' | 'chatbot' | 'display' | 'plugin' | 'module';
-    let activeTab = $state<SettingTab>('chatbot');
-    let { pluginId, moduleId }: { pluginId?: string; moduleId?: string } = $props();
+    let activeTab = $state<SettingsTab>('chatbot');
+    let {
+        settingsTab,
+        pluginId,
+        moduleId
+    }: { settingsTab?: SettingsTab; pluginId?: string; moduleId?: string } = $props();
 
     $effect(() => {
         if (pluginId) {
             activeTab = 'plugin';
         } else if (moduleId) {
             activeTab = 'module';
+        } else if (settingsTab) {
+            activeTab = settingsTab;
         }
     });
 

@@ -3,6 +3,7 @@ import { writable, derived, get } from 'svelte/store';
 // ─── Route Types ──────────────────────────────────────────────────────
 
 export type ViewMode = 'home' | 'room' | 'characterStudio' | 'personaStudio' | 'settings';
+export type SettingsTab = 'profile' | 'account' | 'chatbot' | 'display' | 'plugin' | 'module';
 
 export interface RouteState {
     view: ViewMode;
@@ -12,6 +13,7 @@ export interface RouteState {
     personaId?: string;
     pluginId?: string;
     moduleId?: string;
+    settingsTab?: SettingsTab;
 }
 
 // ─── URL Scheme ───────────────────────────────────────────────────────
@@ -21,6 +23,7 @@ export interface RouteState {
 // #/character/{charId}        → character studio
 // #/persona/{personaId}       → persona studio
 // #/settings                  → global settings
+// #/settings/{tab}            → global settings focused on a tab
 // #/settings/plugin/{pluginId} → settings plugin editor
 // #/settings/module/{moduleId} → settings module editor
 
@@ -37,6 +40,9 @@ function buildHash(route: RouteState): string {
         case 'settings':
             if (route.pluginId) return `#/settings/plugin/${route.pluginId}`;
             if (route.moduleId) return `#/settings/module/${route.moduleId}`;
+            if (route.settingsTab && route.settingsTab !== 'chatbot') {
+                return `#/settings/${route.settingsTab}`;
+            }
             return '#/settings';
         default:
             return '#/';
@@ -63,10 +69,20 @@ function parseHash(hash: string): RouteState {
     }
     if (parts[0] === 'settings') {
         if (parts[1] === 'plugin' && parts[2]) {
-            return { view: 'settings', pluginId: parts[2] };
+            return { view: 'settings', settingsTab: 'plugin', pluginId: parts[2] };
         }
         if (parts[1] === 'module' && parts[2]) {
-            return { view: 'settings', moduleId: parts[2] };
+            return { view: 'settings', settingsTab: 'module', moduleId: parts[2] };
+        }
+        if (
+            parts[1] === 'profile' ||
+            parts[1] === 'account' ||
+            parts[1] === 'chatbot' ||
+            parts[1] === 'display' ||
+            parts[1] === 'plugin' ||
+            parts[1] === 'module'
+        ) {
+            return { view: 'settings', settingsTab: parts[1] };
         }
         return { view: 'settings' };
     }
@@ -104,7 +120,8 @@ export function initHashListener(): () => void {
             parsed.chatId !== current.chatId ||
             parsed.personaId !== current.personaId ||
             parsed.pluginId !== current.pluginId ||
-            parsed.moduleId !== current.moduleId
+            parsed.moduleId !== current.moduleId ||
+            parsed.settingsTab !== current.settingsTab
         ) {
             _route.set(parsed);
         }
