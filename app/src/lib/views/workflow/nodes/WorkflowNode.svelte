@@ -5,7 +5,6 @@
     export interface WorkflowNodeData extends Record<string, unknown> {
         node: WorkflowNode;
         hasIssue: boolean;
-        onEditPrompt: (nodeId: string) => void;
         onAddSlot: (nodeId: string) => void;
         onRenameSlot: (nodeId: string, inputId: string, name: string) => void;
         onDeleteSlot: (nodeId: string, inputId: string) => void;
@@ -28,7 +27,6 @@
         GitMerge,
         Hash,
         Plus,
-        Settings2,
         TriangleAlert
     } from 'lucide-svelte';
     import { WORKFLOW_NODE_DEFINITIONS } from '$lib/workflow';
@@ -203,13 +201,6 @@
                     />
                 </label>
             </div>
-            <button
-                class="nodrag flex h-8 items-center justify-center gap-1.5 rounded-md border bg-background text-xs font-medium hover:bg-muted"
-                onclick={() => data.onEditPrompt(data.node.id)}
-            >
-                <Settings2 class="size-3.5" /> Edit prompt · {Object.keys(data.node.promptBlocks)
-                    .length} blocks
-            </button>
         {:else if data.node.class === 'String'}
             <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
                 Content

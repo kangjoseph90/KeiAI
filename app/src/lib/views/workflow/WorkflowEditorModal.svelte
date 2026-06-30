@@ -2,9 +2,6 @@
     import { Dialog, DialogContent, DialogHeader, DialogTitle } from '$lib/components/ui/dialog';
     import type { WorkflowDefinition, WorkflowEditResult, WorkflowPatch } from '$lib/workflow';
     import WorkflowGraphTab from './WorkflowGraphTab.svelte';
-    import WorkflowPromptTab from './WorkflowPromptTab.svelte';
-
-    type EditorTab = 'prompt' | 'workflow';
 
     interface Props {
         open: boolean;
@@ -16,15 +13,14 @@
     let { open = $bindable(), workflow, title = 'Workflow Editor', onPatch }: Props = $props();
 
     let draftWorkflow = $state.raw<WorkflowDefinition>({ nodes: {} });
-    let activeTab = $state<EditorTab>('prompt');
     let selectedNodeId = $state<string | null>(null);
+    let wasOpen = $state(false);
 
     $effect(() => {
-        if (!open) {
-            const nextWorkflow = structuredClone(workflow);
-            draftWorkflow = nextWorkflow;
-            selectedNodeId = findFirstAgentId(nextWorkflow);
+        if (open && !wasOpen) {
+            resetDraft();
         }
+        wasOpen = open;
     });
 
     async function applyEdit(result: WorkflowEditResult) {
@@ -33,9 +29,11 @@
         await onPatch(result.patch);
     }
 
-    function editPrompt(nodeId: string) {
-        selectedNodeId = nodeId;
-        activeTab = 'prompt';
+    function resetDraft() {
+        const nextWorkflow = structuredClone(workflow);
+        draftWorkflow = nextWorkflow;
+        selectedNodeId =
+            findFirstAgentId(nextWorkflow) ?? Object.keys(nextWorkflow.nodes)[0] ?? null;
     }
 
     function findFirstAgentId(value: WorkflowDefinition): string | null {
@@ -56,42 +54,16 @@
         class="grid h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)] sm:max-w-[92vw]"
     >
         <DialogHeader>
-            <div class="flex items-center gap-6 pr-8">
-                <DialogTitle>{title}</DialogTitle>
-                <div class="flex rounded-lg bg-muted p-1">
-                    <button
-                        class="rounded-md px-4 py-1.5 text-sm {activeTab === 'prompt'
-                            ? 'bg-background shadow-sm'
-                            : 'text-muted-foreground'}"
-                        onclick={() => (activeTab = 'prompt')}>Prompt</button
-                    >
-                    <button
-                        class="rounded-md px-4 py-1.5 text-sm {activeTab === 'workflow'
-                            ? 'bg-background shadow-sm'
-                            : 'text-muted-foreground'}"
-                        onclick={() => (activeTab = 'workflow')}>Workflow</button
-                    >
-                </div>
-            </div>
+            <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
         <div class="flex min-h-0 flex-col">
-            {#if activeTab === 'prompt'}
-                <WorkflowPromptTab
-                    workflow={draftWorkflow}
-                    {selectedNodeId}
-                    onSelectNode={(nodeId) => (selectedNodeId = nodeId)}
-                    onEdit={applyEdit}
-                />
-            {:else}
-                <WorkflowGraphTab
-                    workflow={draftWorkflow}
-                    {selectedNodeId}
-                    onSelectNode={(nodeId) => (selectedNodeId = nodeId)}
-                    onEditPrompt={editPrompt}
-                    onEdit={applyEdit}
-                />
-            {/if}
+            <WorkflowGraphTab
+                workflow={draftWorkflow}
+                {selectedNodeId}
+                onSelectNode={(nodeId) => (selectedNodeId = nodeId)}
+                onEdit={applyEdit}
+            />
         </div>
     </DialogContent>
 </Dialog>

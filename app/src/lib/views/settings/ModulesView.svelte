@@ -36,7 +36,7 @@
         if (!name) return;
         const mod = await createModule({ name, description: '' });
         newName = '';
-        navigate({ view: 'settings', moduleId: mod.id });
+        navigate({ view: 'settings', settingsTab: 'modules', moduleId: mod.id });
     }
 
     async function handleImport(event: Event) {
@@ -48,7 +48,7 @@
             select: true
         });
         target.value = '';
-        navigate({ view: 'settings', moduleId: mod.id });
+        navigate({ view: 'settings', settingsTab: 'modules', moduleId: mod.id });
     }
 </script>
 
@@ -57,7 +57,10 @@
 {:else if moduleId}
     <div class="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
         <p class="text-sm text-muted-foreground">Module not found.</p>
-        <Button variant="outline" onclick={() => navigate({ view: 'settings' })}>Back</Button>
+        <Button
+            variant="outline"
+            onclick={() => navigate({ view: 'settings', settingsTab: 'modules' })}>Back</Button
+        >
     </div>
 {:else if $appSettings}
     <div class="flex flex-col gap-4">
@@ -87,7 +90,8 @@
             entities={$modules}
             config={$appSettings.modules}
             layout="list"
-            onItemClick={(mod) => navigate({ view: 'settings', moduleId: mod.id })}
+            onItemClick={(mod) =>
+                navigate({ view: 'settings', settingsTab: 'modules', moduleId: mod.id })}
             onCreateFolder={(name, parentId, sortOrder) =>
                 createGlobalFolder('modules', name, parentId, sortOrder)}
             onUpdateFolder={(id, changes) => updateGlobalFolder('modules', id, changes)}
@@ -128,7 +132,12 @@
                             <Button
                                 size="sm"
                                 variant="outline"
-                                onclick={() => navigate({ view: 'settings', moduleId: mod.id })}
+                                onclick={() =>
+                                    navigate({
+                                        view: 'settings',
+                                        settingsTab: 'modules',
+                                        moduleId: mod.id
+                                    })}
                             >
                                 <Pencil class="size-4" />
                             </Button>

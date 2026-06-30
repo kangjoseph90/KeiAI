@@ -39,11 +39,10 @@
         workflow: WorkflowDefinition;
         selectedNodeId: string | null;
         onSelectNode: (nodeId: string | null) => void;
-        onEditPrompt: (nodeId: string) => void;
         onEdit: (result: WorkflowEditResult) => void | Promise<void>;
     }
 
-    let { workflow, selectedNodeId, onSelectNode, onEditPrompt, onEdit }: Props = $props();
+    let { workflow, selectedNodeId, onSelectNode, onEdit }: Props = $props();
     let nodes = $state.raw<WorkflowCanvasNode[]>([]);
     let edges = $state.raw<Edge[]>([]);
 
@@ -76,7 +75,6 @@
             data: {
                 node,
                 hasIssue: diagnostics.some((diagnostic) => diagnostic.nodeId === node.id),
-                onEditPrompt,
                 onAddSlot: addAgentSlot,
                 onRenameSlot: renameAgentSlot,
                 onDeleteSlot: deleteAgentSlot,

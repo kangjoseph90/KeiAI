@@ -80,7 +80,7 @@
             args: {}
         });
         newName = '';
-        navigate({ view: 'settings', pluginId: plugin.id });
+        navigate({ view: 'settings', settingsTab: 'plugins', pluginId: plugin.id });
     }
 
     async function handleSave(id: string) {
@@ -99,12 +99,12 @@
             args
         };
         await updatePlugin(id, changes);
-        navigate({ view: 'settings' });
+        navigate({ view: 'settings', settingsTab: 'plugins' });
     }
 
     async function handleDelete(id: string) {
         await deletePlugin(id);
-        navigate({ view: 'settings' });
+        navigate({ view: 'settings', settingsTab: 'plugins' });
     }
 
     function addArgEntry() {
@@ -132,7 +132,11 @@
     <div class="flex min-h-[70vh] flex-col gap-5">
         <div class="flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">
-                <Button variant="ghost" size="icon" onclick={() => navigate({ view: 'settings' })}>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={() => navigate({ view: 'settings', settingsTab: 'plugins' })}
+                >
                     <ArrowLeft class="size-4" />
                 </Button>
                 <div class="min-w-0">
@@ -237,7 +241,10 @@
 {:else if pluginId}
     <div class="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
         <p class="text-sm text-muted-foreground">Plugin not found.</p>
-        <Button variant="outline" onclick={() => navigate({ view: 'settings' })}>Back</Button>
+        <Button
+            variant="outline"
+            onclick={() => navigate({ view: 'settings', settingsTab: 'plugins' })}>Back</Button
+        >
     </div>
 {:else if $appSettings}
     <div class="flex flex-col gap-4">
@@ -257,7 +264,8 @@
             entities={$plugins}
             config={$appSettings.plugins}
             layout="list"
-            onItemClick={(plugin) => navigate({ view: 'settings', pluginId: plugin.id })}
+            onItemClick={(plugin) =>
+                navigate({ view: 'settings', settingsTab: 'plugins', pluginId: plugin.id })}
             onCreateFolder={(name, parentId, sortOrder) =>
                 createGlobalFolder('plugins', name, parentId, sortOrder)}
             onUpdateFolder={(id, changes) => updateGlobalFolder('plugins', id, changes)}
@@ -312,7 +320,12 @@
                             <Button
                                 size="sm"
                                 variant="outline"
-                                onclick={() => navigate({ view: 'settings', pluginId: plugin.id })}
+                                onclick={() =>
+                                    navigate({
+                                        view: 'settings',
+                                        settingsTab: 'plugins',
+                                        pluginId: plugin.id
+                                    })}
                             >
                                 <Pencil class="size-4" />
                             </Button>

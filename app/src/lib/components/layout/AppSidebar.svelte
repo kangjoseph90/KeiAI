@@ -281,7 +281,7 @@
                 size="icon"
                 class="size-9"
                 title="Settings"
-                onclick={() => onNavigate({ view: 'settings' })}
+                onclick={() => onNavigate({ view: 'settings', settingsTab: 'models' })}
             >
                 <Settings class="size-4" />
             </Button>

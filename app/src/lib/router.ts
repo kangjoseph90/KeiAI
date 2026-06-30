@@ -3,7 +3,15 @@ import { writable, derived, get } from 'svelte/store';
 // ─── Route Types ──────────────────────────────────────────────────────
 
 export type ViewMode = 'home' | 'room' | 'characterStudio' | 'personaStudio' | 'settings';
-export type SettingsTab = 'profile' | 'account' | 'chatbot' | 'display' | 'plugin' | 'module';
+export type SettingsTab =
+    | 'models'
+    | 'chat'
+    | 'modules'
+    | 'plugins'
+    | 'language'
+    | 'profile'
+    | 'account'
+    | 'appearance';
 
 export interface RouteState {
     view: ViewMode;
@@ -24,8 +32,8 @@ export interface RouteState {
 // #/persona/{personaId}       → persona studio
 // #/settings                  → global settings
 // #/settings/{tab}            → global settings focused on a tab
-// #/settings/plugin/{pluginId} → settings plugin editor
-// #/settings/module/{moduleId} → settings module editor
+// #/settings/plugins/{pluginId} → settings plugin editor
+// #/settings/modules/{moduleId} → settings module editor
 
 function buildHash(route: RouteState): string {
     switch (route.view) {
@@ -38,11 +46,9 @@ function buildHash(route: RouteState): string {
         case 'personaStudio':
             return route.personaId ? `#/persona/${route.personaId}` : '#/';
         case 'settings':
-            if (route.pluginId) return `#/settings/plugin/${route.pluginId}`;
-            if (route.moduleId) return `#/settings/module/${route.moduleId}`;
-            if (route.settingsTab && route.settingsTab !== 'chatbot') {
-                return `#/settings/${route.settingsTab}`;
-            }
+            if (route.pluginId) return `#/settings/plugins/${route.pluginId}`;
+            if (route.moduleId) return `#/settings/modules/${route.moduleId}`;
+            if (route.settingsTab) return `#/settings/${route.settingsTab}`;
             return '#/settings';
         default:
             return '#/';
@@ -53,7 +59,7 @@ function parseHash(hash: string): RouteState {
     const path = hash.replace(/^#\//, '');
     if (!path || path === '/') return { view: 'home' };
 
-    if (path === 'settings') return { view: 'settings' };
+    if (path === 'settings') return { view: 'settings', settingsTab: 'models' };
 
     const parts = path.split('/');
     if (parts[0] === 'room') {
@@ -68,23 +74,25 @@ function parseHash(hash: string): RouteState {
         return { view: 'personaStudio', personaId: parts[1] };
     }
     if (parts[0] === 'settings') {
-        if (parts[1] === 'plugin' && parts[2]) {
-            return { view: 'settings', settingsTab: 'plugin', pluginId: parts[2] };
+        if (parts[1] === 'plugins' && parts[2]) {
+            return { view: 'settings', settingsTab: 'plugins', pluginId: parts[2] };
         }
-        if (parts[1] === 'module' && parts[2]) {
-            return { view: 'settings', settingsTab: 'module', moduleId: parts[2] };
+        if (parts[1] === 'modules' && parts[2]) {
+            return { view: 'settings', settingsTab: 'modules', moduleId: parts[2] };
         }
         if (
+            parts[1] === 'models' ||
+            parts[1] === 'chat' ||
+            parts[1] === 'modules' ||
+            parts[1] === 'plugins' ||
+            parts[1] === 'language' ||
             parts[1] === 'profile' ||
             parts[1] === 'account' ||
-            parts[1] === 'chatbot' ||
-            parts[1] === 'display' ||
-            parts[1] === 'plugin' ||
-            parts[1] === 'module'
+            parts[1] === 'appearance'
         ) {
             return { view: 'settings', settingsTab: parts[1] };
         }
-        return { view: 'settings' };
+        return { view: 'settings', settingsTab: 'models' };
     }
     return { view: 'home' };
 }

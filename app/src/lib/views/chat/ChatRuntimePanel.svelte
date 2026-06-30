@@ -461,7 +461,7 @@
             variant="ghost"
             size="sm"
             class="w-full justify-between text-xs font-normal text-muted-foreground group"
-            onclick={() => navigate({ view: 'settings' })}
+            onclick={() => navigate({ view: 'settings', settingsTab: 'models' })}
         >
             Open Settings
             <ChevronRight class="size-3 transition-transform group-hover:translate-x-0.5" />

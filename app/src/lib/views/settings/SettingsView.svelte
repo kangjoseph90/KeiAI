@@ -7,7 +7,9 @@
         Palette,
         RefreshCw,
         Puzzle,
-        Package
+        Package,
+        MessageSquare,
+        Languages
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { Label } from '$lib/components/ui/label';
@@ -25,11 +27,13 @@
     import type { SettingsTab } from '$lib/router';
     import AccountSettings from './AccountSettings.svelte';
     import ProfileSettings from './ProfileSettings.svelte';
-    import ChatBotSettings from './ChatBotSettings.svelte';
+    import ModelsSettings from './ModelsSettings.svelte';
+    import ChatSettings from './ChatSettings.svelte';
+    import LanguageSettings from './LanguageSettings.svelte';
     import PluginsView from './PluginsView.svelte';
     import ModulesView from './ModulesView.svelte';
 
-    let activeTab = $state<SettingsTab>('chatbot');
+    let activeTab = $state<SettingsTab>('models');
     let {
         settingsTab,
         pluginId,
@@ -38,9 +42,9 @@
 
     $effect(() => {
         if (pluginId) {
-            activeTab = 'plugin';
+            activeTab = 'plugins';
         } else if (moduleId) {
-            activeTab = 'module';
+            activeTab = 'modules';
         } else if (settingsTab) {
             activeTab = settingsTab;
         }
@@ -61,13 +65,20 @@
         }
     }
 
+    function openTab(tab: SettingsTab) {
+        activeTab = tab;
+        navigate({ view: 'settings', settingsTab: tab });
+    }
+
     const tabs = [
-        { id: 'chatbot', label: 'AI Engine', icon: Cpu },
-        { id: 'plugin', label: 'Plugins', icon: Puzzle },
-        { id: 'module', label: 'Global Modules', icon: Package },
-        { id: 'profile', label: 'My Profile', icon: User },
-        { id: 'account', label: 'Cloud Sync', icon: Shield },
-        { id: 'display', label: 'Appearance', icon: Palette }
+        { id: 'models', label: 'Models', icon: Cpu },
+        { id: 'chat', label: 'Chat', icon: MessageSquare },
+        { id: 'modules', label: 'Modules', icon: Package },
+        { id: 'plugins', label: 'Plugins', icon: Puzzle },
+        { id: 'language', label: 'Language', icon: Languages },
+        { id: 'profile', label: 'Profile', icon: User },
+        { id: 'account', label: 'Account', icon: Shield },
+        { id: 'appearance', label: 'Appearance', icon: Palette }
     ] as const;
 </script>
 
@@ -97,7 +108,7 @@
                     tab.id
                         ? 'bg-primary text-primary-foreground shadow-sm'
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-                    onclick={() => (activeTab = tab.id)}
+                    onclick={() => openTab(tab.id)}
                 >
                     <tab.icon class="size-4" />
                     {tab.label}
@@ -109,28 +120,52 @@
         <main class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
             <ScrollArea class="min-h-0 flex-1">
                 <div class="max-w-4xl mx-auto p-8 space-y-8">
-                    {#if activeTab === 'chatbot'}
+                    {#if activeTab === 'models'}
                         <div class="space-y-6">
                             <div class="flex flex-col gap-1">
-                                <h2 class="text-2xl font-bold tracking-tight">AI Engine</h2>
+                                <h2 class="text-2xl font-bold tracking-tight">Models</h2>
                                 <p class="text-muted-foreground">
-                                    Manage AI models, prompt presets, and runtime parameters.
+                                    Manage model selection, parameters, and custom model entries.
                                 </p>
                             </div>
                             <Separator />
                             <div class="h-[calc(100vh-12rem)] min-h-[32rem]">
-                                <ChatBotSettings />
+                                <ModelsSettings />
                             </div>
                         </div>
-                    {:else if activeTab === 'plugin'}
+                    {:else if activeTab === 'chat'}
+                        <div class="space-y-6">
+                            <div class="flex flex-col gap-1">
+                                <h2 class="text-2xl font-bold tracking-tight">Chat</h2>
+                                <p class="text-muted-foreground">
+                                    Manage chat workflow, scripts, toggles, and presets.
+                                </p>
+                            </div>
+                            <Separator />
+                            <div class="h-[calc(100vh-12rem)] min-h-[32rem]">
+                                <ChatSettings />
+                            </div>
+                        </div>
+                    {:else if activeTab === 'plugins'}
                         <PluginsView {pluginId} />
-                    {:else if activeTab === 'module'}
+                    {:else if activeTab === 'modules'}
                         <ModulesView {moduleId} />
+                    {:else if activeTab === 'language'}
+                        <div class="space-y-6">
+                            <div class="flex flex-col gap-1">
+                                <h2 class="text-2xl font-bold tracking-tight">Language</h2>
+                                <p class="text-muted-foreground">
+                                    Manage translation language and workflow behavior.
+                                </p>
+                            </div>
+                            <Separator />
+                            <LanguageSettings />
+                        </div>
                     {:else if activeTab === 'profile'}
                         <ProfileSettings />
                     {:else if activeTab === 'account'}
                         <AccountSettings />
-                    {:else if activeTab === 'display'}
+                    {:else if activeTab === 'appearance'}
                         <Card>
                             <CardHeader>
                                 <CardTitle>Appearance</CardTitle>

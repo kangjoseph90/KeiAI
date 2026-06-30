@@ -105,12 +105,12 @@
             messageCSS: editMessageCSS,
             allowLowLevel: editAllowLowLevel
         });
-        navigate({ view: 'settings' });
+        navigate({ view: 'settings', settingsTab: 'modules' });
     }
 
     async function handleDeleteModule() {
         await deleteModule(mod.id);
-        navigate({ view: 'settings' });
+        navigate({ view: 'settings', settingsTab: 'modules' });
     }
 
     function handleUpdateLorebook(lorebookId: string, changes: DeepPartial<Lorebook>) {
@@ -166,7 +166,11 @@
 <div class="flex min-h-[70vh] flex-col gap-5">
     <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 items-center gap-3">
-            <Button variant="ghost" size="icon" onclick={() => navigate({ view: 'settings' })}>
+            <Button
+                variant="ghost"
+                size="icon"
+                onclick={() => navigate({ view: 'settings', settingsTab: 'modules' })}
+            >
                 <ArrowLeft class="size-4" />
             </Button>
             <div class="min-w-0">

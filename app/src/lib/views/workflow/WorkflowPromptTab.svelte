@@ -9,6 +9,7 @@
         MessageSquareText,
         MessagesSquare,
         Plus,
+        Workflow,
         Trash2
     } from 'lucide-svelte';
     import { SvelteSet } from 'svelte/reactivity';
@@ -35,9 +36,18 @@
         selectedNodeId: string | null;
         onSelectNode: (nodeId: string) => void;
         onEdit: (result: WorkflowEditResult) => void | Promise<void>;
+        onEditWorkflow?: () => void;
+        editWorkflowLabel?: string;
     }
 
-    let { workflow, selectedNodeId, onSelectNode, onEdit }: Props = $props();
+    let {
+        workflow,
+        selectedNodeId,
+        onSelectNode,
+        onEdit,
+        onEditWorkflow,
+        editWorkflowLabel = 'Edit agent workflow'
+    }: Props = $props();
     let expandedBlocks = $state<Set<string>>(new Set());
 
     const agents = $derived(
@@ -92,9 +102,9 @@
 <div class="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col gap-3">
     {#if agent}
         <div
-            class="flex shrink-0 items-center justify-between gap-4 rounded-xl border bg-muted/30 px-4 py-3"
+            class="flex shrink-0 flex-wrap items-center justify-between gap-4 rounded-xl border bg-muted/30 px-4 py-3"
         >
-            <div class="flex min-w-0 items-center gap-3">
+            <div class="flex min-w-0 flex-wrap items-center gap-3">
                 <div class="min-w-0">
                     <p class="text-xs font-medium text-muted-foreground">Agent prompt</p>
                     <p class="text-[11px] text-muted-foreground/70">
@@ -112,8 +122,23 @@
                         <option value={item.id}>{item.name}</option>
                     {/each}
                 </select>
+                <div
+                    class="flex h-9 items-center gap-2 rounded-lg border bg-background px-3 text-xs shadow-sm"
+                    title="Selected agent LLM type"
+                >
+                    <span class="text-muted-foreground">LLM</span>
+                    <span class="max-w-36 truncate font-mono font-medium">{agent.llmType}</span>
+                </div>
             </div>
-            <Button size="sm" onclick={addBlock}><Plus class="size-4" /> Add block</Button>
+            <div class="flex shrink-0 items-center gap-2">
+                {#if onEditWorkflow}
+                    <Button size="sm" variant="outline" onclick={onEditWorkflow}>
+                        <Workflow class="size-4" />
+                        {editWorkflowLabel}
+                    </Button>
+                {/if}
+                <Button size="sm" onclick={addBlock}><Plus class="size-4" /> Add block</Button>
+            </div>
         </div>
 
         <div class="min-h-0 flex-1 overflow-y-auto pr-2">
