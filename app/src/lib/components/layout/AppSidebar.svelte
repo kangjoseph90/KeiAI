@@ -18,6 +18,7 @@
         User,
         UserCircle,
         UserPlus,
+        UsersRound,
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
@@ -62,7 +63,7 @@
     } from '$lib/stores';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { getFolderColorClass } from '$lib/components/entitylist/folders';
-    import { setGlobalVariable } from '$lib/managers';
+    import { addRoomCharacterFromLibrary, setGlobalVariable } from '$lib/managers';
     import type { RouteState } from '$lib/router';
     import { syncChatGreetings } from '$lib/managers';
     import { compareSortOrder } from '$lib/utils/ordering';
@@ -141,6 +142,16 @@
         await syncChatGreetings($activeChat.id);
     }
 
+    async function handleCopyCharacters(characterIds: string[]) {
+        if (!$activeRoom) return;
+        for (const characterId of characterIds) {
+            await addRoomCharacterFromLibrary($activeRoom.id, characterId);
+        }
+        if ($activeChat) {
+            await syncChatGreetings($activeChat.id);
+        }
+    }
+
     async function handleRemoveCharacter(characterId: string) {
         if (!$activeRoom) return;
         await removeRoomCharacter($activeRoom.id, characterId);
@@ -202,10 +213,11 @@
     <div class="flex w-14 flex-col border-r border-sidebar-border bg-sidebar">
         <div class="flex h-14 items-center justify-center border-b border-sidebar-border">
             <Button
-                variant="ghost"
+                variant={route.view === 'home' ? 'secondary' : 'ghost'}
                 size="icon"
                 class="size-9"
-                title="Home"
+                title="Library"
+                aria-label="Library"
                 onclick={() => onNavigate({ view: 'home' })}
             >
                 <Home class="size-4" />
@@ -214,6 +226,17 @@
 
         <div class="flex-1 overflow-y-auto px-2 py-2">
             <div class="flex flex-col items-center gap-2 w-full">
+                <Button
+                    variant={route.view === 'multiRoom' || $isMultiRoom ? 'secondary' : 'ghost'}
+                    size="icon"
+                    class="size-10"
+                    title="Multi Rooms"
+                    aria-label="Multi Rooms"
+                    onclick={() => onNavigate({ view: 'multiRoom' })}
+                >
+                    <UsersRound class="size-4" />
+                </Button>
+                <div class="h-px w-8 bg-sidebar-border"></div>
                 {#if $appSettings}
                     <EntityList
                         entities={$rooms}
@@ -749,4 +772,8 @@
     attachedIds={$roomCharacters.map((character) => character.id)}
     ownerTable="characters"
     onAdd={handleAddCharacters}
+    roomTabLabel="Room characters"
+    libraryResources={$isMultiRoom ? $characters : undefined}
+    libraryConfig={$isMultiRoom ? $appSettings?.characters : undefined}
+    onCopy={$isMultiRoom ? handleCopyCharacters : undefined}
 />

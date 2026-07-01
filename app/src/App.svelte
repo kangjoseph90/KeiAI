@@ -11,10 +11,7 @@
         loadUser,
         startSyncStatusTracking,
         stopSyncStatusTracking,
-        selectCharacter,
-        selectPersona,
         selectChat,
-        selectRoom,
         clearActiveRoom,
         clearActiveChat,
         clearActiveCharacter,
@@ -25,6 +22,11 @@
         activeRoom,
         initDefaultContents
     } from '$lib/stores';
+    import {
+        restoreCharacterContext,
+        restorePersonaContext,
+        restoreRoomContext
+    } from '$lib/managers';
     import {
         route,
         navigate,
@@ -50,7 +52,7 @@
             if (initial.view === 'settings') {
                 navigate(initial);
             } else if (initial.view === 'room' && initial.roomId) {
-                await selectRoom(initial.roomId);
+                await restoreRoomContext(initial.roomId);
                 if (initial.chatId) {
                     await selectChat(initial.chatId);
                 } else {
@@ -58,10 +60,10 @@
                 }
                 navigate(initial);
             } else if (initial.view === 'characterStudio' && initial.charId) {
-                await selectCharacter(initial.charId);
+                await restoreCharacterContext(initial.charId);
                 navigate(initial);
             } else if (initial.view === 'personaStudio' && initial.personaId) {
-                await selectPersona(initial.personaId);
+                await restorePersonaContext(initial.personaId);
                 navigate(initial);
             } else {
                 navigate(initial);
@@ -100,13 +102,13 @@
 
         (async () => {
             try {
-                if (r.view === 'home') {
+                if (r.view === 'home' || r.view === 'multiRoom') {
                     clearActiveRoom();
                     clearActiveCharacter();
                     clearActivePersona();
                 } else if (r.view === 'room') {
                     if (r.roomId && $activeRoom?.id !== r.roomId) {
-                        await selectRoom(r.roomId);
+                        await restoreRoomContext(r.roomId);
                     }
                     if (r.chatId && $activeChat?.id !== r.chatId) {
                         await selectChat(r.chatId);
@@ -115,11 +117,11 @@
                     }
                 } else if (r.view === 'characterStudio') {
                     if (r.charId && $activeCharacter?.id !== r.charId) {
-                        await selectCharacter(r.charId);
+                        await restoreCharacterContext(r.charId);
                     }
                 } else if (r.view === 'personaStudio') {
                     if (r.personaId && $activePersona?.id !== r.personaId) {
-                        await selectPersona(r.personaId);
+                        await restorePersonaContext(r.personaId);
                     }
                 }
             } catch (e) {
@@ -207,9 +209,13 @@
                         moduleId={$route.moduleId}
                     />
                 {/await}
+            {:else if $route.view === 'multiRoom'}
+                {#await import('$lib/views/home/HomeView.svelte') then m}
+                    <m.default space="multiRooms" onNavigate={navigateFromHome} />
+                {/await}
             {:else}
                 {#await import('$lib/views/home/HomeView.svelte') then m}
-                    <m.default onNavigate={navigateFromHome} />
+                    <m.default space="library" onNavigate={navigateFromHome} />
                 {/await}
             {/if}
         </div>

@@ -46,7 +46,7 @@
         updateChatLorebook
     } from '$lib/stores';
     import { navigate } from '$lib/router';
-    import { getChatVariables } from '$lib/managers';
+    import { addChatPersonaFromLibrary, getChatVariables } from '$lib/managers';
     import type { ChatContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
@@ -123,6 +123,13 @@
         if (!$activeChat) return;
         for (const personaId of personaIds) {
             await addChatPersona(chatId, personaId);
+        }
+    }
+
+    async function handlePersonasCopy(personaIds: string[]) {
+        if (!$activeChat) return;
+        for (const personaId of personaIds) {
+            await addChatPersonaFromLibrary(chatId, personaId);
         }
     }
 
@@ -467,4 +474,8 @@
     attachedIds={$chatPersonas.map((persona) => persona.id)}
     ownerTable="personas"
     onAdd={handlePersonasAdd}
+    roomTabLabel="Room personas"
+    libraryResources={$isMultiRoom ? $personas : undefined}
+    libraryConfig={$isMultiRoom ? $appSettings?.personas : undefined}
+    onCopy={$isMultiRoom ? handlePersonasCopy : undefined}
 />

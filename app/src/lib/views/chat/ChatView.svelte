@@ -10,7 +10,13 @@
         ChevronLeft,
         MessageSquare,
         ArrowDown,
-        Loader2
+        Crown,
+        Globe2,
+        Loader2,
+        Lock,
+        Settings2,
+        Shield,
+        UsersRound
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
@@ -33,7 +39,11 @@
         loadOlderMessages,
         loadNewerMessages,
         dropOlderMessages,
-        dropNewerMessages
+        dropNewerMessages,
+        isMultiRoom,
+        multiRoomMembers,
+        multiRoomMetas,
+        userId
     } from '$lib/stores';
     import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
     import { ToolCallService } from '$lib/services/content/tool';
@@ -61,6 +71,19 @@
 
     const MESSAGE_PAGE_SIZE = 30;
     const MESSAGE_WINDOW_SIZE = 120;
+
+    const multiRoomMeta = $derived(
+        $isMultiRoom ? ($multiRoomMetas.find((meta) => meta.id === roomId) ?? null) : null
+    );
+    const multiRoomMemberCount = $derived(
+        $isMultiRoom
+            ? ($multiRoomMembers.get(roomId) ?? []).filter((member) => member.status === 'accepted')
+                  .length
+            : 0
+    );
+    const isMultiRoomOwner = $derived(
+        Boolean(multiRoomMeta && $userId && multiRoomMeta.ownerUserId === $userId)
+    );
 
     // Reset state and scroll to bottom when active chat changes
     $effect(() => {
@@ -280,6 +303,42 @@
             {/if}
         </div>
         <div class="flex items-center gap-1">
+            {#if $isMultiRoom}
+                <div class="mr-2 flex items-center gap-1.5 border-r pr-3 text-xs">
+                    <span
+                        class="flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 font-medium text-primary"
+                    >
+                        <UsersRound class="size-3.5" /> Multi Room
+                    </span>
+                    <span class="hidden items-center gap-1 text-muted-foreground lg:flex">
+                        {#if multiRoomMeta?.visibility === 'public'}
+                            <Globe2 class="size-3.5" /> Public
+                        {:else}
+                            <Lock class="size-3.5" /> Private
+                        {/if}
+                    </span>
+                    <span class="hidden items-center gap-1 text-muted-foreground xl:flex">
+                        {#if isMultiRoomOwner}
+                            <Crown class="size-3.5" /> Owner
+                        {:else}
+                            <Shield class="size-3.5" /> Member
+                        {/if}
+                    </span>
+                    <span class="hidden text-muted-foreground 2xl:inline">
+                        {multiRoomMemberCount} members
+                    </span>
+                    <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        class="size-7"
+                        title="Manage multi room"
+                        aria-label="Manage multi room"
+                        onclick={() => navigate({ view: 'multiRoom' })}
+                    >
+                        <Settings2 class="size-3.5" />
+                    </Button>
+                </div>
+            {/if}
             {#if $activeChat}
                 <Button
                     variant="ghost"

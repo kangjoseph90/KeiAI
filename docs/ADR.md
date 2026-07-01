@@ -616,10 +616,11 @@
 - 결정: **EntityListConfig<R> 도입 — refs + folders를 엔티티 타입별로 그룹화하고 Record로 전환**
   ```typescript
   interface EntityListConfig<R extends OrderedRef = OrderedRef> {
-      refs?: Record<string, R>;
-      folders?: Record<string, FolderDef>;
+    refs?: Record<string, R>;
+    folders?: Record<string, FolderDef>;
   }
   ```
+
   - 필드명 변경: `lorebookRefs` → `lorebooks`, `moduleRefs` → `modules` 등.
   - FolderRef 배열 → Record<string, FolderDef> 전환.
   - `generateSortOrder`, `sortByRefs` 시그니처를 Record 대응으로 변경.
@@ -686,25 +687,28 @@
   - 로컬은 도메인 테이블 유지 + scope 격리, 서버는 generic encrypted records → 로컬 실행성과 서버 blind sync 모델을 각각 최적화할 수 있다.
 - 결정:
   - 로컬 DB는 도메인별 테이블(`characters`, `rooms`, `chats`, `messages`, `lorebooks`, `scripts`, `charjs`, `assets` 등)을 유지하되, 모든 레코드는 `DataRecord` 구조로 통일한다.
+
     ```typescript
-    export type DataScopeType = 'user' | 'room';
+    export type DataScopeType = "user" | "room";
 
     export interface DataRecord {
-        id: string;
-        scopeType: DataScopeType;
-        scopeId: string; // userId or roomId
-        createdAt: number;
-        updatedAt: number;
-        isDeleted: boolean;
-        assetEntries?: AssetEntries;
-        data: Record<string, unknown>;
+      id: string;
+      scopeType: DataScopeType;
+      scopeId: string; // userId or roomId
+      createdAt: number;
+      updatedAt: number;
+      isDeleted: boolean;
+      assetEntries?: AssetEntries;
+      data: Record<string, unknown>;
     }
     ```
+
   - 개인 컨텐츠는 `scopeType='user'`, `scopeId=userId`로 저장한다.
   - 멀티룸 컨텐츠는 `scopeType='room'`, `scopeId=roomId`로 저장한다.
   - 서비스/스토어/프롬프트/파이프라인은 호출자가 요청한 scope의 로컬 도메인 DB를 본다. `PagedMessages`와 `RecordBuffer`는 local/multi 테이블 분기를 알지 않고 scope 필터만 사용한다.
   - 멀티룸에서 개인 캐릭터/페르소나/자원을 사용하려면 약한 참조가 아니라 snapshot import를 수행한다. import된 레코드는 새 id와 `scopeType='room'`, `scopeId=roomId`를 가진 독립 컨텐츠가 된다.
   - 서버 sync 저장소는 도메인별 테이블 대신 generic encrypted record 테이블을 사용한다.
+
     ```text
     records
       id, userId, kind, updatedAt, isDeleted, encryptedData, encryptedDataIV
@@ -712,6 +716,7 @@
     multi_room_records
       id, roomId, kind, updatedAt, isDeleted, encryptedData, encryptedDataIV
     ```
+
   - sync engine은 로컬 레코드의 `scopeType`을 기준으로 암호화 키와 서버 테이블을 선택한다.
     - `scopeType='user'`: master key `M`으로 암호화하고 `records`에 push/pull한다.
     - `scopeType='room'`: active room key로 암호화하고 `multi_room_records`에 push/pull한다.
@@ -719,6 +724,7 @@
   - `multi_room_index`와 `multi_room_members`는 컨텐츠가 아니라 디렉터리/권한/키 교환 메타이므로 별도 테이블로 유지한다.
   - 에셋도 같은 `DataRecord` 소유 모델을 사용한다. 개인 에셋은 `scopeType='user'`, 멀티룸 에셋은 `scopeType='room'`이다.
   - 다만 에셋은 서버 generic content records에 포함하지 않는다. 에셋은 blob 저장, upload queue, registry, hash/status 라이프사이클이 있으므로 별도 asset adapter/sync 모델을 유지한다. 서버도 `assets`와 `multi_room_assets`를 둔다.
+
 - 결과:
   - 로컬 실행 계층은 개인 모드와 멀티룸 모드를 같은 도메인 서비스, 같은 페이지네이션, 같은 buffer 위에서 실행할 수 있다.
   - 서버는 도메인 구조를 알지 않는 generic encrypted sync store가 되며, 새 컨텐츠 타입 추가 시 서버 schema 변경이 줄어든다.
@@ -829,3 +835,25 @@
   - 같은 hash를 여러 owner가 들고 있을 때 로컬 registry/storage dedup은 포기한다.
   - 렌더/UI 경로에 `AssetReadLocator`가 전달되므로 v3의 id 기반 접근보다 코드가 장황해질 수 있다.
 - 참고: docs/asset-system-v4.md, ADR 032, ADR 035, ADR 036, ADR 037, docs/schema.md
+
+---
+
+## 039: Scope-neutral content routes and Multi Room workspace
+
+- 상태: 채택
+- 맥락: user scope와 room scope는 같은 로컬 도메인 테이블과 같은 UI를 사용한다. URL에 scope를 중복 표현하면 room, chat, character, persona 경로가 각각 user/multi 변형으로 늘어나고 Studio 링크도 부모 room 경로에 결합된다.
+- 결정:
+  - content URL은 scope를 표현하지 않는다.
+    - `#/room/{roomId}`
+    - `#/room/{roomId}/chat/{chatId}`
+    - `#/character/{characterId}`
+    - `#/persona/{personaId}`
+  - route 복구 전에 로컬 레코드의 `scopeType/scopeId` 메타데이터만 조회한다. room scope이면 `selectMultiRoom(scopeId)`로 membership과 room key를 검증한 뒤 기존 selector를 호출한다.
+  - metadata resolver는 도메인 payload를 반환하지 않으며 기존 `canAccessScope()`를 우회하지 않는다.
+  - `#/multi-room`은 content route가 아니라 Multi Room 생성, 발견, 가입 요청, 멤버십 관리를 위한 최상위 workspace다.
+  - 로컬 레코드가 없는 새 기기에서는 character/persona id만으로 부모 room을 추론하지 않는다. 해당 경우 명시적인 not-found 복구 상태를 표시한다.
+- 결과:
+  - 일반 room과 Multi Room이 같은 chat/Studio route와 화면을 공유한다.
+  - 새로고침 시 room-scoped content도 로컬 metadata를 통해 room session을 복구할 수 있다.
+  - URL 구조는 단순하게 유지되지만, 아직 로컬에 없는 room-scoped Studio 딥링크는 지원하지 않는다.
+- 참고: ADR 035, ADR 036, ADR 037

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Check, Search, UserRoundPlus } from 'lucide-svelte';
+    import { Check, Library, Search, UserRoundPlus, UsersRound } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { Button } from '$lib/components/ui/button';
@@ -30,6 +30,10 @@
         attachedIds: string[];
         ownerTable: ResourceTable;
         onAdd: (ids: string[]) => Promise<void>;
+        roomTabLabel?: string;
+        libraryResources?: PickerResource[];
+        libraryConfig?: EntityListConfig;
+        onCopy?: (ids: string[]) => Promise<void>;
     }
 
     let {
@@ -42,36 +46,48 @@
         config,
         attachedIds,
         ownerTable,
-        onAdd
+        onAdd,
+        roomTabLabel = `Room ${resourceLabel}`,
+        libraryResources = undefined,
+        libraryConfig = undefined,
+        onCopy = undefined
     }: Props = $props();
 
+    let source = $state<'room' | 'library'>('room');
     let query = $state('');
     let selectedIds = $state<string[]>([]);
     let adding = $state(false);
     let wasOpen = $state(false);
 
-    const attached = $derived(new Set(attachedIds));
+    const hasLibrarySource = $derived(Boolean(libraryResources && libraryConfig && onCopy));
+    const activeResources = $derived(
+        source === 'library' && libraryResources ? libraryResources : resources
+    );
+    const activeConfig = $derived(source === 'library' && libraryConfig ? libraryConfig : config);
+    const attached = $derived(new Set(source === 'room' ? attachedIds : []));
     const normalizedQuery = $derived(query.trim().toLocaleLowerCase());
     const filteredResources = $derived(
         normalizedQuery
-            ? resources.filter((resource) =>
+            ? activeResources.filter((resource) =>
                   resource.name.toLocaleLowerCase().includes(normalizedQuery)
               )
-            : resources
+            : activeResources
     );
     const displayConfig = $derived<EntityListConfig>(
-        normalizedQuery ? { refs: {}, folders: {} } : config
+        normalizedQuery ? { refs: {}, folders: {} } : activeConfig
     );
+    const actionVerb = $derived(source === 'library' ? 'Copy' : 'Add');
     const addButtonLabel = $derived(
         selectedIds.length === 0
-            ? `Add ${resourceLabel}`
-            : `Add ${selectedIds.length} ${selectedIds.length === 1 ? singularLabel : resourceLabel}`
+            ? `${actionVerb} ${resourceLabel}`
+            : `${actionVerb} ${selectedIds.length} ${selectedIds.length === 1 ? singularLabel : resourceLabel}`
     );
 
     $effect(() => {
         if (open && !wasOpen) {
             query = '';
             selectedIds = [];
+            source = 'room';
         }
         wasOpen = open;
     });
@@ -87,11 +103,21 @@
             : [...selectedIds, resourceId];
     }
 
+    function selectSource(nextSource: 'room' | 'library'): void {
+        source = nextSource;
+        query = '';
+        selectedIds = [];
+    }
+
     async function addSelected(): Promise<void> {
         if (selectedIds.length === 0 || adding) return;
         adding = true;
         try {
-            await onAdd(selectedIds);
+            if (source === 'library' && onCopy) {
+                await onCopy(selectedIds);
+            } else {
+                await onAdd(selectedIds);
+            }
             open = false;
         } finally {
             adding = false;
@@ -109,6 +135,27 @@
         </DialogHeader>
 
         <div class="border-b bg-muted/20 px-5 py-3">
+            {#if hasLibrarySource}
+                <div class="mb-3 flex rounded-md border bg-background p-1">
+                    <Button
+                        variant={source === 'room' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        class="h-8 flex-1 gap-2 text-xs"
+                        onclick={() => selectSource('room')}
+                    >
+                        <UsersRound class="size-3.5" />
+                        {roomTabLabel}
+                    </Button>
+                    <Button
+                        variant={source === 'library' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        class="h-8 flex-1 gap-2 text-xs"
+                        onclick={() => selectSource('library')}
+                    >
+                        <Library class="size-3.5" /> Copy from library
+                    </Button>
+                </div>
+            {/if}
             <div class="relative">
                 <Search
                     class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -211,7 +258,7 @@
         <DialogFooter class="flex-row items-center justify-between gap-3 border-t px-5 py-3">
             <p class="text-xs text-muted-foreground">
                 {selectedIds.length === 0
-                    ? `Select ${resourceLabel} to add`
+                    ? `Select ${resourceLabel} to ${source === 'library' ? 'copy' : 'add'}`
                     : `${selectedIds.length} selected`}
             </p>
             <div class="flex items-center gap-2">
@@ -219,7 +266,7 @@
                     Cancel
                 </Button>
                 <Button onclick={addSelected} disabled={selectedIds.length === 0 || adding}>
-                    {adding ? 'Adding...' : addButtonLabel}
+                    {adding ? (source === 'library' ? 'Copying...' : 'Adding...') : addButtonLabel}
                 </Button>
             </div>
         </DialogFooter>

@@ -2,7 +2,13 @@ import { writable, derived, get } from 'svelte/store';
 
 // ─── Route Types ──────────────────────────────────────────────────────
 
-export type ViewMode = 'home' | 'room' | 'characterStudio' | 'personaStudio' | 'settings';
+export type ViewMode =
+    | 'home'
+    | 'multiRoom'
+    | 'room'
+    | 'characterStudio'
+    | 'personaStudio'
+    | 'settings';
 export type SettingsTab =
     | 'models'
     | 'chat'
@@ -26,6 +32,7 @@ export interface RouteState {
 
 // ─── URL Scheme ───────────────────────────────────────────────────────
 // #/                          → home
+// #/multi-room               → multi-room management
 // #/room/{roomId}             → room, no chat selected
 // #/room/{roomId}/chat/{chatId} → room with a selected chat
 // #/character/{charId}        → character studio
@@ -37,6 +44,8 @@ export interface RouteState {
 
 function buildHash(route: RouteState): string {
     switch (route.view) {
+        case 'multiRoom':
+            return '#/multi-room';
         case 'room':
             if (route.roomId && route.chatId) return `#/room/${route.roomId}/chat/${route.chatId}`;
             if (route.roomId) return `#/room/${route.roomId}`;
@@ -58,6 +67,7 @@ function buildHash(route: RouteState): string {
 function parseHash(hash: string): RouteState {
     const path = hash.replace(/^#\//, '');
     if (!path || path === '/') return { view: 'home' };
+    if (path === 'multi-room') return { view: 'multiRoom' };
 
     if (path === 'settings') return { view: 'settings', settingsTab: 'models' };
 

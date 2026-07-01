@@ -2,13 +2,17 @@
     import {
         Check,
         DoorOpen,
+        Globe2,
         Import,
         KeyRound,
+        Lock,
         Plus,
         Search,
+        Settings2,
         Sparkles,
         Trash2,
         UserRound,
+        Users,
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
@@ -30,6 +34,7 @@
         deleteRoom,
         leaveMultiRoom,
         loadOwnedMultiRoomMembers,
+        loadMultiRoomMembers,
         moveGlobalItem,
         multiRoomMembers,
         multiRoomMetas,
@@ -37,8 +42,10 @@
         personas,
         rejectJoinMultiRoom,
         requestJoinMultiRoom,
+        revokeMultiRoomMember,
         rooms,
         selectMultiRoom,
+        updateMultiRoomIndex,
         updateGlobalFolder,
         userId
     } from '$lib/stores';
@@ -51,12 +58,14 @@
     import { formatPublicKeyFingerprint } from '$lib/crypto';
     import { getErrorMessage } from '$lib/types/errors';
     import { approveMultiRoomJoinRequest } from '$lib/stores';
+    import MultiRoomManageDialog from './MultiRoomManageDialog.svelte';
 
     interface Props {
+        space?: 'library' | 'multiRooms';
         onNavigate: (route: RouteState) => void;
     }
 
-    let { onNavigate }: Props = $props();
+    let { space = 'library', onNavigate }: Props = $props();
 
     type Tab = 'rooms' | 'multiRooms' | 'characters' | 'personas';
     let tab = $state<Tab>('rooms');
@@ -69,6 +78,7 @@
     let importingPersona = $state(false);
     let roomName = $state('');
     let multiRoomName = $state('');
+    let multiRoomVisibility = $state<'private' | 'public'>('private');
     let joinRoomId = $state('');
     let publicRoomQuery = $state('');
     let publicRoomResults = $state<PublicMultiRoom[]>([]);
@@ -76,6 +86,8 @@
     let searchingPublicRooms = $state(false);
     let joiningRoom = $state(false);
     let approvingMemberId = $state('');
+    let managedRoomId = $state<string | null>(null);
+    let manageDialogOpen = $state(false);
     let characterName = $state('');
     let personaName = $state('');
 
@@ -90,10 +102,6 @@
         if (!normalized) return $multiRooms;
         return $multiRooms.filter((room) => room.name.toLowerCase().includes(normalized));
     });
-
-    function isMultiRoomOwner(roomId: string): boolean {
-        return $multiRoomMetas.find((item) => item.id === roomId)?.ownerUserId === $userId;
-    }
 
     const filteredCharacters = $derived(() => {
         const normalized = query.trim().toLowerCase();
@@ -123,6 +131,24 @@
                 : []
         );
     });
+    const managedRoom = $derived(
+        managedRoomId ? ($multiRooms.find((room) => room.id === managedRoomId) ?? null) : null
+    );
+    const managedRoomMeta = $derived(
+        managedRoomId ? ($multiRoomMetas.find((meta) => meta.id === managedRoomId) ?? null) : null
+    );
+    const managedRoomMembers = $derived(
+        managedRoomId ? ($multiRoomMembers.get(managedRoomId) ?? []) : []
+    );
+    const busyManagedMemberId = $derived(approvingMemberId.split(':')[1] ?? null);
+
+    $effect(() => {
+        if (space === 'multiRooms') {
+            tab = 'multiRooms';
+        } else if (tab === 'multiRooms') {
+            tab = 'rooms';
+        }
+    });
 
     $effect(() => {
         if (tab === 'multiRooms') {
@@ -146,10 +172,11 @@
 
         const room = await createMultiRoom({
             name: trimmed,
-            publicName: trimmed,
-            visibility: 'public'
+            publicName: multiRoomVisibility === 'public' ? trimmed : undefined,
+            visibility: multiRoomVisibility
         });
         multiRoomName = '';
+        multiRoomVisibility = 'private';
         creatingMultiRoom = false;
         await openMultiRoom(room.id);
     }
@@ -223,6 +250,35 @@
             await loadOwnedMultiRoomMembers();
         } catch (e) {
             multiRoomActionError = getErrorMessage(e);
+        } finally {
+            approvingMemberId = '';
+        }
+    }
+
+    async function handleOpenMultiRoomManagement(roomId: string) {
+        multiRoomActionError = '';
+        try {
+            await loadMultiRoomMembers(roomId);
+            managedRoomId = roomId;
+            manageDialogOpen = true;
+        } catch (e) {
+            multiRoomActionError = getErrorMessage(e);
+        }
+    }
+
+    async function handleManagedVisibility(visibility: 'private' | 'public') {
+        if (!managedRoomId || !managedRoom) return;
+        await updateMultiRoomIndex(managedRoomId, {
+            visibility,
+            publicName: visibility === 'public' ? managedRoom.name : undefined
+        });
+    }
+
+    async function handleRevokeMember(roomId: string, memberUserId: string) {
+        if (!confirm(`Remove member ${memberUserId} from this room?`)) return;
+        approvingMemberId = `${roomId}:${memberUserId}`;
+        try {
+            await revokeMultiRoomMember(roomId, memberUserId);
         } finally {
             approvingMemberId = '';
         }
@@ -336,9 +392,13 @@
     <header class="shrink-0 border-b px-8 py-6">
         <div class="flex items-center justify-between gap-4">
             <div>
-                <h1 class="text-xl font-semibold">Library</h1>
+                <h1 class="text-xl font-semibold">
+                    {space === 'multiRooms' ? 'Multi Rooms' : 'Library'}
+                </h1>
                 <p class="mt-1 text-sm text-muted-foreground">
-                    Open a room, edit characters, or manage personas.
+                    {space === 'multiRooms'
+                        ? 'Create, discover, and manage encrypted shared rooms.'
+                        : 'Open a room, edit characters, or manage personas.'}
                 </p>
             </div>
             {#if tab === 'rooms'}
@@ -362,7 +422,7 @@
             {:else if tab === 'multiRooms'}
                 {#if creatingMultiRoom}
                     <form
-                        class="flex w-full max-w-sm gap-2"
+                        class="flex w-full max-w-xl items-center justify-end gap-2"
                         onsubmit={(event) => {
                             event.preventDefault();
                             handleCreateMultiRoom();
@@ -370,9 +430,30 @@
                     >
                         <Input
                             bind:value={multiRoomName}
+                            class="max-w-xs"
                             placeholder="Multi room name..."
                             autofocus
                         />
+                        <div class="flex shrink-0 rounded-md border bg-muted/30 p-1">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={multiRoomVisibility === 'private' ? 'secondary' : 'ghost'}
+                                class="h-7 gap-1.5 px-2.5 text-xs"
+                                onclick={() => (multiRoomVisibility = 'private')}
+                            >
+                                <Lock class="size-3.5" /> Private
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={multiRoomVisibility === 'public' ? 'secondary' : 'ghost'}
+                                class="h-7 gap-1.5 px-2.5 text-xs"
+                                onclick={() => (multiRoomVisibility = 'public')}
+                            >
+                                <Globe2 class="size-3.5" /> Public
+                            </Button>
+                        </div>
                         <Button type="submit">Create</Button>
                     </form>
                 {:else}
@@ -463,44 +544,42 @@
     <main class="flex-1 overflow-y-auto px-8 py-8">
         <div class="mx-auto max-w-6xl space-y-6">
             <div class="flex flex-wrap items-center justify-between gap-4">
-                <div class="flex rounded-md border bg-muted/30 p-1">
-                    <button
-                        class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
-                        'rooms'
-                            ? 'bg-background shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'}"
-                        onclick={() => (tab = 'rooms')}
-                    >
-                        Rooms
-                    </button>
-                    <button
-                        class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
-                        'multiRooms'
-                            ? 'bg-background shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'}"
-                        onclick={() => (tab = 'multiRooms')}
-                    >
-                        Multi Rooms
-                    </button>
-                    <button
-                        class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
-                        'characters'
-                            ? 'bg-background shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'}"
-                        onclick={() => (tab = 'characters')}
-                    >
-                        Characters
-                    </button>
-                    <button
-                        class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
-                        'personas'
-                            ? 'bg-background shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'}"
-                        onclick={() => (tab = 'personas')}
-                    >
-                        Personas
-                    </button>
-                </div>
+                {#if space === 'library'}
+                    <div class="flex rounded-md border bg-muted/30 p-1">
+                        <button
+                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            'rooms'
+                                ? 'bg-background shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'}"
+                            onclick={() => (tab = 'rooms')}
+                        >
+                            Rooms
+                        </button>
+                        <button
+                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            'characters'
+                                ? 'bg-background shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'}"
+                            onclick={() => (tab = 'characters')}
+                        >
+                            Characters
+                        </button>
+                        <button
+                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            'personas'
+                                ? 'bg-background shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'}"
+                            onclick={() => (tab = 'personas')}
+                        >
+                            Personas
+                        </button>
+                    </div>
+                {:else}
+                    <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Users class="size-4" />
+                        Your encrypted shared spaces
+                    </div>
+                {/if}
 
                 <div class="relative w-full max-w-md">
                     <Search
@@ -749,6 +828,10 @@
                         {#snippet item({ entity: room })}
                             {@const characterCount = Object.keys(room.characters.refs).length}
                             {@const chatCount = Object.keys(room.chats.refs).length}
+                            {@const meta = $multiRoomMetas.find((item) => item.id === room.id)}
+                            {@const memberCount = ($multiRoomMembers.get(room.id) ?? []).filter(
+                                (member) => member.status === 'accepted'
+                            ).length}
                             <div
                                 class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
                             >
@@ -773,27 +856,29 @@
                                     <Button
                                         variant="ghost"
                                         size="icon-sm"
-                                        class="shrink-0 text-muted-foreground hover:text-destructive"
-                                        title={isMultiRoomOwner(room.id)
-                                            ? 'Delete multi room'
-                                            : 'Leave multi room'}
-                                        onclick={() =>
-                                            isMultiRoomOwner(room.id)
-                                                ? handleDeleteMultiRoom(room.id, room.name)
-                                                : handleLeaveMultiRoom(room.id, room.name)}
+                                        class="shrink-0 text-muted-foreground hover:text-foreground"
+                                        title="Manage multi room"
+                                        onclick={() => handleOpenMultiRoomManagement(room.id)}
                                     >
-                                        {#if isMultiRoomOwner(room.id)}
-                                            <Trash2 class="size-4" />
-                                        {:else}
-                                            <DoorOpen class="size-4" />
-                                        {/if}
+                                        <Settings2 class="size-4" />
                                     </Button>
                                 </div>
                                 <div
-                                    class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                    class="mt-auto flex w-full items-center justify-between gap-3 pt-5 text-xs text-muted-foreground"
                                 >
-                                    <DoorOpen class="size-3.5" />
-                                    Open multi room
+                                    <span class="flex items-center gap-1">
+                                        <DoorOpen class="size-3.5" /> Open multi room
+                                    </span>
+                                    <span class="flex items-center gap-2">
+                                        <span class="flex items-center gap-1">
+                                            {#if meta?.visibility === 'public'}
+                                                <Globe2 class="size-3.5" /> Public
+                                            {:else}
+                                                <Lock class="size-3.5" /> Private
+                                            {/if}
+                                        </span>
+                                        <span>{memberCount} members</span>
+                                    </span>
                                 </div>
                             </div>
                         {/snippet}
@@ -997,3 +1082,35 @@
         </div>
     </main>
 </div>
+
+<MultiRoomManageDialog
+    bind:open={manageDialogOpen}
+    room={managedRoom}
+    meta={managedRoomMeta}
+    members={managedRoomMembers}
+    currentUserId={$userId}
+    busyMemberId={busyManagedMemberId}
+    onVisibilityChange={handleManagedVisibility}
+    onApprove={async (memberUserId) => {
+        if (!managedRoomId) return;
+        await handleApprovePending(managedRoomId, memberUserId);
+    }}
+    onReject={async (memberUserId) => {
+        if (!managedRoomId) return;
+        await handleRejectPending(managedRoomId, memberUserId);
+    }}
+    onRevoke={async (memberUserId) => {
+        if (!managedRoomId) return;
+        await handleRevokeMember(managedRoomId, memberUserId);
+    }}
+    onDelete={async () => {
+        if (!managedRoomId || !managedRoom) return;
+        await handleDeleteMultiRoom(managedRoomId, managedRoom.name);
+        manageDialogOpen = false;
+    }}
+    onLeave={async () => {
+        if (!managedRoomId || !managedRoom) return;
+        await handleLeaveMultiRoom(managedRoomId, managedRoom.name);
+        manageDialogOpen = false;
+    }}
+/>
