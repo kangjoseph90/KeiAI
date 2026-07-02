@@ -1,6 +1,7 @@
 <script lang="ts">
     import './app.css';
     import { onMount, onDestroy } from 'svelte';
+    import { get } from 'svelte/store';
     import { UserService } from '$lib/services';
     import { SyncManager } from '$lib/services/sync';
     import { clock } from '$lib/utils/clock';
@@ -13,12 +14,12 @@
         stopSyncStatusTracking,
         selectChat,
         clearActiveRoom,
-        clearActiveChat,
         clearActiveCharacter,
         clearActivePersona,
         activeCharacter,
         activePersona,
         activeChat,
+        activeChatId,
         activeRoom,
         initDefaultContents
     } from '$lib/stores';
@@ -46,6 +47,13 @@
         navigate(r);
     }
 
+    function navigateFromSidebar(r: RouteState) {
+        if (window.matchMedia('(max-width: 767px)').matches) {
+            sidebarCollapsed = true;
+        }
+        navigate(r);
+    }
+
     // Restore route from URL on boot
     async function restoreRoute(initial: RouteState): Promise<void> {
         try {
@@ -55,10 +63,9 @@
                 await restoreRoomContext(initial.roomId);
                 if (initial.chatId) {
                     await selectChat(initial.chatId);
-                } else {
-                    clearActiveChat();
                 }
-                navigate(initial);
+                const resolvedChatId = get(activeChatId);
+                navigate({ ...initial, chatId: initial.chatId ?? resolvedChatId ?? undefined });
             } else if (initial.view === 'characterStudio' && initial.charId) {
                 await restoreCharacterContext(initial.charId);
                 navigate(initial);
@@ -113,7 +120,10 @@
                     if (r.chatId && $activeChat?.id !== r.chatId) {
                         await selectChat(r.chatId);
                     } else if (!r.chatId) {
-                        clearActiveChat();
+                        const resolvedChatId = get(activeChatId);
+                        if (resolvedChatId) {
+                            navigate({ ...r, chatId: resolvedChatId });
+                        }
                     }
                 } else if (r.view === 'characterStudio') {
                     if (r.charId && $activeCharacter?.id !== r.charId) {
@@ -135,6 +145,7 @@
 
     onMount(async () => {
         try {
+            sidebarCollapsed = window.matchMedia('(max-width: 767px)').matches;
             startSyncStatusTracking();
             await clock.init(appKV);
             const { user, restored } = await UserService.restoreOrCreateUser();
@@ -177,13 +188,13 @@
             <p class="text-muted-foreground text-sm">Initializing Secure Local Session...</p>
         </div>
     {:else}
-        {#if $route.view !== 'settings'}
+        {#if $route.view !== 'settings' && $route.view !== 'characterStudio' && $route.view !== 'personaStudio'}
             <!-- Sidebar -->
             <AppSidebar
                 collapsed={sidebarCollapsed}
                 route={$route}
                 onToggle={() => (sidebarCollapsed = !sidebarCollapsed)}
-                onNavigate={(r) => navigate(r)}
+                onNavigate={navigateFromSidebar}
             />
         {/if}
 

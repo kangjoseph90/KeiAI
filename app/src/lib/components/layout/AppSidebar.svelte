@@ -2,14 +2,13 @@
     import {
         Check,
         ChevronDown,
+        ChevronLeft,
         ChevronRight,
         Edit3,
         Folder,
         FolderOpen,
         Home,
         MessageSquare,
-        PanelLeft,
-        PanelLeftClose,
         Pin,
         Plus,
         Search,
@@ -209,8 +208,25 @@
     }
 </script>
 
-<aside class="flex h-full shrink-0 border-r bg-sidebar text-sidebar-foreground">
-    <div class="flex w-14 flex-col border-r border-sidebar-border bg-sidebar">
+{#if !collapsed}
+    <button
+        type="button"
+        class="fixed inset-0 z-30 bg-black/35 md:hidden"
+        aria-label="Close room panel"
+        onclick={onToggle}
+    ></button>
+{/if}
+
+<aside
+    class="relative z-20 flex h-full shrink-0 bg-sidebar text-sidebar-foreground {collapsed
+        ? 'border-r max-md:z-20 max-md:w-0 max-md:border-0'
+        : 'border-r max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl'}"
+>
+    <div
+        class="flex w-14 flex-col border-r border-sidebar-border bg-sidebar {collapsed
+            ? 'max-md:hidden'
+            : ''}"
+    >
         <div class="flex h-14 items-center justify-center border-b border-sidebar-border">
             <Button
                 variant={route.view === 'home' ? 'secondary' : 'ghost'}
@@ -288,21 +304,6 @@
         </div>
 
         <div class="flex flex-col items-center gap-2 border-t border-sidebar-border p-2">
-            {#if $activeRoom}
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    class="size-9"
-                    title={collapsed ? 'Show room panel' : 'Hide room panel'}
-                    onclick={onToggle}
-                >
-                    {#if collapsed}
-                        <PanelLeft class="size-4" />
-                    {:else}
-                        <PanelLeftClose class="size-4" />
-                    {/if}
-                </Button>
-            {/if}
             <Button
                 variant="ghost"
                 size="icon"
@@ -392,372 +393,450 @@
         </div>
     </div>
 
-    {#if !collapsed && $activeRoom}
-        <div class="flex w-80 flex-col bg-sidebar">
-            <div class="flex h-14 items-center justify-between border-b border-sidebar-border px-3">
-                <div class="min-w-0">
-                    <p class="truncate text-sm font-semibold">{$activeRoom.name}</p>
-                    <p class="truncate text-[11px] text-muted-foreground">
-                        {$activeChat?.title ?? 'No chat selected'}
-                    </p>
-                </div>
-                <Button variant="ghost" size="icon" class="size-8" onclick={handleCreateChat}>
-                    <Plus class="size-4" />
-                </Button>
-            </div>
-
-            <div class="border-b border-sidebar-border p-3">
-                <div class="mb-2 flex items-center justify-between">
-                    <p
-                        class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
-                    >
-                        <User class="size-3" /> Characters
-                    </p>
-                    <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        class="size-6 text-muted-foreground hover:text-foreground"
-                        title="Add characters"
-                        aria-label="Add characters"
-                        onclick={() => (characterPickerOpen = true)}
-                    >
-                        <Plus class="size-3.5" />
-                    </Button>
-                </div>
-                <EntityList
-                    entities={$roomCharacters}
-                    config={$activeRoom.characters}
-                    layout="grid"
-                    gridClass="grid grid-cols-3 gap-2"
-                    listClass="grid grid-cols-3 gap-2"
-                    childContainerClass="relative my-1 py-1.5 pl-2"
-                    onItemClick={(character) => {
-                        if ($activeChat) {
-                            void handleSelectCharacter(character.id);
-                        }
-                    }}
-                    onCreateFolder={(name, parentId, sortOrder) =>
-                        createRoomFolder($activeRoom.id, 'characters', name, parentId, sortOrder)}
-                    onUpdateFolder={(id, changes) =>
-                        updateRoomFolder($activeRoom.id, 'characters', id, changes)}
-                    onDeleteFolder={(id) => deleteRoomFolder($activeRoom.id, 'characters', id)}
-                    onMoveItem={(itemId, newFolderId, newSortOrder) =>
-                        moveRoomItem(
-                            $activeRoom.id,
-                            'characters',
-                            itemId,
-                            newFolderId,
-                            newSortOrder
-                        )}
+    {#if $activeRoom}
+        {#if !collapsed}
+            <div class="relative flex">
+                <div
+                    class="flex w-[360px] flex-col bg-sidebar max-md:w-[calc(100vw-5.5rem)] max-md:max-w-[364px]"
                 >
-                    {#snippet empty()}
-                        <div class="col-span-3 rounded-md border border-dashed p-3 text-center">
-                            <p class="text-[11px] text-muted-foreground">No characters.</p>
+                    <div class="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-semibold">{$activeRoom.name}</p>
                         </div>
-                    {/snippet}
-                    {#snippet item({ entity: character })}
-                        {@const selected = $chatSelections?.characterId === character.id}
-                        {@const isDefault = $activeChat?.defaultCharacterId === character.id}
-                        <div class="group relative">
-                            <div
-                                class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors {selected
-                                    ? 'border-primary ring-2 ring-primary/20'
-                                    : 'hover:bg-sidebar-accent'}"
-                                title={character.name}
-                            >
-                                <div
-                                    class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
-                                >
-                                    {#if character.avatar}
-                                        <AssetView
-                                            asset={{
-                                                scopeType: character.scopeType,
-                                                scopeId: character.scopeId,
-                                                ownerTable: 'characters',
-                                                ownerId: character.id,
-                                                hash: character.avatar.hash,
-                                                encKey: character.avatar.encKey
-                                            }}
-                                            alt={character.name}
-                                            class="size-full object-cover"
-                                        />
-                                    {:else}
-                                        {initial(character.name)}
-                                    {/if}
-                                </div>
-                                <span class="w-full truncate text-[11px]">{character.name}</span>
-                            </div>
-                            <button
-                                class="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
-                                title="Open character studio"
-                                onclick={() => handleOpenCharacter(character.id)}
-                            >
-                                <Settings class="size-3" />
-                            </button>
-                            <button
-                                class="absolute left-5 -top-1 flex size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity {isDefault
-                                    ? 'text-primary opacity-100'
-                                    : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
-                                title="Set default character"
-                                disabled={!$activeChat}
-                                onclick={() => handleSetDefaultCharacter(character.id)}
-                            >
-                                <Pin class="size-3" />
-                            </button>
-                            <button
-                                class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
-                                title="Remove from room"
-                                onclick={() => handleRemoveCharacter(character.id)}
-                            >
-                                <X class="size-3" />
-                            </button>
-                        </div>
-                    {/snippet}
-                </EntityList>
-            </div>
-
-            <div class="border-b border-sidebar-border p-3">
-                <div class="relative">
-                    <Search
-                        class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-                    />
-                    <Input
-                        bind:value={chatSearch}
-                        placeholder="Search chats..."
-                        class="h-8 pl-8 text-xs"
-                    />
-                </div>
-            </div>
-
-            <div class="flex-1 overflow-y-auto p-2">
-                <div class="flex flex-col gap-1">
-                    <EntityList
-                        entities={filteredChats()}
-                        config={$activeRoom.chats}
-                        layout="list"
-                        onItemClick={(chat) => handleSelectChat(chat.id)}
-                        onCreateFolder={(name, parentId, sortOrder) =>
-                            createRoomFolder($activeRoom.id, 'chats', name, parentId, sortOrder)}
-                        onUpdateFolder={(id, changes) =>
-                            updateRoomFolder($activeRoom.id, 'chats', id, changes)}
-                        onDeleteFolder={(id) => deleteRoomFolder($activeRoom.id, 'chats', id)}
-                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
-                            moveRoomItem(
-                                $activeRoom.id,
-                                'chats',
-                                itemId,
-                                newFolderId,
-                                newSortOrder
-                            )}
-                    >
-                        {#snippet empty()}
-                            <div class="px-3 py-8 text-center text-xs text-muted-foreground">
-                                No chats yet.
-                            </div>
-                        {/snippet}
-                        {#snippet folder({ folder: f, collapsed, toggle, parts })}
-                            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-                            <div
-                                class="relative group/folder flex items-center justify-between rounded-md px-2 py-2 text-sm select-none cursor-pointer transition-colors hover:bg-sidebar-accent/50 w-full"
-                                onclick={toggle}
-                            >
-                                <div class="flex items-center gap-2 min-w-0 flex-1">
-                                    {#if collapsed}
-                                        <Folder
-                                            strokeWidth={2.5}
-                                            class="size-4 shrink-0 {f.color
-                                                ? getFolderColorClass(f.color)
-                                                : ''}"
-                                        />
-                                    {:else}
-                                        <FolderOpen
-                                            strokeWidth={2.5}
-                                            class="size-4 shrink-0 {f.color
-                                                ? getFolderColorClass(f.color)
-                                                : ''}"
-                                        />
-                                    {/if}
-                                    <div class="flex-1 min-w-0 text-foreground">
-                                        {@render parts.name({ folder: f })}
-                                    </div>
-                                </div>
-                                <div class="ml-2">
-                                    {@render parts.actions({ folder: f })}
-                                </div>
-                            </div>
-                        {/snippet}
-                        {#snippet item({ entity: chat })}
-                            {@const selected = route.chatId === chat.id}
-                            <div
-                                class="group rounded-md px-2 py-2 text-sm transition-colors {selected
-                                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                                    : 'hover:bg-sidebar-accent/50'}"
-                            >
-                                {#if editingChatId === chat.id}
-                                    <form
-                                        class="flex gap-1"
-                                        onsubmit={(event) => {
-                                            event.preventDefault();
-                                            handleRenameChat(chat.id);
-                                        }}
-                                    >
-                                        <Input
-                                            bind:value={editingChatTitle}
-                                            class="h-7 flex-1 text-xs text-foreground bg-background"
-                                            autofocus
-                                            onkeydown={(event) => {
-                                                if (event.key === 'Escape') {
-                                                    editingChatId = null;
-                                                    editingChatTitle = '';
-                                                }
-                                            }}
-                                        />
-                                        <Button type="submit" size="icon" class="size-7">
-                                            <Check class="size-3" />
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon"
-                                            class="size-7"
-                                            onclick={() => {
-                                                editingChatId = null;
-                                                editingChatTitle = '';
-                                            }}
-                                        >
-                                            <X class="size-3" />
-                                        </Button>
-                                    </form>
-                                {:else}
-                                    <div class="flex items-center gap-2">
-                                        <div
-                                            class="flex min-w-0 flex-1 items-center gap-2 text-left"
-                                        >
-                                            <MessageSquare class="size-3.5 shrink-0" />
-                                            <span class="min-w-0 flex-1 truncate text-foreground">
-                                                {chat.title || 'Untitled Chat'}
-                                            </span>
-                                        </div>
-                                        <button
-                                            class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
-                                            title="Rename chat"
-                                            onclick={() =>
-                                                startRenameChat(
-                                                    chat.id,
-                                                    chat.title || 'Untitled Chat'
-                                                )}
-                                        >
-                                            <Edit3 class="size-3" />
-                                        </button>
-                                        <button
-                                            class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
-                                            title="Delete chat"
-                                            onclick={() => handleDeleteChat(chat.id)}
-                                        >
-                                            <Trash2 class="size-3" />
-                                        </button>
-                                    </div>
-                                {/if}
-                            </div>
-                        {/snippet}
-                    </EntityList>
-                </div>
-            </div>
-
-            {#if $activePreset && Object.keys($activePreset.customToggles).length > 0}
-                <div class="max-h-56 overflow-y-auto border-t border-sidebar-border p-3">
-                    <p class="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
-                        Toggles
-                    </p>
-                    <div class="flex flex-col gap-2">
-                        {#each Object.values($activePreset.customToggles).sort( (a, b) => compareSortOrder(a.sortOrder, b.sortOrder) ) as toggle (toggle.id)}
-                            {#if toggle.type === 'caption'}
-                                <p class="text-[11px] text-muted-foreground">{toggle.label}</p>
-                            {:else if toggle.type === 'divider'}
-                                <div class="flex items-center gap-2 py-1">
-                                    {#if toggle.label}
-                                        <span class="text-[10px] text-muted-foreground"
-                                            >{toggle.label}</span
-                                        >
-                                    {/if}
-                                    <div class="h-px flex-1 bg-sidebar-border"></div>
-                                </div>
-                            {:else if toggle.type === 'group' || toggle.type === 'groupEnd'}
-                                {#if toggle.type === 'group' && toggle.label}
-                                    <p class="pt-1 text-[11px] font-medium">{toggle.label}</p>
-                                {/if}
-                            {:else if toggle.type === 'select'}
-                                <label class="flex items-center justify-between gap-2 text-xs">
-                                    <span class="truncate">{toggle.label}</span>
-                                    <select
-                                        class="h-7 w-32 rounded-md border bg-background px-2 text-xs"
-                                        value={$activePreset.globalVariables[
-                                            `toggle_${toggle.key}`
-                                        ] ?? '0'}
-                                        onchange={(event) =>
-                                            handleToggleChange(
-                                                toggle.key,
-                                                event.currentTarget.value
-                                            )}
-                                    >
-                                        {#each toggle.options as option, optionIndex (optionIndex)}
-                                            <option value={String(optionIndex)}>{option}</option>
-                                        {/each}
-                                    </select>
-                                </label>
-                            {:else if toggle.type === 'text'}
-                                <label class="flex items-center justify-between gap-2 text-xs">
-                                    <span class="truncate">{toggle.label}</span>
-                                    <Input
-                                        class="h-7 w-32 text-xs"
-                                        value={$activePreset.globalVariables[
-                                            `toggle_${toggle.key}`
-                                        ] ?? ''}
-                                        oninput={(event) =>
-                                            handleToggleChange(
-                                                toggle.key,
-                                                event.currentTarget.value
-                                            )}
-                                    />
-                                </label>
-                            {:else if toggle.type === 'textarea'}
-                                <label class="flex flex-col gap-1 text-xs">
-                                    <span class="truncate">{toggle.label}</span>
-                                    <textarea
-                                        class="min-h-16 rounded-md border bg-background px-2 py-1 text-xs"
-                                        value={$activePreset.globalVariables[
-                                            `toggle_${toggle.key}`
-                                        ] ?? ''}
-                                        oninput={(event) =>
-                                            handleToggleChange(
-                                                toggle.key,
-                                                event.currentTarget.value
-                                            )}
-                                    ></textarea>
-                                </label>
-                            {:else if toggle.key}
-                                {@const toggleKey = toggle.key}
-                                <label class="flex items-center gap-2 text-xs">
-                                    <input
-                                        type="checkbox"
-                                        class="size-3.5 rounded border-gray-300 text-primary focus:ring-primary"
-                                        checked={$activePreset.globalVariables[
-                                            `toggle_${toggleKey}`
-                                        ] === '1'}
-                                        onchange={(event) =>
-                                            handleToggleChange(
-                                                toggleKey,
-                                                event.currentTarget.checked ? '1' : '0'
-                                            )}
-                                    />
-                                    <span class="truncate">{toggle.label}</span>
-                                </label>
-                            {/if}
-                        {/each}
                     </div>
+
+                    <div class="border-b border-sidebar-border p-3">
+                        <div class="mb-2 flex items-center justify-between">
+                            <p
+                                class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
+                            >
+                                <User class="size-3" /> Characters
+                            </p>
+                            <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                class="size-6 text-muted-foreground hover:text-foreground"
+                                title="Add characters"
+                                aria-label="Add characters"
+                                onclick={() => (characterPickerOpen = true)}
+                            >
+                                <Plus class="size-3.5" />
+                            </Button>
+                        </div>
+                        <EntityList
+                            entities={$roomCharacters}
+                            config={$activeRoom.characters}
+                            layout="grid"
+                            gridClass="grid grid-cols-3 gap-2"
+                            listClass="grid grid-cols-3 gap-2"
+                            childContainerClass="relative my-1 py-1.5 pl-2"
+                            onItemClick={(character) => {
+                                if ($activeChat) {
+                                    void handleSelectCharacter(character.id);
+                                }
+                            }}
+                            onCreateFolder={(name, parentId, sortOrder) =>
+                                createRoomFolder(
+                                    $activeRoom.id,
+                                    'characters',
+                                    name,
+                                    parentId,
+                                    sortOrder
+                                )}
+                            onUpdateFolder={(id, changes) =>
+                                updateRoomFolder($activeRoom.id, 'characters', id, changes)}
+                            onDeleteFolder={(id) =>
+                                deleteRoomFolder($activeRoom.id, 'characters', id)}
+                            onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                                moveRoomItem(
+                                    $activeRoom.id,
+                                    'characters',
+                                    itemId,
+                                    newFolderId,
+                                    newSortOrder
+                                )}
+                        >
+                            {#snippet empty()}
+                                <div
+                                    class="col-span-3 rounded-md border border-dashed p-3 text-center"
+                                >
+                                    <p class="text-[11px] text-muted-foreground">No characters.</p>
+                                </div>
+                            {/snippet}
+                            {#snippet item({ entity: character })}
+                                {@const selected = $chatSelections?.characterId === character.id}
+                                {@const isDefault =
+                                    $activeChat?.defaultCharacterId === character.id}
+                                <div class="group relative">
+                                    <div
+                                        class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors {selected
+                                            ? 'border-primary ring-2 ring-primary/20'
+                                            : 'hover:bg-sidebar-accent'}"
+                                        title={character.name}
+                                    >
+                                        <div
+                                            class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
+                                        >
+                                            {#if character.avatar}
+                                                <AssetView
+                                                    asset={{
+                                                        scopeType: character.scopeType,
+                                                        scopeId: character.scopeId,
+                                                        ownerTable: 'characters',
+                                                        ownerId: character.id,
+                                                        hash: character.avatar.hash,
+                                                        encKey: character.avatar.encKey
+                                                    }}
+                                                    alt={character.name}
+                                                    class="size-full object-cover"
+                                                />
+                                            {:else}
+                                                {initial(character.name)}
+                                            {/if}
+                                        </div>
+                                        <span class="w-full truncate text-[11px]"
+                                            >{character.name}</span
+                                        >
+                                    </div>
+                                    <button
+                                        class="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
+                                        title="Open character studio"
+                                        onclick={() => handleOpenCharacter(character.id)}
+                                    >
+                                        <Settings class="size-3" />
+                                    </button>
+                                    <button
+                                        class="absolute left-5 -top-1 flex size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity {isDefault
+                                            ? 'text-primary opacity-100'
+                                            : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
+                                        title="Set default character"
+                                        disabled={!$activeChat}
+                                        onclick={() => handleSetDefaultCharacter(character.id)}
+                                    >
+                                        <Pin class="size-3" />
+                                    </button>
+                                    <button
+                                        class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                        title="Remove from room"
+                                        onclick={() => handleRemoveCharacter(character.id)}
+                                    >
+                                        <X class="size-3" />
+                                    </button>
+                                </div>
+                            {/snippet}
+                        </EntityList>
+                    </div>
+
+                    <div class="flex items-center gap-2 border-b border-sidebar-border p-3">
+                        <div class="relative flex-1">
+                            <Search
+                                class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                            />
+                            <Input
+                                bind:value={chatSearch}
+                                placeholder="Search chats..."
+                                class="h-8 pl-8 text-xs"
+                            />
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            class="size-8 shrink-0"
+                            title="New chat"
+                            aria-label="New chat"
+                            onclick={handleCreateChat}
+                        >
+                            <Plus class="size-4" />
+                        </Button>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto p-2">
+                        <div class="flex flex-col gap-1">
+                            <EntityList
+                                entities={filteredChats()}
+                                config={$activeRoom.chats}
+                                layout="list"
+                                onItemClick={(chat) => handleSelectChat(chat.id)}
+                                onCreateFolder={(name, parentId, sortOrder) =>
+                                    createRoomFolder(
+                                        $activeRoom.id,
+                                        'chats',
+                                        name,
+                                        parentId,
+                                        sortOrder
+                                    )}
+                                onUpdateFolder={(id, changes) =>
+                                    updateRoomFolder($activeRoom.id, 'chats', id, changes)}
+                                onDeleteFolder={(id) =>
+                                    deleteRoomFolder($activeRoom.id, 'chats', id)}
+                                onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                                    moveRoomItem(
+                                        $activeRoom.id,
+                                        'chats',
+                                        itemId,
+                                        newFolderId,
+                                        newSortOrder
+                                    )}
+                            >
+                                {#snippet empty()}
+                                    <div
+                                        class="px-3 py-8 text-center text-xs text-muted-foreground"
+                                    >
+                                        No chats yet.
+                                    </div>
+                                {/snippet}
+                                {#snippet folder({ folder: f, collapsed, toggle, parts })}
+                                    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+                                    <div
+                                        class="relative group/folder flex items-center justify-between rounded-md px-2 py-2 text-sm select-none cursor-pointer transition-colors hover:bg-sidebar-accent/50 w-full"
+                                        onclick={toggle}
+                                    >
+                                        <div class="flex items-center gap-2 min-w-0 flex-1">
+                                            {#if collapsed}
+                                                <Folder
+                                                    strokeWidth={2.5}
+                                                    class="size-4 shrink-0 {f.color
+                                                        ? getFolderColorClass(f.color)
+                                                        : ''}"
+                                                />
+                                            {:else}
+                                                <FolderOpen
+                                                    strokeWidth={2.5}
+                                                    class="size-4 shrink-0 {f.color
+                                                        ? getFolderColorClass(f.color)
+                                                        : ''}"
+                                                />
+                                            {/if}
+                                            <div class="flex-1 min-w-0 text-foreground">
+                                                {@render parts.name({ folder: f })}
+                                            </div>
+                                        </div>
+                                        <div class="ml-2">
+                                            {@render parts.actions({ folder: f })}
+                                        </div>
+                                    </div>
+                                {/snippet}
+                                {#snippet item({ entity: chat })}
+                                    {@const selected = route.chatId === chat.id}
+                                    <div
+                                        class="group rounded-md px-2 py-2 text-sm transition-colors {selected
+                                            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                                            : 'hover:bg-sidebar-accent/50'}"
+                                    >
+                                        {#if editingChatId === chat.id}
+                                            <form
+                                                class="flex gap-1"
+                                                onsubmit={(event) => {
+                                                    event.preventDefault();
+                                                    handleRenameChat(chat.id);
+                                                }}
+                                            >
+                                                <Input
+                                                    bind:value={editingChatTitle}
+                                                    class="h-7 flex-1 text-xs text-foreground bg-background"
+                                                    autofocus
+                                                    onkeydown={(event) => {
+                                                        if (event.key === 'Escape') {
+                                                            editingChatId = null;
+                                                            editingChatTitle = '';
+                                                        }
+                                                    }}
+                                                />
+                                                <Button type="submit" size="icon" class="size-7">
+                                                    <Check class="size-3" />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    class="size-7"
+                                                    onclick={() => {
+                                                        editingChatId = null;
+                                                        editingChatTitle = '';
+                                                    }}
+                                                >
+                                                    <X class="size-3" />
+                                                </Button>
+                                            </form>
+                                        {:else}
+                                            <div class="flex items-center gap-2">
+                                                <div
+                                                    class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                                >
+                                                    <MessageSquare class="size-3.5 shrink-0" />
+                                                    <span
+                                                        class="min-w-0 flex-1 truncate text-foreground"
+                                                    >
+                                                        {chat.title || 'Untitled Chat'}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                                    title="Rename chat"
+                                                    onclick={() =>
+                                                        startRenameChat(
+                                                            chat.id,
+                                                            chat.title || 'Untitled Chat'
+                                                        )}
+                                                >
+                                                    <Edit3 class="size-3" />
+                                                </button>
+                                                <button
+                                                    class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
+                                                    title="Delete chat"
+                                                    onclick={() => handleDeleteChat(chat.id)}
+                                                >
+                                                    <Trash2 class="size-3" />
+                                                </button>
+                                            </div>
+                                        {/if}
+                                    </div>
+                                {/snippet}
+                            </EntityList>
+                        </div>
+                    </div>
+
+                    {#if $activePreset && Object.keys($activePreset.customToggles).length > 0}
+                        <div
+                            class="max-h-[40%] min-h-0 overflow-y-auto border-t border-sidebar-border p-3"
+                        >
+                            <p
+                                class="mb-2 text-[11px] font-semibold uppercase text-muted-foreground"
+                            >
+                                Toggles
+                            </p>
+                            <div class="flex flex-col gap-2">
+                                {#each Object.values($activePreset.customToggles).sort( (a, b) => compareSortOrder(a.sortOrder, b.sortOrder) ) as toggle (toggle.id)}
+                                    {#if toggle.type === 'caption'}
+                                        <p class="text-[11px] text-muted-foreground">
+                                            {toggle.label}
+                                        </p>
+                                    {:else if toggle.type === 'divider'}
+                                        <div class="flex items-center gap-2 py-1">
+                                            {#if toggle.label}
+                                                <span class="text-[10px] text-muted-foreground"
+                                                    >{toggle.label}</span
+                                                >
+                                            {/if}
+                                            <div class="h-px flex-1 bg-sidebar-border"></div>
+                                        </div>
+                                    {:else if toggle.type === 'group' || toggle.type === 'groupEnd'}
+                                        {#if toggle.type === 'group' && toggle.label}
+                                            <p class="pt-1 text-[11px] font-medium">
+                                                {toggle.label}
+                                            </p>
+                                        {/if}
+                                    {:else if toggle.type === 'select'}
+                                        <label
+                                            class="flex items-center justify-between gap-2 text-xs"
+                                        >
+                                            <span class="truncate">{toggle.label}</span>
+                                            <select
+                                                class="h-7 w-32 rounded-md border bg-background px-2 text-xs"
+                                                value={$activePreset.globalVariables[
+                                                    `toggle_${toggle.key}`
+                                                ] ?? '0'}
+                                                onchange={(event) =>
+                                                    handleToggleChange(
+                                                        toggle.key,
+                                                        event.currentTarget.value
+                                                    )}
+                                            >
+                                                {#each toggle.options as option, optionIndex (optionIndex)}
+                                                    <option value={String(optionIndex)}
+                                                        >{option}</option
+                                                    >
+                                                {/each}
+                                            </select>
+                                        </label>
+                                    {:else if toggle.type === 'text'}
+                                        <label
+                                            class="flex items-center justify-between gap-2 text-xs"
+                                        >
+                                            <span class="truncate">{toggle.label}</span>
+                                            <Input
+                                                class="h-7 w-32 text-xs"
+                                                value={$activePreset.globalVariables[
+                                                    `toggle_${toggle.key}`
+                                                ] ?? ''}
+                                                oninput={(event) =>
+                                                    handleToggleChange(
+                                                        toggle.key,
+                                                        event.currentTarget.value
+                                                    )}
+                                            />
+                                        </label>
+                                    {:else if toggle.type === 'textarea'}
+                                        <label class="flex flex-col gap-1 text-xs">
+                                            <span class="truncate">{toggle.label}</span>
+                                            <textarea
+                                                class="min-h-16 rounded-md border bg-background px-2 py-1 text-xs"
+                                                value={$activePreset.globalVariables[
+                                                    `toggle_${toggle.key}`
+                                                ] ?? ''}
+                                                oninput={(event) =>
+                                                    handleToggleChange(
+                                                        toggle.key,
+                                                        event.currentTarget.value
+                                                    )}
+                                            ></textarea>
+                                        </label>
+                                    {:else if toggle.key}
+                                        {@const toggleKey = toggle.key}
+                                        <label class="flex items-center gap-2 text-xs">
+                                            <input
+                                                type="checkbox"
+                                                class="size-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                                                checked={$activePreset.globalVariables[
+                                                    `toggle_${toggleKey}`
+                                                ] === '1'}
+                                                onchange={(event) =>
+                                                    handleToggleChange(
+                                                        toggleKey,
+                                                        event.currentTarget.checked ? '1' : '0'
+                                                    )}
+                                            />
+                                            <span class="truncate">{toggle.label}</span>
+                                        </label>
+                                    {/if}
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
                 </div>
-            {/if}
-        </div>
+                <button
+                    type="button"
+                    class="absolute left-full top-1.5 z-30 flex h-11 w-8 items-center justify-center rounded-r-md border border-l-0 bg-sidebar text-muted-foreground shadow-sm transition-colors hover:bg-sidebar-accent hover:text-foreground max-md:hidden"
+                    title="Hide room panel"
+                    aria-label="Hide room panel"
+                    onclick={onToggle}
+                >
+                    <ChevronLeft class="size-4" />
+                </button>
+            </div>
+        {:else}
+            <button
+                type="button"
+                class="absolute left-full top-1.5 z-50 flex h-11 w-8 items-center justify-center rounded-r-md border border-l-0 bg-background/70 text-muted-foreground opacity-50 shadow-sm backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                title="Show room panel"
+                aria-label="Show room panel"
+                onclick={onToggle}
+            >
+                <ChevronRight class="size-4" />
+            </button>
+        {/if}
+    {/if}
+
+    {#if !$activeRoom && collapsed}
+        <button
+            type="button"
+            class="absolute left-full top-1.5 z-50 flex h-11 w-8 items-center justify-center rounded-r-md border border-l-0 bg-background/70 text-muted-foreground opacity-50 shadow-sm backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:opacity-100 md:hidden"
+            title="Show sidebar"
+            aria-label="Show sidebar"
+            onclick={onToggle}
+        >
+            <ChevronRight class="size-4" />
+        </button>
     {/if}
 </aside>
 

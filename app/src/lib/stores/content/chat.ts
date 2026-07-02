@@ -217,6 +217,22 @@ export async function createChat(
     return chat;
 }
 
+/** Returns the room's first chat, creating one if the room is empty. */
+export async function ensureRoomHasChat(roomId: string): Promise<Chat> {
+    const room = await getRoom(roomId);
+    if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
+
+    const existingIds = Object.keys(room.chats.refs);
+    if (existingIds.length > 0) {
+        const cached = roomChats.get(existingIds[0]);
+        if (cached) return cached;
+        const first = await ChatService.get(existingIds[0]);
+        if (first) return first;
+    }
+
+    return createChat(roomId);
+}
+
 export async function updateChat(chatId: string, changes: DeepPartial<ChatFields>): Promise<void> {
     const updated = await ChatService.update(chatId, changes);
     roomChats.set(chatId, updated);
@@ -275,6 +291,10 @@ export async function updateChatContent(
 export async function deleteChat(chatId: string, roomId: string): Promise<void> {
     const room = await getRoom(roomId);
     if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
+
+    if (Object.keys(room.chats.refs).length <= 1) {
+        throw new AppError('DELETE_LAST_ITEM', 'Cannot delete the last chat.');
+    }
 
     // Capture ref for potential rollback
     const existingRef = room.chats.refs[chatId];

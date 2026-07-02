@@ -441,9 +441,17 @@
 </script>
 
 <!-- Message Container -->
-<div class="group flex justify-start gap-3">
+<div
+    class="group grid gap-x-2 md:flex md:gap-3 {isUser
+        ? 'grid-cols-[minmax(0,1fr)_2rem] md:flex-row-reverse'
+        : 'grid-cols-[2rem_minmax(0,1fr)]'}"
+    role="group"
+    tabindex="-1"
+>
     <div
-        class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground overflow-hidden"
+        class="row-start-1 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-bold text-muted-foreground {isUser
+            ? 'col-start-2'
+            : 'col-start-1'}"
     >
         {#if speakerAvatarLocator}
             <AssetView
@@ -456,9 +464,19 @@
         {/if}
     </div>
 
+    <span
+        class="row-start-1 self-center truncate text-xs font-medium text-muted-foreground md:hidden {isUser
+            ? 'col-start-1 justify-self-end'
+            : 'col-start-2'}">{speakerName}</span
+    >
+
     <!-- Content Column -->
-    <div class="flex max-w-[75%] flex-col items-start gap-1">
-        <span class="text-xs font-medium text-muted-foreground">{speakerName}</span>
+    <div
+        class="col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-none flex-1 flex-col gap-1 md:mx-0 md:mt-0 md:max-w-[75%] md:flex-none {isUser
+            ? 'items-end'
+            : 'items-start'}"
+    >
+        <span class="hidden text-xs font-medium text-muted-foreground md:block">{speakerName}</span>
 
         <!-- Edit Mode -->
         {#if isEditing && message.displayStatus === 'completed'}
@@ -477,7 +495,7 @@
             <!-- Error Bubble -->
         {:else if message.displayStatus === 'error'}
             <div
-                class="flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"
+                class="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"
             >
                 <AlertCircle class="mt-0.5 size-4 shrink-0" />
                 <div class="flex flex-col gap-1">
@@ -499,7 +517,7 @@
         {:else}
             <!-- Bubble -->
             <div
-                class="relative rounded-2xl px-4 py-2.5 text-sm {isUser
+                class="relative rounded-lg px-4 py-2.5 text-sm {isUser
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted text-foreground'}"
             >
@@ -563,7 +581,7 @@
             <!-- Single Action Row (hover) -->
             {#if message.displayStatus === 'completed'}
                 <div
-                    class="mt-0.5 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 {isUser
+                    class="-my-1 hidden items-center gap-2 transition-opacity group-focus-within:flex md:my-0 md:flex md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 {isUser
                         ? 'flex-row-reverse'
                         : 'flex-row'}"
                 >
@@ -571,21 +589,21 @@
                     {#if !isUser && sortedSwipes.length > 1}
                         <div class="flex items-center gap-0.5 text-xs text-muted-foreground mr-1">
                             <button
-                                class="rounded p-0.5 hover:bg-muted disabled:opacity-30"
+                                class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
                                 disabled={swipePos <= 0}
                                 onclick={() => onSwipe(sortedSwipes[swipePos - 1].id)}
                             >
-                                <ChevronLeft class="size-3.5" />
+                                <ChevronLeft class="size-4 md:size-3.5" />
                             </button>
                             <span class="tabular-nums font-medium"
                                 >{swipePos + 1} / {sortedSwipes.length}</span
                             >
                             <button
-                                class="rounded p-0.5 hover:bg-muted disabled:opacity-30"
+                                class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
                                 disabled={swipePos >= sortedSwipes.length - 1}
                                 onclick={() => onSwipe(sortedSwipes[swipePos + 1].id)}
                             >
-                                <ChevronRight class="size-3.5" />
+                                <ChevronRight class="size-4 md:size-3.5" />
                             </button>
                         </div>
                     {/if}
@@ -594,13 +612,13 @@
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
                         onclick={handleCopy}
                     >
                         {#if copied}
-                            <Check class="size-3" />
+                            <Check class="size-3.5 md:size-3" />
                         {:else}
-                            <Copy class="size-3" />
+                            <Copy class="size-3.5 md:size-3" />
                         {/if}
                     </Button>
 
@@ -608,21 +626,21 @@
                         <Button
                             variant="ghost"
                             size="sm"
-                            class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
                             onclick={() => stopTranslation(message.id)}
                             title="Stop translation"
                         >
-                            <Loader2 class="size-3 animate-spin" />
+                            <Loader2 class="size-3.5 md:size-3 animate-spin" />
                         </Button>
                     {:else}
                         <Button
                             variant="ghost"
                             size="sm"
-                            class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
                             onclick={handleTranslate}
                             title={cachedTranslation ? 'Retranslate' : 'Translate'}
                         >
-                            <Languages class="size-3" />
+                            <Languages class="size-3.5 md:size-3" />
                         </Button>
                     {/if}
 
@@ -632,10 +650,10 @@
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+                                class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
                                 onclick={onRegenerate}
                             >
-                                <RefreshCw class="size-3" />
+                                <RefreshCw class="size-3.5 md:size-3" />
                             </Button>
                         {/if}
 
@@ -643,10 +661,10 @@
                         <Button
                             variant="ghost"
                             size="sm"
-                            class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
                             onclick={onFork}
                         >
-                            <GitBranch class="size-3" />
+                            <GitBranch class="size-3.5 md:size-3" />
                         </Button>
                     {/if}
 
@@ -655,10 +673,10 @@
                         <Button
                             variant="ghost"
                             size="sm"
-                            class="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
                             onclick={onEdit}
                         >
-                            <Pencil class="size-3" />
+                            <Pencil class="size-3.5 md:size-3" />
                         </Button>
                     {/if}
 
@@ -666,10 +684,10 @@
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-destructive"
+                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground hover:text-destructive"
                         onclick={onDelete}
                     >
-                        <Trash2 class="size-3" />
+                        <Trash2 class="size-3.5 md:size-3" />
                     </Button>
                 </div>
             {/if}

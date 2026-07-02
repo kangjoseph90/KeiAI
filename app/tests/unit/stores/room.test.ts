@@ -27,7 +27,12 @@ import {
 } from '$lib/stores/state';
 import { ChatService, RoomService } from '$lib/services';
 import { getCharacter } from '$lib/stores/content/character';
-import { updateChat, resolveChatSelections } from '$lib/stores/content/chat';
+import {
+    ensureRoomHasChat,
+    resolveChatSelections,
+    selectChat,
+    updateChat
+} from '$lib/stores/content/chat';
 import { AppError } from '$lib/types/errors';
 import type { Character, Chat, Room } from '$lib/services';
 
@@ -60,6 +65,8 @@ vi.mock('$lib/stores/content/character', () => ({
 }));
 
 vi.mock('$lib/stores/content/chat', () => ({
+    ensureRoomHasChat: vi.fn(),
+    selectChat: vi.fn(),
     updateChat: vi.fn(),
     resolveChatSelections: vi.fn().mockResolvedValue(undefined)
 }));
@@ -174,6 +181,8 @@ describe('Room Store', () => {
             id === 'char-1' ? mockCharacter : null
         );
         vi.mocked(updateChat).mockResolvedValue(undefined);
+        vi.mocked(ensureRoomHasChat).mockResolvedValue(mockChat);
+        vi.mocked(selectChat).mockResolvedValue(undefined);
     });
 
     it('loads rooms into the room store', async () => {
@@ -193,6 +202,7 @@ describe('Room Store', () => {
         });
         expect(get(roomChats)).toEqual([mockChat]);
         expect(get(roomCharacters)).toEqual([mockCharacter]);
+        expect(selectChat).toHaveBeenCalledWith('chat-1');
         expect(RoomService.update).toHaveBeenCalledWith(
             'room-1',
             expect.objectContaining({

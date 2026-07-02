@@ -18,7 +18,6 @@
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
-    import { Separator } from '$lib/components/ui/separator';
     import { Textarea } from '$lib/components/ui/textarea';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import {
@@ -143,23 +142,27 @@
     }
 </script>
 
-<div class="flex h-full flex-col bg-muted/10 border-l">
+<div class="flex h-full flex-col border-l border-sidebar-border bg-sidebar">
     <!-- Panel Header -->
-    <div class="flex shrink-0 items-center justify-between border-b px-4 py-3 bg-background">
-        <h2 class="text-sm font-semibold flex items-center gap-2">
-            <Settings class="size-4 text-muted-foreground" />
-            Chat Settings
-        </h2>
+    <div
+        class="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border bg-sidebar px-3"
+    >
+        <div class="min-w-0">
+            <h2 class="text-sm font-semibold">Chat context</h2>
+            <p class="truncate text-[11px] text-muted-foreground">
+                {$activeChat?.title ?? 'No chat selected'}
+            </p>
+        </div>
     </div>
 
     <ScrollArea class="flex-1">
-        <div class="p-4 space-y-6 pb-20">
+        <div class="pb-20">
             <!-- Persona Summary -->
             {#if $activeChat}
-                <section class="space-y-2">
+                <section class="space-y-2 border-b border-sidebar-border p-3">
                     <div class="flex items-center justify-between">
                         <Label
-                            class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+                            class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                         >
                             <User class="size-3" /> Personas
                         </Label>
@@ -178,6 +181,9 @@
                         entities={$chatPersonas}
                         config={$activeChat.personas}
                         layout="grid"
+                        gridClass="grid grid-cols-3 gap-2"
+                        listClass="grid grid-cols-3 gap-2"
+                        childContainerClass="relative my-1 py-1.5 pl-2"
                         onItemClick={(persona) => {
                             void handlePersonaSelect(persona.id);
                         }}
@@ -190,7 +196,7 @@
                             moveChatItem(chatId, 'personas', itemId, newFolderId, newSortOrder)}
                     >
                         {#snippet empty()}
-                            <div class="rounded-md border border-dashed p-3 text-center">
+                            <div class="col-span-3 rounded-md border border-dashed p-3 text-center">
                                 <p class="text-[10px] text-muted-foreground">
                                     No personas attached to this chat.
                                 </p>
@@ -255,18 +261,17 @@
                         {/snippet}
                     </EntityList>
                 </section>
-                <Separator />
             {/if}
 
             {#if !$activeChat}
-                <div class="text-center py-8 text-xs text-muted-foreground">
+                <div class="p-3 py-8 text-center text-xs text-muted-foreground">
                     Select a chat to view settings.
                 </div>
             {:else}
                 <!-- Chat Note -->
-                <section class="space-y-2">
+                <section class="space-y-2 border-b border-sidebar-border p-3">
                     <Label
-                        class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"
+                        class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                     >
                         <FileText class="size-3" /> Chat Note
                     </Label>
@@ -283,10 +288,10 @@
                 </section>
 
                 <!-- Active Lorebooks -->
-                <section class="space-y-3">
+                <section class="space-y-2 border-b border-sidebar-border p-3">
                     <div class="flex items-center justify-between">
                         <Label
-                            class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"
+                            class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                         >
                             <Book class="size-3" /> Chat Lorebooks
                         </Label>
@@ -340,9 +345,9 @@
                 </section>
 
                 <!-- Runtime Variables -->
-                <section class="space-y-3">
+                <section class="space-y-2 border-b border-sidebar-border p-3">
                     <Label
-                        class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"
+                        class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                     >
                         <Variable class="size-3" /> Chat Variables
                     </Label>
@@ -368,10 +373,10 @@
                 </section>
 
                 <!-- Runtime Assets (Inlays) -->
-                <section class="space-y-3">
+                <section class="space-y-2 border-b border-sidebar-border p-3">
                     <div class="flex items-center justify-between">
                         <Label
-                            class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"
+                            class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                         >
                             <ImageIcon class="size-3" /> Gallery
                         </Label>
@@ -450,7 +455,7 @@
     </ScrollArea>
 
     <!-- Footer Action -->
-    <div class="p-4 border-t bg-background shrink-0">
+    <div class="shrink-0 border-t border-sidebar-border bg-sidebar p-3">
         <Button
             variant="ghost"
             size="sm"

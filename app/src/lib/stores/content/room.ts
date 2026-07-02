@@ -13,7 +13,7 @@ import type { DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { getCharacter } from './character';
-import { resolveChatSelections, selectChat } from './chat';
+import { resolveChatSelections, selectChat, ensureRoomHasChat } from './chat';
 import {
     rooms,
     multiRooms,
@@ -82,9 +82,15 @@ export async function selectRoom(roomId: string): Promise<void> {
         });
     }
 
-    // Auto-select last active chat
-    if (room.lastActiveChatId && roomChats.get(room.lastActiveChatId)) {
-        await selectChat(room.lastActiveChatId);
+    if (roomChats.size === 0) {
+        await ensureRoomHasChat(roomId);
+    }
+
+    const lastActive = room.lastActiveChatId;
+    const fallbackId = get(roomChats)[0]?.id;
+    const targetId = lastActive && roomChats.get(lastActive) ? lastActive : fallbackId;
+    if (targetId) {
+        await selectChat(targetId);
     }
 }
 

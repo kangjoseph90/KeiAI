@@ -240,7 +240,13 @@ describe('Chat Store', () => {
         it('deletes chat and removes it from room refs', async () => {
             const roomWithRefs: Room = {
                 ...mockRoom,
-                chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a' } }, folders: {} }
+                chats: {
+                    refs: {
+                        'chat-1': { id: 'chat-1', sortOrder: 'a' },
+                        'chat-2': { id: 'chat-2', sortOrder: 'b' }
+                    },
+                    folders: {}
+                }
             };
             vi.mocked(getRoom).mockResolvedValue(roomWithRefs);
             roomChats.setAll([mockChat]);
@@ -254,6 +260,19 @@ describe('Chat Store', () => {
             });
             expect(get(roomChats)).toHaveLength(0);
             expect(get(activeChat)).toBeNull();
+        });
+
+        it("rejects deleting the room's last chat", async () => {
+            const roomWithLastChat: Room = {
+                ...mockRoom,
+                chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a' } }, folders: {} }
+            };
+            vi.mocked(getRoom).mockResolvedValue(roomWithLastChat);
+
+            await expect(deleteChat('chat-1', 'room-1')).rejects.toMatchObject({
+                code: 'DELETE_LAST_ITEM'
+            });
+            expect(ChatService.delete).not.toHaveBeenCalled();
         });
     });
 

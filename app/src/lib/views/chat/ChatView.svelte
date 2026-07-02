@@ -6,17 +6,11 @@
     import {
         SendHorizontal,
         Square,
-        ChevronRight,
-        ChevronLeft,
         MessageSquare,
         ArrowDown,
-        Crown,
-        Globe2,
         Loader2,
-        Lock,
-        Settings2,
-        Shield,
-        UsersRound
+        ChevronLeft,
+        ChevronRight
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
@@ -39,11 +33,7 @@
         loadOlderMessages,
         loadNewerMessages,
         dropOlderMessages,
-        dropNewerMessages,
-        isMultiRoom,
-        multiRoomMembers,
-        multiRoomMetas,
-        userId
+        dropNewerMessages
     } from '$lib/stores';
     import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
     import { ToolCallService } from '$lib/services/content/tool';
@@ -61,7 +51,7 @@
     let newMessageText = $state('');
     let editModeId = $state<string | null>(null);
     let editMessageText = $state('');
-    let inspectorOpen = $state(true);
+    let inspectorOpen = $state(false);
     let scrollContainerEl: HTMLElement | undefined = $state();
     let isLoadingOlder = $state(false);
     let isLoadingNewer = $state(false);
@@ -71,19 +61,6 @@
 
     const MESSAGE_PAGE_SIZE = 30;
     const MESSAGE_WINDOW_SIZE = 120;
-
-    const multiRoomMeta = $derived(
-        $isMultiRoom ? ($multiRoomMetas.find((meta) => meta.id === roomId) ?? null) : null
-    );
-    const multiRoomMemberCount = $derived(
-        $isMultiRoom
-            ? ($multiRoomMembers.get(roomId) ?? []).filter((member) => member.status === 'accepted')
-                  .length
-            : 0
-    );
-    const isMultiRoomOwner = $derived(
-        Boolean(multiRoomMeta && $userId && multiRoomMeta.ownerUserId === $userId)
-    );
 
     // Reset state and scroll to bottom when active chat changes
     $effect(() => {
@@ -286,79 +263,8 @@
 </script>
 
 <div class="flex h-full flex-col">
-    <!-- Inline Header -->
-    <div class="flex shrink-0 items-center justify-between border-b px-4 py-2">
-        <div class="flex items-center gap-3">
-            {#if $activeRoom}
-                <span class="text-sm font-semibold">{$activeRoom.name}</span>
-            {:else}
-                <span class="text-sm font-semibold">{roomId}</span>
-            {/if}
-            {#if $activeChat}
-                <span class="text-sm text-muted-foreground">{$activeChat.title}</span>
-            {:else if chatId}
-                <span class="text-sm text-muted-foreground">{chatId}</span>
-            {:else}
-                <span class="text-sm text-muted-foreground">No chat selected</span>
-            {/if}
-        </div>
-        <div class="flex items-center gap-1">
-            {#if $isMultiRoom}
-                <div class="mr-2 flex items-center gap-1.5 border-r pr-3 text-xs">
-                    <span
-                        class="flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 font-medium text-primary"
-                    >
-                        <UsersRound class="size-3.5" /> Multi Room
-                    </span>
-                    <span class="hidden items-center gap-1 text-muted-foreground lg:flex">
-                        {#if multiRoomMeta?.visibility === 'public'}
-                            <Globe2 class="size-3.5" /> Public
-                        {:else}
-                            <Lock class="size-3.5" /> Private
-                        {/if}
-                    </span>
-                    <span class="hidden items-center gap-1 text-muted-foreground xl:flex">
-                        {#if isMultiRoomOwner}
-                            <Crown class="size-3.5" /> Owner
-                        {:else}
-                            <Shield class="size-3.5" /> Member
-                        {/if}
-                    </span>
-                    <span class="hidden text-muted-foreground 2xl:inline">
-                        {multiRoomMemberCount} members
-                    </span>
-                    <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        class="size-7"
-                        title="Manage multi room"
-                        aria-label="Manage multi room"
-                        onclick={() => navigate({ view: 'multiRoom' })}
-                    >
-                        <Settings2 class="size-3.5" />
-                    </Button>
-                </div>
-            {/if}
-            {#if $activeChat}
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    class="h-7 gap-1 text-xs"
-                    onclick={() => (inspectorOpen = !inspectorOpen)}
-                >
-                    {#if inspectorOpen}
-                        <ChevronRight class="size-3" />
-                    {:else}
-                        <ChevronLeft class="size-3" />
-                    {/if}
-                    Settings
-                </Button>
-            {/if}
-        </div>
-    </div>
-
     <!-- Main Area -->
-    <div class="flex flex-1 overflow-hidden">
+    <div class="relative flex flex-1 overflow-hidden">
         {#if !$activeChat}
             <div class="flex flex-1 flex-col items-center justify-center gap-3 text-center">
                 <div class="flex size-16 items-center justify-center rounded-full bg-muted">
@@ -376,6 +282,18 @@
             <div class="flex flex-1 flex-col overflow-hidden relative">
                 <ChatBackground chatId={$activeChat.id} {defaultCharacter} />
 
+                {#if !inspectorOpen}
+                    <button
+                        type="button"
+                        class="absolute right-0 top-1.5 z-20 flex h-11 w-8 items-center justify-center rounded-l-md border border-r-0 bg-background/70 text-muted-foreground opacity-50 shadow-sm backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                        title="Show chat context"
+                        aria-label="Show chat context"
+                        onclick={() => (inspectorOpen = true)}
+                    >
+                        <ChevronLeft class="size-4" />
+                    </button>
+                {/if}
+
                 {#if isLoadingOlder}
                     <div
                         class="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-background/85 backdrop-blur-md border px-3 py-1.5 rounded-full shadow-md flex items-center gap-2 text-xs text-muted-foreground transition-all duration-200"
@@ -389,7 +307,7 @@
                 <div
                     bind:this={scrollContainerEl}
                     onscroll={handleScroll}
-                    class="relative z-10 flex flex-col-reverse gap-4 flex-1 overflow-y-auto px-4 py-4"
+                    class="relative z-10 flex flex-1 flex-col-reverse gap-6 overflow-y-auto px-4 py-4 md:gap-4"
                 >
                     {#if $displayMessages.length === 0}
                         <!-- Empty State -->
@@ -468,13 +386,14 @@
                 >
                     <AutoResizeTextarea
                         bind:value={newMessageText}
+                        classname="min-h-10 py-2.5"
                         onkeydown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
                                 handleSendMessage();
                             }
                         }}
-                        placeholder="Type a message... (Shift+Enter for new line)"
+                        placeholder="Type a message..."
                         disabled={$isChatRunning || !selectedPersona}
                     />
                     {#if $isChatRunning}
@@ -487,26 +406,49 @@
                         </Button>
                     {:else}
                         <Button
-                            class="gap-1.5 shrink-0"
+                            size="icon"
+                            class="shrink-0"
                             onclick={handleSendMessage}
                             disabled={!selectedPersona || !newMessageText.trim()}
+                            title="Send message"
+                            aria-label="Send message"
                         >
-                            <SendHorizontal class="size-4" /> Send User
+                            <SendHorizontal class="size-4" />
                         </Button>
                         <Button
                             variant="secondary"
-                            class="gap-1.5 shrink-0"
+                            size="icon"
+                            class="shrink-0"
                             onclick={handleGenerateResponse}
                             disabled={!selectedCharacter}
+                            title="Generate response"
+                            aria-label="Generate response"
                         >
-                            <MessageSquare class="size-4" /> Generate
+                            <MessageSquare class="size-4" />
                         </Button>
                     {/if}
                 </div>
             </div>
 
             {#if inspectorOpen}
-                <div class="w-[420px] shrink-0">
+                <button
+                    type="button"
+                    class="absolute inset-0 z-30 bg-black/35 md:hidden"
+                    aria-label="Close chat context"
+                    onclick={() => (inspectorOpen = false)}
+                ></button>
+                <div
+                    class="relative w-[360px] shrink-0 max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[calc(100%-2rem)] max-md:max-w-[420px]"
+                >
+                    <button
+                        type="button"
+                        class="absolute right-full top-1.5 z-30 flex h-11 w-8 items-center justify-center rounded-l-md border border-r-0 bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground max-md:hidden"
+                        title="Hide chat context"
+                        aria-label="Hide chat context"
+                        onclick={() => (inspectorOpen = false)}
+                    >
+                        <ChevronRight class="size-4" />
+                    </button>
                     <ChatRuntimePanel chatId={$activeChat.id} />
                 </div>
             {/if}

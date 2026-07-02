@@ -26,6 +26,7 @@ import {
     roomChats
 } from '../state';
 import { clearActiveRoom, updateRoom } from './room';
+import { ensureRoomHasChat, selectChat } from './chat';
 import { getAppSettings, updateSettings } from './settings';
 
 function setRoomMembers(roomId: string, members: MultiRoomMember[]): void {
@@ -138,6 +139,17 @@ export async function selectMultiRoom(roomId: string): Promise<void> {
         await updateRoom(roomId, {
             characters: { refs: staleCharacterRefs }
         });
+    }
+
+    if (roomChats.size === 0) {
+        await ensureRoomHasChat(roomId);
+    }
+
+    const lastActive = room.lastActiveChatId;
+    const fallbackId = get(roomChats)[0]?.id;
+    const targetId = lastActive && roomChats.get(lastActive) ? lastActive : fallbackId;
+    if (targetId) {
+        await selectChat(targetId);
     }
 }
 
