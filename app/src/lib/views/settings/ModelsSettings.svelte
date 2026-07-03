@@ -12,8 +12,8 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
-    <div class="mb-6 flex shrink-0 items-center justify-between">
-        <div class="flex rounded-lg bg-muted/50 p-1">
+    <div class="mb-6 flex min-w-0 shrink-0 items-center justify-between gap-2">
+        <div class="flex min-w-0 overflow-x-auto rounded-lg bg-muted/50 p-1">
             {#each ['model', 'parameters', 'custom'] as tab (tab)}
                 <button
                     class="rounded-md px-4 py-1.5 text-sm font-medium transition-colors {activeTab ===
@@ -30,7 +30,9 @@
         </div>
 
         {#if $activePreset}
-            <Badge variant="outline" class="font-mono text-xs">{$activePreset.name}</Badge>
+            <Badge variant="outline" class="hidden font-mono text-xs sm:inline-flex"
+                >{$activePreset.name}</Badge
+            >
         {/if}
     </div>
 

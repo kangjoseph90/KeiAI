@@ -18,6 +18,16 @@ export type SettingsTab =
     | 'profile'
     | 'account'
     | 'appearance';
+export type CharacterStudioTab =
+    | 'profile'
+    | 'greetings'
+    | 'prompt'
+    | 'lorebooks'
+    | 'scripts'
+    | 'assets'
+    | 'advanced'
+    | 'export';
+export type PersonaStudioTab = 'profile' | 'assets' | 'export';
 
 export interface RouteState {
     view: ViewMode;
@@ -28,6 +38,8 @@ export interface RouteState {
     pluginId?: string;
     moduleId?: string;
     settingsTab?: SettingsTab;
+    characterTab?: CharacterStudioTab;
+    personaTab?: PersonaStudioTab;
 }
 
 // ─── URL Scheme ───────────────────────────────────────────────────────
@@ -35,8 +47,8 @@ export interface RouteState {
 // #/multi-room               → multi-room management
 // #/room/{roomId}             → room, no chat selected
 // #/room/{roomId}/chat/{chatId} → room with a selected chat
-// #/character/{charId}        → character studio
-// #/persona/{personaId}       → persona studio
+// #/character/{charId}/{tab?} → character studio
+// #/persona/{personaId}/{tab?} → persona studio
 // #/settings                  → global settings
 // #/settings/{tab}            → global settings focused on a tab
 // #/settings/plugins/{pluginId} → settings plugin editor
@@ -51,8 +63,14 @@ function buildHash(route: RouteState): string {
             if (route.roomId) return `#/room/${route.roomId}`;
             return '#/';
         case 'characterStudio':
+            if (route.charId && route.characterTab) {
+                return `#/character/${route.charId}/${route.characterTab}`;
+            }
             return route.charId ? `#/character/${route.charId}` : '#/';
         case 'personaStudio':
+            if (route.personaId && route.personaTab) {
+                return `#/persona/${route.personaId}/${route.personaTab}`;
+            }
             return route.personaId ? `#/persona/${route.personaId}` : '#/';
         case 'settings':
             if (route.pluginId) return `#/settings/plugins/${route.pluginId}`;
@@ -69,7 +87,7 @@ function parseHash(hash: string): RouteState {
     if (!path || path === '/') return { view: 'home' };
     if (path === 'multi-room') return { view: 'multiRoom' };
 
-    if (path === 'settings') return { view: 'settings', settingsTab: 'models' };
+    if (path === 'settings') return { view: 'settings' };
 
     const parts = path.split('/');
     if (parts[0] === 'room') {
@@ -78,9 +96,26 @@ function parseHash(hash: string): RouteState {
         if (roomId) return { view: 'room', roomId, chatId };
     }
     if (parts[0] === 'character' && parts[1]) {
+        const characterTab = parts[2];
+        if (
+            characterTab === 'profile' ||
+            characterTab === 'greetings' ||
+            characterTab === 'prompt' ||
+            characterTab === 'lorebooks' ||
+            characterTab === 'scripts' ||
+            characterTab === 'assets' ||
+            characterTab === 'advanced' ||
+            characterTab === 'export'
+        ) {
+            return { view: 'characterStudio', charId: parts[1], characterTab };
+        }
         return { view: 'characterStudio', charId: parts[1] };
     }
     if (parts[0] === 'persona' && parts[1]) {
+        const personaTab = parts[2];
+        if (personaTab === 'profile' || personaTab === 'assets' || personaTab === 'export') {
+            return { view: 'personaStudio', personaId: parts[1], personaTab };
+        }
         return { view: 'personaStudio', personaId: parts[1] };
     }
     if (parts[0] === 'settings') {
@@ -102,7 +137,7 @@ function parseHash(hash: string): RouteState {
         ) {
             return { view: 'settings', settingsTab: parts[1] };
         }
-        return { view: 'settings', settingsTab: 'models' };
+        return { view: 'settings' };
     }
     return { view: 'home' };
 }
@@ -139,7 +174,9 @@ export function initHashListener(): () => void {
             parsed.personaId !== current.personaId ||
             parsed.pluginId !== current.pluginId ||
             parsed.moduleId !== current.moduleId ||
-            parsed.settingsTab !== current.settingsTab
+            parsed.settingsTab !== current.settingsTab ||
+            parsed.characterTab !== current.characterTab ||
+            parsed.personaTab !== current.personaTab
         ) {
             _route.set(parsed);
         }

@@ -1,6 +1,7 @@
 <script lang="ts">
     import {
-        ArrowLeft,
+        ChevronLeft,
+        ChevronRight,
         Download,
         IdCard,
         Image as ImageIcon,
@@ -9,7 +10,8 @@
         Trash2,
         Upload,
         User,
-        UserRound
+        UserRound,
+        X
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import {
@@ -26,6 +28,7 @@
     import { Textarea } from '$lib/components/ui/textarea';
     import AssetView from '$lib/components/AssetView.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import ExportTab from './ExportTab.svelte';
     import {
         activeChat,
         activePersona,
@@ -41,15 +44,14 @@
         deletePersonaFolder,
         movePersonaItem
     } from '$lib/stores';
-    import { navigate } from '$lib/router';
+    import { navigate, type PersonaStudioTab } from '$lib/router';
     import { isKeiServer } from '$lib/adapters/pb';
     import { exportPersonaFile } from '$lib/managers/persona';
     import type { AssetRef } from '$lib/types/refs';
 
-    let { personaId }: { personaId: string } = $props();
+    let { personaId, personaTab }: { personaId: string; personaTab?: PersonaStudioTab } = $props();
 
-    type Tab = 'profile' | 'assets';
-    let activeTab = $state<Tab>('profile');
+    let activeTab = $state<PersonaStudioTab>('profile');
     let avatarInput = $state<HTMLInputElement>();
     let assetFileInput = $state<HTMLInputElement>();
     let editingId = $state<string | null>(null);
@@ -57,8 +59,27 @@
 
     const tabs = [
         { id: 'profile' as const, label: 'Profile', icon: UserRound },
-        { id: 'assets' as const, label: 'Assets', icon: ImageIcon }
+        { id: 'assets' as const, label: 'Assets', icon: ImageIcon },
+        { id: 'export' as const, label: 'Export', icon: Download }
     ];
+
+    let hasSelectedTab = $derived(personaTab !== undefined);
+    let activeTabLabel = $derived(
+        tabs.find((tab) => tab.id === activeTab)?.label ?? 'Persona Studio'
+    );
+
+    $effect(() => {
+        if (personaTab) activeTab = personaTab;
+    });
+
+    function openTab(tab: PersonaStudioTab) {
+        activeTab = tab;
+        navigate({ view: 'personaStudio', personaId, personaTab: tab });
+    }
+
+    function returnToTabs() {
+        navigate({ view: 'personaStudio', personaId });
+    }
 
     const assetRefs = $derived($activePersona ? Object.values($activePersona.assets.refs) : []);
 
@@ -119,105 +140,130 @@
     }
 </script>
 
-<div class="flex h-full min-h-0 flex-col bg-background">
-    <header class="flex shrink-0 items-center justify-between border-b px-6 py-4">
-        <div class="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onclick={backToContext} title="Back">
-                <ArrowLeft class="size-5" />
-            </Button>
-            <div>
-                <h1 class="flex items-center gap-2 text-lg font-semibold">
-                    Persona Studio
-                    {#if $activePersona}
-                        <span class="font-normal text-muted-foreground">/</span>
-                        <span class="text-primary">{$activePersona.name}</span>
-                    {/if}
-                </h1>
-                <p class="text-xs text-muted-foreground">Shape the voice behind user messages</p>
-            </div>
-        </div>
-
-        <div class="flex items-center gap-2">
-            <Badge variant="outline" class="font-mono text-[10px]">ID: {personaId}</Badge>
-            <Button
-                variant="outline"
-                size="sm"
-                class="gap-1.5"
-                disabled={!$activePersona}
-                onclick={() =>
-                    $activePersona &&
-                    exportPersonaFile($activePersona.id, { kind: 'risu', format: 'png' })}
-                title="Export Risu PNG"
-            >
-                <Download class="size-4" />
-                Risu PNG
-            </Button>
-            {#if isKeiServer()}
-                <Button
-                    variant="outline"
-                    size="sm"
-                    class="gap-1.5"
-                    disabled={!$activePersona}
-                    onclick={() =>
-                        $activePersona &&
-                        exportPersonaFile($activePersona.id, {
-                            kind: 'keipersona',
-                            assetMode: 'light'
-                        })}
-                    title="Export Kei Light"
-                >
-                    <Download class="size-4" />
-                    Kei Light
-                </Button>
+{#snippet identityAvatar(sizeClass: string)}
+    <div
+        class="flex {sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
+    >
+        <AssetView
+            asset={$activePersona?.avatar
+                ? {
+                      scopeType: $activePersona.scopeType,
+                      scopeId: $activePersona.scopeId,
+                      ownerTable: 'personas',
+                      ownerId: $activePersona.id,
+                      hash: $activePersona.avatar.hash,
+                      encKey: $activePersona.avatar.encKey
+                  }
+                : null}
+            alt={$activePersona?.name ?? 'Persona'}
+            class="size-full object-cover"
+            fallback="none"
+        >
+            {#if !$activePersona?.avatar}
+                <UserRound class="size-5 text-muted-foreground" />
             {/if}
-            <Button
-                variant="outline"
-                size="sm"
-                class="gap-1.5"
-                disabled={!$activePersona}
-                onclick={() =>
-                    $activePersona &&
-                    exportPersonaFile($activePersona.id, {
-                        kind: 'keipersona',
-                        assetMode: 'baked'
-                    })}
-                title="Export Kei Baked"
-            >
-                <Download class="size-4" />
-                Kei Baked
-            </Button>
-            <Button variant="destructive" size="sm" class="gap-1.5" onclick={handleDelete}>
-                <Trash2 class="size-4" />
-                Delete
-            </Button>
-            <Button variant="outline" size="sm" onclick={backToContext}>Close Studio</Button>
-        </div>
-    </header>
+        </AssetView>
+    </div>
+{/snippet}
 
+<div class="flex h-full min-h-0 flex-col bg-background">
     <div class="flex min-h-0 flex-1 overflow-hidden">
-        <nav class="flex w-64 shrink-0 flex-col gap-1 border-r bg-muted/30 p-4">
-            {#each tabs as tab (tab.id)}
-                <button
-                    class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors {activeTab ===
-                    tab.id
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-                    onclick={() => (activeTab = tab.id)}
+        <nav
+            class="min-h-0 w-full shrink-0 flex-col border-r bg-muted/30 md:flex md:min-w-64 md:w-[max(16rem,calc((100vw-72rem)/2+16rem))] {hasSelectedTab
+                ? 'hidden'
+                : 'flex'}"
+            aria-label="Persona Studio sections"
+        >
+            <div class="flex h-14 shrink-0 items-center border-b px-2 md:hidden">
+                {@render identityAvatar('size-8')}
+                <div class="min-w-0 flex-1 px-2">
+                    <p class="truncate text-sm font-semibold">
+                        {$activePersona?.name ?? 'Persona'}
+                    </p>
+                    <p class="text-[11px] text-muted-foreground">Persona Studio</p>
+                </div>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={backToContext}
+                    aria-label="Close studio"
                 >
-                    <tab.icon class="size-4" />
-                    {tab.label}
-                </button>
-            {/each}
+                    <X class="size-5" />
+                </Button>
+            </div>
+            <div
+                class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-4 md:ml-auto md:w-64 md:flex-none md:px-4 md:pb-4 md:pt-8"
+            >
+                {#if $activePersona}
+                    <div class="mb-4 hidden items-center gap-3 px-3 md:flex">
+                        {@render identityAvatar('size-10')}
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-medium">{$activePersona.name}</p>
+                            <p class="text-xs text-muted-foreground">Persona Studio</p>
+                        </div>
+                    </div>
+                {/if}
+                {#each tabs as tab (tab.id)}
+                    <button
+                        class="flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors md:min-h-0 {activeTab ===
+                        tab.id
+                            ? hasSelectedTab
+                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground md:bg-primary md:text-primary-foreground md:shadow-sm'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+                        onclick={() => openTab(tab.id)}
+                        aria-current={activeTab === tab.id ? 'page' : undefined}
+                    >
+                        <tab.icon class="size-4" />
+                        <span>{tab.label}</span>
+                        <ChevronRight class="ml-auto size-4 md:hidden" />
+                    </button>
+                {/each}
+            </div>
         </nav>
 
-        <main class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <main
+            class="min-h-0 flex-1 flex-col overflow-hidden md:flex {hasSelectedTab
+                ? 'flex'
+                : 'hidden'}"
+        >
+            <div
+                class="mx-auto flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
+            >
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="md:hidden"
+                    onclick={returnToTabs}
+                    aria-label="Back to Persona Studio sections"
+                >
+                    <ChevronLeft class="size-5" />
+                </Button>
+                <div class="md:hidden">{@render identityAvatar('size-8')}</div>
+                <div class="min-w-0 flex-1 px-2 md:px-0">
+                    <p class="truncate text-sm font-semibold md:text-xl">{activeTabLabel}</p>
+                    {#if $activePersona}
+                        <p class="hidden truncate text-xs text-muted-foreground md:block">
+                            {$activePersona.name}
+                        </p>
+                    {/if}
+                </div>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={backToContext}
+                    aria-label="Close studio"
+                >
+                    <X class="size-5" />
+                </Button>
+            </div>
             {#if !$activePersona}
                 <div class="flex flex-1 items-center justify-center">
                     <p class="text-muted-foreground">Loading persona data...</p>
                 </div>
             {:else}
                 <ScrollArea class="min-h-0 flex-1">
-                    <div class="mx-auto max-w-4xl p-8">
+                    <div class="mx-auto max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
                         {#if activeTab === 'profile'}
                             <section class="space-y-6">
                                 <Card>
@@ -494,6 +540,26 @@
                                     {/snippet}
                                 </EntityList>
                             </section>
+                        {:else if activeTab === 'export'}
+                            <ExportTab
+                                showLightExport={isKeiServer()}
+                                onExportRisu={() =>
+                                    exportPersonaFile($activePersona!.id, {
+                                        kind: 'risu',
+                                        format: 'png'
+                                    })}
+                                onExportLight={() =>
+                                    exportPersonaFile($activePersona!.id, {
+                                        kind: 'keipersona',
+                                        assetMode: 'light'
+                                    })}
+                                onExportBaked={() =>
+                                    exportPersonaFile($activePersona!.id, {
+                                        kind: 'keipersona',
+                                        assetMode: 'baked'
+                                    })}
+                                onDelete={handleDelete}
+                            />
                         {/if}
                     </div>
                 </ScrollArea>

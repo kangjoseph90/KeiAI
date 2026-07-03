@@ -100,7 +100,9 @@
             prevRoute.personaId === r.personaId &&
             prevRoute.pluginId === r.pluginId &&
             prevRoute.moduleId === r.moduleId &&
-            prevRoute.settingsTab === r.settingsTab
+            prevRoute.settingsTab === r.settingsTab &&
+            prevRoute.characterTab === r.characterTab &&
+            prevRoute.personaTab === r.personaTab
         ) {
             prevRoute = r;
             return;
@@ -206,11 +208,11 @@
                 {/await}
             {:else if $route.view === 'characterStudio' && $route.charId}
                 {#await import('$lib/views/character/CharacterStudio.svelte') then m}
-                    <m.default charId={$route.charId} />
+                    <m.default charId={$route.charId} characterTab={$route.characterTab} />
                 {/await}
             {:else if $route.view === 'personaStudio' && $route.personaId}
                 {#await import('$lib/views/persona/PersonaStudio.svelte') then m}
-                    <m.default personaId={$route.personaId} />
+                    <m.default personaId={$route.personaId} personaTab={$route.personaTab} />
                 {/await}
             {:else if $route.view === 'settings'}
                 {#await import('$lib/views/settings/SettingsView.svelte') then m}

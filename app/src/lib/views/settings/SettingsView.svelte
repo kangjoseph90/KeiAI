@@ -1,6 +1,8 @@
 <script lang="ts">
     import {
-        ArrowLeft,
+        ChevronLeft,
+        ChevronRight,
+        X,
         User,
         Shield,
         Cpu,
@@ -21,7 +23,6 @@
         CardTitle,
         CardDescription
     } from '$lib/components/ui/card';
-    import { Separator } from '$lib/components/ui/separator';
     import { appSettings, updateSettings, activeRoom, activeChat } from '$lib/stores';
     import { navigate } from '$lib/router';
     import type { SettingsTab } from '$lib/router';
@@ -39,6 +40,22 @@
         pluginId,
         moduleId
     }: { settingsTab?: SettingsTab; pluginId?: string; moduleId?: string } = $props();
+
+    const tabs = [
+        { id: 'models', label: 'Models', icon: Cpu },
+        { id: 'chat', label: 'Chat', icon: MessageSquare },
+        { id: 'modules', label: 'Modules', icon: Package },
+        { id: 'plugins', label: 'Plugins', icon: Puzzle },
+        { id: 'language', label: 'Language', icon: Languages },
+        { id: 'profile', label: 'Profile', icon: User },
+        { id: 'account', label: 'Account', icon: Shield },
+        { id: 'appearance', label: 'Appearance', icon: Palette }
+    ] as const;
+
+    let hasSelectedTab = $derived(
+        settingsTab !== undefined || pluginId !== undefined || moduleId !== undefined
+    );
+    let activeTabLabel = $derived(tabs.find((tab) => tab.id === activeTab)?.label ?? 'Settings');
 
     $effect(() => {
         if (pluginId) {
@@ -70,97 +87,100 @@
         navigate({ view: 'settings', settingsTab: tab });
     }
 
-    const tabs = [
-        { id: 'models', label: 'Models', icon: Cpu },
-        { id: 'chat', label: 'Chat', icon: MessageSquare },
-        { id: 'modules', label: 'Modules', icon: Package },
-        { id: 'plugins', label: 'Plugins', icon: Puzzle },
-        { id: 'language', label: 'Language', icon: Languages },
-        { id: 'profile', label: 'Profile', icon: User },
-        { id: 'account', label: 'Account', icon: Shield },
-        { id: 'appearance', label: 'Appearance', icon: Palette }
-    ] as const;
+    function returnToTabs() {
+        navigate({ view: 'settings' });
+    }
 </script>
 
 <div class="flex h-full min-h-0 flex-col bg-background">
-    <!-- Settings Header -->
-    <header class="flex items-center justify-between px-6 py-4 border-b shrink-0">
-        <div class="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onclick={backToChat}>
-                <ArrowLeft class="size-5" />
-            </Button>
-            <div>
-                <h1 class="text-lg font-semibold">System Settings</h1>
-                <p class="text-xs text-muted-foreground">
-                    Global configuration for your AI instance
-                </p>
-            </div>
-        </div>
-        <Button variant="outline" size="sm" onclick={backToChat}>Done</Button>
-    </header>
-
     <div class="flex min-h-0 flex-1 overflow-hidden">
         <!-- Sidebar Navigation -->
-        <nav class="w-64 border-r bg-muted/30 p-4 flex flex-col gap-1 shrink-0">
-            {#each tabs as tab (tab.id)}
-                <button
-                    class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors {activeTab ===
-                    tab.id
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-                    onclick={() => openTab(tab.id)}
+        <nav
+            class="min-h-0 w-full shrink-0 flex-col border-r bg-muted/30 md:flex md:min-w-64 md:w-[max(16rem,calc((100vw-72rem)/2+16rem))] {hasSelectedTab
+                ? 'hidden'
+                : 'flex'}"
+            aria-label="Settings sections"
+        >
+            <div class="flex h-14 shrink-0 items-center border-b px-2 md:hidden">
+                <h1 class="min-w-0 flex-1 truncate px-2 text-sm font-semibold">Settings</h1>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={backToChat}
+                    aria-label="Close settings"
                 >
-                    <tab.icon class="size-4" />
-                    {tab.label}
-                </button>
-            {/each}
+                    <X class="size-5" />
+                </Button>
+            </div>
+            <div
+                class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-4 md:ml-auto md:w-64 md:flex-none md:px-4 md:pb-4 md:pt-8"
+            >
+                {#each tabs as tab (tab.id)}
+                    <button
+                        class="flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors md:min-h-0 {activeTab ===
+                        tab.id
+                            ? hasSelectedTab
+                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground md:bg-primary md:text-primary-foreground md:shadow-sm'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+                        onclick={() => openTab(tab.id)}
+                        aria-current={activeTab === tab.id ? 'page' : undefined}
+                    >
+                        <tab.icon class="size-4" />
+                        <span>{tab.label}</span>
+                        <ChevronRight class="ml-auto size-4 md:hidden" />
+                    </button>
+                {/each}
+            </div>
         </nav>
 
         <!-- Main Workspace -->
-        <main class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+        <main
+            class="relative min-h-0 flex-1 flex-col overflow-hidden bg-background md:flex {hasSelectedTab
+                ? 'flex'
+                : 'hidden'}"
+        >
+            <div
+                class="mx-auto flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
+            >
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="md:hidden"
+                    onclick={returnToTabs}
+                    aria-label="Back to settings sections"
+                >
+                    <ChevronLeft class="size-5" />
+                </Button>
+                <span class="min-w-0 flex-1 truncate px-2 text-sm font-semibold md:px-0 md:text-xl"
+                    >{activeTabLabel}</span
+                >
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={backToChat}
+                    aria-label="Close settings"
+                >
+                    <X class="size-5" />
+                </Button>
+            </div>
+
             <ScrollArea class="min-h-0 flex-1">
-                <div class="max-w-4xl mx-auto p-8 space-y-8">
+                <div class="mx-auto max-w-4xl space-y-8 p-4 md:px-8 md:pb-8 md:pt-4">
                     {#if activeTab === 'models'}
-                        <div class="space-y-6">
-                            <div class="flex flex-col gap-1">
-                                <h2 class="text-2xl font-bold tracking-tight">Models</h2>
-                                <p class="text-muted-foreground">
-                                    Manage model selection, parameters, and custom model entries.
-                                </p>
-                            </div>
-                            <Separator />
-                            <div class="h-[calc(100vh-12rem)] min-h-[32rem]">
-                                <ModelsSettings />
-                            </div>
+                        <div class="h-[calc(100dvh-8rem)] min-h-[32rem]">
+                            <ModelsSettings />
                         </div>
                     {:else if activeTab === 'chat'}
-                        <div class="space-y-6">
-                            <div class="flex flex-col gap-1">
-                                <h2 class="text-2xl font-bold tracking-tight">Chat</h2>
-                                <p class="text-muted-foreground">
-                                    Manage chat workflow, scripts, toggles, and presets.
-                                </p>
-                            </div>
-                            <Separator />
-                            <div class="h-[calc(100vh-12rem)] min-h-[32rem]">
-                                <ChatSettings />
-                            </div>
+                        <div class="h-[calc(100dvh-8rem)] min-h-[32rem]">
+                            <ChatSettings />
                         </div>
                     {:else if activeTab === 'plugins'}
                         <PluginsView {pluginId} />
                     {:else if activeTab === 'modules'}
                         <ModulesView {moduleId} />
                     {:else if activeTab === 'language'}
-                        <div class="space-y-6">
-                            <div class="flex flex-col gap-1">
-                                <h2 class="text-2xl font-bold tracking-tight">Language</h2>
-                                <p class="text-muted-foreground">
-                                    Manage translation language and workflow behavior.
-                                </p>
-                            </div>
-                            <Separator />
-                            <LanguageSettings />
-                        </div>
+                        <LanguageSettings />
                     {:else if activeTab === 'profile'}
                         <ProfileSettings />
                     {:else if activeTab === 'account'}

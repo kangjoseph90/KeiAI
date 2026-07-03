@@ -1,6 +1,7 @@
 <script lang="ts">
     import {
-        ArrowLeft,
+        ChevronLeft,
+        ChevronRight,
         User,
         FileText,
         MessageSquare,
@@ -8,11 +9,12 @@
         Code,
         Image as ImageIcon,
         Settings2,
-        Download
+        Download,
+        X
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
-    import { Badge } from '$lib/components/ui/badge';
+    import AssetView from '$lib/components/AssetView.svelte';
     import {
         activeCharacter,
         activeChat,
@@ -40,7 +42,7 @@
         deleteCharacterFolder,
         moveCharacterItem
     } from '$lib/stores';
-    import { navigate } from '$lib/router';
+    import { navigate, type CharacterStudioTab } from '$lib/router';
     import { isKeiServer } from '$lib/adapters/pb';
     import {
         exportCharacterFile,
@@ -58,16 +60,17 @@
     import ScriptsTab from '../character/studio/ScriptsTab.svelte';
     import AssetsTab from '../character/studio/AssetsTab.svelte';
     import AdvancedTab from '../character/studio/AdvancedTab.svelte';
+    import ExportTab from '../character/studio/ExportTab.svelte';
 
     interface Props {
         charId: string;
+        characterTab?: CharacterStudioTab;
     }
 
-    let { charId }: Props = $props();
+    let { charId, characterTab }: Props = $props();
 
-    type Tab = 'profile' | 'greetings' | 'prompt' | 'lorebooks' | 'scripts' | 'assets' | 'advanced';
     type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
-    let activeTab = $state<Tab>('profile');
+    let activeTab = $state<CharacterStudioTab>('profile');
     let exporting = $state<ExportButton | null>(null);
 
     const isChatSynced = $derived(() => {
@@ -98,8 +101,27 @@
         { id: 'lorebooks', label: 'Lorebooks', icon: Book },
         { id: 'scripts', label: 'Scripts', icon: Code },
         { id: 'assets', label: 'Assets', icon: ImageIcon },
-        { id: 'advanced', label: 'Advanced', icon: Settings2 }
+        { id: 'advanced', label: 'Advanced', icon: Settings2 },
+        { id: 'export', label: 'Export', icon: Download }
     ] as const;
+
+    let hasSelectedTab = $derived(characterTab !== undefined);
+    let activeTabLabel = $derived(
+        tabs.find((tab) => tab.id === activeTab)?.label ?? 'Character Studio'
+    );
+
+    $effect(() => {
+        if (characterTab) activeTab = characterTab;
+    });
+
+    function openTab(tab: CharacterStudioTab) {
+        activeTab = tab;
+        navigate({ view: 'characterStudio', charId, characterTab: tab });
+    }
+
+    function returnToTabs() {
+        navigate({ view: 'characterStudio', charId });
+    }
 
     async function handleCreateGreeting(fields: { content: string; sortOrder: string }) {
         if (!$activeCharacter) return;
@@ -139,107 +161,122 @@
     }
 </script>
 
-<div class="flex h-full min-h-0 flex-col bg-background">
-    <!-- Studio Header -->
-    <header class="flex items-center justify-between px-6 py-4 border-b shrink-0">
-        <div class="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onclick={backToChat} title="Back to Chat">
-                <ArrowLeft class="size-5" />
-            </Button>
-            <div>
-                <h1 class="text-lg font-semibold flex items-center gap-2">
-                    Character Studio
-                    {#if $activeCharacter}
-                        <span class="text-muted-foreground font-normal">/</span>
-                        <span class="text-primary">{$activeCharacter.name}</span>
-                    {/if}
-                </h1>
-                <p class="text-xs text-muted-foreground">Crafting the perfect AI companion</p>
-            </div>
-        </div>
-
-        <div class="flex items-center gap-2">
-            <Badge variant="outline" class="font-mono text-[10px]">ID: {charId}</Badge>
-            <Button
-                variant="outline"
-                size="sm"
-                class="gap-1.5"
-                disabled={!$activeCharacter || exporting !== null}
-                onclick={() => handleExport('ccv3-png', { kind: 'ccv3', format: 'png' })}
-                title="Export Character Card V3 PNG"
-            >
-                <Download class="size-3.5" />
-                CCv3 PNG
-            </Button>
-            <Button
-                variant="outline"
-                size="sm"
-                class="gap-1.5"
-                disabled={!$activeCharacter || exporting !== null}
-                onclick={() => handleExport('ccv3-charx', { kind: 'ccv3', format: 'charx' })}
-                title="Export Character Card V3 CharX"
-            >
-                <Download class="size-3.5" />
-                CharX
-            </Button>
-            {#if isKeiServer()}
-                <Button
-                    variant="outline"
-                    size="sm"
-                    class="gap-1.5"
-                    disabled={!$activeCharacter || exporting !== null}
-                    onclick={() =>
-                        handleExport('keichar-light', { kind: 'keichar', assetMode: 'light' })}
-                    title="Export KeiChar light archive"
-                >
-                    <Download class="size-3.5" />
-                    Kei Light
-                </Button>
+{#snippet identityAvatar(sizeClass: string)}
+    <div
+        class="flex {sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
+    >
+        <AssetView
+            asset={$activeCharacter?.avatar
+                ? {
+                      scopeType: $activeCharacter.scopeType,
+                      scopeId: $activeCharacter.scopeId,
+                      ownerTable: 'characters',
+                      ownerId: $activeCharacter.id,
+                      hash: $activeCharacter.avatar.hash,
+                      encKey: $activeCharacter.avatar.encKey
+                  }
+                : null}
+            alt={$activeCharacter?.name ?? 'Character'}
+            class="size-full object-cover"
+            fallback="none"
+        >
+            {#if !$activeCharacter?.avatar}
+                <User class="size-5 text-muted-foreground" />
             {/if}
-            <Button
-                variant="outline"
-                size="sm"
-                class="gap-1.5"
-                disabled={!$activeCharacter || exporting !== null}
-                onclick={() =>
-                    handleExport('keichar-baked', { kind: 'keichar', assetMode: 'baked' })}
-                title="Export KeiChar baked archive"
-            >
-                <Download class="size-3.5" />
-                Kei Baked
-            </Button>
-            <Button variant="outline" size="sm" class="gap-1.5" onclick={backToChat}>
-                Close Studio
-            </Button>
-        </div>
-    </header>
+        </AssetView>
+    </div>
+{/snippet}
 
+<div class="flex h-full min-h-0 flex-col bg-background">
     <div class="flex min-h-0 flex-1 overflow-hidden">
         <!-- Sidebar Navigation -->
-        <nav class="w-64 border-r bg-muted/30 p-4 flex flex-col gap-1 shrink-0">
-            {#each tabs as tab (tab.id)}
-                <button
-                    class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors {activeTab ===
-                    tab.id
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-                    onclick={() => (activeTab = tab.id)}
-                >
-                    <tab.icon class="size-4" />
-                    {tab.label}
-                </button>
-            {/each}
+        <nav
+            class="min-h-0 w-full shrink-0 flex-col border-r bg-muted/30 md:flex md:min-w-64 md:w-[max(16rem,calc((100vw-72rem)/2+16rem))] {hasSelectedTab
+                ? 'hidden'
+                : 'flex'}"
+            aria-label="Character Studio sections"
+        >
+            <div class="flex h-14 shrink-0 items-center border-b px-2 md:hidden">
+                {@render identityAvatar('size-8')}
+                <div class="min-w-0 flex-1 px-2">
+                    <p class="truncate text-sm font-semibold">
+                        {$activeCharacter?.name ?? 'Character'}
+                    </p>
+                    <p class="text-[11px] text-muted-foreground">Character Studio</p>
+                </div>
+                <Button variant="ghost" size="icon" onclick={backToChat} aria-label="Close studio">
+                    <X class="size-5" />
+                </Button>
+            </div>
+            <div
+                class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-4 md:ml-auto md:w-64 md:flex-none md:px-4 md:pb-4 md:pt-8"
+            >
+                {#if $activeCharacter}
+                    <div class="mb-4 hidden items-center gap-3 px-3 md:flex">
+                        {@render identityAvatar('size-10')}
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-medium">{$activeCharacter.name}</p>
+                            <p class="text-xs text-muted-foreground">Character Studio</p>
+                        </div>
+                    </div>
+                {/if}
+                {#each tabs as tab (tab.id)}
+                    <button
+                        class="flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors md:min-h-0 {activeTab ===
+                        tab.id
+                            ? hasSelectedTab
+                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground md:bg-primary md:text-primary-foreground md:shadow-sm'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+                        onclick={() => openTab(tab.id)}
+                        aria-current={activeTab === tab.id ? 'page' : undefined}
+                    >
+                        <tab.icon class="size-4" />
+                        <span>{tab.label}</span>
+                        <ChevronRight class="ml-auto size-4 md:hidden" />
+                    </button>
+                {/each}
+            </div>
         </nav>
 
         <!-- Main Workspace -->
-        <main class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <main
+            class="min-h-0 flex-1 flex-col overflow-hidden md:flex {hasSelectedTab
+                ? 'flex'
+                : 'hidden'}"
+        >
+            <div
+                class="mx-auto flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
+            >
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="md:hidden"
+                    onclick={returnToTabs}
+                    aria-label="Back to Character Studio sections"
+                >
+                    <ChevronLeft class="size-5" />
+                </Button>
+                <div class="md:hidden">{@render identityAvatar('size-8')}</div>
+                <div class="min-w-0 flex-1 px-2 md:px-0">
+                    <p class="truncate text-sm font-semibold md:text-xl">{activeTabLabel}</p>
+                    {#if $activeCharacter}
+                        <p class="hidden truncate text-xs text-muted-foreground md:block">
+                            {$activeCharacter.name}
+                        </p>
+                    {/if}
+                </div>
+                <Button variant="ghost" size="icon" onclick={backToChat} aria-label="Close studio">
+                    <X class="size-5" />
+                </Button>
+            </div>
             {#if !$activeCharacter}
                 <div class="flex flex-1 items-center justify-center">
                     <p class="text-muted-foreground">Loading character data...</p>
                 </div>
             {:else}
                 <ScrollArea class="min-h-0 flex-1">
-                    <div class="max-w-4xl mx-auto p-8">
+                    <div class="mx-auto max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
                         {#if activeTab === 'profile'}
                             <ProfileTab
                                 character={$activeCharacter}
@@ -419,6 +456,12 @@
                                 onUpdate={async (changes) => {
                                     await updateCharacter(changes);
                                 }}
+                            />
+                        {:else if activeTab === 'export'}
+                            <ExportTab
+                                {exporting}
+                                showLightExport={isKeiServer()}
+                                onExport={handleExport}
                             />
                         {/if}
                     </div>
