@@ -9,6 +9,7 @@
         onRenameSlot: (nodeId: string, inputId: string, name: string) => void;
         onDeleteSlot: (nodeId: string, inputId: string) => void;
         onUpdateNode: (nodeId: string, changes: WorkflowNodeChanges) => void;
+        onEditPrompt?: (nodeId: string) => void;
     }
 
     export type WorkflowCanvasNode = Node<WorkflowNodeData, 'workflow'>;
@@ -23,6 +24,7 @@
         CircleDot,
         FileInput,
         FileOutput,
+        FileText,
         GitBranch,
         GitMerge,
         Hash,
@@ -201,6 +203,15 @@
                     />
                 </label>
             </div>
+            {#if data.onEditPrompt}
+                <button
+                    class="nodrag flex h-7 w-full items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onclick={() => data.onEditPrompt?.(data.node.id)}
+                >
+                    <FileText class="size-3" />
+                    Edit prompt
+                </button>
+            {/if}
         {:else if data.node.class === 'String'}
             <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
                 Content

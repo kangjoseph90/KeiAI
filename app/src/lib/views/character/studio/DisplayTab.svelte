@@ -1,49 +1,29 @@
 <script lang="ts">
     import { Label } from '$lib/components/ui/label';
     import { Textarea } from '$lib/components/ui/textarea';
-    import {
-        Card,
-        CardContent,
-        CardHeader,
-        CardTitle,
-        CardDescription
-    } from '$lib/components/ui/card';
+    import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
     import type { Character, CharacterContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
 
-    interface Props {
+    let {
+        character,
+        onUpdate
+    }: {
         character: Character;
         onUpdate: (changes: DeepPartial<CharacterContent>) => void | Promise<void>;
-    }
-
-    let { character, onUpdate }: Props = $props();
+    } = $props();
 </script>
 
 <section class="space-y-6">
     <Card>
         <CardHeader>
-            <CardTitle>Character Prompting</CardTitle>
-            <CardDescription>Core identity and behavior instructions.</CardDescription>
+            <CardTitle>Chat Display</CardTitle>
         </CardHeader>
         <CardContent class="space-y-6">
             <div class="grid gap-1.5">
-                <Label>Character Note</Label>
-                <Textarea
-                    rows={15}
-                    value={character.characterNote}
-                    oninput={(e) => onUpdate({ characterNote: e.currentTarget.value })}
-                    placeholder="Define the character's personality, speech patterns, and background..."
-                    class="font-mono text-sm"
-                />
-                <p class="text-xs text-muted-foreground">
-                    This is injected into the AI prompt to shape its personality.
-                </p>
-            </div>
-
-            <div class="grid gap-1.5">
                 <Label>Background HTML</Label>
                 <Textarea
-                    rows={8}
+                    rows={12}
                     value={character.backgroundHTML}
                     oninput={(e) => onUpdate({ backgroundHTML: e.currentTarget.value })}
                     placeholder="&lt;style&gt;...&lt;/style&gt;"
@@ -57,7 +37,7 @@
             <div class="grid gap-1.5">
                 <Label>Message CSS</Label>
                 <Textarea
-                    rows={8}
+                    rows={12}
                     value={character.messageCSS}
                     oninput={(e) => onUpdate({ messageCSS: e.currentTarget.value })}
                     placeholder=".status-panel &#123; ... &#125;"

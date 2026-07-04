@@ -10,7 +10,8 @@
         type NodeTypes
     } from '@xyflow/svelte';
     import '@xyflow/svelte/dist/style.css';
-    import { Plus, Trash2, TriangleAlert } from 'lucide-svelte';
+    import { ChevronDown, ChevronRight, Plus, Trash2, TriangleAlert, X } from 'lucide-svelte';
+    import { SvelteSet } from 'svelte/reactivity';
     import { Button } from '$lib/components/ui/button';
     import { getErrorMessage } from '$lib/types/errors';
     import {
@@ -40,9 +41,13 @@
         selectedNodeId: string | null;
         onSelectNode: (nodeId: string | null) => void;
         onEdit: (result: WorkflowEditResult) => void | Promise<void>;
+        onEditPrompt?: (nodeId: string) => void;
+        title?: string;
+        onClose?: () => void;
     }
 
-    let { workflow, selectedNodeId, onSelectNode, onEdit }: Props = $props();
+    let { workflow, selectedNodeId, onSelectNode, onEdit, onEditPrompt, title, onClose }: Props =
+        $props();
     let nodes = $state.raw<WorkflowCanvasNode[]>([]);
     let edges = $state.raw<Edge[]>([]);
 
@@ -57,6 +62,15 @@
         { label: 'Files', classes: ['FileRead', 'FileWrite'] },
         { label: 'Result', classes: ['Output'] }
     ];
+
+    // 접기/펼치기 상태 — 기본은 모두 접힘 (빈 Set)
+    const expandedGroups = new SvelteSet<string>();
+    let mobileNodePanelOpen = $state(false);
+
+    function toggleGroup(label: string) {
+        if (expandedGroups.has(label)) expandedGroups.delete(label);
+        else expandedGroups.add(label);
+    }
 
     interface WorkflowDiagnostic {
         message: string;
@@ -78,7 +92,8 @@
                 onAddSlot: addAgentSlot,
                 onRenameSlot: renameAgentSlot,
                 onDeleteSlot: deleteAgentSlot,
-                onUpdateNode: editNode
+                onUpdateNode: editNode,
+                onEditPrompt
             } satisfies WorkflowNodeData
         }));
         edges = createEdges(workflow);
@@ -256,37 +271,71 @@
     }
 </script>
 
-<div class="relative min-h-0 flex-1 overflow-hidden rounded-lg border bg-muted/20">
-    <div
-        class="absolute left-3 top-3 z-10 flex max-h-[calc(100%-6rem)] w-44 flex-col gap-2 overflow-y-auto rounded-xl border bg-background/95 p-2 shadow-sm backdrop-blur"
-    >
-        {#each nodeGroups as group (group.label)}
-            <div class="flex flex-col gap-1">
-                <span
-                    class="px-1.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
-                >
-                    {group.label}
-                </span>
+{#snippet nodeAddList()}
+    {#each nodeGroups as group (group.label)}
+        {@const isExpanded = expandedGroups.has(group.label)}
+        <div class="flex flex-col gap-0.5">
+            <button
+                type="button"
+                class="flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                onclick={() => toggleGroup(group.label)}
+                aria-expanded={isExpanded}
+            >
+                {#if isExpanded}
+                    <ChevronDown class="size-3" />
+                {:else}
+                    <ChevronRight class="size-3" />
+                {/if}
+                {group.label}
+            </button>
+            {#if isExpanded}
                 {#each group.classes as nodeClass (nodeClass)}
                     <Button
                         size="sm"
                         variant="ghost"
-                        class="h-7 justify-start gap-1.5 px-2 text-xs"
+                        class="h-7 justify-start pl-6 pr-2.5 text-xs"
                         disabled={nodeClass === 'Output' &&
                             Object.values(workflow.nodes).some(isOutputNode)}
                         onclick={() => addWorkflowNode(nodeClass)}
                     >
-                        <Plus class="size-3" />
                         {WORKFLOW_NODE_DEFINITIONS[nodeClass].label}
                     </Button>
                 {/each}
-            </div>
-        {/each}
+            {/if}
+        </div>
+    {/each}
+{/snippet}
+
+<div class="relative min-h-0 flex-1 overflow-hidden rounded-lg border bg-muted/20">
+    <!-- Mobile: floating title + close -->
+    {#if title !== undefined}
+        <div
+            class="absolute left-1/2 top-3 z-20 flex h-8 max-w-[60%] -translate-x-1/2 items-center rounded-full border bg-background/95 px-3 text-xs font-medium shadow-sm backdrop-blur md:hidden"
+        >
+            <span class="truncate">{title}</span>
+        </div>
+    {/if}
+    {#if onClose}
+        <button
+            type="button"
+            class="absolute right-3 top-3 z-20 flex size-8 items-center justify-center rounded-full border bg-background/95 shadow-sm backdrop-blur hover:bg-muted md:hidden"
+            onclick={onClose}
+            aria-label="Close workflow editor"
+        >
+            <X class="size-4" />
+        </button>
+    {/if}
+
+    <!-- Desktop: left-top panel -->
+    <div
+        class="absolute left-3 top-3 z-10 hidden max-h-[calc(100%-6rem)] w-44 flex-col gap-1 overflow-y-auto rounded-xl border bg-background/95 p-2 shadow-sm backdrop-blur md:flex"
+    >
+        {@render nodeAddList()}
     </div>
 
     {#if selectedNode}
         <div
-            class="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-lg border bg-background/95 px-2 py-1 shadow-sm backdrop-blur"
+            class="absolute right-3 top-14 z-10 flex items-center gap-2 rounded-lg border bg-background/95 px-2 py-1 shadow-sm backdrop-blur md:top-3"
         >
             <span class="max-w-40 truncate text-xs font-medium">{selectedNode.name}</span>
             {#if selectedNode.class === 'Output'}
@@ -323,7 +372,7 @@
 
     {#if diagnostics.length > 0}
         <div
-            class="absolute bottom-3 left-1/2 z-10 flex max-w-[min(42rem,calc(100%-8rem))] -translate-x-1/2 items-start gap-2 rounded-lg border border-destructive/30 bg-background/95 px-3 py-2 text-xs shadow-sm backdrop-blur"
+            class="absolute bottom-16 left-1/2 z-10 flex max-w-[min(42rem,calc(100%-8rem))] -translate-x-1/2 items-start gap-2 rounded-lg border border-destructive/30 bg-background/95 px-3 py-2 text-xs shadow-sm backdrop-blur md:bottom-3"
         >
             <TriangleAlert class="mt-0.5 size-3.5 shrink-0 text-destructive" />
             <div class="min-w-0">
@@ -360,4 +409,44 @@
         <Controls />
         <MiniMap pannable zoomable />
     </SvelteFlow>
+
+    <!-- Mobile: bottom sheet for node adding -->
+    <div class="absolute inset-x-0 bottom-0 z-20 md:hidden">
+        {#if mobileNodePanelOpen}
+            <div
+                class="flex max-h-[60vh] flex-col gap-1 overflow-y-auto rounded-t-xl border-x border-t bg-background/95 p-2 shadow-lg backdrop-blur"
+            >
+                <div class="flex items-center justify-between px-1 pb-1">
+                    <span class="text-xs font-semibold text-muted-foreground">Add node</span>
+                    <button
+                        type="button"
+                        class="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        onclick={() => (mobileNodePanelOpen = false)}
+                        aria-label="Close node panel"
+                    >
+                        <ChevronDown class="size-4" />
+                    </button>
+                </div>
+                {@render nodeAddList()}
+            </div>
+        {:else}
+            <button
+                type="button"
+                class="mx-auto mb-2 flex h-9 items-center gap-1.5 rounded-full border bg-background/95 px-4 text-xs font-medium shadow-sm backdrop-blur hover:bg-muted"
+                onclick={() => (mobileNodePanelOpen = true)}
+            >
+                <Plus class="size-3.5" />
+                Add node
+            </button>
+        {/if}
+    </div>
 </div>
+
+<style>
+    @media (max-width: 767px) {
+        :global(.svelte-flow__controls),
+        :global(.svelte-flow__minimap) {
+            display: none !important;
+        }
+    }
+</style>

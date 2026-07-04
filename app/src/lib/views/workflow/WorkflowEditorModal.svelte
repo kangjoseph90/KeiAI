@@ -8,9 +8,16 @@
         workflow: WorkflowDefinition;
         title?: string;
         onPatch: (patch: WorkflowPatch) => void | Promise<void>;
+        onEditPrompt?: (nodeId: string) => void;
     }
 
-    let { open = $bindable(), workflow, title = 'Workflow Editor', onPatch }: Props = $props();
+    let {
+        open = $bindable(),
+        workflow,
+        title = 'Workflow Editor',
+        onPatch,
+        onEditPrompt
+    }: Props = $props();
 
     let draftWorkflow = $state.raw<WorkflowDefinition>({ nodes: {} });
     let selectedNodeId = $state<string | null>(null);
@@ -51,18 +58,21 @@
 
 <Dialog bind:open>
     <DialogContent
-        class="grid h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)] sm:max-w-[92vw]"
+        class="flex h-[100dvh] max-w-none flex-col gap-0 p-0 sm:gap-4 sm:p-6 inset-0 translate-x-0 translate-y-0 rounded-none md:inset-auto md:top-1/2 md:left-1/2 md:h-[90vh] md:max-w-[calc(100%-2rem)] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-lg lg:max-w-[92vw]"
     >
-        <DialogHeader>
+        <DialogHeader class="hidden shrink-0 sm:p-0 md:block">
             <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
-        <div class="flex min-h-0 flex-col">
+        <div class="flex min-h-0 flex-1 flex-col sm:px-0 sm:pb-0">
             <WorkflowGraphTab
                 workflow={draftWorkflow}
                 {selectedNodeId}
                 onSelectNode={(nodeId) => (selectedNodeId = nodeId)}
                 onEdit={applyEdit}
+                {onEditPrompt}
+                {title}
+                onClose={() => (open = false)}
             />
         </div>
     </DialogContent>

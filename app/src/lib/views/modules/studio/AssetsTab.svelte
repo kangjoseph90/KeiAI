@@ -7,28 +7,28 @@
     import { Input } from '$lib/components/ui/input';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import {
-        createCharacterAsset,
-        deleteCharacterAsset,
-        updateCharacter,
-        createCharacterFolder,
-        updateCharacterFolder,
-        deleteCharacterFolder,
-        moveCharacterItem
+        createModuleAsset,
+        deleteModuleAsset,
+        updateModule,
+        createModuleFolder,
+        updateModuleFolder,
+        deleteModuleFolder,
+        moveModuleItem
     } from '$lib/stores';
-    import type { Character } from '$lib/services';
+    import type { Module } from '$lib/services';
     import type { AssetRef } from '$lib/types/refs';
 
     interface Props {
-        character: Character;
+        module: Module;
     }
 
-    let { character }: Props = $props();
+    let { module }: Props = $props();
 
     let fileInput = $state<HTMLInputElement>();
     let editingId = $state<string | null>(null);
     let editName = $state('');
 
-    const assetRefs = $derived(Object.values(character.assets.refs));
+    const assetRefs = $derived(Object.values(module.assets.refs));
 
     function startRename(ref: AssetRef) {
         editingId = ref.id;
@@ -38,7 +38,7 @@
     async function saveRename(ref: AssetRef) {
         const val = editName.trim();
         if (val && val !== ref.name) {
-            await updateCharacter(character.id, {
+            await updateModule(module.id, {
                 assets: {
                     refs: {
                         [ref.id]: { ...ref, name: val }
@@ -57,17 +57,17 @@
         const target = event.target as HTMLInputElement;
         const file = target.files?.[0];
         if (!file) return;
-        await createCharacterAsset(character.id, file);
+        await createModuleAsset(module.id, file);
         target.value = '';
     }
 
     async function handleDelete(assetId: string) {
-        await deleteCharacterAsset(character.id, assetId);
+        await deleteModuleAsset(module.id, assetId);
     }
 </script>
 
 <section class="space-y-4">
-    <ListActionBar description="Images and files used by this character.">
+    <ListActionBar description="Images and files used by this module.">
         <Button size="sm" class="gap-1.5" onclick={handleAdd}>
             <Upload class="size-4" /> Upload
         </Button>
@@ -82,17 +82,17 @@
 
     <EntityList
         entities={assetRefs}
-        config={character.assets}
+        config={module.assets}
         layout="list"
         onCreateFolder={(name, parentId, sortOrder) =>
-            createCharacterFolder(character.id, 'assets', name, parentId, sortOrder)}
-        onUpdateFolder={(id, changes) => updateCharacterFolder(character.id, 'assets', id, changes)}
-        onDeleteFolder={(id) => deleteCharacterFolder(character.id, 'assets', id)}
+            createModuleFolder(module.id, 'assets', name, parentId, sortOrder)}
+        onUpdateFolder={(id, changes) => updateModuleFolder(module.id, 'assets', id, changes)}
+        onDeleteFolder={(id) => deleteModuleFolder(module.id, 'assets', id)}
         onMoveItem={(itemId, newFolderId, newSortOrder) =>
-            moveCharacterItem(character.id, 'assets', itemId, newFolderId, newSortOrder)}
+            moveModuleItem(module.id, 'assets', itemId, newFolderId, newSortOrder)}
     >
         {#snippet empty()}
-            <EmptyListPlaceholder message="No assets. Use Add to upload an image or file." />
+            <EmptyListPlaceholder message="No assets. Use Upload to add an image or file." />
         {/snippet}
         {#snippet item({ entity: ref })}
             <div
@@ -103,10 +103,10 @@
                 >
                     <AssetView
                         asset={{
-                            scopeType: character.scopeType,
-                            scopeId: character.scopeId,
-                            ownerTable: 'characters',
-                            ownerId: character.id,
+                            scopeType: 'user',
+                            scopeId: '',
+                            ownerTable: 'modules',
+                            ownerId: module.id,
                             hash: ref.hash,
                             encKey: ref.encKey
                         }}

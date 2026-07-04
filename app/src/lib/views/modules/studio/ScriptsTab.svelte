@@ -6,8 +6,8 @@
     import type { Script, CharJS } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { FolderDef, EntityListConfig } from '$lib/types/refs';
-    import ScriptItem from '../../modules/ScriptItem.svelte';
-    import CharJSItem from '../../modules/CharJSItem.svelte';
+    import ScriptItem from '../ScriptItem.svelte';
+    import CharJSItem from '../CharJSItem.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
 
@@ -120,7 +120,7 @@
                 <h3 class="text-sm font-semibold flex items-center gap-2">
                     <Code class="size-4 text-muted-foreground" /> CharJS Scripts
                 </h3>
-                <ListActionBar description="Run character-specific JavaScript behavior.">
+                <ListActionBar description="Run module-specific JavaScript behavior.">
                     <Button size="sm" class="gap-1.5" onclick={handleAddCharJS}>
                         <Plus class="size-4" /> Add
                     </Button>

@@ -9,7 +9,6 @@
         Palette,
         RefreshCw,
         Puzzle,
-        Package,
         MessageSquare,
         Languages
     } from 'lucide-svelte';
@@ -32,19 +31,13 @@
     import ChatSettings from './ChatSettings.svelte';
     import LanguageSettings from './LanguageSettings.svelte';
     import PluginsView from './PluginsView.svelte';
-    import ModulesView from './ModulesView.svelte';
 
     let activeTab = $state<SettingsTab>('models');
-    let {
-        settingsTab,
-        pluginId,
-        moduleId
-    }: { settingsTab?: SettingsTab; pluginId?: string; moduleId?: string } = $props();
+    let { settingsTab }: { settingsTab?: SettingsTab } = $props();
 
     const tabs = [
         { id: 'models', label: 'Models', icon: Cpu },
         { id: 'chat', label: 'Chat', icon: MessageSquare },
-        { id: 'modules', label: 'Modules', icon: Package },
         { id: 'plugins', label: 'Plugins', icon: Puzzle },
         { id: 'language', label: 'Language', icon: Languages },
         { id: 'profile', label: 'Profile', icon: User },
@@ -52,17 +45,11 @@
         { id: 'appearance', label: 'Appearance', icon: Palette }
     ] as const;
 
-    let hasSelectedTab = $derived(
-        settingsTab !== undefined || pluginId !== undefined || moduleId !== undefined
-    );
+    let hasSelectedTab = $derived(settingsTab !== undefined);
     let activeTabLabel = $derived(tabs.find((tab) => tab.id === activeTab)?.label ?? 'Settings');
 
     $effect(() => {
-        if (pluginId) {
-            activeTab = 'plugins';
-        } else if (moduleId) {
-            activeTab = 'modules';
-        } else if (settingsTab) {
+        if (settingsTab) {
             activeTab = settingsTab;
         }
     });
@@ -141,7 +128,7 @@
                 : 'hidden'}"
         >
             <div
-                class="mx-auto flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
+                class="flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
             >
                 <Button
                     variant="ghost"
@@ -166,7 +153,7 @@
             </div>
 
             <ScrollArea class="min-h-0 flex-1">
-                <div class="mx-auto max-w-4xl space-y-8 p-4 md:px-8 md:pb-8 md:pt-4">
+                <div class="max-w-4xl space-y-8 p-4 md:px-8 md:pb-8 md:pt-4">
                     {#if activeTab === 'models'}
                         <div class="h-[calc(100dvh-8rem)] min-h-[32rem]">
                             <ModelsSettings />
@@ -176,9 +163,7 @@
                             <ChatSettings />
                         </div>
                     {:else if activeTab === 'plugins'}
-                        <PluginsView {pluginId} />
-                    {:else if activeTab === 'modules'}
-                        <ModulesView {moduleId} />
+                        <PluginsView />
                     {:else if activeTab === 'language'}
                         <LanguageSettings />
                     {:else if activeTab === 'profile'}

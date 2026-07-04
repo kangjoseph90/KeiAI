@@ -101,22 +101,19 @@
         </CardContent>
     </Card>
 
-    <Card>
-        <CardHeader>
-            <CardTitle class="flex items-center justify-between text-base">
-                <span>Task Parameter Overrides</span>
-                <button
-                    type="button"
-                    class="text-xs font-normal text-muted-foreground"
-                    onclick={() => (advancedOpen = !advancedOpen)}
-                >
-                    {advancedOpen ? 'Collapse' : 'Expand'}
-                </button>
-            </CardTitle>
-        </CardHeader>
+    <section class="rounded-lg border bg-card p-4">
+        <button
+            type="button"
+            class="flex w-full items-center justify-between text-left text-sm font-medium hover:opacity-80 transition-opacity"
+            onclick={() => (advancedOpen = !advancedOpen)}
+        >
+            <span>Task Parameter Overrides</span>
+            <span class="text-xs text-muted-foreground">{advancedOpen ? 'Collapse' : 'Expand'}</span
+            >
+        </button>
 
         {#if advancedOpen}
-            <CardContent class="flex flex-col gap-4">
+            <div class="mt-4 flex flex-col gap-4">
                 {#each llmTypes as role (role.type)}
                     {@const params = preset.parameters[role.type]}
                     <div class="rounded-md border p-4">
@@ -175,7 +172,7 @@
                         {/if}
                     </div>
                 {/each}
-            </CardContent>
+            </div>
         {/if}
-    </Card>
+    </section>
 </div>

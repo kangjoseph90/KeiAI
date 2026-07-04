@@ -3,17 +3,19 @@
         Check,
         DoorOpen,
         Globe2,
-        Import,
         KeyRound,
         Lock,
+        Package,
         Plus,
         Search,
         Settings2,
         Sparkles,
         Trash2,
+        Upload,
         UserRound,
         Users,
-        X
+        X,
+        Zap
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import RoomAvatar from '$lib/components/RoomAvatar.svelte';
@@ -36,6 +38,7 @@
         loadOwnedMultiRoomMembers,
         loadMultiRoomMembers,
         moveGlobalItem,
+        modules,
         multiRoomMembers,
         multiRoomMetas,
         multiRooms,
@@ -43,6 +46,9 @@
         rejectJoinMultiRoom,
         requestJoinMultiRoom,
         revokeMultiRoomMember,
+        setModuleEnabled,
+        createModule,
+        deleteModule,
         rooms,
         selectMultiRoom,
         updateMultiRoomIndex,
@@ -51,6 +57,7 @@
     } from '$lib/stores';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { importCharacterFile } from '$lib/managers';
+    import { importModuleFile } from '$lib/managers/module';
     import { importPersonaFile } from '$lib/managers/persona';
     import { isKeiServer } from '$lib/adapters/pb';
     import type { RouteState } from '$lib/router';
@@ -67,16 +74,13 @@
 
     let { space = 'library', onNavigate }: Props = $props();
 
-    type Tab = 'rooms' | 'multiRooms' | 'characters' | 'personas';
+    type Tab = 'rooms' | 'multiRooms' | 'characters' | 'personas' | 'modules';
     let tab = $state<Tab>('rooms');
     let query = $state('');
-    let creatingRoom = $state(false);
     let creatingMultiRoom = $state(false);
-    let creatingCharacter = $state(false);
-    let creatingPersona = $state(false);
     let importingCharacter = $state(false);
     let importingPersona = $state(false);
-    let roomName = $state('');
+    let importingModule = $state(false);
     let multiRoomName = $state('');
     let multiRoomVisibility = $state<'private' | 'public'>('private');
     let joinRoomId = $state('');
@@ -88,8 +92,6 @@
     let approvingMemberId = $state('');
     let managedRoomId = $state<string | null>(null);
     let manageDialogOpen = $state(false);
-    let characterName = $state('');
-    let personaName = $state('');
 
     const filteredRooms = $derived(() => {
         const normalized = query.trim().toLowerCase();
@@ -113,6 +115,12 @@
         const normalized = query.trim().toLowerCase();
         if (!normalized) return $personas;
         return $personas.filter((persona) => persona.name.toLowerCase().includes(normalized));
+    });
+
+    const filteredModules = $derived(() => {
+        const normalized = query.trim().toLowerCase();
+        if (!normalized) return $modules;
+        return $modules.filter((mod) => mod.name.toLowerCase().includes(normalized));
     });
 
     const pendingRequests = $derived(() => {
@@ -157,12 +165,7 @@
     });
 
     async function handleCreateRoom() {
-        const trimmed = roomName.trim();
-        if (!trimmed) return;
-
-        const room = await createRoom({ name: trimmed });
-        roomName = '';
-        creatingRoom = false;
+        const room = await createRoom();
         onNavigate({ view: 'room', roomId: room.id });
     }
 
@@ -290,16 +293,31 @@
     }
 
     async function handleCreateCharacter() {
-        const trimmed = characterName.trim();
-        if (!trimmed) return;
-
-        const character = await createCharacter({
-            name: trimmed,
-            description: ''
-        });
-        characterName = '';
-        creatingCharacter = false;
+        const character = await createCharacter();
         onNavigate({ view: 'characterStudio', charId: character.id });
+    }
+
+    async function handleCreateModule() {
+        const mod = await createModule();
+        onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+    }
+
+    async function handleImportModule(event: Event) {
+        const input = event.currentTarget as HTMLInputElement;
+        const file = input.files?.[0];
+        input.value = '';
+        if (!file || importingModule) return;
+
+        importingModule = true;
+        try {
+            const mod = await importModuleFile(file, {
+                allowLightAssets: isKeiServer(),
+                select: true
+            });
+            onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+        } finally {
+            importingModule = false;
+        }
     }
 
     async function handleImportCharacter(event: Event) {
@@ -363,16 +381,13 @@
         await deletePersona(personaId);
     }
 
-    async function handleCreatePersona() {
-        const trimmed = personaName.trim();
-        if (!trimmed) return;
+    async function handleDeleteModule(moduleId: string, name: string) {
+        if (!confirm(`Delete module "${name}"?`)) return;
+        await deleteModule(moduleId);
+    }
 
-        const persona = await createPersona({
-            name: trimmed,
-            description: ''
-        });
-        personaName = '';
-        creatingPersona = false;
+    async function handleCreatePersona() {
+        const persona = await createPersona();
         onNavigate({ view: 'personaStudio', personaId: persona.id });
     }
 
@@ -380,6 +395,7 @@
         if (tab === 'rooms') return 'Search rooms...';
         if (tab === 'multiRooms') return 'Search multi rooms...';
         if (tab === 'characters') return 'Search characters...';
+        if (tab === 'modules') return 'Search modules...';
         return 'Search personas...';
     }
 
@@ -396,29 +412,21 @@
                     {space === 'multiRooms' ? 'Multi Rooms' : 'Library'}
                 </h1>
                 <p class="mt-1 text-sm text-muted-foreground">
-                    {space === 'multiRooms'
-                        ? 'Create, discover, and manage encrypted shared rooms.'
-                        : 'Open a room, edit characters, or manage personas.'}
+                    {tab === 'multiRooms'
+                        ? 'Create and join encrypted shared rooms.'
+                        : tab === 'characters'
+                          ? 'Reusable speakers for every room.'
+                          : tab === 'modules'
+                            ? 'Reusable context and automation bundles.'
+                            : tab === 'personas'
+                              ? 'Your identities across conversations.'
+                              : 'Spaces for characters and conversations.'}
                 </p>
             </div>
             {#if tab === 'rooms'}
-                {#if creatingRoom}
-                    <form
-                        class="flex w-full max-w-sm gap-2"
-                        onsubmit={(event) => {
-                            event.preventDefault();
-                            handleCreateRoom();
-                        }}
-                    >
-                        <Input bind:value={roomName} placeholder="Room name..." autofocus />
-                        <Button type="submit">Create</Button>
-                    </form>
-                {:else}
-                    <Button class="gap-2" onclick={() => (creatingRoom = true)}>
-                        <Plus class="size-4" />
-                        New Room
-                    </Button>
-                {/if}
+                <Button class="gap-2" onclick={handleCreateRoom}>
+                    <Plus class="size-4" /> New Room
+                </Button>
             {:else if tab === 'multiRooms'}
                 {#if creatingMultiRoom}
                     <form
@@ -463,57 +471,48 @@
                     </Button>
                 {/if}
             {:else if tab === 'characters'}
-                {#if creatingCharacter}
-                    <form
-                        class="flex w-full max-w-sm gap-2"
-                        onsubmit={(event) => {
-                            event.preventDefault();
-                            handleCreateCharacter();
-                        }}
+                <div class="flex gap-2">
+                    <Button
+                        variant="outline"
+                        class="gap-2"
+                        disabled={importingCharacter}
+                        onclick={() => document.getElementById('character-import-input')?.click()}
                     >
-                        <Input
-                            bind:value={characterName}
-                            placeholder="Character name..."
-                            autofocus
-                        />
-                        <Button type="submit">Create</Button>
-                    </form>
-                {:else}
-                    <div class="flex gap-2">
-                        <Button
-                            variant="outline"
-                            class="gap-2"
-                            disabled={importingCharacter}
-                            onclick={() =>
-                                document.getElementById('character-import-input')?.click()}
-                        >
-                            <Import class="size-4" />
-                            Import
-                        </Button>
-                        <Button class="gap-2" onclick={() => (creatingCharacter = true)}>
-                            <Plus class="size-4" />
-                            New Character
-                        </Button>
-                        <input
-                            id="character-import-input"
-                            type="file"
-                            class="hidden"
-                            accept=".json,.png,.charx,.jpg,.jpeg,.keichar"
-                            onchange={handleImportCharacter}
-                        />
-                    </div>
-                {/if}
-            {:else if creatingPersona}
-                <form
-                    class="flex w-full max-w-sm gap-2"
-                    onsubmit={(event) => {
-                        event.preventDefault();
-                        handleCreatePersona();
-                    }}
-                >
-                    <Input bind:value={personaName} placeholder="Persona name..." autofocus />
-                    <Button type="submit">Create</Button>
-                </form>
+                        <Upload class="size-4" /> Import
+                    </Button>
+                    <Button class="gap-2" onclick={handleCreateCharacter}>
+                        <Plus class="size-4" /> New Character
+                    </Button>
+                    <input
+                        id="character-import-input"
+                        type="file"
+                        class="hidden"
+                        accept=".json,.png,.charx,.jpg,.jpeg,.keichar"
+                        onchange={handleImportCharacter}
+                    />
+                </div>
+            {:else if tab === 'modules'}
+                <div class="flex gap-2">
+                    <Button
+                        variant="outline"
+                        class="gap-2"
+                        disabled={importingModule}
+                        onclick={() => document.getElementById('module-import-input')?.click()}
+                    >
+                        <Upload class="size-4" />
+                        Import
+                    </Button>
+                    <Button class="gap-2" onclick={handleCreateModule}>
+                        <Plus class="size-4" /> New Module
+                    </Button>
+                    <input
+                        id="module-import-input"
+                        type="file"
+                        class="hidden"
+                        accept=".risum,.keimodule,.json"
+                        onchange={handleImportModule}
+                    />
+                </div>
             {:else}
                 <div class="flex gap-2">
                     <Button
@@ -522,12 +521,11 @@
                         disabled={importingPersona}
                         onclick={() => document.getElementById('persona-import-input')?.click()}
                     >
-                        <Import class="size-4" />
+                        <Upload class="size-4" />
                         Import
                     </Button>
-                    <Button class="gap-2" onclick={() => (creatingPersona = true)}>
-                        <Plus class="size-4" />
-                        New Persona
+                    <Button class="gap-2" onclick={handleCreatePersona}>
+                        <Plus class="size-4" /> New Persona
                     </Button>
                     <input
                         id="persona-import-input"
@@ -572,6 +570,15 @@
                             onclick={() => (tab = 'personas')}
                         >
                             Personas
+                        </button>
+                        <button
+                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            'modules'
+                                ? 'bg-background shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'}"
+                            onclick={() => (tab = 'modules')}
+                        >
+                            Modules
                         </button>
                     </div>
                 {:else}
@@ -618,10 +625,7 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Rooms hold character refs, chats, and conversation context.
                                     </p>
-                                    <Button
-                                        class="mt-5 gap-2"
-                                        onclick={() => (creatingRoom = true)}
-                                    >
+                                    <Button class="mt-5 gap-2" onclick={handleCreateRoom}>
                                         <Plus class="size-4" />
                                         New Room
                                     </Button>
@@ -913,10 +917,7 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Characters are global resources you can add to rooms.
                                     </p>
-                                    <Button
-                                        class="mt-5 gap-2"
-                                        onclick={() => (creatingCharacter = true)}
-                                    >
+                                    <Button class="mt-5 gap-2" onclick={handleCreateCharacter}>
                                         <Plus class="size-4" />
                                         New Character
                                     </Button>
@@ -980,6 +981,108 @@
                             </div>
                         {/snippet}
                     </EntityList>
+                {:else if tab === 'modules'}
+                    <EntityList
+                        entities={filteredModules()}
+                        config={$appSettings.modules}
+                        layout="grid"
+                        childContainerClass="relative ml-6 p-3 my-1"
+                        onItemClick={(mod) =>
+                            onNavigate({ view: 'moduleStudio', moduleId: mod.id })}
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createGlobalFolder('modules', name, parentId, sortOrder)}
+                        onUpdateFolder={(id, changes) => updateGlobalFolder('modules', id, changes)}
+                        onDeleteFolder={(id) => deleteGlobalFolder('modules', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveGlobalItem('modules', itemId, newFolderId, newSortOrder)}
+                    >
+                        {#snippet empty()}
+                            <div class="flex h-[50vh] items-center justify-center">
+                                <div class="max-w-sm text-center">
+                                    <div
+                                        class="mx-auto flex size-14 items-center justify-center rounded-full bg-muted"
+                                    >
+                                        <Package class="size-6 text-muted-foreground" />
+                                    </div>
+                                    <h2 class="mt-4 text-lg font-semibold">
+                                        Create your first module
+                                    </h2>
+                                    <p class="mt-2 text-sm text-muted-foreground">
+                                        Modules package reusable context, scripts, and display.
+                                    </p>
+                                    <Button class="mt-5 gap-2" onclick={handleCreateModule}>
+                                        <Plus class="size-4" />
+                                        New Module
+                                    </Button>
+                                </div>
+                            </div>
+                        {/snippet}
+                        {#snippet item({ entity: mod })}
+                            {@const enabled = $appSettings.modules.refs[mod.id]?.enabled ?? true}
+                            <div
+                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 {enabled
+                                    ? ''
+                                    : 'opacity-60'}"
+                            >
+                                <div class="flex w-full items-center gap-3">
+                                    <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
+                                        <div
+                                            class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold"
+                                        >
+                                            <Package class="size-5 text-muted-foreground" />
+                                        </div>
+                                        <div class="min-w-0">
+                                            <h2 class="truncate text-sm font-semibold">
+                                                {mod.name}
+                                            </h2>
+                                            <p
+                                                class="mt-0.5 truncate text-xs text-muted-foreground"
+                                            >
+                                                {mod.description || 'No description'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        class="shrink-0 {enabled
+                                            ? 'text-amber-500 hover:text-amber-600'
+                                            : 'text-muted-foreground'}"
+                                        title={enabled
+                                            ? 'Deactivate globally'
+                                            : 'Activate globally'}
+                                        aria-label={enabled
+                                            ? 'Deactivate globally'
+                                            : 'Activate globally'}
+                                        onclick={(event) => {
+                                            event.stopPropagation();
+                                            setModuleEnabled(mod.id, !enabled);
+                                        }}
+                                    >
+                                        <Zap class="size-4 {enabled ? 'fill-amber-500/10' : ''}" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        class="shrink-0 text-muted-foreground hover:text-destructive"
+                                        title="Delete module"
+                                        onclick={(event) => {
+                                            event.stopPropagation();
+                                            handleDeleteModule(mod.id, mod.name);
+                                        }}
+                                    >
+                                        <Trash2 class="size-4" />
+                                    </Button>
+                                </div>
+                                <div
+                                    class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                >
+                                    <Package class="size-3.5" />
+                                    Open studio
+                                </div>
+                            </div>
+                        {/snippet}
+                    </EntityList>
                 {:else if tab === 'personas'}
                     <EntityList
                         entities={filteredPersonas()}
@@ -1010,10 +1113,7 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Personas are user speakers you can attach to chats.
                                     </p>
-                                    <Button
-                                        class="mt-5 gap-2"
-                                        onclick={() => (creatingPersona = true)}
-                                    >
+                                    <Button class="mt-5 gap-2" onclick={handleCreatePersona}>
                                         <Plus class="size-4" />
                                         New Persona
                                     </Button>

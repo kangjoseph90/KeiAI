@@ -105,7 +105,7 @@
             </div>
 
             <div class="grid gap-1.5">
-                <Label>Brief Description</Label>
+                <Label>Description</Label>
                 <Textarea
                     rows={3}
                     value={character.description}
@@ -113,6 +113,20 @@
                     placeholder="A short description of who this character is..."
                 />
                 <p class="text-xs text-muted-foreground">Used for character lists and cards.</p>
+            </div>
+
+            <div class="grid gap-1.5">
+                <Label>Character Note</Label>
+                <Textarea
+                    rows={15}
+                    value={character.characterNote}
+                    oninput={(e) => onUpdate({ characterNote: e.currentTarget.value })}
+                    placeholder="Define the character's personality, speech patterns, and background..."
+                    class="font-mono text-sm"
+                />
+                <p class="text-xs text-muted-foreground">
+                    This is injected into the AI prompt to shape its personality.
+                </p>
             </div>
         </CardContent>
     </Card>

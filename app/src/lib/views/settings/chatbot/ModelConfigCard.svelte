@@ -19,13 +19,14 @@
     import { compareSortOrder } from '$lib/utils/ordering';
 
     interface Props {
-        title: string;
-        badge: string;
+        title?: string;
+        badge?: string;
         config: LLMModelConfig;
         onModelChange: (provider: LLMProvider, modelId: string) => void;
+        showHeader?: boolean;
     }
 
-    let { title, badge, config, onModelChange }: Props = $props();
+    let { title = '', badge = '', config, onModelChange, showHeader = true }: Props = $props();
 
     let showKey = $state(false);
 
@@ -82,12 +83,14 @@
 </script>
 
 <Card>
-    <CardHeader>
-        <CardTitle class="text-base flex items-center justify-between">
-            {title}
-            <Badge variant={badge === 'Generation' ? 'secondary' : 'outline'}>{badge}</Badge>
-        </CardTitle>
-    </CardHeader>
+    {#if showHeader}
+        <CardHeader>
+            <CardTitle class="text-base flex items-center justify-between">
+                {title}
+                <Badge variant={badge === 'chat' ? 'secondary' : 'outline'}>{badge}</Badge>
+            </CardTitle>
+        </CardHeader>
+    {/if}
     <CardContent class="flex flex-col gap-4">
         <div class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-1.5">

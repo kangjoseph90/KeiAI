@@ -55,6 +55,7 @@
         setChatSelectedCharacter,
         updateChat,
         updateGlobalFolder,
+        updateRoom,
         updateRoomFolder,
         loadLocalUsers,
         switchLocalUser,
@@ -80,6 +81,8 @@
     let characterPickerOpen = $state(false);
     let editingChatId = $state<string | null>(null);
     let editingChatTitle = $state('');
+    let editingRoomName = $state(false);
+    let roomNameDraft = $state('');
     let switchingUserId = $state<string | null>(null);
     let creatingUser = $state(false);
 
@@ -171,6 +174,21 @@
         await updateChat(chatId, { title });
         editingChatId = null;
         editingChatTitle = '';
+    }
+
+    async function handleRenameRoom() {
+        if (!$activeRoom || $isMultiRoom) return;
+        const name = roomNameDraft.trim();
+        if (!name) return;
+        await updateRoom($activeRoom.id, { name });
+        editingRoomName = false;
+        roomNameDraft = '';
+    }
+
+    function startRenameRoom() {
+        if (!$activeRoom || $isMultiRoom) return;
+        roomNameDraft = $activeRoom.name;
+        editingRoomName = true;
     }
 
     async function handleDeleteChat(chatId: string) {
@@ -332,17 +350,22 @@
                         {/if}
                     </Button>
                 </DropdownMenu.Trigger>
-                <DropdownMenu.Content side="right" align="end" sideOffset={10} class="w-64 p-2">
+                <DropdownMenu.Content
+                    side="right"
+                    align="end"
+                    sideOffset={10}
+                    class="w-56 px-1 py-0"
+                >
                     {#if $activeUser}
                         <DropdownMenu.Item
-                            class="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm"
+                            class="flex cursor-pointer items-center gap-2.5 rounded-none px-2.5 py-1.5 my-1 text-sm"
                             disabled={$migrationLocked || creatingUser || switchingUserId !== null}
                             onclick={() => onNavigate({ view: 'settings', settingsTab: 'profile' })}
                         >
                             <img
                                 src={$activeUser.avatar}
                                 alt={$activeUser.name}
-                                class="size-9 shrink-0 rounded-full object-cover ring-2 ring-primary/25"
+                                class="size-7 shrink-0 rounded-full object-cover ring-2 ring-primary/25"
                             />
                             <div class="min-w-0 flex-1">
                                 <p class="truncate font-medium">{$activeUser.name}</p>
@@ -352,10 +375,10 @@
                     {/if}
 
                     {#if otherUsers().length > 0}
-                        <DropdownMenu.Separator class="my-2" />
+                        <DropdownMenu.Separator class="my-1" />
                         {#each otherUsers() as user (user.id)}
                             <DropdownMenu.Item
-                                class="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm"
+                                class="flex cursor-pointer items-center gap-2.5 rounded-none px-2.5 py-1.5 my-1 text-sm"
                                 disabled={$migrationLocked ||
                                     creatingUser ||
                                     switchingUserId !== null}
@@ -364,7 +387,7 @@
                                 <img
                                     src={user.avatar}
                                     alt={user.name}
-                                    class="size-9 shrink-0 rounded-full object-cover"
+                                    class="size-7 shrink-0 rounded-full object-cover"
                                 />
                                 <div class="min-w-0 flex-1">
                                     <p class="truncate font-medium">{user.name}</p>
@@ -373,16 +396,16 @@
                         {/each}
                     {/if}
 
-                    <DropdownMenu.Separator class="my-2" />
+                    <DropdownMenu.Separator class="my-1" />
                     <DropdownMenu.Item
-                        class="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm"
+                        class="flex cursor-pointer items-center gap-2.5 rounded-none px-2.5 py-1.5 my-1 text-sm"
                         disabled={$migrationLocked || creatingUser || switchingUserId !== null}
                         onclick={handleCreateUser}
                     >
                         <div
-                            class="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+                            class="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
                         >
-                            <UserPlus class="size-4" />
+                            <UserPlus class="size-3.5" />
                         </div>
                         <div class="min-w-0 flex-1">
                             <p class="truncate font-medium">New user</p>
@@ -400,9 +423,58 @@
                     class="flex w-[360px] flex-col bg-sidebar max-md:w-[calc(100vw-5.5rem)] max-md:max-w-[364px]"
                 >
                     <div class="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
-                        <div class="min-w-0">
-                            <p class="truncate text-sm font-semibold">{$activeRoom.name}</p>
-                        </div>
+                        {#if editingRoomName}
+                            <form
+                                class="flex min-w-0 flex-1 items-center gap-1"
+                                onsubmit={(event) => {
+                                    event.preventDefault();
+                                    handleRenameRoom();
+                                }}
+                            >
+                                <Input
+                                    bind:value={roomNameDraft}
+                                    class="h-8 min-w-0 flex-1 text-sm"
+                                    autofocus
+                                    onkeydown={(event) => {
+                                        if (event.key === 'Escape') {
+                                            editingRoomName = false;
+                                            roomNameDraft = '';
+                                        }
+                                    }}
+                                />
+                                <Button type="submit" size="icon" class="size-8">
+                                    <Check class="size-3.5" />
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    class="size-8"
+                                    onclick={() => {
+                                        editingRoomName = false;
+                                        roomNameDraft = '';
+                                    }}
+                                >
+                                    <X class="size-3.5" />
+                                </Button>
+                            </form>
+                        {:else}
+                            <p class="min-w-0 flex-1 truncate text-sm font-semibold">
+                                {$activeRoom.name}
+                            </p>
+                            {#if !$isMultiRoom}
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    class="size-8 shrink-0 text-muted-foreground"
+                                    title="Rename room"
+                                    aria-label="Rename room"
+                                    onclick={startRenameRoom}
+                                >
+                                    <Edit3 class="size-3.5" />
+                                </Button>
+                            {/if}
+                        {/if}
                     </div>
 
                     <div class="border-b border-sidebar-border p-3">

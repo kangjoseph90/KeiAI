@@ -7,12 +7,12 @@ export type ViewMode =
     | 'multiRoom'
     | 'room'
     | 'characterStudio'
+    | 'moduleStudio'
     | 'personaStudio'
     | 'settings';
 export type SettingsTab =
     | 'models'
     | 'chat'
-    | 'modules'
     | 'plugins'
     | 'language'
     | 'profile'
@@ -21,24 +21,30 @@ export type SettingsTab =
 export type CharacterStudioTab =
     | 'profile'
     | 'greetings'
-    | 'prompt'
     | 'lorebooks'
     | 'scripts'
+    | 'display'
     | 'assets'
-    | 'advanced'
-    | 'export';
-export type PersonaStudioTab = 'profile' | 'assets' | 'export';
+    | 'advanced';
+export type ModuleStudioTab =
+    | 'profile'
+    | 'lorebooks'
+    | 'scripts'
+    | 'display'
+    | 'assets'
+    | 'advanced';
+export type PersonaStudioTab = 'profile' | 'assets' | 'advanced';
 
 export interface RouteState {
     view: ViewMode;
     roomId?: string;
     charId?: string;
+    moduleId?: string;
     chatId?: string;
     personaId?: string;
-    pluginId?: string;
-    moduleId?: string;
     settingsTab?: SettingsTab;
     characterTab?: CharacterStudioTab;
+    moduleTab?: ModuleStudioTab;
     personaTab?: PersonaStudioTab;
 }
 
@@ -48,11 +54,10 @@ export interface RouteState {
 // #/room/{roomId}             → room, no chat selected
 // #/room/{roomId}/chat/{chatId} → room with a selected chat
 // #/character/{charId}/{tab?} → character studio
+// #/module/{moduleId}/{tab?} → module studio
 // #/persona/{personaId}/{tab?} → persona studio
 // #/settings                  → global settings
 // #/settings/{tab}            → global settings focused on a tab
-// #/settings/plugins/{pluginId} → settings plugin editor
-// #/settings/modules/{moduleId} → settings module editor
 
 function buildHash(route: RouteState): string {
     switch (route.view) {
@@ -67,14 +72,17 @@ function buildHash(route: RouteState): string {
                 return `#/character/${route.charId}/${route.characterTab}`;
             }
             return route.charId ? `#/character/${route.charId}` : '#/';
+        case 'moduleStudio':
+            if (route.moduleId && route.moduleTab) {
+                return `#/module/${route.moduleId}/${route.moduleTab}`;
+            }
+            return route.moduleId ? `#/module/${route.moduleId}` : '#/';
         case 'personaStudio':
             if (route.personaId && route.personaTab) {
                 return `#/persona/${route.personaId}/${route.personaTab}`;
             }
             return route.personaId ? `#/persona/${route.personaId}` : '#/';
         case 'settings':
-            if (route.pluginId) return `#/settings/plugins/${route.pluginId}`;
-            if (route.moduleId) return `#/settings/modules/${route.moduleId}`;
             if (route.settingsTab) return `#/settings/${route.settingsTab}`;
             return '#/settings';
         default:
@@ -100,35 +108,41 @@ function parseHash(hash: string): RouteState {
         if (
             characterTab === 'profile' ||
             characterTab === 'greetings' ||
-            characterTab === 'prompt' ||
             characterTab === 'lorebooks' ||
             characterTab === 'scripts' ||
+            characterTab === 'display' ||
             characterTab === 'assets' ||
-            characterTab === 'advanced' ||
-            characterTab === 'export'
+            characterTab === 'advanced'
         ) {
             return { view: 'characterStudio', charId: parts[1], characterTab };
         }
         return { view: 'characterStudio', charId: parts[1] };
     }
+    if (parts[0] === 'module' && parts[1]) {
+        const moduleTab = parts[2];
+        if (
+            moduleTab === 'profile' ||
+            moduleTab === 'lorebooks' ||
+            moduleTab === 'scripts' ||
+            moduleTab === 'display' ||
+            moduleTab === 'assets' ||
+            moduleTab === 'advanced'
+        ) {
+            return { view: 'moduleStudio', moduleId: parts[1], moduleTab };
+        }
+        return { view: 'moduleStudio', moduleId: parts[1] };
+    }
     if (parts[0] === 'persona' && parts[1]) {
         const personaTab = parts[2];
-        if (personaTab === 'profile' || personaTab === 'assets' || personaTab === 'export') {
+        if (personaTab === 'profile' || personaTab === 'assets' || personaTab === 'advanced') {
             return { view: 'personaStudio', personaId: parts[1], personaTab };
         }
         return { view: 'personaStudio', personaId: parts[1] };
     }
     if (parts[0] === 'settings') {
-        if (parts[1] === 'plugins' && parts[2]) {
-            return { view: 'settings', settingsTab: 'plugins', pluginId: parts[2] };
-        }
-        if (parts[1] === 'modules' && parts[2]) {
-            return { view: 'settings', settingsTab: 'modules', moduleId: parts[2] };
-        }
         if (
             parts[1] === 'models' ||
             parts[1] === 'chat' ||
-            parts[1] === 'modules' ||
             parts[1] === 'plugins' ||
             parts[1] === 'language' ||
             parts[1] === 'profile' ||
@@ -172,10 +186,10 @@ export function initHashListener(): () => void {
             parsed.charId !== current.charId ||
             parsed.chatId !== current.chatId ||
             parsed.personaId !== current.personaId ||
-            parsed.pluginId !== current.pluginId ||
             parsed.moduleId !== current.moduleId ||
             parsed.settingsTab !== current.settingsTab ||
             parsed.characterTab !== current.characterTab ||
+            parsed.moduleTab !== current.moduleTab ||
             parsed.personaTab !== current.personaTab
         ) {
             _route.set(parsed);

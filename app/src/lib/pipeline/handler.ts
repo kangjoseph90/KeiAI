@@ -46,7 +46,7 @@ async function collectRegexHandlers(
         .map((s) => ({
             id: s.id,
             phase: s.phase,
-            order: s.advanced ? s.order : 100,
+            order: s.order,
             run: async (data: unknown, ctx: RuntimeContext) => {
                 // Regex handlers only execute safely when data is a string
                 if (typeof data === 'string') {

@@ -90,7 +90,7 @@
     {#if preset.models.chat}
         <ModelConfigCard
             title="Main Model"
-            badge="Generation"
+            badge="chat"
             config={preset.models.chat}
             onModelChange={(p, m) => handleModelChange('chat', p, m)}
         />
@@ -99,7 +99,7 @@
     {#if preset.models.aux}
         <ModelConfigCard
             title="Auxiliary Model"
-            badge="Utility / Summary"
+            badge="aux"
             config={preset.models.aux}
             onModelChange={(p, m) => handleModelChange('aux', p, m)}
         />
@@ -108,10 +108,10 @@
     <section class="rounded-lg border bg-card p-4">
         <button
             type="button"
-            class="flex w-full items-center justify-between text-left text-sm font-medium"
+            class="flex w-full items-center justify-between text-left text-sm font-medium hover:opacity-80 transition-opacity"
             onclick={() => (advancedOpen = !advancedOpen)}
         >
-            <span>Advanced Task Overrides</span>
+            <span>Task Model Overrides</span>
             <span class="text-xs text-muted-foreground">{advancedOpen ? 'Collapse' : 'Expand'}</span
             >
         </button>
@@ -146,8 +146,7 @@
                         {#if config}
                             <div class="mt-4">
                                 <ModelConfigCard
-                                    title={`${role.type} Model`}
-                                    badge="Override"
+                                    showHeader={false}
                                     {config}
                                     onModelChange={(p, m) => handleModelChange(role.type, p, m)}
                                 />

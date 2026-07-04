@@ -14,7 +14,6 @@ export interface ScriptFields {
     regex: string;
     replacement: string;
     phase: 'input' | 'request' | 'output' | 'display';
-    advanced: boolean; // use advanced settings
     flag: string;
     order: number;
     repeat: number;
@@ -36,7 +35,6 @@ const defaultScriptFields: ScriptFields = {
     regex: '',
     replacement: '',
     phase: 'display',
-    advanced: false,
     flag: 'g',
     order: 100,
     repeat: 1,

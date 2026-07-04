@@ -29,6 +29,7 @@ export interface ModuleContent {
     description: string;
     backgroundHTML: string;
     messageCSS: string;
+    defaultVariables: Record<string, string>;
     allowLowLevel: boolean;
 }
 
@@ -45,6 +46,7 @@ const defaultModuleFields: ModuleFields = {
     description: '',
     backgroundHTML: '',
     messageCSS: '',
+    defaultVariables: {},
     allowLowLevel: false,
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },

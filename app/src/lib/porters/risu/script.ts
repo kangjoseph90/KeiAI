@@ -64,8 +64,7 @@ export function risuScriptToKei(
         replacement: normalizeRisuTemplate(script.out ?? ''),
         phase: risuScriptPhase(script.type),
         flag: flag.flag,
-        advanced: script.ableFlag ?? false,
-        order: flag.order ?? index,
+        order: flag.order ?? 100,
         repeat: 1,
         enabled: script.type !== 'disabled'
     };
@@ -78,6 +77,6 @@ export function keiScriptToRisu(script: ScriptFields): RisuRegexScript {
         out: denormalizeRisuTemplate(script.replacement),
         type: script.enabled ? keiScriptPhase(script.phase) : 'disabled',
         flag: formatRisuRegexFlag(script.flag, script.order),
-        ableFlag: script.advanced
+        ableFlag: true
     };
 }

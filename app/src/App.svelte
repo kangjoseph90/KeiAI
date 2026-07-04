@@ -15,13 +15,16 @@
         selectChat,
         clearActiveRoom,
         clearActiveCharacter,
+        clearActiveModule,
         clearActivePersona,
         activeCharacter,
+        activeModule,
         activePersona,
         activeChat,
         activeChatId,
         activeRoom,
-        initDefaultContents
+        initDefaultContents,
+        selectModule
     } from '$lib/stores';
     import {
         restoreCharacterContext,
@@ -69,6 +72,9 @@
             } else if (initial.view === 'characterStudio' && initial.charId) {
                 await restoreCharacterContext(initial.charId);
                 navigate(initial);
+            } else if (initial.view === 'moduleStudio' && initial.moduleId) {
+                await selectModule(initial.moduleId);
+                navigate(initial);
             } else if (initial.view === 'personaStudio' && initial.personaId) {
                 await restorePersonaContext(initial.personaId);
                 navigate(initial);
@@ -98,10 +104,10 @@
             prevRoute.charId === r.charId &&
             prevRoute.chatId === r.chatId &&
             prevRoute.personaId === r.personaId &&
-            prevRoute.pluginId === r.pluginId &&
             prevRoute.moduleId === r.moduleId &&
             prevRoute.settingsTab === r.settingsTab &&
             prevRoute.characterTab === r.characterTab &&
+            prevRoute.moduleTab === r.moduleTab &&
             prevRoute.personaTab === r.personaTab
         ) {
             prevRoute = r;
@@ -114,6 +120,7 @@
                 if (r.view === 'home' || r.view === 'multiRoom') {
                     clearActiveRoom();
                     clearActiveCharacter();
+                    clearActiveModule();
                     clearActivePersona();
                 } else if (r.view === 'room') {
                     if (r.roomId && $activeRoom?.id !== r.roomId) {
@@ -130,6 +137,10 @@
                 } else if (r.view === 'characterStudio') {
                     if (r.charId && $activeCharacter?.id !== r.charId) {
                         await restoreCharacterContext(r.charId);
+                    }
+                } else if (r.view === 'moduleStudio') {
+                    if (r.moduleId && $activeModule?.id !== r.moduleId) {
+                        await selectModule(r.moduleId);
                     }
                 } else if (r.view === 'personaStudio') {
                     if (r.personaId && $activePersona?.id !== r.personaId) {
@@ -190,7 +201,7 @@
             <p class="text-muted-foreground text-sm">Initializing Secure Local Session...</p>
         </div>
     {:else}
-        {#if $route.view !== 'settings' && $route.view !== 'characterStudio' && $route.view !== 'personaStudio'}
+        {#if $route.view !== 'settings' && $route.view !== 'characterStudio' && $route.view !== 'moduleStudio' && $route.view !== 'personaStudio'}
             <!-- Sidebar -->
             <AppSidebar
                 collapsed={sidebarCollapsed}
@@ -210,17 +221,17 @@
                 {#await import('$lib/views/character/CharacterStudio.svelte') then m}
                     <m.default charId={$route.charId} characterTab={$route.characterTab} />
                 {/await}
+            {:else if $route.view === 'moduleStudio' && $route.moduleId}
+                {#await import('$lib/views/modules/ModuleStudio.svelte') then m}
+                    <m.default moduleId={$route.moduleId} moduleTab={$route.moduleTab} />
+                {/await}
             {:else if $route.view === 'personaStudio' && $route.personaId}
                 {#await import('$lib/views/persona/PersonaStudio.svelte') then m}
                     <m.default personaId={$route.personaId} personaTab={$route.personaTab} />
                 {/await}
             {:else if $route.view === 'settings'}
                 {#await import('$lib/views/settings/SettingsView.svelte') then m}
-                    <m.default
-                        settingsTab={$route.settingsTab}
-                        pluginId={$route.pluginId}
-                        moduleId={$route.moduleId}
-                    />
+                    <m.default settingsTab={$route.settingsTab} />
                 {/await}
             {:else if $route.view === 'multiRoom'}
                 {#await import('$lib/views/home/HomeView.svelte') then m}

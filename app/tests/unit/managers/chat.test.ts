@@ -13,17 +13,20 @@ import {
     createChatLorebook,
     createMessage,
     deleteMessage,
+    getActivePreset,
     getCharacter,
+    getActiveModuleIds,
     getChat,
     getLastMessage,
     getMessage,
+    getModule,
     getRoom,
     updateChat,
     updateMessage
 } from '$lib/stores';
 import { LorebookService, MessageService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
-import type { Character, Chat, Lorebook, Message, Room } from '$lib/services';
+import type { Character, Chat, Lorebook, Message, Module, Preset, Room } from '$lib/services';
 
 vi.mock('$lib/stores', () => ({
     createChat: vi.fn(),
@@ -31,10 +34,12 @@ vi.mock('$lib/stores', () => ({
     createMessage: vi.fn(),
     deleteMessage: vi.fn(),
     getActivePreset: vi.fn(),
+    getActiveModuleIds: vi.fn(),
     getCharacter: vi.fn(),
     getChat: vi.fn(),
     getLastMessage: vi.fn(),
     getMessage: vi.fn(),
+    getModule: vi.fn(),
     getRoom: vi.fn(),
     updateChat: vi.fn(),
     updateMessage: vi.fn()
@@ -102,9 +107,41 @@ describe('ChatManager', () => {
         greetings: { greet2: { id: 'greet2', content: 'Yo', sortOrder: 'b' } },
         defaultVariables: { shared: 'beta', energy: 'high' }
     };
+    const globalModule: Module = {
+        id: 'mod-global',
+        name: 'Global Module',
+        description: '',
+        backgroundHTML: '',
+        messageCSS: '',
+        defaultVariables: { mood: 'module-calm', shared: 'global-module', moduleOnly: 'yes' },
+        allowLowLevel: false,
+        lorebooks: { refs: {}, folders: {} },
+        scripts: { refs: {}, folders: {} },
+        charjs: { refs: {}, folders: {} },
+        assets: { refs: {}, folders: {} }
+    };
+    const characterModule: Module = {
+        ...globalModule,
+        id: 'mod-character',
+        name: 'Character Module',
+        defaultVariables: { shared: 'character-module', characterModuleOnly: 'yes' }
+    };
+    const mockPreset: Preset = {
+        id: 'preset-1',
+        name: 'Preset',
+        description: '',
+        models: {},
+        parameters: {},
+        chatWorkflow: { nodes: {} },
+        defaultVariables: { mood: 'preset-calm', shared: 'preset', presetOnly: 'yes' },
+        globalVariables: {},
+        customToggles: {},
+        scripts: { refs: {}, folders: {} }
+    };
 
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(getActivePreset).mockReturnValue(null);
         vi.mocked(getChat).mockResolvedValue(mockChat);
         vi.mocked(getRoom).mockResolvedValue(mockRoom);
         vi.mocked(getCharacter).mockImplementation(async (id: string) => {
@@ -112,6 +149,8 @@ describe('ChatManager', () => {
             if (id === 'char-2') return charTwo;
             return null;
         });
+        vi.mocked(getActiveModuleIds).mockResolvedValue(new Set());
+        vi.mocked(getModule).mockResolvedValue(null);
     });
 
     describe('syncChatGreetings', () => {
@@ -264,10 +303,29 @@ describe('ChatManager', () => {
             activeSwipeId: 's1'
         } as Message;
 
-        it('merges attached character defaults in room order', async () => {
+        it('merges preset, active module, and character defaults in specificity order', async () => {
+            vi.mocked(getActivePreset).mockReturnValue(mockPreset);
+            vi.mocked(getActiveModuleIds).mockImplementation(async (characterId?: string) => {
+                if (characterId === 'char-1') return new Set(['mod-global', 'mod-character']);
+                if (characterId === 'char-2') return new Set(['mod-global']);
+                return new Set();
+            });
+            vi.mocked(getModule).mockImplementation(async (id: string) => {
+                if (id === 'mod-global') return globalModule;
+                if (id === 'mod-character') return characterModule;
+                return null;
+            });
+
             const variables = await getChatDefaultVariables('chat-1');
 
-            expect(variables).toEqual({ mood: 'calm', shared: 'beta', energy: 'high' });
+            expect(variables).toEqual({
+                mood: 'calm',
+                shared: 'beta',
+                presetOnly: 'yes',
+                moduleOnly: 'yes',
+                characterModuleOnly: 'yes',
+                energy: 'high'
+            });
         });
 
         it('skips missing characters when merging defaults', async () => {

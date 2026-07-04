@@ -2,9 +2,8 @@
     import {
         ChevronLeft,
         ChevronRight,
-        Download,
-        IdCard,
         Image as ImageIcon,
+        Settings2,
         Pencil,
         Plus,
         Trash2,
@@ -28,7 +27,8 @@
     import { Textarea } from '$lib/components/ui/textarea';
     import AssetView from '$lib/components/AssetView.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
-    import ExportTab from './ExportTab.svelte';
+    import AdvancedTab from './AdvancedTab.svelte';
+    import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import {
         activeChat,
         activePersona,
@@ -60,7 +60,7 @@
     const tabs = [
         { id: 'profile' as const, label: 'Profile', icon: UserRound },
         { id: 'assets' as const, label: 'Assets', icon: ImageIcon },
-        { id: 'export' as const, label: 'Export', icon: Download }
+        { id: 'advanced' as const, label: 'Advanced', icon: Settings2 }
     ];
 
     let hasSelectedTab = $derived(personaTab !== undefined);
@@ -228,7 +228,7 @@
                 : 'hidden'}"
         >
             <div
-                class="mx-auto flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
+                class="flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
             >
                 <Button
                     variant="ghost"
@@ -263,7 +263,7 @@
                 </div>
             {:else}
                 <ScrollArea class="min-h-0 flex-1">
-                    <div class="mx-auto max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
+                    <div class="max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
                         {#if activeTab === 'profile'}
                             <section class="space-y-6">
                                 <Card>
@@ -367,32 +367,6 @@
                                         </div>
                                     </CardContent>
                                 </Card>
-
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Runtime Identity</CardTitle>
-                                        <CardDescription>
-                                            This persona can be attached to chats and selected as
-                                            the user speaker.
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div class="flex items-center gap-3 rounded-md border p-4">
-                                            <div
-                                                class="flex size-10 items-center justify-center rounded-md bg-muted text-muted-foreground"
-                                            >
-                                                <IdCard class="size-5" />
-                                            </div>
-                                            <div class="min-w-0">
-                                                <p class="text-sm font-medium">Speaker identity</p>
-                                                <p class="text-xs text-muted-foreground">
-                                                    Messages keep their own speaker snapshot; this
-                                                    record edits future context.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
                             </section>
                         {:else if activeTab === 'assets'}
                             <section class="space-y-4">
@@ -455,14 +429,9 @@
                                         )}
                                 >
                                     {#snippet empty()}
-                                        <div
-                                            class="rounded-md border border-dashed p-6 text-center"
-                                        >
-                                            <p class="text-xs text-muted-foreground">
-                                                No assets. Click <strong>Add</strong> to upload an image
-                                                or file.
-                                            </p>
-                                        </div>
+                                        <EmptyListPlaceholder
+                                            message="No assets. Use Add to upload an image or file."
+                                        />
                                     {/snippet}
                                     {#snippet item({ entity: ref })}
                                         <div
@@ -540,8 +509,8 @@
                                     {/snippet}
                                 </EntityList>
                             </section>
-                        {:else if activeTab === 'export'}
-                            <ExportTab
+                        {:else if activeTab === 'advanced'}
+                            <AdvancedTab
                                 showLightExport={isKeiServer()}
                                 onExportRisu={() =>
                                     exportPersonaFile($activePersona!.id, {

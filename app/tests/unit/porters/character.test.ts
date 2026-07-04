@@ -144,7 +144,6 @@ describe('character porters', () => {
         regex: 'a',
         replacement: 'b',
         phase: 'display',
-        advanced: false,
         flag: 'g',
         order: 100,
         repeat: 1,
@@ -327,7 +326,7 @@ describe('character porters', () => {
         );
     });
 
-    it('keeps Risu script order from the imported script list', async () => {
+    it('uses the default order for Risu scripts without explicit order metadata', async () => {
         const file = new File(
             [
                 JSON.stringify({
@@ -366,10 +365,15 @@ describe('character porters', () => {
         const pkg = await readCharacterFile(file);
 
         expect(pkg.scripts[0]).toEqual(
-            expect.objectContaining({ name: 'First', order: 0, phase: 'input', enabled: true })
+            expect.objectContaining({ name: 'First', order: 100, phase: 'input', enabled: true })
         );
         expect(pkg.scripts[1]).toEqual(
-            expect.objectContaining({ name: 'Second', order: 1, phase: 'display', enabled: false })
+            expect.objectContaining({
+                name: 'Second',
+                order: 100,
+                phase: 'display',
+                enabled: false
+            })
         );
     });
 
@@ -795,7 +799,6 @@ function makePackage(overrides: Partial<KeiCharacterPackageV1> = {}): KeiCharact
                 regex: 'a',
                 replacement: 'b',
                 phase: 'display',
-                advanced: false,
                 flag: 'g',
                 order: 100,
                 repeat: 1,

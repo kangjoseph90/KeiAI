@@ -1,0 +1,123 @@
+<script lang="ts">
+    import { Plus, Trash2 } from 'lucide-svelte';
+    import { Button } from './ui/button';
+    import { Input } from './ui/input';
+    import { Label } from './ui/label';
+
+    interface Props {
+        emptyMessage?: string;
+        data: Record<string, string>;
+        error?: string;
+        onUpdateValue: (key: string, value: string) => void | Promise<void>;
+        onAdd: (key: string, value: string) => boolean | Promise<boolean> | void | Promise<void>;
+        onRemove: (key: string) => void | Promise<void>;
+    }
+
+    let {
+        emptyMessage = 'No variables defined.',
+        data,
+        error = '',
+        onUpdateValue,
+        onAdd,
+        onRemove
+    }: Props = $props();
+
+    let newKey = $state('');
+    let newValue = $state('');
+    let localError = $state('');
+
+    $effect(() => {
+        if (error) {
+            localError = error;
+        }
+    });
+
+    async function handleAdd(event: SubmitEvent) {
+        event.preventDefault();
+        const key = newKey.trim();
+        const val = newValue;
+
+        if (!key) {
+            localError = 'Name key is required.';
+            return;
+        }
+        if (key in data) {
+            localError = 'Name keys must be unique.';
+            return;
+        }
+
+        localError = '';
+        const success = await onAdd(key, val);
+        if (success !== false) {
+            newKey = '';
+            newValue = '';
+        }
+    }
+</script>
+
+<div class="space-y-2">
+    <div class="overflow-hidden rounded-lg border bg-background/30 flex flex-col">
+        {#if Object.keys(data).length > 0}
+            <div class="flex flex-col">
+                {#each Object.entries(data) as [key, value] (key)}
+                    <div class="flex items-center gap-3 border-b p-2 px-3 last:border-b-0">
+                        <!-- Key Label (ReadOnly Flat Text) -->
+                        <Label
+                            class="h-7 w-36 sm:w-40 shrink-0 flex items-center font-mono text-xs font-medium text-foreground/80 px-1 truncate select-all"
+                        >
+                            {key}
+                        </Label>
+
+                        <!-- Value Input (Compact Flat Design) -->
+                        <Input
+                            class="h-7 flex-1 text-xs bg-background/50 border hover:bg-background border-input rounded px-2 focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0 focus-visible:border-primary"
+                            value={String(value)}
+                            aria-label={`Value for ${key}`}
+                            oninput={(event) => onUpdateValue(key, event.currentTarget.value)}
+                        />
+
+                        <!-- Delete Button (Compact Ghost) -->
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            class="size-7 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            onclick={() => onRemove(key)}
+                            aria-label={`Delete ${key}`}
+                        >
+                            <Trash2 class="size-3.5" />
+                        </Button>
+                    </div>
+                {/each}
+            </div>
+        {:else}
+            <div class="py-6 text-center text-xs text-muted-foreground border-b last:border-b-0">
+                {emptyMessage}
+            </div>
+        {/if}
+
+        <form
+            class="flex items-center gap-2 bg-muted/15 py-2 px-3 border-t border-border/80"
+            onsubmit={handleAdd}
+        >
+            <Input
+                class="h-7 w-36 sm:w-40 shrink-0 font-mono text-xs bg-background border focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0"
+                bind:value={newKey}
+                placeholder="key"
+                aria-label="New key name"
+            />
+            <Input
+                class="h-7 flex-1 text-xs bg-background border focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0"
+                bind:value={newValue}
+                placeholder="value"
+                aria-label="New key value"
+            />
+            <Button type="submit" size="sm" class="h-7 gap-1 px-3 text-xs shrink-0 font-medium">
+                <Plus class="size-3" /> Add
+            </Button>
+        </form>
+    </div>
+
+    {#if localError}
+        <p class="text-xs text-destructive mt-0.5">{localError}</p>
+    {/if}
+</div>

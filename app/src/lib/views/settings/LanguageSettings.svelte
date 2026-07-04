@@ -33,6 +33,11 @@
         if (currentNodeId && workflow.nodes[currentNodeId]) return currentNodeId;
         return findFirstAgentId(workflow);
     }
+
+    function handleEditPrompt(nodeId: string) {
+        selectedTranslationNodeId = nodeId;
+        translationWorkflowEditorOpen = false;
+    }
 </script>
 
 <div class="flex flex-col gap-6">
@@ -59,16 +64,15 @@
     </Card>
 
     {#if $appSettings}
-        <div class="h-[calc(100vh-22rem)] min-h-[30rem]">
-            <WorkflowPromptTab
-                workflow={$appSettings.translation.workflow}
-                selectedNodeId={selectedTranslationNodeId}
-                onSelectNode={(nodeId) => (selectedTranslationNodeId = nodeId)}
-                onEdit={applyTranslationPromptEdit}
-                onEditWorkflow={() => (translationWorkflowEditorOpen = true)}
-                editWorkflowLabel="Edit translation workflow"
-            />
-        </div>
+        <WorkflowPromptTab
+            workflow={$appSettings.translation.workflow}
+            selectedNodeId={selectedTranslationNodeId}
+            onSelectNode={(nodeId) => (selectedTranslationNodeId = nodeId)}
+            onEdit={applyTranslationPromptEdit}
+            onEditWorkflow={() => (translationWorkflowEditorOpen = true)}
+            workflowLabel="Translation workflow"
+            editWorkflowLabel="Edit translation workflow"
+        />
     {/if}
 </div>
 
@@ -78,5 +82,6 @@
         workflow={$appSettings.translation.workflow}
         title="Translation Workflow"
         onPatch={(patch) => updateSettings({ translation: { workflow: patch } })}
+        onEditPrompt={handleEditPrompt}
     />
 {/if}

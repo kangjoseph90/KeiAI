@@ -3,13 +3,12 @@
         ChevronLeft,
         ChevronRight,
         User,
-        FileText,
         MessageSquare,
         Book,
         Code,
         Image as ImageIcon,
         Settings2,
-        Download,
+        Monitor,
         X
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
@@ -40,7 +39,8 @@
         createCharacterFolder,
         updateCharacterFolder,
         deleteCharacterFolder,
-        moveCharacterItem
+        moveCharacterItem,
+        deleteCharacter
     } from '$lib/stores';
     import { navigate, type CharacterStudioTab } from '$lib/router';
     import { isKeiServer } from '$lib/adapters/pb';
@@ -55,12 +55,11 @@
     // Tab Components
     import ProfileTab from '../character/studio/ProfileTab.svelte';
     import GreetingsTab from '../character/studio/GreetingsTab.svelte';
-    import PromptTab from '../character/studio/PromptTab.svelte';
+    import DisplayTab from '../character/studio/DisplayTab.svelte';
     import LorebooksTab from '../character/studio/LorebooksTab.svelte';
     import ScriptsTab from '../character/studio/ScriptsTab.svelte';
     import AssetsTab from '../character/studio/AssetsTab.svelte';
     import AdvancedTab from '../character/studio/AdvancedTab.svelte';
-    import ExportTab from '../character/studio/ExportTab.svelte';
 
     interface Props {
         charId: string;
@@ -97,12 +96,11 @@
     const tabs = [
         { id: 'profile', label: 'Profile', icon: User },
         { id: 'greetings', label: 'Greetings', icon: MessageSquare },
-        { id: 'prompt', label: 'Prompt', icon: FileText },
         { id: 'lorebooks', label: 'Lorebooks', icon: Book },
         { id: 'scripts', label: 'Scripts', icon: Code },
+        { id: 'display', label: 'Display', icon: Monitor },
         { id: 'assets', label: 'Assets', icon: ImageIcon },
-        { id: 'advanced', label: 'Advanced', icon: Settings2 },
-        { id: 'export', label: 'Export', icon: Download }
+        { id: 'advanced', label: 'Advanced', icon: Settings2 }
     ] as const;
 
     let hasSelectedTab = $derived(characterTab !== undefined);
@@ -124,11 +122,12 @@
     }
 
     async function handleCreateGreeting(fields: { content: string; sortOrder: string }) {
-        if (!$activeCharacter) return;
-        await createCharacterGreeting($activeCharacter.id, fields);
+        if (!$activeCharacter) return '';
+        const { greetingId } = await createCharacterGreeting($activeCharacter.id, fields);
         if (isChatSynced() && $activeChat) {
             await syncChatGreetings($activeChat.id);
         }
+        return greetingId;
     }
 
     async function handleDeleteGreeting(id: string) {
@@ -158,6 +157,12 @@
         } finally {
             exporting = null;
         }
+    }
+
+    async function handleDeleteCharacter() {
+        if (!$activeCharacter) return;
+        await deleteCharacter($activeCharacter.id);
+        backToChat();
     }
 </script>
 
@@ -246,7 +251,7 @@
                 : 'hidden'}"
         >
             <div
-                class="mx-auto flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
+                class="flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
             >
                 <Button
                     variant="ghost"
@@ -276,7 +281,7 @@
                 </div>
             {:else}
                 <ScrollArea class="min-h-0 flex-1">
-                    <div class="mx-auto max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
+                    <div class="max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
                         {#if activeTab === 'profile'}
                             <ProfileTab
                                 character={$activeCharacter}
@@ -298,8 +303,8 @@
                                 onUpdate={handleUpdateGreeting}
                                 onDelete={handleDeleteGreeting}
                             />
-                        {:else if activeTab === 'prompt'}
-                            <PromptTab
+                        {:else if activeTab === 'display'}
+                            <DisplayTab
                                 character={$activeCharacter}
                                 onUpdate={async (changes) => {
                                     await updateCharacter(changes);
@@ -310,7 +315,7 @@
                                 lorebooks={$characterLorebooks}
                                 config={$activeCharacter!.lorebooks}
                                 onCreate={async (data) => {
-                                    await createCharacterLorebook(
+                                    return createCharacterLorebook(
                                         $activeCharacter!.id,
                                         data as Lorebook
                                     );
@@ -362,7 +367,7 @@
                                 scriptsConfig={$activeCharacter!.scripts}
                                 charjsConfig={$activeCharacter!.charjs}
                                 onCreateScript={async (data) => {
-                                    await createCharacterScript(
+                                    return createCharacterScript(
                                         $activeCharacter!.id,
                                         data as Script
                                     );
@@ -374,7 +379,7 @@
                                     await deleteCharacterScript($activeCharacter!.id, id);
                                 }}
                                 onCreateCharJS={async (data) => {
-                                    await createCharacterCharJS(
+                                    return createCharacterCharJS(
                                         $activeCharacter!.id,
                                         data as CharJS
                                     );
@@ -453,15 +458,13 @@
                         {:else if activeTab === 'advanced'}
                             <AdvancedTab
                                 character={$activeCharacter}
+                                {exporting}
+                                showLightExport={isKeiServer()}
                                 onUpdate={async (changes) => {
                                     await updateCharacter(changes);
                                 }}
-                            />
-                        {:else if activeTab === 'export'}
-                            <ExportTab
-                                {exporting}
-                                showLightExport={isKeiServer()}
                                 onExport={handleExport}
+                                onDelete={handleDeleteCharacter}
                             />
                         {/if}
                     </div>

@@ -5,7 +5,7 @@
     import type { Lorebook } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { FolderDef, EntityListConfig } from '$lib/types/refs';
-    import LorebookItem from '../../modules/LorebookItem.svelte';
+    import LorebookItem from '../LorebookItem.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
 

@@ -8,8 +8,9 @@
     import WorkflowPromptTab from '$lib/views/workflow/WorkflowPromptTab.svelte';
     import PresetsTab from './chatbot/PresetsTab.svelte';
     import ScriptsTab from './chatbot/ScriptsTab.svelte';
+    import TogglesTab from './chatbot/TogglesTab.svelte';
 
-    type Tab = 'prompt' | 'scripts' | 'presets';
+    type Tab = 'prompt' | 'scripts' | 'toggles' | 'presets';
     let activeTab = $state<Tab>('prompt');
     let chatWorkflowEditorOpen = $state(false);
     let selectedPromptNodeId = $state<string | null>(null);
@@ -17,6 +18,7 @@
     const tabs: Array<{ id: Tab; label: string }> = [
         { id: 'prompt', label: 'Prompt' },
         { id: 'scripts', label: 'Scripts' },
+        { id: 'toggles', label: 'Toggles' },
         { id: 'presets', label: 'Presets' }
     ];
 
@@ -43,6 +45,12 @@
     ): string | null {
         if (currentNodeId && workflow.nodes[currentNodeId]) return currentNodeId;
         return findFirstAgentId(workflow);
+    }
+
+    function handleEditPrompt(nodeId: string) {
+        selectedPromptNodeId = nodeId;
+        activeTab = 'prompt';
+        chatWorkflowEditorOpen = false;
     }
 </script>
 
@@ -83,20 +91,23 @@
             </div>
         </ScrollArea>
     {:else if $activePreset && activeTab === 'prompt'}
-        <div class="min-h-0 flex-1">
+        <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
             <WorkflowPromptTab
                 workflow={$activePreset.chatWorkflow}
                 selectedNodeId={selectedPromptNodeId}
                 onSelectNode={(nodeId) => (selectedPromptNodeId = nodeId)}
                 onEdit={applyPromptEdit}
                 onEditWorkflow={() => (chatWorkflowEditorOpen = true)}
+                workflowLabel="Chat workflow"
             />
-        </div>
+        </ScrollArea>
     {:else if $activePreset}
         <ScrollArea class="-mr-4 min-h-0 flex-1 pr-4">
             <div class="flex flex-col gap-6 pb-8">
                 {#if activeTab === 'scripts'}
                     <ScriptsTab preset={$activePreset} />
+                {:else if activeTab === 'toggles'}
+                    <TogglesTab preset={$activePreset} />
                 {/if}
             </div>
         </ScrollArea>
@@ -109,5 +120,6 @@
         workflow={$activePreset.chatWorkflow}
         title="Chat Workflow"
         onPatch={(patch) => updatePreset($activePreset!.id, { chatWorkflow: patch })}
+        onEditPrompt={handleEditPrompt}
     />
 {/if}

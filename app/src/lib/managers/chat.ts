@@ -6,10 +6,12 @@ import {
     createMessage,
     deleteMessage,
     getActivePreset,
+    getActiveModuleIds,
     getCharacter,
     getChat,
     getMessage,
     getLastMessage,
+    getModule,
     getRoom,
     updateChat,
     updateMessage
@@ -174,6 +176,20 @@ export async function getChatDefaultVariables(chatId: string): Promise<Record<st
     );
 
     const variables: Record<string, string> = { ...(getActivePreset()?.defaultVariables ?? {}) };
+    const activeModuleIds = new Set<string>();
+    for (const [, character] of entries) {
+        if (!character) continue;
+        for (const id of await getActiveModuleIds(character.id)) {
+            activeModuleIds.add(id);
+        }
+    }
+
+    for (const id of activeModuleIds) {
+        const mod = await getModule(id);
+        if (!mod) continue;
+        Object.assign(variables, mod.defaultVariables);
+    }
+
     for (const [, character] of entries) {
         if (!character) continue;
         Object.assign(variables, character.defaultVariables);

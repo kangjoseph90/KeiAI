@@ -13,7 +13,6 @@ describe('applyRegexScript', () => {
         regex: 'apple',
         replacement: 'banana',
         phase: 'display',
-        advanced: false,
         flag: 'g',
         order: 100,
         repeat: 1,
@@ -39,7 +38,6 @@ describe('applyRegexScript', () => {
     it('should handle repeat iterations (recursive-like)', () => {
         const script: Script = {
             ...baseScript,
-            advanced: true,
             regex: 'a+',
             replacement: 'a', // reduce multiple 'a's to one
             repeat: 2
@@ -49,7 +47,6 @@ describe('applyRegexScript', () => {
         // Let's use a better example for repeat.
         const nestedScript: Script = {
             ...baseScript,
-            advanced: true,
             regex: '\\[\\[(.*?)\\]\\]',
             replacement: '$1',
             repeat: 2
@@ -61,7 +58,6 @@ describe('applyRegexScript', () => {
     it('should break early if no changes occur', () => {
         const script: Script = {
             ...baseScript,
-            advanced: true,
             repeat: 100 // High repeat
         };
         const result = applyRegexScript(script, 'apple');
@@ -81,7 +77,6 @@ describe('applyRegexScript', () => {
     it('should handle regex with advanced flags', () => {
         const script: Script = {
             ...baseScript,
-            advanced: true,
             regex: 'APPLE',
             replacement: 'fruit',
             flag: 'i' // case insensitive, not global

@@ -22,11 +22,14 @@ describe('router', () => {
         navigate({ view: 'characterStudio', charId: 'char-1' });
         expect(window.location.hash).toBe('#/character/char-1');
 
+        navigate({ view: 'moduleStudio', moduleId: 'module-1' });
+        expect(window.location.hash).toBe('#/module/module-1');
+
         navigate({ view: 'personaStudio', personaId: 'persona-1' });
         expect(window.location.hash).toBe('#/persona/persona-1');
     });
 
-    it('builds and parses character and persona studio tabs', () => {
+    it('builds and parses character, module, and persona studio tabs', () => {
         navigate({ view: 'characterStudio', charId: 'char-1', characterTab: 'greetings' });
         expect(window.location.hash).toBe('#/character/char-1/greetings');
         expect(getCurrentHashRoute()).toEqual({
@@ -35,12 +38,20 @@ describe('router', () => {
             characterTab: 'greetings'
         });
 
-        navigate({ view: 'personaStudio', personaId: 'persona-1', personaTab: 'export' });
-        expect(window.location.hash).toBe('#/persona/persona-1/export');
+        navigate({ view: 'moduleStudio', moduleId: 'module-1', moduleTab: 'scripts' });
+        expect(window.location.hash).toBe('#/module/module-1/scripts');
+        expect(getCurrentHashRoute()).toEqual({
+            view: 'moduleStudio',
+            moduleId: 'module-1',
+            moduleTab: 'scripts'
+        });
+
+        navigate({ view: 'personaStudio', personaId: 'persona-1', personaTab: 'advanced' });
+        expect(window.location.hash).toBe('#/persona/persona-1/advanced');
         expect(getCurrentHashRoute()).toEqual({
             view: 'personaStudio',
             personaId: 'persona-1',
-            personaTab: 'export'
+            personaTab: 'advanced'
         });
     });
 

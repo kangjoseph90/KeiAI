@@ -13,10 +13,11 @@
 </script>
 
 <div class="flex flex-col gap-1.5">
-    <Label>{label}</Label>
+    <Label class="text-xs">{label}</Label>
     <Input
         type="number"
         {step}
+        class="h-8 text-sm"
         value={value ?? ''}
         oninput={(event) =>
             onchange(
