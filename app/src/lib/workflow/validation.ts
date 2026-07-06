@@ -10,7 +10,6 @@ import type { WorkflowDefinition } from './types';
 type VisitState = 'visiting' | 'visited';
 
 export function validateWorkflow(workflow: WorkflowDefinition): void {
-    validateSingleOutput(workflow);
     validateAgentSlots(workflow);
     validateInputValues(workflow);
     validateConnectionTypes(workflow);
@@ -171,7 +170,8 @@ function validateAgentSlots(workflow: WorkflowDefinition): void {
     for (const node of Object.values(workflow.nodes)) {
         if (node.class !== 'Agent') continue;
 
-        const inputIds = Object.keys(node.inputs);
+        const staticInputs = new Set(Object.keys(WORKFLOW_NODE_DEFINITIONS.Agent.inputs));
+        const inputIds = Object.keys(node.inputs).filter((inputId) => !staticInputs.has(inputId));
         const slotIds = Object.keys(node.slotNames);
         if (
             inputIds.length !== slotIds.length ||
@@ -216,6 +216,9 @@ function validateInputValues(workflow: WorkflowDefinition): void {
         }
 
         for (const inputId of Object.keys(node.inputValues)) {
+            if (!(inputId in node.inputs) && getWorkflowInputPortDefinition(node, inputId)) {
+                continue;
+            }
             if (!(inputId in node.inputs)) {
                 throw new AppError(
                     'INVALID_INPUT',
@@ -226,7 +229,9 @@ function validateInputValues(workflow: WorkflowDefinition): void {
 
         if (
             node.class === 'Agent' &&
-            Object.keys(node.inputs).some((inputId) => !(inputId in node.inputValues))
+            Object.keys(node.inputs).some(
+                (inputId) => inputId in node.slotNames && !(inputId in node.inputValues)
+            )
         ) {
             throw new AppError(
                 'INVALID_INPUT',
@@ -255,22 +260,4 @@ function validateConnectionTypes(workflow: WorkflowDefinition): void {
             );
         }
     }
-}
-
-function validateSingleOutput(workflow: WorkflowDefinition): void {
-    const count = Object.values(workflow.nodes).filter((node) => node.class === 'Output').length;
-    if (count !== 1) {
-        throw new AppError(
-            'INVALID_INPUT',
-            `Workflow must have exactly one Output node, found ${count}`
-        );
-    }
-}
-
-export function getWorkflowOutputNodeId(workflow: WorkflowDefinition): string {
-    const output = Object.values(workflow.nodes).find((node) => node.class === 'Output');
-    if (!output) {
-        throw new AppError('INVALID_INPUT', 'Workflow must have exactly one Output node, found 0');
-    }
-    return output.id;
 }

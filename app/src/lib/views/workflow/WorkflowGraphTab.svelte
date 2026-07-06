@@ -16,6 +16,8 @@
     import { getErrorMessage } from '$lib/types/errors';
     import {
         WORKFLOW_NODE_DEFINITIONS,
+        WORKFLOW_NODE_CATEGORY_LABELS,
+        WORKFLOW_NODE_CATEGORY_ORDER,
         connectNodes,
         createAgentInput,
         createNode,
@@ -52,18 +54,16 @@
     let edges = $state.raw<Edge[]>([]);
 
     const nodeTypes = { workflow: WorkflowNodeComponent } satisfies NodeTypes;
-    const nodeGroups: Array<{ label: string; classes: WorkflowNodeClass[] }> = [
-        { label: 'Agent', classes: ['Agent'] },
-        { label: 'Values', classes: ['String', 'Number', 'Boolean'] },
-        { label: 'Strings', classes: ['Concat', 'StringLength', 'StringIncludes'] },
-        { label: 'Numbers', classes: ['NumberMath', 'NumberCompare'] },
-        { label: 'Booleans', classes: ['BooleanLogic', 'BooleanNot'] },
-        { label: 'Flow', classes: ['Gate', 'Ungate'] },
-        { label: 'Files', classes: ['FileRead', 'FileWrite'] },
-        { label: 'Result', classes: ['Output'] }
-    ];
+    const nodeDefinitionEntries = Object.entries(WORKFLOW_NODE_DEFINITIONS) as Array<
+        [WorkflowNodeClass, (typeof WORKFLOW_NODE_DEFINITIONS)[WorkflowNodeClass]]
+    >;
+    const nodeGroups = WORKFLOW_NODE_CATEGORY_ORDER.map((category) => ({
+        label: WORKFLOW_NODE_CATEGORY_LABELS[category],
+        classes: nodeDefinitionEntries
+            .filter(([, definition]) => definition.category === category)
+            .map(([nodeClass]) => nodeClass)
+    })).filter((group) => group.classes.length > 0);
 
-    // 접기/펼치기 상태 — 기본은 모두 접힘 (빈 Set)
     const expandedGroups = new SvelteSet<string>();
     let mobileNodePanelOpen = $state(false);
 

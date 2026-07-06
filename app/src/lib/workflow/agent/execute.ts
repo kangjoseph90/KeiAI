@@ -9,7 +9,12 @@ import type {
     WorkflowNodeEvent,
     WorkflowNodeExecutionContext
 } from '../types';
-import { createWorkflowValueEvent, throwIfAborted, workflowValueToString } from '../util';
+import {
+    createWorkflowValueEvent,
+    requireInput,
+    throwIfAborted,
+    workflowValueToString
+} from '../util';
 import { buildPrompt } from './prompt';
 import { serializeStreamContent } from './llm';
 
@@ -36,7 +41,7 @@ export async function executeAgentNode({
 
     const agentMacrosResult = await buildAgentLocalMacros(node, inputs, localMacros);
     if (agentMacrosResult.status === 'event') {
-        output.emit(agentMacrosResult.event);
+        output.emit(0, agentMacrosResult.event);
         return;
     }
     const agentMacros = agentMacrosResult.macros;
@@ -67,12 +72,20 @@ export async function executeAgentNode({
         localMacros: agentMacros
     });
 
+    const shouldStream = await resolveStreamInput(inputs.stream, true);
+    let latest = '';
+
     for await (const state of handler.stream(prompt, signal, {
         parameters: parameters ?? {},
         maxResponse: node.maxResponse
     })) {
         throwIfAborted(signal);
-        output.emit(createWorkflowValueEvent(serializeStreamContent(state)));
+        latest = serializeStreamContent(state);
+        if (shouldStream) output.emit(0, createWorkflowValueEvent(latest));
+    }
+
+    if (!shouldStream) {
+        output.emit(0, createWorkflowValueEvent(latest));
     }
 }
 
@@ -84,6 +97,7 @@ async function buildAgentLocalMacros(
     const slots = new Map<string, string>();
 
     for (const [inputId, input] of Object.entries(inputs)) {
+        if (inputId === 'stream') continue;
         const slotName = node.slotNames[inputId];
         if (!slotName) throw new Error(`Agent input slot name not found: ${inputId}`);
         const result = await input.done;
@@ -107,6 +121,16 @@ async function buildAgentLocalMacros(
     });
 
     return { status: 'value', macros };
+}
+
+async function resolveStreamInput(
+    input: WorkflowInput | undefined,
+    fallback: boolean
+): Promise<boolean> {
+    if (!input) return fallback;
+    const result = await requireInput(input, 'Agent stream input is required');
+    if (result.status !== 'value') return fallback;
+    return result.value === true;
 }
 
 function shouldResolveLorebooks(node: AgentNode): boolean {

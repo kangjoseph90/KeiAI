@@ -33,7 +33,7 @@ export async function executeFileReadNode({
     throwIfAborted(signal);
 
     if (pathResult.status !== 'value') {
-        output.emit(pathResult);
+        output.emit(0, pathResult);
         return;
     }
 
@@ -41,14 +41,13 @@ export async function executeFileReadNode({
     const file = await FileService.getByPath(node.namespace, target.namespaceId, path);
     if (!file) throw new AppError('NOT_FOUND', `File not found: ${node.namespace}:${path}`);
 
-    output.emit(createWorkflowValueEvent(file.content));
+    output.emit(0, createWorkflowValueEvent(file.content));
 }
 
 export async function executeFileWriteNode({
     node,
     inputs,
     ctx,
-    output,
     signal
 }: WorkflowNodeExecutionContext<FileWriteNode>): Promise<void> {
     throwIfAborted(signal);
@@ -59,20 +58,13 @@ export async function executeFileWriteNode({
     ]);
     throwIfAborted(signal);
 
-    if (pathResult.status !== 'value') {
-        output.emit(pathResult);
-        return;
-    }
-    if (contentResult.status !== 'value') {
-        output.emit(contentResult);
-        return;
-    }
+    if (pathResult.status !== 'value') return;
+    if (contentResult.status !== 'value') return;
 
     const path = workflowValueToString(pathResult.value);
     const content = workflowValueToString(contentResult.value);
     await FileService.upsert(node.namespace, target.namespaceId, path, content, target.scopeType);
     throwIfAborted(signal);
-    output.emit(createWorkflowValueEvent(content));
 }
 
 async function resolvePathResult(input: WorkflowInput | undefined): Promise<WorkflowNodeEvent> {

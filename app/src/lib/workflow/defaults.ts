@@ -31,8 +31,8 @@ export function createDefaultChatWorkflow(
         memoryRatio: options.memoryRatio ?? 0.2,
         lorebookScanDepth: options.lorebookScanDepth ?? 5,
         slotNames: {},
-        inputs: {},
-        inputValues: {}
+        inputs: { stream: null },
+        inputValues: { stream: true }
     };
 
     return {
@@ -81,8 +81,8 @@ export function createDefaultTranslationWorkflow(): WorkflowDefinition {
         memoryRatio: 0.2,
         lorebookScanDepth: 5,
         slotNames: {},
-        inputs: {},
-        inputValues: {}
+        inputs: { stream: null },
+        inputValues: { stream: true }
     };
 
     return {

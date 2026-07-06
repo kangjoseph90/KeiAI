@@ -4,14 +4,27 @@ import {
     executeBooleanLogicNode,
     executeBooleanNode,
     executeBooleanNotNode,
+    executeCatchNode,
     executeConcatNode,
     executeGateNode,
+    executeGetChatVarNode,
+    executeGetGlobalVarNode,
+    executeGetToggleNode,
     executeNumberCompareNode,
     executeNumberMathNode,
     executeNumberNode,
+    executeSetChatVarNode,
+    executeSetGlobalVarNode,
+    executeSetToggleNode,
     executeStringIncludesNode,
     executeStringLengthNode,
+    executeStringRegexReplaceNode,
+    executeStringReplaceNode,
     executeStringNode,
+    executeTemplateNode,
+    executeThrowNode,
+    executeToBooleanNode,
+    executeToNumberNode,
     executeUngateNode
 } from './operator/execute';
 import { AppError } from '$lib/types/errors';
@@ -32,9 +45,22 @@ const WORKFLOW_NODE_EXECUTORS = {
     String: executeStringNode,
     Number: executeNumberNode,
     Boolean: executeBooleanNode,
+    Template: executeTemplateNode,
+    GetToggle: executeGetToggleNode,
+    SetToggle: executeSetToggleNode,
+    GetGlobalVar: executeGetGlobalVarNode,
+    SetGlobalVar: executeSetGlobalVarNode,
+    GetChatVar: executeGetChatVarNode,
+    SetChatVar: executeSetChatVarNode,
+    ToBoolean: executeToBooleanNode,
+    ToNumber: executeToNumberNode,
+    Catch: executeCatchNode,
+    Throw: executeThrowNode,
     Concat: executeConcatNode,
     StringLength: executeStringLengthNode,
     StringIncludes: executeStringIncludesNode,
+    StringReplace: executeStringReplaceNode,
+    StringRegexReplace: executeStringRegexReplaceNode,
     NumberMath: executeNumberMathNode,
     NumberCompare: executeNumberCompareNode,
     BooleanLogic: executeBooleanLogicNode,
@@ -54,7 +80,7 @@ export function executeWorkflowNode(context: WorkflowNodeExecutionContext): void
 async function executeOutputNode({
     node,
     inputs,
-    output,
+    emitRuntimeOutput,
     signal
 }: WorkflowNodeExecutionContext<OutputNode>): Promise<void> {
     throwIfAborted(signal);
@@ -65,12 +91,12 @@ async function executeOutputNode({
 
     // Passthrough: stream every intermediate value.
     input.subscribe((value) => {
-        output.emit(createWorkflowValueEvent(workflowValueToString(value)));
+        emitRuntimeOutput(createWorkflowValueEvent(workflowValueToString(value)));
     });
 
     const result = await input.done;
     throwIfAborted(signal);
     if (result.status !== 'value') {
-        output.emit(result);
+        emitRuntimeOutput(result);
     }
 }

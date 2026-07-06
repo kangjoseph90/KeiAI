@@ -1,6 +1,6 @@
 import { AppError } from '$lib/types/errors';
 import { executeWorkflowNode } from './executors';
-import { getWorkflowOutputNodeId, validateWorkflow } from './validation';
+import { validateWorkflow } from './validation';
 import type {
     InputPort,
     WorkflowDefinition,
@@ -15,7 +15,8 @@ import {
     coerceWorkflowValue,
     createWorkflowErrorEvent,
     createWorkflowSkipEvent,
-    createWorkflowValueEvent
+    createWorkflowValueEvent,
+    inferWorkflowValueType
 } from './util';
 import {
     canConnectWorkflowPortTypes,
@@ -35,9 +36,14 @@ export interface WorkflowRuntimeOptions {
 
 interface NodeRuntime {
     finished: boolean;
+    terminal?: WorkflowNodeEvent;
+    ports: Map<number, PortRuntime>;
+    done: Promise<void>;
+}
+
+interface PortRuntime {
     latest: WorkflowNodeEvent;
     subscribers: Set<(value: WorkflowValue) => void>;
-    done: Promise<WorkflowNodeEvent>;
 }
 
 export class WorkflowRuntime {
@@ -47,6 +53,10 @@ export class WorkflowRuntime {
     readonly #messages: PagedMessages | undefined;
     readonly #signal: AbortSignal;
     readonly #runtimes = new Map<string, NodeRuntime>();
+    readonly #runtimeOutputSubscribers = new Set<(event: WorkflowNodeEvent) => void>();
+    #latestRuntimeOutput: WorkflowNodeEvent = createWorkflowSkipEvent(
+        'Workflow produced no output'
+    );
 
     constructor(workflow: WorkflowDefinition, options: WorkflowRuntimeOptions = {}) {
         validateWorkflow(workflow);
@@ -59,46 +69,57 @@ export class WorkflowRuntime {
 
     /** Runs every node and yields Output's string stream, settling after every path completes. */
     async *run(): AsyncGenerator<string> {
-        const outputNodeId = getWorkflowOutputNodeId(this.#workflow);
-        const outputRuntime = this.#getOrCreateRuntime(outputNodeId);
-
-        // Eagerly start every node (current policy: disconnected side-effects run too).
-        const runs = Object.keys(this.#workflow.nodes).map(
-            (nodeId) => this.#getOrCreateRuntime(nodeId).done
+        const nodeIds = Object.keys(this.#workflow.nodes);
+        const outputNodeIds = nodeIds.filter(
+            (nodeId) => this.#workflow.nodes[nodeId]?.class === 'Output'
         );
 
-        // Bridge: subscriber-based queue. Values are consumed and GC'd after yield.
+        // subscriber-based queue. Values are consumed and GC'd after yield.
         const queue: string[] = [];
-        if (outputRuntime.latest.status === 'value') {
-            queue.push(String(outputRuntime.latest.value));
-        }
-
         let resolveNext: (() => void) | null = null;
-        const valueSubscriber = (value: WorkflowValue) => {
-            queue.push(String(value));
+        const outputSubscriber = (event: WorkflowNodeEvent) => {
+            if (event.status === 'value') {
+                queue.push(String(event.value));
+                resolveNext?.();
+            }
+        };
+        this.#runtimeOutputSubscribers.add(outputSubscriber);
+
+        // Track active outputs using a simple counter.
+        let activeOutputsCount = outputNodeIds.length;
+        const onOutputSettled = () => {
+            activeOutputsCount -= 1;
             resolveNext?.();
         };
-        outputRuntime.subscribers.add(valueSubscriber);
+        // Eagerly start every node - disconnected side-effects run too.
+        const runs = nodeIds.map((nodeId) => ({
+            nodeId,
+            done: this.#getOrCreateRuntime(nodeId).done
+        }));
+        const outputRuns = runs
+            .filter(({ nodeId }) => this.#workflow.nodes[nodeId]?.class === 'Output')
+            .map(({ done }) => done);
+        for (const done of outputRuns) {
+            void done.then(onOutputSettled, onOutputSettled);
+        }
 
         try {
-            while (queue.length > 0 || !outputRuntime.finished) {
+            while (queue.length > 0 || activeOutputsCount > 0) {
                 if (queue.length > 0) {
                     yield queue.shift()!;
                 } else {
                     await new Promise<void>((resolve) => {
                         resolveNext = resolve;
-                        void outputRuntime.done.then(() => resolveNext?.());
                     });
                     resolveNext = null;
                 }
             }
         } finally {
-            outputRuntime.subscribers.delete(valueSubscriber);
+            this.#runtimeOutputSubscribers.delete(outputSubscriber);
         }
 
-        await Promise.all(runs);
-        const outputResult = await outputRuntime.done;
-        if (outputResult.status === 'error') throw outputResult.error;
+        await Promise.all(runs.map(({ done }) => done));
+        if (this.#latestRuntimeOutput.status === 'error') throw this.#latestRuntimeOutput.error;
     }
 
     #getOrCreateRuntime(nodeId: string): NodeRuntime {
@@ -107,9 +128,8 @@ export class WorkflowRuntime {
 
         const runtime: NodeRuntime = {
             finished: false,
-            latest: createWorkflowSkipEvent('Input produced no output'),
-            subscribers: new Set(),
-            done: Promise.resolve(createWorkflowSkipEvent('Input produced no output'))
+            ports: new Map(),
+            done: Promise.resolve()
         };
         this.#runtimes.set(nodeId, runtime);
 
@@ -119,19 +139,20 @@ export class WorkflowRuntime {
         return runtime;
     }
 
-    async #runNode(nodeId: string, runtime: NodeRuntime): Promise<WorkflowNodeEvent> {
+    async #runNode(nodeId: string, runtime: NodeRuntime): Promise<void> {
         const node = this.#workflow.nodes[nodeId];
         if (!node) {
             throw new AppError('NOT_FOUND', `Workflow node not found: ${nodeId}`);
         }
 
-        const output = this.#createOutput(runtime);
+        const output = this.#createOutput(node, runtime);
         try {
             const inputs = this.#resolveInputs(node);
             await executeWorkflowNode({
                 node,
                 inputs,
                 output,
+                emitRuntimeOutput: (event) => this.#emitRuntimeOutput(event),
                 ctx: this.#ctx,
                 localMacros: this.#localMacros,
                 messages: this.#messages,
@@ -139,25 +160,60 @@ export class WorkflowRuntime {
             });
         } catch (error) {
             if (!runtime.finished) {
-                this.#finish(runtime, createWorkflowErrorEvent(node, error));
+                const event = createWorkflowErrorEvent(node, error);
+                this.#finish(runtime, event);
+                if (node.class === 'Output') this.#emitRuntimeOutput(event);
             }
-            return runtime.latest;
+            return;
         }
 
         // Auto-complete: if executor returned without a terminal emit, finalize with latest.
         if (!runtime.finished) {
-            this.#finish(runtime, runtime.latest);
+            this.#finish(runtime);
         }
-        return runtime.latest;
     }
 
-    #createOutput(runtime: NodeRuntime): WorkflowOutput {
+    #createOutput(node: WorkflowNode, runtime: NodeRuntime): WorkflowOutput {
         return {
-            emit: (event: WorkflowNodeEvent) => {
+            emit: (port: number, event: WorkflowNodeEvent) => {
                 if (runtime.finished) return;
-                runtime.latest = event;
+                const definition = getWorkflowOutputPortDefinition(node, port);
+                if (!definition) {
+                    this.#finish(
+                        runtime,
+                        createWorkflowErrorEvent(
+                            node,
+                            new AppError(
+                                'INVALID_INPUT',
+                                `Workflow output port not found: ${node.id}.${port}`
+                            )
+                        )
+                    );
+                    return;
+                }
+                if (
+                    event.status === 'value' &&
+                    !canConnectWorkflowPortTypes(
+                        definition.type,
+                        inferWorkflowValueType(event.value)
+                    )
+                ) {
+                    this.#finish(
+                        runtime,
+                        createWorkflowErrorEvent(
+                            node,
+                            new AppError(
+                                'INVALID_INPUT',
+                                `Workflow output port type mismatch: ${node.id}.${port} expected ${definition.type}`
+                            )
+                        )
+                    );
+                    return;
+                }
+                const portRuntime = this.#getOrCreatePortRuntime(runtime, port);
+                portRuntime.latest = event;
                 if (event.status === 'value') {
-                    for (const sub of runtime.subscribers) sub(event.value);
+                    for (const sub of portRuntime.subscribers) sub(event.value);
                 } else {
                     this.#finish(runtime, event);
                 }
@@ -165,10 +221,33 @@ export class WorkflowRuntime {
         };
     }
 
-    #finish(runtime: NodeRuntime, event: WorkflowNodeEvent): void {
+    #finish(runtime: NodeRuntime, event?: WorkflowNodeEvent): void {
         if (runtime.finished) return;
         runtime.finished = true;
-        runtime.latest = event;
+        if (event) {
+            runtime.terminal = event;
+            for (const port of runtime.ports.values()) {
+                port.latest = event;
+            }
+        }
+    }
+
+    #getOrCreatePortRuntime(runtime: NodeRuntime, port: number): PortRuntime {
+        const existing = runtime.ports.get(port);
+        if (existing) return existing;
+        const created: PortRuntime = {
+            latest: runtime.terminal ?? createWorkflowSkipEvent('Input produced no output'),
+            subscribers: new Set()
+        };
+        runtime.ports.set(port, created);
+        return created;
+    }
+
+    #emitRuntimeOutput(event: WorkflowNodeEvent): void {
+        this.#latestRuntimeOutput = event;
+        for (const subscriber of this.#runtimeOutputSubscribers) {
+            subscriber(event);
+        }
     }
 
     #resolveInputs(node: WorkflowNode): Record<string, WorkflowInput> {
@@ -217,17 +296,18 @@ export class WorkflowRuntime {
         }
 
         const upstream = this.#getOrCreateRuntime(connection.sourceNode);
+        const upstreamPort = this.#getOrCreatePortRuntime(upstream, connection.sourcePort);
         return {
             subscribe: (onValue) => {
-                upstream.subscribers.add((value) => {
+                upstreamPort.subscribers.add((value) => {
                     onValue(coerceWorkflowValue(value, targetType));
                 });
                 // Late subscription: deliver latest if upstream already pushed a value.
-                if (upstream.latest.status === 'value') {
-                    onValue(coerceWorkflowValue(upstream.latest.value, targetType));
+                if (upstreamPort.latest.status === 'value') {
+                    onValue(coerceWorkflowValue(upstreamPort.latest.value, targetType));
                 }
             },
-            done: upstream.done.then((event) => coerceEvent(event, targetType))
+            done: upstream.done.then(() => coerceEvent(upstreamPort.latest, targetType))
         };
     }
 }

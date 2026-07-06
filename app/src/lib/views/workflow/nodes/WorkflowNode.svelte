@@ -31,8 +31,9 @@
         Plus,
         TriangleAlert
     } from 'lucide-svelte';
-    import { WORKFLOW_NODE_DEFINITIONS } from '$lib/workflow';
+    import { WORKFLOW_NODE_DEFINITIONS, getWorkflowInputPortDefinition } from '$lib/workflow';
     import type { LLMType } from '$lib/types/models/llm';
+    import type { WorkflowNodeCategory } from '$lib/workflow';
     import WorkflowInputRow from './WorkflowInputRow.svelte';
 
     type AgentNumberField =
@@ -42,12 +43,48 @@
         | 'memoryRatio'
         | 'lorebookScanDepth';
 
+    const CATEGORY_STYLES = {
+        agent: {
+            node: 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300',
+            handle: '!bg-violet-500'
+        },
+        string: {
+            node: 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+            handle: '!bg-sky-500'
+        },
+        number: {
+            node: 'border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300',
+            handle: '!bg-blue-500'
+        },
+        boolean: {
+            node: 'border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300',
+            handle: '!bg-cyan-500'
+        },
+        variable: {
+            node: 'border-orange-500/40 bg-orange-500/10 text-orange-700 dark:text-orange-300',
+            handle: '!bg-orange-500'
+        },
+        flow: {
+            node: 'border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300',
+            handle: '!bg-fuchsia-500'
+        },
+        file: {
+            node: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+            handle: '!bg-amber-500'
+        },
+        result: {
+            node: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+            handle: '!bg-emerald-500'
+        }
+    } satisfies Record<WorkflowNodeCategory, { node: string; handle: string }>;
+
     let { id, data, selected }: NodeProps<WorkflowCanvasNode> = $props();
     const updateNodeInternals = useUpdateNodeInternals();
 
     const definition = $derived(WORKFLOW_NODE_DEFINITIONS[data.node.class]);
     const inputEntries = $derived(Object.entries(data.node.inputs));
     const outputEntries = $derived(Object.entries(definition.outputs));
+    const categoryStyle = $derived(CATEGORY_STYLES[definition.category]);
 
     $effect(() => {
         Object.keys(data.node.inputs);
@@ -64,36 +101,6 @@
             data.onUpdateNode(data.node.id, { [field]: parsed } as WorkflowNodeChanges);
         }
     }
-
-    function categoryClasses() {
-        switch (definition.category) {
-            case 'agent':
-                return 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300';
-            case 'operator':
-                return 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300';
-            case 'flow':
-                return 'border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300';
-            case 'file':
-                return 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300';
-            case 'output':
-                return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
-        }
-    }
-
-    function handleClasses() {
-        switch (definition.category) {
-            case 'agent':
-                return '!bg-violet-500';
-            case 'operator':
-                return '!bg-sky-500';
-            case 'flow':
-                return '!bg-fuchsia-500';
-            case 'file':
-                return '!bg-amber-500';
-            case 'output':
-                return '!bg-emerald-500';
-        }
-    }
 </script>
 
 <div
@@ -102,29 +109,27 @@
         : 'border-border/80'} {data.hasIssue ? 'ring-2 ring-destructive/30' : ''}"
 >
     <div
-        class="workflow-node-drag-handle flex cursor-grab items-center gap-2 rounded-t-xl border-b px-3 py-2 active:cursor-grabbing {categoryClasses()}"
+        class="workflow-node-drag-handle flex cursor-grab items-center gap-2 rounded-t-xl border-b px-3 py-2 active:cursor-grabbing {categoryStyle.node}"
     >
         <div class="flex size-7 shrink-0 items-center justify-center rounded-md bg-background/70">
             {#if data.node.class === 'Agent'}
                 <Bot class="size-4" />
             {:else if data.node.class === 'String'}
                 <Braces class="size-4" />
-            {:else if data.node.class === 'Number'}
+            {:else if definition.category === 'number'}
                 <Hash class="size-4" />
-            {:else if data.node.class === 'Boolean'}
+            {:else if definition.category === 'boolean'}
                 <CircleDot class="size-4" />
-            {:else if data.node.class === 'Concat' || data.node.class === 'StringLength' || data.node.class === 'StringIncludes'}
+            {:else if definition.category === 'string'}
                 <GitMerge class="size-4" />
-            {:else if data.node.class === 'NumberMath' || data.node.class === 'NumberCompare'}
-                <Hash class="size-4" />
-            {:else if data.node.class === 'BooleanLogic' || data.node.class === 'BooleanNot'}
-                <CircleDot class="size-4" />
-            {:else if data.node.class === 'Gate' || data.node.class === 'Ungate'}
+            {:else if definition.category === 'flow'}
                 <GitBranch class="size-4" />
             {:else if data.node.class === 'FileRead'}
                 <FileInput class="size-4" />
             {:else if data.node.class === 'FileWrite'}
                 <FileOutput class="size-4" />
+            {:else if definition.category === 'variable'}
+                <Braces class="size-4" />
             {:else}
                 <CheckCircle2 class="size-4" />
             {/if}
@@ -337,10 +342,6 @@
                     <option value="chat">chat</option>
                 </select>
             </label>
-        {:else if data.node.class === 'Output'}
-            <p class="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-                Publishes the workflow's final string result.
-            </p>
         {/if}
 
         {#if inputEntries.length > 0}
@@ -349,7 +350,7 @@
                     Inputs
                 </p>
                 {#each inputEntries as [inputId, connection] (inputId)}
-                    {@const port = definition.inputs[inputId]}
+                    {@const port = getWorkflowInputPortDefinition(data.node, inputId)}
                     {@const hasLiteral = inputId in data.node.inputValues}
                     <WorkflowInputRow
                         node={data.node}
@@ -388,10 +389,18 @@
                             type="source"
                             id={outputId}
                             position={Position.Right}
-                            class="!right-0 !size-3 !border-2 !border-card {handleClasses()}"
+                            class="!right-0 !size-3 !border-2 !border-card {categoryStyle.handle}"
                         />
                     </div>
                 {/each}
+            </div>
+        {:else}
+            <div class="border-t pt-2">
+                <p class="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                    {definition.category === 'result'
+                        ? "Publishes the workflow's final string result."
+                        : 'Runs for its side effect and has no data output ports.'}
+                </p>
             </div>
         {/if}
     </div>

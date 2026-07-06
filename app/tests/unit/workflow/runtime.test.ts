@@ -296,10 +296,12 @@ describe('WorkflowRuntime', () => {
                     class: 'Ungate',
                     position: { x: 0, y: 0 },
                     inputs: {
-                        condition: { sourceNode: 'gate', sourcePort: 0 }
+                        gate: { sourceNode: 'gate', sourcePort: 0 },
+                        fallback: null
                     },
                     inputValues: {
-                        condition: false
+                        gate: '',
+                        fallback: 'false'
                     }
                 },
                 output: {
@@ -626,7 +628,7 @@ describe('WorkflowRuntime', () => {
         expect(() => new WorkflowRuntime(workflow)).toThrow('Workflow node not found: missing');
     });
 
-    it('rejects workflows without exactly one output', () => {
+    it('allows workflows with zero or multiple Output sinks', async () => {
         const noOutput: WorkflowDefinition = {
             nodes: {
                 source: {
@@ -674,12 +676,11 @@ describe('WorkflowRuntime', () => {
             }
         };
 
-        expect(() => new WorkflowRuntime(noOutput)).toThrow(
-            'Workflow must have exactly one Output node, found 0'
-        );
-        expect(() => new WorkflowRuntime(twoOutputs)).toThrow(
-            'Workflow must have exactly one Output node, found 2'
-        );
+        await expect(collectFinal(new WorkflowRuntime(noOutput).run())).resolves.toBe('');
+        await expect(collectEvents(new WorkflowRuntime(twoOutputs).run())).resolves.toEqual([
+            'text',
+            'text'
+        ]);
     });
 
     it('rejects an Output node without content', async () => {
@@ -766,8 +767,11 @@ describe('WorkflowRuntime', () => {
                     name: 'Ungate',
                     class: 'Ungate',
                     position: { x: 0, y: 0 },
-                    inputs: { condition: { sourceNode: 'gate', sourcePort: 0 } },
-                    inputValues: { condition: false }
+                    inputs: {
+                        gate: { sourceNode: 'gate', sourcePort: 0 },
+                        fallback: null
+                    },
+                    inputValues: { gate: '', fallback: 'false' }
                 },
                 output: {
                     id: 'output',

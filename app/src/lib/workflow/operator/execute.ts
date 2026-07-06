@@ -1,28 +1,56 @@
+import { getChatVariable, setChatVariable } from '$lib/managers/chat';
+import { getGlobalVariable, setGlobalVariable } from '$lib/managers/preset';
+import { runTemplate, createDryRunMacros, mergeLocalMacros } from '$lib/template';
 import { AppError } from '$lib/types/errors';
 import type {
     BooleanLogicNode,
     BooleanNode,
     BooleanNotNode,
+    CatchNode,
     GateNode,
+    GetChatVarNode,
+    GetGlobalVarNode,
+    GetToggleNode,
     NumberCompareNode,
     NumberMathNode,
     NumberNode,
+    SetChatVarNode,
+    SetGlobalVarNode,
+    SetToggleNode,
     StringConcatNode,
     StringIncludesNode,
     StringLengthNode,
     StringNode,
+    StringRegexReplaceNode,
+    StringReplaceNode,
+    TemplateNode,
+    ThrowNode,
+    ToBooleanNode,
+    ToNumberNode,
     UngateNode,
-    WorkflowInput,
-    WorkflowNodeExecutionContext,
-    WorkflowValue
+    WorkflowNodeExecutionContext
 } from '../types';
 import {
+    createWorkflowErrorEvent,
     createWorkflowSkipEvent,
     createWorkflowValueEvent,
     requireInput,
     throwIfAborted,
     workflowValueToString
 } from '../util';
+import {
+    applyCompare,
+    applyLogic,
+    applyMath,
+    asBoolean,
+    asNumber,
+    executeStreamNode,
+    parseBoolean,
+    parseNumber,
+    requireNameAndContent,
+    requireStringInput,
+    requireWorkflowInput
+} from './utils';
 
 export async function executeStringNode({
     node,
@@ -30,7 +58,7 @@ export async function executeStringNode({
     signal
 }: WorkflowNodeExecutionContext<StringNode>): Promise<void> {
     throwIfAborted(signal);
-    output.emit(createWorkflowValueEvent(node.content));
+    output.emit(0, createWorkflowValueEvent(node.content));
 }
 
 export async function executeNumberNode({
@@ -39,7 +67,7 @@ export async function executeNumberNode({
     signal
 }: WorkflowNodeExecutionContext<NumberNode>): Promise<void> {
     throwIfAborted(signal);
-    output.emit(createWorkflowValueEvent(node.value));
+    output.emit(0, createWorkflowValueEvent(node.value));
 }
 
 export async function executeBooleanNode({
@@ -48,7 +76,171 @@ export async function executeBooleanNode({
     signal
 }: WorkflowNodeExecutionContext<BooleanNode>): Promise<void> {
     throwIfAborted(signal);
-    output.emit(createWorkflowValueEvent(node.value));
+    output.emit(0, createWorkflowValueEvent(node.value));
+}
+
+export async function executeTemplateNode({
+    inputs,
+    output,
+    ctx,
+    localMacros,
+    signal
+}: WorkflowNodeExecutionContext<TemplateNode>): Promise<void> {
+    if (!ctx) throw new AppError('INVALID_INPUT', 'Template node requires runtime context');
+    const dryRunMacros = mergeLocalMacros(localMacros, createDryRunMacros());
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['content'],
+        read: workflowValueToString,
+        compute: async ({ content }) => runTemplate(content, ctx, dryRunMacros)
+    });
+}
+
+export async function executeGetToggleNode({
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<GetToggleNode>): Promise<void> {
+    const name = await requireStringInput(inputs.name, 'Variable name input is required', signal);
+    const value = await getGlobalVariable(`toggle_${name}`);
+    output.emit(0, createWorkflowValueEvent(value ?? 'null'));
+}
+
+export async function executeSetToggleNode({
+    inputs,
+    signal
+}: WorkflowNodeExecutionContext<SetToggleNode>): Promise<void> {
+    const { name, content } = await requireNameAndContent(inputs, signal);
+    await setGlobalVariable(`toggle_${name}`, content);
+}
+
+export async function executeGetGlobalVarNode({
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<GetGlobalVarNode>): Promise<void> {
+    const name = await requireStringInput(inputs.name, 'Variable name input is required', signal);
+    const value = await getGlobalVariable(name);
+    output.emit(0, createWorkflowValueEvent(value ?? 'null'));
+}
+
+export async function executeSetGlobalVarNode({
+    inputs,
+    signal
+}: WorkflowNodeExecutionContext<SetGlobalVarNode>): Promise<void> {
+    const { name, content } = await requireNameAndContent(inputs, signal);
+    await setGlobalVariable(name, content);
+}
+
+export async function executeGetChatVarNode({
+    inputs,
+    output,
+    ctx,
+    signal
+}: WorkflowNodeExecutionContext<GetChatVarNode>): Promise<void> {
+    if (!ctx?.chatId) throw new AppError('INVALID_INPUT', 'GetChatVar requires ctx.chatId');
+    const name = await requireStringInput(inputs.name, 'GetChatVar name input is required', signal);
+    output.emit(0, createWorkflowValueEvent((await getChatVariable(ctx.chatId, name)) ?? ''));
+}
+
+export async function executeSetChatVarNode({
+    inputs,
+    ctx,
+    signal
+}: WorkflowNodeExecutionContext<SetChatVarNode>): Promise<void> {
+    if (!ctx?.chatId) throw new AppError('INVALID_INPUT', 'SetChatVar requires ctx.chatId');
+    const { name, content } = await requireNameAndContent(inputs, signal);
+    await setChatVariable(ctx.chatId, name, content);
+}
+
+export async function executeToBooleanNode({
+    node,
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<ToBooleanNode>): Promise<void> {
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['content'],
+        read: workflowValueToString,
+        compute: ({ content }) => parseBoolean(content, node.id)
+    });
+}
+
+export async function executeToNumberNode({
+    node,
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<ToNumberNode>): Promise<void> {
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['content'],
+        read: workflowValueToString,
+        compute: ({ content }) => parseNumber(content, node.id)
+    });
+}
+
+export async function executeCatchNode({
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<CatchNode>): Promise<void> {
+    const tryInput = requireWorkflowInput(inputs.try, 'Catch try input is required');
+    const tryResult = await tryInput.done;
+    throwIfAborted(signal);
+
+    if (tryResult.status === 'error') {
+        const fallback = await requireInput(inputs.fallback, 'Catch fallback input is required');
+        throwIfAborted(signal);
+        if (fallback.status !== 'value') {
+            output.emit(0, fallback);
+            return;
+        }
+        output.emit(0, createWorkflowValueEvent(workflowValueToString(fallback.value)));
+        output.emit(1, createWorkflowValueEvent(true));
+        return;
+    }
+
+    if (tryResult.status !== 'value') {
+        output.emit(0, tryResult);
+        return;
+    }
+    output.emit(0, createWorkflowValueEvent(workflowValueToString(tryResult.value)));
+    output.emit(1, createWorkflowValueEvent(false));
+}
+
+export async function executeThrowNode({
+    node,
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<ThrowNode>): Promise<void> {
+    const result = await requireInput(inputs.condition, 'Throw condition input is required');
+    throwIfAborted(signal);
+    if (result.status !== 'value') {
+        output.emit(0, result);
+        return;
+    }
+    const condition = asBoolean(result.value);
+    if (condition) {
+        // Error/skip events are terminal for the whole node; the port number is only API shape.
+        output.emit(
+            0,
+            createWorkflowErrorEvent(
+                node,
+                new AppError('INVALID_INPUT', `Throw condition was true: ${node.id}`)
+            )
+        );
+        return;
+    }
+    output.emit(0, createWorkflowValueEvent(false));
 }
 
 export async function executeConcatNode({
@@ -56,34 +248,14 @@ export async function executeConcatNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<StringConcatNode>): Promise<void> {
-    const latest = { a: '', b: '', separator: '' };
-    const emit = () =>
-        output.emit(createWorkflowValueEvent([latest.a, latest.b].join(latest.separator)));
-
-    inputs.a?.subscribe((v) => {
-        latest.a = String(v);
-        emit();
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['a', 'b', 'separator'],
+        read: workflowValueToString,
+        compute: ({ a, b, separator }) => [a, b].join(separator)
     });
-    inputs.b?.subscribe((v) => {
-        latest.b = String(v);
-        emit();
-    });
-    inputs.separator?.subscribe((v) => {
-        latest.separator = String(v);
-        emit();
-    });
-
-    const [aResult, bResult, sepResult] = await Promise.all([
-        requireInput(inputs.a, 'Input A is required'),
-        requireInput(inputs.b, 'Input B is required'),
-        requireInput(inputs.separator, 'Separator is required')
-    ]);
-    throwIfAborted(signal);
-
-    const terminal = [aResult, bResult, sepResult].find((r) => r.status !== 'value');
-    if (terminal) {
-        output.emit(terminal);
-    }
 }
 
 export async function executeStringLengthNode({
@@ -91,13 +263,14 @@ export async function executeStringLengthNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<StringLengthNode>): Promise<void> {
-    const result = await requireInput(inputs.value, 'StringLength value input is required');
-    throwIfAborted(signal);
-    if (result.status !== 'value') {
-        output.emit(result);
-        return;
-    }
-    output.emit(createWorkflowValueEvent(workflowValueToString(result.value).length));
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['value'],
+        read: workflowValueToString,
+        compute: ({ value }) => value.length
+    });
 }
 
 export async function executeStringIncludesNode({
@@ -106,23 +279,51 @@ export async function executeStringIncludesNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<StringIncludesNode>): Promise<void> {
-    const [textResult, searchResult] = await Promise.all([
-        requireInput(inputs.text, 'StringIncludes text input is required'),
-        requireInput(inputs.search, 'StringIncludes search input is required')
-    ]);
-    throwIfAborted(signal);
-    if (textResult.status !== 'value') return output.emit(textResult);
-    if (searchResult.status !== 'value') return output.emit(searchResult);
-
-    const text = workflowValueToString(textResult.value);
-    const search = workflowValueToString(searchResult.value);
-    output.emit(
-        createWorkflowValueEvent(
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['text', 'search'],
+        read: workflowValueToString,
+        compute: ({ text, search }) =>
             node.caseSensitive
                 ? text.includes(search)
                 : text.toLowerCase().includes(search.toLowerCase())
-        )
-    );
+    });
+}
+
+export async function executeStringReplaceNode({
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<StringReplaceNode>): Promise<void> {
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['text', 'search', 'replace'],
+        read: workflowValueToString,
+        compute: ({ text, search, replace }) => (search ? text.split(search).join(replace) : text)
+    });
+}
+
+export async function executeStringRegexReplaceNode({
+    node,
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<StringRegexReplaceNode>): Promise<void> {
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['text', 'regex', 'replace'],
+        read: workflowValueToString,
+        compute: ({ text, regex, replace }) => {
+            if (!regex) return text;
+            return text.replace(new RegExp(regex, node.flags), replace);
+        }
+    });
 }
 
 export async function executeNumberMathNode({
@@ -131,19 +332,14 @@ export async function executeNumberMathNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<NumberMathNode>): Promise<void> {
-    const [aResult, bResult] = await Promise.all([
-        requireInput(inputs.a, 'NumberMath a input is required'),
-        requireInput(inputs.b, 'NumberMath b input is required')
-    ]);
-    throwIfAborted(signal);
-    if (aResult.status !== 'value') return output.emit(aResult);
-    if (bResult.status !== 'value') return output.emit(bResult);
-
-    output.emit(
-        createWorkflowValueEvent(
-            applyMath(node.operator, asNumber(aResult.value), asNumber(bResult.value), node.id)
-        )
-    );
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['a', 'b'],
+        read: asNumber,
+        compute: ({ a, b }) => applyMath(node.operator, a, b, node.id)
+    });
 }
 
 export async function executeNumberCompareNode({
@@ -152,19 +348,14 @@ export async function executeNumberCompareNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<NumberCompareNode>): Promise<void> {
-    const [aResult, bResult] = await Promise.all([
-        requireInput(inputs.a, 'NumberCompare a input is required'),
-        requireInput(inputs.b, 'NumberCompare b input is required')
-    ]);
-    throwIfAborted(signal);
-    if (aResult.status !== 'value') return output.emit(aResult);
-    if (bResult.status !== 'value') return output.emit(bResult);
-
-    output.emit(
-        createWorkflowValueEvent(
-            applyCompare(node.operator, asNumber(aResult.value), asNumber(bResult.value))
-        )
-    );
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['a', 'b'],
+        read: asNumber,
+        compute: ({ a, b }) => applyCompare(node.operator, a, b)
+    });
 }
 
 export async function executeBooleanLogicNode({
@@ -173,19 +364,14 @@ export async function executeBooleanLogicNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<BooleanLogicNode>): Promise<void> {
-    const [aResult, bResult] = await Promise.all([
-        requireInput(inputs.a, 'BooleanLogic a input is required'),
-        requireInput(inputs.b, 'BooleanLogic b input is required')
-    ]);
-    throwIfAborted(signal);
-    if (aResult.status !== 'value') return output.emit(aResult);
-    if (bResult.status !== 'value') return output.emit(bResult);
-
-    output.emit(
-        createWorkflowValueEvent(
-            applyLogic(node.operator, asBoolean(aResult.value), asBoolean(bResult.value))
-        )
-    );
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['a', 'b'],
+        read: asBoolean,
+        compute: ({ a, b }) => applyLogic(node.operator, a, b)
+    });
 }
 
 export async function executeBooleanNotNode({
@@ -193,13 +379,14 @@ export async function executeBooleanNotNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<BooleanNotNode>): Promise<void> {
-    const result = await requireInput(inputs.value, 'BooleanNot value input is required');
-    throwIfAborted(signal);
-    if (result.status !== 'value') {
-        output.emit(result);
-        return;
-    }
-    output.emit(createWorkflowValueEvent(!asBoolean(result.value)));
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['value'],
+        read: asBoolean,
+        compute: ({ value }) => !value
+    });
 }
 
 export async function executeGateNode({
@@ -207,17 +394,17 @@ export async function executeGateNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<GateNode>): Promise<void> {
+    const result = await requireInput(inputs.condition, 'Gate condition input is required');
     throwIfAborted(signal);
-    const result = await requireInput(inputs.condition, 'Boolean condition input is required');
     if (result.status !== 'value') {
-        output.emit(result);
+        output.emit(0, result);
         return;
     }
     if (!asBoolean(result.value)) {
-        output.emit(createWorkflowSkipEvent('Gate condition was false'));
+        output.emit(0, createWorkflowSkipEvent('Gate condition was false'));
         return;
     }
-    output.emit(createWorkflowValueEvent(true));
+    output.emit(0, createWorkflowValueEvent(true));
 }
 
 export async function executeUngateNode({
@@ -225,84 +412,25 @@ export async function executeUngateNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<UngateNode>): Promise<void> {
+    const gate = await requireInput(inputs.gate, 'Ungate gate input is required');
     throwIfAborted(signal);
-    const result = await requireInput(inputs.condition, 'Boolean condition input is required');
-    if (result.status === 'error') {
-        output.emit(result);
+
+    if (gate.status === 'error') {
+        output.emit(0, gate);
         return;
     }
-    if (result.status === 'skip') {
-        output.emit(createWorkflowValueEvent(false));
+    if (gate.status === 'skip') {
+        const fallback = await requireInput(inputs.fallback, 'Ungate fallback input is required');
+        throwIfAborted(signal);
+        if (fallback.status !== 'value') {
+            output.emit(0, fallback);
+            return;
+        }
+        output.emit(0, createWorkflowValueEvent(workflowValueToString(fallback.value)));
+        output.emit(1, createWorkflowValueEvent(true));
         return;
     }
-    output.emit(createWorkflowValueEvent(asBoolean(result.value)));
-}
 
-function applyMath(
-    operator: NumberMathNode['operator'],
-    a: number,
-    b: number,
-    nodeId: string
-): number {
-    switch (operator) {
-        case 'add':
-            return a + b;
-        case 'subtract':
-            return a - b;
-        case 'multiply':
-            return a * b;
-        case 'divide':
-            if (b === 0) {
-                throw new AppError('INVALID_INPUT', `Cannot divide by zero: ${nodeId}`);
-            }
-            return a / b;
-    }
-}
-
-function applyCompare(operator: NumberCompareNode['operator'], a: number, b: number): boolean {
-    switch (operator) {
-        case 'equal':
-            return a === b;
-        case 'notEqual':
-            return a !== b;
-        case 'greaterThan':
-            return a > b;
-        case 'greaterThanOrEqual':
-            return a >= b;
-        case 'lessThan':
-            return a < b;
-        case 'lessThanOrEqual':
-            return a <= b;
-    }
-}
-
-function applyLogic(operator: BooleanLogicNode['operator'], a: boolean, b: boolean): boolean {
-    switch (operator) {
-        case 'and':
-            return a && b;
-        case 'or':
-            return a || b;
-        case 'xor':
-            return a !== b;
-        case 'nand':
-            return !(a && b);
-        case 'nor':
-            return !(a || b);
-        case 'xnor':
-            return a === b;
-    }
-}
-
-function asNumber(value: WorkflowValue): number {
-    if (typeof value !== 'number') {
-        throw new AppError('INVALID_INPUT', `Expected number workflow value, got ${typeof value}`);
-    }
-    return value;
-}
-
-function asBoolean(value: WorkflowValue): boolean {
-    if (typeof value !== 'boolean') {
-        throw new AppError('INVALID_INPUT', `Expected boolean workflow value, got ${typeof value}`);
-    }
-    return value;
+    output.emit(0, createWorkflowValueEvent(workflowValueToString(gate.value)));
+    output.emit(1, createWorkflowValueEvent(false));
 }

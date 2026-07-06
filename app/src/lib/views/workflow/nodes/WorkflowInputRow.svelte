@@ -30,6 +30,25 @@
         onDeleteSlot
     }: Props = $props();
 
+    function isAgentSlot(): boolean {
+        return node.class === 'Agent' && inputId in node.slotNames;
+    }
+
+    function agentSlotName(): string {
+        if (node.class !== 'Agent') return inputId;
+        return node.slotNames[inputId] ?? inputId;
+    }
+
+    function renameAgentSlot(name: string): void {
+        if (node.class !== 'Agent') return;
+        onRenameSlot(node.id, inputId, name);
+    }
+
+    function deleteAgentSlot(): void {
+        if (node.class !== 'Agent') return;
+        onDeleteSlot(node.id, inputId);
+    }
+
     function inputValueAsString(): string {
         return String(node.inputValues[inputId] ?? '');
     }
@@ -53,12 +72,12 @@
             ? '!bg-primary'
             : '!bg-muted-foreground'}"
     />
-    {#if node.class === 'Agent'}
+    {#if isAgentSlot()}
         <input
             class="nodrag w-20 shrink-0 bg-transparent text-xs text-muted-foreground outline-none"
-            value={node.slotNames[inputId]}
+            value={agentSlotName()}
             aria-label="Input name"
-            onchange={(event) => onRenameSlot(node.id, inputId, event.currentTarget.value)}
+            onchange={(event) => renameAgentSlot(event.currentTarget.value)}
         />
     {:else}
         <span class="w-16 shrink-0 truncate text-muted-foreground">
@@ -104,11 +123,11 @@
         </span>
     {/if}
 
-    {#if node.class === 'Agent'}
+    {#if isAgentSlot()}
         <button
             class="nodrag -mr-1 rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
             title="Delete input"
-            onclick={() => onDeleteSlot(node.id, inputId)}><X class="size-3" /></button
+            onclick={deleteAgentSlot}><X class="size-3" /></button
         >
     {/if}
 </div>

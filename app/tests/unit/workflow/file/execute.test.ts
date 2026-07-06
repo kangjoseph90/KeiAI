@@ -56,6 +56,7 @@ describe('workflow file executors', () => {
             inputs: { path: input('dynamic.txt') },
             ctx: { chatId: 'chat-1' },
             output,
+            emitRuntimeOutput: () => undefined,
             signal: new AbortController().signal
         });
 
@@ -82,10 +83,11 @@ describe('workflow file executors', () => {
             inputs: { path: input('result.txt'), content },
             ctx: { roomId: 'room-1' },
             output,
+            emitRuntimeOutput: () => undefined,
             signal: new AbortController().signal
         });
 
-        expect(events).toEqual([{ status: 'value', value: 'final content' }]);
+        expect(events).toEqual([]);
         expect(content.doneCount).toBe(1);
         expect(mocks.upsert).toHaveBeenCalledOnce();
         expect(mocks.upsert).toHaveBeenCalledWith(
@@ -118,7 +120,7 @@ function capture(): {
 } {
     const events: WorkflowNodeEvent[] = [];
     const output = {
-        emit: (event: WorkflowNodeEvent) => events.push(event)
+        emit: (_port: number, event: WorkflowNodeEvent) => events.push(event)
     };
     return { output, events };
 }

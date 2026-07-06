@@ -23,10 +23,22 @@ export type PromptBlock = PromptBlockFields & {
 };
 
 export type WorkflowNode =
+    | AgentNode
+    | BooleanLogicNode
     | FileReadNode
     | FileWriteNode
+    | TemplateNode
+    | GetToggleNode
+    | SetToggleNode
+    | GetGlobalVarNode
+    | SetGlobalVarNode
+    | GetChatVarNode
+    | SetChatVarNode
+    | ToBooleanNode
+    | ToNumberNode
+    | CatchNode
+    | ThrowNode
     | BooleanNode
-    | BooleanLogicNode
     | BooleanNotNode
     | GateNode
     | UngateNode
@@ -37,8 +49,9 @@ export type WorkflowNode =
     | StringConcatNode
     | StringIncludesNode
     | StringLengthNode
-    | StringNode
-    | AgentNode;
+    | StringReplaceNode
+    | StringRegexReplaceNode
+    | StringNode;
 
 export type WorkflowNodeClass = WorkflowNode['class'];
 
@@ -91,13 +104,14 @@ export interface WorkflowInput {
  * If the executor returns without emitting a terminal event, the runtime auto-completes.
  */
 export interface WorkflowOutput {
-    emit(event: WorkflowNodeEvent): void;
+    emit(port: number, event: WorkflowNodeEvent): void;
 }
 
 export interface WorkflowNodeExecutionContext<TNode extends WorkflowNode = WorkflowNode> {
     node: TNode;
     inputs: Record<string, WorkflowInput>;
     output: WorkflowOutput;
+    emitRuntimeOutput(event: WorkflowNodeEvent): void;
     ctx?: RuntimeContext;
     localMacros?: ReadonlyMap<string, Macro>;
     messages?: PagedMessages;
@@ -120,6 +134,50 @@ export interface OutputNode extends BaseNode {
     class: 'Output';
 }
 
+export interface TemplateNode extends BaseNode {
+    class: 'Template';
+}
+
+export interface GetToggleNode extends BaseNode {
+    class: 'GetToggle';
+}
+
+export interface SetToggleNode extends BaseNode {
+    class: 'SetToggle';
+}
+
+export interface GetGlobalVarNode extends BaseNode {
+    class: 'GetGlobalVar';
+}
+
+export interface SetGlobalVarNode extends BaseNode {
+    class: 'SetGlobalVar';
+}
+
+export interface GetChatVarNode extends BaseNode {
+    class: 'GetChatVar';
+}
+
+export interface SetChatVarNode extends BaseNode {
+    class: 'SetChatVar';
+}
+
+export interface ToBooleanNode extends BaseNode {
+    class: 'ToBoolean';
+}
+
+export interface ToNumberNode extends BaseNode {
+    class: 'ToNumber';
+}
+
+export interface CatchNode extends BaseNode {
+    class: 'Catch';
+}
+
+export interface ThrowNode extends BaseNode {
+    class: 'Throw';
+}
+
 export interface StringConcatNode extends BaseNode {
     class: 'Concat';
 }
@@ -131,6 +189,15 @@ export interface StringLengthNode extends BaseNode {
 export interface StringIncludesNode extends BaseNode {
     class: 'StringIncludes';
     caseSensitive: boolean;
+}
+
+export interface StringReplaceNode extends BaseNode {
+    class: 'StringReplace';
+}
+
+export interface StringRegexReplaceNode extends BaseNode {
+    class: 'StringRegexReplace';
+    flags: string;
 }
 
 export interface StringNode extends BaseNode {
