@@ -77,7 +77,8 @@ export async function executeAgentNode({
 
     for await (const state of handler.stream(prompt, signal, {
         parameters: parameters ?? {},
-        maxResponse: node.maxResponse
+        maxResponse: node.maxResponse,
+        stream: shouldStream
     })) {
         throwIfAborted(signal);
         latest = serializeStreamContent(state);

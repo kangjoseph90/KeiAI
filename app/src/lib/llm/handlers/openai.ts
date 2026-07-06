@@ -45,6 +45,22 @@ interface OpenAIDelta {
     }>;
 }
 
+interface OpenAICompletion {
+    choices?: Array<{
+        message?: {
+            content?: string | null;
+            reasoning_content?: string | null;
+            tool_calls?: Array<{
+                id?: string;
+                function?: {
+                    name?: string;
+                    arguments?: string;
+                };
+            }>;
+        };
+    }>;
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export class OpenAILLMStreamHandler implements LLMStreamHandler {
@@ -59,8 +75,32 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
         signal: AbortSignal,
         options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
-        const rawStream = this.rawStream(messages, signal, options);
+        const rawStream =
+            (options.stream ?? true)
+                ? this.rawStream(messages, signal, options)
+                : this.complete(messages, signal, options);
         yield* debounceStream(rawStream);
+    }
+
+    private async *complete(
+        messages: OpenAIChat[],
+        signal: AbortSignal,
+        options: LLMStreamOptions
+    ): AsyncIterable<LLMStreamContent> {
+        const response = await this.fetchCompletion(messages, signal, options);
+        const parsed = (await response.json()) as OpenAICompletion;
+        const message = parsed.choices?.[0]?.message;
+        const state: LLMStreamContent = {
+            content: message?.content ?? '',
+            thought: message?.reasoning_content ?? ''
+        };
+        const toolCalls = message?.tool_calls?.map((toolCall) => ({
+            callId: toolCall.id ?? '',
+            name: toolCall.function?.name ?? '',
+            args: this.parseToolCallArgs(toolCall.function?.arguments ?? '')
+        }));
+        if (toolCalls && toolCalls.length > 0) state.toolCalls = toolCalls;
+        yield state;
     }
 
     private async *rawStream(
@@ -68,7 +108,7 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
-        const response = await this.fetchStream(messages, signal, options);
+        const response = await this.fetchCompletion(messages, signal, { ...options, stream: true });
         const reader = response.body?.getReader();
         if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
@@ -159,7 +199,7 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
 
     // ─── Internals ──────────────────────────────────────────────────────────
 
-    private async fetchStream(
+    private async fetchCompletion(
         messages: OpenAIChat[],
         signal: AbortSignal,
         options: LLMStreamOptions
@@ -174,7 +214,7 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
             max_tokens: options.maxResponse ?? 4096,
             model: config.modelId,
             messages: messages.map((m) => ({ role: m.role, content: m.content })),
-            stream: true
+            stream: options.stream ?? true
         });
 
         const response = await appHttp.fetch(
@@ -220,15 +260,20 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
     ): ToolCallRequest[] {
         const calls: ToolCallRequest[] = [];
         for (const [, tc] of map) {
-            let parsedArgs: Record<string, unknown> = {};
-            try {
-                parsedArgs = JSON.parse(tc.args);
-            } catch {
-                // Args still streaming, keep raw string as partial
-                parsedArgs = { _raw: tc.args };
-            }
-            calls.push({ callId: tc.id, name: tc.name, args: parsedArgs });
+            calls.push({ callId: tc.id, name: tc.name, args: this.parseToolCallArgs(tc.args) });
         }
         return calls;
+    }
+
+    private parseToolCallArgs(args: string): Record<string, unknown> {
+        try {
+            const parsed = JSON.parse(args) as unknown;
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+                ? (parsed as Record<string, unknown>)
+                : { value: parsed };
+        } catch {
+            // Args may still be partial while streaming.
+            return { _raw: args };
+        }
     }
 }

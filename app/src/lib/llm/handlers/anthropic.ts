@@ -21,6 +21,13 @@ interface AnthropicMessage {
     content: string;
 }
 
+interface AnthropicCompletion {
+    content?: Array<{
+        type?: string;
+        text?: string;
+    }>;
+}
+
 export class AnthropicLLMStreamHandler implements LLMStreamHandler {
     private readonly config: RemoteLLMHandlerConfig;
 
@@ -33,8 +40,29 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
         signal: AbortSignal,
         options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
-        const rawStream = this.rawStream(messages, signal, options);
+        const rawStream =
+            (options.stream ?? true)
+                ? this.rawStream(messages, signal, options)
+                : this.complete(messages, signal, options);
         yield* debounceStream(rawStream);
+    }
+
+    private async *complete(
+        messages: OpenAIChat[],
+        signal: AbortSignal,
+        options: LLMStreamOptions
+    ): AsyncIterable<LLMStreamContent> {
+        const response = await this.fetchCompletion(messages, signal, {
+            ...options,
+            stream: false
+        });
+        const parsed = (await response.json()) as AnthropicCompletion;
+        const content =
+            parsed.content
+                ?.filter((block) => block.type === 'text' && block.text)
+                .map((block) => block.text)
+                .join('') ?? '';
+        yield { content, thought: '' };
     }
 
     private async *rawStream(
@@ -42,7 +70,7 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
-        const response = await this.fetchStream(messages, signal, options);
+        const response = await this.fetchCompletion(messages, signal, { ...options, stream: true });
         const reader = response.body?.getReader();
         if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
@@ -86,7 +114,7 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
         }
     }
 
-    private async fetchStream(
+    private async fetchCompletion(
         messages: OpenAIChat[],
         signal: AbortSignal,
         options: LLMStreamOptions
@@ -117,7 +145,7 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
                     model: config.modelId,
                     messages: anthropicMessages,
                     system: systemMessage,
-                    stream: true,
+                    stream: options.stream ?? true,
                     max_tokens: options.maxResponse ?? 4096,
                     temperature: parameters.temperature,
                     top_p: parameters.top_p,
