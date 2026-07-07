@@ -298,7 +298,6 @@
                         {:else if activeTab === 'greetings'}
                             <GreetingsTab
                                 character={$activeCharacter}
-                                isChatSynced={isChatSynced()}
                                 onCreate={handleCreateGreeting}
                                 onUpdate={handleUpdateGreeting}
                                 onDelete={handleDeleteGreeting}

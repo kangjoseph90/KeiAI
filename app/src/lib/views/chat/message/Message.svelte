@@ -298,11 +298,12 @@
     let detailsOpen = $state(true);
     let lastDisplayStatus = $state<string | undefined>(undefined);
 
-    // TODO: Make auto-expanding steps during streaming toggleable via app settings in the future.
     $effect(() => {
         const status = message.displayStatus;
-        if (status === 'generating') {
-            detailsOpen = true;
+        if (status === 'generating' && lastDisplayStatus !== 'generating') {
+            if ($appSettings?.chat?.expandStepsOnGeneration !== false) {
+                detailsOpen = true;
+            }
         } else if (status === 'completed' && lastDisplayStatus !== 'completed') {
             detailsOpen = false;
         }
@@ -314,11 +315,12 @@
     });
 
     let hasLoadedTranslation = false;
-    // TODO: Make auto-showing cached translation toggleable via app settings in the future.
     $effect(() => {
         if (cachedTranslation && !hasLoadedTranslation) {
-            showTranslation = true;
-            hasLoadedTranslation = true;
+            if ($appSettings?.translation?.autoShowTranslation) {
+                showTranslation = true;
+                hasLoadedTranslation = true;
+            }
         } else if (!cachedTranslation) {
             hasLoadedTranslation = false;
         }

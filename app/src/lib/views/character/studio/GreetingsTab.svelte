@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Plus, Zap, Trash2, ChevronDown, ChevronRight } from 'lucide-svelte';
+    import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { Textarea } from '$lib/components/ui/textarea';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
@@ -11,7 +11,6 @@
 
     interface Props {
         character: Character;
-        isChatSynced: boolean;
         onCreate: (fields: { content: string; sortOrder: string }) => string | Promise<string>;
         onUpdate: (
             id: string,
@@ -20,7 +19,7 @@
         onDelete: (id: string) => void | Promise<void>;
     }
 
-    let { character, isChatSynced, onCreate, onUpdate, onDelete }: Props = $props();
+    let { character, onCreate, onUpdate, onDelete }: Props = $props();
     let expanded = new SvelteSet<string>();
 
     function toggleExpand(id: string) {
@@ -59,19 +58,6 @@
             <Plus class="size-4" /> Add
         </Button>
     </ListActionBar>
-
-    {#if isChatSynced}
-        <div class="bg-primary/10 border border-primary/20 rounded-lg p-4 flex items-start gap-3">
-            <Zap class="size-5 text-primary shrink-0 mt-0.5" />
-            <div class="text-sm">
-                <p class="font-medium text-primary">Live Sync Active</p>
-                <p class="text-muted-foreground text-xs mt-0.5">
-                    This chat has not started yet. Editing greetings here will automatically update
-                    the first message of your current chat.
-                </p>
-            </div>
-        </div>
-    {/if}
 
     <SortableList entities={Object.values(character.greetings ?? {})} onReorder={handleReorder}>
         {#snippet empty()}

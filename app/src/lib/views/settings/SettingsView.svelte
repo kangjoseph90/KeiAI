@@ -6,7 +6,7 @@
         User,
         Shield,
         Cpu,
-        Palette,
+        Settings,
         RefreshCw,
         Puzzle,
         MessageSquare,
@@ -42,7 +42,7 @@
         { id: 'language', label: 'Language', icon: Languages },
         { id: 'profile', label: 'Profile', icon: User },
         { id: 'account', label: 'Account', icon: Shield },
-        { id: 'appearance', label: 'Appearance', icon: Palette }
+        { id: 'general', label: 'General', icon: Settings }
     ] as const;
 
     let hasSelectedTab = $derived(settingsTab !== undefined);
@@ -170,36 +170,99 @@
                         <ProfileSettings />
                     {:else if activeTab === 'account'}
                         <AccountSettings />
-                    {:else if activeTab === 'appearance'}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Appearance</CardTitle>
-                                <CardDescription
-                                    >Customize how KeiAI looks on your screen.</CardDescription
-                                >
-                            </CardHeader>
-                            <CardContent class="space-y-4">
-                                <div
-                                    class="flex items-center justify-between p-4 border rounded-lg"
-                                >
-                                    <div class="space-y-0.5">
-                                        <Label>Color Theme</Label>
-                                        <p class="text-xs text-muted-foreground">
-                                            Switch between light and dark mode.
-                                        </p>
-                                    </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        class="gap-1.5"
-                                        onclick={handleToggleTheme}
+                    {:else if activeTab === 'general'}
+                        <div class="space-y-6">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Appearance</CardTitle>
+                                    <CardDescription
+                                        >Customize how KeiAI looks on your screen.</CardDescription
                                     >
-                                        <RefreshCw class="size-4" />
-                                        Toggle {$appSettings?.theme === 'dark' ? 'Light' : 'Dark'} Mode
-                                    </Button>
-                                </div>
-                            </CardContent>
-                        </Card>
+                                </CardHeader>
+                                <CardContent class="space-y-4">
+                                    <div
+                                        class="flex items-center justify-between p-4 border rounded-lg"
+                                    >
+                                        <div class="space-y-0.5">
+                                            <Label>Color Theme</Label>
+                                            <p class="text-xs text-muted-foreground">
+                                                Switch between light and dark mode.
+                                            </p>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            class="gap-1.5"
+                                            onclick={handleToggleTheme}
+                                        >
+                                            <RefreshCw class="size-4" />
+                                            Toggle {$appSettings?.theme === 'dark'
+                                                ? 'Light'
+                                                : 'Dark'} Mode
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Chat Interface</CardTitle>
+                                    <CardDescription
+                                        >Configure chat interface behaviors.</CardDescription
+                                    >
+                                </CardHeader>
+                                <CardContent class="space-y-4">
+                                    <div
+                                        class="flex items-center justify-between gap-4 p-4 border rounded-lg"
+                                    >
+                                        <div class="space-y-0.5">
+                                            <Label>Save messages on swipe</Label>
+                                            <p class="text-xs text-muted-foreground">
+                                                Save message history when swiping between
+                                                alternative responses.
+                                            </p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            class="size-5 shrink-0 rounded border-primary"
+                                            checked={$appSettings?.chat?.saveMessagesOnSwipe !==
+                                                false}
+                                            onchange={(e) =>
+                                                updateSettings({
+                                                    chat: {
+                                                        saveMessagesOnSwipe: e.currentTarget.checked
+                                                    }
+                                                })}
+                                        />
+                                    </div>
+
+                                    <div
+                                        class="flex items-center justify-between gap-4 p-4 border rounded-lg"
+                                    >
+                                        <div class="space-y-0.5">
+                                            <Label>Expand trace steps during generation</Label>
+                                            <p class="text-xs text-muted-foreground">
+                                                Automatically expand reasoning steps when AI is
+                                                generating responses.
+                                            </p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            class="size-5 shrink-0 rounded border-primary"
+                                            checked={$appSettings?.chat?.expandStepsOnGeneration !==
+                                                false}
+                                            onchange={(e) =>
+                                                updateSettings({
+                                                    chat: {
+                                                        expandStepsOnGeneration:
+                                                            e.currentTarget.checked
+                                                    }
+                                                })}
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
                     {/if}
                 </div>
             </ScrollArea>

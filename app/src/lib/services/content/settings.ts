@@ -38,15 +38,13 @@ import type { WorkflowDefinition } from '$lib/workflow/types';
 export interface AppSettingsContent {
     theme: 'light' | 'dark' | 'system';
     chat: {
-        /**
-         * When true, rerolling a message preserves all previous swipes.
-         * When false, the previous content is discarded (destructive reroll).
-         */
         saveMessagesOnSwipe: boolean;
+        expandStepsOnGeneration: boolean;
     };
     translation: {
         targetLanguage: string;
         workflow: WorkflowDefinition;
+        autoShowTranslation: boolean;
     };
     openai: OpenAIProviderConfig;
     anthropic: AnthropicProviderConfig;
@@ -88,11 +86,13 @@ export interface AppSettings extends AppSettingsContent, AppSettingsRefs {}
 export const defaultSettings: AppSettings = {
     theme: 'system',
     chat: {
-        saveMessagesOnSwipe: true
+        saveMessagesOnSwipe: true,
+        expandStepsOnGeneration: true
     },
     translation: {
         targetLanguage: '',
-        workflow: { nodes: {} }
+        workflow: { nodes: {} },
+        autoShowTranslation: false
     },
     openai: {
         tts: {

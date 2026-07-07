@@ -329,6 +329,7 @@
                     bind:this={scrollContainerEl}
                     onscroll={handleScroll}
                     class="relative z-10 flex flex-1 flex-col-reverse gap-6 overflow-y-auto px-4 py-4 md:gap-4"
+                    style="scrollbar-gutter: stable;"
                 >
                     {#if $displayMessages.length === 0}
                         <!-- Empty State -->

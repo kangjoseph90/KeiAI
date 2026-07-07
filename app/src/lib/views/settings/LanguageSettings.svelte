@@ -60,6 +60,26 @@
                         })}
                 />
             </div>
+
+            <div class="flex items-center justify-between gap-4 rounded-md border p-4">
+                <div class="space-y-0.5">
+                    <Label>Auto-show Translation</Label>
+                    <p class="text-xs text-muted-foreground">
+                        Automatically show translations when a message has been translated.
+                    </p>
+                </div>
+                <input
+                    type="checkbox"
+                    class="size-5 shrink-0 rounded border-primary"
+                    checked={$appSettings?.translation?.autoShowTranslation === true}
+                    onchange={(e) =>
+                        updateSettings({
+                            translation: {
+                                autoShowTranslation: e.currentTarget.checked
+                            }
+                        })}
+                />
+            </div>
         </CardContent>
     </Card>
 
