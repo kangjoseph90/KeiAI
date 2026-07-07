@@ -168,14 +168,14 @@ describe('ChatManager', () => {
                     swipes: {
                         greet1: expect.objectContaining({
                             id: 'greet1',
-                            content: 'Hello',
+                            parts: [{ type: 'content', text: 'Hello' }],
                             speakerId: 'char-1',
                             speakerName: 'Alpha',
                             variables: { mood: 'calm', shared: 'beta', energy: 'high' }
                         }),
                         greet2: expect.objectContaining({
                             id: 'greet2',
-                            content: 'Yo',
+                            parts: [{ type: 'content', text: 'Yo' }],
                             speakerId: 'char-2',
                             speakerName: 'Beta'
                         })
@@ -233,7 +233,13 @@ describe('ChatManager', () => {
                 scopeId: 'user-1',
                 sortOrder: 'a0',
                 role: 'assistant',
-                swipes: { greet2: { id: 'greet2', content: 'Old', createdAt: 2 } },
+                swipes: {
+                    greet2: {
+                        id: 'greet2',
+                        parts: [{ type: 'content', text: 'Old' }],
+                        createdAt: 2
+                    }
+                },
                 activeSwipeId: 'greet2'
             } as Message;
 
@@ -247,8 +253,12 @@ describe('ChatManager', () => {
                 'msg-1',
                 expect.objectContaining({
                     swipes: expect.objectContaining({
-                        greet1: expect.objectContaining({ content: 'Hello' }),
-                        greet2: expect.objectContaining({ content: 'Yo' })
+                        greet1: expect.objectContaining({
+                            parts: [{ type: 'content', text: 'Hello' }]
+                        }),
+                        greet2: expect.objectContaining({
+                            parts: [{ type: 'content', text: 'Yo' }]
+                        })
                     }),
                     activeSwipeId: 'greet2'
                 })
@@ -298,7 +308,12 @@ describe('ChatManager', () => {
             sortOrder: 'b',
             role: 'assistant',
             swipes: {
-                s1: { id: 's1', content: '...', variables: { mood: 'tense' }, createdAt: 1 }
+                s1: {
+                    id: 's1',
+                    parts: [{ type: 'content', text: '...' }],
+                    variables: { mood: 'tense' },
+                    createdAt: 1
+                }
             },
             activeSwipeId: 's1'
         } as Message;
@@ -384,7 +399,9 @@ describe('ChatManager', () => {
             chatId: 'chat-1',
             sortOrder: 'b',
             role: 'assistant',
-            swipes: { s1: { id: 's1', content: 'Fork me', createdAt: 2000 } },
+            swipes: {
+                s1: { id: 's1', parts: [{ type: 'content', text: 'Fork me' }], createdAt: 2000 }
+            },
             activeSwipeId: 's1'
         };
         const mockPrevMessage = {
@@ -392,7 +409,9 @@ describe('ChatManager', () => {
             chatId: 'chat-1',
             sortOrder: 'a',
             role: 'user',
-            swipes: { s1: { id: 's1', content: 'Hello', createdAt: 1000 } },
+            swipes: {
+                s1: { id: 's1', parts: [{ type: 'content', text: 'Hello' }], createdAt: 1000 }
+            },
             activeSwipeId: 's1'
         };
         const mockLorebook = {

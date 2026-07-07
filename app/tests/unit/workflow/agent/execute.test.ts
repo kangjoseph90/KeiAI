@@ -126,7 +126,7 @@ describe('executeAgentNode', () => {
                     messages: {} as PagedMessages
                 }).run()
             )
-        ).resolves.toBe('<thought>\nthinking\n</thought>\n\nresult: Say hello');
+        ).resolves.toBe('<|thought|>thinking<|/thought|>result: Say hello');
 
         expect(receivedPrompt).toEqual([{ role: 'user', content: 'Say hello' }]);
         expect(mockResolveModelConfig).toHaveBeenCalledWith('chat', 'preset-1');

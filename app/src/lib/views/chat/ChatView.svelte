@@ -14,7 +14,7 @@
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
-    import Message from '$lib/components/Message.svelte';
+    import Message from './message/Message.svelte';
     import ChatRuntimePanel from './ChatRuntimePanel.svelte';
     import ChatBackground from './ChatBackground.svelte';
     import {
@@ -35,8 +35,12 @@
         dropOlderMessages,
         dropNewerMessages
     } from '$lib/stores';
-    import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
-    import { ToolCallService } from '$lib/services/content/tool';
+    import { runChat, stopChat, dismissChat } from '$lib/tasks';
+    import {
+        getLastContentText,
+        findLastContentIndex,
+        type AgentPart
+    } from '$lib/workflow/agent/llm';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate } from '$lib/template';
     import { navigate } from '$lib/router';
@@ -195,7 +199,7 @@
         });
 
         await prepareNextSwipe(message, {
-            content: processedText,
+            parts: [{ type: 'content', text: processedText }],
             variables,
             speakerId: selectedPersona.id,
             speakerName: selectedPersona.name,
@@ -210,12 +214,29 @@
 
     async function handleUpdateMessage(id: string) {
         if (!editMessageText.trim()) return;
-        // Find the message to update the content in the active swipe
         const msg = $displayMessages.find((m) => m.id === id);
         if (!msg) return;
 
+        const activeSwipe = msg.swipes[msg.activeSwipeId];
+        if (!activeSwipe) return;
+
+        const newParts = [...activeSwipe.parts];
+        const lastContentIdx = findLastContentIndex(newParts);
+
+        if (lastContentIdx >= 0) {
+            newParts[lastContentIdx] = {
+                ...newParts[lastContentIdx],
+                type: 'content',
+                text: editMessageText
+            };
+        } else {
+            newParts.push({ type: 'content', text: editMessageText });
+        }
+
         await updateMessage(id, {
-            swipes: { [msg.activeSwipeId]: { content: editMessageText } }
+            swipes: {
+                [msg.activeSwipeId]: { ...activeSwipe, parts: newParts }
+            }
         });
         editModeId = null;
     }
@@ -337,24 +358,15 @@
                                 personaId={defaultPersona?.id}
                                 onEdit={() => {
                                     editModeId = msg.id;
-                                    // Initialize edit text from the active swipe
                                     const activeSwipe = msg.swipes[msg.activeSwipeId];
-                                    editMessageText = activeSwipe?.content ?? '';
+                                    editMessageText = activeSwipe
+                                        ? getLastContentText(activeSwipe.parts)
+                                        : '';
                                 }}
                                 onSave={() => handleUpdateMessage(msg.id)}
                                 onDelete={() => deleteMessage($activeChat!.id, msg.id)}
                                 onCancelEdit={() => (editModeId = null)}
                                 onDismissError={() => dismissChat($activeChat!.id)}
-                                onResolveTool={(toolCallId, decision) =>
-                                    resolveToolCall(
-                                        $activeChat!.id,
-                                        selectedCharacter!.id,
-                                        selectedPersona!.id,
-                                        msg.id,
-                                        toolCallId,
-                                        decision
-                                    )}
-                                onLoadDetail={(toolCallId) => ToolCallService.get(toolCallId)}
                                 onRegenerate={() => handleRegenerate()}
                                 onSwipe={(newSwipeId) => handleSwipe(msg.id, newSwipeId)}
                                 onFork={() => handleFork(msg.id)}

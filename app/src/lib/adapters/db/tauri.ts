@@ -186,8 +186,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 `;
         sql += `CREATE INDEX IF NOT EXISTS "idx_tool_calls_chatId" ON tool_calls (chatId);
 `;
-        sql += `CREATE INDEX IF NOT EXISTS "idx_tool_calls_messageId" ON tool_calls (messageId);
-`;
         sql += `CREATE INDEX IF NOT EXISTS "idx_translations_chatId" ON translations (chatId);
 `;
         sql += `CREATE INDEX IF NOT EXISTS "idx_translations_messageId" ON translations (messageId);

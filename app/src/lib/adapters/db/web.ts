@@ -75,13 +75,10 @@ class DexieStore extends Dexie {
             plugins:
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
             tool_calls:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+messageId], chatId, messageId, updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], chatId, updatedAt, isDeleted',
             translations:
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+messageId], chatId, messageId, updatedAt, isDeleted',
-            charjs: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted'
-        });
-
-        this.version(2).stores({
+            charjs: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted',
             files: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted'
         });
     }

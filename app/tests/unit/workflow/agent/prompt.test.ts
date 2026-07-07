@@ -105,7 +105,7 @@ function makeMessage(
         swipes: {
             [swipeId]: {
                 id: swipeId,
-                content,
+                parts: [{ type: 'content', text: content }],
                 createdAt: 1,
                 speakerId: speaker?.id,
                 speakerName: speaker?.name

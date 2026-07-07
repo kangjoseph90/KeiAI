@@ -156,7 +156,6 @@ export type PresetRecord = DataRecord;
 
 export interface ToolCallRecord extends DataRecord {
     chatId: string;
-    messageId: string;
 }
 
 // ─── Translations ───────────────────────────────────────────────────

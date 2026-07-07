@@ -24,7 +24,7 @@ function makeMessage(index: number): Message {
         swipes: {
             [swipeId]: {
                 id: swipeId,
-                content: `message ${index}`,
+                parts: [{ type: 'content', text: `message ${index}` }],
                 createdAt: index
             }
         }

@@ -2,6 +2,7 @@ import type { Lorebook, PagedMessages } from '$lib/services';
 import { runTemplate, createDryRunMacros, mergeLocalMacros } from '$lib/template';
 import type { Macro } from '$lib/template';
 import type { RuntimeContext } from '$lib/types/context';
+import { getLastContentText } from './llm';
 import { toMessageContext } from './context';
 
 export interface ResolveLorebookInput {
@@ -86,8 +87,10 @@ async function buildScanHistory(input: ResolveLorebookInput): Promise<string[]> 
         messages.map(({ message, index }) => {
             const activeSwipe = message.swipes[message.activeSwipeId];
             if (!activeSwipe) return '';
+            // TODO: Consider tool_call/thought parts for lorebook key matching
+            // once scan-source options are exposed.
             return runTemplate(
-                activeSwipe.content,
+                getLastContentText(activeSwipe.parts),
                 toMessageContext(message, index, input.ctx),
                 dryRunMacros
             );

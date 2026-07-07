@@ -141,7 +141,7 @@ describe('template', () => {
                 return {
                     activeSwipeId: 'swipe-1',
                     swipes: {
-                        'swipe-1': { content: 'Hello there' }
+                        'swipe-1': { parts: [{ type: 'content', text: 'Hello there' }] }
                     }
                 };
             }
@@ -150,7 +150,7 @@ describe('template', () => {
                 return {
                     activeSwipeId: 'swipe-1',
                     swipes: {
-                        'swipe-1': { content: 'See you' }
+                        'swipe-1': { parts: [{ type: 'content', text: 'See you' }] }
                     }
                 };
             }

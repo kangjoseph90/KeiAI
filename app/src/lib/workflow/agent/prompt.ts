@@ -16,6 +16,7 @@ import { TokenCounter } from '$lib/llm/tokenizer';
 import { AppError } from '$lib/types/errors';
 import type { Message } from '$lib/services/content/message';
 import { resolveLorebookEntries } from './lorebook';
+import { getLastContentText } from './llm';
 import { toMessageContext, toRoleContext } from './context';
 import { compareSortOrder } from '$lib/utils/ordering';
 import type { RuntimeContext } from '$lib/types/context';
@@ -388,8 +389,10 @@ async function renderHistoryMessage(
     const messageCtx = toMessageContext(message, messageIndex, ctx);
     const templateMacros = mergeLocalMacros(localMacros, createDryRunMacros());
 
+    // TODO: Plumb tool_call/thought parts into history reconstruction once history
+    // blocks expose options (include tool results, all content vs last content only).
     const templated = await renderWithFormat(
-        activeSwipe.content,
+        getLastContentText(activeSwipe.parts),
         format,
         messageCtx,
         activeSwipe.speakerName,

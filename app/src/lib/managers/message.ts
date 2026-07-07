@@ -1,9 +1,10 @@
 import { AppError } from '$lib/types/errors';
 import { createMessageSwipe, deleteMessageSwipe, getMessage, updateMessage } from '$lib/stores';
 import type { Message } from '$lib/services';
+import type { AgentPart } from '$lib/workflow/agent/llm';
 
 export interface PrepareNextSwipeInput {
-    content: string;
+    parts: AgentPart[];
     variables: Record<string, string>;
     speakerId?: string;
     speakerName?: string;
@@ -25,7 +26,7 @@ export async function prepareNextSwipe(
     }
 
     const created = await createMessageSwipe(current.id, {
-        content: input.content,
+        parts: input.parts,
         variables: input.variables,
         speakerId: input.speakerId,
         speakerName: input.speakerName

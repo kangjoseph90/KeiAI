@@ -1,4 +1,4 @@
-export { runChat, stopChat, dismissChat, resolveToolCall } from './chat';
+export { runChat, stopChat, dismissChat } from './chat';
 export type { RunChatOptions } from './chat';
 export {
     createTranslationSourceHash,

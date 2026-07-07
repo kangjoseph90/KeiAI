@@ -282,7 +282,7 @@ describe('Chat Pipeline', () => {
                 swipes: {
                     'swipe-new': {
                         id: 'swipe-new',
-                        content: '',
+                        parts: [],
                         createdAt: Date.now(),
                         variables: {},
                         speakerId: 'char-1',
@@ -297,7 +297,7 @@ describe('Chat Pipeline', () => {
             swipes: {
                 'swipe-new': {
                     id: 'swipe-new',
-                    content: 'Hello world',
+                    parts: [{ type: 'content', text: 'Hello world' }],
                     createdAt: Date.now(),
                     variables: {}
                 }
@@ -331,7 +331,7 @@ describe('Chat Pipeline', () => {
                     swipes: {
                         'swipe-new': {
                             id: 'swipe-new',
-                            content: 'Hello world',
+                            parts: [{ type: 'content', text: 'Hello world' }],
                             createdAt: Date.now(),
                             variables: {}
                         }
@@ -355,7 +355,7 @@ describe('Chat Pipeline', () => {
         expect(prepareNextSwipe).toHaveBeenCalledWith(
             expect.objectContaining({ id: 'msg-new' }),
             expect.objectContaining({
-                content: '',
+                parts: [],
                 variables: {},
                 speakerId: 'char-1',
                 speakerName: 'Char 1',
@@ -476,7 +476,7 @@ describe('Chat Pipeline', () => {
         // getMessage returns swipe with empty content for empty check
         vi.mocked(getMessage).mockResolvedValue({
             ...mockNewMessage,
-            swipes: { 'swipe-new': { id: 'swipe-new', content: '', createdAt: Date.now() } },
+            swipes: { 'swipe-new': { id: 'swipe-new', parts: [], createdAt: Date.now() } },
             activeSwipeId: 'swipe-new'
         } as unknown as import('$lib/services').Message);
         vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
@@ -541,7 +541,7 @@ describe('Chat Pipeline', () => {
             swipes: {
                 'swipe-new': {
                     id: 'swipe-new',
-                    content: 'Old content',
+                    parts: [{ type: 'content', text: 'Old content' }],
                     createdAt: 1000
                 }
             },
@@ -590,7 +590,7 @@ describe('Chat Pipeline', () => {
                         ...mockExistingMessage.swipes,
                         'swipe-new': {
                             id: 'swipe-new',
-                            content: 'New content',
+                            parts: [{ type: 'content', text: 'New content' }],
                             createdAt: Date.now()
                         }
                     },
@@ -604,7 +604,7 @@ describe('Chat Pipeline', () => {
             expect(prepareNextSwipe).toHaveBeenCalledWith(
                 expect.objectContaining({ id: targetMessageId }),
                 expect.objectContaining({
-                    content: '',
+                    parts: [],
                     variables: {},
                     speakerId: 'char-1',
                     speakerName: 'Char 1',
@@ -635,7 +635,7 @@ describe('Chat Pipeline', () => {
                 swipes: {
                     'swipe-new': {
                         id: 'swipe-new',
-                        content: 'Replacement',
+                        parts: [{ type: 'content', text: 'Replacement' }],
                         createdAt: Date.now()
                     }
                 },
@@ -648,7 +648,7 @@ describe('Chat Pipeline', () => {
             expect(prepareNextSwipe).toHaveBeenCalledWith(
                 expect.objectContaining({ id: targetMessageId }),
                 expect.objectContaining({
-                    content: '',
+                    parts: [],
                     variables: {},
                     speakerId: 'char-1',
                     speakerName: 'Char 1',

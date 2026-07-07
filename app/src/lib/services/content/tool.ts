@@ -8,13 +8,6 @@ import { buffer } from './record_buffer';
 
 export type ToolCallStatus = 'pending' | 'success' | 'rejected' | 'error';
 
-// Lightweight tool call info stored on a message swipe.
-export interface ToolCallInfo {
-    id: string; // internal tool callid
-    name: string; // tool name
-    status: ToolCallStatus;
-}
-
 export type ToolCallRequest = {
     callId: string; // Call Id given by LLM provider
     name: string;
@@ -39,7 +32,6 @@ export interface ToolCallFields {
 export interface ToolCall extends ToolCallFields {
     id: string; // internal id
     chatId: string;
-    messageId: string;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────
@@ -62,25 +54,6 @@ function parseFields(record: ToolCallRecord): ToolCallFields {
 // ─── Service ──────────────────────────────────────────────────────────
 
 export class ToolCallService {
-    /** List tool calls for a specific message */
-    static async listByMessage(messageId: string): Promise<ToolCall[]> {
-        await buffer.flushTable('tool_calls');
-        const records = await localDB.getByIndex<ToolCallRecord>(
-            'tool_calls',
-            'messageId',
-            messageId,
-            Number.MAX_SAFE_INTEGER
-        );
-        return records
-            .filter((record) => canAccessScope(record))
-            .map((record) => ({
-                ...parseFields(record),
-                id: record.id,
-                chatId: record.chatId,
-                messageId: record.messageId
-            }));
-    }
-
     static async get(id: string): Promise<ToolCall | null> {
         const record = await buffer.get<ToolCallRecord>('tool_calls', id);
         if (!record || record.isDeleted || !canAccessScope(record)) return null;
@@ -88,14 +61,12 @@ export class ToolCallService {
         return {
             ...parseFields(record),
             id: record.id,
-            chatId: record.chatId,
-            messageId: record.messageId
+            chatId: record.chatId
         };
     }
 
     static async create(
         chatId: string,
-        messageId: string,
         fields: DeepPartial<ToolCallFields> = {},
         scopeType: DataScopeType = 'user'
     ): Promise<ToolCall> {
@@ -111,7 +82,6 @@ export class ToolCallService {
                 scopeType: scope.scopeType,
                 scopeId: scope.scopeId,
                 chatId,
-                messageId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
@@ -123,7 +93,7 @@ export class ToolCallService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create tool call', error);
         }
 
-        return { ...resolved, id, chatId, messageId };
+        return { ...resolved, id, chatId };
     }
 
     static async update(id: string, changes: DeepPartial<ToolCallFields>): Promise<ToolCall> {
@@ -145,8 +115,7 @@ export class ToolCallService {
             return {
                 ...updated,
                 id: record.id,
-                chatId: record.chatId,
-                messageId: record.messageId
+                chatId: record.chatId
             };
         } catch (error) {
             if (error instanceof AppError) throw error;

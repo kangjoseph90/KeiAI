@@ -49,7 +49,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
                         swipes: {
                             [`swipe-${i}`]: {
                                 id: `swipe-${i}`,
-                                content,
+                                parts: [{ type: 'content', text: content }],
                                 variables: {},
                                 createdAt: 1
                             }

@@ -1,5 +1,6 @@
 import { MessageService, LorebookService } from '$lib/services';
 import { compareSortOrder } from '$lib/utils/ordering';
+import type { AgentPart } from '$lib/workflow/agent/llm';
 import {
     createChat,
     createChatLorebook,
@@ -45,17 +46,20 @@ export async function syncChatGreetings(chatId: string): Promise<void> {
             if (!character) return [];
             return Object.values(character.greetings)
                 .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder))
-                .map((greeting) => [
-                    greeting.id,
-                    {
-                        id: greeting.id,
-                        content: greeting.content,
-                        createdAt: baseTime + swipeIndex++,
-                        variables,
-                        speakerId: character.id,
-                        speakerName: character.name
-                    }
-                ]);
+                .map((greeting) => {
+                    const parts: AgentPart[] = [{ type: 'content', text: greeting.content }];
+                    return [
+                        greeting.id,
+                        {
+                            id: greeting.id,
+                            parts,
+                            createdAt: baseTime + swipeIndex++,
+                            variables,
+                            speakerId: character.id,
+                            speakerName: character.name
+                        }
+                    ];
+                });
         })
     );
     const greetingIds = Object.keys(greetingSwipes);

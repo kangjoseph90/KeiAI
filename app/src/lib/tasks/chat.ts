@@ -15,7 +15,6 @@ import {
     clearChatTask
 } from '$lib/stores/tasks/chat';
 import { getChat, getCharacter, getAppSettings, getPersona, getPreset, getRoom } from '$lib/stores';
-import { ToolCallService } from '$lib/services/content/tool';
 import { PagedMessages } from '$lib/services/content/paged_messages';
 import {
     getMessage,
@@ -27,6 +26,12 @@ import { getChatVariablesBefore, prepareNextSwipe } from '$lib/managers';
 import { runPipeline } from '$lib/pipeline';
 import { runTemplate } from '$lib/template';
 import { toMessageContext } from '$lib/workflow/agent/context';
+import {
+    deserializeAgentParts,
+    findLastContentIndex,
+    getLastContentText,
+    type AgentPart
+} from '$lib/workflow/agent/llm';
 import { WorkflowRuntime } from '$lib/workflow';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
@@ -98,7 +103,7 @@ export async function runChat(
         const { swipeId: targetSwipeId, message: preparedMessage } = await prepareNextSwipe(
             targetMessage,
             {
-                content: '',
+                parts: [],
                 variables,
                 speakerId: character.id,
                 speakerName: character.name,
@@ -122,22 +127,27 @@ export async function runChat(
             signal: controller.signal
         });
 
-        let finalContent = '';
-        for await (finalContent of runtime.run()) {
-            await updateMessageSwipe(preparedMessage.id, targetSwipeId, {
-                content: finalContent
-            });
+        let finalParts: AgentPart[] = [];
+        for await (const output of runtime.run()) {
+            finalParts = deserializeAgentParts(output);
+            await updateMessageSwipe(preparedMessage.id, targetSwipeId, { parts: finalParts });
         }
 
-        if (finalContent.length > 0) {
+        if (getLastContentText(finalParts).length > 0) {
             const outputCtx = toMessageContext(preparedMessage, messages.length, ctx);
-            const templated = await runTemplate(finalContent, outputCtx);
-            const piped = await runPipeline(chatId, 'output', templated, outputCtx);
-            const processedContent = await runTemplate(piped, outputCtx);
-
-            await updateMessageSwipe(preparedMessage.id, targetSwipeId, {
-                content: processedContent
-            });
+            const lastContentIdx = findLastContentIndex(finalParts);
+            if (lastContentIdx >= 0) {
+                const lastContent = finalParts[lastContentIdx];
+                if (lastContent.type === 'content') {
+                    const templated = await runTemplate(lastContent.text, outputCtx);
+                    const piped = await runPipeline(chatId, 'output', templated, outputCtx);
+                    const processed = await runTemplate(piped, outputCtx);
+                    finalParts[lastContentIdx] = { type: 'content', text: processed };
+                    await updateMessageSwipe(preparedMessage.id, targetSwipeId, {
+                        parts: finalParts
+                    });
+                }
+            }
         }
 
         const finalMsg = await getMessage(preparedMessage.id);
@@ -146,7 +156,7 @@ export async function runChat(
             return;
         }
         const finalSwipe = finalMsg.swipes[targetSwipeId];
-        if (!finalSwipe || finalSwipe.content.length === 0) {
+        if (!finalSwipe || getLastContentText(finalSwipe.parts).length === 0) {
             setChatTaskError(chatId, 'Empty response from model');
             return;
         }
@@ -163,41 +173,6 @@ export async function runChat(
         logger.error(`Chat ${chatId} failed: ${errMsg}`);
         setChatTaskError(chatId, errMsg);
     }
-}
-
-export async function resolveToolCall(
-    chatId: string,
-    characterId: string,
-    personaId: string,
-    messageId: string,
-    toolCallId: string,
-    decision: 'approve' | 'reject'
-): Promise<void> {
-    const isApprove = decision === 'approve';
-
-    await ToolCallService.update(toolCallId, {
-        status: isApprove ? 'success' : 'rejected',
-        response: {
-            content: [
-                {
-                    type: 'text',
-                    text: isApprove ? 'Execution result (Mock)' : 'Execution rejected by user'
-                }
-            ],
-            isError: !isApprove
-        }
-    });
-
-    const message = await getMessage(messageId);
-    if (!message) return;
-
-    const toolCalls = await ToolCallService.listByMessage(messageId);
-    const hasOtherPending = toolCalls.some(
-        (toolCall) => toolCall.id !== toolCallId && toolCall.status === 'pending'
-    );
-
-    if (hasOtherPending) return;
-    await runChat(chatId, characterId, personaId);
 }
 
 export function stopChat(chatId: string): void {

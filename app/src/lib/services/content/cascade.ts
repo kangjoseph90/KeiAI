@@ -53,7 +53,6 @@ export const PARENT_CHILD: readonly ParentChildRelation[] = [
     // presets → scripts
     { parent: 'presets', child: 'scripts', fk: 'ownerId' },
     // messages → message-level tables
-    { parent: 'messages', child: 'tool_calls', fk: 'messageId' },
     { parent: 'messages', child: 'translations', fk: 'messageId' }
 ] as const;
 

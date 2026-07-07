@@ -13,11 +13,12 @@ import {
     type CascadeResult
 } from './cascade';
 import type { LLMRole } from '$lib/types/models/llm';
+import type { AgentPart } from '$lib/workflow/agent/llm';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface MessageSwipeFields {
-    content: string;
+    parts: AgentPart[];
     variables?: Record<string, string>;
     speakerId?: string; // personaId if role is 'user', characterId if role is 'assistant'
     speakerName?: string;

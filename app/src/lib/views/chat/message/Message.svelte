@@ -21,17 +21,23 @@
         RefreshCw,
         Languages
     } from 'lucide-svelte';
-    import { onDestroy, onMount } from 'svelte';
-    import AssetView from './AssetView.svelte';
-    import type { AssetReadLocator } from '$lib/services/asset';
-    import type { ToolCall } from '$lib/services/content/tool';
+    import { onDestroy } from 'svelte';
+    import AssetView from '$lib/components/AssetView.svelte';
+    import { AssetService, type AssetReadLocator } from '$lib/services/asset';
     import { runPipeline } from '$lib/pipeline';
-    import { runTemplate, createDryRunMacros } from '$lib/template';
-    import { parseMarkdownAsync } from '$lib/markdown';
-    import morphdom from 'morphdom';
-    import type { Action } from 'svelte/action';
-    import { hydrateAssets } from '$lib/components/hydrate';
+    import { runTemplate } from '$lib/template';
+    import { createDisplayMacros, type RawAssetUrlCache } from '$lib/template/display';
     import { SvelteMap } from 'svelte/reactivity';
+    import { scopeCss, stripStyleTags } from '$lib/utils/style';
+    import {
+        getLastContentText,
+        findLastContentIndex,
+        type AgentPart
+    } from '$lib/workflow/agent/llm';
+    import ContentPart from './ContentPart.svelte';
+    import ThoughtPart from './ThoughtPart.svelte';
+    import ToolCallPart from './ToolCallPart.svelte';
+    import TraceTimeline from './TraceTimeline.svelte';
     import {
         activeRoom,
         appSettings,
@@ -50,15 +56,6 @@
         stopTranslation
     } from '$lib/tasks';
     import { getErrorMessage } from '$lib/types/errors';
-    import { createDisplayMacros, type RawAssetUrlCache } from '$lib/template/display';
-    import {
-        scopeCss,
-        stripStyleTags,
-        protectHtmlStyles,
-        restoreHtmlStyles,
-        sanitizeWithStyle
-    } from '$lib/utils/style';
-    import { AssetService } from '$lib/services/asset';
     import type { RuntimeContext } from '$lib/types/context';
 
     // ── Props ─────────────────────────────────────────────────────────────────
@@ -76,8 +73,6 @@
         onCancelEdit = () => {},
         onDelete = () => {},
         onDismissError = () => {},
-        onResolveTool = () => {},
-        onLoadDetail = async (_id: string) => null,
         onRegenerate = () => {},
         onSwipe = (_id: string) => {},
         onFork = () => {},
@@ -95,8 +90,6 @@
         onCancelEdit?: () => void;
         onDelete?: () => void;
         onDismissError?: () => void;
-        onResolveTool?: (id: string, decision: 'approve' | 'reject') => void;
-        onLoadDetail?: (id: string) => Promise<ToolCall | null>;
         onRegenerate?: () => void;
         onSwipe?: (id: string) => void;
         onFork?: () => void;
@@ -108,20 +101,12 @@
     let copied = $state(false);
     let translationSourceHash = $state('');
     let translationActionError = $state('');
-
-    // Render pipeline internals
-    let displayContent = $state('');
-    let lastContent = '';
-    let renderedHtml = $state('');
+    let showTranslation = $state(false);
     let messageStyleHtml = $state('');
-    let lastStatus: string | undefined;
-    let lastDisplayCharacterId: string | undefined;
-    let lastDisplayPersonaId: string | undefined;
-    let lastMessageIndex: number | undefined;
-    let lastMessageScope: string | undefined;
-    let lastMessageCssSource = '';
+    let messageStyleSignature = '';
+    let messageStyleVersion = 0;
 
-    const rawAssetUrlCache: RawAssetUrlCache = new SvelteMap();
+    const cssRawAssetUrlCache: RawAssetUrlCache = new SvelteMap();
 
     // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -129,7 +114,7 @@
 
     /** The swipe that is currently active for this message. */
     let activeSwipe = $derived(message.swipes[message.activeSwipeId]);
-    let currentContent = $derived(activeSwipe?.content ?? '');
+    let currentContent = $derived(activeSwipe ? getLastContentText(activeSwipe.parts) : '');
     let translationTask = $derived($translationTasks.get(message.id));
     let matchingTranslationTask = $derived(
         translationTask?.sourceHash === translationSourceHash ? translationTask : undefined
@@ -140,6 +125,7 @@
             ?.find((translation) => translation.sourceHash === translationSourceHash) ?? null
     );
     let translatedContent = $derived(cachedTranslation?.text ?? '');
+    let visibleContent = $derived(translatedContent || currentContent);
     let translationError = $derived(
         matchingTranslationTask?.status === 'error'
             ? matchingTranslationTask.errorMessage
@@ -164,6 +150,30 @@
         message.role === 'user' && activeSwipe?.speakerId ? activeSwipe.speakerId : personaId
     );
     let messageScope = $derived(`kei-${message.id}-${message.activeSwipeId}`);
+
+    // ── Parts timeline ────────────────────────────────────────────────────────
+
+    let parts = $derived<AgentPart[]>(activeSwipe?.parts ?? []);
+    let indexedParts = $derived(parts.map((part, index) => ({ part, index })));
+
+    let lastContentIdx = $derived(findLastContentIndex(parts));
+
+    let traceParts = $derived(
+        lastContentIdx >= 0 ? indexedParts.slice(0, lastContentIdx) : indexedParts
+    );
+
+    let answerParts = $derived(lastContentIdx >= 0 ? indexedParts.slice(lastContentIdx) : []);
+    let visibleAnswerParts = $derived(
+        message.displayStatus !== 'generating' && translatedContent && showTranslation
+            ? [
+                  {
+                      part: { type: 'content', text: translatedContent } as AgentPart,
+                      index: lastContentIdx
+                  }
+              ]
+            : answerParts
+    );
+
     let speakerAvatarLocator = $derived.by<AssetReadLocator | null>(() => {
         if (isUser) {
             const persona = $chatPersonas.find((p) => p.id === displayPersonaId);
@@ -194,55 +204,8 @@
 
     // ── Actions ───────────────────────────────────────────────────────────────
 
-    const morphHtml: Action<HTMLElement, string> = (node, html) => {
-        const template = document.createElement('template');
-
-        function isSameStableImage(fromEl: Element, toEl: Element): boolean {
-            if (!(fromEl instanceof HTMLImageElement) || !(toEl instanceof HTMLImageElement)) {
-                return false;
-            }
-
-            const assetVal = fromEl.dataset.keiaiAsset;
-            if (assetVal && toEl.dataset.keiaiAsset === assetVal && fromEl.hasAttribute('src')) {
-                return true;
-            }
-
-            const nextSrc = toEl.getAttribute('src');
-            return !!nextSrc && fromEl.src === toEl.src;
-        }
-
-        const update = (newHtml: string) => {
-            if (!newHtml) {
-                node.innerHTML = '';
-                return;
-            }
-
-            template.innerHTML = `<div>${newHtml}</div>`;
-            const target = template.content.firstElementChild;
-            if (!target) {
-                node.innerHTML = '';
-                return;
-            }
-
-            morphdom(node, target, {
-                childrenOnly: true,
-                onBeforeElUpdated: (fromEl, toEl) => {
-                    if (isSameStableImage(fromEl, toEl)) return false;
-                    if (fromEl.isEqualNode(toEl)) return false;
-                    return true;
-                }
-            });
-        };
-
-        update(html);
-
-        return { update };
-    };
-
-    // ── Copy ──────────────────────────────────────────────────────────────────
-
     async function handleCopy() {
-        await navigator.clipboard.writeText(activeSwipe?.content ?? '');
+        await navigator.clipboard.writeText(visibleContent);
         copied = true;
         onCopy();
         setTimeout(() => (copied = false), 2000);
@@ -260,155 +223,112 @@
         }
     }
 
-    // ── Markdown ──────────────────────────────────────────────────────────────
+    // ── Render context (shared across content parts) ──────────────────────────
 
-    let pendingRefresh = false;
-    let missedUpdate = false;
-    let lastRenderTime = 0;
-    let renderTimeout: ReturnType<typeof setTimeout> | null = null;
-    const RENDER_THROTTLE_MS = 150;
-
-    function messageCssSource(): string {
+    let renderContext = $derived.by(() => {
         const ownerId = message.role === 'assistant' ? displayCharacterId : characterId;
         const character = ownerId ? $roomCharacters.find((item) => item.id === ownerId) : undefined;
         const activeModules = getActiveModulesForCharacter(character, $appSettings, $modules);
-        return [character?.messageCSS ?? '', ...activeModules.map((module) => module.messageCSS)]
+        const cssSource = [character?.messageCSS ?? '', ...activeModules.map((m) => m.messageCSS)]
             .filter((part) => part.trim())
             .join('\n');
-    }
 
-    async function renderMessageCSS(ctx: RuntimeContext, ownerIds: string[]) {
-        const source = messageCssSource();
-        if (!source.trim()) {
+        const selfId = message.role === 'user' ? displayPersonaId : displayCharacterId;
+        const opponentId = message.role === 'user' ? displayCharacterId : displayPersonaId;
+        const ownerIds = Array.from(
+            new Set([
+                selfId,
+                opponentId,
+                ...$roomCharacters.map((c) => c.id),
+                ...$chatPersonas.map((p) => p.id),
+                ...$modules.map((m) => m.id)
+            ])
+        ).filter((id): id is string => !!id);
+
+        const ctx: RuntimeContext = {
+            roomId: $activeRoom?.id,
+            presetId: $appSettings?.presetId,
+            characterId: displayCharacterId,
+            personaId: displayPersonaId,
+            chatId: message.chatId,
+            messageId: message.id,
+            messageIndex: message.messageIndex,
+            speakerId: activeSwipe?.speakerId,
+            speakerName: activeSwipe?.speakerName,
+            role: message.role
+        };
+
+        return {
+            ctx,
+            chatId: message.chatId,
+            messageScope,
+            ownerIds,
+            chatAssetsMap: $chatAssetsMap,
+            cssSource,
+            displayStatus: message.displayStatus
+        };
+    });
+
+    async function renderMessageCSS() {
+        const { ctx, chatId, messageScope, ownerIds, chatAssetsMap, cssSource } = renderContext;
+        const signature = [
+            cssSource,
+            messageScope,
+            ctx.roomId ?? '',
+            ctx.presetId ?? '',
+            ctx.characterId ?? '',
+            ctx.personaId ?? '',
+            ctx.chatId ?? '',
+            ctx.messageId ?? '',
+            ctx.messageIndex ?? '',
+            ctx.speakerId ?? '',
+            ctx.speakerName ?? '',
+            ctx.role ?? ''
+        ].join('\u0000');
+        if (signature === messageStyleSignature) return;
+        messageStyleSignature = signature;
+
+        const version = ++messageStyleVersion;
+
+        if (!cssSource.trim()) {
             messageStyleHtml = '';
             return;
         }
 
-        const displayMacros = createDisplayMacros($chatAssetsMap, ownerIds, rawAssetUrlCache);
-        const templated = await runTemplate(source, ctx);
-        const processed = await runPipeline(message.chatId, 'display', templated, ctx);
+        const displayMacros = createDisplayMacros(chatAssetsMap, ownerIds, cssRawAssetUrlCache);
+        const templated = await runTemplate(cssSource, ctx);
+        const processed = await runPipeline(chatId, 'display', templated, ctx);
         const withAssets = await runTemplate(processed, ctx, displayMacros);
         const scopeSelector = `[data-keiai-message-scope="${messageScope.replace(/"/g, '\\"')}"]`;
         const css = scopeCss(stripStyleTags(withAssets), scopeSelector);
+
+        if (version !== messageStyleVersion) return;
         messageStyleHtml = `<style>${css}</style>`;
     }
 
-    async function executeRender(contentToRender: string) {
-        if (pendingRefresh) {
-            missedUpdate = true;
-            return;
-        }
-        pendingRefresh = true;
-
-        try {
-            const selfId = message.role === 'user' ? displayPersonaId : displayCharacterId;
-            const opponentId = message.role === 'user' ? displayCharacterId : displayPersonaId;
-            const ownerIds = Array.from(
-                new Set([
-                    selfId,
-                    opponentId,
-                    ...$roomCharacters.map((c) => c.id),
-                    ...$chatPersonas.map((p) => p.id),
-                    ...$modules.map((m) => m.id)
-                ])
-            ).filter((id): id is string => !!id);
-
-            const ctx: RuntimeContext = {
-                roomId: $activeRoom?.id,
-                presetId: $appSettings?.presetId,
-                characterId: displayCharacterId,
-                personaId: displayPersonaId,
-                chatId: message.chatId,
-                messageId: message.id,
-                messageIndex: message.messageIndex,
-                speakerId: activeSwipe?.speakerId,
-                speakerName: activeSwipe?.speakerName,
-                role: message.role
-            };
-
-            // Do not render display macros before display pipeline
-            const dryRunMacros = createDryRunMacros();
-            const displayMacros = createDisplayMacros($chatAssetsMap, ownerIds, rawAssetUrlCache);
-            const templated = await runTemplate(contentToRender, ctx, dryRunMacros);
-            const processed = await runPipeline(message.chatId, 'display', templated, ctx);
-            const rendered = await runTemplate(processed, ctx, displayMacros);
-            await renderMessageCSS(ctx, ownerIds);
-            const protectedHtml = protectHtmlStyles(rendered);
-            const rawHtml = await parseMarkdownAsync(protectedHtml.text);
-            const restoredHtml = restoreHtmlStyles(rawHtml as string, protectedHtml.styles);
-            const sanitized = sanitizeWithStyle(restoredHtml);
-
-            // Update states atomically
-            displayContent = rendered;
-            renderedHtml = sanitized;
-        } finally {
-            pendingRefresh = false;
-            lastRenderTime = Date.now();
-            if (missedUpdate) {
-                missedUpdate = false;
-                refreshDisplay(); // Retry with the latest message.content
-            }
-        }
-    }
-
-    function refreshDisplay() {
-        // If completely done or error, render immediately without throttling
-        if (message.displayStatus !== 'generating') {
-            if (renderTimeout) {
-                clearTimeout(renderTimeout);
-                renderTimeout = null;
-            }
-            executeRender(currentContent);
-            return;
-        }
-
-        // Throttling logic for generating state
-        const now = Date.now();
-        const timeSinceLastRender = now - lastRenderTime;
-
-        if (timeSinceLastRender >= RENDER_THROTTLE_MS) {
-            if (renderTimeout) {
-                clearTimeout(renderTimeout);
-                renderTimeout = null;
-            }
-            executeRender(currentContent);
-        } else if (!renderTimeout) {
-            renderTimeout = setTimeout(() => {
-                renderTimeout = null;
-                executeRender(currentContent); // Use latest content when timeout fires
-            }, RENDER_THROTTLE_MS - timeSinceLastRender);
-        }
-    }
+    /** Completed trace details state. Streaming renders raw parts without a trace wrapper. */
+    let detailsOpen = $state(false);
+    let lastDisplayStatus = $state<string | undefined>(undefined);
 
     $effect(() => {
-        const current = currentContent;
         const status = message.displayStatus;
-        const cssSource = messageCssSource();
+        if (status === 'completed' && lastDisplayStatus !== 'completed') {
+            detailsOpen = false;
+        }
+        lastDisplayStatus = status;
+    });
 
-        // Ensure refresh on both content updates and status transitions (e.g. generating -> completed)
-        if (
-            current !== lastContent ||
-            status !== lastStatus ||
-            displayCharacterId !== lastDisplayCharacterId ||
-            displayPersonaId !== lastDisplayPersonaId ||
-            message.messageIndex !== lastMessageIndex ||
-            messageScope !== lastMessageScope ||
-            cssSource !== lastMessageCssSource
-        ) {
-            // Synchronously clear state when a fresh generation starts to prevent showing old content
-            if (status === 'generating' && current === '') {
-                displayContent = '';
-                renderedHtml = '';
-                messageStyleHtml = '';
-            }
-            lastContent = current;
-            lastStatus = status;
-            lastDisplayCharacterId = displayCharacterId;
-            lastDisplayPersonaId = displayPersonaId;
-            lastMessageIndex = message.messageIndex;
-            lastMessageScope = messageScope;
-            lastMessageCssSource = cssSource;
-            refreshDisplay();
+    $effect(() => {
+        void renderMessageCSS();
+    });
+
+    let hasLoadedTranslation = false;
+    $effect(() => {
+        if (cachedTranslation && !hasLoadedTranslation) {
+            showTranslation = true;
+            hasLoadedTranslation = true;
+        } else if (!cachedTranslation) {
+            hasLoadedTranslation = false;
         }
     });
 
@@ -424,19 +344,12 @@
         }
     });
 
-    onMount(() => {
-        refreshDisplay();
-    });
-
     onDestroy(() => {
-        if (renderTimeout) {
-            clearTimeout(renderTimeout);
-            renderTimeout = null;
-        }
-        for (const url of rawAssetUrlCache.values()) {
+        messageStyleVersion++;
+        for (const url of cssRawAssetUrlCache.values()) {
             if (url) void AssetService.revokeUrl(url);
         }
-        rawAssetUrlCache.clear();
+        cssRawAssetUrlCache.clear();
     });
 </script>
 
@@ -517,51 +430,61 @@
         {:else}
             <!-- Bubble -->
             <div
-                class="relative rounded-lg px-4 py-2.5 text-sm {isUser
+                class="relative flex flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted text-foreground'}"
             >
-                {#if message.displayStatus === 'generating' && !currentContent}
-                    <span class="flex items-center gap-1.5 text-muted-foreground">
-                        <Loader2 class="size-3 animate-spin" /> Thinking...
+                {#if message.displayStatus === 'generating' && parts.length === 0}
+                    <span
+                        class="flex items-center gap-1.5 {isUser
+                            ? 'text-primary-foreground/70'
+                            : 'text-muted-foreground'}"
+                    >
+                        <Loader2 class="size-3 animate-spin" />
+                        {isUser ? 'Sending...' : 'Thinking...'}
                     </span>
-                {:else if renderedHtml}
+                {:else if parts.length === 0}
+                    <div class="min-h-5"></div>
+                {:else}
                     <!-- eslint-disable-next-line svelte/no-at-html-tags -- CSS is scoped by data-keiai-message-scope -->
                     {@html messageStyleHtml}
-                    <div
-                        data-keiai-message-scope={messageScope}
-                        use:morphHtml={renderedHtml}
-                        use:hydrateAssets={renderedHtml}
-                        class="prose prose-sm max-w-none {isUser
-                            ? '**:text-primary-foreground prose-invert'
-                            : 'dark:prose-invert'}"
-                    ></div>
-                {:else if currentContent}
-                    <div
-                        class="prose prose-sm max-w-none whitespace-pre-wrap {isUser
-                            ? '**:text-primary-foreground prose-invert'
-                            : 'dark:prose-invert'}"
-                    >
-                        {currentContent}
-                    </div>
-                {:else}
-                    <div class="min-h-5"></div>
+
+                    {#if message.displayStatus === 'generating'}
+                        <!-- TODO: Unify with the completed trace/answer projection so
+                             ContentPart instances survive the generating→completed
+                             transition. The current separate each blocks force a
+                             remount, re-running the display pipeline once per part. -->
+                        {#each indexedParts as entry (entry.index)}
+                            {#if entry.part.type === 'thought'}
+                                <ThoughtPart text={entry.part.text} />
+                            {:else if entry.part.type === 'tool_call'}
+                                <ToolCallPart name={entry.part.name} status={entry.part.status} />
+                            {:else if entry.part.type === 'content'}
+                                <ContentPart text={entry.part.text} {renderContext} {isUser} />
+                            {/if}
+                        {/each}
+                    {:else if traceParts.length > 0}
+                        <TraceTimeline
+                            entries={traceParts}
+                            {renderContext}
+                            {isUser}
+                            bind:open={detailsOpen}
+                        />
+                    {/if}
+
+                    {#if message.displayStatus !== 'generating'}
+                        {#each visibleAnswerParts as entry (entry.index)}
+                            {#if entry.part.type === 'thought'}
+                                <ThoughtPart text={entry.part.text} />
+                            {:else if entry.part.type === 'tool_call'}
+                                <ToolCallPart name={entry.part.name} status={entry.part.status} />
+                            {:else if entry.part.type === 'content'}
+                                <ContentPart text={entry.part.text} {renderContext} {isUser} />
+                            {/if}
+                        {/each}
+                    {/if}
                 {/if}
             </div>
-
-            {#if matchingTranslationTask?.status === 'generating' || translatedContent}
-                <div
-                    class="w-full rounded-xl border border-border/70 bg-background/70 px-4 py-2.5 text-sm text-foreground"
-                >
-                    {#if matchingTranslationTask?.status === 'generating' && !translatedContent}
-                        <span class="flex items-center gap-1.5 text-muted-foreground">
-                            <Loader2 class="size-3 animate-spin" /> Translating...
-                        </span>
-                    {:else}
-                        <div class="whitespace-pre-wrap">{translatedContent}</div>
-                    {/if}
-                </div>
-            {/if}
 
             {#if translationError}
                 <div class="flex items-center gap-2 text-xs text-destructive">
@@ -636,9 +559,26 @@
                         <Button
                             variant="ghost"
                             size="sm"
-                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                            onclick={handleTranslate}
-                            title={cachedTranslation ? 'Retranslate' : 'Translate'}
+                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs {showTranslation &&
+                            cachedTranslation
+                                ? 'bg-primary/15 text-primary hover:bg-primary/25'
+                                : 'text-muted-foreground'}"
+                            onclick={() => {
+                                if (cachedTranslation) {
+                                    showTranslation = !showTranslation;
+                                } else {
+                                    handleTranslate();
+                                }
+                            }}
+                            ondblclick={(e) => {
+                                e.stopPropagation();
+                                handleTranslate();
+                            }}
+                            title={cachedTranslation
+                                ? showTranslation
+                                    ? 'Show original (double click to retranslate)'
+                                    : 'Show translation'
+                                : 'Translate'}
                         >
                             <Languages class="size-3.5 md:size-3" />
                         </Button>
@@ -668,17 +608,15 @@
                         </Button>
                     {/if}
 
-                    <!-- Edit (User only) -->
-                    {#if isUser}
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                            onclick={onEdit}
-                        >
-                            <Pencil class="size-3.5 md:size-3" />
-                        </Button>
-                    {/if}
+                    <!-- Edit -->
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                        onclick={onEdit}
+                    >
+                        <Pencil class="size-3.5 md:size-3" />
+                    </Button>
 
                     <!-- Delete -->
                     <Button

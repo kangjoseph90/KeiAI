@@ -1,6 +1,9 @@
 import { getAppSettings } from '$lib/stores/content/settings';
 import { getMergedLorebooks } from '$lib/stores/content/merged';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
+import type { LLMStreamContent } from '$lib/llm/types';
+import { ToolCallService, type ToolCallRequest } from '$lib/services/content/tool';
+import type { RuntimeContext } from '$lib/types/context';
 import { AppError } from '$lib/types/errors';
 import type { Macro } from '$lib/template';
 import type {
@@ -15,12 +18,14 @@ import {
     throwIfAborted,
     workflowValueToString
 } from '../util';
+import { agentPartsToOpenAIChats, serializeAgentParts, type AgentPart } from './llm';
 import { buildPrompt } from './prompt';
-import { serializeStreamContent } from './llm';
 
 type AgentMacroResult =
     | { status: 'value'; macros: Map<string, Macro> }
     | { status: 'event'; event: WorkflowNodeEvent };
+
+const MAX_AGENT_TOOL_CALL_LOOPS = 8;
 
 export async function executeAgentNode({
     node,
@@ -63,7 +68,7 @@ export async function executeAgentNode({
         throw new AppError('INVALID_INPUT', 'Failed to create LLM handler');
     }
 
-    const prompt = await buildPrompt({
+    const basePrompt = await buildPrompt({
         agent: node,
         lorebooks,
         messages,
@@ -73,20 +78,48 @@ export async function executeAgentNode({
     });
 
     const shouldStream = await resolveStreamInput(inputs.stream, true);
-    let latest = '';
+    const completedParts: AgentPart[] = [];
+    let latest = serializeAgentParts(completedParts);
+    let lastEmitted: string | null = null;
 
-    for await (const state of handler.stream(prompt, signal, {
-        parameters: parameters ?? {},
-        maxResponse: node.maxResponse,
-        stream: shouldStream
-    })) {
+    const emitIfChanged = (value: string): void => {
+        if (value === lastEmitted) return;
+        output.emit(0, createWorkflowValueEvent(value));
+        lastEmitted = value;
+    };
+
+    for (let loop = 0; loop < MAX_AGENT_TOOL_CALL_LOOPS; loop += 1) {
         throwIfAborted(signal);
-        latest = serializeStreamContent(state);
-        if (shouldStream) output.emit(0, createWorkflowValueEvent(latest));
+        const followupPrompt = [...basePrompt, ...agentPartsToOpenAIChats(completedParts)];
+        let latestRequestState: LLMStreamContent | null = null;
+
+        for await (const state of handler.stream(followupPrompt, signal, {
+            parameters: parameters ?? {},
+            maxResponse: node.maxResponse,
+            stream: shouldStream
+        })) {
+            throwIfAborted(signal);
+            latestRequestState = state;
+            const previewParts = toPreviewParts(state);
+            latest = serializeAgentParts([...completedParts, ...previewParts]);
+            if (shouldStream) emitIfChanged(latest);
+        }
+
+        if (!latestRequestState) break;
+
+        const committedParts = await toCommittedParts(latestRequestState, ctx);
+        throwIfAborted(signal);
+
+        completedParts.push(...committedParts);
+        latest = serializeAgentParts(completedParts);
+        if (shouldStream) emitIfChanged(latest);
+
+        const hasToolCall = committedParts.some((part) => part.type === 'tool_call');
+        if (!hasToolCall) break;
     }
 
     if (!shouldStream) {
-        output.emit(0, createWorkflowValueEvent(latest));
+        emitIfChanged(latest);
     }
 }
 
@@ -138,4 +171,60 @@ function shouldResolveLorebooks(node: AgentNode): boolean {
     return Object.values(node.promptBlocks).some(
         (block) => block.enabled && block.type === 'lorebook'
     );
+}
+
+function toPreviewParts(state: LLMStreamContent): AgentPart[] {
+    const parts: AgentPart[] = [];
+    if (state.thought?.trim()) {
+        parts.push({ type: 'thought', text: state.thought.trim() });
+    }
+    if (state.content) {
+        parts.push({ type: 'content', text: state.content });
+    }
+    return parts;
+}
+
+async function toCommittedParts(
+    state: LLMStreamContent,
+    ctx: RuntimeContext
+): Promise<AgentPart[]> {
+    const parts = toPreviewParts(state);
+    for (const toolCall of state.toolCalls ?? []) {
+        parts.push(await createToolCallPart(toolCall, ctx));
+    }
+    return parts;
+}
+
+async function createToolCallPart(
+    toolCall: ToolCallRequest,
+    ctx: RuntimeContext
+): Promise<AgentPart> {
+    if (!ctx.chatId) {
+        throw new Error('Tool call creation requires chatId');
+    }
+
+    const created = await ToolCallService.create(ctx.chatId, {
+        status: 'pending',
+        call: toolCall
+    });
+
+    // TODO: Replace this mock response with real tool execution/approval handling.
+    const completed = await ToolCallService.update(created.id, {
+        status: 'success',
+        response: {
+            content: [
+                {
+                    type: 'text',
+                    text: `Mock tool response for ${toolCall.name}`
+                }
+            ]
+        }
+    });
+
+    return {
+        type: 'tool_call',
+        id: completed.id,
+        name: completed.call.name,
+        status: completed.status
+    };
 }

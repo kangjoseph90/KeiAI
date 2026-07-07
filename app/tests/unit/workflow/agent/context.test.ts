@@ -21,7 +21,7 @@ function makeMessage(role: Message['role'], speakerId?: string, speakerName?: st
         swipes: {
             'swipe-1': {
                 id: 'swipe-1',
-                content: 'Hello',
+                parts: [{ type: 'content', text: 'Hello' }],
                 createdAt: 1,
                 speakerId,
                 speakerName

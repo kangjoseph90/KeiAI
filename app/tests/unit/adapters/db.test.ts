@@ -15,7 +15,8 @@ import type {
     MessageRecord,
     CharacterRecord,
     SettingsRecord,
-    ToolCallRecord
+    ToolCallRecord,
+    TranslationRecord
 } from '$lib/adapters/db';
 
 // Mock Tauri to ensure WebDatabaseAdapter is used
@@ -675,77 +676,103 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             expect(results).toHaveLength(2);
         });
 
-        it('should scope queries by messageId', async () => {
+        it('should scope queries for tool_calls by chatId', async () => {
             const records = [
                 createTestRecord({
                     id: 'tool-1',
                     chatId: 'chat-1',
-                    messageId: 'msg-1',
                     assetEntries: { hash1: 'local' },
                     data: { status: 'pending' }
                 }),
                 createTestRecord({
                     id: 'tool-2',
-                    chatId: 'chat-1',
-                    messageId: 'msg-2',
+                    chatId: 'chat-2',
                     data: { status: 'pending' }
                 })
             ] as ToolCallRecord[];
 
             await localDB.putRecords('tool_calls', records);
 
-            const msgOneTools = await localDB.getByIndex<ToolCallRecord>(
+            const chatOneTools = await localDB.getByIndex<ToolCallRecord>(
                 'tool_calls',
+                'chatId',
+                'chat-1'
+            );
+
+            expect(chatOneTools.map((record) => record.id)).toEqual(['tool-1']);
+        });
+
+        it('should scope queries by messageId (translations)', async () => {
+            const records = [
+                createTestRecord({
+                    id: 'trans-1',
+                    chatId: 'chat-1',
+                    messageId: 'msg-1',
+                    assetEntries: { hash1: 'local' },
+                    data: { text: 'translation 1' }
+                }),
+                createTestRecord({
+                    id: 'trans-2',
+                    chatId: 'chat-1',
+                    messageId: 'msg-2',
+                    data: { text: 'translation 2' }
+                })
+            ] as TranslationRecord[];
+
+            await localDB.putRecords('translations', records);
+
+            const msgOneTrans = await localDB.getByIndex<TranslationRecord>(
+                'translations',
                 'messageId',
                 'msg-1'
             );
 
-            expect(msgOneTools.map((record) => record.id)).toEqual(['tool-1']);
+            expect(msgOneTrans.map((record) => record.id)).toEqual(['trans-1']);
 
-            await localDB.softDeleteByIndex('tool_calls', 'messageId', 'msg-1');
+            await localDB.softDeleteByIndex('translations', 'messageId', 'msg-1');
 
-            const afterDeleteMsgOne = await localDB.getByIndex<ToolCallRecord>(
-                'tool_calls',
+            const afterDeleteMsgOne = await localDB.getByIndex<TranslationRecord>(
+                'translations',
                 'messageId',
                 'msg-1'
             );
-            const afterDeleteMsgTwo = await localDB.getByIndex<ToolCallRecord>(
-                'tool_calls',
+            const afterDeleteMsgTwo = await localDB.getByIndex<TranslationRecord>(
+                'translations',
                 'messageId',
                 'msg-2'
             );
 
             expect(afterDeleteMsgOne).toEqual([]);
-            expect(afterDeleteMsgTwo.map((record) => record.id)).toEqual(['tool-2']);
+            expect(afterDeleteMsgTwo.map((record) => record.id)).toEqual(['trans-2']);
 
-            const deletedTool = await localDB.getRecord<DataRecord>('tool_calls', 'tool-1');
-            expect(deletedTool?.assetEntries).toBeUndefined();
-            expect(deletedTool?.data).toEqual({});
+            const deletedTrans = await localDB.getRecord<DataRecord>('translations', 'trans-1');
+            expect(deletedTrans?.assetEntries).toBeUndefined();
+            expect(deletedTrans?.data).toEqual({});
         });
 
-        it('should not touch records already deleted by index', async () => {
+        it('should not touch records already deleted by index (translations)', async () => {
             const originalTime = Date.now() - 10000;
             const records = [
                 createTestRecord({
-                    id: 'tool-live',
+                    id: 'trans-live',
                     chatId: 'chat-1',
                     messageId: 'msg-idempotent',
                     isDeleted: false
                 }),
                 createTestRecord({
-                    id: 'tool-deleted',
+                    id: 'trans-deleted',
                     chatId: 'chat-1',
                     messageId: 'msg-idempotent',
                     isDeleted: true,
                     updatedAt: originalTime
                 })
-            ] as ToolCallRecord[];
+            ] as TranslationRecord[];
 
-            await localDB.putRecords('tool_calls', records);
-            await localDB.softDeleteByIndex('tool_calls', 'messageId', 'msg-idempotent');
+            await localDB.putRecords('translations', records);
+            await localDB.softDeleteByIndex('translations', 'messageId', 'msg-idempotent');
 
-            const live = await localDB.getRecord<DataRecord>('tool_calls', 'tool-live');
-            const deleted = await localDB.getRecord<DataRecord>('tool_calls', 'tool-deleted');
+            const live = await localDB.getRecord<DataRecord>('translations', 'trans-live');
+            const deleted = await localDB.getRecord<DataRecord>('translations', 'trans-deleted');
 
             expect(live?.isDeleted).toBe(true);
             expect(deleted?.isDeleted).toBe(true);
