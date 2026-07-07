@@ -151,11 +151,11 @@
 
 /* Markdown prose styles */
 .prose pre {
-    @apply overflow-x-auto rounded-lg border bg-muted;
+    @apply overflow-x-auto rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-100;
 }
 .prose code:not(pre code) {
-    @apply rounded bg-muted px-1.5 py-0.5 text-sm font-mono;
+    @apply rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground;
 }
 .prose pre code.hljs {
-    @apply bg-transparent p-0 text-sm;
+    @apply p-0 text-sm;
 }
