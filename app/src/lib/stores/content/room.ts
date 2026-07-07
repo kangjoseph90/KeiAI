@@ -7,13 +7,13 @@ import {
     type RoomFields,
     type RoomContent
 } from '$lib/services';
-import type { ResourceRef, FolderDef } from '$lib/types/refs';
+import type { FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { getCharacter } from './character';
-import { resolveChatSelections, selectChat } from './chat';
+import { resolveChatSelections, selectChat, ensureRoomHasChat } from './chat';
 import {
     rooms,
     multiRooms,
@@ -27,6 +27,7 @@ import {
     chatSelections,
     messages,
     messageIndexes,
+    translations,
     multiRoomCharacters,
     multiRoomPersonas
 } from '../state';
@@ -81,9 +82,15 @@ export async function selectRoom(roomId: string): Promise<void> {
         });
     }
 
-    // Auto-select last active chat
-    if (room.lastActiveChatId && roomChats.get(room.lastActiveChatId)) {
-        await selectChat(room.lastActiveChatId);
+    if (roomChats.size === 0) {
+        await ensureRoomHasChat(roomId);
+    }
+
+    const lastActive = room.lastActiveChatId;
+    const fallbackId = get(roomChats)[0]?.id;
+    const targetId = lastActive && roomChats.get(lastActive) ? lastActive : fallbackId;
+    if (targetId) {
+        await selectChat(targetId);
     }
 }
 
@@ -101,6 +108,7 @@ export function clearActiveRoom(): void {
     chatLorebooks.clear();
     messages.clear();
     messageIndexes.set(new Map());
+    translations.clear();
 }
 
 export async function createRoom(fields: DeepPartial<RoomFields> = {}): Promise<Room> {
@@ -180,8 +188,7 @@ export async function addRoomCharacter(roomId: string, characterId: string): Pro
                 [characterId]: {
                     ...existing,
                     id: characterId,
-                    sortOrder,
-                    enabled: existing?.enabled ?? true
+                    sortOrder
                 }
             }
         }
@@ -202,37 +209,6 @@ export async function removeRoomCharacter(roomId: string, characterId: string): 
 
     await updateRoom(roomId, {
         characters: { refs: { [characterId]: undefined } }
-    });
-
-    const activeId = get(activeChatId);
-    if (activeId) {
-        const activeC = get(activeChat);
-        if (activeC?.roomId === roomId) {
-            await resolveChatSelections(activeId);
-        }
-    }
-}
-
-export async function setRoomCharacterEnabled(
-    roomId: string,
-    characterId: string,
-    enabled: boolean
-): Promise<void> {
-    const room = await getRoom(roomId);
-    if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
-
-    const existing = room.characters.refs[characterId];
-    if (!existing) return;
-
-    await updateRoom(roomId, {
-        characters: {
-            refs: {
-                [characterId]: {
-                    ...existing,
-                    enabled
-                }
-            }
-        }
     });
 
     const activeId = get(activeChatId);

@@ -200,7 +200,11 @@ export async function exportAssetPayload(
 
     if (mode === 'light') return payload;
 
-    const data = await AssetService.readBytes(locator);
+    let data = await AssetService.readBytes(locator);
+    if (!data) {
+        await AssetService.load({ ...locator, encKey: fields.encKey });
+        data = await AssetService.readBytes(locator);
+    }
     if (!data) {
         throw new AppError('NOT_FOUND', `Asset bytes not found: ${fields.hash}`);
     }

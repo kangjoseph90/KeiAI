@@ -86,6 +86,7 @@ describe('Module Store', () => {
         description: 'Description',
         backgroundHTML: '',
         messageCSS: '',
+        defaultVariables: {},
         allowLowLevel: false,
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },

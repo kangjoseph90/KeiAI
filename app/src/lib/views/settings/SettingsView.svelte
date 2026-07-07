@@ -1,13 +1,16 @@
 <script lang="ts">
     import {
-        ArrowLeft,
+        ChevronLeft,
+        ChevronRight,
+        X,
         User,
         Shield,
         Cpu,
-        Palette,
+        Settings,
         RefreshCw,
         Puzzle,
-        Package
+        MessageSquare,
+        Languages
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { Label } from '$lib/components/ui/label';
@@ -19,24 +22,35 @@
         CardTitle,
         CardDescription
     } from '$lib/components/ui/card';
-    import { Separator } from '$lib/components/ui/separator';
     import { appSettings, updateSettings, activeRoom, activeChat } from '$lib/stores';
     import { navigate } from '$lib/router';
+    import type { SettingsTab } from '$lib/router';
     import AccountSettings from './AccountSettings.svelte';
     import ProfileSettings from './ProfileSettings.svelte';
-    import ChatBotSettings from './ChatBotSettings.svelte';
+    import ModelsSettings from './ModelsSettings.svelte';
+    import ChatSettings from './ChatSettings.svelte';
+    import LanguageSettings from './LanguageSettings.svelte';
     import PluginsView from './PluginsView.svelte';
-    import ModulesView from './ModulesView.svelte';
 
-    type SettingTab = 'profile' | 'account' | 'chatbot' | 'display' | 'plugin' | 'module';
-    let activeTab = $state<SettingTab>('chatbot');
-    let { pluginId, moduleId }: { pluginId?: string; moduleId?: string } = $props();
+    let activeTab = $state<SettingsTab>('models');
+    let { settingsTab }: { settingsTab?: SettingsTab } = $props();
+
+    const tabs = [
+        { id: 'models', label: 'Models', icon: Cpu },
+        { id: 'chat', label: 'Chat', icon: MessageSquare },
+        { id: 'plugins', label: 'Plugins', icon: Puzzle },
+        { id: 'language', label: 'Language', icon: Languages },
+        { id: 'profile', label: 'Profile', icon: User },
+        { id: 'account', label: 'Account', icon: Shield },
+        { id: 'general', label: 'General', icon: Settings }
+    ] as const;
+
+    let hasSelectedTab = $derived(settingsTab !== undefined);
+    let activeTabLabel = $derived(tabs.find((tab) => tab.id === activeTab)?.label ?? 'Settings');
 
     $effect(() => {
-        if (pluginId) {
-            activeTab = 'plugin';
-        } else if (moduleId) {
-            activeTab = 'module';
+        if (settingsTab) {
+            activeTab = settingsTab;
         }
     });
 
@@ -55,105 +69,200 @@
         }
     }
 
-    const tabs = [
-        { id: 'chatbot', label: 'AI Engine', icon: Cpu },
-        { id: 'plugin', label: 'Plugins', icon: Puzzle },
-        { id: 'module', label: 'Global Modules', icon: Package },
-        { id: 'profile', label: 'My Profile', icon: User },
-        { id: 'account', label: 'Cloud Sync', icon: Shield },
-        { id: 'display', label: 'Appearance', icon: Palette }
-    ] as const;
+    function openTab(tab: SettingsTab) {
+        activeTab = tab;
+        navigate({ view: 'settings', settingsTab: tab });
+    }
+
+    function returnToTabs() {
+        navigate({ view: 'settings' });
+    }
 </script>
 
 <div class="flex h-full min-h-0 flex-col bg-background">
-    <!-- Settings Header -->
-    <header class="flex items-center justify-between px-6 py-4 border-b shrink-0">
-        <div class="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onclick={backToChat}>
-                <ArrowLeft class="size-5" />
-            </Button>
-            <div>
-                <h1 class="text-lg font-semibold">System Settings</h1>
-                <p class="text-xs text-muted-foreground">
-                    Global configuration for your AI instance
-                </p>
-            </div>
-        </div>
-        <Button variant="outline" size="sm" onclick={backToChat}>Done</Button>
-    </header>
-
     <div class="flex min-h-0 flex-1 overflow-hidden">
         <!-- Sidebar Navigation -->
-        <nav class="w-64 border-r bg-muted/30 p-4 flex flex-col gap-1 shrink-0">
-            {#each tabs as tab (tab.id)}
-                <button
-                    class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors {activeTab ===
-                    tab.id
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-                    onclick={() => (activeTab = tab.id)}
+        <nav
+            class="min-h-0 w-full shrink-0 flex-col border-r bg-muted/30 md:flex md:min-w-64 md:w-[max(16rem,calc((100vw-72rem)/2+16rem))] {hasSelectedTab
+                ? 'hidden'
+                : 'flex'}"
+            aria-label="Settings sections"
+        >
+            <div class="flex h-14 shrink-0 items-center border-b px-2 md:hidden">
+                <h1 class="min-w-0 flex-1 truncate px-2 text-sm font-semibold">Settings</h1>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={backToChat}
+                    aria-label="Close settings"
                 >
-                    <tab.icon class="size-4" />
-                    {tab.label}
-                </button>
-            {/each}
+                    <X class="size-5" />
+                </Button>
+            </div>
+            <div
+                class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-4 md:ml-auto md:w-64 md:flex-none md:px-4 md:pb-4 md:pt-8"
+            >
+                {#each tabs as tab (tab.id)}
+                    <button
+                        class="flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors md:min-h-0 {activeTab ===
+                        tab.id
+                            ? hasSelectedTab
+                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground md:bg-primary md:text-primary-foreground md:shadow-sm'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+                        onclick={() => openTab(tab.id)}
+                        aria-current={activeTab === tab.id ? 'page' : undefined}
+                    >
+                        <tab.icon class="size-4" />
+                        <span>{tab.label}</span>
+                        <ChevronRight class="ml-auto size-4 md:hidden" />
+                    </button>
+                {/each}
+            </div>
         </nav>
 
         <!-- Main Workspace -->
-        <main class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+        <main
+            class="relative min-h-0 flex-1 flex-col overflow-hidden bg-background md:flex {hasSelectedTab
+                ? 'flex'
+                : 'hidden'}"
+        >
+            <div
+                class="flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
+            >
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="md:hidden"
+                    onclick={returnToTabs}
+                    aria-label="Back to settings sections"
+                >
+                    <ChevronLeft class="size-5" />
+                </Button>
+                <span class="min-w-0 flex-1 truncate px-2 text-sm font-semibold md:px-0 md:text-xl"
+                    >{activeTabLabel}</span
+                >
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={backToChat}
+                    aria-label="Close settings"
+                >
+                    <X class="size-5" />
+                </Button>
+            </div>
+
             <ScrollArea class="min-h-0 flex-1">
-                <div class="max-w-4xl mx-auto p-8 space-y-8">
-                    {#if activeTab === 'chatbot'}
-                        <div class="space-y-6">
-                            <div class="flex flex-col gap-1">
-                                <h2 class="text-2xl font-bold tracking-tight">AI Engine</h2>
-                                <p class="text-muted-foreground">
-                                    Manage AI models, prompt presets, and runtime parameters.
-                                </p>
-                            </div>
-                            <Separator />
-                            <div class="h-[calc(100vh-12rem)] min-h-[32rem]">
-                                <ChatBotSettings />
-                            </div>
+                <div class="max-w-4xl space-y-8 p-4 md:px-8 md:pb-8 md:pt-4">
+                    {#if activeTab === 'models'}
+                        <div class="h-[calc(100dvh-8rem)] min-h-[32rem]">
+                            <ModelsSettings />
                         </div>
-                    {:else if activeTab === 'plugin'}
-                        <PluginsView {pluginId} />
-                    {:else if activeTab === 'module'}
-                        <ModulesView {moduleId} />
+                    {:else if activeTab === 'chat'}
+                        <div class="h-[calc(100dvh-8rem)] min-h-[32rem]">
+                            <ChatSettings />
+                        </div>
+                    {:else if activeTab === 'plugins'}
+                        <PluginsView />
+                    {:else if activeTab === 'language'}
+                        <LanguageSettings />
                     {:else if activeTab === 'profile'}
                         <ProfileSettings />
                     {:else if activeTab === 'account'}
                         <AccountSettings />
-                    {:else if activeTab === 'display'}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Appearance</CardTitle>
-                                <CardDescription
-                                    >Customize how KeiAI looks on your screen.</CardDescription
-                                >
-                            </CardHeader>
-                            <CardContent class="space-y-4">
-                                <div
-                                    class="flex items-center justify-between p-4 border rounded-lg"
-                                >
-                                    <div class="space-y-0.5">
-                                        <Label>Color Theme</Label>
-                                        <p class="text-xs text-muted-foreground">
-                                            Switch between light and dark mode.
-                                        </p>
-                                    </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        class="gap-1.5"
-                                        onclick={handleToggleTheme}
+                    {:else if activeTab === 'general'}
+                        <div class="space-y-6">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Appearance</CardTitle>
+                                    <CardDescription
+                                        >Customize how KeiAI looks on your screen.</CardDescription
                                     >
-                                        <RefreshCw class="size-4" />
-                                        Toggle {$appSettings?.theme === 'dark' ? 'Light' : 'Dark'} Mode
-                                    </Button>
-                                </div>
-                            </CardContent>
-                        </Card>
+                                </CardHeader>
+                                <CardContent class="space-y-4">
+                                    <div
+                                        class="flex items-center justify-between p-4 border rounded-lg"
+                                    >
+                                        <div class="space-y-0.5">
+                                            <Label>Color Theme</Label>
+                                            <p class="text-xs text-muted-foreground">
+                                                Switch between light and dark mode.
+                                            </p>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            class="gap-1.5"
+                                            onclick={handleToggleTheme}
+                                        >
+                                            <RefreshCw class="size-4" />
+                                            Toggle {$appSettings?.theme === 'dark'
+                                                ? 'Light'
+                                                : 'Dark'} Mode
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Chat Interface</CardTitle>
+                                    <CardDescription
+                                        >Configure chat interface behaviors.</CardDescription
+                                    >
+                                </CardHeader>
+                                <CardContent class="space-y-4">
+                                    <div
+                                        class="flex items-center justify-between gap-4 p-4 border rounded-lg"
+                                    >
+                                        <div class="space-y-0.5">
+                                            <Label>Save messages on swipe</Label>
+                                            <p class="text-xs text-muted-foreground">
+                                                Save message history when swiping between
+                                                alternative responses.
+                                            </p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            class="size-5 shrink-0 rounded border-primary"
+                                            checked={$appSettings?.chat?.saveMessagesOnSwipe !==
+                                                false}
+                                            onchange={(e) =>
+                                                updateSettings({
+                                                    chat: {
+                                                        saveMessagesOnSwipe: e.currentTarget.checked
+                                                    }
+                                                })}
+                                        />
+                                    </div>
+
+                                    <div
+                                        class="flex items-center justify-between gap-4 p-4 border rounded-lg"
+                                    >
+                                        <div class="space-y-0.5">
+                                            <Label>Expand trace steps during generation</Label>
+                                            <p class="text-xs text-muted-foreground">
+                                                Automatically expand reasoning steps when AI is
+                                                generating responses.
+                                            </p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            class="size-5 shrink-0 rounded border-primary"
+                                            checked={$appSettings?.chat?.expandStepsOnGeneration !==
+                                                false}
+                                            onchange={(e) =>
+                                                updateSettings({
+                                                    chat: {
+                                                        expandStepsOnGeneration:
+                                                            e.currentTarget.checked
+                                                    }
+                                                })}
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
                     {/if}
                 </div>
             </ScrollArea>

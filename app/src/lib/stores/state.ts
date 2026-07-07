@@ -20,11 +20,12 @@ import type {
     Lorebook,
     Script,
     CharJS,
+    Translation,
     MultiRoom,
     MultiRoomMember
 } from '$lib/services';
 import type { AssetSyncStatus, SyncStatus } from '$lib/services';
-import type { DisplayMessage, ChatTask } from './types';
+import type { DisplayMessage, ChatTask, TranslationTask } from './types';
 import { EntityStore } from './entity_store';
 import { compareSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { EntityListConfig, AssetRef } from '$lib/types/refs';
@@ -35,12 +36,14 @@ import type { DataScopeType, TableName } from '$lib/adapters/db';
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
 export const activeUser = writable<User | null>(null);
+export const localUsers = writable<User[]>([]);
 
 /** Tracks whether the PocketBase auth token is valid. */
 export const pbConnected = writable<boolean>(false);
 export const dataSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const userSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const assetSyncStatus = writable<AssetSyncStatus>({ state: 'idle', pendingCount: 0 });
+export const migrationLocked = writable(false);
 
 // ─── Derived Auth State ──────────────────────────────────────────────
 export const isLoggedIn = derived(
@@ -144,6 +147,16 @@ export const messages = new EntityStore<Message>({
     sortFn: (a, b) => compareSortOrder(a.sortOrder, b.sortOrder)
 });
 export const messageIndexes = writable(new Map<string, number>());
+export const translations = new EntityStore<Translation>();
+export const translationsByMessage = derived(translations, ($translations) => {
+    const byMessage = new Map<string, Translation[]>();
+    for (const translation of $translations) {
+        const existing = byMessage.get(translation.messageId);
+        if (existing) existing.push(translation);
+        else byMessage.set(translation.messageId, [translation]);
+    }
+    return byMessage;
+});
 
 // ─── Character Studio Context───────────────────────────────────────
 export const activeCharacterId = writable<string | null>(null);
@@ -196,6 +209,7 @@ export const presetScripts = new EntityStore<Script>();
  * Managed by chatTask store logic.
  */
 export const chatTasks = writable<Map<string, ChatTask>>(new Map());
+export const translationTasks = writable<Map<string, TranslationTask>>(new Map());
 
 /** True when the currently active chat has an in-flight task. */
 export const isChatRunning = derived([chatTasks, activeChat], ([tasks, chat]) =>

@@ -19,6 +19,7 @@ import {
     activeRoomId,
     chatSelections,
     messageIndexes,
+    translations,
     roomCharacters,
     chatPersonas
 } from '../state';
@@ -80,16 +81,16 @@ export async function resolveChatSelections(chatId: string): Promise<void> {
     const room = await getRoom(chat.roomId);
     if (!room) return;
 
-    // 1. Get first enabled character/persona IDs
-    const charRefs = Object.values(room.characters.refs).filter((r) => r !== undefined);
+    // 1. Get the first attached character/persona IDs
+    const charRefs = Object.values(room.characters.refs);
     const sortedChars = [...charRefs].sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder));
-    const firstEnabledCharId = sortedChars.find((r) => r.enabled !== false)?.id;
+    const firstCharacterId = sortedChars[0]?.id;
 
-    const personaRefs = Object.values(chat.personas.refs).filter((r) => r !== undefined);
+    const personaRefs = Object.values(chat.personas.refs);
     const sortedPersonas = [...personaRefs].sort((a, b) =>
         compareSortOrder(a.sortOrder, b.sortOrder)
     );
-    const firstEnabledPersonaId = sortedPersonas.find((r) => r.enabled !== false)?.id;
+    const firstPersonaId = sortedPersonas[0]?.id;
 
     // 2. Validate/Update Defaults
     const patch: DeepPartial<ChatFields> = {};
@@ -97,18 +98,18 @@ export async function resolveChatSelections(chatId: string): Promise<void> {
     const defaultCharRef = chat.defaultCharacterId
         ? room.characters.refs[chat.defaultCharacterId]
         : undefined;
-    if (!defaultCharRef || defaultCharRef.enabled === false) {
-        if (chat.defaultCharacterId !== firstEnabledCharId) {
-            patch.defaultCharacterId = firstEnabledCharId;
+    if (!defaultCharRef) {
+        if (chat.defaultCharacterId !== firstCharacterId) {
+            patch.defaultCharacterId = firstCharacterId;
         }
     }
 
     const defaultPersonaRef = chat.defaultPersonaId
         ? chat.personas.refs[chat.defaultPersonaId]
         : undefined;
-    if (!defaultPersonaRef || defaultPersonaRef.enabled === false) {
-        if (chat.defaultPersonaId !== firstEnabledPersonaId) {
-            patch.defaultPersonaId = firstEnabledPersonaId;
+    if (!defaultPersonaRef) {
+        if (chat.defaultPersonaId !== firstPersonaId) {
+            patch.defaultPersonaId = firstPersonaId;
         }
     }
 
@@ -128,8 +129,8 @@ export async function resolveChatSelections(chatId: string): Promise<void> {
         const charRef = selCharId ? room.characters.refs[selCharId] : undefined;
         const personaRef = selPersonaId ? currentChat.personas.refs[selPersonaId] : undefined;
 
-        const isCharValid = charRef !== undefined && charRef.enabled !== false;
-        const isPersonaValid = personaRef !== undefined && personaRef.enabled !== false;
+        const isCharValid = charRef !== undefined;
+        const isPersonaValid = personaRef !== undefined;
 
         const finalCharId = isCharValid ? selCharId : currentChat.defaultCharacterId;
         const finalPersonaId = isPersonaValid ? selPersonaId : currentChat.defaultPersonaId;
@@ -149,6 +150,7 @@ export async function selectChat(chatId: string): Promise<void> {
     chatSelections.set(null);
     chatLorebooks.clear();
     messageIndexes.set(new Map());
+    translations.clear();
     roomChats.set(chat.id, chat);
     activeChatId.set(chat.id);
     await loadInitialMessages(chatId, 30);
@@ -186,6 +188,7 @@ export function clearActiveChat(): void {
     chatLorebooks.clear();
     messages.clear();
     messageIndexes.set(new Map());
+    translations.clear();
 }
 
 export async function createChat(
@@ -214,6 +217,22 @@ export async function createChat(
     return chat;
 }
 
+/** Returns the room's first chat, creating one if the room is empty. */
+export async function ensureRoomHasChat(roomId: string): Promise<Chat> {
+    const room = await getRoom(roomId);
+    if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
+
+    const existingIds = Object.keys(room.chats.refs);
+    if (existingIds.length > 0) {
+        const cached = roomChats.get(existingIds[0]);
+        if (cached) return cached;
+        const first = await ChatService.get(existingIds[0]);
+        if (first) return first;
+    }
+
+    return createChat(roomId);
+}
+
 export async function updateChat(chatId: string, changes: DeepPartial<ChatFields>): Promise<void> {
     const updated = await ChatService.update(chatId, changes);
     roomChats.set(chatId, updated);
@@ -238,7 +257,7 @@ export async function setChatDefaultPersona(chatId: string, personaId: string): 
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
     const ref = chat.personas.refs[personaId];
-    if (!ref || ref.enabled === false) {
+    if (!ref) {
         throw new AppError('INVALID_INPUT', `Persona is not active in this chat: ${personaId}`);
     }
     const persona = await getPersona(personaId);
@@ -254,7 +273,7 @@ export async function setChatDefaultCharacter(chatId: string, characterId: strin
     const room = await getRoom(chat.roomId);
     if (!room) throw new AppError('NOT_FOUND', `Room not found: ${chat.roomId}`);
     const ref = room.characters.refs[characterId];
-    if (!ref || ref.enabled === false) {
+    if (!ref) {
         throw new AppError('INVALID_INPUT', `Character is not active in this room: ${characterId}`);
     }
 
@@ -272,6 +291,10 @@ export async function updateChatContent(
 export async function deleteChat(chatId: string, roomId: string): Promise<void> {
     const room = await getRoom(roomId);
     if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
+
+    if (Object.keys(room.chats.refs).length <= 1) {
+        throw new AppError('DELETE_LAST_ITEM', 'Cannot delete the last chat.');
+    }
 
     // Capture ref for potential rollback
     const existingRef = room.chats.refs[chatId];
@@ -383,8 +406,7 @@ export async function addChatPersona(chatId: string, personaId: string): Promise
                 [personaId]: {
                     ...existing,
                     id: personaId,
-                    sortOrder,
-                    enabled: existing?.enabled ?? true
+                    sortOrder
                 }
             }
         }
@@ -399,31 +421,6 @@ export async function removeChatPersona(chatId: string, personaId: string): Prom
 
     await updateChat(chatId, {
         personas: { refs: { [personaId]: undefined } }
-    });
-
-    await resolveChatSelections(chatId);
-}
-
-export async function setChatPersonaEnabled(
-    chatId: string,
-    personaId: string,
-    enabled: boolean
-): Promise<void> {
-    const chat = await getChat(chatId);
-    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
-
-    const existing = chat.personas.refs[personaId];
-    if (!existing) return;
-
-    await updateChat(chatId, {
-        personas: {
-            refs: {
-                [personaId]: {
-                    ...existing,
-                    enabled
-                }
-            }
-        }
     });
 
     await resolveChatSelections(chatId);

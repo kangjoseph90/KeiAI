@@ -32,7 +32,6 @@ interface DatabaseSqlRow {
     roomId: string | null;
     chatId: string | null;
     messageId: string | null;
-    swipeId: string | null;
     sortOrder: string | null;
     ownerId: string | null;
     createdAt: number | null;
@@ -51,7 +50,6 @@ interface RecordBindingShape {
     roomId?: string;
     chatId?: string;
     messageId?: string;
-    swipeId?: string;
     sortOrder?: string;
     ownerId?: string;
     createdAt?: number;
@@ -70,7 +68,6 @@ function recordToBindings<T extends DataRecord>(record: T): DatabaseSqlRow {
         roomId: clone.roomId ?? null,
         chatId: clone.chatId ?? null,
         messageId: clone.messageId ?? null,
-        swipeId: clone.swipeId ?? null,
         sortOrder: clone.sortOrder ?? null,
         ownerId: clone.ownerId ?? null,
         createdAt: clone.createdAt ?? null,
@@ -92,7 +89,6 @@ function parseRecord<T>(row: DatabaseSqlRow): T {
         roomId: row.roomId ?? undefined,
         chatId: row.chatId ?? undefined,
         messageId: row.messageId ?? undefined,
-        swipeId: row.swipeId ?? undefined,
         sortOrder: row.sortOrder ?? undefined,
         ownerId: row.ownerId ?? undefined,
         createdAt: row.createdAt ?? 0,
@@ -154,7 +150,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         roomId TEXT,
 						chatId TEXT,
 						messageId TEXT,
-						swipeId TEXT,
                         sortOrder TEXT,
                         ownerId TEXT,
                         createdAt INTEGER,
@@ -183,26 +178,18 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 `;
         sql += `CREATE INDEX IF NOT EXISTS "idx_charjs_ownerId" ON charjs (ownerId);
 `;
+        sql += `CREATE INDEX IF NOT EXISTS "idx_files_ownerId" ON files (ownerId);
+`;
 
         // Compound index strictly required for pagination performance in messages
         sql += `CREATE INDEX IF NOT EXISTS "idx_messages_chatId_sortOrder" ON messages (chatId, sortOrder);
 `;
         sql += `CREATE INDEX IF NOT EXISTS "idx_tool_calls_chatId" ON tool_calls (chatId);
 `;
-        sql += `CREATE INDEX IF NOT EXISTS "idx_tool_calls_messageId" ON tool_calls (messageId);
-`;
-        sql += `CREATE INDEX IF NOT EXISTS "idx_tool_calls_swipeId" ON tool_calls (swipeId);
-`;
-        sql += `CREATE INDEX IF NOT EXISTS "idx_tool_calls_messageId_swipeId" ON tool_calls (messageId, swipeId);
-`;
         sql += `CREATE INDEX IF NOT EXISTS "idx_translations_chatId" ON translations (chatId);
 `;
         sql += `CREATE INDEX IF NOT EXISTS "idx_translations_messageId" ON translations (messageId);
 `;
-        sql += `CREATE INDEX IF NOT EXISTS "idx_translations_swipeId" ON translations (swipeId);
-`;
-        sql += `CREATE INDEX IF NOT EXISTS "idx_translations_messageId_swipeId" ON translations (messageId, swipeId);
-        `;
 
         await db.execute(sql);
     }
@@ -228,8 +215,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         const b = recordToBindings(record);
         await db.execute(
             `INSERT OR REPLACE INTO ${tableName}
-				(id, scopeType, scopeId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, assetEntries, data)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+				(id, scopeType, scopeId, roomId, chatId, messageId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, assetEntries, data)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
             [
                 b.id,
                 b.scopeType,
@@ -237,7 +224,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 b.roomId,
                 b.chatId,
                 b.messageId,
-                b.swipeId,
                 b.sortOrder,
                 b.ownerId,
                 b.createdAt,
@@ -262,8 +248,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
             const chunk = records.slice(i, i + chunkSize);
             const placeholders = chunk
                 .map((_, idx) => {
-                    const start = idx * 14 + 1;
-                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12}, $${start + 13})`;
+                    const start = idx * 13 + 1;
+                    return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12})`;
                 })
                 .join(', ');
 
@@ -277,7 +263,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                     b.roomId,
                     b.chatId,
                     b.messageId,
-                    b.swipeId,
                     b.sortOrder,
                     b.ownerId,
                     b.createdAt,
@@ -290,7 +275,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
 
             await db.execute(
                 `INSERT OR REPLACE INTO ${tableName}
-					(id, scopeType, scopeId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, assetEntries, data)
+					(id, scopeType, scopeId, roomId, chatId, messageId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, assetEntries, data)
 					VALUES ${placeholders}`,
                 values
             );
@@ -399,8 +384,8 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 const chunk = recordsToUpdate.slice(i, i + chunkSize);
                 const placeholders = chunk
                     .map((_, idx) => {
-                        const start = idx * 14 + 1;
-                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12}, $${start + 13})`;
+                        const start = idx * 13 + 1;
+                        return `($${start}, $${start + 1}, $${start + 2}, $${start + 3}, $${start + 4}, $${start + 5}, $${start + 6}, $${start + 7}, $${start + 8}, $${start + 9}, $${start + 10}, $${start + 11}, $${start + 12})`;
                     })
                     .join(', ');
                 const values: unknown[] = [];
@@ -413,7 +398,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                         b.roomId,
                         b.chatId,
                         b.messageId,
-                        b.swipeId,
                         b.sortOrder,
                         b.ownerId,
                         b.createdAt,
@@ -425,7 +409,7 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
                 }
                 await db.execute(
                     `INSERT OR REPLACE INTO ${tableName}
-	                (id, scopeType, scopeId, roomId, chatId, messageId, swipeId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, assetEntries, data)
+	                (id, scopeType, scopeId, roomId, chatId, messageId, sortOrder, ownerId, createdAt, updatedAt, isDeleted, assetEntries, data)
 	                VALUES ${placeholders}`,
                     values
                 );

@@ -24,6 +24,13 @@ export interface ChatTask {
     controller: AbortController;
 }
 
+export interface TranslationTask {
+    status: TaskStatus;
+    errorMessage?: string;
+    sourceHash: string;
+    controller: AbortController;
+}
+
 // ─── Display Message Types ────────────────────────────────────────────────────
 
 export type DisplayMessageStatus = 'completed' | 'generating' | 'error';

@@ -4,7 +4,9 @@ import {
     importPresetPackage,
     type KeiPresetPackageV1
 } from '$lib/porters/preset';
+import { readRisuPresetJson } from '$lib/porters/preset/risu';
 import { PresetService, ScriptService, type Preset, type Script } from '$lib/services';
+import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
 
 vi.mock('$lib/services', () => ({
     PresetService: {
@@ -30,22 +32,19 @@ describe('preset porters', () => {
         parameters: {
             chat: { temperature: 0.7 }
         },
-        promptBlocks: {
-            block_1: {
-                id: 'block_1',
-                name: 'System',
-                type: 'text',
-                role: 'system',
-                content: 'You are helpful.',
-                sortOrder: 'a',
-                enabled: true
+        chatWorkflow: createDefaultChatWorkflow({
+            promptBlocks: {
+                block_1: {
+                    id: 'block_1',
+                    name: 'System',
+                    type: 'text',
+                    role: 'system',
+                    content: 'You are helpful.',
+                    sortOrder: 'a',
+                    enabled: true
+                }
             }
-        },
-        maxResponse: 6000,
-        maxContext: 60000,
-        lorebookRatio: 0.2,
-        memoryRatio: 0.2,
-        lorebookScanDepth: 5,
+        }),
         defaultVariables: {},
         globalVariables: {},
         customToggles: {},
@@ -65,7 +64,6 @@ describe('preset porters', () => {
         regex: 'a',
         replacement: 'b',
         phase: 'display',
-        advanced: false,
         flag: 'g',
         order: 100,
         repeat: 1,
@@ -85,7 +83,11 @@ describe('preset porters', () => {
         expect(pkg.kind).toBe('keiai.preset');
         expect(pkg.preset.name).toBe('Test Preset');
         expect(pkg.preset.models?.chat?.provider).toBe('openai');
-        expect((pkg.preset.promptBlocks.block_1 as { content: string })?.content).toBe(
+        const agent = pkg.preset.chatWorkflow.nodes.chat_agent;
+        expect(agent?.class).toBe('Agent');
+        if (agent?.class !== 'Agent') throw new Error('Expected chat Agent node');
+        expect(agent.promptBlocks.block_1?.type).toBe('text');
+        expect((agent.promptBlocks.block_1 as { content: string } | undefined)?.content).toBe(
             'You are helpful.'
         );
         expect(pkg.preset.scripts.refs.script_0?.id).toBe('script_0');
@@ -113,7 +115,9 @@ describe('preset porters', () => {
                 models: expect.objectContaining({
                     chat: expect.objectContaining({ provider: 'openai' })
                 }),
-                maxResponse: 8000
+                chatWorkflow: expect.objectContaining({
+                    nodes: expect.any(Object)
+                })
             })
         );
         expect(ScriptService.create).toHaveBeenCalledWith(
@@ -121,6 +125,53 @@ describe('preset porters', () => {
             expect.objectContaining({ name: 'Script' })
         );
         expect(update?.scripts?.refs?.['script-new']?.id).toBe('script-new');
+    });
+
+    it('converts Risu description to description macro and skips memory blocks', () => {
+        const pkg = readRisuPresetJson({
+            name: 'Risu Preset',
+            promptTemplate: [
+                { type: 'description', innerFormat: 'Desc: {{slot}}', name: 'Description' },
+                { type: 'memory', innerFormat: 'Memory: {{slot}}', name: 'Memory' }
+            ]
+        });
+
+        const agent = pkg.preset.chatWorkflow.nodes.chat_agent;
+        expect(agent?.class).toBe('Agent');
+        if (agent?.class !== 'Agent') throw new Error('Expected chat Agent node');
+        const blocks = Object.values(agent.promptBlocks);
+
+        expect(blocks).toHaveLength(1);
+        expect(blocks[0]).toEqual(
+            expect.objectContaining({
+                name: 'Description',
+                type: 'text',
+                content: 'Desc: {{description}}'
+            })
+        );
+    });
+
+    it('converts Risu globalNote to characternote blocks', () => {
+        const pkg = readRisuPresetJson({
+            name: 'Risu Preset',
+            promptTemplate: [
+                { type: 'plain', type2: 'globalNote', text: 'Note: {{slot}}', name: 'Global Note' }
+            ]
+        });
+
+        const agent = pkg.preset.chatWorkflow.nodes.chat_agent;
+        expect(agent?.class).toBe('Agent');
+        if (agent?.class !== 'Agent') throw new Error('Expected chat Agent node');
+        const blocks = Object.values(agent.promptBlocks);
+
+        expect(blocks).toHaveLength(1);
+        expect(blocks[0]).toEqual(
+            expect.objectContaining({
+                name: 'Global Note',
+                type: 'text',
+                content: 'Note: {{characternote}}'
+            })
+        );
     });
 });
 
@@ -136,22 +187,24 @@ function makePackage(overrides: Partial<KeiPresetPackageV1> = {}): KeiPresetPack
                 aux: { id: 'openai::gpt-5.4', provider: 'openai' }
             },
             parameters: {},
-            promptBlocks: {
-                block_1: {
-                    id: 'block_1',
-                    name: 'System',
-                    type: 'text',
-                    role: 'system',
-                    content: 'Hello',
-                    sortOrder: 'a',
-                    enabled: true
-                }
-            },
-            maxResponse: 8000,
-            maxContext: 80000,
-            lorebookRatio: 0.3,
-            memoryRatio: 0.3,
-            lorebookScanDepth: 10,
+            chatWorkflow: createDefaultChatWorkflow({
+                promptBlocks: {
+                    block_1: {
+                        id: 'block_1',
+                        name: 'System',
+                        type: 'text',
+                        role: 'system',
+                        content: 'Hello',
+                        sortOrder: 'a',
+                        enabled: true
+                    }
+                },
+                maxResponse: 8000,
+                maxContext: 80000,
+                lorebookRatio: 0.3,
+                memoryRatio: 0.3,
+                lorebookScanDepth: 10
+            }),
             defaultVariables: {},
             globalVariables: {},
             customToggles: {},
@@ -168,7 +221,6 @@ function makePackage(overrides: Partial<KeiPresetPackageV1> = {}): KeiPresetPack
                 regex: 'a',
                 replacement: 'b',
                 phase: 'display',
-                advanced: false,
                 flag: 'g',
                 order: 100,
                 repeat: 1,

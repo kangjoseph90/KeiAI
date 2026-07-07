@@ -232,7 +232,8 @@ describe('RoomService', () => {
                 'scripts',
                 'messages',
                 'tool_calls',
-                'translations'
+                'translations',
+                'files'
             ]),
             'rw',
             expect.any(Function)

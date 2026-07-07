@@ -1,7 +1,7 @@
 <script lang="ts">
     import { Code, ImageIcon, Plus } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { Input } from '$lib/components/ui/input';
+    import ListActionBar from '$lib/components/ListActionBar.svelte';
     import { Separator } from '$lib/components/ui/separator';
     import type { Script, CharJS } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
@@ -9,6 +9,7 @@
     import ScriptItem from '../../modules/ScriptItem.svelte';
     import CharJSItem from '../../modules/CharJSItem.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
 
     interface FolderCallbacks {
         onCreateFolder: (name: string, parentId?: string, sortOrder?: string) => Promise<FolderDef>;
@@ -25,10 +26,10 @@
         charJS: CharJS[];
         scriptsConfig: EntityListConfig;
         charjsConfig: EntityListConfig;
-        onCreateScript: (data: DeepPartial<Script>) => void | Promise<void>;
+        onCreateScript: (data: DeepPartial<Script>) => Script | Promise<Script>;
         onUpdateScript: (id: string, changes: DeepPartial<Script>) => void | Promise<void>;
         onDeleteScript: (id: string) => void | Promise<void>;
-        onCreateCharJS: (data: DeepPartial<CharJS>) => void | Promise<void>;
+        onCreateCharJS: (data: DeepPartial<CharJS>) => CharJS | Promise<CharJS>;
         onUpdateCharJS: (id: string, changes: DeepPartial<CharJS>) => void | Promise<void>;
         onDeleteCharJS: (id: string) => void | Promise<void>;
         scriptFolders: FolderCallbacks;
@@ -49,63 +50,46 @@
         scriptFolders,
         charjsFolders
     }: Props = $props();
-
-    let newScriptName = $state('');
-    let newCharJSName = $state('');
+    let editingScriptId = $state<string | null>(null);
+    let editingCharJSId = $state<string | null>(null);
 
     async function handleAddScript() {
-        if (!newScriptName.trim()) return;
-        await onCreateScript({
-            name: newScriptName,
+        const script = await onCreateScript({
+            name: 'New Script',
             regex: '',
             replacement: '',
             phase: 'input',
             enabled: true,
-            advanced: false,
             flag: 'g',
             order: 0,
             repeat: 0
         });
-        newScriptName = '';
+        editingScriptId = script.id;
     }
 
     async function handleAddCharJS() {
-        if (!newCharJSName.trim()) return;
-        await onCreateCharJS({
-            name: newCharJSName,
+        const charJS = await onCreateCharJS({
+            name: 'New Script',
             code: '',
             enabled: true
         });
-        newCharJSName = '';
+        editingCharJSId = charJS.id;
     }
 </script>
 
 <section class="space-y-6">
-    <div class="flex items-center justify-between">
-        <div>
-            <h2 class="text-lg font-semibold">Scripts & Automation</h2>
-            <p class="text-sm text-muted-foreground">
-                Regex and JavaScript for advanced message processing.
-            </p>
-        </div>
-        <div class="flex gap-2">
-            <Input
-                placeholder="Script name..."
-                class="w-48 h-9"
-                bind:value={newScriptName}
-                onkeydown={(e) => e.key === 'Enter' && handleAddScript()}
-            />
-            <Button size="sm" class="gap-1.5" onclick={handleAddScript}>
-                <Plus class="size-4" /> Add
-            </Button>
-        </div>
-    </div>
-
     <div class="space-y-8">
         <div class="space-y-4">
-            <h3 class="text-sm font-semibold flex items-center gap-2">
-                <ImageIcon class="size-4" /> Regex Scripts
-            </h3>
+            <div class="space-y-1.5">
+                <h3 class="text-sm font-semibold flex items-center gap-2">
+                    <ImageIcon class="size-4 text-muted-foreground" /> Regex Scripts
+                </h3>
+                <ListActionBar description="Transform text with regular expressions.">
+                    <Button size="sm" class="gap-1.5" onclick={handleAddScript}>
+                        <Plus class="size-4" /> Add
+                    </Button>
+                </ListActionBar>
+            </div>
             <EntityList
                 entities={scripts}
                 config={scriptsConfig}
@@ -115,8 +99,16 @@
                 onDeleteFolder={scriptFolders.onDeleteFolder}
                 onMoveItem={scriptFolders.onMoveItem}
             >
+                {#snippet empty()}
+                    <EmptyListPlaceholder message="No regex scripts." />
+                {/snippet}
                 {#snippet item({ entity: s })}
-                    <ScriptItem item={s} onUpdate={onUpdateScript} onDelete={onDeleteScript} />
+                    <ScriptItem
+                        item={s}
+                        initiallyEditing={editingScriptId === s.id}
+                        onUpdate={onUpdateScript}
+                        onDelete={onDeleteScript}
+                    />
                 {/snippet}
             </EntityList>
         </div>
@@ -124,24 +116,15 @@
         <Separator />
 
         <div class="space-y-4">
-            <div class="flex items-center justify-between">
+            <div class="space-y-1.5">
                 <h3 class="text-sm font-semibold flex items-center gap-2">
-                    <Code class="size-4" /> CharJS Scripts
+                    <Code class="size-4 text-muted-foreground" /> CharJS Scripts
                 </h3>
-                <div class="flex gap-2">
-                    <Input
-                        placeholder="CharJS name..."
-                        class="w-40 h-8 text-xs"
-                        bind:value={newCharJSName}
-                        onkeydown={(e) => e.key === 'Enter' && handleAddCharJS()}
-                    />
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        class="h-8 text-xs"
-                        onclick={handleAddCharJS}>Add JS</Button
-                    >
-                </div>
+                <ListActionBar description="Run character-specific JavaScript behavior.">
+                    <Button size="sm" class="gap-1.5" onclick={handleAddCharJS}>
+                        <Plus class="size-4" /> Add
+                    </Button>
+                </ListActionBar>
             </div>
             <EntityList
                 entities={charJS}
@@ -152,8 +135,16 @@
                 onDeleteFolder={charjsFolders.onDeleteFolder}
                 onMoveItem={charjsFolders.onMoveItem}
             >
+                {#snippet empty()}
+                    <EmptyListPlaceholder message="No CharJS scripts." />
+                {/snippet}
                 {#snippet item({ entity: js })}
-                    <CharJSItem item={js} onUpdate={onUpdateCharJS} onDelete={onDeleteCharJS} />
+                    <CharJSItem
+                        item={js}
+                        initiallyEditing={editingCharJSId === js.id}
+                        onUpdate={onUpdateCharJS}
+                        onDelete={onDeleteCharJS}
+                    />
                 {/snippet}
             </EntityList>
         </div>

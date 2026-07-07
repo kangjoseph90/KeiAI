@@ -7,7 +7,7 @@
  *
  * Relationship patterns:
  *   1:N (parent→child): Parent's blob holds OrderedRef[] → fetch children by ID batch
- *   N:M (consumer→resource): Consumer's blob holds ResourceRef[] → load with enabled state
+ *   N:M (consumer→resource): Consumer's blob holds ordered refs, optionally with context state
  *   Owned (ownerId FK): Lorebooks, scripts owned by character/chat/module → listByOwner()
  *   Exception: messages use chatId FK + createdAt ordering
  *
@@ -25,10 +25,12 @@ import * as StoreState from './state';
 
 export const appSettings = readonly(StoreState.appSettings);
 export const activeUser = readonly(StoreState.activeUser);
+export const localUsers = readonly(StoreState.localUsers);
 export const pbConnected = readonly(StoreState.pbConnected);
 export const dataSyncStatus = readonly(StoreState.dataSyncStatus);
 export const userSyncStatus = readonly(StoreState.userSyncStatus);
 export const assetSyncStatus = readonly(StoreState.assetSyncStatus);
+export const migrationLocked = readonly(StoreState.migrationLocked);
 export const characters = readonly(StoreState.characters);
 export const rooms = readonly(StoreState.rooms);
 export const multiRooms = readonly(StoreState.multiRooms);
@@ -65,7 +67,10 @@ export const chatSelections = readonly(StoreState.chatSelections);
 export const chatLorebooks = readonly(StoreState.chatLorebooks);
 export const chatPersonas = readonly(StoreState.chatPersonas);
 export const messages = readonly(StoreState.messages);
+export const translations = readonly(StoreState.translations);
+export const translationsByMessage = readonly(StoreState.translationsByMessage);
 export const chatTasks = readonly(StoreState.chatTasks);
+export const translationTasks = readonly(StoreState.translationTasks);
 export const chatAssetsMap = readonly(StoreState.chatAssetsMap);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
@@ -86,7 +91,7 @@ export {
     isSyncLinked
 } from './state';
 
-export type { DisplayMessage, DisplayMessageStatus, TaskStatus } from './types';
+export type { DisplayMessage, DisplayMessageStatus, TaskStatus, TranslationTask } from './types';
 
 export * from './content/settings';
 export * from './content/room';
@@ -98,8 +103,10 @@ export * from './content/chat';
 export * from './content/module';
 export * from './content/plugin';
 export * from './content/message';
+export * from './content/translation';
 export * from './content/merged';
 export * from './tasks/chat';
+export * from './tasks/translation';
 export * from './auth';
 export * from './user';
 export * from './sync';

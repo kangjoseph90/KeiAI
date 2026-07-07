@@ -32,6 +32,7 @@
         entities: T[];
         config: EntityListConfig;
         layout?: 'grid' | 'list';
+        mode?: 'manage' | 'browse';
         parentId?: string;
 
         // Custom styling props for wrapper slots
@@ -41,13 +42,17 @@
         folderWrapperClass?: (folder: FolderDef, isCollapsed: boolean) => string;
         itemWrapperClass?: (entity: T) => string;
 
-        onCreateFolder: (name: string, parentId?: string, sortOrder?: string) => Promise<FolderDef>;
-        onUpdateFolder: (
+        onCreateFolder?: (
+            name: string,
+            parentId?: string,
+            sortOrder?: string
+        ) => Promise<FolderDef>;
+        onUpdateFolder?: (
             folderId: string,
             changes: Partial<{ name: string; color: string; parentId: string; sortOrder: string }>
         ) => Promise<void>;
-        onDeleteFolder: (folderId: string) => Promise<void>;
-        onMoveItem: (itemId: string, newFolderId?: string, newSortOrder?: string) => Promise<void>;
+        onDeleteFolder?: (folderId: string) => Promise<void>;
+        onMoveItem?: (itemId: string, newFolderId?: string, newSortOrder?: string) => Promise<void>;
         onItemClick?: (entity: T) => void | Promise<void>;
 
         item: Snippet<[{ entity: T }]>;
@@ -59,16 +64,25 @@
         entities,
         config,
         layout = 'list',
+        mode = 'manage',
         parentId = undefined,
         gridClass = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 w-full',
         listClass = 'flex flex-col w-full',
         childContainerClass = 'relative ml-4 my-1 pl-3 pr-2 py-2',
         folderWrapperClass = undefined,
         itemWrapperClass = undefined,
-        onCreateFolder,
-        onUpdateFolder,
-        onDeleteFolder,
-        onMoveItem,
+        onCreateFolder = async () => {
+            throw new Error('Folder creation is unavailable in browse mode');
+        },
+        onUpdateFolder = async () => {
+            throw new Error('Folder updates are unavailable in browse mode');
+        },
+        onDeleteFolder = async () => {
+            throw new Error('Folder deletion is unavailable in browse mode');
+        },
+        onMoveItem = async () => {
+            throw new Error('Item movement is unavailable in browse mode');
+        },
         onItemClick = undefined,
         item: itemSnippet,
         folder: folderSnippet = undefined,
@@ -225,7 +239,11 @@
     }
 
     function handleDragStart(e: DragEvent, node: VisualItem) {
-        if (dragSuppressedId === node.id || isInteractiveDragTarget(e.target)) {
+        if (
+            mode === 'browse' ||
+            dragSuppressedId === node.id ||
+            isInteractiveDragTarget(e.target)
+        ) {
             e.preventDefault();
             return;
         }
@@ -561,72 +579,74 @@
 
 {#snippet folderActions(params: { folder: FolderDef })}
     {@const { folder: f } = params}
-    <div
-        role="none"
-        class="opacity-0 group-hover/folder:opacity-100 focus-within:opacity-100 transition-opacity"
-        onclick={(e) => e.stopPropagation()}
-    >
-        <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-                <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    class="size-7 hover:bg-muted-foreground/10 text-inherit"
+    {#if mode === 'manage'}
+        <div
+            role="none"
+            class="opacity-0 group-hover/folder:opacity-100 focus-within:opacity-100 transition-opacity"
+            onclick={(e) => e.stopPropagation()}
+        >
+            <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                    <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        class="size-7 hover:bg-muted-foreground/10 text-inherit"
+                    >
+                        <MoreVertical class="size-3.5" />
+                    </Button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content
+                    align="end"
+                    class="w-48 bg-popover border border-border shadow-lg p-1 rounded-md"
                 >
-                    <MoreVertical class="size-3.5" />
-                </Button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content
-                align="end"
-                class="w-48 bg-popover border border-border shadow-lg p-1 rounded-md"
-            >
-                <DropdownMenu.Item
-                    onclick={() => startRename(f)}
-                    class="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                >
-                    <Edit2 class="size-3.5" />
-                    <span>Rename</span>
-                </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                        onclick={() => startRename(f)}
+                        class="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                    >
+                        <Edit2 class="size-3.5" />
+                        <span>Rename</span>
+                    </DropdownMenu.Item>
 
-                <div class="border-t border-border my-1"></div>
-                <div
-                    class="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1"
-                >
-                    <Palette class="size-3" />
-                    <span>Folder Color</span>
-                </div>
-                <div class="grid grid-cols-4 gap-1 px-2 py-1.5">
-                    {#each COLOR_PRESETS as colorName (colorName)}
-                        <button
-                            class="size-5 rounded-full border border-border transition-transform hover:scale-110 active:scale-95 cursor-pointer flex items-center justify-center
+                    <div class="border-t border-border my-1"></div>
+                    <div
+                        class="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1"
+                    >
+                        <Palette class="size-3" />
+                        <span>Folder Color</span>
+                    </div>
+                    <div class="grid grid-cols-4 gap-1 px-2 py-1.5">
+                        {#each COLOR_PRESETS as colorName (colorName)}
+                            <button
+                                class="size-5 rounded-full border border-border transition-transform hover:scale-110 active:scale-95 cursor-pointer flex items-center justify-center
                                 {COLOR_BG_CLASSES[colorName] || ''}
                                 {f.color === colorName
-                                ? 'ring-2 ring-primary ring-offset-1 ring-offset-background'
-                                : ''}"
-                            title={colorName}
-                            onclick={() => onUpdateFolder(f.id, { color: colorName })}
+                                    ? 'ring-2 ring-primary ring-offset-1 ring-offset-background'
+                                    : ''}"
+                                title={colorName}
+                                onclick={() => onUpdateFolder(f.id, { color: colorName })}
+                            >
+                            </button>
+                        {/each}
+                        <button
+                            class="col-span-4 mt-1 text-[10px] text-center text-muted-foreground py-0.5 rounded hover:bg-muted"
+                            onclick={() => onUpdateFolder(f.id, { color: '' })}
                         >
+                            Reset Color
                         </button>
-                    {/each}
-                    <button
-                        class="col-span-4 mt-1 text-[10px] text-center text-muted-foreground py-0.5 rounded hover:bg-muted"
-                        onclick={() => onUpdateFolder(f.id, { color: '' })}
-                    >
-                        Reset Color
-                    </button>
-                </div>
+                    </div>
 
-                <div class="border-t border-border my-1"></div>
-                <DropdownMenu.Item
-                    onclick={() => handleUnwrapFolder(f.id)}
-                    class="flex items-center gap-2 px-2 py-1.5 text-xs text-destructive rounded hover:bg-destructive/10 hover:text-destructive cursor-pointer"
-                >
-                    <Trash2 class="size-3.5" />
-                    <span>Unwrap Folder</span>
-                </DropdownMenu.Item>
-            </DropdownMenu.Content>
-        </DropdownMenu.Root>
-    </div>
+                    <div class="border-t border-border my-1"></div>
+                    <DropdownMenu.Item
+                        onclick={() => handleUnwrapFolder(f.id)}
+                        class="flex items-center gap-2 px-2 py-1.5 text-xs text-destructive rounded hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+                    >
+                        <Trash2 class="size-3.5" />
+                        <span>Unwrap Folder</span>
+                    </DropdownMenu.Item>
+                </DropdownMenu.Content>
+            </DropdownMenu.Root>
+        </div>
+    {/if}
 {/snippet}
 
 {#snippet defaultFolder(payload: FolderSnippetPayload)}
@@ -723,7 +743,7 @@
                 <div class={layout === 'grid' && !isCollapsed ? 'col-span-full' : ''}>
                     <div
                         role="none"
-                        draggable={dragSuppressedId !== visualNode.id}
+                        draggable={mode === 'manage' && dragSuppressedId !== visualNode.id}
                         onpointerdown={(e) => handlePointerDown(e, visualNode.id)}
                         onpointerup={clearDragSuppression}
                         onpointercancel={clearDragSuppression}
@@ -773,6 +793,7 @@
                                 {entities}
                                 {config}
                                 {layout}
+                                {mode}
                                 {gridClass}
                                 {listClass}
                                 {childContainerClass}
@@ -800,7 +821,7 @@
                 <!-- Entity Row or Grid Card -->
                 {@const entity = visualNode.entity!}
                 <div
-                    draggable={dragSuppressedId !== visualNode.id}
+                    draggable={mode === 'manage' && dragSuppressedId !== visualNode.id}
                     onpointerdown={(e) => handlePointerDown(e, visualNode.id)}
                     onpointerup={clearDragSuppression}
                     onpointercancel={clearDragSuppression}

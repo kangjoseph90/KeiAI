@@ -13,17 +13,20 @@ import {
     createChatLorebook,
     createMessage,
     deleteMessage,
+    getActivePreset,
     getCharacter,
+    getActiveModuleIds,
     getChat,
     getLastMessage,
     getMessage,
+    getModule,
     getRoom,
     updateChat,
     updateMessage
 } from '$lib/stores';
 import { LorebookService, MessageService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
-import type { Character, Chat, Lorebook, Message, Room } from '$lib/services';
+import type { Character, Chat, Lorebook, Message, Module, Preset, Room } from '$lib/services';
 
 vi.mock('$lib/stores', () => ({
     createChat: vi.fn(),
@@ -31,10 +34,12 @@ vi.mock('$lib/stores', () => ({
     createMessage: vi.fn(),
     deleteMessage: vi.fn(),
     getActivePreset: vi.fn(),
+    getActiveModuleIds: vi.fn(),
     getCharacter: vi.fn(),
     getChat: vi.fn(),
     getLastMessage: vi.fn(),
     getMessage: vi.fn(),
+    getModule: vi.fn(),
     getRoom: vi.fn(),
     updateChat: vi.fn(),
     updateMessage: vi.fn()
@@ -59,8 +64,8 @@ describe('ChatManager', () => {
         chats: { refs: {}, folders: {} },
         characters: {
             refs: {
-                'char-1': { id: 'char-1', sortOrder: 'a', enabled: true },
-                'char-2': { id: 'char-2', sortOrder: 'b', enabled: true }
+                'char-1': { id: 'char-1', sortOrder: 'a' },
+                'char-2': { id: 'char-2', sortOrder: 'b' }
             },
             folders: {}
         }
@@ -102,9 +107,41 @@ describe('ChatManager', () => {
         greetings: { greet2: { id: 'greet2', content: 'Yo', sortOrder: 'b' } },
         defaultVariables: { shared: 'beta', energy: 'high' }
     };
+    const globalModule: Module = {
+        id: 'mod-global',
+        name: 'Global Module',
+        description: '',
+        backgroundHTML: '',
+        messageCSS: '',
+        defaultVariables: { mood: 'module-calm', shared: 'global-module', moduleOnly: 'yes' },
+        allowLowLevel: false,
+        lorebooks: { refs: {}, folders: {} },
+        scripts: { refs: {}, folders: {} },
+        charjs: { refs: {}, folders: {} },
+        assets: { refs: {}, folders: {} }
+    };
+    const characterModule: Module = {
+        ...globalModule,
+        id: 'mod-character',
+        name: 'Character Module',
+        defaultVariables: { shared: 'character-module', characterModuleOnly: 'yes' }
+    };
+    const mockPreset: Preset = {
+        id: 'preset-1',
+        name: 'Preset',
+        description: '',
+        models: {},
+        parameters: {},
+        chatWorkflow: { nodes: {} },
+        defaultVariables: { mood: 'preset-calm', shared: 'preset', presetOnly: 'yes' },
+        globalVariables: {},
+        customToggles: {},
+        scripts: { refs: {}, folders: {} }
+    };
 
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(getActivePreset).mockReturnValue(null);
         vi.mocked(getChat).mockResolvedValue(mockChat);
         vi.mocked(getRoom).mockResolvedValue(mockRoom);
         vi.mocked(getCharacter).mockImplementation(async (id: string) => {
@@ -112,10 +149,12 @@ describe('ChatManager', () => {
             if (id === 'char-2') return charTwo;
             return null;
         });
+        vi.mocked(getActiveModuleIds).mockResolvedValue(new Set());
+        vi.mocked(getModule).mockResolvedValue(null);
     });
 
     describe('syncChatGreetings', () => {
-        it('creates one greeting message with enabled character greeting swipes', async () => {
+        it('creates one greeting message with attached character greeting swipes', async () => {
             vi.mocked(getLastMessage).mockResolvedValue(null);
             vi.mocked(createMessage).mockResolvedValue({ id: 'msg-1' } as Message);
 
@@ -129,14 +168,14 @@ describe('ChatManager', () => {
                     swipes: {
                         greet1: expect.objectContaining({
                             id: 'greet1',
-                            content: 'Hello',
+                            parts: [{ type: 'content', text: 'Hello' }],
                             speakerId: 'char-1',
                             speakerName: 'Alpha',
                             variables: { mood: 'calm', shared: 'beta', energy: 'high' }
                         }),
                         greet2: expect.objectContaining({
                             id: 'greet2',
-                            content: 'Yo',
+                            parts: [{ type: 'content', text: 'Yo' }],
                             speakerId: 'char-2',
                             speakerName: 'Beta'
                         })
@@ -149,14 +188,13 @@ describe('ChatManager', () => {
             });
         });
 
-        it('ignores disabled characters when building greeting swipes', async () => {
+        it('builds greeting swipes only for attached characters', async () => {
             vi.mocked(getLastMessage).mockResolvedValue(null);
             vi.mocked(getRoom).mockResolvedValue({
                 ...mockRoom,
                 characters: {
                     refs: {
-                        'char-1': { id: 'char-1', sortOrder: 'a', enabled: true },
-                        'char-2': { id: 'char-2', sortOrder: 'b', enabled: false }
+                        'char-1': { id: 'char-1', sortOrder: 'a' }
                     },
                     folders: {}
                 }
@@ -195,7 +233,13 @@ describe('ChatManager', () => {
                 scopeId: 'user-1',
                 sortOrder: 'a0',
                 role: 'assistant',
-                swipes: { greet2: { id: 'greet2', content: 'Old', createdAt: 2 } },
+                swipes: {
+                    greet2: {
+                        id: 'greet2',
+                        parts: [{ type: 'content', text: 'Old' }],
+                        createdAt: 2
+                    }
+                },
                 activeSwipeId: 'greet2'
             } as Message;
 
@@ -209,8 +253,12 @@ describe('ChatManager', () => {
                 'msg-1',
                 expect.objectContaining({
                     swipes: expect.objectContaining({
-                        greet1: expect.objectContaining({ content: 'Hello' }),
-                        greet2: expect.objectContaining({ content: 'Yo' })
+                        greet1: expect.objectContaining({
+                            parts: [{ type: 'content', text: 'Hello' }]
+                        }),
+                        greet2: expect.objectContaining({
+                            parts: [{ type: 'content', text: 'Yo' }]
+                        })
                     }),
                     activeSwipeId: 'greet2'
                 })
@@ -260,25 +308,48 @@ describe('ChatManager', () => {
             sortOrder: 'b',
             role: 'assistant',
             swipes: {
-                s1: { id: 's1', content: '...', variables: { mood: 'tense' }, createdAt: 1 }
+                s1: {
+                    id: 's1',
+                    parts: [{ type: 'content', text: '...' }],
+                    variables: { mood: 'tense' },
+                    createdAt: 1
+                }
             },
             activeSwipeId: 's1'
         } as Message;
 
-        it('merges enabled character defaults in room order', async () => {
+        it('merges preset, active module, and character defaults in specificity order', async () => {
+            vi.mocked(getActivePreset).mockReturnValue(mockPreset);
+            vi.mocked(getActiveModuleIds).mockImplementation(async (characterId?: string) => {
+                if (characterId === 'char-1') return new Set(['mod-global', 'mod-character']);
+                if (characterId === 'char-2') return new Set(['mod-global']);
+                return new Set();
+            });
+            vi.mocked(getModule).mockImplementation(async (id: string) => {
+                if (id === 'mod-global') return globalModule;
+                if (id === 'mod-character') return characterModule;
+                return null;
+            });
+
             const variables = await getChatDefaultVariables('chat-1');
 
-            expect(variables).toEqual({ mood: 'calm', shared: 'beta', energy: 'high' });
+            expect(variables).toEqual({
+                mood: 'calm',
+                shared: 'beta',
+                presetOnly: 'yes',
+                moduleOnly: 'yes',
+                characterModuleOnly: 'yes',
+                energy: 'high'
+            });
         });
 
-        it('skips disabled and missing characters when merging defaults', async () => {
+        it('skips missing characters when merging defaults', async () => {
             vi.mocked(getRoom).mockResolvedValue({
                 ...mockRoom,
                 characters: {
                     refs: {
-                        'char-2': { id: 'char-2', sortOrder: 'a', enabled: false },
-                        missing: { id: 'missing', sortOrder: 'b', enabled: true },
-                        'char-1': { id: 'char-1', sortOrder: 'c', enabled: true }
+                        missing: { id: 'missing', sortOrder: 'b' },
+                        'char-1': { id: 'char-1', sortOrder: 'c' }
                     },
                     folders: {}
                 }
@@ -328,7 +399,9 @@ describe('ChatManager', () => {
             chatId: 'chat-1',
             sortOrder: 'b',
             role: 'assistant',
-            swipes: { s1: { id: 's1', content: 'Fork me', createdAt: 2000 } },
+            swipes: {
+                s1: { id: 's1', parts: [{ type: 'content', text: 'Fork me' }], createdAt: 2000 }
+            },
             activeSwipeId: 's1'
         };
         const mockPrevMessage = {
@@ -336,7 +409,9 @@ describe('ChatManager', () => {
             chatId: 'chat-1',
             sortOrder: 'a',
             role: 'user',
-            swipes: { s1: { id: 's1', content: 'Hello', createdAt: 1000 } },
+            swipes: {
+                s1: { id: 's1', parts: [{ type: 'content', text: 'Hello' }], createdAt: 1000 }
+            },
             activeSwipeId: 's1'
         };
         const mockLorebook = {

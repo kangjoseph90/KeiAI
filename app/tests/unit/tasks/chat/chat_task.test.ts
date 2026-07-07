@@ -68,7 +68,7 @@ vi.mock('$lib/stores', () => ({
         defaultPersonaId: 'persona-1',
         lorebooks: { refs: {}, folders: {} },
         personas: {
-            refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
+            refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a0' } },
             folders: {}
         },
         inlays: { refs: {}, folders: {} }
@@ -77,7 +77,7 @@ vi.mock('$lib/stores', () => ({
         id: 'room-1',
         name: 'Room 1',
         chats: { refs: {}, folders: {} },
-        characters: { refs: { 'char-1': { enabled: true, sortOrder: 'a0' } }, folders: {} }
+        characters: { refs: { 'char-1': { id: 'char-1', sortOrder: 'a0' } }, folders: {} }
     }),
     getCharacter: vi.fn().mockResolvedValue({
         id: 'char-1',
@@ -100,6 +100,39 @@ vi.mock('$lib/stores', () => ({
         },
         parameters: {
             chat: {}
+        },
+        chatWorkflow: {
+            nodes: {
+                agent: {
+                    id: 'agent',
+                    name: 'Agent',
+                    class: 'Agent',
+                    position: { x: 0, y: 0 },
+                    llmType: 'chat',
+                    promptBlocks: {},
+                    maxContext: 60000,
+                    maxResponse: 6000,
+                    lorebookRatio: 0.2,
+                    memoryRatio: 0.2,
+                    lorebookScanDepth: 5,
+                    slotNames: {},
+                    inputs: {},
+                    inputValues: {}
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 360, y: 0 },
+                    inputs: {
+                        content: {
+                            sourceNode: 'agent',
+                            sourcePort: 0
+                        }
+                    },
+                    inputValues: {}
+                }
+            }
         }
     }),
     getMergedLorebooks: vi.fn().mockResolvedValue([]),
@@ -116,7 +149,7 @@ vi.mock('$lib/stores/content/chat', () => ({
         defaultPersonaId: 'persona-1',
         lorebooks: { refs: {}, folders: {} },
         personas: {
-            refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
+            refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a0' } },
             folders: {}
         },
         inlays: { refs: {}, folders: {} }
@@ -133,7 +166,16 @@ vi.mock('$lib/stores/content/character', () => ({
 }));
 
 vi.mock('$lib/stores/content/merged', () => ({
-    getActiveModuleIds: vi.fn().mockResolvedValue(new Set())
+    getActiveModuleIds: vi.fn().mockResolvedValue(new Set()),
+    getMergedLorebooks: vi.fn().mockResolvedValue([])
+}));
+
+vi.mock('$lib/stores/content/settings', () => ({
+    getAppSettings: vi.fn().mockResolvedValue({
+        presetId: 'preset-1',
+        apiKeys: {},
+        chat: { saveMessagesOnSwipe: true }
+    })
 }));
 
 vi.mock('$lib/stores/content/module', () => ({
@@ -146,23 +188,28 @@ vi.mock('$lib/charjs', () => ({
     invokeHandler: vi.fn()
 }));
 
-vi.mock('$lib/tasks/chat/prompt', () => ({
+vi.mock('$lib/workflow/agent/prompt', () => ({
     buildPrompt: vi.fn().mockResolvedValue([])
 }));
 
 vi.mock('$lib/llm/handler', () => ({
     selectLLMHandler: vi.fn().mockReturnValue(null),
-    resolveLLMModelConfig: vi.fn((type, preset) => preset.models?.[type] ?? null),
-    resolveLLMParameters: vi.fn((type, preset) => preset.parameters?.[type] ?? null)
+    resolveLLMModelConfig: vi.fn().mockResolvedValue({ id: '', provider: 'openai' }),
+    resolveLLMParameters: vi.fn().mockResolvedValue({})
 }));
 
 vi.mock('$lib/pipeline', () => ({
     runPipeline: vi.fn((_chatId: string, _phase: string, data: unknown) => Promise.resolve(data))
 }));
 
-vi.mock('$lib/template', () => ({
-    runTemplate: vi.fn((text: string) => Promise.resolve(text))
-}));
+// Only runTemplate needs faking; pure helpers flow through from the real module.
+vi.mock('$lib/template', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('$lib/template')>();
+    return {
+        ...actual,
+        runTemplate: vi.fn((text: string) => Promise.resolve(text))
+    };
+});
 
 import {
     createChatTask,
@@ -180,10 +227,10 @@ import {
 import { getChatVariablesBefore, prepareNextSwipe } from '$lib/managers';
 import { MessageService } from '$lib/services/content/message';
 import { getChat, getRoom } from '$lib/stores';
-import { buildPrompt } from '$lib/tasks/chat/prompt';
+import { buildPrompt } from '$lib/workflow/agent/prompt';
 import { selectLLMHandler } from '$lib/llm/handler';
 import { runPipeline } from '$lib/pipeline';
-import type { Chat, Message } from '$lib/services';
+import type { Chat, Message, Preset } from '$lib/services';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -235,7 +282,7 @@ describe('Chat Pipeline', () => {
                 swipes: {
                     'swipe-new': {
                         id: 'swipe-new',
-                        content: '',
+                        parts: [],
                         createdAt: Date.now(),
                         variables: {},
                         speakerId: 'char-1',
@@ -250,7 +297,7 @@ describe('Chat Pipeline', () => {
             swipes: {
                 'swipe-new': {
                     id: 'swipe-new',
-                    content: 'Hello world',
+                    parts: [{ type: 'content', text: 'Hello world' }],
                     createdAt: Date.now(),
                     variables: {}
                 }
@@ -284,7 +331,7 @@ describe('Chat Pipeline', () => {
                     swipes: {
                         'swipe-new': {
                             id: 'swipe-new',
-                            content: 'Hello world',
+                            parts: [{ type: 'content', text: 'Hello world' }],
                             createdAt: Date.now(),
                             variables: {}
                         }
@@ -292,8 +339,9 @@ describe('Chat Pipeline', () => {
                     activeSwipeId: 'swipe-new'
                 }) as Message
         );
+        vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
 
-        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: mockHandler });
+        await runChat(mockChatId, 'char-1', 'persona-1');
 
         // Should create message in DB immediately
         expect(createMessage).toHaveBeenCalled();
@@ -307,7 +355,7 @@ describe('Chat Pipeline', () => {
         expect(prepareNextSwipe).toHaveBeenCalledWith(
             expect.objectContaining({ id: 'msg-new' }),
             expect.objectContaining({
-                content: '',
+                parts: [],
                 variables: {},
                 speakerId: 'char-1',
                 speakerName: 'Char 1',
@@ -316,16 +364,16 @@ describe('Chat Pipeline', () => {
         );
         expect(updateMessageSwipe).toHaveBeenCalled();
         const promptInput = vi.mocked(buildPrompt).mock.calls[0]?.[0];
-        expect(promptInput?.context).toMatchObject({
+        expect(promptInput?.ctx).toMatchObject({
             characterId: 'char-1',
             personaId: 'persona-1',
             chatId: 'chat-1'
         });
-        expect(promptInput?.context).not.toHaveProperty('messageId');
-        expect(promptInput?.context).not.toHaveProperty('messageIndex');
-        expect(promptInput?.context).not.toHaveProperty('role');
-        expect(promptInput?.context).not.toHaveProperty('speakerId');
-        expect(promptInput?.context).not.toHaveProperty('speakerName');
+        expect(promptInput?.ctx).not.toHaveProperty('messageId');
+        expect(promptInput?.ctx).not.toHaveProperty('messageIndex');
+        expect(promptInput?.ctx).not.toHaveProperty('role');
+        expect(promptInput?.ctx).not.toHaveProperty('speakerId');
+        expect(promptInput?.ctx).not.toHaveProperty('speakerName');
         expect(runPipeline).toHaveBeenCalledWith(
             mockChatId,
             'output',
@@ -358,7 +406,7 @@ describe('Chat Pipeline', () => {
         vi.mocked(getChatTask).mockReturnValue(makeMockTask());
 
         // Attempt run while one is active
-        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: foreverHandler });
+        await runChat(mockChatId, 'char-1', 'persona-1');
 
         // Should not have created a new task
         expect(createChatTask).not.toHaveBeenCalled();
@@ -371,7 +419,7 @@ describe('Chat Pipeline', () => {
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
-        expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Prompt error');
+        expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Agent failed: Prompt error');
     });
 
     it('should reject generation when the character ref is missing in room', async () => {
@@ -393,7 +441,7 @@ describe('Chat Pipeline', () => {
         expect(createMessage).not.toHaveBeenCalled();
     });
 
-    it('should reject generation when the persona ref is disabled in the chat', async () => {
+    it('should reject generation when the persona ref is detached from the chat', async () => {
         vi.mocked(getChat).mockResolvedValueOnce({
             id: mockChatId,
             roomId: 'room-1',
@@ -404,10 +452,7 @@ describe('Chat Pipeline', () => {
             messageCount: 0,
             defaultCharacterId: 'char-1',
             lorebooks: { refs: {}, folders: {} },
-            personas: {
-                refs: { 'persona-1': { id: 'persona-1', enabled: false, sortOrder: 'a0' } },
-                folders: {}
-            },
+            personas: { refs: {}, folders: {} },
             inlays: { refs: {}, folders: {} }
         } as Chat);
 
@@ -431,11 +476,12 @@ describe('Chat Pipeline', () => {
         // getMessage returns swipe with empty content for empty check
         vi.mocked(getMessage).mockResolvedValue({
             ...mockNewMessage,
-            swipes: { 'swipe-new': { id: 'swipe-new', content: '', createdAt: Date.now() } },
+            swipes: { 'swipe-new': { id: 'swipe-new', parts: [], createdAt: Date.now() } },
             activeSwipeId: 'swipe-new'
         } as unknown as import('$lib/services').Message);
+        vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
 
-        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: mockHandler });
+        await runChat(mockChatId, 'char-1', 'persona-1');
 
         expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Empty response from model');
         expect(clearChatTask).not.toHaveBeenCalled();
@@ -448,8 +494,9 @@ describe('Chat Pipeline', () => {
                 throw new DOMException('Aborted', 'AbortError');
             })
         };
+        vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
 
-        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: mockHandler });
+        await runChat(mockChatId, 'char-1', 'persona-1');
 
         expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
     });
@@ -461,28 +508,12 @@ describe('Chat Pipeline', () => {
                 throw new Error('Network fail');
             })
         };
+        vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
 
-        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: mockHandler });
+        await runChat(mockChatId, 'char-1', 'persona-1');
 
-        expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Network fail');
+        expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Agent failed: Network fail');
         expect(clearChatTask).not.toHaveBeenCalled();
-    });
-
-    it('should use handler override when provided', async () => {
-        const mockHandler: LLMStreamHandler = {
-            stream: vi.fn(async function* () {
-                yield { content: 'Override response' };
-            })
-        };
-
-        await runChat(mockChatId, 'char-1', 'persona-1', { handlerOverride: mockHandler });
-
-        expect(selectLLMHandler).not.toHaveBeenCalled();
-        expect(createChatTask).toHaveBeenCalledWith(
-            mockChatId,
-            'msg-new',
-            expect.any(AbortController)
-        );
     });
 
     it('selects handler from preset when no override', async () => {
@@ -510,10 +541,8 @@ describe('Chat Pipeline', () => {
             swipes: {
                 'swipe-new': {
                     id: 'swipe-new',
-                    content: 'Old content',
-                    createdAt: 1000,
-                    thought: '',
-                    toolCalls: {}
+                    parts: [{ type: 'content', text: 'Old content' }],
+                    createdAt: 1000
                 }
             },
             activeSwipeId: 'swipe-new',
@@ -534,7 +563,7 @@ describe('Chat Pipeline', () => {
                 lastMessageId: targetMessageId,
                 lorebooks: { refs: {}, folders: {} },
                 personas: {
-                    refs: { 'persona-1': { id: 'persona-1', enabled: true, sortOrder: 'a0' } },
+                    refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a0' } },
                     folders: {}
                 },
                 inlays: { refs: {}, folders: {} }
@@ -561,23 +590,21 @@ describe('Chat Pipeline', () => {
                         ...mockExistingMessage.swipes,
                         'swipe-new': {
                             id: 'swipe-new',
-                            content: 'New content',
+                            parts: [{ type: 'content', text: 'New content' }],
                             createdAt: Date.now()
                         }
                     },
                     activeSwipeId: 'swipe-new'
                 } as unknown as import('$lib/services').Message);
+            vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
 
-            await runChat(mockChatId, 'char-1', 'persona-1', {
-                handlerOverride: mockHandler,
-                reroll: true
-            });
+            await runChat(mockChatId, 'char-1', 'persona-1', { reroll: true });
 
             // Should add swipe to existing message, not create new message
             expect(prepareNextSwipe).toHaveBeenCalledWith(
                 expect.objectContaining({ id: targetMessageId }),
                 expect.objectContaining({
-                    content: '',
+                    parts: [],
                     variables: {},
                     speakerId: 'char-1',
                     speakerName: 'Char 1',
@@ -608,22 +635,20 @@ describe('Chat Pipeline', () => {
                 swipes: {
                     'swipe-new': {
                         id: 'swipe-new',
-                        content: 'Replacement',
+                        parts: [{ type: 'content', text: 'Replacement' }],
                         createdAt: Date.now()
                     }
                 },
                 activeSwipeId: 'swipe-new'
             } as unknown as import('$lib/services').Message);
+            vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
 
-            await runChat(mockChatId, 'char-1', 'persona-1', {
-                handlerOverride: mockHandler,
-                reroll: true
-            });
+            await runChat(mockChatId, 'char-1', 'persona-1', { reroll: true });
 
             expect(prepareNextSwipe).toHaveBeenCalledWith(
                 expect.objectContaining({ id: targetMessageId }),
                 expect.objectContaining({
-                    content: '',
+                    parts: [],
                     variables: {},
                     speakerId: 'char-1',
                     speakerName: 'Char 1',

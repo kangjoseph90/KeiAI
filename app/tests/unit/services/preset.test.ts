@@ -9,6 +9,7 @@ import { PresetService, type PresetFields } from '$lib/services/content/preset';
 import { localDB, type PresetRecord, type DataRecord } from '$lib/adapters/db';
 import { encrypt, decrypt } from '$lib/crypto';
 import { AppError } from '$lib/types/errors';
+import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
 
 // Mock all dependencies
 vi.mock('$lib/crypto', () => ({
@@ -80,12 +81,13 @@ describe('PresetService', () => {
         parameters: {
             chat: { temperature: 0.9 }
         },
-        promptBlocks: {},
-        maxResponse: 600,
-        maxContext: 4096,
-        lorebookRatio: 0.2,
-        lorebookScanDepth: 5,
-        memoryRatio: 0.2,
+        chatWorkflow: createDefaultChatWorkflow({
+            maxResponse: 600,
+            maxContext: 4096,
+            lorebookRatio: 0.2,
+            lorebookScanDepth: 5,
+            memoryRatio: 0.2
+        }),
         defaultVariables: {},
         globalVariables: {},
         customToggles: {},
@@ -165,19 +167,38 @@ describe('PresetService', () => {
                 })
             );
         });
+
+        it('uses an empty workflow only as a structural fallback', async () => {
+            const result = await PresetService.create({ name: 'Minimal Preset' });
+
+            expect(result.chatWorkflow).toEqual({ nodes: {} });
+        });
     });
 
     describe('update', () => {
         it('should update preset correctly', async () => {
             vi.mocked(buffer.get).mockResolvedValue(mockRecord);
+            const agent = mockFields.chatWorkflow.nodes.chat_agent;
+            expect(agent?.class).toBe('Agent');
+            if (agent?.class !== 'Agent') throw new Error('Expected chat Agent node');
 
             const result = await PresetService.update('preset-123', {
                 name: 'New Name',
-                maxResponse: 800
+                chatWorkflow: {
+                    nodes: {
+                        [agent.id]: {
+                            maxResponse: 800
+                        }
+                    }
+                }
             });
 
             expect(result.name).toBe('New Name');
-            expect(result.maxResponse).toBe(800);
+            const updatedAgent = result.chatWorkflow.nodes.chat_agent;
+            expect(updatedAgent?.class).toBe('Agent');
+            expect(updatedAgent?.class === 'Agent' ? updatedAgent.maxResponse : undefined).toBe(
+                800
+            );
 
             expect(buffer.update).toHaveBeenCalled();
         });

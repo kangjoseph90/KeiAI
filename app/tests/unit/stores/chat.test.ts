@@ -10,7 +10,6 @@ import {
     removeChatPersona,
     setChatDefaultCharacter,
     setChatDefaultPersona,
-    setChatPersonaEnabled,
     setChatSelectedCharacter,
     setChatSelectedPersona,
     createChatLorebook,
@@ -95,7 +94,7 @@ describe('Chat Store', () => {
         name: 'Test Room',
         chats: { refs: {}, folders: {} },
         characters: {
-            refs: { 'char-1': { id: 'char-1', sortOrder: 'a', enabled: true } },
+            refs: { 'char-1': { id: 'char-1', sortOrder: 'a' } },
             folders: {}
         }
     };
@@ -158,8 +157,7 @@ describe('Chat Store', () => {
                     refs: {
                         'persona-missing': {
                             id: 'persona-missing',
-                            sortOrder: 'a',
-                            enabled: true
+                            sortOrder: 'a'
                         }
                     },
                     folders: {}
@@ -179,43 +177,18 @@ describe('Chat Store', () => {
             );
         });
 
-        it('cleans disabled default refs on select', async () => {
+        it('cleans detached default refs on select', async () => {
             const chat: Chat = {
                 ...mockChat,
                 defaultPersonaId: 'persona-1',
                 defaultCharacterId: 'char-disabled',
-                personas: {
-                    refs: {
-                        'persona-1': {
-                            id: 'persona-1',
-                            sortOrder: 'a',
-                            enabled: false
-                        }
-                    },
-                    folders: {}
-                }
+                personas: { refs: {}, folders: {} }
             };
             vi.mocked(ChatService.get).mockResolvedValue(chat);
-            vi.mocked(getPersona).mockResolvedValue({
-                id: 'persona-1',
-                scopeType: 'user',
-                scopeId: 'user-1',
-                name: 'Persona',
-                description: '',
-                assets: { refs: {}, folders: {} }
-            });
+            vi.mocked(getPersona).mockResolvedValue(null);
             vi.mocked(getRoom).mockResolvedValue({
                 ...mockRoom,
-                characters: {
-                    refs: {
-                        'char-disabled': {
-                            id: 'char-disabled',
-                            sortOrder: 'a',
-                            enabled: false
-                        }
-                    },
-                    folders: {}
-                }
+                characters: { refs: {}, folders: {} }
             });
             vi.mocked(ChatService.update).mockResolvedValue({
                 ...chat,
@@ -267,7 +240,13 @@ describe('Chat Store', () => {
         it('deletes chat and removes it from room refs', async () => {
             const roomWithRefs: Room = {
                 ...mockRoom,
-                chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a' } }, folders: {} }
+                chats: {
+                    refs: {
+                        'chat-1': { id: 'chat-1', sortOrder: 'a' },
+                        'chat-2': { id: 'chat-2', sortOrder: 'b' }
+                    },
+                    folders: {}
+                }
             };
             vi.mocked(getRoom).mockResolvedValue(roomWithRefs);
             roomChats.setAll([mockChat]);
@@ -282,10 +261,23 @@ describe('Chat Store', () => {
             expect(get(roomChats)).toHaveLength(0);
             expect(get(activeChat)).toBeNull();
         });
+
+        it("rejects deleting the room's last chat", async () => {
+            const roomWithLastChat: Room = {
+                ...mockRoom,
+                chats: { refs: { 'chat-1': { id: 'chat-1', sortOrder: 'a' } }, folders: {} }
+            };
+            vi.mocked(getRoom).mockResolvedValue(roomWithLastChat);
+
+            await expect(deleteChat('chat-1', 'room-1')).rejects.toMatchObject({
+                code: 'DELETE_LAST_ITEM'
+            });
+            expect(ChatService.delete).not.toHaveBeenCalled();
+        });
     });
 
     describe('Chat persona and character selection', () => {
-        it('adds a persona ref and allows selecting/defaulting enabled personas', async () => {
+        it('adds a persona ref and allows selecting and defaulting it', async () => {
             const persona = {
                 id: 'persona-1',
                 scopeType: 'user' as const,
@@ -306,8 +298,7 @@ describe('Chat Store', () => {
                             refs: {
                                 'persona-1': {
                                     id: 'persona-1',
-                                    sortOrder: 'sort-order',
-                                    enabled: true
+                                    sortOrder: 'sort-order'
                                 }
                             },
                             folders: {}
@@ -326,7 +317,7 @@ describe('Chat Store', () => {
                         refs: {
                             'persona-1': expect.objectContaining({
                                 id: 'persona-1',
-                                enabled: true
+                                sortOrder: 'sort-order'
                             })
                         }
                     }
@@ -339,11 +330,11 @@ describe('Chat Store', () => {
             expect(get(chatPersonas)).toContainEqual(persona);
         });
 
-        it('rejects defaulting persona refs that are missing or disabled', async () => {
+        it('rejects defaulting persona refs that are missing', async () => {
             putActiveChat({
                 ...mockChat,
                 personas: {
-                    refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a', enabled: false } },
+                    refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a' } },
                     folders: {}
                 }
             });
@@ -353,12 +344,12 @@ describe('Chat Store', () => {
             );
         });
 
-        it('clears default persona when removing or disabling it', async () => {
+        it('clears default persona when removing it', async () => {
             putActiveChat({
                 ...mockChat,
                 defaultPersonaId: 'persona-1',
                 personas: {
-                    refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a', enabled: true } },
+                    refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a' } },
                     folders: {}
                 }
             });
@@ -373,34 +364,9 @@ describe('Chat Store', () => {
                 })
             );
             expect(get(chatSelections)?.personaId).toBeUndefined();
-
-            putActiveChat({
-                ...mockChat,
-                defaultPersonaId: 'persona-1',
-                personas: {
-                    refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a', enabled: true } },
-                    folders: {}
-                }
-            });
-            chatSelections.set({ personaId: 'persona-1' });
-            vi.mocked(ChatService.update).mockClear();
-
-            await setChatPersonaEnabled('chat-1', 'persona-1', false);
-
-            expect(ChatService.update).toHaveBeenCalledWith(
-                'chat-1',
-                expect.objectContaining({
-                    personas: {
-                        refs: {
-                            'persona-1': expect.objectContaining({ enabled: false })
-                        }
-                    }
-                })
-            );
-            expect(get(chatSelections)?.personaId).toBeUndefined();
         });
 
-        it('allows selecting/defaulting enabled room characters and rejects disabled defaults', async () => {
+        it('allows selecting and defaulting attached room characters', async () => {
             putActiveChat(mockChat);
 
             setChatSelectedCharacter('chat-1', 'char-1');
@@ -409,14 +375,6 @@ describe('Chat Store', () => {
             expect(get(chatSelections)?.characterId).toBe('char-1');
             expect(ChatService.update).toHaveBeenCalledWith('chat-1', {
                 defaultCharacterId: 'char-1'
-            });
-
-            vi.mocked(getRoom).mockResolvedValue({
-                ...mockRoom,
-                characters: {
-                    refs: { 'char-1': { id: 'char-1', sortOrder: 'a', enabled: false } },
-                    folders: {}
-                }
             });
 
             await expect(setChatDefaultCharacter('chat-1', 'char-missing')).rejects.toThrow(
@@ -541,7 +499,7 @@ describe('Chat Store', () => {
         putActiveChat({
             ...mockChat,
             personas: {
-                refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a', enabled: true } },
+                refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a' } },
                 folders: {}
             }
         });

@@ -9,8 +9,8 @@
  *         for child IDs (order + folder managed by parent).
  *         High-volume exceptions use local FK indexes:
  *         chats.roomId, messages.[chatId+sortOrder].
- *   N:M — Consumer's data blob holds EntityListConfig<ResourceRef>
- *         with per-context enabled state.
+ *   N:M — Consumer's data blob holds EntityListConfig<OrderedRef> when membership is binary,
+ *         or EntityListConfig<ResourceRef> when per-context enabled state is required.
  */
 
 import type { AssetEntries } from '$lib/types/asset';
@@ -31,6 +31,7 @@ export type TableName =
     | 'plugins'
     | 'tool_calls'
     | 'translations'
+    | 'files'
     | 'charjs';
 
 export const SYNC_TABLES: TableName[] = [
@@ -46,7 +47,8 @@ export const SYNC_TABLES: TableName[] = [
     'modules',
     'plugins',
     'charjs',
-    'translations'
+    'translations',
+    'files'
 ];
 
 export const LOCAL_TABLES: TableName[] = ['tool_calls'];
@@ -152,20 +154,21 @@ export type PresetRecord = DataRecord;
 
 // ─── Tool Calls ──────────────────────────────────────────────────────
 
-// swipeId is message-local; use [messageId+swipeId] for lookups.
 export interface ToolCallRecord extends DataRecord {
     chatId: string;
-    messageId: string;
-    swipeId: string;
 }
 
 // ─── Translations ───────────────────────────────────────────────────
 
-// swipeId is message-local; use [messageId+swipeId] for lookups.
 export interface TranslationRecord extends DataRecord {
     chatId: string;
     messageId: string;
-    swipeId: string;
+}
+
+// ─── Files ──────────────────────────────────────────────────────────
+
+export interface FileRecord extends DataRecord {
+    ownerId: string;
 }
 
 // ─── Adapter Interface ──────────────────────────────────────────────

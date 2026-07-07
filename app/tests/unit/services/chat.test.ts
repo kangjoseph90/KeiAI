@@ -226,7 +226,8 @@ describe('ChatService', () => {
                     'scripts',
                     'messages',
                     'tool_calls',
-                    'translations'
+                    'translations',
+                    'files'
                 ]),
                 'rw',
                 expect.any(Function)
@@ -258,6 +259,12 @@ describe('ChatService', () => {
             expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
                 'translations',
                 'chatId',
+                'chat-1',
+                undefined
+            );
+            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
+                'files',
+                'ownerId',
                 'chat-1',
                 undefined
             );

@@ -10,33 +10,37 @@
         deleteGlobalFolder,
         moveGlobalItem
     } from '$lib/stores';
-    import type { Plugin, PluginFields } from '$lib/services';
-    import type { DeepPartial } from '$lib/utils/defaults';
-    import { navigate } from '$lib/router';
+    import type { Plugin } from '$lib/services';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import { Textarea } from '$lib/components/ui/textarea';
-    import { Card, CardContent } from '$lib/components/ui/card';
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
-    import { ArrowLeft, Check, Pencil, Plus, Trash2, X, Play, Square } from 'lucide-svelte';
+    import {
+        ChevronDown,
+        ChevronRight,
+        Eye,
+        EyeOff,
+        Trash2,
+        Play,
+        Square,
+        Plus
+    } from 'lucide-svelte';
     import { pluginManager } from '$lib/plugins';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
+    import ListActionBar from '$lib/components/ListActionBar.svelte';
+    import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
 
-    let { pluginId }: { pluginId?: string } = $props();
-
-    let newName = $state('');
-    let editName = $state('');
-    let editDescription = $state('');
-    let editVersion = $state('');
-    let editCode = $state('');
-    let editEnabled = $state(false);
-    let editArgs = $state<[string, string][]>([]);
-    let loadedPluginId = $state<string | null>(null);
+    let expandedPluginIds = $state<Record<string, boolean>>({});
 
     let loadedPluginIds = $state<string[]>(
         pluginManager.getInstances().map((inst) => inst.pluginId)
     );
+
+    function toggleExpanded(id: string) {
+        expandedPluginIds[id] = !expandedPluginIds[id];
+    }
 
     async function handleLoad(id: string) {
         await pluginManager.loadPlugin(id);
@@ -48,216 +52,42 @@
         loadedPluginIds = pluginManager.getInstances().map((inst) => inst.pluginId);
     }
 
-    const selectedPlugin = $derived(
-        pluginId ? ($plugins.find((plugin) => plugin.id === pluginId) ?? null) : null
-    );
-
-    $effect(() => {
-        const plugin = selectedPlugin;
-        if (!plugin || loadedPluginId === plugin.id) return;
-        loadEditor(plugin);
-    });
-
-    function loadEditor(plugin: Plugin) {
-        loadedPluginId = plugin.id;
-        editName = plugin.name;
-        editDescription = plugin.description;
-        editVersion = plugin.version;
-        editCode = plugin.code;
-        editEnabled = plugin.enabled;
-        editArgs = Object.entries(plugin.args).map(([key, value]) => [key, String(value)]);
-    }
-
     async function handleCreate() {
-        const name = newName.trim();
-        if (!name) return;
-        const plugin = await createPlugin({
-            name,
-            description: '',
-            version: '0.0.1',
-            enabled: true,
-            code: '',
-            args: {}
+        const plugin = await createPlugin();
+        expandedPluginIds[plugin.id] = true;
+    }
+
+    async function handleUpdateArgValue(plugin: Plugin, key: string, value: string) {
+        const newArgs = { ...plugin.args, [key]: value };
+        await updatePlugin(plugin.id, { args: newArgs });
+    }
+
+    async function handleAddArg(plugin: Plugin, key: string, value: string) {
+        const newArgs = { ...plugin.args, [key]: value };
+        await updatePlugin(plugin.id, { args: newArgs });
+    }
+
+    async function handleRemoveArg(plugin: Plugin, keyToRemove: string) {
+        await updatePlugin(plugin.id, {
+            args: {
+                [keyToRemove]: undefined
+            }
         });
-        newName = '';
-        navigate({ view: 'settings', pluginId: plugin.id });
-    }
-
-    async function handleSave(id: string) {
-        if (!editName.trim()) return;
-        const args: Record<string, unknown> = {};
-        for (const [key, value] of editArgs) {
-            const trimmed = key.trim();
-            if (trimmed) args[trimmed] = value;
-        }
-        const changes: DeepPartial<PluginFields> = {
-            name: editName,
-            description: editDescription,
-            version: editVersion,
-            code: editCode,
-            enabled: editEnabled,
-            args
-        };
-        await updatePlugin(id, changes);
-        navigate({ view: 'settings' });
-    }
-
-    async function handleDelete(id: string) {
-        await deletePlugin(id);
-        navigate({ view: 'settings' });
-    }
-
-    function addArgEntry() {
-        editArgs = [...editArgs, ['', '']];
-    }
-
-    function removeArgEntry(index: number) {
-        editArgs = editArgs.filter((_, i) => i !== index);
-    }
-
-    function updateArgKey(index: number, key: string) {
-        const updated = [...editArgs];
-        updated[index] = [key, updated[index][1]];
-        editArgs = updated;
-    }
-
-    function updateArgValue(index: number, value: string) {
-        const updated = [...editArgs];
-        updated[index] = [updated[index][0], value];
-        editArgs = updated;
     }
 </script>
 
-{#if selectedPlugin}
-    <div class="flex min-h-[70vh] flex-col gap-5">
-        <div class="flex items-center justify-between gap-3">
-            <div class="flex min-w-0 items-center gap-3">
-                <Button variant="ghost" size="icon" onclick={() => navigate({ view: 'settings' })}>
-                    <ArrowLeft class="size-4" />
-                </Button>
-                <div class="min-w-0">
-                    <h2 class="truncate text-xl font-semibold">{selectedPlugin.name}</h2>
-                    <p class="text-xs text-muted-foreground">Plugin editor</p>
-                </div>
-            </div>
-            <div class="flex gap-2">
-                <Button
-                    variant="destructive"
-                    class="gap-1.5"
-                    onclick={() => handleDelete(selectedPlugin.id)}
-                >
-                    <Trash2 class="size-4" /> Delete
-                </Button>
-                <Button class="gap-1.5" onclick={() => handleSave(selectedPlugin.id)}>
-                    <Check class="size-4" /> Save
-                </Button>
-            </div>
-        </div>
-
-        <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-            <div class="space-y-4">
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <div class="space-y-1">
-                        <Label>Name</Label>
-                        <Input bind:value={editName} />
-                    </div>
-                    <div class="space-y-1">
-                        <Label>Version</Label>
-                        <Input bind:value={editVersion} />
-                    </div>
-                </div>
-                <div class="space-y-1">
-                    <Label>Description</Label>
-                    <Textarea bind:value={editDescription} rows={3} />
-                </div>
-                <div class="space-y-1">
-                    <Label>Code</Label>
-                    <Textarea class="min-h-[360px] font-mono text-sm" bind:value={editCode} />
-                </div>
-            </div>
-
-            <aside class="space-y-4">
-                <Card>
-                    <CardContent class="space-y-3 p-4">
-                        <label class="flex items-center justify-between gap-3 text-sm">
-                            <span>Enabled</span>
-                            <input type="checkbox" bind:checked={editEnabled} />
-                        </label>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardContent class="space-y-3 p-4">
-                        <div class="flex items-center justify-between">
-                            <Label>Args</Label>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                class="h-7 gap-1 text-xs"
-                                onclick={addArgEntry}
-                            >
-                                <Plus class="size-3" /> Add
-                            </Button>
-                        </div>
-                        {#each editArgs as entry, i (i)}
-                            <div class="grid gap-1.5">
-                                <div class="flex gap-1.5">
-                                    <Input
-                                        class="h-8 text-xs"
-                                        placeholder="key"
-                                        value={entry[0]}
-                                        oninput={(e) =>
-                                            updateArgKey(i, (e.target as HTMLInputElement).value)}
-                                    />
-                                    <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        class="size-8 shrink-0"
-                                        onclick={() => removeArgEntry(i)}
-                                    >
-                                        <X class="size-3" />
-                                    </Button>
-                                </div>
-                                <Input
-                                    class="h-8 text-xs"
-                                    placeholder="value"
-                                    value={entry[1]}
-                                    oninput={(e) =>
-                                        updateArgValue(i, (e.target as HTMLInputElement).value)}
-                                />
-                            </div>
-                        {:else}
-                            <p class="text-xs text-muted-foreground">No args.</p>
-                        {/each}
-                    </CardContent>
-                </Card>
-            </aside>
-        </div>
-    </div>
-{:else if pluginId}
-    <div class="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
-        <p class="text-sm text-muted-foreground">Plugin not found.</p>
-        <Button variant="outline" onclick={() => navigate({ view: 'settings' })}>Back</Button>
-    </div>
-{:else if $appSettings}
-    <div class="flex flex-col gap-4">
-        <div class="flex gap-2">
-            <Input
-                bind:value={newName}
-                placeholder="New plugin name"
-                class="flex-1"
-                onkeydown={(e) => e.key === 'Enter' && handleCreate()}
-            />
-            <Button class="gap-1.5" onclick={handleCreate}>
-                <Plus class="size-4" /> Create
+{#if $appSettings}
+    <div class="flex flex-col gap-4 px-2">
+        <ListActionBar description="Extend KeiAI with custom behavior.">
+            <Button size="sm" class="gap-1.5" onclick={handleCreate}>
+                <Plus class="size-4" /> Add Plugin
             </Button>
-        </div>
+        </ListActionBar>
 
         <EntityList
             entities={$plugins}
             config={$appSettings.plugins}
             layout="list"
-            onItemClick={(plugin) => navigate({ view: 'settings', pluginId: plugin.id })}
             onCreateFolder={(name, parentId, sortOrder) =>
                 createGlobalFolder('plugins', name, parentId, sortOrder)}
             onUpdateFolder={(id, changes) => updateGlobalFolder('plugins', id, changes)}
@@ -266,66 +96,164 @@
                 moveGlobalItem('plugins', itemId, newFolderId, newSortOrder)}
         >
             {#snippet empty()}
-                <div class="flex flex-col items-center justify-center gap-2 py-12 text-center">
-                    <p class="text-sm text-muted-foreground">No plugins installed.</p>
-                </div>
+                <EmptyListPlaceholder message="No plugins defined." />
             {/snippet}
             {#snippet item({ entity: plugin })}
-                <Card>
-                    <CardContent class="flex items-center justify-between gap-3 p-4">
-                        <div class="min-w-0 flex-1 cursor-pointer">
-                            <div class="flex items-center gap-2">
-                                <p class="font-medium">{plugin.name || 'Unnamed'}</p>
-                                <Badge variant="secondary" class="text-xs font-mono">
-                                    v{plugin.version}
-                                </Badge>
-                                {#if !plugin.enabled}
-                                    <Badge variant="outline" class="text-xs">Disabled</Badge>
-                                {/if}
-                            </div>
-                            {#if plugin.description}
-                                <p class="mt-0.5 line-clamp-1 text-sm text-muted-foreground">
-                                    {plugin.description}
-                                </p>
+                <div
+                    class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md {plugin.enabled
+                        ? ''
+                        : 'opacity-55'}"
+                >
+                    <!-- 헤더 영역 -->
+                    <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+                        <button
+                            type="button"
+                            class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                            onclick={() => toggleExpanded(plugin.id)}
+                            aria-label={expandedPluginIds[plugin.id]
+                                ? 'Collapse plugin'
+                                : 'Expand plugin'}
+                        >
+                            {#if expandedPluginIds[plugin.id]}
+                                <ChevronDown class="size-4" />
+                            {:else}
+                                <ChevronRight class="size-4" />
                             {/if}
-                        </div>
-                        <div class="flex shrink-0 gap-1.5 items-center">
+                        </button>
+
+                        <Input
+                            value={plugin.name}
+                            aria-label="Plugin name"
+                            class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+                            onchange={(e) =>
+                                updatePlugin(plugin.id, { name: e.currentTarget.value })}
+                        />
+                        <!-- Version Badge -->
+                        {#if plugin.version && plugin.version.trim() !== ''}
+                            <Badge
+                                variant="secondary"
+                                class="text-[10px] h-5 px-1.5 font-mono shrink-0"
+                                >v{plugin.version}</Badge
+                            >
+                        {/if}
+                        <!-- Status Badge -->
+                        {#if loadedPluginIds.includes(plugin.id)}
+                            <Badge
+                                class="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] h-5 px-1.5 font-semibold shrink-0"
+                                >Running</Badge
+                            >
+                        {/if}
+
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            class="size-8 shrink-0 text-muted-foreground"
+                            title={plugin.enabled ? 'Disable plugin' : 'Enable plugin'}
+                            aria-label={plugin.enabled ? 'Disable plugin' : 'Enable plugin'}
+                            onclick={() => updatePlugin(plugin.id, { enabled: !plugin.enabled })}
+                        >
+                            {#if plugin.enabled}
+                                <Eye class="size-4" />
+                            {:else}
+                                <EyeOff class="size-4" />
+                            {/if}
+                        </Button>
+
+                        {#if plugin.enabled}
                             {#if loadedPluginIds.includes(plugin.id)}
                                 <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    class="h-9 gap-1 text-xs"
+                                    size="icon"
+                                    variant="ghost"
+                                    class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                                    title="Unload plug-in"
+                                    aria-label="Unload plug-in"
                                     onclick={() => handleUnload(plugin.id)}
                                 >
-                                    <Square class="size-3.5 fill-current" /> Unload
+                                    <Square class="size-4" />
                                 </Button>
                             {:else}
                                 <Button
-                                    size="sm"
-                                    variant="default"
-                                    class="h-9 gap-1 text-xs"
+                                    size="icon"
+                                    variant="ghost"
+                                    class="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+                                    title="Load plug-in"
+                                    aria-label="Load plug-in"
                                     onclick={() => handleLoad(plugin.id)}
                                 >
-                                    <Play class="size-3.5 fill-current" /> Load
+                                    <Play class="size-4" />
                                 </Button>
                             {/if}
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onclick={() => navigate({ view: 'settings', pluginId: plugin.id })}
-                            >
-                                <Pencil class="size-4" />
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="destructive"
-                                onclick={() => deletePlugin(plugin.id)}
-                            >
-                                <Trash2 class="size-4" />
-                            </Button>
+                        {/if}
+
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                            aria-label="Delete plugin"
+                            onclick={() => deletePlugin(plugin.id)}
+                        >
+                            <Trash2 class="size-4" />
+                        </Button>
+                    </div>
+
+                    <!-- 펼쳐지는 바디 영역 -->
+                    {#if expandedPluginIds[plugin.id]}
+                        <div class="flex flex-col gap-4 border-t bg-muted/20 p-4">
+                            <!-- 1. Description -->
+                            <!-- 1. Description & Version -->
+                            <div class="grid gap-3 sm:grid-cols-3">
+                                <div class="space-y-1.5 sm:col-span-2">
+                                    <Label class="text-xs">Description</Label>
+                                    <Input
+                                        class="h-8 text-xs bg-background"
+                                        placeholder="No description"
+                                        value={plugin.description}
+                                        onchange={(e) =>
+                                            updatePlugin(plugin.id, {
+                                                description: e.currentTarget.value
+                                            })}
+                                    />
+                                </div>
+                                <div class="space-y-1.5">
+                                    <Label class="text-xs">Version</Label>
+                                    <Input
+                                        class="h-8 text-xs bg-background"
+                                        placeholder="1.0.0"
+                                        value={plugin.version}
+                                        onchange={(e) =>
+                                            updatePlugin(plugin.id, {
+                                                version: e.currentTarget.value
+                                            })}
+                                    />
+                                </div>
+                            </div>
+
+                            <!-- 2. Code -->
+                            <div class="space-y-1.5">
+                                <Label class="text-xs">JavaScript Source Code</Label>
+                                <Textarea
+                                    class="min-h-32 text-xs font-mono bg-background"
+                                    placeholder="Code"
+                                    value={plugin.code}
+                                    onchange={(e) =>
+                                        updatePlugin(plugin.id, { code: e.currentTarget.value })}
+                                />
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <Label class="text-xs">Plugin Arguments</Label>
+                                <KeyValueEditor
+                                    emptyMessage="No arguments defined."
+                                    data={plugin.args as Record<string, string>}
+                                    onUpdateValue={(key, val) =>
+                                        handleUpdateArgValue(plugin, key, val)}
+                                    onAdd={(key, val) => handleAddArg(plugin, key, val)}
+                                    onRemove={(key) => handleRemoveArg(plugin, key)}
+                                />
+                            </div>
                         </div>
-                    </CardContent>
-                </Card>
+                    {/if}
+                </div>
             {/snippet}
         </EntityList>
     </div>

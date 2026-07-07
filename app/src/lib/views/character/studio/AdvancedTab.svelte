@@ -1,33 +1,52 @@
 <script lang="ts">
-    import { Badge } from '$lib/components/ui/badge';
-    import { Input } from '$lib/components/ui/input';
+    import { Trash2 } from 'lucide-svelte';
+    import { Button } from '$lib/components/ui/button';
     import { Label } from '$lib/components/ui/label';
-    import {
-        Card,
-        CardContent,
-        CardHeader,
-        CardTitle,
-        CardDescription
-    } from '$lib/components/ui/card';
+    import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
     import type { Character, CharacterContent } from '$lib/services';
+    import type { ExportCharacterFileRequest } from '$lib/managers';
     import type { DeepPartial } from '$lib/utils/defaults';
+    import ExportTab from './ExportTab.svelte';
+    import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
 
-    interface Props {
+    type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
+
+    let {
+        character,
+        exporting,
+        showLightExport,
+        onUpdate,
+        onExport,
+        onDelete
+    }: {
         character: Character;
+        exporting: ExportButton | null;
+        showLightExport: boolean;
         onUpdate: (changes: DeepPartial<CharacterContent>) => void | Promise<void>;
+        onExport: (id: ExportButton, request: ExportCharacterFileRequest) => void | Promise<void>;
+        onDelete: () => void | Promise<void>;
+    } = $props();
+
+    async function handleAddVariable(key: string, value: string) {
+        await onUpdate({ defaultVariables: { [key]: value } });
     }
 
-    let { character, onUpdate }: Props = $props();
+    async function handleDeleteVariable(key: string) {
+        await onUpdate({ defaultVariables: { [key]: undefined } });
+    }
+
+    async function handleUpdateVariableValue(key: string, value: string) {
+        await onUpdate({ defaultVariables: { [key]: value } });
+    }
 </script>
 
 <section class="space-y-6">
     <Card>
         <CardHeader>
-            <CardTitle>System & Technical</CardTitle>
-            <CardDescription>Advanced behavior flags and variable defaults.</CardDescription>
+            <CardTitle>Runtime & Access</CardTitle>
         </CardHeader>
         <CardContent class="space-y-6">
-            <div class="flex items-center justify-between p-4 border rounded-lg bg-muted/20">
+            <div class="flex items-center justify-between gap-4 rounded-md border p-4">
                 <div class="space-y-0.5">
                     <Label>Allow Low Level Access</Label>
                     <p class="text-xs text-muted-foreground">
@@ -36,40 +55,41 @@
                 </div>
                 <input
                     type="checkbox"
-                    class="size-5 rounded border-primary"
+                    class="size-5 shrink-0 rounded border-primary"
                     checked={character.allowLowLevel}
                     onchange={(e) => onUpdate({ allowLowLevel: e.currentTarget.checked })}
                 />
             </div>
 
-            <div class="space-y-4">
-                <div class="flex items-center justify-between">
-                    <h3 class="text-sm font-semibold">Initial Variable States</h3>
-                    <Badge variant="outline">Advanced</Badge>
-                </div>
-                <div class="space-y-2">
-                    {#each Object.entries(character.defaultVariables ?? {}) as [key, val] (key)}
-                        <div class="flex gap-2">
-                            <Input class="flex-1 font-mono text-xs h-9" value={key} readonly />
-                            <Input
-                                class="flex-1 text-xs h-9"
-                                value={val}
-                                oninput={(e) => {
-                                    const next = {
-                                        ...character.defaultVariables,
-                                        [key]: e.currentTarget.value
-                                    };
-                                    onUpdate({ defaultVariables: next });
-                                }}
-                            />
-                        </div>
-                    {:else}
-                        <p class="text-xs text-muted-foreground italic text-center py-4">
-                            No default variables defined.
-                        </p>
-                    {/each}
-                </div>
+            <div class="space-y-1.5">
+                <Label class="text-xs">Default Variables</Label>
+                <KeyValueEditor
+                    emptyMessage="No initial variables defined."
+                    data={character.defaultVariables}
+                    onUpdateValue={handleUpdateVariableValue}
+                    onAdd={handleAddVariable}
+                    onRemove={handleDeleteVariable}
+                />
             </div>
+        </CardContent>
+    </Card>
+
+    <ExportTab {exporting} {showLightExport} {onExport} />
+
+    <Card class="border-destructive/40">
+        <CardHeader>
+            <CardTitle class="text-destructive">Danger Zone</CardTitle>
+        </CardHeader>
+        <CardContent class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <p class="text-sm font-medium">Delete this character</p>
+                <p class="mt-1 text-xs text-muted-foreground">
+                    This removes the character and its owned resources.
+                </p>
+            </div>
+            <Button variant="destructive" class="gap-1.5" onclick={onDelete}>
+                <Trash2 class="size-4" /> Delete Character
+            </Button>
         </CardContent>
     </Card>
 </section>

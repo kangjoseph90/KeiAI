@@ -21,6 +21,14 @@ interface GeminiContent {
     parts: Array<{ text: string }>;
 }
 
+interface GeminiCompletion {
+    candidates?: Array<{
+        content?: {
+            parts?: Array<{ text?: string }>;
+        };
+    }>;
+}
+
 export class GoogleLLMStreamHandler implements LLMStreamHandler {
     private readonly config: RemoteLLMHandlerConfig;
 
@@ -33,9 +41,27 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
         signal: AbortSignal,
         options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
-        const rawStream = this.rawStream(messages, signal, options);
+        const rawStream =
+            (options.stream ?? true)
+                ? this.rawStream(messages, signal, options)
+                : this.complete(messages, signal, options);
         // Debounce stream to batch fast successive chunks (common with Gemini)
         yield* debounceStream(rawStream);
+    }
+
+    private async *complete(
+        messages: OpenAIChat[],
+        signal: AbortSignal,
+        options: LLMStreamOptions
+    ): AsyncIterable<LLMStreamContent> {
+        const response = await this.fetchCompletion(messages, signal, {
+            ...options,
+            stream: false
+        });
+        const parsed = (await response.json()) as GeminiCompletion;
+        const content =
+            parsed.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('') ?? '';
+        yield { content, thought: '' };
     }
 
     private async *rawStream(
@@ -43,7 +69,7 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
-        const response = await this.fetchStream(messages, signal, options);
+        const response = await this.fetchCompletion(messages, signal, { ...options, stream: true });
         const reader = response.body?.getReader();
         if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
@@ -104,15 +130,22 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
         }
     }
 
-    private async fetchStream(
+    private async fetchCompletion(
         messages: OpenAIChat[],
         signal: AbortSignal,
         options: LLMStreamOptions
     ): Promise<Response> {
         const config = this.config;
         const parameters = options.parameters ?? {};
-        const baseEndpoint = `/models/${config.modelId}:streamGenerateContent?alt=sse`;
-        const url = `${buildUrl(config.baseUrl, baseEndpoint)}${config.apiKey ? `&key=${config.apiKey}` : ''}`;
+        const useStreaming = options.stream ?? true;
+        const baseEndpoint = useStreaming
+            ? `/models/${config.modelId}:streamGenerateContent`
+            : `/models/${config.modelId}:generateContent`;
+        const query = new URLSearchParams();
+        if (useStreaming) query.set('alt', 'sse');
+        if (config.apiKey) query.set('key', config.apiKey);
+        const queryString = query.toString();
+        const url = `${buildUrl(config.baseUrl, baseEndpoint)}${queryString ? `?${queryString}` : ''}`;
         const useProxy = config.useProxy ?? true;
 
         // Convert OpenAI messages to Gemini format

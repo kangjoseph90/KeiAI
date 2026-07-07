@@ -52,6 +52,7 @@ export function createDisplayMacros(
                 ' alt=""',
                 ' loading="lazy"',
                 ' decoding="async"',
+                ' style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;"',
                 ' />'
             ].join('');
         }
@@ -82,6 +83,7 @@ export function createDisplayMacros(
                 ' alt=""',
                 ' loading="lazy"',
                 ' decoding="async"',
+                ' style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;"',
                 ' />'
             ].join('');
         }

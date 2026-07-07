@@ -2,9 +2,8 @@
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-    import { updatePreset } from '$lib/stores';
+    import { appSettings, updatePreset } from '$lib/stores';
     import {
-        BUILT_IN_LLM_TYPES,
         type LLMParameter,
         type LLMType,
         type LLMTypeDefinition,
@@ -12,6 +11,7 @@
     } from '$lib/types/models/llm';
     import { pluginManager } from '$lib/plugins';
     import type { Preset } from '$lib/services/content/preset';
+    import { getWorkflowLLMTypes } from '$lib/workflow/agent/llm';
 
     interface Props {
         preset: Preset;
@@ -29,19 +29,23 @@
         'frequency_penalty'
     ];
 
-    function collectLLMTypes(): LLMTypeDefinition[] {
-        const types = [
-            ...BUILT_IN_LLM_TYPES,
-            ...pluginManager.getInstances().flatMap((instance) => [...instance.llmTypes.values()])
-        ];
+    let llmTypes = $derived.by(() => {
+        const definitions: Record<string, LLMTypeDefinition> = {};
+        const allTypes = [
+            ...pluginManager.getInstances().flatMap((inst) => [...inst.llmTypes.values()]),
+            ...[preset.chatWorkflow, $appSettings?.translation.workflow].flatMap(
+                getWorkflowLLMTypes
+            )
+        ].filter((d) => d.type !== 'chat' && d.type !== 'aux');
 
-        const seen: Record<string, boolean> = {};
-        return types.filter((type) => {
-            if (seen[type.type]) return false;
-            seen[type.type] = true;
-            return true;
-        });
-    }
+        for (const d of allTypes) {
+            definitions[d.type] = {
+                type: d.type,
+                description: definitions[d.type]?.description ?? d.description
+            };
+        }
+        return Object.values(definitions);
+    });
 
     function enableOverride(type: LLMType) {
         updatePreset(preset.id, {
@@ -73,78 +77,6 @@
 <div class="flex flex-col gap-6">
     <Card>
         <CardHeader>
-            <CardTitle class="text-base">Context & Response Limits</CardTitle>
-        </CardHeader>
-        <CardContent class="grid grid-cols-2 gap-6">
-            <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                    <Label>Max Context</Label>
-                    <span class="text-xs font-mono">{preset.maxContext}</span>
-                </div>
-                <Input
-                    type="number"
-                    value={preset.maxContext}
-                    oninput={(e) =>
-                        updatePreset(preset.id, { maxContext: parseInt(e.currentTarget.value) })}
-                />
-                <p class="text-[10px] text-muted-foreground">
-                    Total tokens allowed for the entire prompt.
-                </p>
-            </div>
-            <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                    <Label>Max Response</Label>
-                    <span class="text-xs font-mono">{preset.maxResponse}</span>
-                </div>
-                <Input
-                    type="number"
-                    value={preset.maxResponse}
-                    oninput={(e) =>
-                        updatePreset(preset.id, { maxResponse: parseInt(e.currentTarget.value) })}
-                />
-                <p class="text-[10px] text-muted-foreground">
-                    Limit for the AI's generated response.
-                </p>
-            </div>
-            <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                    <Label>Lorebook Ratio</Label>
-                    <span class="text-xs font-mono">{preset.lorebookRatio}</span>
-                </div>
-                <Input
-                    type="number"
-                    step="0.05"
-                    value={preset.lorebookRatio}
-                    oninput={(e) =>
-                        updatePreset(preset.id, {
-                            lorebookRatio: parseFloat(e.currentTarget.value)
-                        })}
-                />
-                <p class="text-[10px] text-muted-foreground">
-                    Budget allocated for lorebook entries (0.0 - 1.0).
-                </p>
-            </div>
-            <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                    <Label>Memory Ratio</Label>
-                    <span class="text-xs font-mono">{preset.memoryRatio}</span>
-                </div>
-                <Input
-                    type="number"
-                    step="0.05"
-                    value={preset.memoryRatio}
-                    oninput={(e) =>
-                        updatePreset(preset.id, { memoryRatio: parseFloat(e.currentTarget.value) })}
-                />
-                <p class="text-[10px] text-muted-foreground">
-                    Budget allocated for memory/summary (0.0 - 1.0).
-                </p>
-            </div>
-        </CardContent>
-    </Card>
-
-    <Card>
-        <CardHeader>
             <CardTitle class="text-base">Generation Parameters</CardTitle>
         </CardHeader>
         <CardContent class="grid grid-cols-2 gap-x-8 gap-y-4">
@@ -169,28 +101,25 @@
         </CardContent>
     </Card>
 
-    <Card>
-        <CardHeader>
-            <CardTitle class="flex items-center justify-between text-base">
-                <span>Task Parameter Overrides</span>
-                <button
-                    type="button"
-                    class="text-xs font-normal text-muted-foreground"
-                    onclick={() => (advancedOpen = !advancedOpen)}
-                >
-                    {advancedOpen ? 'Collapse' : 'Expand'}
-                </button>
-            </CardTitle>
-        </CardHeader>
+    <section class="rounded-lg border bg-card p-4">
+        <button
+            type="button"
+            class="flex w-full items-center justify-between text-left text-sm font-medium hover:opacity-80 transition-opacity"
+            onclick={() => (advancedOpen = !advancedOpen)}
+        >
+            <span>Task Parameter Overrides</span>
+            <span class="text-xs text-muted-foreground">{advancedOpen ? 'Collapse' : 'Expand'}</span
+            >
+        </button>
 
         {#if advancedOpen}
-            <CardContent class="flex flex-col gap-4">
-                {#each collectLLMTypes() as role (role.type)}
+            <div class="mt-4 flex flex-col gap-4">
+                {#each llmTypes as role (role.type)}
                     {@const params = preset.parameters[role.type]}
                     <div class="rounded-md border p-4">
                         <div class="flex items-start justify-between gap-4">
                             <div>
-                                <h4 class="text-sm font-semibold">{role.label}</h4>
+                                <h4 class="text-sm font-semibold">{role.type}</h4>
                                 {#if role.description}
                                     <p class="mt-1 text-xs text-muted-foreground">
                                         {role.description}
@@ -243,7 +172,7 @@
                         {/if}
                     </div>
                 {/each}
-            </CardContent>
+            </div>
         {/if}
-    </Card>
+    </section>
 </div>

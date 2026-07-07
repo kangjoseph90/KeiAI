@@ -1,11 +1,11 @@
 <script lang="ts">
-    import { Plus, Trash2, Pencil } from 'lucide-svelte';
+    import { Upload, Trash2, Pencil } from 'lucide-svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
-    import { Badge } from '$lib/components/ui/badge';
-    import { Label } from '$lib/components/ui/label';
+    import ListActionBar from '$lib/components/ListActionBar.svelte';
     import {
         createCharacterAsset,
         deleteCharacterAsset,
@@ -67,24 +67,18 @@
 </script>
 
 <section class="space-y-4">
-    <div class="flex items-center justify-between">
-        <Label class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            Assets
-        </Label>
-        <div class="flex items-center gap-2">
-            <Badge variant="outline" class="text-[10px] font-mono">{assetRefs.length}</Badge>
-            <Button variant="secondary" size="sm" class="gap-1" onclick={handleAdd}>
-                <Plus class="size-3" /> Add
-            </Button>
-            <input
-                bind:this={fileInput}
-                type="file"
-                accept="image/*"
-                class="hidden"
-                onchange={handleFileSelect}
-            />
-        </div>
-    </div>
+    <ListActionBar description="Images and files used by this character.">
+        <Button size="sm" class="gap-1.5" onclick={handleAdd}>
+            <Upload class="size-4" /> Upload
+        </Button>
+    </ListActionBar>
+    <input
+        bind:this={fileInput}
+        type="file"
+        accept="image/*"
+        class="hidden"
+        onchange={handleFileSelect}
+    />
 
     <EntityList
         entities={assetRefs}
@@ -98,11 +92,7 @@
             moveCharacterItem(character.id, 'assets', itemId, newFolderId, newSortOrder)}
     >
         {#snippet empty()}
-            <div class="rounded-md border border-dashed p-6 text-center">
-                <p class="text-xs text-muted-foreground">
-                    No assets. Click <strong>Add</strong> to upload an image or file.
-                </p>
-            </div>
+            <EmptyListPlaceholder message="No assets. Use Add to upload an image or file." />
         {/snippet}
         {#snippet item({ entity: ref })}
             <div

@@ -10,17 +10,13 @@ export function applyRegexScript(script: Script, text: string) {
     // simple guard
     if (script.type !== 'regex' || !script.enabled) return text;
 
-    const flag = script.advanced ? script.flag : 'g';
-    const repeat = script.advanced ? script.repeat : 1;
-    const pattern = script.regex;
-
     // LRU cache check - string key is safest for reference equality in Map
-    const cacheKey = `${script.id}:${pattern}:${flag}`;
+    const cacheKey = `${script.id}:${script.regex}:${script.flag}`;
     let regex = regexCache.get(cacheKey);
 
     if (!regex) {
         try {
-            regex = new RegExp(pattern, flag);
+            regex = new RegExp(script.regex, script.flag);
             regexCache.set(cacheKey, regex);
         } catch (e) {
             logger.error(`Invalid regex in script "${script.name}":`, e);
@@ -29,7 +25,7 @@ export function applyRegexScript(script: Script, text: string) {
     }
 
     let prev = '';
-    for (let i = 0; i < repeat; i++) {
+    for (let i = 0; i < script.repeat; i++) {
         prev = text;
         text = text.replace(regex, script.replacement);
 

@@ -9,8 +9,15 @@ import {
     deleteMessage,
     getMessage
 } from '$lib/stores/content/message';
-import { messages, roomChats, activeChatId } from '$lib/stores/state';
-import { MessageService, ChatService, type Message, type Chat } from '$lib/services';
+import { messages, roomChats, activeChatId, translations } from '$lib/stores/state';
+import {
+    MessageService,
+    ChatService,
+    TranslationService,
+    type Message,
+    type Chat
+} from '$lib/services';
+import { getLastContentText } from '$lib/workflow/agent/llm';
 
 // Mock Services
 vi.mock('$lib/services', () => ({
@@ -27,6 +34,9 @@ vi.mock('$lib/services', () => ({
     ChatService: {
         get: vi.fn(),
         update: vi.fn()
+    },
+    TranslationService: {
+        listByMessages: vi.fn()
     }
 }));
 
@@ -38,7 +48,7 @@ describe('Message Store', () => {
         scopeType: 'user',
         scopeId: 'user-1',
         role: 'user',
-        swipes: { s1: { id: 's1', content: 'Hello', createdAt: 1000 } },
+        swipes: { s1: { id: 's1', parts: [{ type: 'content', text: 'Hello' }], createdAt: 1000 } },
         activeSwipeId: 's1',
         sortOrder: 'a'
     };
@@ -47,6 +57,7 @@ describe('Message Store', () => {
         vi.clearAllMocks();
         // Reset via messages (the EntityStore)
         messages.clear();
+        translations.clear();
         roomChats.clear();
         roomChats.set(mockChatId, {
             id: mockChatId,
@@ -67,6 +78,7 @@ describe('Message Store', () => {
             lastMessageId: mockMessage.id,
             messageCount: 1
         } as Chat);
+        vi.mocked(TranslationService.listByMessages).mockResolvedValue([]);
     });
 
     describe('loadInitialMessages', () => {
@@ -157,7 +169,13 @@ describe('Message Store', () => {
             ]);
 
             await createMessage(mockChatId, {
-                swipes: { s1: { id: 's1', content: 'New message content', createdAt: Date.now() } },
+                swipes: {
+                    s1: {
+                        id: 's1',
+                        parts: [{ type: 'content', text: 'New message content' }],
+                        createdAt: Date.now()
+                    }
+                },
                 activeSwipeId: 's1'
             });
 
@@ -180,17 +198,23 @@ describe('Message Store', () => {
             messages.setAll([mockMessage]);
             const updatedMsg: Message = {
                 ...mockMessage,
-                swipes: { s1: { id: 's1', content: 'Updated', createdAt: 2000 } }
+                swipes: {
+                    s1: { id: 's1', parts: [{ type: 'content', text: 'Updated' }], createdAt: 2000 }
+                }
             };
             vi.mocked(MessageService.update).mockResolvedValue(updatedMsg);
 
             await updateMessage('msg-1', {
-                swipes: { s1: { id: 's1', content: 'Updated', createdAt: 2000 } }
+                swipes: {
+                    s1: { id: 's1', parts: [{ type: 'content', text: 'Updated' }], createdAt: 2000 }
+                }
             });
 
-            expect(get(messages)[0].swipes['s1'].content).toBe('Updated');
+            expect(getLastContentText(get(messages)[0].swipes['s1'].parts)).toBe('Updated');
             // O(1) lookup: verify EntityStore contains updated value
-            expect(messages.get('msg-1')?.swipes['s1'].content).toBe('Updated');
+            expect(getLastContentText(messages.get('msg-1')?.swipes['s1'].parts ?? [])).toBe(
+                'Updated'
+            );
         });
     });
 

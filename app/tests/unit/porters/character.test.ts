@@ -46,6 +46,7 @@ vi.mock('$lib/services', () => ({
 
 vi.mock('$lib/services/asset', () => ({
     AssetService: {
+        load: vi.fn(),
         readBytes: vi.fn(),
         write: vi.fn(),
         delete: vi.fn()
@@ -143,7 +144,6 @@ describe('character porters', () => {
         regex: 'a',
         replacement: 'b',
         phase: 'display',
-        advanced: false,
         flag: 'g',
         order: 100,
         repeat: 1,
@@ -195,6 +195,29 @@ describe('character porters', () => {
         expect(pkg.assets['asset_1']?.data).toEqual(new Uint8Array([1, 2, 3]));
         expect(pkg.avatar?.data).toEqual(new Uint8Array([1, 2, 3]));
         expect('modules' in pkg.character).toBe(false);
+    });
+
+    it('loads an evicted asset before baking the package', async () => {
+        vi.mocked(CharacterService.get).mockResolvedValue(character);
+        vi.mocked(LorebookService.listByOwner).mockResolvedValue([lorebook]);
+        vi.mocked(ScriptService.listByOwner).mockResolvedValue([script]);
+        vi.mocked(CharJSService.listByOwner).mockResolvedValue([charjs]);
+        vi.mocked(AssetService.readBytes)
+            .mockResolvedValue(new Uint8Array([1, 2, 3]))
+            .mockResolvedValueOnce(null);
+        vi.mocked(AssetService.load).mockResolvedValue(true);
+
+        const pkg = await exportCharacterPackage('char-real', 'baked');
+
+        expect(AssetService.load).toHaveBeenCalledWith({
+            scopeType: 'user',
+            scopeId: 'user-1',
+            ownerTable: 'characters',
+            ownerId: 'char-real',
+            hash: 'asset-avatar-hash',
+            encKey: 'asset-avatar-key'
+        });
+        expect(pkg.assets['asset_0']?.data).toEqual(new Uint8Array([1, 2, 3]));
     });
 
     it('writes CCv3 PNG, CharX, and KeiChar files from a package', async () => {
@@ -303,7 +326,7 @@ describe('character porters', () => {
         );
     });
 
-    it('keeps Risu script order from the imported script list', async () => {
+    it('uses the default order for Risu scripts without explicit order metadata', async () => {
         const file = new File(
             [
                 JSON.stringify({
@@ -342,10 +365,15 @@ describe('character porters', () => {
         const pkg = await readCharacterFile(file);
 
         expect(pkg.scripts[0]).toEqual(
-            expect.objectContaining({ name: 'First', order: 0, phase: 'input', enabled: true })
+            expect.objectContaining({ name: 'First', order: 100, phase: 'input', enabled: true })
         );
         expect(pkg.scripts[1]).toEqual(
-            expect.objectContaining({ name: 'Second', order: 1, phase: 'display', enabled: false })
+            expect.objectContaining({
+                name: 'Second',
+                order: 100,
+                phase: 'display',
+                enabled: false
+            })
         );
     });
 
@@ -771,7 +799,6 @@ function makePackage(overrides: Partial<KeiCharacterPackageV1> = {}): KeiCharact
                 regex: 'a',
                 replacement: 'b',
                 phase: 'display',
-                advanced: false,
                 flag: 'g',
                 order: 100,
                 repeat: 1,

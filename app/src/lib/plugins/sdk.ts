@@ -322,7 +322,6 @@ export const guestSDK = String.raw`
             const p = broker.invoke('core.registerLLMType', [
                 type,
                 {
-                    label: opts.label || type,
                     description: opts.description
                 }
             ]);

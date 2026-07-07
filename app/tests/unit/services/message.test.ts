@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MessageService } from '$lib/services/content/message';
 import type { MessageFields } from '$lib/services/content/message';
 import type { DataRecord } from '$lib/adapters/db/types';
+import { getLastContentText } from '$lib/workflow/agent/llm';
 
 // Mock all dependencies
 vi.mock('$lib/services/session', () => ({
@@ -81,7 +82,7 @@ function makeFields(content: string, role: MessageFields['role'] = 'user'): Mess
     return {
         role,
         swipes: {
-            s1: { id: 's1', content, createdAt: 1000 }
+            s1: { id: 's1', parts: [{ type: 'content', text: content }], createdAt: 1000 }
         },
         activeSwipeId: 's1'
     };
@@ -164,7 +165,7 @@ describe('MessageService', () => {
             expect(result).not.toBeNull();
             expect(result?.id).toBe('msg-1');
             expect(result?.role).toBe('user');
-            expect(result!.swipes[result!.activeSwipeId].content).toBe('Hello');
+            expect(getLastContentText(result!.swipes[result!.activeSwipeId].parts)).toBe('Hello');
         });
     });
 
@@ -178,7 +179,7 @@ describe('MessageService', () => {
             expect(result.id).toBe('test-msg-id');
             expect(result.chatId).toBe('chat-1');
             expect(result.role).toBe('user');
-            expect(result.swipes[result.activeSwipeId].content).toBe('Hi');
+            expect(getLastContentText(result.swipes[result.activeSwipeId].parts)).toBe('Hi');
             expect(result.sortOrder).toBe('a0');
 
             expect(generateKeyBetween).toHaveBeenCalledWith(null, null);
@@ -233,10 +234,18 @@ describe('MessageService', () => {
             vi.mocked(buffer.get).mockResolvedValue(existingRecord as never);
 
             const result = await MessageService.update('msg-1', {
-                swipes: { s1: { id: 's1', content: 'New content', createdAt: 2000 } }
+                swipes: {
+                    s1: {
+                        id: 's1',
+                        parts: [{ type: 'content', text: 'New content' }],
+                        createdAt: 2000
+                    }
+                }
             });
 
-            expect(result.swipes[result.activeSwipeId].content).toBe('New content');
+            expect(getLastContentText(result.swipes[result.activeSwipeId].parts)).toBe(
+                'New content'
+            );
             expect(localDB.putRecord).not.toHaveBeenCalled();
         });
     });
@@ -255,10 +264,10 @@ describe('MessageService', () => {
                 role: 'assistant',
                 activeSwipeId: 's1',
                 swipes: {
-                    s1: { id: 's1', content: 'keep', createdAt: 1000 },
+                    s1: { id: 's1', parts: [{ type: 'content', text: 'keep' }], createdAt: 1000 },
                     s2: {
                         id: 's2',
-                        content: 'remove',
+                        parts: [{ type: 'content', text: 'remove' }],
                         createdAt: 1000
                     }
                 }
@@ -273,16 +282,6 @@ describe('MessageService', () => {
         it('deleteSwipe deletes swipe artifacts and removes the swipe', async () => {
             const result = await MessageService.deleteSwipe('msg-1', 's2');
 
-            expect(localDB.softDeleteByCompoundIndex).toHaveBeenCalledWith(
-                'tool_calls',
-                '[messageId+swipeId]',
-                ['msg-1', 's2']
-            );
-            expect(localDB.softDeleteByCompoundIndex).toHaveBeenCalledWith(
-                'translations',
-                '[messageId+swipeId]',
-                ['msg-1', 's2']
-            );
             expect(buffer.update).toHaveBeenCalledWith(
                 expect.objectContaining({
                     tableName: 'messages',
@@ -317,20 +316,20 @@ describe('MessageService', () => {
 
         it('createSwipe appends a swipe without changing active swipe', async () => {
             const result = await MessageService.createSwipe('msg-1', {
-                content: 'New'
+                parts: [{ type: 'content', text: 'New' }]
             });
 
             expect(result.swipeId).toBe('test-msg-id');
-            expect(result.message.swipes['test-msg-id'].content).toBe('New');
+            expect(getLastContentText(result.message.swipes['test-msg-id'].parts)).toBe('New');
             expect(result.message.activeSwipeId).toBe('s1');
         });
 
         it('updateSwipe updates requested swipe', async () => {
             const result = await MessageService.updateSwipe('msg-1', 's1', {
-                content: 'New'
+                parts: [{ type: 'content', text: 'New' }]
             });
 
-            expect(result.swipes.s1.content).toBe('New');
+            expect(getLastContentText(result.swipes.s1.parts)).toBe('New');
         });
     });
 });

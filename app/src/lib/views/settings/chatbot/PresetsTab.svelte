@@ -1,16 +1,24 @@
 <script lang="ts">
-    import { Download, Trash2, Plus, Upload } from 'lucide-svelte';
+    import {
+        Download,
+        Trash2,
+        Plus,
+        Upload,
+        ChevronDown,
+        ChevronRight,
+        Check
+    } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { Input } from '$lib/components/ui/input';
-    import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-    import { Separator } from '$lib/components/ui/separator';
     import { Badge } from '$lib/components/ui/badge';
+    import { Input } from '$lib/components/ui/input';
+    import { Label } from '$lib/components/ui/label';
     import {
         presets,
         activePreset,
         selectPreset,
         createPreset,
         deletePreset,
+        updatePreset,
         appSettings,
         createGlobalFolder,
         updateGlobalFolder,
@@ -18,126 +26,199 @@
         moveGlobalItem
     } from '$lib/stores';
     import { exportPresetFile, importPresetFile } from '$lib/managers/preset';
-    import type { PresetFileExport } from '$lib/porters/preset';
+    import type { Preset } from '$lib/services';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
+    import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
+    import ListActionBar from '$lib/components/ListActionBar.svelte';
+    import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
 
-    let newPresetName = $state('');
     let importInput = $state<HTMLInputElement>();
+    let expandedPresetIds = $state<Record<string, boolean>>({});
+
+    function toggleExpanded(id: string) {
+        expandedPresetIds[id] = !expandedPresetIds[id];
+    }
 
     async function handleCreatePreset() {
-        if (!newPresetName.trim()) return;
-        const preset = await createPreset({ name: newPresetName });
+        const preset = await createPreset({
+            chatWorkflow: createDefaultChatWorkflow()
+        });
         await selectPreset(preset.id);
-        newPresetName = '';
+        expandedPresetIds[preset.id] = true;
     }
 
     async function handleImport(event: Event) {
         const target = event.target as HTMLInputElement;
         const file = target.files?.[0];
         if (!file) return;
-        await importPresetFile(file, { select: true });
+        const preset = await importPresetFile(file, { select: true });
         target.value = '';
+        if (preset) {
+            expandedPresetIds[preset.id] = true;
+        }
+    }
+
+    async function handleAddVariable(preset: Preset, key: string, value: string) {
+        const defaultVariables = { ...preset.defaultVariables, [key]: value };
+        await updatePreset(preset.id, { defaultVariables });
+    }
+
+    async function handleUpdateVariableValue(preset: Preset, key: string, value: string) {
+        const defaultVariables = { ...preset.defaultVariables, [key]: value };
+        await updatePreset(preset.id, { defaultVariables });
+    }
+
+    async function handleRemoveVariable(preset: Preset, keyToRemove: string) {
+        await updatePreset(preset.id, {
+            defaultVariables: {
+                [keyToRemove]: undefined
+            }
+        });
     }
 </script>
 
-<Card>
-    <CardHeader>
-        <CardTitle class="text-base">Preset Management</CardTitle>
-    </CardHeader>
-    <CardContent class="flex flex-col gap-4">
-        <div class="flex gap-2">
-            <Input bind:value={newPresetName} placeholder="New preset name..." />
-            <Button onclick={handleCreatePreset} class="gap-1.5">
-                <Plus class="size-4" /> Create
-            </Button>
-            <Button variant="outline" class="gap-1.5" onclick={() => importInput?.click()}>
-                <Upload class="size-4" /> Import
-            </Button>
-            <input
-                bind:this={importInput}
-                type="file"
-                accept=".risup,.risupreset,.keipreset,.json"
-                class="hidden"
-                onchange={handleImport}
-            />
-        </div>
+<div class="flex flex-col gap-4 px-2">
+    <ListActionBar description="Reusable model and chat configurations.">
+        <Button size="sm" variant="outline" class="gap-1.5" onclick={() => importInput?.click()}>
+            <Upload class="size-4" /> Import
+        </Button>
+        <Button size="sm" onclick={handleCreatePreset} class="gap-1.5">
+            <Plus class="size-4" /> New Preset
+        </Button>
+        <input
+            bind:this={importInput}
+            type="file"
+            accept=".risup,.risupreset,.keipreset,.json"
+            class="hidden"
+            onchange={handleImport}
+        />
+    </ListActionBar>
 
-        <Separator />
-
-        {#if $appSettings}
-            <EntityList
-                entities={$presets}
-                config={$appSettings.presets}
-                layout="list"
-                onCreateFolder={(name, parentId, sortOrder) =>
-                    createGlobalFolder('presets', name, parentId, sortOrder)}
-                onUpdateFolder={(id, changes) => updateGlobalFolder('presets', id, changes)}
-                onDeleteFolder={(id) => deleteGlobalFolder('presets', id)}
-                onMoveItem={(itemId, newFolderId, newSortOrder) =>
-                    moveGlobalItem('presets', itemId, newFolderId, newSortOrder)}
-            >
-                {#snippet empty()}
-                    <div class="flex flex-col items-center justify-center gap-2 py-12 text-center">
-                        <p class="text-sm text-muted-foreground">No presets created yet.</p>
-                    </div>
-                {/snippet}
-                {#snippet item({ entity: preset })}
-                    <div
-                        class="flex items-center justify-between p-2 rounded-lg border {$activePreset?.id ===
-                        preset.id
-                            ? 'border-primary bg-primary/5'
-                            : 'hover:bg-muted/50'}"
-                    >
-                        <div class="flex flex-col">
-                            <span class="text-sm font-medium">{preset.name}</span>
-                            <span class="text-[10px] text-muted-foreground truncate max-w-[200px]"
-                                >{preset.description || 'No description'}</span
-                            >
-                        </div>
-                        <div class="flex items-center gap-2">
-                            {#if $activePreset?.id !== preset.id}
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onclick={() => selectPreset(preset.id)}>Use</Button
-                                >
+    {#if $appSettings}
+        <EntityList
+            entities={$presets}
+            config={$appSettings.presets}
+            layout="list"
+            onCreateFolder={(name, parentId, sortOrder) =>
+                createGlobalFolder('presets', name, parentId, sortOrder)}
+            onUpdateFolder={(id, changes) => updateGlobalFolder('presets', id, changes)}
+            onDeleteFolder={(id) => deleteGlobalFolder('presets', id)}
+            onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                moveGlobalItem('presets', itemId, newFolderId, newSortOrder)}
+        >
+            {#snippet empty()}
+                <EmptyListPlaceholder message="No presets created yet." />
+            {/snippet}
+            {#snippet item({ entity: preset })}
+                <div
+                    class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md {$activePreset?.id ===
+                    preset.id
+                        ? 'border-primary/80 ring-1 ring-primary/20'
+                        : ''}"
+                >
+                    <!-- 헤더 영역 -->
+                    <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+                        <button
+                            type="button"
+                            class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                            onclick={() => toggleExpanded(preset.id)}
+                            aria-label={expandedPresetIds[preset.id]
+                                ? 'Collapse preset'
+                                : 'Expand preset'}
+                        >
+                            {#if expandedPresetIds[preset.id]}
+                                <ChevronDown class="size-4" />
                             {:else}
-                                <Badge>Active</Badge>
+                                <ChevronRight class="size-4" />
                             {/if}
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                class="gap-1"
-                                onclick={() =>
-                                    exportPresetFile(preset.id, { kind: 'risu', format: 'risup' })}
-                                title="Export Risu Preset"
+                        </button>
+
+                        <!-- Borderless Name Input -->
+                        <Input
+                            value={preset.name}
+                            onchange={(e) =>
+                                updatePreset(preset.id, { name: e.currentTarget.value })}
+                            aria-label="Preset name"
+                            class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
+                        />
+
+                        <!-- Active Status Badge -->
+                        {#if $activePreset?.id === preset.id}
+                            <Badge
+                                class="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] h-5 px-1.5 font-semibold shrink-0"
+                                >Active</Badge
                             >
-                                <Download class="size-4" />
-                                Risu Preset
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                class="gap-1"
-                                onclick={() => exportPresetFile(preset.id, { kind: 'keipreset' })}
-                                title="Export Kei Preset"
-                            >
-                                <Download class="size-4" />
-                                Kei Preset
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                class="h-8 w-8 p-0 text-destructive"
-                                onclick={() => deletePreset(preset.id)}
-                                aria-label="Delete preset"
-                            >
-                                <Trash2 class="size-4" />
-                            </Button>
-                        </div>
+                        {/if}
+
+                        <!-- Actions -->
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            class="size-8 shrink-0 {$activePreset?.id === preset.id
+                                ? 'text-emerald-500 hover:text-emerald-600'
+                                : 'text-muted-foreground'}"
+                            title={$activePreset?.id === preset.id ? 'Active' : 'Use preset'}
+                            aria-label={$activePreset?.id === preset.id ? 'Active' : 'Use preset'}
+                            onclick={() => selectPreset(preset.id)}
+                        >
+                            <Check class="size-4" />
+                        </Button>
+
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            class="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+                            title="Export Preset"
+                            aria-label="Export Preset"
+                            onclick={() => exportPresetFile(preset.id, { kind: 'keipreset' })}
+                        >
+                            <Download class="size-4" />
+                        </Button>
+
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                            aria-label="Delete preset"
+                            onclick={() => deletePreset(preset.id)}
+                        >
+                            <Trash2 class="size-4" />
+                        </Button>
                     </div>
-                {/snippet}
-            </EntityList>
-        {/if}
-    </CardContent>
-</Card>
+
+                    <!-- 펼쳐지는 바디 영역 -->
+                    {#if expandedPresetIds[preset.id]}
+                        <div class="flex flex-col gap-4 border-t bg-muted/20 p-4">
+                            <!-- 1. Description -->
+                            <div class="space-y-1.5">
+                                <Label class="text-xs">Description</Label>
+                                <Input
+                                    class="h-8 text-xs bg-background"
+                                    placeholder="No description"
+                                    value={preset.description}
+                                    onchange={(e) =>
+                                        updatePreset(preset.id, {
+                                            description: e.currentTarget.value
+                                        })}
+                                />
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <Label class="text-xs">Default Variables</Label>
+                                <KeyValueEditor
+                                    emptyMessage="No initial variables defined."
+                                    data={preset.defaultVariables}
+                                    onUpdateValue={(key, val) =>
+                                        handleUpdateVariableValue(preset, key, val)}
+                                    onAdd={(key, val) => handleAddVariable(preset, key, val)}
+                                    onRemove={(key) => handleRemoveVariable(preset, key)}
+                                />
+                            </div>
+                        </div>
+                    {/if}
+                </div>
+            {/snippet}
+        </EntityList>
+    {/if}
+</div>

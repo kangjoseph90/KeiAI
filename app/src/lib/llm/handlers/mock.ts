@@ -81,9 +81,10 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
     async *stream(
         messages: OpenAIChat[],
         signal: AbortSignal,
-        _options: LLMStreamOptions = {}
+        options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
-        const rawStream = this.rawStream(messages, signal);
+        const rawStream =
+            (options.stream ?? true) ? this.rawStream(messages, signal) : this.complete(messages);
         yield* debounceStream(rawStream);
     }
 
@@ -128,8 +129,13 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
         }
 
         // 3. Simulate "Tool Call" phase if messages mention 'tool' or '날씨'
-        const promptText = messages.map((m) => m.content).join(' ');
-        if (promptText.includes('tool') || promptText.includes('날씨')) {
+        const lastMessage = messages[messages.length - 1];
+        const isUserTurn = lastMessage && lastMessage.role === 'user';
+        const hasKeyword =
+            lastMessage &&
+            (lastMessage.content.includes('tool') || lastMessage.content.includes('날씨'));
+
+        if (isUserTurn && hasKeyword) {
             state.toolCalls = [
                 {
                     callId: 'mock_call_' + Math.random().toString(36).slice(2, 9),
@@ -139,5 +145,28 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
             ];
             yield { ...state };
         }
+    }
+
+    private async *complete(messages: OpenAIChat[]): AsyncIterable<LLMStreamContent> {
+        const state: LLMStreamContent = {
+            content: this.getResponse(messages),
+            thought: '질문을 분석하고 적절한 답변을 생성했습니다.'
+        };
+        const lastMessage = messages[messages.length - 1];
+        const isUserTurn = lastMessage && lastMessage.role === 'user';
+        const hasKeyword =
+            lastMessage &&
+            (lastMessage.content.includes('tool') || lastMessage.content.includes('날씨'));
+
+        if (isUserTurn && hasKeyword) {
+            state.toolCalls = [
+                {
+                    callId: 'mock_call_' + Math.random().toString(36).slice(2, 9),
+                    name: 'get_weather',
+                    args: { location: 'Seoul', unit: 'celsius' }
+                }
+            ];
+        }
+        yield state;
     }
 }

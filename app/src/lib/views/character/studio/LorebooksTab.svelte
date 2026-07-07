@@ -1,17 +1,18 @@
 <script lang="ts">
-    import { Book, Plus } from 'lucide-svelte';
+    import { Plus } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { Input } from '$lib/components/ui/input';
+    import ListActionBar from '$lib/components/ListActionBar.svelte';
     import type { Lorebook } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { FolderDef, EntityListConfig } from '$lib/types/refs';
     import LorebookItem from '../../modules/LorebookItem.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
+    import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
 
     interface Props {
         lorebooks: Lorebook[];
         config: EntityListConfig;
-        onCreate: (data: DeepPartial<Lorebook>) => void | Promise<void>;
+        onCreate: (data: DeepPartial<Lorebook>) => Lorebook | Promise<Lorebook>;
         onUpdate: (id: string, changes: DeepPartial<Lorebook>) => void | Promise<void>;
         onDelete: (id: string) => void | Promise<void>;
         onCreateFolder: (name: string, parentId?: string, sortOrder?: string) => Promise<FolderDef>;
@@ -34,42 +35,27 @@
         onDeleteFolder,
         onMoveItem
     }: Props = $props();
-    let newLorebookName = $state('');
+    let editingId = $state<string | null>(null);
 
     async function handleAdd() {
-        if (!newLorebookName.trim()) return;
-        await onCreate({
-            name: newLorebookName,
+        const lorebook = await onCreate({
+            name: 'New Lorebook',
             key: '',
             secondKey: '',
             content: '',
             depth: 0,
             disabled: false
         });
-        newLorebookName = '';
+        editingId = lorebook.id;
     }
 </script>
 
 <section class="space-y-6">
-    <div class="flex items-center justify-between">
-        <div>
-            <h2 class="text-lg font-semibold">World Info / Lorebooks</h2>
-            <p class="text-sm text-muted-foreground">
-                On-demand facts and lore triggered by keywords.
-            </p>
-        </div>
-        <div class="flex gap-2">
-            <Input
-                placeholder="Lorebook name..."
-                class="w-48 h-9"
-                bind:value={newLorebookName}
-                onkeydown={(e) => e.key === 'Enter' && handleAdd()}
-            />
-            <Button size="sm" class="gap-1.5" onclick={handleAdd}>
-                <Plus class="size-4" /> Add
-            </Button>
-        </div>
-    </div>
+    <ListActionBar description="Context recalled during conversation generation.">
+        <Button size="sm" class="gap-1.5" onclick={handleAdd}>
+            <Plus class="size-4" /> Add
+        </Button>
+    </ListActionBar>
 
     <EntityList
         entities={lorebooks}
@@ -80,8 +66,11 @@
         {onDeleteFolder}
         {onMoveItem}
     >
+        {#snippet empty()}
+            <EmptyListPlaceholder message="No lorebooks." />
+        {/snippet}
         {#snippet item({ entity: lb })}
-            <LorebookItem item={lb} {onUpdate} {onDelete} />
+            <LorebookItem item={lb} initiallyEditing={editingId === lb.id} {onUpdate} {onDelete} />
         {/snippet}
     </EntityList>
 </section>

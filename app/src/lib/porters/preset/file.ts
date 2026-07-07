@@ -1,11 +1,11 @@
 import { AppError } from '$lib/types/errors';
-import { readRisuPreset, readRisuPresetJson, writeRisuPreset } from './risu';
+import { readRisuPreset, readRisuPresetJson } from './risu';
 import type { KeiPresetPackageV1 } from './types';
 
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 
-export type PresetFileExport = { kind: 'keipreset' } | { kind: 'risu'; format: 'risup' };
+export type PresetFileExport = { kind: 'keipreset' };
 
 export async function readPresetFile(file: File): Promise<KeiPresetPackageV1> {
     const name = file.name.toLowerCase();
@@ -23,18 +23,15 @@ export async function readPresetFile(file: File): Promise<KeiPresetPackageV1> {
 
 export async function writePresetFile(
     pkg: KeiPresetPackageV1,
-    request: PresetFileExport
+    _request: PresetFileExport
 ): Promise<Uint8Array> {
-    if (request.kind === 'risu' && request.format === 'risup') return writeRisuPreset(pkg);
     return TEXT_ENCODER.encode(JSON.stringify(pkg, null, 2));
 }
 
-export function presetFileExtension(request: PresetFileExport): string {
-    if (request.kind === 'keipreset') return 'keipreset';
-    return request.format;
+export function presetFileExtension(_request: PresetFileExport): string {
+    return 'keipreset';
 }
 
-export function presetFileMimeType(request: PresetFileExport): string {
-    if (request.kind === 'risu' && request.format === 'risup') return 'application/octet-stream';
+export function presetFileMimeType(_request: PresetFileExport): string {
     return 'application/json';
 }

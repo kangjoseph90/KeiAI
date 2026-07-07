@@ -1,3 +1,9 @@
-export { runChat, stopChat, dismissChat, resolveToolCall } from './chat';
+export { runChat, stopChat, dismissChat } from './chat';
 export type { RunChatOptions } from './chat';
-export type { LLMStreamHandler } from '$lib/llm/types';
+export {
+    createTranslationSourceHash,
+    dismissTranslation,
+    runTranslation,
+    stopTranslation
+} from './translation';
+export type { RunTranslationOptions } from './translation';

@@ -104,7 +104,13 @@ describe('Global Stores', () => {
                     scopeType: 'user',
                     scopeId: 'user-1',
                     role: 'user',
-                    swipes: { s1: { id: 's1', content: 'hello', createdAt: 1000 } },
+                    swipes: {
+                        s1: {
+                            id: 's1',
+                            parts: [{ type: 'content', text: 'hello' }],
+                            createdAt: 1000
+                        }
+                    },
                     activeSwipeId: 's1',
                     sortOrder: 'a'
                 } as Message,
@@ -114,7 +120,13 @@ describe('Global Stores', () => {
                     scopeType: 'user',
                     scopeId: 'user-1',
                     role: 'assistant',
-                    swipes: { s1: { id: 's1', content: 'world', createdAt: 1001 } },
+                    swipes: {
+                        s1: {
+                            id: 's1',
+                            parts: [{ type: 'content', text: 'world' }],
+                            createdAt: 1001
+                        }
+                    },
                     activeSwipeId: 's1',
                     sortOrder: 'b'
                 } as Message
@@ -159,7 +171,9 @@ describe('Global Stores', () => {
                     scopeType: 'user',
                     scopeId: 'user-1',
                     role: 'assistant',
-                    swipes: { s1: { id: 's1', content: '', createdAt: 1000 } },
+                    swipes: {
+                        s1: { id: 's1', parts: [{ type: 'content', text: '' }], createdAt: 1000 }
+                    },
                     activeSwipeId: 's1',
                     sortOrder: 'a'
                 } as Message

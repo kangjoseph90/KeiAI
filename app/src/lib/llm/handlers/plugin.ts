@@ -33,6 +33,7 @@ export class PluginLLMStreamHandler implements LLMStreamHandler {
             modelId: this.config.modelId,
             parameters: options.parameters,
             maxResponse: options.maxResponse,
+            stream: options.stream ?? true,
             useProxy: this.config.useProxy,
             retry: this.config.retry,
             timeout: this.config.timeout

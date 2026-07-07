@@ -2,14 +2,20 @@
     import {
         Check,
         DoorOpen,
-        Import,
+        Globe2,
         KeyRound,
+        Lock,
+        Package,
         Plus,
         Search,
+        Settings2,
         Sparkles,
         Trash2,
+        Upload,
         UserRound,
-        X
+        Users,
+        X,
+        Zap
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import RoomAvatar from '$lib/components/RoomAvatar.svelte';
@@ -30,20 +36,28 @@
         deleteRoom,
         leaveMultiRoom,
         loadOwnedMultiRoomMembers,
+        loadMultiRoomMembers,
         moveGlobalItem,
+        modules,
         multiRoomMembers,
         multiRoomMetas,
         multiRooms,
         personas,
         rejectJoinMultiRoom,
         requestJoinMultiRoom,
+        revokeMultiRoomMember,
+        setModuleEnabled,
+        createModule,
+        deleteModule,
         rooms,
         selectMultiRoom,
+        updateMultiRoomIndex,
         updateGlobalFolder,
         userId
     } from '$lib/stores';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { importCharacterFile } from '$lib/managers';
+    import { importModuleFile } from '$lib/managers/module';
     import { importPersonaFile } from '$lib/managers/persona';
     import { isKeiServer } from '$lib/adapters/pb';
     import type { RouteState } from '$lib/router';
@@ -51,24 +65,24 @@
     import { formatPublicKeyFingerprint } from '$lib/crypto';
     import { getErrorMessage } from '$lib/types/errors';
     import { approveMultiRoomJoinRequest } from '$lib/stores';
+    import MultiRoomManageDialog from './MultiRoomManageDialog.svelte';
 
     interface Props {
+        space?: 'library' | 'multiRooms';
         onNavigate: (route: RouteState) => void;
     }
 
-    let { onNavigate }: Props = $props();
+    let { space = 'library', onNavigate }: Props = $props();
 
-    type Tab = 'rooms' | 'multiRooms' | 'characters' | 'personas';
+    type Tab = 'rooms' | 'multiRooms' | 'characters' | 'personas' | 'modules';
     let tab = $state<Tab>('rooms');
     let query = $state('');
-    let creatingRoom = $state(false);
     let creatingMultiRoom = $state(false);
-    let creatingCharacter = $state(false);
-    let creatingPersona = $state(false);
     let importingCharacter = $state(false);
     let importingPersona = $state(false);
-    let roomName = $state('');
+    let importingModule = $state(false);
     let multiRoomName = $state('');
+    let multiRoomVisibility = $state<'private' | 'public'>('private');
     let joinRoomId = $state('');
     let publicRoomQuery = $state('');
     let publicRoomResults = $state<PublicMultiRoom[]>([]);
@@ -76,8 +90,8 @@
     let searchingPublicRooms = $state(false);
     let joiningRoom = $state(false);
     let approvingMemberId = $state('');
-    let characterName = $state('');
-    let personaName = $state('');
+    let managedRoomId = $state<string | null>(null);
+    let manageDialogOpen = $state(false);
 
     const filteredRooms = $derived(() => {
         const normalized = query.trim().toLowerCase();
@@ -91,10 +105,6 @@
         return $multiRooms.filter((room) => room.name.toLowerCase().includes(normalized));
     });
 
-    function isMultiRoomOwner(roomId: string): boolean {
-        return $multiRoomMetas.find((item) => item.id === roomId)?.ownerUserId === $userId;
-    }
-
     const filteredCharacters = $derived(() => {
         const normalized = query.trim().toLowerCase();
         if (!normalized) return $characters;
@@ -105,6 +115,12 @@
         const normalized = query.trim().toLowerCase();
         if (!normalized) return $personas;
         return $personas.filter((persona) => persona.name.toLowerCase().includes(normalized));
+    });
+
+    const filteredModules = $derived(() => {
+        const normalized = query.trim().toLowerCase();
+        if (!normalized) return $modules;
+        return $modules.filter((mod) => mod.name.toLowerCase().includes(normalized));
     });
 
     const pendingRequests = $derived(() => {
@@ -123,6 +139,24 @@
                 : []
         );
     });
+    const managedRoom = $derived(
+        managedRoomId ? ($multiRooms.find((room) => room.id === managedRoomId) ?? null) : null
+    );
+    const managedRoomMeta = $derived(
+        managedRoomId ? ($multiRoomMetas.find((meta) => meta.id === managedRoomId) ?? null) : null
+    );
+    const managedRoomMembers = $derived(
+        managedRoomId ? ($multiRoomMembers.get(managedRoomId) ?? []) : []
+    );
+    const busyManagedMemberId = $derived(approvingMemberId.split(':')[1] ?? null);
+
+    $effect(() => {
+        if (space === 'multiRooms') {
+            tab = 'multiRooms';
+        } else if (tab === 'multiRooms') {
+            tab = 'rooms';
+        }
+    });
 
     $effect(() => {
         if (tab === 'multiRooms') {
@@ -131,12 +165,7 @@
     });
 
     async function handleCreateRoom() {
-        const trimmed = roomName.trim();
-        if (!trimmed) return;
-
-        const room = await createRoom({ name: trimmed });
-        roomName = '';
-        creatingRoom = false;
+        const room = await createRoom();
         onNavigate({ view: 'room', roomId: room.id });
     }
 
@@ -146,10 +175,11 @@
 
         const room = await createMultiRoom({
             name: trimmed,
-            publicName: trimmed,
-            visibility: 'public'
+            publicName: multiRoomVisibility === 'public' ? trimmed : undefined,
+            visibility: multiRoomVisibility
         });
         multiRoomName = '';
+        multiRoomVisibility = 'private';
         creatingMultiRoom = false;
         await openMultiRoom(room.id);
     }
@@ -228,22 +258,66 @@
         }
     }
 
+    async function handleOpenMultiRoomManagement(roomId: string) {
+        multiRoomActionError = '';
+        try {
+            await loadMultiRoomMembers(roomId);
+            managedRoomId = roomId;
+            manageDialogOpen = true;
+        } catch (e) {
+            multiRoomActionError = getErrorMessage(e);
+        }
+    }
+
+    async function handleManagedVisibility(visibility: 'private' | 'public') {
+        if (!managedRoomId || !managedRoom) return;
+        await updateMultiRoomIndex(managedRoomId, {
+            visibility,
+            publicName: visibility === 'public' ? managedRoom.name : undefined
+        });
+    }
+
+    async function handleRevokeMember(roomId: string, memberUserId: string) {
+        if (!confirm(`Remove member ${memberUserId} from this room?`)) return;
+        approvingMemberId = `${roomId}:${memberUserId}`;
+        try {
+            await revokeMultiRoomMember(roomId, memberUserId);
+        } finally {
+            approvingMemberId = '';
+        }
+    }
+
     async function openMultiRoom(roomId: string) {
         await selectMultiRoom(roomId);
         onNavigate({ view: 'room', roomId });
     }
 
     async function handleCreateCharacter() {
-        const trimmed = characterName.trim();
-        if (!trimmed) return;
-
-        const character = await createCharacter({
-            name: trimmed,
-            description: ''
-        });
-        characterName = '';
-        creatingCharacter = false;
+        const character = await createCharacter();
         onNavigate({ view: 'characterStudio', charId: character.id });
+    }
+
+    async function handleCreateModule() {
+        const mod = await createModule();
+        onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+    }
+
+    async function handleImportModule(event: Event) {
+        const input = event.currentTarget as HTMLInputElement;
+        const file = input.files?.[0];
+        input.value = '';
+        if (!file || importingModule) return;
+
+        importingModule = true;
+        try {
+            const mod = await importModuleFile(file, {
+                allowLightAssets: isKeiServer(),
+                select: true
+            });
+            onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+        } finally {
+            importingModule = false;
+        }
     }
 
     async function handleImportCharacter(event: Event) {
@@ -307,16 +381,13 @@
         await deletePersona(personaId);
     }
 
-    async function handleCreatePersona() {
-        const trimmed = personaName.trim();
-        if (!trimmed) return;
+    async function handleDeleteModule(moduleId: string, name: string) {
+        if (!confirm(`Delete module "${name}"?`)) return;
+        await deleteModule(moduleId);
+    }
 
-        const persona = await createPersona({
-            name: trimmed,
-            description: ''
-        });
-        personaName = '';
-        creatingPersona = false;
+    async function handleCreatePersona() {
+        const persona = await createPersona();
         onNavigate({ view: 'personaStudio', personaId: persona.id });
     }
 
@@ -324,6 +395,7 @@
         if (tab === 'rooms') return 'Search rooms...';
         if (tab === 'multiRooms') return 'Search multi rooms...';
         if (tab === 'characters') return 'Search characters...';
+        if (tab === 'modules') return 'Search modules...';
         return 'Search personas...';
     }
 
@@ -336,33 +408,29 @@
     <header class="shrink-0 border-b px-8 py-6">
         <div class="flex items-center justify-between gap-4">
             <div>
-                <h1 class="text-xl font-semibold">Library</h1>
+                <h1 class="text-xl font-semibold">
+                    {space === 'multiRooms' ? 'Multi Rooms' : 'Library'}
+                </h1>
                 <p class="mt-1 text-sm text-muted-foreground">
-                    Open a room, edit characters, or manage personas.
+                    {tab === 'multiRooms'
+                        ? 'Create and join encrypted shared rooms.'
+                        : tab === 'characters'
+                          ? 'Reusable speakers for every room.'
+                          : tab === 'modules'
+                            ? 'Reusable context and automation bundles.'
+                            : tab === 'personas'
+                              ? 'Your identities across conversations.'
+                              : 'Spaces for characters and conversations.'}
                 </p>
             </div>
             {#if tab === 'rooms'}
-                {#if creatingRoom}
-                    <form
-                        class="flex w-full max-w-sm gap-2"
-                        onsubmit={(event) => {
-                            event.preventDefault();
-                            handleCreateRoom();
-                        }}
-                    >
-                        <Input bind:value={roomName} placeholder="Room name..." autofocus />
-                        <Button type="submit">Create</Button>
-                    </form>
-                {:else}
-                    <Button class="gap-2" onclick={() => (creatingRoom = true)}>
-                        <Plus class="size-4" />
-                        New Room
-                    </Button>
-                {/if}
+                <Button class="gap-2" onclick={handleCreateRoom}>
+                    <Plus class="size-4" /> New Room
+                </Button>
             {:else if tab === 'multiRooms'}
                 {#if creatingMultiRoom}
                     <form
-                        class="flex w-full max-w-sm gap-2"
+                        class="flex w-full max-w-xl items-center justify-end gap-2"
                         onsubmit={(event) => {
                             event.preventDefault();
                             handleCreateMultiRoom();
@@ -370,9 +438,30 @@
                     >
                         <Input
                             bind:value={multiRoomName}
+                            class="max-w-xs"
                             placeholder="Multi room name..."
                             autofocus
                         />
+                        <div class="flex shrink-0 rounded-md border bg-muted/30 p-1">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={multiRoomVisibility === 'private' ? 'secondary' : 'ghost'}
+                                class="h-7 gap-1.5 px-2.5 text-xs"
+                                onclick={() => (multiRoomVisibility = 'private')}
+                            >
+                                <Lock class="size-3.5" /> Private
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={multiRoomVisibility === 'public' ? 'secondary' : 'ghost'}
+                                class="h-7 gap-1.5 px-2.5 text-xs"
+                                onclick={() => (multiRoomVisibility = 'public')}
+                            >
+                                <Globe2 class="size-3.5" /> Public
+                            </Button>
+                        </div>
                         <Button type="submit">Create</Button>
                     </form>
                 {:else}
@@ -382,57 +471,48 @@
                     </Button>
                 {/if}
             {:else if tab === 'characters'}
-                {#if creatingCharacter}
-                    <form
-                        class="flex w-full max-w-sm gap-2"
-                        onsubmit={(event) => {
-                            event.preventDefault();
-                            handleCreateCharacter();
-                        }}
+                <div class="flex gap-2">
+                    <Button
+                        variant="outline"
+                        class="gap-2"
+                        disabled={importingCharacter}
+                        onclick={() => document.getElementById('character-import-input')?.click()}
                     >
-                        <Input
-                            bind:value={characterName}
-                            placeholder="Character name..."
-                            autofocus
-                        />
-                        <Button type="submit">Create</Button>
-                    </form>
-                {:else}
-                    <div class="flex gap-2">
-                        <Button
-                            variant="outline"
-                            class="gap-2"
-                            disabled={importingCharacter}
-                            onclick={() =>
-                                document.getElementById('character-import-input')?.click()}
-                        >
-                            <Import class="size-4" />
-                            Import
-                        </Button>
-                        <Button class="gap-2" onclick={() => (creatingCharacter = true)}>
-                            <Plus class="size-4" />
-                            New Character
-                        </Button>
-                        <input
-                            id="character-import-input"
-                            type="file"
-                            class="hidden"
-                            accept=".json,.png,.charx,.jpg,.jpeg,.keichar"
-                            onchange={handleImportCharacter}
-                        />
-                    </div>
-                {/if}
-            {:else if creatingPersona}
-                <form
-                    class="flex w-full max-w-sm gap-2"
-                    onsubmit={(event) => {
-                        event.preventDefault();
-                        handleCreatePersona();
-                    }}
-                >
-                    <Input bind:value={personaName} placeholder="Persona name..." autofocus />
-                    <Button type="submit">Create</Button>
-                </form>
+                        <Upload class="size-4" /> Import
+                    </Button>
+                    <Button class="gap-2" onclick={handleCreateCharacter}>
+                        <Plus class="size-4" /> New Character
+                    </Button>
+                    <input
+                        id="character-import-input"
+                        type="file"
+                        class="hidden"
+                        accept=".json,.png,.charx,.jpg,.jpeg,.keichar"
+                        onchange={handleImportCharacter}
+                    />
+                </div>
+            {:else if tab === 'modules'}
+                <div class="flex gap-2">
+                    <Button
+                        variant="outline"
+                        class="gap-2"
+                        disabled={importingModule}
+                        onclick={() => document.getElementById('module-import-input')?.click()}
+                    >
+                        <Upload class="size-4" />
+                        Import
+                    </Button>
+                    <Button class="gap-2" onclick={handleCreateModule}>
+                        <Plus class="size-4" /> New Module
+                    </Button>
+                    <input
+                        id="module-import-input"
+                        type="file"
+                        class="hidden"
+                        accept=".risum,.keimodule,.json"
+                        onchange={handleImportModule}
+                    />
+                </div>
             {:else}
                 <div class="flex gap-2">
                     <Button
@@ -441,12 +521,11 @@
                         disabled={importingPersona}
                         onclick={() => document.getElementById('persona-import-input')?.click()}
                     >
-                        <Import class="size-4" />
+                        <Upload class="size-4" />
                         Import
                     </Button>
-                    <Button class="gap-2" onclick={() => (creatingPersona = true)}>
-                        <Plus class="size-4" />
-                        New Persona
+                    <Button class="gap-2" onclick={handleCreatePersona}>
+                        <Plus class="size-4" /> New Persona
                     </Button>
                     <input
                         id="persona-import-input"
@@ -463,44 +542,51 @@
     <main class="flex-1 overflow-y-auto px-8 py-8">
         <div class="mx-auto max-w-6xl space-y-6">
             <div class="flex flex-wrap items-center justify-between gap-4">
-                <div class="flex rounded-md border bg-muted/30 p-1">
-                    <button
-                        class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
-                        'rooms'
-                            ? 'bg-background shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'}"
-                        onclick={() => (tab = 'rooms')}
-                    >
-                        Rooms
-                    </button>
-                    <button
-                        class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
-                        'multiRooms'
-                            ? 'bg-background shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'}"
-                        onclick={() => (tab = 'multiRooms')}
-                    >
-                        Multi Rooms
-                    </button>
-                    <button
-                        class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
-                        'characters'
-                            ? 'bg-background shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'}"
-                        onclick={() => (tab = 'characters')}
-                    >
-                        Characters
-                    </button>
-                    <button
-                        class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
-                        'personas'
-                            ? 'bg-background shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'}"
-                        onclick={() => (tab = 'personas')}
-                    >
-                        Personas
-                    </button>
-                </div>
+                {#if space === 'library'}
+                    <div class="flex rounded-md border bg-muted/30 p-1">
+                        <button
+                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            'rooms'
+                                ? 'bg-background shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'}"
+                            onclick={() => (tab = 'rooms')}
+                        >
+                            Rooms
+                        </button>
+                        <button
+                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            'characters'
+                                ? 'bg-background shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'}"
+                            onclick={() => (tab = 'characters')}
+                        >
+                            Characters
+                        </button>
+                        <button
+                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            'personas'
+                                ? 'bg-background shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'}"
+                            onclick={() => (tab = 'personas')}
+                        >
+                            Personas
+                        </button>
+                        <button
+                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            'modules'
+                                ? 'bg-background shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'}"
+                            onclick={() => (tab = 'modules')}
+                        >
+                            Modules
+                        </button>
+                    </div>
+                {:else}
+                    <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Users class="size-4" />
+                        Your encrypted shared spaces
+                    </div>
+                {/if}
 
                 <div class="relative w-full max-w-md">
                     <Search
@@ -539,10 +625,7 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Rooms hold character refs, chats, and conversation context.
                                     </p>
-                                    <Button
-                                        class="mt-5 gap-2"
-                                        onclick={() => (creatingRoom = true)}
-                                    >
+                                    <Button class="mt-5 gap-2" onclick={handleCreateRoom}>
                                         <Plus class="size-4" />
                                         New Room
                                     </Button>
@@ -749,6 +832,10 @@
                         {#snippet item({ entity: room })}
                             {@const characterCount = Object.keys(room.characters.refs).length}
                             {@const chatCount = Object.keys(room.chats.refs).length}
+                            {@const meta = $multiRoomMetas.find((item) => item.id === room.id)}
+                            {@const memberCount = ($multiRoomMembers.get(room.id) ?? []).filter(
+                                (member) => member.status === 'accepted'
+                            ).length}
                             <div
                                 class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
                             >
@@ -773,27 +860,29 @@
                                     <Button
                                         variant="ghost"
                                         size="icon-sm"
-                                        class="shrink-0 text-muted-foreground hover:text-destructive"
-                                        title={isMultiRoomOwner(room.id)
-                                            ? 'Delete multi room'
-                                            : 'Leave multi room'}
-                                        onclick={() =>
-                                            isMultiRoomOwner(room.id)
-                                                ? handleDeleteMultiRoom(room.id, room.name)
-                                                : handleLeaveMultiRoom(room.id, room.name)}
+                                        class="shrink-0 text-muted-foreground hover:text-foreground"
+                                        title="Manage multi room"
+                                        onclick={() => handleOpenMultiRoomManagement(room.id)}
                                     >
-                                        {#if isMultiRoomOwner(room.id)}
-                                            <Trash2 class="size-4" />
-                                        {:else}
-                                            <DoorOpen class="size-4" />
-                                        {/if}
+                                        <Settings2 class="size-4" />
                                     </Button>
                                 </div>
                                 <div
-                                    class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                    class="mt-auto flex w-full items-center justify-between gap-3 pt-5 text-xs text-muted-foreground"
                                 >
-                                    <DoorOpen class="size-3.5" />
-                                    Open multi room
+                                    <span class="flex items-center gap-1">
+                                        <DoorOpen class="size-3.5" /> Open multi room
+                                    </span>
+                                    <span class="flex items-center gap-2">
+                                        <span class="flex items-center gap-1">
+                                            {#if meta?.visibility === 'public'}
+                                                <Globe2 class="size-3.5" /> Public
+                                            {:else}
+                                                <Lock class="size-3.5" /> Private
+                                            {/if}
+                                        </span>
+                                        <span>{memberCount} members</span>
+                                    </span>
                                 </div>
                             </div>
                         {/snippet}
@@ -828,10 +917,7 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Characters are global resources you can add to rooms.
                                     </p>
-                                    <Button
-                                        class="mt-5 gap-2"
-                                        onclick={() => (creatingCharacter = true)}
-                                    >
+                                    <Button class="mt-5 gap-2" onclick={handleCreateCharacter}>
                                         <Plus class="size-4" />
                                         New Character
                                     </Button>
@@ -895,6 +981,108 @@
                             </div>
                         {/snippet}
                     </EntityList>
+                {:else if tab === 'modules'}
+                    <EntityList
+                        entities={filteredModules()}
+                        config={$appSettings.modules}
+                        layout="grid"
+                        childContainerClass="relative ml-6 p-3 my-1"
+                        onItemClick={(mod) =>
+                            onNavigate({ view: 'moduleStudio', moduleId: mod.id })}
+                        onCreateFolder={(name, parentId, sortOrder) =>
+                            createGlobalFolder('modules', name, parentId, sortOrder)}
+                        onUpdateFolder={(id, changes) => updateGlobalFolder('modules', id, changes)}
+                        onDeleteFolder={(id) => deleteGlobalFolder('modules', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveGlobalItem('modules', itemId, newFolderId, newSortOrder)}
+                    >
+                        {#snippet empty()}
+                            <div class="flex h-[50vh] items-center justify-center">
+                                <div class="max-w-sm text-center">
+                                    <div
+                                        class="mx-auto flex size-14 items-center justify-center rounded-full bg-muted"
+                                    >
+                                        <Package class="size-6 text-muted-foreground" />
+                                    </div>
+                                    <h2 class="mt-4 text-lg font-semibold">
+                                        Create your first module
+                                    </h2>
+                                    <p class="mt-2 text-sm text-muted-foreground">
+                                        Modules package reusable context, scripts, and display.
+                                    </p>
+                                    <Button class="mt-5 gap-2" onclick={handleCreateModule}>
+                                        <Plus class="size-4" />
+                                        New Module
+                                    </Button>
+                                </div>
+                            </div>
+                        {/snippet}
+                        {#snippet item({ entity: mod })}
+                            {@const enabled = $appSettings.modules.refs[mod.id]?.enabled ?? true}
+                            <div
+                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 {enabled
+                                    ? ''
+                                    : 'opacity-60'}"
+                            >
+                                <div class="flex w-full items-center gap-3">
+                                    <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
+                                        <div
+                                            class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold"
+                                        >
+                                            <Package class="size-5 text-muted-foreground" />
+                                        </div>
+                                        <div class="min-w-0">
+                                            <h2 class="truncate text-sm font-semibold">
+                                                {mod.name}
+                                            </h2>
+                                            <p
+                                                class="mt-0.5 truncate text-xs text-muted-foreground"
+                                            >
+                                                {mod.description || 'No description'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        class="shrink-0 {enabled
+                                            ? 'text-amber-500 hover:text-amber-600'
+                                            : 'text-muted-foreground'}"
+                                        title={enabled
+                                            ? 'Deactivate globally'
+                                            : 'Activate globally'}
+                                        aria-label={enabled
+                                            ? 'Deactivate globally'
+                                            : 'Activate globally'}
+                                        onclick={(event) => {
+                                            event.stopPropagation();
+                                            setModuleEnabled(mod.id, !enabled);
+                                        }}
+                                    >
+                                        <Zap class="size-4 {enabled ? 'fill-amber-500/10' : ''}" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        class="shrink-0 text-muted-foreground hover:text-destructive"
+                                        title="Delete module"
+                                        onclick={(event) => {
+                                            event.stopPropagation();
+                                            handleDeleteModule(mod.id, mod.name);
+                                        }}
+                                    >
+                                        <Trash2 class="size-4" />
+                                    </Button>
+                                </div>
+                                <div
+                                    class="mt-auto flex items-center gap-1 pt-5 text-xs text-muted-foreground"
+                                >
+                                    <Package class="size-3.5" />
+                                    Open studio
+                                </div>
+                            </div>
+                        {/snippet}
+                    </EntityList>
                 {:else if tab === 'personas'}
                     <EntityList
                         entities={filteredPersonas()}
@@ -925,10 +1113,7 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Personas are user speakers you can attach to chats.
                                     </p>
-                                    <Button
-                                        class="mt-5 gap-2"
-                                        onclick={() => (creatingPersona = true)}
-                                    >
+                                    <Button class="mt-5 gap-2" onclick={handleCreatePersona}>
                                         <Plus class="size-4" />
                                         New Persona
                                     </Button>
@@ -997,3 +1182,35 @@
         </div>
     </main>
 </div>
+
+<MultiRoomManageDialog
+    bind:open={manageDialogOpen}
+    room={managedRoom}
+    meta={managedRoomMeta}
+    members={managedRoomMembers}
+    currentUserId={$userId}
+    busyMemberId={busyManagedMemberId}
+    onVisibilityChange={handleManagedVisibility}
+    onApprove={async (memberUserId) => {
+        if (!managedRoomId) return;
+        await handleApprovePending(managedRoomId, memberUserId);
+    }}
+    onReject={async (memberUserId) => {
+        if (!managedRoomId) return;
+        await handleRejectPending(managedRoomId, memberUserId);
+    }}
+    onRevoke={async (memberUserId) => {
+        if (!managedRoomId) return;
+        await handleRevokeMember(managedRoomId, memberUserId);
+    }}
+    onDelete={async () => {
+        if (!managedRoomId || !managedRoom) return;
+        await handleDeleteMultiRoom(managedRoomId, managedRoom.name);
+        manageDialogOpen = false;
+    }}
+    onLeave={async () => {
+        if (!managedRoomId || !managedRoom) return;
+        await handleLeaveMultiRoom(managedRoomId, managedRoom.name);
+        manageDialogOpen = false;
+    }}
+/>

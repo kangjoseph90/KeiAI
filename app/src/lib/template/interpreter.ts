@@ -1,13 +1,14 @@
 import { parseTemplate } from './parser';
 import { evaluateExpression, isTruthy, stringifyValue } from './expression';
 import { forkMacroRegistry, pushMacro } from './macro';
-import type { Macro, MacroRegistry, Template, TemplateContext, TemplateNode } from './types';
+import type { Macro, MacroRegistry, Template, TemplateNode } from './types';
+import type { RuntimeContext } from '$lib/types/context';
 
 const MAX_DEPTH = 20;
 
 export function interpretTemplate(
     template: Template,
-    ctx: TemplateContext,
+    ctx: RuntimeContext,
     macros: MacroRegistry
 ): Promise<string> {
     return interpret(template, ctx, macros, 0);
@@ -15,7 +16,7 @@ export function interpretTemplate(
 
 async function interpret(
     template: Template,
-    ctx: TemplateContext,
+    ctx: RuntimeContext,
     macros: MacroRegistry,
     depth: number
 ): Promise<string> {
@@ -30,7 +31,7 @@ async function interpret(
 
 function interpretNode(
     node: TemplateNode,
-    ctx: TemplateContext,
+    ctx: RuntimeContext,
     macros: MacroRegistry,
     depth: number
 ): Promise<string> {
@@ -41,7 +42,7 @@ function interpretNode(
 
 async function interpretMacro(
     node: Extract<TemplateNode, { type: 'macro' }>,
-    ctx: TemplateContext,
+    ctx: RuntimeContext,
     macros: MacroRegistry,
     depth: number
 ): Promise<string> {
@@ -81,7 +82,7 @@ async function interpretMacro(
 
 async function interpretBlock(
     node: Extract<TemplateNode, { type: 'block' }>,
-    ctx: TemplateContext,
+    ctx: RuntimeContext,
     macros: MacroRegistry,
     depth: number
 ): Promise<string> {
@@ -121,7 +122,7 @@ async function interpretBlock(
 
 async function interpretEach(
     node: Extract<TemplateNode, { type: 'block' }>,
-    ctx: TemplateContext,
+    ctx: RuntimeContext,
     macros: MacroRegistry,
     depth: number
 ): Promise<string> {
@@ -190,7 +191,7 @@ function stringifySlotValue(value: unknown): string {
 
 async function evaluateTruth(
     expression: Template,
-    ctx: TemplateContext,
+    ctx: RuntimeContext,
     macros: MacroRegistry,
     depth: number
 ): Promise<boolean> {

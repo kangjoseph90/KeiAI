@@ -31,6 +31,7 @@ export async function importModulePackage(
             description: pkg.module.description,
             backgroundHTML: pkg.module.backgroundHTML ?? '',
             messageCSS: pkg.module.messageCSS ?? '',
+            defaultVariables: { ...(pkg.module.defaultVariables ?? {}) },
             allowLowLevel: pkg.module.allowLowLevel,
             lorebooks: { refs: {}, folders: {} },
             scripts: { refs: {}, folders: {} },

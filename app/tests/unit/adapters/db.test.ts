@@ -15,7 +15,8 @@ import type {
     MessageRecord,
     CharacterRecord,
     SettingsRecord,
-    ToolCallRecord
+    ToolCallRecord,
+    TranslationRecord
 } from '$lib/adapters/db';
 
 // Mock Tauri to ensure WebDatabaseAdapter is used
@@ -619,6 +620,21 @@ describe('WebDatabaseAdapter (Dexie)', () => {
         });
     });
 
+    describe('files table', () => {
+        it('should index files by namespace owner', async () => {
+            const record = createTestRecord({
+                id: 'file-1',
+                ownerId: 'chat-1',
+                data: { namespace: 'chat', path: 'summary.txt', content: 'hello' }
+            });
+
+            await localDB.putRecord('files', record);
+
+            const files = await localDB.getByIndex<DataRecord>('files', 'ownerId', 'chat-1');
+            expect(files.map((file) => file.id)).toEqual(['file-1']);
+        });
+    });
+
     describe('chat table', () => {
         it('should store and retrieve chat records with roomId', async () => {
             const record = createTestRecord({ id: 'chat-1', roomId: 'room-1' });
@@ -660,90 +676,103 @@ describe('WebDatabaseAdapter (Dexie)', () => {
             expect(results).toHaveLength(2);
         });
 
-        it('should scope compound swipe queries by messageId and swipeId', async () => {
+        it('should scope queries for tool_calls by chatId', async () => {
             const records = [
                 createTestRecord({
                     id: 'tool-1',
                     chatId: 'chat-1',
-                    messageId: 'msg-1',
-                    swipeId: 's1',
                     assetEntries: { hash1: 'local' },
                     data: { status: 'pending' }
                 }),
                 createTestRecord({
                     id: 'tool-2',
-                    chatId: 'chat-1',
-                    messageId: 'msg-2',
-                    swipeId: 's1',
+                    chatId: 'chat-2',
                     data: { status: 'pending' }
                 })
             ] as ToolCallRecord[];
 
             await localDB.putRecords('tool_calls', records);
 
-            const msgOneTools = await localDB.getByCompoundIndex<ToolCallRecord>(
+            const chatOneTools = await localDB.getByIndex<ToolCallRecord>(
                 'tool_calls',
-                '[messageId+swipeId]',
-                ['msg-1', 's1']
+                'chatId',
+                'chat-1'
             );
 
-            expect(msgOneTools.map((record) => record.id)).toEqual(['tool-1']);
+            expect(chatOneTools.map((record) => record.id)).toEqual(['tool-1']);
+        });
 
-            await localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
-                'msg-1',
-                's1'
-            ]);
+        it('should scope queries by messageId (translations)', async () => {
+            const records = [
+                createTestRecord({
+                    id: 'trans-1',
+                    chatId: 'chat-1',
+                    messageId: 'msg-1',
+                    assetEntries: { hash1: 'local' },
+                    data: { text: 'translation 1' }
+                }),
+                createTestRecord({
+                    id: 'trans-2',
+                    chatId: 'chat-1',
+                    messageId: 'msg-2',
+                    data: { text: 'translation 2' }
+                })
+            ] as TranslationRecord[];
 
-            const afterDeleteMsgOne = await localDB.getByCompoundIndex<ToolCallRecord>(
-                'tool_calls',
-                '[messageId+swipeId]',
-                ['msg-1', 's1']
+            await localDB.putRecords('translations', records);
+
+            const msgOneTrans = await localDB.getByIndex<TranslationRecord>(
+                'translations',
+                'messageId',
+                'msg-1'
             );
-            const afterDeleteMsgTwo = await localDB.getByCompoundIndex<ToolCallRecord>(
-                'tool_calls',
-                '[messageId+swipeId]',
-                ['msg-2', 's1']
+
+            expect(msgOneTrans.map((record) => record.id)).toEqual(['trans-1']);
+
+            await localDB.softDeleteByIndex('translations', 'messageId', 'msg-1');
+
+            const afterDeleteMsgOne = await localDB.getByIndex<TranslationRecord>(
+                'translations',
+                'messageId',
+                'msg-1'
+            );
+            const afterDeleteMsgTwo = await localDB.getByIndex<TranslationRecord>(
+                'translations',
+                'messageId',
+                'msg-2'
             );
 
             expect(afterDeleteMsgOne).toEqual([]);
-            expect(afterDeleteMsgTwo.map((record) => record.id)).toEqual(['tool-2']);
+            expect(afterDeleteMsgTwo.map((record) => record.id)).toEqual(['trans-2']);
 
-            const deletedTool = await localDB.getRecord<DataRecord>('tool_calls', 'tool-1');
-            expect(deletedTool?.assetEntries).toBeUndefined();
-            expect(deletedTool?.data).toEqual({});
+            const deletedTrans = await localDB.getRecord<DataRecord>('translations', 'trans-1');
+            expect(deletedTrans?.assetEntries).toBeUndefined();
+            expect(deletedTrans?.data).toEqual({});
         });
 
-        it('should not touch records already deleted by compound index', async () => {
+        it('should not touch records already deleted by index (translations)', async () => {
             const originalTime = Date.now() - 10000;
             const records = [
                 createTestRecord({
-                    id: 'tool-compound-live',
+                    id: 'trans-live',
                     chatId: 'chat-1',
                     messageId: 'msg-idempotent',
-                    swipeId: 's1',
                     isDeleted: false
                 }),
                 createTestRecord({
-                    id: 'tool-compound-deleted',
+                    id: 'trans-deleted',
                     chatId: 'chat-1',
                     messageId: 'msg-idempotent',
-                    swipeId: 's1',
                     isDeleted: true,
                     updatedAt: originalTime
                 })
-            ] as ToolCallRecord[];
+            ] as TranslationRecord[];
 
-            await localDB.putRecords('tool_calls', records);
-            await localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
-                'msg-idempotent',
-                's1'
-            ]);
+            await localDB.putRecords('translations', records);
+            await localDB.softDeleteByIndex('translations', 'messageId', 'msg-idempotent');
 
-            const live = await localDB.getRecord<DataRecord>('tool_calls', 'tool-compound-live');
-            const deleted = await localDB.getRecord<DataRecord>(
-                'tool_calls',
-                'tool-compound-deleted'
-            );
+            const live = await localDB.getRecord<DataRecord>('translations', 'trans-live');
+            const deleted = await localDB.getRecord<DataRecord>('translations', 'trans-deleted');
 
             expect(live?.isDeleted).toBe(true);
             expect(deleted?.isDeleted).toBe(true);

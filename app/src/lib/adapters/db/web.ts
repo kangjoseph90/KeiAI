@@ -24,6 +24,7 @@ import type {
     PresetRecord,
     ToolCallRecord,
     TranslationRecord,
+    FileRecord,
     CharJSRecord,
     DatabaseWriteOperation,
     RoomRecord,
@@ -46,6 +47,7 @@ class DexieStore extends Dexie {
     plugins!: Table<PluginRecord, string>;
     tool_calls!: Table<ToolCallRecord, string>;
     translations!: Table<TranslationRecord, string>;
+    files!: Table<FileRecord, string>;
     charjs!: Table<CharJSRecord, string>;
 
     constructor() {
@@ -73,10 +75,11 @@ class DexieStore extends Dexie {
             plugins:
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
             tool_calls:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+messageId], chatId, messageId, swipeId, [messageId+swipeId], updatedAt, isDeleted',
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], chatId, updatedAt, isDeleted',
             translations:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+messageId], chatId, messageId, swipeId, [messageId+swipeId], updatedAt, isDeleted',
-            charjs: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted'
+                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+messageId], chatId, messageId, updatedAt, isDeleted',
+            charjs: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted',
+            files: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted'
         });
     }
 }

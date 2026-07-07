@@ -46,9 +46,11 @@ export class TransformersLLMStreamHandler implements LLMStreamHandler {
         });
 
         let fullContent = '';
+        const shouldStream = options.stream ?? true;
         for await (const chunk of stream) {
             fullContent += chunk;
-            yield { content: fullContent };
+            if (shouldStream) yield { content: fullContent };
         }
+        if (!shouldStream) yield { content: fullContent };
     }
 }

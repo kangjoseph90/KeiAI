@@ -20,9 +20,9 @@ export async function addRoomCharacterFromLibrary(
         throw new AppError('INVALID_INPUT', `Room is not a multi room: ${roomId}`);
     }
 
-    const pkg = await exportCharacterPackage(characterId, 'light');
+    const pkg = await exportCharacterPackage(characterId, 'baked');
     const character = await importCharacterPackage(pkg, {
-        allowLightAssets: true
+        allowLightAssets: false
     });
 
     await addRoomCharacter(roomId, character.id);
@@ -42,9 +42,9 @@ export async function addChatPersonaFromLibrary(
         throw new AppError('INVALID_INPUT', `Room is not a multi room: ${chat.roomId}`);
     }
 
-    const pkg = await exportPersonaPackage(personaId, 'light');
+    const pkg = await exportPersonaPackage(personaId, 'baked');
     const persona = await importPersonaPackage(pkg, {
-        allowLightAssets: true
+        allowLightAssets: false
     });
 
     await addChatPersona(chatId, persona.id);

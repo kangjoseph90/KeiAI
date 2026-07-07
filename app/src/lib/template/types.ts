@@ -1,15 +1,4 @@
-import type { LLMRole } from '$lib/types/models/llm';
-
-export interface TemplateContext {
-    characterId?: string;
-    personaId?: string;
-    chatId?: string;
-    messageId?: string;
-    messageIndex?: number;
-    speakerId?: string;
-    speakerName?: string;
-    role?: LLMRole;
-}
+import type { RuntimeContext } from '$lib/types/context';
 
 export type Template = TemplateNode[];
 
@@ -34,7 +23,7 @@ export interface BlockNode {
     branches: Template[];
 }
 
-export type MacroFn = (args: string[], ctx: TemplateContext) => string | Promise<string>;
+export type MacroFn = (args: string[], ctx: RuntimeContext) => string | Promise<string>;
 
 export interface Macro {
     recursive?: boolean;

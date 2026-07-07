@@ -1,4 +1,4 @@
-import type { Macro, MacroFn, MacroRegistry, TemplateContext } from './types';
+import type { Macro, MacroFn, MacroRegistry } from './types';
 import { collectCharJSInstances } from '$lib/charjs/collect';
 import { invokeHandler } from '$lib/charjs/engine';
 import { pluginManager } from '$lib/plugins';
@@ -8,11 +8,13 @@ import { getChat } from '$lib/stores/content/chat';
 import { getMessage } from '$lib/stores/content/message';
 import { getChatVariable, setChatVariable } from '$lib/managers/chat';
 import { getGlobalVariable } from '$lib/managers/preset';
+import { getLastContentText } from '$lib/workflow/agent/llm';
 import { createLogger } from '$lib/adapters/logger';
+import type { RuntimeContext } from '$lib/types/context';
 
 const logger = createLogger('template:macro');
 
-export async function collectTemplateMacros(ctx: TemplateContext): Promise<Map<string, Macro[]>> {
+export async function collectTemplateMacros(ctx: RuntimeContext): Promise<Map<string, Macro[]>> {
     const macros = collectBuiltInMacros();
 
     if (ctx.chatId) {
@@ -95,6 +97,8 @@ function collectBuiltInMacros(): Map<string, Macro[]> {
             return chat?.chatNote ?? '';
         }
     });
+    addAliases(['roomid'], (_args, ctx) => ctx.roomId ?? '');
+    addAliases(['presetid'], (_args, ctx) => ctx.presetId ?? '');
     addAliases(['chatid'], (_args, ctx) => ctx.chatId ?? '');
     addAliases(['characterid', 'charid'], (_args, ctx) => ctx.characterId ?? '');
     addAliases(['personaid', 'userid'], (_args, ctx) => ctx.personaId ?? '');
@@ -258,7 +262,7 @@ function normalizeName(name: string): string {
 async function getMessageContent(messageId: string): Promise<string> {
     const message = await getMessage(messageId);
     const swipe = message?.swipes[message.activeSwipeId];
-    return swipe?.content ?? '';
+    return swipe ? getLastContentText(swipe.parts) : '';
 }
 
 export function pushMacro(macros: Map<string, Macro[]>, name: string, macro: Macro): void {
@@ -283,6 +287,19 @@ export function pushLocalMacros(
 
 export function forkMacroRegistry(macros: MacroRegistry): Map<string, Macro[]> {
     return new Map([...macros].map(([name, stack]) => [name, [...stack]]));
+}
+
+export function mergeLocalMacros(
+    ...sources: Array<ReadonlyMap<string, Macro> | undefined>
+): Map<string, Macro> {
+    const merged = new Map<string, Macro>();
+    for (const source of sources) {
+        if (!source) continue;
+        for (const [name, macro] of source) {
+            merged.set(name, macro);
+        }
+    }
+    return merged;
 }
 
 function toNumber(value: string | undefined): number {

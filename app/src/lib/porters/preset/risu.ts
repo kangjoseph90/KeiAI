@@ -1,17 +1,17 @@
-import { compressSync, decompressSync } from 'fflate';
-import { decode, encode } from 'msgpackr';
+import { decompressSync } from 'fflate';
+import { decode } from 'msgpackr';
 import type { LLMRole } from '$lib/types/models/llm';
 import { AppError } from '$lib/types/errors';
 import type { PresetCustomToggle } from '$lib/services';
 import { generateId } from '$lib/utils/id';
 import type { RisuRegexScript } from '../risu/script';
-import { decodeRPack, encodeRPack } from '../risu/rpack';
-import { keiScriptToRisu, risuScriptToKei } from '../risu/script';
-import { denormalizeRisuTemplate, normalizeRisuTemplate } from '../risu/template';
+import { decodeRPack } from '../risu/rpack';
+import { risuScriptToKei } from '../risu/script';
+import { normalizeRisuTemplate } from '../risu/template';
 import type { KeiPresetPackageV1 } from './types';
-import { isRecord, readDefaultVariables, refs, sortOrder, writeDefaultVariables } from '../utils';
-
-import { compareSortOrder } from '../../utils/ordering';
+import { isRecord, readDefaultVariables, refs, sortOrder } from '../utils';
+import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
+import type { PromptBlockFields } from '$lib/workflow/types';
 
 const TEXT_ENCODER = new TextEncoder();
 const RISU_PRESET_KEY = 'risupreset';
@@ -83,17 +83,6 @@ export async function readRisuPreset(
     return risuPresetToKeiPreset(preset as RisuPreset);
 }
 
-export async function writeRisuPreset(pkg: KeiPresetPackageV1): Promise<Uint8Array> {
-    const preset = keiPresetToRisuPreset(pkg);
-    const encrypted = new Uint8Array(await encrypt(encode(preset), RISU_PRESET_KEY));
-    const envelope = encode({
-        presetVersion: 2,
-        type: 'preset',
-        preset: encrypted
-    });
-    return encodeRPack(compressSync(envelope));
-}
-
 export function readRisuPresetJson(value: unknown): KeiPresetPackageV1 {
     if (isKeiPresetPackage(value)) return value;
     if (!isRecord(value)) throw new AppError('INVALID_INPUT', 'Invalid preset JSON');
@@ -150,49 +139,20 @@ function risuPresetToKeiPreset(risu: RisuPreset): KeiPresetPackageV1 {
                     ...(topP != null ? { top_p: topP } : {})
                 }
             },
-            promptBlocks,
-            maxResponse: readRisuDisabledNumber(risu.maxResponse) ?? 300,
-            maxContext: readRisuDisabledNumber(risu.maxContext) ?? 4000,
-            lorebookRatio: 0.2,
-            memoryRatio: 0.2,
-            lorebookScanDepth: 5,
+            chatWorkflow: createDefaultChatWorkflow({
+                promptBlocks,
+                maxResponse: readRisuDisabledNumber(risu.maxResponse) ?? 300,
+                maxContext: readRisuDisabledNumber(risu.maxContext) ?? 4000,
+                lorebookRatio: 0.2,
+                memoryRatio: 0.2,
+                lorebookScanDepth: 5
+            }),
             defaultVariables: readDefaultVariables(risu.templateDefaultVariables),
             globalVariables,
             customToggles,
             scripts: refs(scripts)
         },
         scripts
-    };
-}
-
-function keiPresetToRisuPreset(pkg: KeiPresetPackageV1): RisuPreset {
-    const chatModel = pkg.preset.models?.chat ?? { id: 'openai::gpt-5.4', provider: 'openai' };
-    const auxModel = pkg.preset.models?.aux ?? chatModel;
-    const parameters = pkg.preset.parameters?.chat ?? {};
-    return {
-        name: pkg.preset.name,
-        mainPrompt: '',
-        jailbreak: '',
-        globalNote: '',
-        temperature: readPercent(parameters.temperature, 80),
-        maxContext: pkg.preset.maxContext,
-        maxResponse: pkg.preset.maxResponse,
-        frequencyPenalty: readPercent(parameters.frequency_penalty, 70),
-        PresensePenalty: readPercent(parameters.presence_penalty, 70),
-        aiModel: chatModel.id,
-        subModel: auxModel.id,
-        top_p: typeof parameters.top_p === 'number' ? parameters.top_p : 1,
-        promptPreprocess: false,
-        bias: [],
-        formatingOrder: [],
-        regex: pkg.scripts.map(keiScriptToRisu),
-        customPromptTemplateToggle: writeRisuCustomToggles(pkg.preset.customToggles),
-        templateDefaultVariables: writeDefaultVariables(pkg.preset.defaultVariables),
-        promptTemplate: Object.values(pkg.preset.promptBlocks)
-            .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder))
-            .filter((block) => block.enabled)
-            .map(keiBlockToRisuPrompt),
-        keiai: pkg
     };
 }
 
@@ -231,18 +191,6 @@ function readRisuCustomToggles(value: string): Record<string, PresetCustomToggle
     );
 }
 
-function writeRisuCustomToggles(toggles: Record<string, PresetCustomToggle>): string {
-    return Object.values(toggles)
-        .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder))
-        .map((toggle) => {
-            if (toggle.type === 'checkbox') return `${toggle.key}=${toggle.label}`;
-            if (toggle.type === 'select')
-                return `${toggle.key}=${toggle.label}=select=${toggle.options.join(',')}`;
-            return `${toggle.key ?? ''}=${toggle.label ?? ''}=${toggle.type}`;
-        })
-        .join('\n');
-}
-
 function initializeRisuToggleVariables(
     toggles: Record<string, PresetCustomToggle>
 ): Record<string, string> {
@@ -269,130 +217,66 @@ function readPromptItems(risu: RisuPreset): RisuPromptItem[] {
     ];
 }
 
-function risuPromptToKeiBlock(item: RisuPromptItem, index: number, hasPostEverything: boolean) {
+function risuPromptToKeiBlock(
+    item: RisuPromptItem,
+    index: number,
+    hasPostEverything: boolean
+): PromptBlockFields | null {
     const name = item.name ?? promptName(item.type, index);
     if (item.type === 'description')
         return {
             name,
-            type: 'character' as const,
-            role: 'system' as LLMRole,
-            format: normalizeOptionalTemplate(item.innerFormat)
+            type: 'text',
+            role: 'system',
+            content: formatMacroText(item.innerFormat, '{{description}}')
         };
     if (item.type === 'persona')
         return {
             name,
-            type: 'persona' as const,
-            role: 'system' as LLMRole,
-            format: normalizeOptionalTemplate(item.innerFormat)
+            type: 'text',
+            role: 'system',
+            content: formatMacroText(item.innerFormat, '{{persona}}')
+        };
+    if (item.type === 'plain' && item.type2 === 'globalNote')
+        return {
+            name,
+            type: 'text',
+            role: 'system',
+            content: formatMacroText(item.text, '{{characternote}}')
         };
     if (item.type === 'lorebook') {
         return {
             name,
-            type: 'lorebook' as const,
+            type: 'lorebook',
             ...(hasPostEverything ? { minDepth: 1 } : {})
         };
     }
     if (item.type === 'postEverything') {
-        return { name, type: 'lorebook' as const, maxDepth: 0 };
+        return { name, type: 'lorebook', maxDepth: 0 };
     }
-    if (item.type === 'memory')
-        return {
-            name,
-            type: 'memory' as const,
-            role: 'system' as LLMRole,
-            format: normalizeOptionalTemplate(item.innerFormat)
-        };
+    // TODO: Map Risu memory blocks when KeiAI has a workflow prompt block or macro for memory.
+    if (item.type === 'memory') return null;
     if (item.type === 'authornote')
         return {
             name,
-            type: 'chatNote' as const,
-            role: 'system' as LLMRole,
-            format: normalizeOptionalTemplate(item.innerFormat)
+            type: 'text',
+            role: 'system',
+            content: formatMacroText(item.innerFormat ?? item.defaultText, '{{chatnote}}')
         };
     if (item.type === 'chatML' || item.type === 'cache') return null;
     if (item.type === 'chat') {
         return {
             name,
-            type: 'history' as const,
+            type: 'history',
             ...(item.rangeStart === -1000 ? {} : { start: item.rangeStart }),
             ...(item.rangeEnd === 'end' ? {} : { end: item.rangeEnd })
         };
     }
-    if ('type2' in item && item.type2 === 'globalNote') {
-        return {
-            name,
-            type: 'characterNote' as const,
-            role: risuRoleToKei(item.role),
-            format: normalizeOptionalTemplate(item.text)
-        };
-    }
     return {
         name,
-        type: 'text' as const,
+        type: 'text',
         role: risuRoleToKei('role' in item ? item.role : undefined),
         content: 'text' in item ? normalizeRisuTemplate(item.text ?? '') : ''
-    };
-}
-
-function keiBlockToRisuPrompt(
-    block: KeiPresetPackageV1['preset']['promptBlocks'][string]
-): RisuPromptItem {
-    if (block.type === 'character')
-        return {
-            type: 'description',
-            innerFormat: denormalizeOptionalTemplate(block.format),
-            name: block.name
-        };
-    if (block.type === 'persona')
-        return {
-            type: 'persona',
-            innerFormat: denormalizeOptionalTemplate(block.format),
-            name: block.name
-        };
-    if (block.type === 'lorebook') {
-        if (block.maxDepth === 0) return { type: 'postEverything', name: block.name };
-        return {
-            type: 'lorebook',
-            innerFormat: denormalizeOptionalTemplate(block.format),
-            name: block.name
-        };
-    }
-    if (block.type === 'memory')
-        return {
-            type: 'memory',
-            innerFormat: denormalizeOptionalTemplate(block.format),
-            name: block.name
-        };
-    if (block.type === 'characterNote') {
-        return {
-            type: 'plain',
-            type2: 'globalNote',
-            text: denormalizeRisuTemplate(block.format ?? ''),
-            role: keiRoleToRisu(block.role),
-            name: block.name
-        };
-    }
-    if (block.type === 'chatNote') {
-        return {
-            type: 'authornote',
-            innerFormat: denormalizeOptionalTemplate(block.format),
-            name: block.name
-        };
-    }
-    if (block.type === 'history') {
-        return {
-            type: 'chat',
-            rangeStart: block.start ?? -1000,
-            rangeEnd: block.end ?? 'end',
-            name: block.name
-        };
-    }
-    return {
-        type: 'plain',
-        type2: 'normal',
-        text: denormalizeRisuTemplate(block.content),
-        role: keiRoleToRisu(block.role),
-        name: block.name
     };
 }
 
@@ -404,16 +288,6 @@ function risuRoleToKei(role: RisuRole | undefined): LLMRole {
     if (role === 'bot') return 'assistant';
     if (role === 'user') return 'user';
     return 'system';
-}
-
-function keiRoleToRisu(role: LLMRole): RisuRole {
-    if (role === 'assistant') return 'bot';
-    if (role === 'user') return 'user';
-    return 'system';
-}
-
-function readPercent(value: unknown, fallback: number): number {
-    return typeof value === 'number' ? value * 100 : fallback;
 }
 
 function readRisuPercent(value: unknown): number | undefined {
@@ -431,13 +305,10 @@ function normalizeOptionalTemplate(value: string | undefined): string | undefine
     return normalized.trim() ? normalized : undefined;
 }
 
-function denormalizeOptionalTemplate(value: string | undefined): string | undefined {
-    return value === undefined ? undefined : denormalizeRisuTemplate(value);
-}
-
-async function encrypt(data: Uint8Array, keyText: string): Promise<ArrayBuffer> {
-    const key = await cryptoKey(keyText);
-    return crypto.subtle.encrypt({ name: 'AES-GCM', iv: new Uint8Array(12) }, key, data.slice());
+function formatMacroText(format: string | undefined, fallbackMacro: string): string {
+    const normalized = normalizeOptionalTemplate(format);
+    if (!normalized) return fallbackMacro;
+    return normalized.replaceAll('{{slot}}', fallbackMacro);
 }
 
 async function decrypt(data: Uint8Array, keyText: string): Promise<ArrayBuffer> {

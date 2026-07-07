@@ -23,7 +23,7 @@ describe('MessageManager', () => {
         swipes: {
             'old-swipe': {
                 id: 'old-swipe',
-                content: 'Old',
+                parts: [{ type: 'content', text: 'Old' }],
                 createdAt: 1,
                 variables: { old: '1' },
                 speakerId: 'char-old',
@@ -42,7 +42,7 @@ describe('MessageManager', () => {
                     ...baseMessage.swipes,
                     'new-swipe': {
                         id: 'new-swipe',
-                        content: 'New',
+                        parts: [{ type: 'content', text: 'New' }],
                         createdAt: 2,
                         variables: { mood: 'calm' },
                         speakerId: 'char-1',
@@ -59,7 +59,7 @@ describe('MessageManager', () => {
                 ...baseMessage.swipes,
                 'new-swipe': {
                     id: 'new-swipe',
-                    content: 'New',
+                    parts: [{ type: 'content', text: 'New' }],
                     createdAt: 2,
                     variables: { mood: 'calm' },
                     speakerId: 'char-1',
@@ -71,7 +71,7 @@ describe('MessageManager', () => {
 
     it('creates a new active swipe with variables and speaker metadata', async () => {
         const result = await prepareNextSwipe(baseMessage, {
-            content: 'New',
+            parts: [{ type: 'content', text: 'New' }],
             variables: { mood: 'calm' },
             speakerId: 'char-1',
             speakerName: 'Alpha'
@@ -79,7 +79,7 @@ describe('MessageManager', () => {
 
         expect(deleteMessageSwipe).not.toHaveBeenCalled();
         expect(createMessageSwipe).toHaveBeenCalledWith('msg-1', {
-            content: 'New',
+            parts: [{ type: 'content', text: 'New' }],
             variables: { mood: 'calm' },
             speakerId: 'char-1',
             speakerName: 'Alpha'
@@ -98,14 +98,14 @@ describe('MessageManager', () => {
         vi.mocked(deleteMessageSwipe).mockResolvedValue(withoutOldSwipe);
 
         await prepareNextSwipe(baseMessage, {
-            content: 'Replacement',
+            parts: [{ type: 'content', text: 'Replacement' }],
             variables: {},
             replaceActiveSwipe: true
         });
 
         expect(deleteMessageSwipe).toHaveBeenCalledWith('msg-1', 'old-swipe');
         expect(createMessageSwipe).toHaveBeenCalledWith('msg-1', {
-            content: 'Replacement',
+            parts: [{ type: 'content', text: 'Replacement' }],
             variables: {},
             speakerId: undefined,
             speakerName: undefined
@@ -119,7 +119,7 @@ describe('MessageManager', () => {
                 activeSwipeId: 'missing'
             },
             {
-                content: 'New',
+                parts: [{ type: 'content', text: 'New' }],
                 variables: {},
                 replaceActiveSwipe: true
             }
@@ -134,7 +134,7 @@ describe('MessageManager', () => {
 
         await expect(
             prepareNextSwipe(baseMessage, {
-                content: 'New',
+                parts: [{ type: 'content', text: 'New' }],
                 variables: {}
             })
         ).rejects.toThrow(AppError);

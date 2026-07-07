@@ -5,7 +5,6 @@ import { generateKeyBetween } from 'fractional-indexing';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
-import type { ToolCallInfo } from './tool';
 import { buffer } from './record_buffer';
 import {
     cascadeDeleteChildren,
@@ -14,13 +13,12 @@ import {
     type CascadeResult
 } from './cascade';
 import type { LLMRole } from '$lib/types/models/llm';
+import type { AgentPart } from '$lib/workflow/agent/llm';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface MessageSwipeFields {
-    content: string;
-    thought?: string;
-    toolCalls?: Record<string, ToolCallInfo>;
+    parts: AgentPart[];
     variables?: Record<string, string>;
     speakerId?: string; // personaId if role is 'user', characterId if role is 'assistant'
     speakerName?: string;
@@ -291,21 +289,6 @@ export class MessageService {
         const remainingIds = Object.keys(message.swipes).filter((id) => id !== swipeId);
         const nextActiveId =
             message.activeSwipeId === swipeId ? (remainingIds[0] ?? '') : message.activeSwipeId;
-
-        // Cleanup associated data
-        await Promise.all([buffer.flushTable('tool_calls'), buffer.flushTable('translations')]);
-        await localDB.transaction(['tool_calls', 'translations'], 'rw', async () => {
-            await Promise.all([
-                localDB.softDeleteByCompoundIndex('tool_calls', '[messageId+swipeId]', [
-                    messageId,
-                    swipeId
-                ]),
-                localDB.softDeleteByCompoundIndex('translations', '[messageId+swipeId]', [
-                    messageId,
-                    swipeId
-                ])
-            ]);
-        });
 
         return this.update(messageId, {
             swipes: { [swipeId]: undefined },

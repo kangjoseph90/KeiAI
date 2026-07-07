@@ -2,41 +2,88 @@ import { writable, derived, get } from 'svelte/store';
 
 // ─── Route Types ──────────────────────────────────────────────────────
 
-export type ViewMode = 'home' | 'room' | 'characterStudio' | 'personaStudio' | 'settings';
+export type ViewMode =
+    | 'home'
+    | 'multiRoom'
+    | 'room'
+    | 'characterStudio'
+    | 'moduleStudio'
+    | 'personaStudio'
+    | 'settings';
+export type SettingsTab =
+    | 'models'
+    | 'chat'
+    | 'plugins'
+    | 'language'
+    | 'profile'
+    | 'account'
+    | 'general';
+export type CharacterStudioTab =
+    | 'profile'
+    | 'greetings'
+    | 'lorebooks'
+    | 'scripts'
+    | 'display'
+    | 'assets'
+    | 'advanced';
+export type ModuleStudioTab =
+    | 'profile'
+    | 'lorebooks'
+    | 'scripts'
+    | 'display'
+    | 'assets'
+    | 'advanced';
+export type PersonaStudioTab = 'profile' | 'assets' | 'advanced';
 
 export interface RouteState {
     view: ViewMode;
     roomId?: string;
     charId?: string;
+    moduleId?: string;
     chatId?: string;
     personaId?: string;
-    pluginId?: string;
-    moduleId?: string;
+    settingsTab?: SettingsTab;
+    characterTab?: CharacterStudioTab;
+    moduleTab?: ModuleStudioTab;
+    personaTab?: PersonaStudioTab;
 }
 
 // ─── URL Scheme ───────────────────────────────────────────────────────
 // #/                          → home
+// #/multi-room               → multi-room management
 // #/room/{roomId}             → room, no chat selected
 // #/room/{roomId}/chat/{chatId} → room with a selected chat
-// #/character/{charId}        → character studio
-// #/persona/{personaId}       → persona studio
+// #/character/{charId}/{tab?} → character studio
+// #/module/{moduleId}/{tab?} → module studio
+// #/persona/{personaId}/{tab?} → persona studio
 // #/settings                  → global settings
-// #/settings/plugin/{pluginId} → settings plugin editor
-// #/settings/module/{moduleId} → settings module editor
+// #/settings/{tab}            → global settings focused on a tab
 
 function buildHash(route: RouteState): string {
     switch (route.view) {
+        case 'multiRoom':
+            return '#/multi-room';
         case 'room':
             if (route.roomId && route.chatId) return `#/room/${route.roomId}/chat/${route.chatId}`;
             if (route.roomId) return `#/room/${route.roomId}`;
             return '#/';
         case 'characterStudio':
+            if (route.charId && route.characterTab) {
+                return `#/character/${route.charId}/${route.characterTab}`;
+            }
             return route.charId ? `#/character/${route.charId}` : '#/';
+        case 'moduleStudio':
+            if (route.moduleId && route.moduleTab) {
+                return `#/module/${route.moduleId}/${route.moduleTab}`;
+            }
+            return route.moduleId ? `#/module/${route.moduleId}` : '#/';
         case 'personaStudio':
+            if (route.personaId && route.personaTab) {
+                return `#/persona/${route.personaId}/${route.personaTab}`;
+            }
             return route.personaId ? `#/persona/${route.personaId}` : '#/';
         case 'settings':
-            if (route.pluginId) return `#/settings/plugin/${route.pluginId}`;
-            if (route.moduleId) return `#/settings/module/${route.moduleId}`;
+            if (route.settingsTab) return `#/settings/${route.settingsTab}`;
             return '#/settings';
         default:
             return '#/';
@@ -46,6 +93,7 @@ function buildHash(route: RouteState): string {
 function parseHash(hash: string): RouteState {
     const path = hash.replace(/^#\//, '');
     if (!path || path === '/') return { view: 'home' };
+    if (path === 'multi-room') return { view: 'multiRoom' };
 
     if (path === 'settings') return { view: 'settings' };
 
@@ -56,17 +104,52 @@ function parseHash(hash: string): RouteState {
         if (roomId) return { view: 'room', roomId, chatId };
     }
     if (parts[0] === 'character' && parts[1]) {
+        const characterTab = parts[2];
+        if (
+            characterTab === 'profile' ||
+            characterTab === 'greetings' ||
+            characterTab === 'lorebooks' ||
+            characterTab === 'scripts' ||
+            characterTab === 'display' ||
+            characterTab === 'assets' ||
+            characterTab === 'advanced'
+        ) {
+            return { view: 'characterStudio', charId: parts[1], characterTab };
+        }
         return { view: 'characterStudio', charId: parts[1] };
     }
+    if (parts[0] === 'module' && parts[1]) {
+        const moduleTab = parts[2];
+        if (
+            moduleTab === 'profile' ||
+            moduleTab === 'lorebooks' ||
+            moduleTab === 'scripts' ||
+            moduleTab === 'display' ||
+            moduleTab === 'assets' ||
+            moduleTab === 'advanced'
+        ) {
+            return { view: 'moduleStudio', moduleId: parts[1], moduleTab };
+        }
+        return { view: 'moduleStudio', moduleId: parts[1] };
+    }
     if (parts[0] === 'persona' && parts[1]) {
+        const personaTab = parts[2];
+        if (personaTab === 'profile' || personaTab === 'assets' || personaTab === 'advanced') {
+            return { view: 'personaStudio', personaId: parts[1], personaTab };
+        }
         return { view: 'personaStudio', personaId: parts[1] };
     }
     if (parts[0] === 'settings') {
-        if (parts[1] === 'plugin' && parts[2]) {
-            return { view: 'settings', pluginId: parts[2] };
-        }
-        if (parts[1] === 'module' && parts[2]) {
-            return { view: 'settings', moduleId: parts[2] };
+        if (
+            parts[1] === 'models' ||
+            parts[1] === 'chat' ||
+            parts[1] === 'plugins' ||
+            parts[1] === 'language' ||
+            parts[1] === 'profile' ||
+            parts[1] === 'account' ||
+            parts[1] === 'general'
+        ) {
+            return { view: 'settings', settingsTab: parts[1] };
         }
         return { view: 'settings' };
     }
@@ -103,8 +186,11 @@ export function initHashListener(): () => void {
             parsed.charId !== current.charId ||
             parsed.chatId !== current.chatId ||
             parsed.personaId !== current.personaId ||
-            parsed.pluginId !== current.pluginId ||
-            parsed.moduleId !== current.moduleId
+            parsed.moduleId !== current.moduleId ||
+            parsed.settingsTab !== current.settingsTab ||
+            parsed.characterTab !== current.characterTab ||
+            parsed.moduleTab !== current.moduleTab ||
+            parsed.personaTab !== current.personaTab
         ) {
             _route.set(parsed);
         }

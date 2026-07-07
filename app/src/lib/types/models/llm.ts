@@ -6,22 +6,13 @@
  */
 
 // ─── Types ───────────────────────────────────────────────────────────────
-export type BuiltInLLMType = 'chat' | 'aux' | 'translation';
+export type BuiltInLLMType = 'chat' | 'aux';
 export type LLMType = BuiltInLLMType | string;
 
 export interface LLMTypeDefinition {
     type: LLMType;
-    label: string;
     description?: string;
 }
-
-export const BUILT_IN_LLM_TYPES: LLMTypeDefinition[] = [
-    {
-        type: 'translation',
-        label: 'Translation',
-        description: 'Model used for translation tasks.'
-    }
-];
 
 // ─── Tokenizer ───────────────────────────────────────────────────────────────
 

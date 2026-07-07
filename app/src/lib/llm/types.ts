@@ -70,4 +70,5 @@ export interface PluginLLMHandlerConfig extends LLMStreamHandlerConfig {
 export interface LLMStreamOptions {
     parameters?: LLMParameters;
     maxResponse?: number;
+    stream?: boolean;
 }

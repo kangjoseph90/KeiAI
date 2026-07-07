@@ -7,21 +7,18 @@ import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
 
 export interface TranslationFields {
-    targetLang: string;
+    sourceHash: string;
     text: string;
-    methodKey?: string;
-    sourceHash?: string;
 }
 
 export interface Translation extends TranslationFields {
     id: string;
     chatId: string;
     messageId: string;
-    swipeId: string;
 }
 
 const defaultTranslationFields: TranslationFields = {
-    targetLang: '',
+    sourceHash: '',
     text: ''
 };
 
@@ -30,12 +27,12 @@ function parseFields(record: TranslationRecord): TranslationFields {
 }
 
 export class TranslationService {
-    static async listByMessageSwipe(messageId: string, swipeId: string): Promise<Translation[]> {
+    static async listByMessage(messageId: string): Promise<Translation[]> {
         await buffer.flushTable('translations');
-        const records = await localDB.getByCompoundIndex<TranslationRecord>(
+        const records = await localDB.getByIndex<TranslationRecord>(
             'translations',
-            '[messageId+swipeId]',
-            [messageId, swipeId],
+            'messageId',
+            messageId,
             Number.MAX_SAFE_INTEGER
         );
         return records
@@ -44,8 +41,33 @@ export class TranslationService {
                 ...parseFields(record),
                 id: record.id,
                 chatId: record.chatId,
-                messageId: record.messageId,
-                swipeId: record.swipeId
+                messageId: record.messageId
+            }));
+    }
+
+    static async listByMessages(messageIds: string[]): Promise<Translation[]> {
+        if (messageIds.length === 0) return [];
+
+        await buffer.flushTable('translations');
+        const recordGroups = await Promise.all(
+            messageIds.map((messageId) =>
+                localDB.getByIndex<TranslationRecord>(
+                    'translations',
+                    'messageId',
+                    messageId,
+                    Number.MAX_SAFE_INTEGER
+                )
+            )
+        );
+
+        return recordGroups
+            .flat()
+            .filter((record) => canAccessScope(record))
+            .map((record) => ({
+                ...parseFields(record),
+                id: record.id,
+                chatId: record.chatId,
+                messageId: record.messageId
             }));
     }
 
@@ -57,20 +79,16 @@ export class TranslationService {
             ...parseFields(record),
             id: record.id,
             chatId: record.chatId,
-            messageId: record.messageId,
-            swipeId: record.swipeId
+            messageId: record.messageId
         };
     }
 
     static async create(
         chatId: string,
         messageId: string,
-        swipeId: string,
-        fields: DeepPartial<TranslationFields> = {},
+        fields: TranslationFields,
         scopeType: DataScopeType = 'user'
     ): Promise<Translation> {
-        const resolved: TranslationFields = deepMerge(defaultTranslationFields, fields);
-
         const scope = getSessionScope(scopeType);
         const id = generateId();
         const now = clock.now();
@@ -82,11 +100,10 @@ export class TranslationService {
                 scopeId: scope.scopeId,
                 chatId,
                 messageId,
-                swipeId,
                 createdAt: now,
                 updatedAt: now,
                 isDeleted: false,
-                data: resolved as unknown as Record<string, unknown>
+                data: fields as unknown as Record<string, unknown>
             };
             await localDB.putRecord<TranslationRecord>('translations', newRecord);
         } catch (error) {
@@ -94,7 +111,7 @@ export class TranslationService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to create translation', error);
         }
 
-        return { ...resolved, id, chatId, messageId, swipeId };
+        return { ...fields, id, chatId, messageId };
     }
 
     static async update(id: string, changes: DeepPartial<TranslationFields>): Promise<Translation> {
@@ -117,8 +134,7 @@ export class TranslationService {
                 ...updated,
                 id: record.id,
                 chatId: record.chatId,
-                messageId: record.messageId,
-                swipeId: record.swipeId
+                messageId: record.messageId
             };
         } catch (error) {
             if (error instanceof AppError) throw error;

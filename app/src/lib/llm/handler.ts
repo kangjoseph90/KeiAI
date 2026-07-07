@@ -26,14 +26,20 @@ import {
     type LLMParameters
 } from '$lib/types/models/llm';
 import { pluginManager } from '$lib/plugins';
-import type { Preset } from '$lib/services';
+import { getPreset } from '$lib/stores/content/preset';
 
 const logger = createLogger('llm:handler');
 
 /**
  * Resolves llm model and parameters by LLM type
  */
-export function resolveLLMModelConfig(type: LLMType, preset: Preset): LLMModelConfig | null {
+export async function resolveLLMModelConfig(
+    type: LLMType,
+    presetId: string
+): Promise<LLMModelConfig | null> {
+    const preset = await getPreset(presetId);
+    if (!preset) return null;
+
     const modelConfig = preset.models[type];
     if (modelConfig) return modelConfig;
     if (type === 'chat') return null;
@@ -41,7 +47,13 @@ export function resolveLLMModelConfig(type: LLMType, preset: Preset): LLMModelCo
     return preset.models.aux ?? preset.models.chat ?? null;
 }
 
-export function resolveLLMParameters(type: LLMType, preset: Preset): LLMParameters | null {
+export async function resolveLLMParameters(
+    type: LLMType,
+    presetId: string
+): Promise<LLMParameters | null> {
+    const preset = await getPreset(presetId);
+    if (!preset) return null;
+
     const parameters = preset.parameters[type];
     if (parameters) return parameters;
     if (type === 'chat') return null;

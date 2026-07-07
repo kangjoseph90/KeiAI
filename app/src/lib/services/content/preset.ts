@@ -11,33 +11,11 @@ import {
     cleanupCascadeAssets,
     type CascadeResult
 } from './cascade';
-import type { LLMModelConfig, LLMParameters, LLMRole, LLMType } from '$lib/types/models/llm';
+import type { LLMModelConfig, LLMParameters, LLMType } from '$lib/types/models/llm';
 import type { EntityListConfig } from '$lib/types/refs';
+import type { WorkflowDefinition } from '$lib/workflow/types';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
-
-export type PromptBlockFields =
-    | { name: string; type: 'text'; role: LLMRole; content: string }
-    | { name: string; type: 'character'; role: LLMRole; format?: string }
-    | { name: string; type: 'persona'; role: LLMRole; format?: string }
-    | {
-          name: string;
-          type: 'lorebook';
-          minDepth?: number;
-          maxDepth?: number;
-          reverseOrder?: boolean;
-          format?: string;
-      }
-    | { name: string; type: 'memory'; role: LLMRole; format?: string }
-    | { name: string; type: 'characterNote'; role: LLMRole; format?: string }
-    | { name: string; type: 'chatNote'; role: LLMRole; format?: string }
-    | { name: string; type: 'history'; start?: number; end?: number; format?: string };
-
-export type PromptBlock = PromptBlockFields & {
-    id: string;
-    sortOrder: string;
-    enabled: boolean;
-};
 
 export type PresetCustomToggleFields =
     | { key?: string; label?: string; type: 'group' | 'groupEnd' | 'caption' | 'divider' }
@@ -55,12 +33,7 @@ export interface PresetContent {
     description: string;
     models: Partial<Record<LLMType, LLMModelConfig>>;
     parameters: Partial<Record<LLMType, LLMParameters>>;
-    promptBlocks: Record<string, PromptBlock>;
-    maxResponse: number;
-    maxContext: number;
-    lorebookRatio: number;
-    memoryRatio: number;
-    lorebookScanDepth: number;
+    chatWorkflow: WorkflowDefinition;
     defaultVariables: Record<string, string>;
     globalVariables: Record<string, string>;
     customToggles: Record<string, PresetCustomToggle>;
@@ -91,12 +64,7 @@ export const defaultPresetFields: PresetFields = {
             top_p: 0.9
         }
     },
-    promptBlocks: {},
-    maxResponse: 6000,
-    maxContext: 60000,
-    lorebookRatio: 0.2,
-    memoryRatio: 0.2,
-    lorebookScanDepth: 5,
+    chatWorkflow: { nodes: {} },
     defaultVariables: {},
     globalVariables: {},
     customToggles: {},
@@ -203,46 +171,6 @@ export class PresetService {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete preset', error);
         }
-    }
-
-    // ─── Block CRUD ───────────────────────────────────────────────────
-
-    static async createBlock(
-        presetId: string,
-        fields: DeepPartial<PromptBlockFields> & { sortOrder: string }
-    ): Promise<{ blockId: string; preset: Preset }> {
-        const blockId = generateId();
-        const preset = await this.update(presetId, {
-            promptBlocks: {
-                [blockId]: {
-                    ...fields,
-                    id: blockId,
-                    enabled: true
-                }
-            }
-        });
-
-        return { blockId, preset };
-    }
-
-    static async updateBlock(
-        presetId: string,
-        blockId: string,
-        changes: DeepPartial<PromptBlock>
-    ): Promise<Preset> {
-        return this.update(presetId, {
-            promptBlocks: {
-                [blockId]: changes
-            }
-        });
-    }
-
-    static async deleteBlock(presetId: string, blockId: string): Promise<Preset> {
-        return this.update(presetId, {
-            promptBlocks: {
-                [blockId]: undefined
-            }
-        });
     }
 
     // ─── Custom Toggle CRUD ───────────────────────────────────────────

@@ -105,7 +105,7 @@ Each entity type uses one table with one local plaintext `data` payload. The sam
 ### Relationship Model
 
 - **1:N** — Parent blob holds `EntityListConfig` (`Record<string, OrderedRef>`) of child IDs (parent owns ordering + folders)
-- **N:M** — Consumer blob holds `EntityListConfig<ResourceRef>` with per-context `enabled` flag
+- **N:M** — Consumer blob holds `EntityListConfig<OrderedRef>` for binary membership, or `EntityListConfig<ResourceRef>` when the relationship needs per-context state
 - **Exception**: Messages use `chatId` FK + `sortOrder` compound index (O(1) writes vs O(n) parent blob rewrites)
 - PocketBase uses no FK relations for domain records; local adapters keep only the indexes the app needs
 - Fractional indexing (`generateKeyBetween()`) for `sortOrder` — inserts anywhere without renumbering
@@ -179,8 +179,8 @@ Every service file follows this order:
 
 Weak refs are validated at the store/task boundary rather than by server FK:
 
-- `Room -> Character`: room character ref must exist and be enabled for selection/execution.
-- `Chat -> Persona`: chat persona ref must exist and be enabled for user messages.
+- `Room -> Character`: room character ref membership controls availability for selection/execution.
+- `Chat -> Persona`: chat persona ref membership controls availability for user messages.
 - Message swipe `speakerId/speakerName` is historical display data; do not self-heal or delete it.
 
 ---
@@ -328,7 +328,7 @@ Pipeline steps:
 9. `prepareNextSwipe()` — create active swipe with `speakerId`, `speakerName`, and variables.
 10. Register ChatTask (messageId + AbortController).
 11. `buildPrompt()` — async pure prompt assembly over `PagedMessages`.
-12. Apply prompt-phase pipeline handlers with the resolved `TemplateContext`.
+12. Apply prompt-phase pipeline handlers with the resolved `RuntimeContext`.
 13. `selectLLMHandler()` → stream chunks.
 14. Per chunk: `updateMessageSwipe()` with streamed content/thought.
 15. Final output pass: `runTemplate()` → output pipeline → `runTemplate()` → `updateMessageSwipe()`.
@@ -355,7 +355,7 @@ The CharJS sandbox exposes `KeiAPI.getVar(key)` / `KeiAPI.setVar(key, value)`, w
 
 ### Prompt, Template, and Pipeline Context
 
-All prompt/template/pipeline execution uses `TemplateContext`. The default philosophy is "use the most specific context available."
+All prompt/template/pipeline execution uses `RuntimeContext`. The default philosophy is "use the most specific context available."
 
 | Scope                   | Context rule                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------- |
@@ -428,7 +428,7 @@ Follow the existing single-table pattern:
 1. **Schema**: Add the local table name to the sync `kind` allowlist if needed. PocketBase usually does not need a new domain collection because synced domain records route through `records` / `multi_room_records`.
 2. **Adapter**: Add record types in `adapters/db/types.ts`, add table to Dexie/SQLite schemas with scope indexes.
 3. **Service**: Create `services/content/<entity>.ts` — domain types, defaults, parse helpers, static CRUD class
-4. **Refs**: Add `EntityListConfig<OrderedRef>` for owned child lists, or `EntityListConfig<ResourceRef>` for weak/shared refs
+4. **Refs**: Add `EntityListConfig<OrderedRef>` for owned child lists and binary membership, or `EntityListConfig<ResourceRef>` when weak/shared refs need per-context state
 5. **Store**: Add writable in `stores/state.ts`, create `stores/content/<entity>.ts` with action functions
 6. **Sync**: Add the table to `SYNC_TABLES` only if it should sync through the generic records engine.
 7. **Export**: Add to relevant barrel files

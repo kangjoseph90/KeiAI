@@ -71,6 +71,7 @@ describe('ModuleService', () => {
         description: 'Test Description',
         backgroundHTML: '',
         messageCSS: '',
+        defaultVariables: {},
         allowLowLevel: false,
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },

@@ -56,6 +56,7 @@ describe('module porters', () => {
         description: 'Module description',
         backgroundHTML: '',
         messageCSS: '',
+        defaultVariables: { mood: 'quiet' },
         allowLowLevel: true,
         lorebooks: {
             refs: { lorebook_real: { id: 'lorebook_real', sortOrder: 'a' } },
@@ -123,7 +124,6 @@ describe('module porters', () => {
         regex: 'a',
         replacement: 'b',
         phase: 'display',
-        advanced: false,
         flag: 'g',
         order: 100,
         repeat: 1,
@@ -156,6 +156,7 @@ describe('module porters', () => {
         expect(pkg.kind).toBe('keiai.module');
         expect(pkg.module.name).toBe('Test Module');
         expect(pkg.module.allowLowLevel).toBe(true);
+        expect(pkg.module.defaultVariables).toEqual({ mood: 'quiet' });
         expect(pkg.module.lorebooks.refs.lorebook_0?.id).toBe('lorebook_0');
         expect(pkg.module.scripts.refs.script_0?.id).toBe('script_0');
         expect(pkg.module.charjs.refs.charjs_0?.id).toBe('charjs_0');
@@ -251,7 +252,10 @@ describe('module porters', () => {
 
         expect(moduleId).toBe('module-new');
         expect(ModuleService.create).toHaveBeenCalledWith(
-            expect.objectContaining({ name: 'Imported Module' })
+            expect.objectContaining({
+                name: 'Imported Module',
+                defaultVariables: {}
+            })
         );
         expect(ModuleService.createAsset).toHaveBeenCalledWith('module-new', expect.any(File), 'a');
         expect(LorebookService.create).toHaveBeenCalledWith(
@@ -281,6 +285,7 @@ function makePackage(overrides: Partial<KeiModulePackageV1> = {}): KeiModulePack
             description: 'Description',
             backgroundHTML: '',
             messageCSS: '',
+            defaultVariables: {},
             allowLowLevel: true,
             lorebooks: {
                 refs: { lorebook_0: { id: 'lorebook_0', sortOrder: 'a' } },
@@ -335,7 +340,6 @@ function makePackage(overrides: Partial<KeiModulePackageV1> = {}): KeiModulePack
                 regex: 'a',
                 replacement: 'b',
                 phase: 'display',
-                advanced: false,
                 flag: 'g',
                 order: 100,
                 repeat: 1,

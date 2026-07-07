@@ -6,21 +6,22 @@
     import {
         SendHorizontal,
         Square,
-        ChevronRight,
-        ChevronLeft,
         MessageSquare,
         ArrowDown,
-        Loader2
+        Loader2,
+        ChevronLeft,
+        ChevronRight
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
-    import Message from '$lib/components/Message.svelte';
+    import Message from './message/Message.svelte';
     import ChatRuntimePanel from './ChatRuntimePanel.svelte';
     import ChatBackground from './ChatBackground.svelte';
     import {
         activeChat,
         activeRoom,
         chatSelections,
+        appSettings,
         roomCharacters,
         chatPersonas,
         displayMessages,
@@ -34,15 +35,19 @@
         dropOlderMessages,
         dropNewerMessages
     } from '$lib/stores';
-    import { runChat, stopChat, dismissChat, resolveToolCall } from '$lib/tasks';
-    import { ToolCallService } from '$lib/services/content/tool';
+    import { runChat, stopChat, dismissChat } from '$lib/tasks';
+    import {
+        getLastContentText,
+        findLastContentIndex,
+        type AgentPart
+    } from '$lib/workflow/agent/llm';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate } from '$lib/template';
-    import type { TemplateContext } from '$lib/template';
     import { navigate } from '$lib/router';
     import { createLogger } from '$lib/adapters/logger';
     import { tick } from 'svelte';
     import { forkChat, getChatVariables, prepareNextSwipe, syncChatGreetings } from '$lib/managers';
+    import type { RuntimeContext } from '$lib/types/context';
 
     let { roomId, chatId }: { roomId: string; chatId?: string } = $props();
 
@@ -50,7 +55,7 @@
     let newMessageText = $state('');
     let editModeId = $state<string | null>(null);
     let editMessageText = $state('');
-    let inspectorOpen = $state(true);
+    let inspectorOpen = $state(false);
     let scrollContainerEl: HTMLElement | undefined = $state();
     let isLoadingOlder = $state(false);
     let isLoadingNewer = $state(false);
@@ -173,7 +178,9 @@
     async function handleSendMessage() {
         if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
         if (!selectedPersona) return;
-        const templateCtx: TemplateContext = {
+        const ctx: RuntimeContext = {
+            roomId,
+            presetId: $appSettings?.presetId,
             characterId: defaultCharacter?.id,
             personaId: selectedPersona.id,
             chatId: $activeChat.id,
@@ -181,9 +188,9 @@
             speakerName: selectedPersona.name,
             role: 'user'
         };
-        const templated = await runTemplate(newMessageText, templateCtx);
-        const piped = await runPipeline($activeChat.id, 'input', templated, templateCtx);
-        const processedText = await runTemplate(piped, templateCtx);
+        const templated = await runTemplate(newMessageText, ctx);
+        const piped = await runPipeline($activeChat.id, 'input', templated, ctx);
+        const processedText = await runTemplate(piped, ctx);
         newMessageText = '';
 
         const variables = await getChatVariables($activeChat.id);
@@ -192,7 +199,7 @@
         });
 
         await prepareNextSwipe(message, {
-            content: processedText,
+            parts: [{ type: 'content', text: processedText }],
             variables,
             speakerId: selectedPersona.id,
             speakerName: selectedPersona.name,
@@ -207,12 +214,29 @@
 
     async function handleUpdateMessage(id: string) {
         if (!editMessageText.trim()) return;
-        // Find the message to update the content in the active swipe
         const msg = $displayMessages.find((m) => m.id === id);
         if (!msg) return;
 
+        const activeSwipe = msg.swipes[msg.activeSwipeId];
+        if (!activeSwipe) return;
+
+        const newParts = [...activeSwipe.parts];
+        const lastContentIdx = findLastContentIndex(newParts);
+
+        if (lastContentIdx >= 0) {
+            newParts[lastContentIdx] = {
+                ...newParts[lastContentIdx],
+                type: 'content',
+                text: editMessageText
+            };
+        } else {
+            newParts.push({ type: 'content', text: editMessageText });
+        }
+
         await updateMessage(id, {
-            swipes: { [msg.activeSwipeId]: { content: editMessageText } }
+            swipes: {
+                [msg.activeSwipeId]: { ...activeSwipe, parts: newParts }
+            }
         });
         editModeId = null;
     }
@@ -260,43 +284,8 @@
 </script>
 
 <div class="flex h-full flex-col">
-    <!-- Inline Header -->
-    <div class="flex shrink-0 items-center justify-between border-b px-4 py-2">
-        <div class="flex items-center gap-3">
-            {#if $activeRoom}
-                <span class="text-sm font-semibold">{$activeRoom.name}</span>
-            {:else}
-                <span class="text-sm font-semibold">{roomId}</span>
-            {/if}
-            {#if $activeChat}
-                <span class="text-sm text-muted-foreground">{$activeChat.title}</span>
-            {:else if chatId}
-                <span class="text-sm text-muted-foreground">{chatId}</span>
-            {:else}
-                <span class="text-sm text-muted-foreground">No chat selected</span>
-            {/if}
-        </div>
-        <div class="flex items-center gap-1">
-            {#if $activeChat}
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    class="h-7 gap-1 text-xs"
-                    onclick={() => (inspectorOpen = !inspectorOpen)}
-                >
-                    {#if inspectorOpen}
-                        <ChevronRight class="size-3" />
-                    {:else}
-                        <ChevronLeft class="size-3" />
-                    {/if}
-                    Settings
-                </Button>
-            {/if}
-        </div>
-    </div>
-
     <!-- Main Area -->
-    <div class="flex flex-1 overflow-hidden">
+    <div class="relative flex flex-1 overflow-hidden">
         {#if !$activeChat}
             <div class="flex flex-1 flex-col items-center justify-center gap-3 text-center">
                 <div class="flex size-16 items-center justify-center rounded-full bg-muted">
@@ -314,6 +303,18 @@
             <div class="flex flex-1 flex-col overflow-hidden relative">
                 <ChatBackground chatId={$activeChat.id} {defaultCharacter} />
 
+                {#if !inspectorOpen}
+                    <button
+                        type="button"
+                        class="absolute right-0 top-1.5 z-20 flex h-11 w-8 items-center justify-center rounded-l-md border border-r-0 bg-background/70 text-muted-foreground opacity-50 shadow-sm backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                        title="Show chat context"
+                        aria-label="Show chat context"
+                        onclick={() => (inspectorOpen = true)}
+                    >
+                        <ChevronLeft class="size-4" />
+                    </button>
+                {/if}
+
                 {#if isLoadingOlder}
                     <div
                         class="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-background/85 backdrop-blur-md border px-3 py-1.5 rounded-full shadow-md flex items-center gap-2 text-xs text-muted-foreground transition-all duration-200"
@@ -327,7 +328,8 @@
                 <div
                     bind:this={scrollContainerEl}
                     onscroll={handleScroll}
-                    class="relative z-10 flex flex-col-reverse gap-4 flex-1 overflow-y-auto px-4 py-4"
+                    class="relative z-10 flex flex-1 flex-col-reverse gap-6 overflow-y-auto px-4 py-4 md:gap-4"
+                    style="scrollbar-gutter: stable;"
                 >
                     {#if $displayMessages.length === 0}
                         <!-- Empty State -->
@@ -357,24 +359,15 @@
                                 personaId={defaultPersona?.id}
                                 onEdit={() => {
                                     editModeId = msg.id;
-                                    // Initialize edit text from the active swipe
                                     const activeSwipe = msg.swipes[msg.activeSwipeId];
-                                    editMessageText = activeSwipe?.content ?? '';
+                                    editMessageText = activeSwipe
+                                        ? getLastContentText(activeSwipe.parts)
+                                        : '';
                                 }}
                                 onSave={() => handleUpdateMessage(msg.id)}
                                 onDelete={() => deleteMessage($activeChat!.id, msg.id)}
                                 onCancelEdit={() => (editModeId = null)}
                                 onDismissError={() => dismissChat($activeChat!.id)}
-                                onResolveTool={(toolCallId, decision) =>
-                                    resolveToolCall(
-                                        $activeChat!.id,
-                                        selectedCharacter!.id,
-                                        selectedPersona!.id,
-                                        msg.id,
-                                        toolCallId,
-                                        decision
-                                    )}
-                                onLoadDetail={(toolCallId) => ToolCallService.get(toolCallId)}
                                 onRegenerate={() => handleRegenerate()}
                                 onSwipe={(newSwipeId) => handleSwipe(msg.id, newSwipeId)}
                                 onFork={() => handleFork(msg.id)}
@@ -406,13 +399,14 @@
                 >
                     <AutoResizeTextarea
                         bind:value={newMessageText}
+                        classname="min-h-10 py-2.5"
                         onkeydown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
                                 handleSendMessage();
                             }
                         }}
-                        placeholder="Type a message... (Shift+Enter for new line)"
+                        placeholder="Type a message..."
                         disabled={$isChatRunning || !selectedPersona}
                     />
                     {#if $isChatRunning}
@@ -425,26 +419,49 @@
                         </Button>
                     {:else}
                         <Button
-                            class="gap-1.5 shrink-0"
+                            size="icon"
+                            class="shrink-0"
                             onclick={handleSendMessage}
                             disabled={!selectedPersona || !newMessageText.trim()}
+                            title="Send message"
+                            aria-label="Send message"
                         >
-                            <SendHorizontal class="size-4" /> Send User
+                            <SendHorizontal class="size-4" />
                         </Button>
                         <Button
                             variant="secondary"
-                            class="gap-1.5 shrink-0"
+                            size="icon"
+                            class="shrink-0"
                             onclick={handleGenerateResponse}
                             disabled={!selectedCharacter}
+                            title="Generate response"
+                            aria-label="Generate response"
                         >
-                            <MessageSquare class="size-4" /> Generate
+                            <MessageSquare class="size-4" />
                         </Button>
                     {/if}
                 </div>
             </div>
 
             {#if inspectorOpen}
-                <div class="w-[420px] shrink-0">
+                <button
+                    type="button"
+                    class="absolute inset-0 z-30 bg-black/35 md:hidden"
+                    aria-label="Close chat context"
+                    onclick={() => (inspectorOpen = false)}
+                ></button>
+                <div
+                    class="relative w-[360px] shrink-0 max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[calc(100%-2rem)] max-md:max-w-[420px]"
+                >
+                    <button
+                        type="button"
+                        class="absolute right-full top-1.5 z-30 flex h-11 w-8 items-center justify-center rounded-l-md border border-r-0 bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground max-md:hidden"
+                        title="Hide chat context"
+                        aria-label="Hide chat context"
+                        onclick={() => (inspectorOpen = false)}
+                    >
+                        <ChevronRight class="size-4" />
+                    </button>
                     <ChatRuntimePanel chatId={$activeChat.id} />
                 </div>
             {/if}
