@@ -37,7 +37,6 @@
     import ContentPart from './ContentPart.svelte';
     import ThoughtPart from './ThoughtPart.svelte';
     import ToolCallPart from './ToolCallPart.svelte';
-    import TraceTimeline from './TraceTimeline.svelte';
     import {
         activeRoom,
         appSettings,
@@ -125,7 +124,9 @@
             ?.find((translation) => translation.sourceHash === translationSourceHash) ?? null
     );
     let translatedContent = $derived(cachedTranslation?.text ?? '');
-    let visibleContent = $derived(translatedContent || currentContent);
+    let visibleContent = $derived(
+        showTranslation && translatedContent ? translatedContent : currentContent
+    );
     let translationError = $derived(
         matchingTranslationTask?.status === 'error'
             ? matchingTranslationTask.errorMessage
@@ -158,21 +159,8 @@
 
     let lastContentIdx = $derived(findLastContentIndex(parts));
 
-    let traceParts = $derived(
-        lastContentIdx >= 0 ? indexedParts.slice(0, lastContentIdx) : indexedParts
-    );
-
-    let answerParts = $derived(lastContentIdx >= 0 ? indexedParts.slice(lastContentIdx) : []);
-    let visibleAnswerParts = $derived(
-        message.displayStatus !== 'generating' && translatedContent && showTranslation
-            ? [
-                  {
-                      part: { type: 'content', text: translatedContent } as AgentPart,
-                      index: lastContentIdx
-                  }
-              ]
-            : answerParts
-    );
+    let traceCount = $derived(lastContentIdx >= 0 ? lastContentIdx : indexedParts.length);
+    let answerStartIdx = $derived(lastContentIdx >= 0 ? lastContentIdx : indexedParts.length);
 
     let speakerAvatarLocator = $derived.by<AssetReadLocator | null>(() => {
         if (isUser) {
@@ -307,12 +295,15 @@
     }
 
     /** Completed trace details state. Streaming renders raw parts without a trace wrapper. */
-    let detailsOpen = $state(false);
+    let detailsOpen = $state(true);
     let lastDisplayStatus = $state<string | undefined>(undefined);
 
+    // TODO: Make auto-expanding steps during streaming toggleable via app settings in the future.
     $effect(() => {
         const status = message.displayStatus;
-        if (status === 'completed' && lastDisplayStatus !== 'completed') {
+        if (status === 'generating') {
+            detailsOpen = true;
+        } else if (status === 'completed' && lastDisplayStatus !== 'completed') {
             detailsOpen = false;
         }
         lastDisplayStatus = status;
@@ -323,6 +314,7 @@
     });
 
     let hasLoadedTranslation = false;
+    // TODO: Make auto-showing cached translation toggleable via app settings in the future.
     $effect(() => {
         if (cachedTranslation && !hasLoadedTranslation) {
             showTranslation = true;
@@ -449,40 +441,65 @@
                     <!-- eslint-disable-next-line svelte/no-at-html-tags -- CSS is scoped by data-keiai-message-scope -->
                     {@html messageStyleHtml}
 
-                    {#if message.displayStatus === 'generating'}
-                        <!-- TODO: Unify with the completed trace/answer projection so
-                             ContentPart instances survive the generating→completed
-                             transition. The current separate each blocks force a
-                             remount, re-running the display pipeline once per part. -->
-                        {#each indexedParts as entry (entry.index)}
-                            {#if entry.part.type === 'thought'}
-                                <ThoughtPart text={entry.part.text} />
-                            {:else if entry.part.type === 'tool_call'}
-                                <ToolCallPart name={entry.part.name} status={entry.part.status} />
-                            {:else if entry.part.type === 'content'}
-                                <ContentPart text={entry.part.text} {renderContext} {isUser} />
-                            {/if}
-                        {/each}
-                    {:else if traceParts.length > 0}
-                        <TraceTimeline
-                            entries={traceParts}
-                            {renderContext}
-                            {isUser}
-                            bind:open={detailsOpen}
-                        />
+                    {#if traceCount > 0}
+                        <button
+                            type="button"
+                            class="trace-summary-btn"
+                            onclick={() => (detailsOpen = !detailsOpen)}
+                            aria-label="Toggle trace timeline"
+                        >
+                            <span class="trace-root-dot"></span>
+                            <span class="font-medium"
+                                >{traceCount} step{traceCount > 1 ? 's' : ''}</span
+                            >
+                        </button>
                     {/if}
 
-                    {#if message.displayStatus !== 'generating'}
-                        {#each visibleAnswerParts as entry (entry.index)}
-                            {#if entry.part.type === 'thought'}
-                                <ThoughtPart text={entry.part.text} />
-                            {:else if entry.part.type === 'tool_call'}
-                                <ToolCallPart name={entry.part.name} status={entry.part.status} />
-                            {:else if entry.part.type === 'content'}
-                                <ContentPart text={entry.part.text} {renderContext} {isUser} />
-                            {/if}
+                    <div class="trace-flat-list">
+                        {#each indexedParts as entry (entry.index)}
+                            {@const isTrace = entry.index < traceCount}
+                            {@const isFirstTrace = entry.index === 0}
+                            {@const isLastTrace = entry.index === traceCount - 1}
+                            {@const shouldHide = isTrace && traceCount > 0 && !detailsOpen}
+
+                            <div
+                                class="trace-flat-item {isTrace
+                                    ? 'is-trace'
+                                    : 'is-answer'} {isFirstTrace
+                                    ? 'is-first-trace'
+                                    : ''} {isLastTrace ? 'is-last-trace' : ''} {shouldHide
+                                    ? 'hidden'
+                                    : ''}"
+                            >
+                                {#if isTrace}
+                                    <span class="trace-dot"></span>
+                                {/if}
+                                <div class="trace-flat-body">
+                                    {#if entry.part.type === 'thought'}
+                                        <ThoughtPart
+                                            text={entry.part.text}
+                                            collapsible={traceCount > 1}
+                                        />
+                                    {:else if entry.part.type === 'tool_call'}
+                                        <ToolCallPart
+                                            name={entry.part.name}
+                                            status={entry.part.status}
+                                        />
+                                    {:else if entry.part.type === 'content'}
+                                        <ContentPart
+                                            text={entry.index === answerStartIdx &&
+                                            translatedContent &&
+                                            showTranslation
+                                                ? translatedContent
+                                                : entry.part.text}
+                                            {renderContext}
+                                            {isUser}
+                                        />
+                                    {/if}
+                                </div>
+                            </div>
                         {/each}
-                    {/if}
+                    </div>
                 {/if}
             </div>
 
@@ -632,3 +649,83 @@
         {/if}
     </div>
 </div>
+
+<style>
+    .trace-flat-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.9rem;
+    }
+
+    .trace-summary-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.7rem;
+        min-height: 1.75rem;
+        cursor: pointer;
+        user-select: none;
+        font-size: 0.75rem;
+        color: var(--muted-foreground);
+        opacity: 0.78;
+        background: transparent;
+        border: none;
+        padding: 0;
+        text-align: left;
+        position: relative;
+        z-index: 10;
+    }
+    .trace-summary-btn:hover {
+        opacity: 1;
+    }
+
+    .trace-root-dot {
+        display: block;
+        width: 1.25rem;
+        height: 1.25rem;
+        border-radius: 9999px;
+        border: 2px solid var(--border);
+        background: var(--background);
+        box-shadow: inset 0 0 0 4px var(--muted);
+        flex: none;
+        margin-left: 0.25rem;
+        position: relative;
+        z-index: 2;
+    }
+
+    .trace-flat-item.is-trace {
+        position: relative;
+        padding-left: 2.35rem;
+        min-height: 1.25rem;
+    }
+
+    .trace-flat-item.is-trace::before {
+        content: '';
+        position: absolute;
+        left: calc(0.875rem - 1px);
+        top: 0;
+        bottom: -0.9rem;
+        width: 2px;
+        background: var(--border);
+    }
+
+    .trace-flat-item.is-trace.is-first-trace::before {
+        top: -1.2rem;
+    }
+
+    .trace-flat-item.is-trace.is-last-trace::before {
+        bottom: calc(100% - 0.95rem);
+    }
+
+    .trace-dot {
+        display: block;
+        position: absolute;
+        left: 0.535rem;
+        top: 0.45rem;
+        width: 0.68rem;
+        height: 0.68rem;
+        border-radius: 9999px;
+        border: 2px solid var(--border);
+        background: var(--background);
+        z-index: 1;
+    }
+</style>

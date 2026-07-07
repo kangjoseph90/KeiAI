@@ -1,23 +1,38 @@
 <script lang="ts">
-    import { ChevronRight, ChevronDown } from 'lucide-svelte';
-    let { text }: { text: string } = $props();
-    let open = $state(false);
+    let {
+        text,
+        collapsible = true
+    }: {
+        text: string;
+        collapsible?: boolean;
+    } = $props();
+
+    let isExpanded = $state(false);
+
+    let lines = $derived(text.split('\n'));
+    let hasMore = $derived(lines.length > 1 || text.length > 100);
+
+    let displayText = $derived.by(() => {
+        if (!collapsible || isExpanded) {
+            return text;
+        }
+        const firstLine = lines[0];
+        const preview = firstLine.length > 100 ? firstLine.slice(0, 100) : firstLine;
+        return hasMore ? `${preview}...` : preview;
+    });
+
+    let canToggle = $derived(collapsible && hasMore);
 </script>
 
-<details class="w-fit max-w-full text-xs text-muted-foreground" bind:open>
-    <summary
-        class="inline-flex cursor-pointer select-none list-none items-center gap-1.5 rounded-md border border-border/70 bg-background/60 px-2 py-1 font-mono text-xs text-muted-foreground"
-    >
-        {#if open}
-            <ChevronDown class="size-3" />
-        {:else}
-            <ChevronRight class="size-3" />
-        {/if}
-        <span>thought</span>
-    </summary>
-    <div
-        class="mt-2 max-w-prose whitespace-pre-wrap border-l-2 border-border/80 pl-3 italic leading-relaxed"
-    >
-        {text}
-    </div>
-</details>
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+    onclick={() => {
+        if (canToggle) isExpanded = !isExpanded;
+    }}
+    class="max-w-prose whitespace-pre-wrap italic leading-relaxed text-xs text-muted-foreground/80 {canToggle
+        ? 'cursor-pointer hover:text-muted-foreground transition-colors'
+        : ''}"
+>
+    {displayText}
+</div>
