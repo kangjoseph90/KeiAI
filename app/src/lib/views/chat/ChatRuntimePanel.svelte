@@ -42,7 +42,8 @@
         moveChatItem,
         updateChatContent,
         updateChatFolder,
-        updateChatLorebook
+        updateChatLorebook,
+        personaPickerOpen
     } from '$lib/stores';
     import { navigate } from '$lib/router';
     import { addChatPersonaFromLibrary, getChatVariables } from '$lib/managers';
@@ -57,7 +58,6 @@
     let { chatId }: Props = $props();
 
     let newChatLorebookName = $state('');
-    let personaPickerOpen = $state(false);
     let inlayFileInput = $state<HTMLInputElement>();
     let variables = $state<[string, string][]>([]);
 
@@ -172,7 +172,7 @@
                             class="size-6 text-muted-foreground hover:text-foreground"
                             title="Add personas"
                             aria-label="Add personas"
-                            onclick={() => (personaPickerOpen = true)}
+                            onclick={() => ($personaPickerOpen = true)}
                         >
                             <Plus class="size-3.5" />
                         </Button>
@@ -469,7 +469,7 @@
 </div>
 
 <ResourcePickerDialog
-    bind:open={personaPickerOpen}
+    bind:open={$personaPickerOpen}
     title="Add personas"
     description="Choose the personas available in this chat. You can add several at once."
     singularLabel="persona"

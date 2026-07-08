@@ -33,7 +33,9 @@
         loadOlderMessages,
         loadNewerMessages,
         dropOlderMessages,
-        dropNewerMessages
+        dropNewerMessages,
+        characterPickerOpen,
+        personaPickerOpen
     } from '$lib/stores';
     import { runChat, stopChat, dismissChat } from '$lib/tasks';
     import {
@@ -77,6 +79,15 @@
                 scrollContainerEl.scrollTop = 0;
             }
         });
+    });
+
+    $effect(() => {
+        if ($activeChat) {
+            const personaIds = Object.keys($activeChat.personas.refs);
+            if (personaIds.length === 0) {
+                inspectorOpen = true;
+            }
+        }
     });
 
     async function handleScroll() {
@@ -177,7 +188,11 @@
 
     async function handleSendMessage() {
         if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
-        if (!selectedPersona) return;
+
+        if (!selectedCharacter) $characterPickerOpen = true;
+        if (!selectedPersona) $personaPickerOpen = true;
+        if (!selectedCharacter || !selectedPersona) return;
+
         const ctx: RuntimeContext = {
             roomId,
             presetId: $appSettings?.presetId,
@@ -208,7 +223,12 @@
     }
 
     function handleGenerateResponse() {
-        if (!$activeChat || !selectedCharacter || !selectedPersona || $isChatRunning) return;
+        if (!$activeChat || $isChatRunning) return;
+
+        if (!selectedCharacter) $characterPickerOpen = true;
+        if (!selectedPersona) $personaPickerOpen = true;
+        if (!selectedCharacter || !selectedPersona) return;
+
         runChat($activeChat.id, selectedCharacter.id, selectedPersona.id);
     }
 
@@ -407,7 +427,7 @@
                             }
                         }}
                         placeholder="Type a message..."
-                        disabled={$isChatRunning || !selectedPersona}
+                        disabled={$isChatRunning}
                     />
                     {#if $isChatRunning}
                         <Button
@@ -422,7 +442,7 @@
                             size="icon"
                             class="shrink-0"
                             onclick={handleSendMessage}
-                            disabled={!selectedPersona || !newMessageText.trim()}
+                            disabled={!newMessageText.trim() || $isChatRunning}
                             title="Send message"
                             aria-label="Send message"
                         >
@@ -433,7 +453,7 @@
                             size="icon"
                             class="shrink-0"
                             onclick={handleGenerateResponse}
-                            disabled={!selectedCharacter}
+                            disabled={$isChatRunning}
                             title="Generate response"
                             aria-label="Generate response"
                         >

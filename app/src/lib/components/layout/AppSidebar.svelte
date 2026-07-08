@@ -59,7 +59,8 @@
         updateRoomFolder,
         loadLocalUsers,
         switchLocalUser,
-        createAndSwitchLocalUser
+        createAndSwitchLocalUser,
+        characterPickerOpen
     } from '$lib/stores';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { getFolderColorClass } from '$lib/components/entitylist/folders';
@@ -78,7 +79,6 @@
     let { collapsed = false, route, onToggle, onNavigate }: Props = $props();
 
     let chatSearch = $state('');
-    let characterPickerOpen = $state(false);
     let editingChatId = $state<string | null>(null);
     let editingChatTitle = $state('');
     let editingRoomName = $state(false);
@@ -490,7 +490,7 @@
                                 class="size-6 text-muted-foreground hover:text-foreground"
                                 title="Add characters"
                                 aria-label="Add characters"
-                                onclick={() => (characterPickerOpen = true)}
+                                onclick={() => ($characterPickerOpen = true)}
                             >
                                 <Plus class="size-3.5" />
                             </Button>
@@ -913,7 +913,7 @@
 </aside>
 
 <ResourcePickerDialog
-    bind:open={characterPickerOpen}
+    bind:open={$characterPickerOpen}
     title="Add characters"
     description="Choose who belongs in this room. You can add several at once."
     singularLabel="character"
