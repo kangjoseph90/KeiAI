@@ -98,10 +98,19 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     mkdir: vi.fn()
 }));
 
-vi.mock('@tauri-apps/plugin-sql', () => ({
-    execute: vi.fn(),
-    select: vi.fn()
-}));
+vi.mock('@tauri-apps/plugin-sql', () => {
+    class MockDatabase {
+        async execute(): Promise<void> {}
+        async select<T>(): Promise<T[]> {
+            return [];
+        }
+    }
+    return {
+        default: {
+            load: vi.fn(async () => new MockDatabase())
+        }
+    };
+});
 
 vi.mock('@tauri-apps/plugin-store', () => ({
     getStore: vi.fn(() => ({
