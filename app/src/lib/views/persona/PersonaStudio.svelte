@@ -48,12 +48,11 @@
     import { isKeiServer } from '$lib/adapters/pb';
     import { exportPersonaFile } from '$lib/managers/persona';
     import type { AssetRef } from '$lib/types/refs';
+    import { appDialog } from '$lib/adapters/dialog';
 
     let { personaId, personaTab }: { personaId: string; personaTab?: PersonaStudioTab } = $props();
 
     let activeTab = $state<PersonaStudioTab>('profile');
-    let avatarInput = $state<HTMLInputElement>();
-    let assetFileInput = $state<HTMLInputElement>();
     let editingId = $state<string | null>(null);
     let editName = $state('');
 
@@ -93,12 +92,13 @@
         }
     }
 
-    async function handleAvatarUpload(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
+    async function handleAvatarUpload() {
+        const file = await appDialog.openFile({
+            title: 'Upload Persona Avatar',
+            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        });
         if (!$activePersona || !file) return;
         await updatePersonaAvatar($activePersona.id, file);
-        target.value = '';
     }
 
     async function handleDelete() {
@@ -126,12 +126,13 @@
         editingId = null;
     }
 
-    async function handleAssetFileSelect(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
+    async function handleAssetFileSelect() {
+        const file = await appDialog.openFile({
+            title: 'Upload Persona Asset',
+            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        });
         if (!$activePersona || !file) return;
         await createPersonaAsset($activePersona.id, file);
-        target.value = '';
     }
 
     async function handleDeleteAsset(assetId: string) {
@@ -309,18 +310,11 @@
                                                 </div>
                                                 <button
                                                     class="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                                                    onclick={() => avatarInput?.click()}
+                                                    onclick={handleAvatarUpload}
                                                     title="Upload avatar"
                                                 >
                                                     <Upload class="size-6" />
                                                 </button>
-                                                <input
-                                                    bind:this={avatarInput}
-                                                    type="file"
-                                                    accept="image/*"
-                                                    class="hidden"
-                                                    onchange={handleAvatarUpload}
-                                                />
                                             </div>
 
                                             <div class="flex-1 space-y-4">
@@ -384,17 +378,10 @@
                                             variant="secondary"
                                             size="sm"
                                             class="gap-1"
-                                            onclick={() => assetFileInput?.click()}
+                                            onclick={handleAssetFileSelect}
                                         >
                                             <Plus class="size-3" /> Add
                                         </Button>
-                                        <input
-                                            bind:this={assetFileInput}
-                                            type="file"
-                                            accept="image/*"
-                                            class="hidden"
-                                            onchange={handleAssetFileSelect}
-                                        />
                                     </div>
                                 </div>
 

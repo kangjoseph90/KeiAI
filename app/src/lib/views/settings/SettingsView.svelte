@@ -155,11 +155,11 @@
             <ScrollArea class="min-h-0 flex-1">
                 <div class="max-w-4xl space-y-8 p-4 md:px-8 md:pb-8 md:pt-4">
                     {#if activeTab === 'models'}
-                        <div class="h-[calc(100dvh-8rem)] min-h-[32rem]">
+                        <div class="h-[calc(100dvh-8rem)] min-h-128">
                             <ModelsSettings />
                         </div>
                     {:else if activeTab === 'chat'}
-                        <div class="h-[calc(100dvh-8rem)] min-h-[32rem]">
+                        <div class="h-[calc(100dvh-8rem)] min-h-128">
                             <ChatSettings />
                         </div>
                     {:else if activeTab === 'plugins'}

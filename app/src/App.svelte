@@ -40,6 +40,8 @@
     } from '$lib/router';
     import { getErrorMessage } from '$lib/types/errors';
     import { createLogger } from '$lib/adapters/logger';
+    import ModalHost from '$lib/components/app/ModalHost.svelte';
+    import ToastHost from '$lib/components/app/ToastHost.svelte';
 
     let ready = $state(false);
     let errorMsg = $state('');
@@ -245,3 +247,6 @@
         </div>
     {/if}
 </main>
+
+<ModalHost />
+<ToastHost />

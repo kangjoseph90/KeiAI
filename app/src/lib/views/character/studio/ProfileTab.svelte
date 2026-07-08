@@ -14,6 +14,7 @@
     import AssetView from '$lib/components/AssetView.svelte';
     import type { Character, CharacterContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
+    import { appDialog } from '$lib/adapters/dialog';
 
     interface Props {
         character: Character;
@@ -23,14 +24,14 @@
     }
 
     let { character, onUpdate, onUpdateAvatar, onRemoveAvatar }: Props = $props();
-    let avatarInput = $state<HTMLInputElement>();
 
-    async function handleAvatarUpload(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
+    async function handleAvatarUpload() {
+        const file = await appDialog.openFile({
+            title: 'Upload Character Avatar',
+            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        });
         if (!file) return;
         await onUpdateAvatar(file);
-        target.value = '';
     }
 </script>
 
@@ -70,17 +71,10 @@
                     </div>
                     <button
                         class="absolute inset-0 flex items-center justify-center bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        onclick={() => avatarInput?.click()}
+                        onclick={handleAvatarUpload}
                     >
                         <Upload class="size-6" />
                     </button>
-                    <input
-                        bind:this={avatarInput}
-                        type="file"
-                        accept="image/*"
-                        class="hidden"
-                        onchange={handleAvatarUpload}
-                    />
                 </div>
                 <div class="flex-1 space-y-4">
                     <div class="grid gap-1.5">

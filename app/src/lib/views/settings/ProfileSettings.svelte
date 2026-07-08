@@ -16,6 +16,7 @@
     import { blobToDataUrl, preprocessImage } from '$lib/utils/image';
     import { MultiRoomService } from '$lib/services';
     import { formatPublicKeyFingerprint } from '$lib/crypto';
+    import { appDialog } from '$lib/adapters/dialog';
 
     const AVATAR_MAX_SIZE = 5 * 1024 * 1024;
     const AVATAR_IMAGE_SIZE = 512;
@@ -23,7 +24,6 @@
 
     let userName = $state('');
     let userAvatar = $state('');
-    let fileInputRef: HTMLInputElement;
 
     let loading = $state(false);
     let errorMsg = $state('');
@@ -48,9 +48,11 @@
         }
     });
 
-    async function handleAvatarUpload(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
+    async function handleAvatarUpload() {
+        const file = await appDialog.openFile({
+            title: 'Upload Profile Avatar',
+            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+        });
         if (!file) return;
 
         if (file.size > AVATAR_MAX_SIZE) {
@@ -118,7 +120,7 @@
             <div class="relative group">
                 <Avatar.Root
                     class="size-20 border-2 border-muted hover:border-primary transition-colors cursor-pointer"
-                    onclick={() => fileInputRef.click()}
+                    onclick={handleAvatarUpload}
                 >
                     <!-- Show selected data URL if present, otherwise existing avatar -->
                     <Avatar.Image
@@ -132,20 +134,12 @@
                 </Avatar.Root>
                 <button
                     type="button"
-                    onclick={() => fileInputRef.click()}
+                    onclick={handleAvatarUpload}
                     class="absolute inset-0 bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-full transition-opacity cursor-pointer"
                 >
                     <Upload class="size-6 text-foreground" />
                 </button>
             </div>
-
-            <input
-                bind:this={fileInputRef}
-                type="file"
-                accept="image/png, image/jpeg, image/webp"
-                class="hidden"
-                onchange={handleAvatarUpload}
-            />
 
             <div class="flex-1 space-y-2">
                 <Label>Display Name</Label>

@@ -42,14 +42,15 @@
         moveChatItem,
         updateChatContent,
         updateChatFolder,
-        updateChatLorebook,
-        personaPickerOpen
+        updateChatLorebook
     } from '$lib/stores';
+    import { personaPickerOpen } from '$lib/ui';
     import { navigate } from '$lib/router';
     import { addChatPersonaFromLibrary, getChatVariables } from '$lib/managers';
     import type { ChatContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
+    import { appDialog } from '$lib/adapters/dialog';
 
     interface Props {
         chatId: string;
@@ -58,7 +59,6 @@
     let { chatId }: Props = $props();
 
     let newChatLorebookName = $state('');
-    let inlayFileInput = $state<HTMLInputElement>();
     let variables = $state<[string, string][]>([]);
 
     const pickerPersonas = $derived($isMultiRoom ? $multiRoomPersonas : $personas);
@@ -100,12 +100,13 @@
         navigate({ view: 'personaStudio', personaId });
     }
 
-    async function handleInlayUpload(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
+    async function handleInlayUpload() {
+        const file = await appDialog.openFile({
+            title: 'Upload Gallery Image',
+            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        });
         if (!$activeChat || !file) return;
         await createChatInlay(chatId, file);
-        target.value = '';
     }
 
     async function handlePersonaSelect(personaId: string) {
@@ -388,17 +389,10 @@
                                 variant="secondary"
                                 size="icon"
                                 class="size-7"
-                                onclick={() => inlayFileInput?.click()}
+                                onclick={handleInlayUpload}
                             >
                                 <Plus class="size-3" />
                             </Button>
-                            <input
-                                bind:this={inlayFileInput}
-                                type="file"
-                                accept="image/*"
-                                class="hidden"
-                                onchange={handleInlayUpload}
-                            />
                         </div>
                     </div>
                     <EntityList

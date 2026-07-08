@@ -13,6 +13,7 @@
     import { ChevronDown, ChevronRight, Plus, Trash2, TriangleAlert, X } from 'lucide-svelte';
     import { SvelteSet } from 'svelte/reactivity';
     import { Button } from '$lib/components/ui/button';
+    import { appConfirm } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import {
         WORKFLOW_NODE_DEFINITIONS,
@@ -193,15 +194,25 @@
         }
     }
 
-    function deleteSelectedNode() {
+    async function deleteSelectedNode() {
         if (!selectedNode) return;
         return deleteWorkflowNode(selectedNode.id);
     }
 
-    function deleteWorkflowNode(nodeId: string) {
+    async function deleteWorkflowNode(nodeId: string) {
         const node = workflow.nodes[nodeId];
         if (!node || node.class === 'Output') return;
-        if (node.class === 'Agent' && !confirm(`Delete agent node "${node.name}"?`)) return;
+        if (
+            node.class === 'Agent' &&
+            !(await appConfirm({
+                title: 'Delete agent node?',
+                description: `Delete agent node "${node.name}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            }))
+        ) {
+            return;
+        }
 
         const result = deleteNode(workflow, nodeId);
         onSelectNode(null);

@@ -1,4 +1,4 @@
-import type { IDialogAdapter, FileDialogOptions } from './types';
+import type { IDialogAdapter, FileDialogOptions, SaveBytesOptions } from './types';
 import { createLogger } from '$lib/adapters/logger';
 
 const logger = createLogger('adapter:dialog:web');
@@ -7,36 +7,42 @@ const logger = createLogger('adapter:dialog:web');
  * Web Dialog Adapter
  *
  * Uses browser primitives for dialogs.
- * Note: openFile/saveFile return empty strings or blobs since the web cannot access absolute file paths.
- * Real file content reading requires `<input type="file">` which is best handled in Svelte components.
- * This adapter provides basic fallbacks.
+ * Uses transient DOM elements for browser file picking and downloads.
+ * The rest of the app should call this adapter instead of creating file inputs
+ * or download anchors directly.
  */
 export class WebDialogAdapter implements IDialogAdapter {
-    async openFile(_options?: FileDialogOptions): Promise<string | null> {
-        // Cannot return a raw path on the web.
-        // Returns a dummy path to indicate "success" if you were to wire this to an input element
-        // but realistically, you should use an Upload button in the UI for the web.
-        logger.warn('openFile is not fully supported on the web. Returning null.');
-        return null;
+    async openFile(options?: FileDialogOptions): Promise<File | null> {
+        const files = await this.openMultipleFiles(options);
+        return files?.[0] ?? null;
     }
 
-    async openMultipleFiles(_options?: FileDialogOptions): Promise<string[] | null> {
-        logger.warn('openMultipleFiles is not fully supported on the web. Returning null.');
-        return null;
+    async openMultipleFiles(options?: FileDialogOptions): Promise<File[] | null> {
+        return new Promise((resolve) => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.accept = acceptString(options?.filters);
+            input.onchange = () => resolve(input.files ? Array.from(input.files) : null);
+            input.oncancel = () => resolve(null);
+            input.click();
+        });
     }
 
-    async saveFile(_options?: FileDialogOptions): Promise<string | null> {
-        logger.warn('saveFile is not fully supported on the web. Returning null.');
-        return null;
+    async saveBytes(options: SaveBytesOptions): Promise<boolean> {
+        const blob = new Blob([options.bytes.slice()], { type: options.mimeType });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = options.fileName;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        return true;
     }
+}
 
-    async message(text: string, _title?: string): Promise<void> {
-        alert(text);
-    }
-
-    async confirm(text: string, _title?: string): Promise<boolean> {
-        return window.confirm(text);
-    }
+function acceptString(filters?: FileDialogOptions['filters']): string {
+    return filters?.flatMap((filter) => filter.extensions.map((ext) => `.${ext}`)).join(',') ?? '';
 }
 
 export const webDialog = new WebDialogAdapter();

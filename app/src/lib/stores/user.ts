@@ -15,6 +15,7 @@ import { SyncManager } from '$lib/services/sync';
 import { activeUser, localUsers } from './state';
 import type { DeepPartial } from '$lib/utils/defaults';
 import { initDefaultContents } from './init';
+import { appWindow } from '$lib/adapters/window';
 
 /**
  * Load (or refresh) the current user's user record into the activeUser store.
@@ -62,7 +63,7 @@ export async function switchLocalUser(userId: string): Promise<void> {
 
     SyncManager.stopAutoSync();
     await UserService.setActiveUser(userId);
-    window.location.reload();
+    await appWindow.reload();
 }
 
 /**
@@ -75,5 +76,5 @@ export async function createAndSwitchLocalUser(): Promise<void> {
     const user = await UserService.createUser();
     await UserService.setActiveUser(user.id);
     await initDefaultContents();
-    window.location.reload();
+    await appWindow.reload();
 }

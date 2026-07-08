@@ -33,10 +33,9 @@
         loadOlderMessages,
         loadNewerMessages,
         dropOlderMessages,
-        dropNewerMessages,
-        characterPickerOpen,
-        personaPickerOpen
+        dropNewerMessages
     } from '$lib/stores';
+    import { characterPickerOpen, personaPickerOpen } from '$lib/ui';
     import { runChat, stopChat, dismissChat } from '$lib/tasks';
     import {
         getLastContentText,

@@ -56,6 +56,7 @@
     } from '$lib/tasks';
     import { getErrorMessage } from '$lib/types/errors';
     import type { RuntimeContext } from '$lib/types/context';
+    import { copyTextToClipboard } from '$lib/ui';
 
     // ── Props ─────────────────────────────────────────────────────────────────
 
@@ -193,7 +194,7 @@
     // ── Actions ───────────────────────────────────────────────────────────────
 
     async function handleCopy() {
-        await navigator.clipboard.writeText(visibleContent);
+        if (!(await copyTextToClipboard(visibleContent, 'Copied message'))) return;
         copied = true;
         onCopy();
         setTimeout(() => (copied = false), 2000);

@@ -55,6 +55,7 @@
         updateGlobalFolder,
         userId
     } from '$lib/stores';
+    import { appAlert, appConfirm } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { importCharacterFile } from '$lib/managers';
     import { importModuleFile } from '$lib/managers/module';
@@ -221,15 +222,19 @@
             const formatted = formatPublicKeyFingerprint(fingerprint);
 
             if (!trusted) {
-                const ok = confirm(
-                    `First time seeing ${user.username || user.userId}.\nFingerprint: ${formatted}`
-                );
+                const ok = await appConfirm({
+                    title: 'Trust member key?',
+                    description: `First time seeing ${user.username || user.userId}.\nFingerprint: ${formatted}`,
+                    confirmText: 'Trust',
+                    variant: 'destructive'
+                });
                 if (!ok) return;
                 await MultiRoomService.trustUserPublicKey(user, fingerprint);
             } else if (trusted.publicKeyFingerprint !== fingerprint) {
-                alert(
-                    `Public key fingerprint changed for ${user.username || user.userId}.\nPrevious: ${formatPublicKeyFingerprint(trusted.publicKeyFingerprint)}\nCurrent: ${formatted}`
-                );
+                await appAlert({
+                    title: 'Public key changed',
+                    description: `Public key fingerprint changed for ${user.username || user.userId}.\nPrevious: ${formatPublicKeyFingerprint(trusted.publicKeyFingerprint)}\nCurrent: ${formatted}`
+                });
                 return;
             } else {
                 await MultiRoomService.trustUserPublicKey(user, fingerprint);
@@ -278,7 +283,16 @@
     }
 
     async function handleRevokeMember(roomId: string, memberUserId: string) {
-        if (!confirm(`Remove member ${memberUserId} from this room?`)) return;
+        if (
+            !(await appConfirm({
+                title: 'Remove member?',
+                description: `Remove member ${memberUserId} from this room?`,
+                confirmText: 'Remove',
+                variant: 'destructive'
+            }))
+        ) {
+            return;
+        }
         approvingMemberId = `${roomId}:${memberUserId}`;
         try {
             await revokeMultiRoomMember(roomId, memberUserId);
@@ -302,87 +316,132 @@
         onNavigate({ view: 'moduleStudio', moduleId: mod.id });
     }
 
-    async function handleImportModule(event: Event) {
-        const input = event.currentTarget as HTMLInputElement;
-        const file = input.files?.[0];
-        input.value = '';
-        if (!file || importingModule) return;
+    async function handleImportModule() {
+        if (importingModule) return;
 
         importingModule = true;
         try {
-            const mod = await importModuleFile(file, {
+            const mod = await importModuleFile({
                 allowLightAssets: isKeiServer(),
                 select: true
             });
-            onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+            if (mod) onNavigate({ view: 'moduleStudio', moduleId: mod.id });
         } finally {
             importingModule = false;
         }
     }
 
-    async function handleImportCharacter(event: Event) {
-        const input = event.currentTarget as HTMLInputElement;
-        const file = input.files?.[0];
-        input.value = '';
-        if (!file || importingCharacter) return;
+    async function handleImportCharacter() {
+        if (importingCharacter) return;
 
         importingCharacter = true;
         try {
-            const character = await importCharacterFile(file, {
+            const character = await importCharacterFile({
                 allowLightAssets: isKeiServer(),
                 select: true
             });
-            onNavigate({ view: 'characterStudio', charId: character.id });
+            if (character) onNavigate({ view: 'characterStudio', charId: character.id });
         } finally {
             importingCharacter = false;
         }
     }
 
     async function handleDeleteCharacter(characterId: string, name: string) {
-        if (!confirm(`Delete character "${name}"?`)) return;
+        if (
+            !(await appConfirm({
+                title: 'Delete character?',
+                description: `Delete character "${name}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            }))
+        ) {
+            return;
+        }
         await deleteCharacter(characterId);
     }
 
     async function handleDeleteRoom(roomId: string, name: string) {
-        if (!confirm(`Delete room "${name}"?`)) return;
+        if (
+            !(await appConfirm({
+                title: 'Delete room?',
+                description: `Delete room "${name}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            }))
+        ) {
+            return;
+        }
         await deleteRoom(roomId);
     }
 
     async function handleDeleteMultiRoom(roomId: string, name: string) {
-        if (!confirm(`Delete multi room "${name}"?`)) return;
+        if (
+            !(await appConfirm({
+                title: 'Delete multi room?',
+                description: `Delete multi room "${name}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            }))
+        ) {
+            return;
+        }
         await deleteMultiRoom(roomId);
     }
 
     async function handleLeaveMultiRoom(roomId: string, name: string) {
-        if (!confirm(`Leave multi room "${name}"?`)) return;
+        if (
+            !(await appConfirm({
+                title: 'Leave multi room?',
+                description: `Leave multi room "${name}"?`,
+                confirmText: 'Leave',
+                variant: 'destructive'
+            }))
+        ) {
+            return;
+        }
         await leaveMultiRoom(roomId);
     }
 
-    async function handleImportPersona(event: Event) {
-        const input = event.currentTarget as HTMLInputElement;
-        const file = input.files?.[0];
-        input.value = '';
-        if (!file || importingPersona) return;
+    async function handleImportPersona() {
+        if (importingPersona) return;
 
         importingPersona = true;
         try {
-            const persona = await importPersonaFile(file, {
+            const persona = await importPersonaFile({
                 allowLightAssets: isKeiServer(),
                 select: true
             });
-            onNavigate({ view: 'personaStudio', personaId: persona.id });
+            if (persona) onNavigate({ view: 'personaStudio', personaId: persona.id });
         } finally {
             importingPersona = false;
         }
     }
 
     async function handleDeletePersona(personaId: string, name: string) {
-        if (!confirm(`Delete persona "${name}"?`)) return;
+        if (
+            !(await appConfirm({
+                title: 'Delete persona?',
+                description: `Delete persona "${name}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            }))
+        ) {
+            return;
+        }
         await deletePersona(personaId);
     }
 
     async function handleDeleteModule(moduleId: string, name: string) {
-        if (!confirm(`Delete module "${name}"?`)) return;
+        if (
+            !(await appConfirm({
+                title: 'Delete module?',
+                description: `Delete module "${name}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            }))
+        ) {
+            return;
+        }
         await deleteModule(moduleId);
     }
 
@@ -476,20 +535,13 @@
                         variant="outline"
                         class="gap-2"
                         disabled={importingCharacter}
-                        onclick={() => document.getElementById('character-import-input')?.click()}
+                        onclick={handleImportCharacter}
                     >
                         <Upload class="size-4" /> Import
                     </Button>
                     <Button class="gap-2" onclick={handleCreateCharacter}>
                         <Plus class="size-4" /> New Character
                     </Button>
-                    <input
-                        id="character-import-input"
-                        type="file"
-                        class="hidden"
-                        accept=".json,.png,.charx,.jpg,.jpeg,.keichar"
-                        onchange={handleImportCharacter}
-                    />
                 </div>
             {:else if tab === 'modules'}
                 <div class="flex gap-2">
@@ -497,7 +549,7 @@
                         variant="outline"
                         class="gap-2"
                         disabled={importingModule}
-                        onclick={() => document.getElementById('module-import-input')?.click()}
+                        onclick={handleImportModule}
                     >
                         <Upload class="size-4" />
                         Import
@@ -505,13 +557,6 @@
                     <Button class="gap-2" onclick={handleCreateModule}>
                         <Plus class="size-4" /> New Module
                     </Button>
-                    <input
-                        id="module-import-input"
-                        type="file"
-                        class="hidden"
-                        accept=".risum,.keimodule,.json"
-                        onchange={handleImportModule}
-                    />
                 </div>
             {:else}
                 <div class="flex gap-2">
@@ -519,7 +564,7 @@
                         variant="outline"
                         class="gap-2"
                         disabled={importingPersona}
-                        onclick={() => document.getElementById('persona-import-input')?.click()}
+                        onclick={handleImportPersona}
                     >
                         <Upload class="size-4" />
                         Import
@@ -527,13 +572,6 @@
                     <Button class="gap-2" onclick={handleCreatePersona}>
                         <Plus class="size-4" /> New Persona
                     </Button>
-                    <input
-                        id="persona-import-input"
-                        type="file"
-                        class="hidden"
-                        accept=".png,.keipersona"
-                        onchange={handleImportPersona}
-                    />
                 </div>
             {/if}
         </div>

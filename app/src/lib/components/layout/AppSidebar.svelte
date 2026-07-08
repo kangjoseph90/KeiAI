@@ -59,9 +59,9 @@
         updateRoomFolder,
         loadLocalUsers,
         switchLocalUser,
-        createAndSwitchLocalUser,
-        characterPickerOpen
+        createAndSwitchLocalUser
     } from '$lib/stores';
+    import { characterPickerOpen } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { getFolderColorClass } from '$lib/components/entitylist/folders';
     import { addRoomCharacterFromLibrary, setGlobalVariable } from '$lib/managers';

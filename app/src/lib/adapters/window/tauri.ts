@@ -23,6 +23,10 @@ export class TauriWindowAdapter implements IWindowAdapter {
         await getCurrentWindow().close();
     }
 
+    async reload(): Promise<void> {
+        globalThis.location.reload();
+    }
+
     async setTitle(title: string): Promise<void> {
         await getCurrentWindow().setTitle(title);
     }

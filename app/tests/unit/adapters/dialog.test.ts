@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebDialogAdapter } from '$lib/adapters/dialog/web';
 import { TauriDialogAdapter } from '$lib/adapters/dialog/tauri';
-import { open, save, message, confirm } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
+import { readFile, writeFile } from '@tauri-apps/plugin-fs';
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
     open: vi.fn(),
-    save: vi.fn(),
-    message: vi.fn(),
-    confirm: vi.fn()
+    save: vi.fn()
+}));
+
+vi.mock('@tauri-apps/plugin-fs', () => ({
+    readFile: vi.fn(),
+    writeFile: vi.fn()
 }));
 
 describe('Dialog Adapters', () => {
@@ -17,45 +21,59 @@ describe('Dialog Adapters', () => {
 
     describe('WebDialogAdapter', () => {
         let adapter: WebDialogAdapter;
-        const originalAlert = global.alert;
-        const originalConfirm = global.confirm;
 
         beforeEach(() => {
             adapter = new WebDialogAdapter();
-            global.alert = vi.fn();
-            global.confirm = vi.fn();
         });
 
         afterEach(() => {
-            global.alert = originalAlert;
-            global.confirm = originalConfirm;
+            vi.restoreAllMocks();
         });
 
-        it('openFile should return null on web', async () => {
-            const result = await adapter.openFile();
-            expect(result).toBeNull();
+        it('openFile should resolve the selected file on web', async () => {
+            const file = new File(['hello'], 'hello.txt', { type: 'text/plain' });
+            mockInputSelection([file]);
+
+            const result = await adapter.openFile({
+                filters: [{ name: 'Text', extensions: ['txt'] }]
+            });
+
+            expect(result).toBe(file);
         });
 
-        it('openMultipleFiles should return null', async () => {
+        it('openMultipleFiles should resolve selected files', async () => {
+            const files = [new File(['a'], 'a.txt'), new File(['b'], 'b.txt')];
+            mockInputSelection(files);
+
             const result = await adapter.openMultipleFiles();
-            expect(result).toBeNull();
+            expect(result).toEqual(files);
         });
 
-        it('saveFile should return null', async () => {
-            const result = await adapter.saveFile();
-            expect(result).toBeNull();
-        });
+        it('saveBytes should trigger a browser download', async () => {
+            const originalCreateElement = document.createElement.bind(document);
+            const anchor = document.createElement('a');
+            const click = vi.fn();
+            anchor.click = click;
+            const createElement = vi.spyOn(document, 'createElement');
+            createElement.mockImplementation((tagName: string) => {
+                if (tagName === 'a') return anchor;
+                return originalCreateElement(tagName);
+            });
+            const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
+            const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 
-        it('message should call window.alert', async () => {
-            await adapter.message('Hello World!');
-            expect(global.alert).toHaveBeenCalledWith('Hello World!');
-        });
+            const result = await adapter.saveBytes({
+                bytes: new Uint8Array([1, 2, 3]),
+                fileName: 'test.bin',
+                mimeType: 'application/octet-stream'
+            });
 
-        it('confirm should call window.confirm and return its evaluation', async () => {
-            vi.mocked(global.confirm).mockReturnValue(true);
-            const result = await adapter.confirm('Are you sure?');
-            expect(global.confirm).toHaveBeenCalledWith('Are you sure?');
             expect(result).toBe(true);
+            expect(anchor.download).toBe('test.bin');
+            expect(anchor.href).toBe('blob:test');
+            expect(click).toHaveBeenCalled();
+            expect(createObjectURL).toHaveBeenCalled();
+            expect(revokeObjectURL).toHaveBeenCalledWith('blob:test');
         });
     });
 
@@ -68,6 +86,7 @@ describe('Dialog Adapters', () => {
 
         it('openFile should map to tauri open() with proper options', async () => {
             vi.mocked(open).mockResolvedValue('/path/to/file.png');
+            vi.mocked(readFile).mockResolvedValue(new Uint8Array([1, 2, 3]));
             const result = await adapter.openFile({ title: 'Pick Image', defaultPath: '/home' });
 
             expect(open).toHaveBeenCalledWith(
@@ -78,11 +97,14 @@ describe('Dialog Adapters', () => {
                     defaultPath: '/home'
                 })
             );
-            expect(result).toBe('/path/to/file.png');
+            expect(result?.name).toBe('file.png');
+            expect(result?.type).toBe('image/png');
+            expect(readFile).toHaveBeenCalledWith('/path/to/file.png');
         });
 
         it('openMultipleFiles should map to tauri open() with multiple: true', async () => {
             vi.mocked(open).mockResolvedValue(['/file1.png', '/file2.png']);
+            vi.mocked(readFile).mockResolvedValue(new Uint8Array([1, 2, 3]));
             const result = await adapter.openMultipleFiles({ title: 'Pick Images' });
 
             expect(open).toHaveBeenCalledWith(
@@ -92,31 +114,46 @@ describe('Dialog Adapters', () => {
                     title: 'Pick Images'
                 })
             );
-            expect(result).toEqual(['/file1.png', '/file2.png']);
+            expect(result?.map((file) => file.name)).toEqual(['file1.png', 'file2.png']);
         });
 
-        it('saveFile should map to tauri save()', async () => {
+        it('saveBytes should map to tauri save() and writeFile()', async () => {
             vi.mocked(save).mockResolvedValue('/path/to/save.png');
-            const result = await adapter.saveFile({ title: 'Save Image' });
+            const bytes = new Uint8Array([1, 2, 3]);
+            const result = await adapter.saveBytes({
+                title: 'Save Image',
+                fileName: 'save.png',
+                mimeType: 'image/png',
+                bytes
+            });
 
             expect(save).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    title: 'Save Image'
+                    title: 'Save Image',
+                    defaultPath: 'save.png'
                 })
             );
-            expect(result).toBe('/path/to/save.png');
-        });
-
-        it('message should map to plugin message()', async () => {
-            await adapter.message('Done!', 'Success');
-            expect(message).toHaveBeenCalledWith('Done!', { title: 'Success' });
-        });
-
-        it('confirm should map to plugin confirm()', async () => {
-            vi.mocked(confirm).mockResolvedValue(false);
-            const result = await adapter.confirm('Delete?', 'Warning');
-            expect(confirm).toHaveBeenCalledWith('Delete?', { title: 'Warning' });
-            expect(result).toBe(false);
+            expect(writeFile).toHaveBeenCalledWith('/path/to/save.png', bytes);
+            expect(result).toBe(true);
         });
     });
 });
+
+function mockInputSelection(files: File[]): void {
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+        const element = originalCreateElement(tagName);
+        if (tagName !== 'input') return element;
+
+        Object.defineProperty(element, 'files', {
+            configurable: true,
+            value: files
+        });
+        element.click = vi.fn(() => {
+            setTimeout(() => {
+                (element as HTMLInputElement).onchange?.(new Event('change'));
+            }, 0);
+        });
+        return element;
+    });
+}

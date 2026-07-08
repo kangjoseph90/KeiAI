@@ -1,6 +1,7 @@
 import { AppError } from '$lib/types/errors';
 import { KEI_CDN_URL } from '$lib/config';
 import { buildUrl } from './url';
+import { appHttp } from '$lib/adapters/http';
 
 const CACHE_NAME = 'kei-cdn-v1';
 
@@ -20,7 +21,7 @@ export async function cdnFetch(path: string): Promise<ArrayBuffer> {
         return await cached.arrayBuffer();
     }
 
-    const response = await fetch(url);
+    const response = await appHttp.fetch(url);
     if (!response.ok) {
         throw new AppError('ASSET_ERROR', `CDN fetch failed: ${response.status} ${url}`);
     }

@@ -15,6 +15,7 @@
     import { compareSortOrder, generateSortOrder } from '$lib/utils/ordering';
     import { generateKeyBetween } from 'fractional-indexing';
     import EntityList from './EntityList.svelte';
+    import { appPrompt } from '$lib/ui';
 
     interface FolderSnippetPayload {
         folder: FolderDef;
@@ -353,7 +354,11 @@
                     });
                 }
             } else {
-                const newFolderName = prompt('Enter a name for the new folder:', 'Grouped Folder');
+                const newFolderName = await appPrompt({
+                    title: 'Create folder',
+                    description: 'Enter a name for the new grouped folder.',
+                    defaultValue: 'Grouped Folder'
+                });
                 if (!newFolderName) return;
                 if (!targetNode.sortOrder) return;
 

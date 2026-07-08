@@ -6,7 +6,8 @@ import {
     type CharacterFileExport
 } from '$lib/porters/character';
 import type { Character } from '$lib/services';
-import { downloadBytes, sanitizeFileName } from '$lib/utils/file';
+import { sanitizeFileName } from '$lib/utils/file';
+import { appDialog } from '$lib/adapters/dialog';
 
 export type ExportCharacterFileRequest = CharacterFileExport;
 
@@ -16,9 +17,18 @@ export interface ImportCharacterFileOptions {
 }
 
 export async function importCharacterFile(
-    file: File,
     options: ImportCharacterFileOptions = {}
-): Promise<Character> {
+): Promise<Character | null> {
+    const file = await appDialog.openFile({
+        title: 'Import Character',
+        filters: [
+            {
+                name: 'Character files',
+                extensions: ['json', 'png', 'charx', 'jpg', 'jpeg', 'keichar']
+            }
+        ]
+    });
+    if (!file) return null;
     const pkg = await readCharacterFile(file);
     return importCharacterPackageToStore(pkg, {
         allowLightAssets: options.allowLightAssets ?? false,
@@ -36,11 +46,13 @@ export async function exportCharacterFile(
     const extension = exportExtension(request);
     const mimeType = exportMimeType(request);
 
-    downloadBytes(
+    await appDialog.saveBytes({
         bytes,
-        `${sanitizeFileName(pkg.character.name || 'character')}.${extension}`,
-        mimeType
-    );
+        fileName: `${sanitizeFileName(pkg.character.name || 'character')}.${extension}`,
+        mimeType,
+        title: 'Export Character',
+        filters: [{ name: extension.toUpperCase(), extensions: [extension] }]
+    });
 }
 
 function exportExtension(request: ExportCharacterFileRequest): string {

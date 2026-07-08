@@ -9,15 +9,19 @@ export interface FileDialogOptions {
     defaultPath?: string;
 }
 
+export interface SaveBytesOptions extends FileDialogOptions {
+    bytes: Uint8Array;
+    fileName: string;
+    mimeType: string;
+}
+
 /**
  * Dialog Adapter Interface
  *
- * Used for native file selection and message dialogs.
+ * Used for native file selection and file saving.
  */
 export interface IDialogAdapter {
-    openFile(options?: FileDialogOptions): Promise<string | null>;
-    openMultipleFiles(options?: FileDialogOptions): Promise<string[] | null>;
-    saveFile(options?: FileDialogOptions): Promise<string | null>;
-    message(text: string, title?: string): Promise<void>;
-    confirm(text: string, title?: string): Promise<boolean>;
+    openFile(options?: FileDialogOptions): Promise<File | null>;
+    openMultipleFiles(options?: FileDialogOptions): Promise<File[] | null>;
+    saveBytes(options: SaveBytesOptions): Promise<boolean>;
 }

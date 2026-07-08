@@ -17,6 +17,7 @@
     } from '$lib/stores';
     import type { Character } from '$lib/services';
     import type { AssetRef } from '$lib/types/refs';
+    import { appDialog } from '$lib/adapters/dialog';
 
     interface Props {
         character: Character;
@@ -24,7 +25,6 @@
 
     let { character }: Props = $props();
 
-    let fileInput = $state<HTMLInputElement>();
     let editingId = $state<string | null>(null);
     let editName = $state('');
 
@@ -50,15 +50,12 @@
     }
 
     async function handleAdd() {
-        fileInput?.click();
-    }
-
-    async function handleFileSelect(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
+        const file = await appDialog.openFile({
+            title: 'Upload Character Asset',
+            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        });
         if (!file) return;
         await createCharacterAsset(character.id, file);
-        target.value = '';
     }
 
     async function handleDelete(assetId: string) {
@@ -72,14 +69,6 @@
             <Upload class="size-4" /> Upload
         </Button>
     </ListActionBar>
-    <input
-        bind:this={fileInput}
-        type="file"
-        accept="image/*"
-        class="hidden"
-        onchange={handleFileSelect}
-    />
-
     <EntityList
         entities={assetRefs}
         config={character.assets}

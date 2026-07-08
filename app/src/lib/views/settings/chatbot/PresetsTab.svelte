@@ -33,7 +33,6 @@
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
 
-    let importInput = $state<HTMLInputElement>();
     let expandedPresetIds = $state<Record<string, boolean>>({});
 
     function toggleExpanded(id: string) {
@@ -48,12 +47,8 @@
         expandedPresetIds[preset.id] = true;
     }
 
-    async function handleImport(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
-        if (!file) return;
-        const preset = await importPresetFile(file, { select: true });
-        target.value = '';
+    async function handleImport() {
+        const preset = await importPresetFile({ select: true });
         if (preset) {
             expandedPresetIds[preset.id] = true;
         }
@@ -80,19 +75,12 @@
 
 <div class="flex flex-col gap-4 px-2">
     <ListActionBar description="Reusable model and chat configurations.">
-        <Button size="sm" variant="outline" class="gap-1.5" onclick={() => importInput?.click()}>
+        <Button size="sm" variant="outline" class="gap-1.5" onclick={handleImport}>
             <Upload class="size-4" /> Import
         </Button>
         <Button size="sm" onclick={handleCreatePreset} class="gap-1.5">
             <Plus class="size-4" /> New Preset
         </Button>
-        <input
-            bind:this={importInput}
-            type="file"
-            accept=".risup,.risupreset,.keipreset,.json"
-            class="hidden"
-            onchange={handleImport}
-        />
     </ListActionBar>
 
     {#if $appSettings}
