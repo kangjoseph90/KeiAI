@@ -522,133 +522,133 @@
             {/if}
 
             <!-- Single Action Row (hover) -->
-            {#if message.displayStatus === 'completed'}
-                <div
-                    class="-my-1 hidden items-center gap-2 transition-opacity group-focus-within:flex md:my-0 md:flex md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 {isUser
-                        ? 'flex-row-reverse'
-                        : 'flex-row'}"
+            <div
+                class="-my-1 hidden items-center gap-2 transition-opacity group-focus-within:flex md:my-0 md:flex md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 {isUser
+                    ? 'flex-row-reverse'
+                    : 'flex-row'} {message.displayStatus !== 'completed'
+                    ? 'pointer-events-none invisible select-none'
+                    : ''}"
+            >
+                <!-- Swipe Navigator (Character only, multiple swipes) -->
+                {#if !isUser && sortedSwipes.length > 1}
+                    <div class="flex items-center gap-0.5 text-xs text-muted-foreground mr-1">
+                        <button
+                            class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
+                            disabled={swipePos <= 0}
+                            onclick={() => onSwipe(sortedSwipes[swipePos - 1].id)}
+                        >
+                            <ChevronLeft class="size-4 md:size-3.5" />
+                        </button>
+                        <span class="tabular-nums font-medium"
+                            >{swipePos + 1} / {sortedSwipes.length}</span
+                        >
+                        <button
+                            class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
+                            disabled={swipePos >= sortedSwipes.length - 1}
+                            onclick={() => onSwipe(sortedSwipes[swipePos + 1].id)}
+                        >
+                            <ChevronRight class="size-4 md:size-3.5" />
+                        </button>
+                    </div>
+                {/if}
+
+                <!-- Copy -->
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                    onclick={handleCopy}
                 >
-                    <!-- Swipe Navigator (Character only, multiple swipes) -->
-                    {#if !isUser && sortedSwipes.length > 1}
-                        <div class="flex items-center gap-0.5 text-xs text-muted-foreground mr-1">
-                            <button
-                                class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
-                                disabled={swipePos <= 0}
-                                onclick={() => onSwipe(sortedSwipes[swipePos - 1].id)}
-                            >
-                                <ChevronLeft class="size-4 md:size-3.5" />
-                            </button>
-                            <span class="tabular-nums font-medium"
-                                >{swipePos + 1} / {sortedSwipes.length}</span
-                            >
-                            <button
-                                class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
-                                disabled={swipePos >= sortedSwipes.length - 1}
-                                onclick={() => onSwipe(sortedSwipes[swipePos + 1].id)}
-                            >
-                                <ChevronRight class="size-4 md:size-3.5" />
-                            </button>
-                        </div>
-                    {/if}
-
-                    <!-- Copy -->
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                        onclick={handleCopy}
-                    >
-                        {#if copied}
-                            <Check class="size-3.5 md:size-3" />
-                        {:else}
-                            <Copy class="size-3.5 md:size-3" />
-                        {/if}
-                    </Button>
-
-                    {#if matchingTranslationTask?.status === 'generating'}
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                            onclick={() => stopTranslation(message.id)}
-                            title="Stop translation"
-                        >
-                            <Loader2 class="size-3.5 md:size-3 animate-spin" />
-                        </Button>
+                    {#if copied}
+                        <Check class="size-3.5 md:size-3" />
                     {:else}
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs {showTranslation &&
-                            cachedTranslation
-                                ? 'bg-primary/15 text-primary hover:bg-primary/25'
-                                : 'text-muted-foreground'}"
-                            onclick={() => {
-                                if (cachedTranslation) {
-                                    showTranslation = !showTranslation;
-                                } else {
-                                    handleTranslate();
-                                }
-                            }}
-                            ondblclick={(e) => {
-                                e.stopPropagation();
-                                handleTranslate();
-                            }}
-                            title={cachedTranslation
-                                ? showTranslation
-                                    ? 'Show original (double click to retranslate)'
-                                    : 'Show translation'
-                                : 'Translate'}
-                        >
-                            <Languages class="size-3.5 md:size-3" />
-                        </Button>
+                        <Copy class="size-3.5 md:size-3" />
                     {/if}
+                </Button>
 
-                    {#if !isUser}
-                        <!-- Regenerate: last char message only -->
-                        {#if isLastMessage}
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                                onclick={onRegenerate}
-                            >
-                                <RefreshCw class="size-3.5 md:size-3" />
-                            </Button>
-                        {/if}
-
-                        <!-- Fork: always available for char messages -->
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                            onclick={onFork}
-                        >
-                            <GitBranch class="size-3.5 md:size-3" />
-                        </Button>
-                    {/if}
-
-                    <!-- Edit -->
+                {#if matchingTranslationTask?.status === 'generating'}
                     <Button
                         variant="ghost"
                         size="sm"
                         class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                        onclick={onEdit}
+                        onclick={() => stopTranslation(message.id)}
+                        title="Stop translation"
                     >
-                        <Pencil class="size-3.5 md:size-3" />
+                        <Loader2 class="size-3.5 md:size-3 animate-spin" />
                     </Button>
-
-                    <!-- Delete -->
+                {:else}
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground hover:text-destructive"
-                        onclick={onDelete}
+                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs {showTranslation &&
+                        cachedTranslation
+                            ? 'bg-primary/15 text-primary hover:bg-primary/25'
+                            : 'text-muted-foreground'}"
+                        onclick={() => {
+                            if (cachedTranslation) {
+                                showTranslation = !showTranslation;
+                            } else {
+                                handleTranslate();
+                            }
+                        }}
+                        ondblclick={(e) => {
+                            e.stopPropagation();
+                            handleTranslate();
+                        }}
+                        title={cachedTranslation
+                            ? showTranslation
+                                ? 'Show original (double click to retranslate)'
+                                : 'Show translation'
+                            : 'Translate'}
                     >
-                        <Trash2 class="size-3.5 md:size-3" />
+                        <Languages class="size-3.5 md:size-3" />
                     </Button>
-                </div>
-            {/if}
+                {/if}
+
+                {#if !isUser}
+                    <!-- Regenerate: last char message only -->
+                    {#if isLastMessage}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                            onclick={onRegenerate}
+                        >
+                            <RefreshCw class="size-3.5 md:size-3" />
+                        </Button>
+                    {/if}
+
+                    <!-- Fork: always available for char messages -->
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                        onclick={onFork}
+                    >
+                        <GitBranch class="size-3.5 md:size-3" />
+                    </Button>
+                {/if}
+
+                <!-- Edit -->
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                    onclick={onEdit}
+                >
+                    <Pencil class="size-3.5 md:size-3" />
+                </Button>
+
+                <!-- Delete -->
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground hover:text-destructive"
+                    onclick={onDelete}
+                >
+                    <Trash2 class="size-3.5 md:size-3" />
+                </Button>
+            </div>
         {/if}
     </div>
 </div>

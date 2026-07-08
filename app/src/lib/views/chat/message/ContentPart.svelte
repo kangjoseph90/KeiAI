@@ -189,6 +189,6 @@
             ? '**:text-primary-foreground prose-invert'
             : 'dark:prose-invert'} leading-relaxed"
     >
-        {text}
+        <p>{text}</p>
     </div>
 {/if}
