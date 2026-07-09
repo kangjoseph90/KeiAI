@@ -7,7 +7,7 @@
 
 import type { PagedMessages } from '$lib/services/content/paged_messages';
 import type { Character, Chat, Persona, Lorebook } from '$lib/services';
-import type { OpenAIChat } from '../../llm/types';
+import { getTextContent, type LLMContentPart, type LLMMessage } from '../../llm/types';
 import type { LLMRole, LLMTokenizer } from '$lib/types/models/llm';
 import { runPipeline } from '$lib/pipeline';
 import { runTemplate, createDryRunMacros, mergeLocalMacros } from '$lib/template';
@@ -21,14 +21,14 @@ import { toMessageContext, toRoleContext } from './context';
 import { compareSortOrder } from '$lib/utils/ordering';
 import type { RuntimeContext } from '$lib/types/context';
 import type { PromptBlock } from '../types';
+import { AssetService } from '$lib/services/asset';
+import { toBase64 } from '$lib/crypto';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
 export interface PromptInput {
-    character?: Character;
-    chat?: Chat;
+    chat: Chat;
     agent: AgentPromptConfig;
-    persona?: Persona;
     lorebooks: Lorebook[];
     messages: PagedMessages;
     tokenizer: LLMTokenizer;
@@ -46,7 +46,7 @@ export interface AgentPromptConfig {
 }
 
 type PromptBlockResult = {
-    messages: OpenAIChat[];
+    messages: LLMMessage[];
     tokens: number;
 };
 
@@ -60,12 +60,12 @@ type PromptBudget = {
 type LorebookPromptBlock = Extract<PromptBlock, { type: 'lorebook' }>;
 type LorebookBucketEntry = {
     order: number;
-    message: OpenAIChat;
+    message: LLMMessage;
 };
 
 // ─── Builder ──────────────────────────────────────────────────────────────────
 
-export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
+export async function buildPrompt(input: PromptInput): Promise<LLMMessage[]> {
     const blocks = getEnabledPromptBlocks(input.agent.promptBlocks);
 
     const budget = createPromptBudget(input.agent);
@@ -123,7 +123,7 @@ export async function buildPrompt(input: PromptInput): Promise<OpenAIChat[]> {
 // ─── Block Builders ─────────────────────────────────────────────────────────
 
 async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<PromptBlockResult> {
-    let messages: OpenAIChat[] = [];
+    let messages: LLMMessage[] = [];
     const templateMacros = mergeLocalMacros(input.localMacros, createDryRunMacros());
 
     switch (block.type) {
@@ -146,6 +146,7 @@ async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<
                     message,
                     index,
                     input.ctx,
+                    input.chat,
                     block.format,
                     input.localMacros
                 );
@@ -232,7 +233,7 @@ async function buildUnboundedHistoryBlock(
 ): Promise<PromptBlockResult> {
     if (block.type !== 'history') return { messages: [], tokens: 0 };
 
-    const messages: OpenAIChat[] = [];
+    const messages: LLMMessage[] = [];
     let remaining = Math.max(0, remainingBudget);
     let sawRenderableMessage = false;
 
@@ -244,6 +245,7 @@ async function buildUnboundedHistoryBlock(
             indexed.message,
             indexed.index,
             input.ctx,
+            input.chat,
             block.format,
             input.localMacros
         );
@@ -285,16 +287,16 @@ function getEnabledPromptBlocks(blocks: Record<string, PromptBlock>): PromptBloc
 function flattenBlocks(
     blocks: PromptBlock[],
     result: ReadonlyMap<string, PromptBlockResult>
-): OpenAIChat[] {
+): LLMMessage[] {
     return [...blocks]
         .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder))
         .flatMap((block) => result.get(block.id)?.messages ?? []);
 }
 
-function makeMessage(role: LLMRole, content: string): OpenAIChat[] {
+function makeMessage(role: LLMRole, content: string): LLMMessage[] {
     const trimmed = content.trim();
     if (!trimmed) return [];
-    return [{ role, content: trimmed }];
+    return [{ role, content: [{ type: 'text', text: trimmed }] }];
 }
 
 function createPromptBudget(agent: AgentPromptConfig): PromptBudget {
@@ -380,9 +382,10 @@ async function renderHistoryMessage(
     message: Message,
     messageIndex: number,
     ctx: RuntimeContext,
+    chat: Chat,
     format?: string,
     localMacros?: ReadonlyMap<string, Macro>
-): Promise<OpenAIChat | null> {
+): Promise<LLMMessage | null> {
     const activeSwipe = message.swipes[message.activeSwipeId];
     if (!activeSwipe) return null;
 
@@ -410,8 +413,38 @@ async function renderHistoryMessage(
 
     return {
         role: message.role,
-        content
+        content: await addAttachmentContent(content, activeSwipe.attachments, chat)
     };
+}
+
+async function addAttachmentContent(
+    content: string,
+    attachments: string[] | undefined,
+    chat: Chat
+): Promise<LLMContentPart[]> {
+    if (!attachments?.length || !chat) return [{ type: 'text', text: content }];
+    const parts: LLMContentPart[] = [{ type: 'text', text: content }];
+    for (const attachmentId of attachments) {
+        const ref = chat.inlays.refs[attachmentId];
+        if (!ref) continue;
+
+        const bytes = await AssetService.readBytes({
+            scopeType: chat.scopeType,
+            scopeId: chat.scopeId,
+            ownerTable: 'chats',
+            ownerId: chat.id,
+            hash: ref.hash
+        });
+        if (!bytes) continue;
+
+        parts.push({
+            type: 'image',
+            mimeType: ref.mimeType,
+            data: toBase64(new Uint8Array(bytes))
+        });
+    }
+
+    return parts;
 }
 
 async function renderWithFormat(
@@ -445,7 +478,10 @@ async function renderWithFormat(
     return await runTemplate(resolvedFormat, ctx, localMacros);
 }
 
-async function countMessages(messages: OpenAIChat[], tokenizer: LLMTokenizer): Promise<number> {
+async function countMessages(messages: LLMMessage[], tokenizer: LLMTokenizer): Promise<number> {
     if (messages.length === 0) return 0;
-    return TokenCounter.count(messages.map((message) => message.content).join('\n'), tokenizer);
+    return TokenCounter.count(
+        messages.map((message) => getTextContent(message.content)).join('\n'),
+        tokenizer
+    );
 }

@@ -10,13 +10,16 @@
         ArrowDown,
         Loader2,
         ChevronLeft,
-        ChevronRight
+        ChevronRight,
+        Paperclip,
+        X
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
     import Message from './message/Message.svelte';
     import ChatRuntimePanel from './ChatRuntimePanel.svelte';
     import ChatBackground from './ChatBackground.svelte';
+    import AssetView from '$lib/components/AssetView.svelte';
     import {
         activeChat,
         activeRoom,
@@ -33,7 +36,8 @@
         loadOlderMessages,
         loadNewerMessages,
         dropOlderMessages,
-        dropNewerMessages
+        dropNewerMessages,
+        createChatInlay
     } from '$lib/stores';
     import { characterPickerOpen, personaPickerOpen } from '$lib/ui';
     import { runChat, stopChat, dismissChat } from '$lib/tasks';
@@ -49,11 +53,20 @@
     import { tick } from 'svelte';
     import { forkChat, getChatVariables, prepareNextSwipe, syncChatGreetings } from '$lib/managers';
     import type { RuntimeContext } from '$lib/types/context';
+    import { appDialog } from '$lib/adapters/dialog';
+    import {
+        MAX_ATTACHMENTS,
+        extractImageFilesFromDrop,
+        extractImageFilesFromPaste,
+        hasDroppableFiles,
+        selectImageFiles
+    } from './composer-assets';
 
     let { roomId, chatId }: { roomId: string; chatId?: string } = $props();
 
     const logger = createLogger('view:chat');
     let newMessageText = $state('');
+    let pendingAttachments = $state<string[]>([]);
     let editModeId = $state<string | null>(null);
     let editMessageText = $state('');
     let inspectorOpen = $state(false);
@@ -63,15 +76,30 @@
     let showScrollToBottom = $state(false);
     let hasMoreOlder = $state(true);
     let hasMoreNewer = $state(false);
+    let previousActiveChatId = $state<string | undefined>();
+    let dragCounter = $state(0);
 
     const MESSAGE_PAGE_SIZE = 30;
     const MESSAGE_WINDOW_SIZE = 120;
+    const isDragging = $derived(dragCounter > 0);
+
+    const pendingInlays = $derived.by(() => {
+        if (!$activeChat) return [];
+        return pendingAttachments
+            .map((attachmentId) => $activeChat?.inlays.refs[attachmentId])
+            .filter((ref) => ref !== undefined);
+    });
 
     // Reset state and scroll to bottom when active chat changes
     $effect(() => {
-        const _ = $activeChat?.id;
+        const activeChatId = $activeChat?.id;
+        if (activeChatId === previousActiveChatId) return;
+
+        previousActiveChatId = activeChatId;
         hasMoreOlder = true;
         hasMoreNewer = false;
+        pendingAttachments = [];
+        dragCounter = 0;
         lastMessageCount = 0;
         tick().then(() => {
             if (scrollContainerEl) {
@@ -186,7 +214,12 @@
     });
 
     async function handleSendMessage() {
-        if (!newMessageText.trim() || !$activeChat || $isChatRunning) return;
+        if (
+            (!newMessageText.trim() && pendingAttachments.length === 0) ||
+            !$activeChat ||
+            $isChatRunning
+        )
+            return;
 
         if (!selectedCharacter) $characterPickerOpen = true;
         if (!selectedPersona) $personaPickerOpen = true;
@@ -205,7 +238,7 @@
         const templated = await runTemplate(newMessageText, ctx);
         const piped = await runPipeline($activeChat.id, 'input', templated, ctx);
         const processedText = await runTemplate(piped, ctx);
-        newMessageText = '';
+        const attachments = Array.from(pendingAttachments);
 
         const variables = await getChatVariables($activeChat.id);
         const message = await createMessage($activeChat.id, {
@@ -213,12 +246,94 @@
         });
 
         await prepareNextSwipe(message, {
-            parts: [{ type: 'content', text: processedText }],
+            parts: processedText.trim() ? [{ type: 'content', text: processedText }] : [],
             variables,
             speakerId: selectedPersona.id,
             speakerName: selectedPersona.name,
+            attachments,
             replaceActiveSwipe: true
         });
+
+        newMessageText = '';
+        pendingAttachments = [];
+    }
+
+    /**
+     * Shared image→inlay→attachment pipeline for file pick, paste, and drop.
+     * Captures the chatId up front so a mid-flight chat switch cannot leak
+     * attachments into the wrong chat. Partial failures keep successful ones.
+     */
+    async function attachFiles(files: File[]): Promise<void> {
+        const chatId = $activeChat?.id;
+        if (!chatId) return;
+
+        const remaining = MAX_ATTACHMENTS - pendingAttachments.length;
+        const candidates = selectImageFiles(files, remaining);
+        if (candidates.length === 0) return;
+
+        for (const file of candidates) {
+            try {
+                const ref = await createChatInlay(chatId, file);
+                // Only attach if the user hasn't switched chats while we awaited.
+                if ($activeChat?.id === chatId) addAttachment(ref.id);
+            } catch (err) {
+                logger.error('Failed to attach image:', err);
+            }
+        }
+    }
+
+    async function handleAttachmentUpload() {
+        if (!$activeChat || pendingAttachments.length >= MAX_ATTACHMENTS) return;
+
+        const file = await appDialog.openFile({
+            title: 'Attach Image',
+            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        });
+        if (!file) return;
+
+        await attachFiles([file]);
+    }
+
+    function handlePaste(e: ClipboardEvent) {
+        const images = extractImageFilesFromPaste(e);
+        if (images.length === 0) return; // text-only paste: keep browser default
+        e.preventDefault();
+        void attachFiles(images);
+    }
+
+    function handleDragEnter(e: DragEvent) {
+        if (!hasDroppableFiles(e)) return;
+        e.preventDefault();
+        dragCounter += 1;
+    }
+
+    function handleDragOver(e: DragEvent) {
+        if (!hasDroppableFiles(e)) return;
+        e.preventDefault();
+    }
+
+    function handleDragLeave(e: DragEvent) {
+        if (!hasDroppableFiles(e)) return;
+        e.preventDefault();
+        dragCounter = Math.max(0, dragCounter - 1);
+    }
+
+    function handleDrop(e: DragEvent) {
+        if (!hasDroppableFiles(e)) return;
+        e.preventDefault();
+        dragCounter = 0;
+        const images = extractImageFilesFromDrop(e);
+        if (images.length > 0) void attachFiles(images);
+    }
+
+    function addAttachment(assetId: string) {
+        if (pendingAttachments.length >= MAX_ATTACHMENTS || pendingAttachments.includes(assetId))
+            return;
+        pendingAttachments = [...pendingAttachments, assetId];
+    }
+
+    function removeAttachment(assetId: string) {
+        pendingAttachments = pendingAttachments.filter((id) => id !== assetId);
     }
 
     function handleGenerateResponse() {
@@ -414,20 +529,85 @@
 
                 <!-- Message Input -->
                 <div
-                    class="relative z-10 flex gap-2 border-t bg-background/80 px-4 py-3 backdrop-blur"
+                    role="region"
+                    aria-label="Message composer"
+                    class="relative z-10 flex items-end gap-2 border-t bg-background/80 px-4 py-3 backdrop-blur"
+                    ondragenter={handleDragEnter}
+                    ondragover={handleDragOver}
+                    ondragleave={handleDragLeave}
+                    ondrop={handleDrop}
                 >
-                    <AutoResizeTextarea
-                        bind:value={newMessageText}
-                        classname="min-h-10 py-2.5"
-                        onkeydown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handleSendMessage();
-                            }
-                        }}
-                        placeholder="Type a message..."
-                        disabled={$isChatRunning}
-                    />
+                    {#if isDragging}
+                        <div
+                            class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-md border-2 border-dashed border-primary/50 bg-primary/5 text-sm font-medium text-primary"
+                        >
+                            Drop images to attach
+                        </div>
+                    {/if}
+                    <div class="min-w-0 flex-1 space-y-2">
+                        {#if pendingInlays.length > 0}
+                            <div class="flex gap-2 overflow-x-auto pb-1 pr-1 pt-1">
+                                {#each pendingInlays as ref (ref.id)}
+                                    <div
+                                        class="relative size-14 shrink-0 overflow-visible rounded-md"
+                                    >
+                                        <div
+                                            class="absolute inset-0 overflow-hidden rounded-md border"
+                                        >
+                                            <AssetView
+                                                asset={{
+                                                    scopeType: $activeChat!.scopeType,
+                                                    scopeId: $activeChat!.scopeId,
+                                                    ownerTable: 'chats',
+                                                    ownerId: $activeChat!.id,
+                                                    hash: ref.hash,
+                                                    encKey: ref.encKey
+                                                }}
+                                                alt={ref.name}
+                                                class="size-full object-cover"
+                                                fallback="none"
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm"
+                                            aria-label={`Remove ${ref.name} attachment`}
+                                            onclick={() => removeAttachment(ref.id)}
+                                        >
+                                            <X class="size-3" />
+                                        </button>
+                                    </div>
+                                {/each}
+                            </div>
+                        {/if}
+                        <div class="flex gap-2">
+                            <Button
+                                variant="secondary"
+                                size="icon"
+                                class="shrink-0"
+                                onclick={handleAttachmentUpload}
+                                disabled={$isChatRunning ||
+                                    pendingAttachments.length >= MAX_ATTACHMENTS}
+                                title="Attach image"
+                                aria-label="Attach image"
+                            >
+                                <Paperclip class="size-4" />
+                            </Button>
+                            <AutoResizeTextarea
+                                bind:value={newMessageText}
+                                classname="min-h-10 py-2.5"
+                                onkeydown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSendMessage();
+                                    }
+                                }}
+                                onpaste={handlePaste}
+                                placeholder="Type a message..."
+                                disabled={$isChatRunning}
+                            />
+                        </div>
+                    </div>
                     {#if $isChatRunning}
                         <Button
                             variant="destructive"
@@ -441,7 +621,8 @@
                             size="icon"
                             class="shrink-0"
                             onclick={handleSendMessage}
-                            disabled={!newMessageText.trim() || $isChatRunning}
+                            disabled={(!newMessageText.trim() && pendingAttachments.length === 0) ||
+                                $isChatRunning}
                             title="Send message"
                             aria-label="Send message"
                         >
@@ -481,7 +662,7 @@
                     >
                         <ChevronRight class="size-4" />
                     </button>
-                    <ChatRuntimePanel chatId={$activeChat.id} />
+                    <ChatRuntimePanel chatId={$activeChat.id} onSelectInlay={addAttachment} />
                 </div>
             {/if}
         {/if}

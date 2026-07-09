@@ -19,7 +19,8 @@
         GitBranch,
         Copy,
         RefreshCw,
-        Languages
+        Languages,
+        ImageOff
     } from 'lucide-svelte';
     import { onDestroy } from 'svelte';
     import AssetView from '$lib/components/AssetView.svelte';
@@ -39,6 +40,7 @@
     import ToolCallPart from './ToolCallPart.svelte';
     import {
         activeRoom,
+        activeChat,
         appSettings,
         chatAssetsMap,
         getActiveModulesForCharacter,
@@ -157,6 +159,41 @@
 
     let parts = $derived<AgentPart[]>(activeSwipe?.parts ?? []);
     let indexedParts = $derived(parts.map((part, index) => ({ part, index })));
+    let attachmentLocators = $derived.by(() => {
+        const chat = $activeChat;
+        const attachments: {
+            id: string;
+            name: string;
+            locator: AssetReadLocator | null;
+        }[] = [];
+
+        for (const attachmentId of activeSwipe?.attachments ?? []) {
+            const ref = chat?.id === message.chatId ? chat.inlays.refs[attachmentId] : undefined;
+            if (!ref || !chat) {
+                attachments.push({
+                    id: attachmentId,
+                    name: 'Attachment unavailable',
+                    locator: null
+                });
+                continue;
+            }
+
+            attachments.push({
+                id: ref.id,
+                name: ref.name,
+                locator: {
+                    scopeType: chat.scopeType,
+                    scopeId: chat.scopeId,
+                    ownerTable: 'chats',
+                    ownerId: chat.id,
+                    hash: ref.hash,
+                    encKey: ref.encKey
+                }
+            });
+        }
+
+        return attachments;
+    });
 
     let lastContentIdx = $derived(findLastContentIndex(parts));
 
@@ -423,88 +460,119 @@
 
             <!-- Message Content -->
         {:else}
-            <!-- Bubble -->
-            <div
-                class="relative flex flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-foreground'}"
-            >
-                {#if message.displayStatus === 'generating' && parts.length === 0}
-                    <span
-                        class="flex items-center gap-1.5 {isUser
-                            ? 'text-primary-foreground/70'
-                            : 'text-muted-foreground'}"
-                    >
-                        <Loader2 class="size-3 animate-spin" />
-                        {isUser ? 'Sending...' : 'Thinking...'}
-                    </span>
-                {:else if parts.length === 0}
-                    <div class="min-h-5"></div>
-                {:else}
-                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- CSS is scoped by data-keiai-message-scope -->
-                    {@html messageStyleHtml}
-
-                    {#if traceCount > 0}
-                        <button
-                            type="button"
-                            class="trace-summary-btn"
-                            onclick={() => (detailsOpen = !detailsOpen)}
-                            aria-label="Toggle trace timeline"
+            {#if parts.length > 0 || attachmentLocators.length === 0}
+                <!-- Bubble -->
+                <div
+                    class="relative flex flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-foreground'}"
+                >
+                    {#if message.displayStatus === 'generating' && parts.length === 0}
+                        <span
+                            class="flex items-center gap-1.5 {isUser
+                                ? 'text-primary-foreground/70'
+                                : 'text-muted-foreground'}"
                         >
-                            <span class="trace-root-dot"></span>
-                            <span class="font-medium"
-                                >{traceCount} step{traceCount > 1 ? 's' : ''}</span
-                            >
-                        </button>
-                    {/if}
+                            <Loader2 class="size-3 animate-spin" />
+                            {isUser ? 'Sending...' : 'Thinking...'}
+                        </span>
+                    {:else if parts.length === 0}
+                        <div class="min-h-5"></div>
+                    {:else}
+                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- CSS is scoped by data-keiai-message-scope -->
+                        {@html messageStyleHtml}
 
-                    <div class="trace-flat-list">
-                        {#each indexedParts as entry (entry.index)}
-                            {@const isTrace = entry.index < traceCount}
-                            {@const isFirstTrace = entry.index === 0}
-                            {@const isLastTrace = entry.index === traceCount - 1}
-                            {@const shouldHide = isTrace && traceCount > 0 && !detailsOpen}
-
-                            <div
-                                class="trace-flat-item {isTrace
-                                    ? 'is-trace'
-                                    : 'is-answer'} {isFirstTrace
-                                    ? 'is-first-trace'
-                                    : ''} {isLastTrace ? 'is-last-trace' : ''} {shouldHide
-                                    ? 'hidden'
-                                    : ''}"
+                        {#if traceCount > 0}
+                            <button
+                                type="button"
+                                class="trace-summary-btn"
+                                onclick={() => (detailsOpen = !detailsOpen)}
+                                aria-label="Toggle trace timeline"
                             >
-                                {#if isTrace}
-                                    <span class="trace-dot"></span>
-                                {/if}
-                                <div class="trace-flat-body">
-                                    {#if entry.part.type === 'thought'}
-                                        <ThoughtPart
-                                            text={entry.part.text}
-                                            collapsible={traceCount > 1}
-                                        />
-                                    {:else if entry.part.type === 'tool_call'}
-                                        <ToolCallPart
-                                            name={entry.part.name}
-                                            status={entry.part.status}
-                                        />
-                                    {:else if entry.part.type === 'content'}
-                                        <ContentPart
-                                            text={entry.index === answerStartIdx &&
-                                            translatedContent &&
-                                            showTranslation
-                                                ? translatedContent
-                                                : entry.part.text}
-                                            {renderContext}
-                                            {isUser}
-                                        />
+                                <span class="trace-root-dot"></span>
+                                <span class="font-medium"
+                                    >{traceCount} step{traceCount > 1 ? 's' : ''}</span
+                                >
+                            </button>
+                        {/if}
+
+                        <div class="trace-flat-list">
+                            {#each indexedParts as entry (entry.index)}
+                                {@const isTrace = entry.index < traceCount}
+                                {@const isFirstTrace = entry.index === 0}
+                                {@const isLastTrace = entry.index === traceCount - 1}
+                                {@const shouldHide = isTrace && traceCount > 0 && !detailsOpen}
+
+                                <div
+                                    class="trace-flat-item {isTrace
+                                        ? 'is-trace'
+                                        : 'is-answer'} {isFirstTrace
+                                        ? 'is-first-trace'
+                                        : ''} {isLastTrace ? 'is-last-trace' : ''} {shouldHide
+                                        ? 'hidden'
+                                        : ''}"
+                                >
+                                    {#if isTrace}
+                                        <span class="trace-dot"></span>
                                     {/if}
+                                    <div class="trace-flat-body">
+                                        {#if entry.part.type === 'thought'}
+                                            <ThoughtPart
+                                                text={entry.part.text}
+                                                collapsible={traceCount > 1}
+                                            />
+                                        {:else if entry.part.type === 'tool_call'}
+                                            <ToolCallPart
+                                                name={entry.part.name}
+                                                status={entry.part.status}
+                                            />
+                                        {:else if entry.part.type === 'content'}
+                                            <ContentPart
+                                                text={entry.index === answerStartIdx &&
+                                                translatedContent &&
+                                                showTranslation
+                                                    ? translatedContent
+                                                    : entry.part.text}
+                                                {renderContext}
+                                                {isUser}
+                                            />
+                                        {/if}
+                                    </div>
                                 </div>
-                            </div>
-                        {/each}
-                    </div>
-                {/if}
-            </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            {/if}
+
+            {#if attachmentLocators.length > 0}
+                <div
+                    class="flex flex-wrap gap-2 {parts.length > 0 ? 'mt-1' : ''} {isUser
+                        ? 'justify-end'
+                        : 'justify-start'}"
+                >
+                    {#each attachmentLocators as attachment (attachment.id)}
+                        <div class="size-24 overflow-hidden rounded-md border bg-muted">
+                            {#if attachment.locator}
+                                <AssetView
+                                    asset={attachment.locator}
+                                    alt={attachment.name}
+                                    class="size-full object-cover"
+                                    fallback="none"
+                                />
+                            {:else}
+                                <div
+                                    class="flex size-full items-center justify-center text-muted-foreground"
+                                    title={attachment.name}
+                                    aria-label={attachment.name}
+                                >
+                                    <ImageOff class="size-5" />
+                                </div>
+                            {/if}
+                        </div>
+                    {/each}
+                </div>
+            {/if}
 
             {#if translationError}
                 <div class="flex items-center gap-2 text-xs text-destructive">

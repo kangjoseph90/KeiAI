@@ -1,4 +1,4 @@
-import type { LLMStreamContent, OpenAIChat } from '$lib/llm/types';
+import type { LLMMessage, LLMStreamContent } from '$lib/llm/types';
 import type { ToolCallStatus } from '$lib/services/content/tool';
 import type { LLMTypeDefinition } from '$lib/types/models/llm';
 import type { WorkflowDefinition } from '$lib/workflow/types';
@@ -66,8 +66,8 @@ export function deserializeAgentParts(serialized: string): AgentPart[] {
     return parts;
 }
 
-export function agentPartsToOpenAIChats(parts: AgentPart[]): OpenAIChat[] {
-    const messages: OpenAIChat[] = [];
+export function agentPartsToLLMMessages(parts: AgentPart[]): LLMMessage[] {
+    const messages: LLMMessage[] = [];
     let content = '';
 
     for (const part of parts) {
@@ -85,7 +85,7 @@ export function agentPartsToOpenAIChats(parts: AgentPart[]): OpenAIChat[] {
     }
 
     if (content) {
-        messages.push({ role: 'assistant', content });
+        messages.push({ role: 'assistant', content: [{ type: 'text', text: content }] });
     }
     return messages;
 }

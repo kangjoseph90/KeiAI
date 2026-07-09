@@ -5,12 +5,14 @@
  */
 
 import type {
+    LLMContentPart,
+    LLMMessage,
     LLMStreamContent,
     LLMStreamHandler,
     LLMStreamOptions,
-    OpenAIChat,
     RemoteLLMHandlerConfig
 } from '../types';
+import { getTextContent } from '../types';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { debounceStream } from '$lib/utils/stream';
@@ -18,8 +20,12 @@ import { buildUrl } from '$lib/utils/url';
 
 interface AnthropicMessage {
     role: 'user' | 'assistant';
-    content: string;
+    content: string | AnthropicContentBlock[];
 }
+
+type AnthropicContentBlock =
+    | { type: 'text'; text: string }
+    | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
 
 interface AnthropicCompletion {
     content?: Array<{
@@ -36,7 +42,7 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
     }
 
     async *stream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
@@ -48,7 +54,7 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
     }
 
     private async *complete(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
@@ -66,7 +72,7 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
     }
 
     private async *rawStream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
@@ -115,7 +121,7 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
     }
 
     private async fetchCompletion(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions
     ): Promise<Response> {
@@ -124,12 +130,13 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
         const url = buildUrl(config.baseUrl, '/messages');
         const useProxy = config.useProxy ?? true;
 
-        const systemMessage = messages.find((m) => m.role === 'system')?.content;
+        const systemContent = messages.find((m) => m.role === 'system')?.content;
+        const systemMessage = systemContent ? getTextContent(systemContent) : undefined;
         const chatMessages = messages.filter((m) => m.role !== 'system');
 
         const anthropicMessages: AnthropicMessage[] = chatMessages.map((m) => ({
             role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content
+            content: toAnthropicContent(m.content)
         }));
 
         const response = await appHttp.fetch(
@@ -165,4 +172,19 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
 
         return response;
     }
+}
+
+function toAnthropicContent(content: LLMContentPart[]): string | AnthropicContentBlock[] {
+    return content.some((part) => part.type === 'image')
+        ? content.map(toAnthropicContentBlock)
+        : getTextContent(content);
+}
+
+function toAnthropicContentBlock(part: LLMContentPart): AnthropicContentBlock {
+    if (part.type === 'text') return part;
+
+    return {
+        type: 'image',
+        source: { type: 'base64', media_type: part.mimeType, data: part.data }
+    };
 }

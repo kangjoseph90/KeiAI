@@ -9,6 +9,7 @@
         ImageIcon,
         FileText,
         ChevronRight,
+        Paperclip,
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
@@ -54,9 +55,10 @@
 
     interface Props {
         chatId: string;
+        onSelectInlay?: (assetId: string) => void;
     }
 
-    let { chatId }: Props = $props();
+    let { chatId, onSelectInlay }: Props = $props();
 
     let newChatLorebookName = $state('');
     let variables = $state<[string, string][]>([]);
@@ -156,7 +158,7 @@
         </div>
     </div>
 
-    <ScrollArea class="flex-1">
+    <ScrollArea class="min-h-0 flex-1">
         <div class="pb-20">
             <!-- Persona Summary -->
             {#if $activeChat}
@@ -417,26 +419,42 @@
                         {/snippet}
                         {#snippet item({ entity: ref })}
                             {@const chat = $activeChat!}
-                            <div
-                                class="group relative aspect-square rounded-lg border overflow-hidden"
-                            >
-                                <AssetView
-                                    asset={{
-                                        scopeType: chat.scopeType,
-                                        scopeId: chat.scopeId,
-                                        ownerTable: 'chats',
-                                        ownerId: chat.id,
-                                        hash: ref.hash,
-                                        encKey: ref.encKey
-                                    }}
-                                    alt={ref.name}
-                                    class="size-full object-cover"
-                                    fallback="none"
-                                />
+                            <div class="group relative aspect-square overflow-visible rounded-lg">
+                                <div class="absolute inset-0 overflow-hidden rounded-lg border">
+                                    <AssetView
+                                        asset={{
+                                            scopeType: chat.scopeType,
+                                            scopeId: chat.scopeId,
+                                            ownerTable: 'chats',
+                                            ownerId: chat.id,
+                                            hash: ref.hash,
+                                            encKey: ref.encKey
+                                        }}
+                                        alt={ref.name}
+                                        class="size-full object-cover"
+                                        fallback="none"
+                                    />
+                                </div>
                                 <button
-                                    class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                    type="button"
+                                    class="absolute -left-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
+                                    title="Attach to message"
+                                    aria-label={`Attach ${ref.name} to message`}
+                                    onclick={(event) => {
+                                        event.stopPropagation();
+                                        onSelectInlay?.(ref.id);
+                                    }}
+                                >
+                                    <Paperclip class="size-3" />
+                                </button>
+                                <button
+                                    type="button"
+                                    class="absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
                                     title="Delete"
-                                    onclick={() => deleteChatInlay(chatId, ref.id)}
+                                    onclick={(event) => {
+                                        event.stopPropagation();
+                                        deleteChatInlay(chatId, ref.id);
+                                    }}
                                 >
                                     <X class="size-3" />
                                 </button>
@@ -447,19 +465,6 @@
             {/if}
         </div>
     </ScrollArea>
-
-    <!-- Footer Action -->
-    <div class="shrink-0 border-t border-sidebar-border bg-sidebar p-3">
-        <Button
-            variant="ghost"
-            size="sm"
-            class="w-full justify-between text-xs font-normal text-muted-foreground group"
-            onclick={() => navigate({ view: 'settings', settingsTab: 'models' })}
-        >
-            Open Settings
-            <ChevronRight class="size-3 transition-transform group-hover:translate-x-0.5" />
-        </Button>
-    </div>
 </div>
 
 <ResourcePickerDialog

@@ -5,15 +5,21 @@ import type { Character, Chat, Message, Persona } from '$lib/services';
 import type { Macro } from '$lib/template';
 import type { RuntimeContext } from '$lib/types/context';
 import type { PromptBlock } from '$lib/workflow/types';
+import { getTextContent, type LLMMessage } from '$lib/llm/types';
 
-const { mockCollectTemplateMacros, mockRunTemplate, mockRunPipeline, mockTokenCount } = vi.hoisted(
-    () => ({
-        mockCollectTemplateMacros: vi.fn(),
-        mockRunTemplate: vi.fn(),
-        mockRunPipeline: vi.fn(),
-        mockTokenCount: vi.fn()
-    })
-);
+const {
+    mockCollectTemplateMacros,
+    mockRunTemplate,
+    mockRunPipeline,
+    mockTokenCount,
+    mockReadBytes
+} = vi.hoisted(() => ({
+    mockCollectTemplateMacros: vi.fn(),
+    mockRunTemplate: vi.fn(),
+    mockRunPipeline: vi.fn(),
+    mockTokenCount: vi.fn(),
+    mockReadBytes: vi.fn()
+}));
 
 // collectTemplateMacros / runTemplate are impure; the rest of $lib/template is pure.
 vi.mock('$lib/template', async (importOriginal) => {
@@ -33,6 +39,10 @@ vi.mock('$lib/llm/tokenizer', () => ({
     TokenCounter: {
         count: mockTokenCount
     }
+}));
+
+vi.mock('$lib/services/asset', () => ({
+    AssetService: { readBytes: mockReadBytes }
 }));
 
 const character: Character = {
@@ -136,6 +146,13 @@ function buildTestPrompt(input: BuildTestPromptInput) {
     });
 }
 
+function toTextMessages(messages: LLMMessage[]) {
+    return messages.map((message) => ({
+        role: message.role,
+        content: getTextContent(message.content)
+    }));
+}
+
 describe('buildPrompt', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -151,6 +168,7 @@ describe('buildPrompt', () => {
             async (_chatId: string, _phase: string, data: string) => data
         );
         mockTokenCount.mockImplementation(async (text: string) => text.length);
+        mockReadBytes.mockResolvedValue(null);
     });
 
     it('loads history from PagedMessages only when processing history entries', async () => {
@@ -186,10 +204,8 @@ describe('buildPrompt', () => {
         };
 
         const prompt = await buildTestPrompt({
-            character,
             chat,
             preset,
-            persona,
             lorebooks: [],
             messages,
             ctx
@@ -197,7 +213,7 @@ describe('buildPrompt', () => {
 
         expect(slice).toHaveBeenCalledWith(-10, -1);
         expect(mockRunPipeline).toHaveBeenCalledTimes(2);
-        expect(prompt).toEqual([
+        expect(toTextMessages(prompt)).toEqual([
             { role: 'system', content: 'rules' },
             { role: 'user', content: 'hello' },
             { role: 'assistant', content: 'hi' }
@@ -219,10 +235,8 @@ describe('buildPrompt', () => {
         });
 
         await buildTestPrompt({
-            character,
             chat,
             preset,
-            persona,
             lorebooks: [],
             messages
         });
@@ -255,16 +269,14 @@ describe('buildPrompt', () => {
         });
 
         const prompt = await buildTestPrompt({
-            character,
             chat,
             preset,
-            persona,
             lorebooks: [],
             messages
         });
 
         expect(slice).not.toHaveBeenCalled();
-        expect(prompt).toEqual([
+        expect(toTextMessages(prompt)).toEqual([
             { role: 'system', content: '{{character}}\n{{characternote}}\n{{chatnote}}' },
             { role: 'system', content: 'static' }
         ]);
@@ -300,10 +312,8 @@ describe('buildPrompt', () => {
         );
 
         const prompt = await buildTestPrompt({
-            character,
             chat,
             preset,
-            persona,
             lorebooks: [],
             messages
         });
@@ -322,10 +332,71 @@ describe('buildPrompt', () => {
                 speakerName: undefined
             }
         );
-        expect(prompt).toEqual([
+        expect(toTextMessages(prompt)).toEqual([
             {
                 role: 'user',
                 content: 'template(request(template({{char}} says hi)))'
+            }
+        ]);
+    });
+
+    it('adds attached chat inlays as image content parts in history', async () => {
+        const message = makeMessage('msg-1', 'user', 'Describe this image.');
+        message.swipes[message.activeSwipeId].attachments = ['inlay-1'];
+        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([{ message, index: 0 }]);
+        const messages = { slice } as unknown as PagedMessages;
+        const chatWithInlay: Chat = {
+            ...chat,
+            inlays: {
+                refs: {
+                    'inlay-1': {
+                        id: 'inlay-1',
+                        sortOrder: 'a',
+                        name: 'image.webp',
+                        hash: 'hash-1',
+                        encKey: 'key-1',
+                        mimeType: 'image/webp'
+                    }
+                },
+                folders: {}
+            }
+        };
+        mockReadBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
+
+        const prompt = await buildTestPrompt({
+            chat: chatWithInlay,
+            preset: makePreset({
+                history: {
+                    id: 'history',
+                    name: 'History',
+                    type: 'history',
+                    start: -1,
+                    sortOrder: 'a',
+                    enabled: true
+                }
+            }),
+            lorebooks: [],
+            messages
+        });
+
+        expect(mockReadBytes).toHaveBeenCalledWith({
+            scopeType: 'user',
+            scopeId: 'user-1',
+            ownerTable: 'chats',
+            ownerId: 'chat-1',
+            hash: 'hash-1'
+        });
+        expect(prompt).toEqual([
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: 'Describe this image.' },
+                    {
+                        type: 'image',
+                        mimeType: 'image/webp',
+                        data: 'AQID'
+                    }
+                ]
             }
         ]);
     });
@@ -392,16 +463,14 @@ describe('buildPrompt', () => {
         );
 
         const prompt = await buildTestPrompt({
-            character,
             chat,
             preset,
-            persona,
             lorebooks: [],
             messages,
             localMacros
         });
 
-        expect(prompt).toEqual([
+        expect(toTextMessages(prompt)).toEqual([
             {
                 role: 'assistant',
                 content: '원본: hello\n입력: external input\n이름: Alice'
@@ -432,10 +501,8 @@ describe('buildPrompt', () => {
         });
 
         await buildTestPrompt({
-            character,
             chat,
             preset,
-            persona,
             lorebooks: [],
             messages
         });
@@ -475,10 +542,8 @@ describe('buildPrompt', () => {
 
         await expect(
             buildTestPrompt({
-                character,
                 chat,
                 preset,
-                persona,
                 lorebooks: [],
                 messages
             })
@@ -507,10 +572,8 @@ describe('buildPrompt', () => {
 
         await expect(
             buildTestPrompt({
-                character,
                 chat,
                 preset,
-                persona,
                 lorebooks: [],
                 messages
             })
@@ -541,17 +604,15 @@ describe('buildPrompt', () => {
         };
 
         const prompt = await buildTestPrompt({
-            character,
             chat,
             preset,
-            persona,
             lorebooks: [],
             messages
         });
 
         expect(at).toHaveBeenCalledWith(1);
         expect(at).toHaveBeenCalledWith(0);
-        expect(prompt).toEqual([{ role: 'assistant', content: 'ok' }]);
+        expect(toTextMessages(prompt)).toEqual([{ role: 'assistant', content: 'ok' }]);
     });
 
     it('throws when unbounded history has messages but the latest does not fit', async () => {
@@ -576,10 +637,8 @@ describe('buildPrompt', () => {
 
         await expect(
             buildTestPrompt({
-                character,
                 chat,
                 preset,
-                persona,
                 lorebooks: [],
                 messages
             })
@@ -610,10 +669,8 @@ describe('buildPrompt', () => {
 
         await expect(
             buildTestPrompt({
-                character,
                 chat,
                 preset,
-                persona,
                 lorebooks: [],
                 messages
             })

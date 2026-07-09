@@ -267,7 +267,9 @@ describe('Chat Pipeline', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.mocked(getChatTask).mockReturnValue(null);
-        vi.mocked(buildPrompt).mockResolvedValue([{ role: 'user', content: 'test' }]);
+        vi.mocked(buildPrompt).mockResolvedValue([
+            { role: 'user', content: [{ type: 'text', text: 'test' }] }
+        ]);
         vi.mocked(selectLLMHandler).mockReturnValue({
             stream: vi.fn(async function* () {
                 yield { content: 'Response' };

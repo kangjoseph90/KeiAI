@@ -14,7 +14,13 @@
  *   GenerationManager.generate(chatId, handler);
  */
 
-import type { LLMStreamOptions, LLMStreamContent, LLMStreamHandler, OpenAIChat } from '../types';
+import {
+    getTextContent,
+    type LLMStreamOptions,
+    type LLMStreamContent,
+    type LLMStreamHandler,
+    type LLMMessage
+} from '../types';
 import { debounceStream } from '$lib/utils/stream';
 import { abortableSleep } from '$lib/utils/async';
 
@@ -79,7 +85,7 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
     }
 
     async *stream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
@@ -88,11 +94,27 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
         yield* debounceStream(rawStream);
     }
 
-    private getResponse(messages: OpenAIChat[]): string {
+    private getResponse(messages: LLMMessage[]): string {
+        const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+        const imageCount = lastUserMessage
+            ? lastUserMessage.content.filter((part) => part.type === 'image').length
+            : 0;
+        if (imageCount > 0) {
+            const text = getTextContent(lastUserMessage!.content).trim();
+            const attachmentLabel = imageCount === 1 ? 'image attachment' : 'image attachments';
+            return [
+                `[Mock vision] Received ${imageCount} ${attachmentLabel}.`,
+                text ? `Text prompt: ${text}` : ''
+            ]
+                .filter(Boolean)
+                .join('\n\n');
+        }
+
         switch (this.behavior) {
             case 'echo': {
-                const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
-                return lastUserMessage?.content ?? '(no user message)';
+                return lastUserMessage
+                    ? getTextContent(lastUserMessage.content)
+                    : '(no user message)';
             }
             case 'markdown':
                 return MARKDOWN_RESPONSE;
@@ -103,7 +125,7 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
     }
 
     private async *rawStream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal
     ): AsyncIterable<LLMStreamContent> {
         const state: LLMStreamContent = {
@@ -131,9 +153,9 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
         // 3. Simulate "Tool Call" phase if messages mention 'tool' or '날씨'
         const lastMessage = messages[messages.length - 1];
         const isUserTurn = lastMessage && lastMessage.role === 'user';
+        const lastMessageText = lastMessage ? getTextContent(lastMessage.content) : '';
         const hasKeyword =
-            lastMessage &&
-            (lastMessage.content.includes('tool') || lastMessage.content.includes('날씨'));
+            lastMessage && (lastMessageText.includes('tool') || lastMessageText.includes('날씨'));
 
         if (isUserTurn && hasKeyword) {
             state.toolCalls = [
@@ -147,16 +169,16 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
         }
     }
 
-    private async *complete(messages: OpenAIChat[]): AsyncIterable<LLMStreamContent> {
+    private async *complete(messages: LLMMessage[]): AsyncIterable<LLMStreamContent> {
         const state: LLMStreamContent = {
             content: this.getResponse(messages),
             thought: '질문을 분석하고 적절한 답변을 생성했습니다.'
         };
         const lastMessage = messages[messages.length - 1];
         const isUserTurn = lastMessage && lastMessage.role === 'user';
+        const lastMessageText = lastMessage ? getTextContent(lastMessage.content) : '';
         const hasKeyword =
-            lastMessage &&
-            (lastMessage.content.includes('tool') || lastMessage.content.includes('날씨'));
+            lastMessage && (lastMessageText.includes('tool') || lastMessageText.includes('날씨'));
 
         if (isUserTurn && hasKeyword) {
             state.toolCalls = [

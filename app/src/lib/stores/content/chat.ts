@@ -8,7 +8,7 @@ import {
     type Lorebook,
     type Chat
 } from '$lib/services';
-import type { FolderDef } from '$lib/types/refs';
+import type { AssetRef, FolderDef } from '$lib/types/refs';
 import { compareSortOrder, generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import {
     roomChats,
@@ -428,13 +428,17 @@ export async function removeChatPersona(chatId: string, personaId: string): Prom
 
 // ─── Chat-owned Inlay CRUD ─────────────────────────────────────────
 
-export async function createChatInlay(chatId: string, asset: File | AssetFields): Promise<void> {
+export async function createChatInlay(
+    chatId: string,
+    asset: File | AssetFields
+): Promise<AssetRef> {
     const chat = await getChat(chatId);
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
     const sortOrder = generateSortOrder(chat.inlays.refs, chat.inlays.folders);
-    const updated = await ChatService.createInlay(chatId, asset, sortOrder);
+    const { chat: updated, ref } = await ChatService.createInlay(chatId, asset, sortOrder);
     roomChats.set(chatId, updated);
+    return ref;
 }
 
 export async function deleteChatInlay(chatId: string, assetId: string): Promise<void> {

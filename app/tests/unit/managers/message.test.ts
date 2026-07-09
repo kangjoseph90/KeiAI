@@ -106,10 +106,34 @@ describe('MessageManager', () => {
         expect(deleteMessageSwipe).toHaveBeenCalledWith('msg-1', 'old-swipe');
         expect(createMessageSwipe).toHaveBeenCalledWith('msg-1', {
             parts: [{ type: 'content', text: 'Replacement' }],
-            variables: {},
-            speakerId: undefined,
-            speakerName: undefined
+            variables: {}
         });
+    });
+
+    it('persists attachment references on the new swipe', async () => {
+        await prepareNextSwipe(baseMessage, {
+            parts: [{ type: 'content', text: 'With image' }],
+            variables: {},
+            attachments: ['inlay-1', 'inlay-2']
+        });
+
+        expect(createMessageSwipe).toHaveBeenCalledWith(
+            'msg-1',
+            expect.objectContaining({ attachments: ['inlay-1', 'inlay-2'] })
+        );
+    });
+
+    it('omits empty attachment references', async () => {
+        await prepareNextSwipe(baseMessage, {
+            parts: [{ type: 'content', text: 'Text only' }],
+            variables: {},
+            attachments: []
+        });
+
+        expect(createMessageSwipe).toHaveBeenCalledWith(
+            'msg-1',
+            expect.not.objectContaining({ attachments: expect.anything() })
+        );
     });
 
     it('does not delete when replaceActiveSwipe is set but the active swipe is missing', async () => {
