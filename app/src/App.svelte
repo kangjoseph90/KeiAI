@@ -42,9 +42,11 @@
     import { createLogger } from '$lib/adapters/logger';
     import ModalHost from '$lib/components/app/ModalHost.svelte';
     import ToastHost from '$lib/components/app/ToastHost.svelte';
+    import { getWebCryptoAvailabilityIssue, type WebCryptoAvailabilityIssue } from '$lib/crypto';
 
     let ready = $state(false);
     let errorMsg = $state('');
+    let cryptoIssue = $state<WebCryptoAvailabilityIssue | null>(null);
     let sidebarCollapsed = $state(false);
     const logger = createLogger('route:page');
 
@@ -160,6 +162,9 @@
 
     onMount(async () => {
         try {
+            cryptoIssue = getWebCryptoAvailabilityIssue();
+            if (cryptoIssue) return;
+
             sidebarCollapsed = window.matchMedia('(max-width: 767px)').matches;
             startSyncStatusTracking();
             await clock.init(appKV);
@@ -190,7 +195,34 @@
 </script>
 
 <main class="flex h-screen bg-background text-foreground overflow-hidden">
-    {#if errorMsg}
+    {#if cryptoIssue}
+        <div class="flex flex-1 items-center justify-center p-6">
+            <section class="w-full max-w-lg rounded-xl border bg-card p-6 shadow-sm">
+                <div
+                    class="mb-4 inline-flex rounded-full bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive"
+                >
+                    Startup blocked
+                </div>
+                <h1 class="text-xl font-semibold">{cryptoIssue.title}</h1>
+                <p class="mt-3 text-sm leading-6 text-muted-foreground">
+                    {cryptoIssue.message}
+                </p>
+                <div class="mt-5 rounded-lg border bg-muted/30 p-4 text-sm">
+                    <p class="font-medium">How to continue</p>
+                    <ul class="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+                        <li>Open KeiAI from an HTTPS address.</li>
+                        <li>Use a modern browser with Web Crypto support.</li>
+                        <li>Use the native Tauri app when available.</li>
+                    </ul>
+                </div>
+                <p class="mt-4 text-xs text-muted-foreground">
+                    During local development, plain HTTP network URLs may not expose
+                    <code>crypto.subtle</code>. Use HTTPS or localhost-style access for device
+                    testing.
+                </p>
+            </section>
+        </div>
+    {:else if errorMsg}
         <div
             class="absolute inset-x-0 top-0 z-50 bg-destructive px-4 py-2 text-center text-sm font-medium text-white"
         >
@@ -198,7 +230,9 @@
         </div>
     {/if}
 
-    {#if !ready}
+    {#if cryptoIssue}
+        <!-- Startup is intentionally blocked until Web Crypto is available. -->
+    {:else if !ready}
         <div class="flex flex-1 items-center justify-center">
             <p class="text-muted-foreground text-sm">Initializing Secure Local Session...</p>
         </div>
