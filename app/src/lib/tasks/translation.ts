@@ -15,6 +15,8 @@ import {
     clearTranslationTask,
     createTranslationTask,
     getTranslationTask,
+    notifyTranslationTaskComplete,
+    notifyTranslationTaskError,
     setTranslationTaskError
 } from '$lib/stores/tasks/translation';
 import { WorkflowRuntime } from '$lib/workflow';
@@ -102,11 +104,14 @@ export async function runTranslation(
         }
 
         clearTranslationTask(messageId);
+        notifyTranslationTaskComplete(messageId);
     } catch (error) {
         if (controller.signal.aborted) {
             clearTranslationTask(messageId);
         } else {
-            setTranslationTaskError(messageId, getErrorMessage(error, 'Translation failed'));
+            const errorMessage = getErrorMessage(error, 'Translation failed');
+            setTranslationTaskError(messageId, errorMessage);
+            notifyTranslationTaskError(messageId, errorMessage);
         }
         throw error;
     }

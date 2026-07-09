@@ -14,7 +14,9 @@ vi.mock('$lib/stores/tasks/chat', () => ({
     createChatTask: vi.fn(),
     setChatTaskError: vi.fn(),
     getChatTask: vi.fn(),
-    clearChatTask: vi.fn()
+    clearChatTask: vi.fn(),
+    notifyChatTaskComplete: vi.fn(),
+    notifyChatTaskError: vi.fn()
 }));
 
 vi.mock('$lib/stores/content/message', () => ({
@@ -215,7 +217,9 @@ import {
     createChatTask,
     setChatTaskError,
     getChatTask,
-    clearChatTask
+    clearChatTask,
+    notifyChatTaskComplete,
+    notifyChatTaskError
 } from '$lib/stores/tasks/chat';
 import {
     createMessage,
@@ -389,6 +393,8 @@ describe('Chat Pipeline', () => {
         expect(setChatTaskError).not.toHaveBeenCalled();
         // Should clear task on success
         expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
+        expect(notifyChatTaskComplete).toHaveBeenCalledWith(mockChatId);
+        expect(notifyChatTaskError).not.toHaveBeenCalled();
     });
 
     it('should prevent duplicate runs for the same chat', async () => {
@@ -420,6 +426,7 @@ describe('Chat Pipeline', () => {
         await runChat(mockChatId, 'char-1', 'persona-1');
 
         expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Agent failed: Prompt error');
+        expect(notifyChatTaskError).toHaveBeenCalledWith(mockChatId, 'Agent failed: Prompt error');
     });
 
     it('should reject generation when the character ref is missing in room', async () => {
@@ -484,6 +491,7 @@ describe('Chat Pipeline', () => {
         await runChat(mockChatId, 'char-1', 'persona-1');
 
         expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Empty response from model');
+        expect(notifyChatTaskError).toHaveBeenCalledWith(mockChatId, 'Empty response from model');
         expect(clearChatTask).not.toHaveBeenCalled();
     });
 
@@ -499,6 +507,8 @@ describe('Chat Pipeline', () => {
         await runChat(mockChatId, 'char-1', 'persona-1');
 
         expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
+        expect(notifyChatTaskComplete).not.toHaveBeenCalled();
+        expect(notifyChatTaskError).not.toHaveBeenCalled();
     });
 
     it('should surface handler errors', async () => {
@@ -513,6 +523,7 @@ describe('Chat Pipeline', () => {
         await runChat(mockChatId, 'char-1', 'persona-1');
 
         expect(setChatTaskError).toHaveBeenCalledWith(mockChatId, 'Agent failed: Network fail');
+        expect(notifyChatTaskError).toHaveBeenCalledWith(mockChatId, 'Agent failed: Network fail');
         expect(clearChatTask).not.toHaveBeenCalled();
     });
 

@@ -1,6 +1,21 @@
 import { get } from 'svelte/store';
-import { translationTasks } from '../state';
+import { activeChatId, translationTasks } from '../state';
+import { MessageService } from '$lib/services';
 import type { TranslationTask } from '../types';
+import { isDocumentVisible, showTaskNotificationOrToast } from './notification';
+
+const TRANSLATION_COMPLETE_TITLE = 'Translation ready';
+const TRANSLATION_COMPLETE_DESCRIPTION = 'A translation has finished generating.';
+const TRANSLATION_ERROR_TITLE = 'Translation failed';
+
+async function getMessageChatId(messageId: string): Promise<string | null> {
+    try {
+        const message = await MessageService.get(messageId);
+        return message?.chatId ?? null;
+    } catch {
+        return null;
+    }
+}
 
 export function createTranslationTask(
     messageId: string,
@@ -26,6 +41,23 @@ export function setTranslationTaskError(messageId: string, errorMessage: string)
         next.set(messageId, { ...task, status: 'error', errorMessage });
         return next;
     });
+}
+
+export function notifyTranslationTaskComplete(messageId: string): void {
+    void (async () => {
+        const chatId = await getMessageChatId(messageId);
+        if (chatId && get(activeChatId) === chatId && isDocumentVisible()) return;
+
+        await showTaskNotificationOrToast(
+            'success',
+            TRANSLATION_COMPLETE_TITLE,
+            TRANSLATION_COMPLETE_DESCRIPTION
+        );
+    })();
+}
+
+export function notifyTranslationTaskError(_messageId: string, errorMessage: string): void {
+    void showTaskNotificationOrToast('error', TRANSLATION_ERROR_TITLE, errorMessage);
 }
 
 export function clearTranslationTask(messageId: string): void {
