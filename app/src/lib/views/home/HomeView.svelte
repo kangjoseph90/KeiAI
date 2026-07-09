@@ -93,6 +93,8 @@
     let approvingMemberId = $state('');
     let managedRoomId = $state<string | null>(null);
     let manageDialogOpen = $state(false);
+    let viewportWidth = $state(1024);
+    const libraryEntityLayout = $derived(viewportWidth < 768 ? 'list' : 'grid');
 
     const filteredRooms = $derived(() => {
         const normalized = query.trim().toLowerCase();
@@ -463,6 +465,8 @@
     }
 </script>
 
+<svelte:window bind:innerWidth={viewportWidth} />
+
 <div class="flex h-full flex-col overflow-hidden bg-background">
     <header class="shrink-0 border-b px-8 py-6">
         <div class="flex items-center justify-between gap-4">
@@ -639,7 +643,7 @@
                     <EntityList
                         entities={filteredRooms()}
                         config={$appSettings.rooms}
-                        layout="grid"
+                        layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
                         onItemClick={(room) => onNavigate({ view: 'room', roomId: room.id })}
                         onCreateFolder={(name, parentId, sortOrder) =>
@@ -832,7 +836,7 @@
                     <EntityList
                         entities={filteredMultiRooms()}
                         config={$appSettings.multiRooms}
-                        layout="grid"
+                        layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
                         onItemClick={(room) => openMultiRoom(room.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
@@ -929,7 +933,7 @@
                     <EntityList
                         entities={filteredCharacters()}
                         config={$appSettings.characters}
-                        layout="grid"
+                        layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
                         onItemClick={(character) =>
                             onNavigate({ view: 'characterStudio', charId: character.id })}
@@ -1023,7 +1027,7 @@
                     <EntityList
                         entities={filteredModules()}
                         config={$appSettings.modules}
-                        layout="grid"
+                        layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
                         onItemClick={(mod) =>
                             onNavigate({ view: 'moduleStudio', moduleId: mod.id })}
@@ -1125,7 +1129,7 @@
                     <EntityList
                         entities={filteredPersonas()}
                         config={$appSettings.personas}
-                        layout="grid"
+                        layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
                         onItemClick={(persona) =>
                             onNavigate({ view: 'personaStudio', personaId: persona.id })}

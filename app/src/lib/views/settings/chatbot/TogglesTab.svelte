@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Plus, Trash2 } from 'lucide-svelte';
+    import { GripVertical, Plus, Trash2 } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import {
         createPresetCustomToggle,
@@ -60,6 +60,12 @@
         {#snippet item({ entity: toggle })}
             <div class="flex flex-col gap-1.5 rounded-lg border p-3 hover:bg-muted/30">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div
+                        class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+                        aria-hidden="true"
+                    >
+                        <GripVertical class="size-4" />
+                    </div>
                     <input
                         class="h-9 min-w-0 rounded-md border bg-background px-2 text-xs sm:w-1/4"
                         value={'key' in toggle ? (toggle.key ?? '') : ''}

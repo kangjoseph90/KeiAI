@@ -16,6 +16,7 @@
     import { generateKeyBetween } from 'fractional-indexing';
     import EntityList from './EntityList.svelte';
     import { appPrompt } from '$lib/ui';
+    import { isInteractiveDragTarget, pointerDrag } from './pointer-drag';
 
     interface FolderSnippetPayload {
         folder: FolderDef;
@@ -118,7 +119,6 @@
     // Local states
     let editingFolderId = $state<string | null>(null);
     let renameValue = $state('');
-    let dragSuppressedId = $state<string | null>(null);
 
     interface VisualItem {
         type: 'folder' | 'entity';
@@ -130,9 +130,9 @@
     }
 
     // ─── Visual Items Calculation ──────────────────────────────────────
-    const visualItems = $derived.by(() => {
+    function buildVisualItems(forParentId: string | undefined): VisualItem[] {
         const currentFolders = Object.values(config.folders || {}).filter(
-            (f) => f && f.parentId === parentId
+            (f) => f && f.parentId === forParentId
         );
 
         const currentEntities: T[] = [];
@@ -142,10 +142,10 @@
             if (!ent) continue;
             const ref = config.refs?.[ent.id];
             if (!ref) {
-                if (parentId === undefined) {
+                if (forParentId === undefined) {
                     unreferredEntities.push(ent);
                 }
-            } else if (ref.folderId === parentId) {
+            } else if (ref.folderId === forParentId) {
                 currentEntities.push(ent);
             }
         }
@@ -190,7 +190,9 @@
         }
 
         return items;
-    });
+    }
+
+    const visualItems = $derived(buildVisualItems(parentId));
 
     // ─── Helper: Check Cyclical Folder Hierarchy ───────────────────────
     function isDescendantOf(folderId: string | undefined, ancestorId: string): boolean {
@@ -222,50 +224,12 @@
     }
 
     // ─── Drag & Drop Handlers ──────────────────────────────────────────
-    function isInteractiveDragTarget(target: EventTarget | null): boolean {
-        if (!(target instanceof Element)) return false;
-        return Boolean(
-            target.closest(
-                'input, textarea, select, button, a, [contenteditable="true"], [data-no-reorder-drag]'
-            )
-        );
-    }
-
-    function handlePointerDown(e: PointerEvent, id: string) {
-        dragSuppressedId = isInteractiveDragTarget(e.target) ? id : null;
-    }
-
-    function clearDragSuppression() {
-        dragSuppressedId = null;
-    }
-
-    function handleDragStart(e: DragEvent, node: VisualItem) {
-        if (
-            mode === 'browse' ||
-            dragSuppressedId === node.id ||
-            isInteractiveDragTarget(e.target)
-        ) {
-            e.preventDefault();
-            return;
-        }
-
-        ctx.draggedId = node.id;
-        ctx.draggedType = node.type;
-        ctx.draggedParentId = parentId;
-
-        if (e.dataTransfer) {
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', node.id);
-        }
-    }
-
     function resetDragState() {
         ctx.draggedId = null;
         ctx.draggedType = null;
         ctx.draggedParentId = undefined;
         ctx.dragOverId = null;
         ctx.dragOverZone = null;
-        dragSuppressedId = null;
     }
 
     function getSiblingsIn(folderId: string | undefined): {
@@ -281,33 +245,40 @@
         return { refs, folders };
     }
 
-    function handleDragOver(e: DragEvent, node: VisualItem) {
-        e.stopPropagation();
-
+    function setDragTarget(
+        target: HTMLElement,
+        clientX: number,
+        clientY: number,
+        node: VisualItem,
+        forcedZone?: 'before' | 'after' | 'overlap'
+    ) {
         if (!isDragAllowed(ctx.draggedId, ctx.draggedType, node)) {
             ctx.dragOverId = null;
             ctx.dragOverZone = null;
             return;
         }
 
-        e.preventDefault();
-
-        const target = e.currentTarget as HTMLElement;
         const rect = target.getBoundingClientRect();
-        let zone: 'before' | 'after' | 'overlap' = 'overlap';
+        let zone: 'before' | 'after' | 'overlap' = forcedZone ?? 'overlap';
 
         const isFolderOpen = node.type === 'folder' && !ctx.collapsedFolders[node.id];
 
+        if (forcedZone) {
+            ctx.dragOverId = node.id;
+            ctx.dragOverZone = zone;
+            return;
+        }
+
         if (layout === 'list') {
-            const pctY = (e.clientY - rect.top) / rect.height;
+            const pctY = (clientY - rect.top) / rect.height;
             if (pctY < 0.25) {
                 zone = 'before';
             } else if (pctY > 0.75) {
                 zone = isFolderOpen ? 'overlap' : 'after';
             }
         } else {
-            const pctX = (e.clientX - rect.left) / rect.width;
-            const pctY = (e.clientY - rect.top) / rect.height;
+            const pctX = (clientX - rect.left) / rect.width;
+            const pctY = (clientY - rect.top) / rect.height;
             if (pctX < 0.25 || pctY < 0.25) {
                 zone = 'before';
             } else if (pctX > 0.75 || pctY > 0.75) {
@@ -319,18 +290,11 @@
         ctx.dragOverZone = zone;
     }
 
-    function handleDragLeave(e: DragEvent, node: VisualItem) {
-        e.stopPropagation();
-        if (ctx.dragOverId === node.id) {
-            ctx.dragOverId = null;
-            ctx.dragOverZone = null;
-        }
-    }
-
-    async function handleDrop(e: DragEvent, targetNode: VisualItem) {
-        e.preventDefault();
-        e.stopPropagation();
-
+    async function dropOnTarget(
+        targetNode: VisualItem,
+        targetParentId: string | undefined,
+        siblings: VisualItem[]
+    ) {
         const draggedId = ctx.draggedId;
         const draggedType = ctx.draggedType;
         const sourceParentId = ctx.draggedParentId;
@@ -364,7 +328,7 @@
 
                 const newFolder = await onCreateFolder(
                     newFolderName,
-                    parentId,
+                    targetParentId,
                     targetNode.sortOrder
                 );
                 try {
@@ -385,7 +349,6 @@
                 }
             }
         } else {
-            const siblings = visualItems;
             const targetIdx = siblings.findIndex((s) => s.id === targetNode.id);
             if (targetIdx === -1) return;
 
@@ -403,9 +366,12 @@
             }
 
             if (draggedType === 'entity') {
-                await onMoveItem(draggedId, parentId, newSortOrder);
+                await onMoveItem(draggedId, targetParentId, newSortOrder);
             } else {
-                await onUpdateFolder(draggedId, { parentId, sortOrder: newSortOrder });
+                await onUpdateFolder(draggedId, {
+                    parentId: targetParentId,
+                    sortOrder: newSortOrder
+                });
             }
         }
 
@@ -414,60 +380,43 @@
         }
     }
 
-    // ─── Nested Drop Zone Handlers ───────────────────────────────────────
-    function handleNestedDragOver(e: DragEvent, folderId: string) {
-        e.stopPropagation();
-        if (ctx.draggedId && isDescendantOf(folderId, ctx.draggedId)) {
+    function getPointerTarget(clientX: number, clientY: number) {
+        const element = document
+            .elementFromPoint(clientX, clientY)
+            ?.closest<HTMLElement>('[data-entity-dnd-id]');
+        if (!element) return null;
+
+        const id = element.dataset.entityDndId;
+        const type = element.dataset.entityDndType;
+        if (!id || (type !== 'folder' && type !== 'entity')) return null;
+
+        const targetParentId =
+            type === 'folder' ? config.folders[id]?.parentId : config.refs[id]?.folderId;
+        const siblings = buildVisualItems(targetParentId);
+        const node = siblings.find((candidate) => candidate.id === id && candidate.type === type);
+        const forcedZone: 'overlap' | undefined =
+            element.dataset.entityDndZone === 'folder-contents' ? 'overlap' : undefined;
+        return node ? { element, node, targetParentId, siblings, forcedZone } : null;
+    }
+
+    function handlePointerDragMove(clientX: number, clientY: number) {
+        const target = getPointerTarget(clientX, clientY);
+        if (!target) {
             ctx.dragOverId = null;
             ctx.dragOverZone = null;
+            return null;
+        }
+        setDragTarget(target.element, clientX, clientY, target.node, target.forcedZone);
+        return target;
+    }
+
+    async function handlePointerDrop(clientX: number, clientY: number) {
+        const target = handlePointerDragMove(clientX, clientY);
+        if (!target) {
+            resetDragState();
             return;
         }
-        e.preventDefault();
-        ctx.dragOverId = folderId;
-        ctx.dragOverZone = 'after';
-    }
-
-    function handleNestedDragLeave(e: DragEvent, folderId: string) {
-        e.stopPropagation();
-        if (ctx.dragOverId === folderId) {
-            ctx.dragOverId = null;
-            ctx.dragOverZone = null;
-        }
-    }
-
-    async function handleNestedDrop(e: DragEvent, folderId: string) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const draggedId = ctx.draggedId;
-        const draggedType = ctx.draggedType;
-        const sourceParentId = ctx.draggedParentId;
-
-        resetDragState();
-
-        if (!draggedId || !draggedType) return;
-        if (isDescendantOf(folderId, draggedId)) return;
-
-        const siblings = visualItems;
-        const targetIdx = siblings.findIndex((s) => s.id === folderId);
-        if (targetIdx === -1) return;
-
-        let newSortOrder: string;
-        const folder = siblings[targetIdx];
-        const nextNode = siblings[targetIdx + 1];
-        newSortOrder = nextNode
-            ? generateKeyBetween(folder.sortOrder, nextNode.sortOrder)
-            : generateKeyBetween(folder.sortOrder, null);
-
-        if (draggedType === 'entity') {
-            await onMoveItem(draggedId, parentId, newSortOrder);
-        } else {
-            await onUpdateFolder(draggedId, { parentId, sortOrder: newSortOrder });
-        }
-
-        if (sourceParentId) {
-            await cleanEmptyFolders(sourceParentId);
-        }
+        await dropOnTarget(target.node, target.targetParentId, target.siblings);
     }
 
     // ─── Folder Children Lookup ──────────────────────────────────────────
@@ -748,15 +697,19 @@
                 <div class={layout === 'grid' && !isCollapsed ? 'col-span-full' : ''}>
                     <div
                         role="none"
-                        draggable={mode === 'manage' && dragSuppressedId !== visualNode.id}
-                        onpointerdown={(e) => handlePointerDown(e, visualNode.id)}
-                        onpointerup={clearDragSuppression}
-                        onpointercancel={clearDragSuppression}
-                        ondragstart={(e) => handleDragStart(e, visualNode)}
-                        ondragover={(e) => handleDragOver(e, visualNode)}
-                        ondragleave={(e) => handleDragLeave(e, visualNode)}
-                        ondrop={(e) => handleDrop(e, visualNode)}
-                        ondragend={resetDragState}
+                        data-entity-dnd-id={visualNode.id}
+                        data-entity-dnd-type="folder"
+                        use:pointerDrag={{
+                            disabled: mode === 'browse',
+                            onStart: () => {
+                                ctx.draggedId = visualNode.id;
+                                ctx.draggedType = visualNode.type;
+                                ctx.draggedParentId = parentId;
+                            },
+                            onMove: handlePointerDragMove,
+                            onDrop: handlePointerDrop,
+                            onCancel: resetDragState
+                        }}
                         class={folderWrapperClass
                             ? folderWrapperClass(f, isCollapsed)
                             : `relative transition-all duration-200 drop-target w-full ${layout === 'grid' ? 'p-1.5' : 'py-0.5'}`}
@@ -789,10 +742,10 @@
                     <div class={layout === 'grid' ? 'col-span-full' : ''}>
                         <div
                             role="none"
+                            data-entity-dnd-id={f.id}
+                            data-entity-dnd-type="folder"
+                            data-entity-dnd-zone="folder-contents"
                             class="{childContainerClass} {getFolderGroupClass(f.color)}"
-                            ondragover={(e) => handleNestedDragOver(e, f.id)}
-                            ondragleave={(e) => handleNestedDragLeave(e, f.id)}
-                            ondrop={(e) => handleNestedDrop(e, f.id)}
                         >
                             <EntityList
                                 {entities}
@@ -826,15 +779,19 @@
                 <!-- Entity Row or Grid Card -->
                 {@const entity = visualNode.entity!}
                 <div
-                    draggable={mode === 'manage' && dragSuppressedId !== visualNode.id}
-                    onpointerdown={(e) => handlePointerDown(e, visualNode.id)}
-                    onpointerup={clearDragSuppression}
-                    onpointercancel={clearDragSuppression}
-                    ondragstart={(e) => handleDragStart(e, visualNode)}
-                    ondragover={(e) => handleDragOver(e, visualNode)}
-                    ondragleave={(e) => handleDragLeave(e, visualNode)}
-                    ondrop={(e) => handleDrop(e, visualNode)}
-                    ondragend={resetDragState}
+                    data-entity-dnd-id={visualNode.id}
+                    data-entity-dnd-type="entity"
+                    use:pointerDrag={{
+                        disabled: mode === 'browse',
+                        onStart: () => {
+                            ctx.draggedId = visualNode.id;
+                            ctx.draggedType = visualNode.type;
+                            ctx.draggedParentId = parentId;
+                        },
+                        onMove: handlePointerDragMove,
+                        onDrop: handlePointerDrop,
+                        onCancel: resetDragState
+                    }}
                     onclick={(e) => {
                         if (!isInteractiveDragTarget(e.target) && onItemClick) {
                             onItemClick(entity);
@@ -873,5 +830,8 @@
     }
     :global(.drag-active) .drop-target > * {
         pointer-events: none !important;
+    }
+    :global(.pointer-drag-source) {
+        opacity: 0.4;
     }
 </style>

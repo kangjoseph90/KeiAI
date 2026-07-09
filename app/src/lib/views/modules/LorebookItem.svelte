@@ -6,7 +6,16 @@
     import { Textarea } from '$lib/components/ui/textarea';
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
-    import { ChevronDown, ChevronRight, ChevronUp, Eye, EyeOff, Trash2, Zap } from 'lucide-svelte';
+    import {
+        ChevronDown,
+        ChevronRight,
+        ChevronUp,
+        Eye,
+        EyeOff,
+        GripVertical,
+        Trash2,
+        Zap
+    } from 'lucide-svelte';
     import type { LLMRole } from '$lib/types/models/llm';
 
     let {
@@ -39,6 +48,12 @@
         : ''}"
 >
     <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+        <div
+            class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+            aria-hidden="true"
+        >
+            <GripVertical class="size-4" />
+        </div>
         <button
             type="button"
             class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"

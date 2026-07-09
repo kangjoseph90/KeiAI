@@ -6,6 +6,7 @@
         ChevronRight,
         Eye,
         EyeOff,
+        GripVertical,
         MessageSquareText,
         MessagesSquare,
         Plus,
@@ -180,6 +181,12 @@
                                 : 'opacity-55'}"
                         >
                             <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+                                <div
+                                    class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+                                    aria-hidden="true"
+                                >
+                                    <GripVertical class="size-4" />
+                                </div>
                                 <button
                                     class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                                     onclick={() => toggleBlock(block.id)}

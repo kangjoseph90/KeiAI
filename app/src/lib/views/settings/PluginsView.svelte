@@ -24,7 +24,8 @@
         Trash2,
         Play,
         Square,
-        Plus
+        Plus,
+        GripVertical
     } from 'lucide-svelte';
     import { pluginManager } from '$lib/plugins';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
@@ -106,6 +107,12 @@
                 >
                     <!-- 헤더 영역 -->
                     <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+                        <div
+                            class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+                            aria-hidden="true"
+                        >
+                            <GripVertical class="size-4" />
+                        </div>
                         <button
                             type="button"
                             class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
