@@ -15,9 +15,14 @@
             lastPromptId = current.id;
         }
     });
+
+    function handleOpenChange(open: boolean): void {
+        const request = current;
+        if (!open && request) cancelModal(request);
+    }
 </script>
 
-<Dialog.Root open={current !== undefined}>
+<Dialog.Root open={current !== undefined} onOpenChange={handleOpenChange}>
     {#if current}
         <Dialog.Content showCloseButton={false}>
             <Dialog.Header>
@@ -31,20 +36,25 @@
                 <Input
                     bind:value={promptValue}
                     placeholder={current.placeholder}
+                    aria-label={current.title}
+                    autofocus
                     onkeydown={(event) => {
-                        if (event.key === 'Enter') resolveModal(current, promptValue);
-                        if (event.key === 'Escape') cancelModal(current);
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
+                            resolveModal(current, promptValue);
+                        }
                     }}
                 />
             {/if}
 
             <Dialog.Footer>
                 {#if current.type !== 'alert'}
-                    <Button variant="outline" onclick={() => cancelModal(current)}>
+                    <Button type="button" variant="outline" onclick={() => cancelModal(current)}>
                         {current.cancelText}
                     </Button>
                 {/if}
                 <Button
+                    type="button"
                     variant={current.type === 'confirm' && current.variant === 'destructive'
                         ? 'destructive'
                         : 'default'}
