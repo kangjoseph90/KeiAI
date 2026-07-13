@@ -15,6 +15,8 @@
         GripVertical,
         Trash2
     } from 'lucide-svelte';
+    import { appConfirm, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     let {
         item,
@@ -31,6 +33,7 @@
     let expanded = $state(false);
     let advancedOpen = $state(false);
     let openedInitially = $state(false);
+    let busy = $state(false);
 
     const PHASE_OPTIONS: Script['phase'][] = ['input', 'request', 'output', 'display'];
 
@@ -40,9 +43,41 @@
             expanded = true;
         }
     });
+
+    async function handleUpdate(changes: DeepPartial<Script>): Promise<void> {
+        if (busy) return;
+        busy = true;
+        try {
+            await onUpdate(item.id, changes);
+        } catch (error) {
+            toast.error({ title: 'Script update failed', description: getErrorMessage(error) });
+        } finally {
+            busy = false;
+        }
+    }
+
+    async function handleDelete(): Promise<void> {
+        if (busy) return;
+        busy = true;
+        try {
+            const confirmed = await appConfirm({
+                title: 'Delete script?',
+                description: `Delete "${item.name}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed) return;
+            await onDelete(item.id);
+        } catch (error) {
+            toast.error({ title: 'Could not delete script', description: getErrorMessage(error) });
+        } finally {
+            busy = false;
+        }
+    }
 </script>
 
 <div
+    aria-busy={busy}
     class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md {item.enabled
         ? ''
         : 'opacity-55'}"
@@ -68,10 +103,11 @@
         </button>
 
         <Input
+            disabled={busy}
             value={item.name}
             aria-label="Script name"
             class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
-            onchange={(e) => onUpdate(item.id, { name: e.currentTarget.value })}
+            onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
 
         <Badge variant="secondary" class="text-xs shrink-0">{item.phase}</Badge>
@@ -82,7 +118,8 @@
             class="size-8 shrink-0 text-muted-foreground"
             title={item.enabled ? 'Disable script' : 'Enable script'}
             aria-label={item.enabled ? 'Disable script' : 'Enable script'}
-            onclick={() => onUpdate(item.id, { enabled: !item.enabled })}
+            disabled={busy}
+            onclick={() => handleUpdate({ enabled: !item.enabled })}
         >
             {#if item.enabled}
                 <Eye class="size-4" />
@@ -96,7 +133,8 @@
             class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
             title="Delete script"
             aria-label="Delete script"
-            onclick={() => onDelete(item.id)}
+            disabled={busy}
+            onclick={handleDelete}
         >
             <Trash2 class="size-4" />
         </Button>
@@ -113,7 +151,8 @@
                             phase
                                 ? 'bg-secondary text-secondary-foreground font-medium border-secondary shadow-sm'
                                 : 'hover:bg-accent hover:text-accent-foreground border-input bg-background'}"
-                            onclick={() => onUpdate(item.id, { phase })}
+                            disabled={busy}
+                            onclick={() => handleUpdate({ phase })}
                         >
                             {phase}
                         </button>
@@ -124,17 +163,19 @@
             <div class="space-y-1.5">
                 <Label class="text-xs">Regex</Label>
                 <Input
+                    disabled={busy}
                     class="bg-background text-sm font-mono leading-relaxed"
                     value={item.regex}
-                    onchange={(e) => onUpdate(item.id, { regex: e.currentTarget.value })}
+                    onchange={(e) => handleUpdate({ regex: e.currentTarget.value })}
                 />
             </div>
             <div class="space-y-1.5">
                 <Label class="text-xs">Replacement</Label>
                 <Textarea
+                    disabled={busy}
                     class="bg-background text-sm font-mono leading-relaxed min-h-[100px]"
                     value={item.replacement}
-                    onchange={(e) => onUpdate(item.id, { replacement: e.currentTarget.value })}
+                    onchange={(e) => handleUpdate({ replacement: e.currentTarget.value })}
                 />
             </div>
 
@@ -158,19 +199,21 @@
                         <div class="space-y-1.5">
                             <Label class="text-xs">Flag</Label>
                             <Input
+                                disabled={busy}
                                 class="bg-background text-sm font-mono"
                                 value={item.flag}
-                                onchange={(e) => onUpdate(item.id, { flag: e.currentTarget.value })}
+                                onchange={(e) => handleUpdate({ flag: e.currentTarget.value })}
                             />
                         </div>
                         <div class="space-y-1.5">
                             <Label class="text-xs">Order</Label>
                             <Input
+                                disabled={busy}
                                 class="bg-background text-sm"
                                 type="number"
                                 value={item.order}
                                 onchange={(e) =>
-                                    onUpdate(item.id, {
+                                    handleUpdate({
                                         order: parseInt(e.currentTarget.value) || 0
                                     })}
                             />
@@ -178,11 +221,12 @@
                         <div class="space-y-1.5">
                             <Label class="text-xs">Repeat</Label>
                             <Input
+                                disabled={busy}
                                 class="bg-background text-sm"
                                 type="number"
                                 value={item.repeat}
                                 onchange={(e) =>
-                                    onUpdate(item.id, {
+                                    handleUpdate({
                                         repeat: parseInt(e.currentTarget.value) || 0
                                     })}
                             />

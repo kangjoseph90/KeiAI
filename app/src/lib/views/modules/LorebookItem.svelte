@@ -17,6 +17,8 @@
         Zap
     } from 'lucide-svelte';
     import type { LLMRole } from '$lib/types/models/llm';
+    import { appConfirm, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     let {
         item,
@@ -33,6 +35,7 @@
     let expanded = $state(false);
     let advancedOpen = $state(false);
     let openedInitially = $state(false);
+    let busy = $state(false);
 
     $effect(() => {
         if (initiallyEditing && !openedInitially) {
@@ -40,9 +43,44 @@
             expanded = true;
         }
     });
+
+    async function handleUpdate(changes: DeepPartial<Lorebook>): Promise<void> {
+        if (busy) return;
+        busy = true;
+        try {
+            await onUpdate(item.id, changes);
+        } catch (error) {
+            toast.error({ title: 'Lorebook update failed', description: getErrorMessage(error) });
+        } finally {
+            busy = false;
+        }
+    }
+
+    async function handleDelete(): Promise<void> {
+        if (busy) return;
+        busy = true;
+        try {
+            const confirmed = await appConfirm({
+                title: 'Delete lorebook entry?',
+                description: `Delete "${item.name}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed) return;
+            await onDelete(item.id);
+        } catch (error) {
+            toast.error({
+                title: 'Could not delete lorebook',
+                description: getErrorMessage(error)
+            });
+        } finally {
+            busy = false;
+        }
+    }
 </script>
 
 <div
+    aria-busy={busy}
     class="group overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md {item.disabled
         ? 'opacity-55'
         : ''}"
@@ -68,10 +106,11 @@
         </button>
 
         <Input
+            disabled={busy}
             value={item.name}
             aria-label="Entry name"
             class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
-            onchange={(e) => onUpdate(item.id, { name: e.currentTarget.value })}
+            onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
 
         {#if item.disabled}
@@ -87,7 +126,8 @@
                 : 'text-muted-foreground'}"
             title={item.alwaysActive ? 'Deactivate Always Active' : 'Activate Always Active'}
             aria-label={item.alwaysActive ? 'Deactivate Always Active' : 'Activate Always Active'}
-            onclick={() => onUpdate(item.id, { alwaysActive: !item.alwaysActive })}
+            disabled={busy}
+            onclick={() => handleUpdate({ alwaysActive: !item.alwaysActive })}
         >
             <Zap class="size-4 {item.alwaysActive ? 'fill-amber-500/10' : ''}" />
         </Button>
@@ -99,7 +139,8 @@
             class="size-8 shrink-0 text-muted-foreground"
             title={item.disabled ? 'Enable entry' : 'Disable entry'}
             aria-label={item.disabled ? 'Enable entry' : 'Disable entry'}
-            onclick={() => onUpdate(item.id, { disabled: !item.disabled })}
+            disabled={busy}
+            onclick={() => handleUpdate({ disabled: !item.disabled })}
         >
             {#if !item.disabled}
                 <Eye class="size-4" />
@@ -115,7 +156,8 @@
             class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
             title="Delete entry"
             aria-label="Delete entry"
-            onclick={() => onDelete(item.id)}
+            disabled={busy}
+            onclick={handleDelete}
         >
             <Trash2 class="size-4" />
         </Button>
@@ -129,8 +171,8 @@
                         type="checkbox"
                         class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
                         checked={item.alwaysActive}
-                        onchange={(e) =>
-                            onUpdate(item.id, { alwaysActive: e.currentTarget.checked })}
+                        disabled={busy}
+                        onchange={(e) => handleUpdate({ alwaysActive: e.currentTarget.checked })}
                     />
                     <span>Always Active</span>
                 </label>
@@ -141,21 +183,22 @@
                     <div class="space-y-1.5">
                         <Label class="text-xs">Key</Label>
                         <Input
+                            disabled={busy}
                             class="h-8 font-mono text-sm"
                             value={item.key}
                             placeholder="keyword1, keyword2..."
-                            onchange={(e) => onUpdate(item.id, { key: e.currentTarget.value })}
+                            onchange={(e) => handleUpdate({ key: e.currentTarget.value })}
                         />
                     </div>
                     {#if item.useMultipleKeys && !item.useRegex}
                         <div class="space-y-1.5">
                             <Label class="text-xs">Second Key</Label>
                             <Input
+                                disabled={busy}
                                 class="h-8 font-mono text-sm"
                                 value={item.secondKey}
                                 placeholder="Must also match..."
-                                onchange={(e) =>
-                                    onUpdate(item.id, { secondKey: e.currentTarget.value })}
+                                onchange={(e) => handleUpdate({ secondKey: e.currentTarget.value })}
                             />
                         </div>
                     {/if}
@@ -165,10 +208,11 @@
             <div class="space-y-1.5">
                 <Label class="text-xs">Content</Label>
                 <Textarea
+                    disabled={busy}
                     class="text-sm min-h-[100px] font-sans bg-background"
                     value={item.content}
                     placeholder="Fact or lore to insert..."
-                    onchange={(e) => onUpdate(item.id, { content: e.currentTarget.value })}
+                    onchange={(e) => handleUpdate({ content: e.currentTarget.value })}
                 />
             </div>
 
@@ -176,21 +220,23 @@
                 <div class="space-y-1.5">
                     <Label class="text-xs">Depth</Label>
                     <Input
+                        disabled={busy}
                         class="h-8 text-sm"
                         type="number"
                         value={item.depth}
                         onchange={(e) =>
-                            onUpdate(item.id, { depth: parseInt(e.currentTarget.value) || 0 })}
+                            handleUpdate({ depth: parseInt(e.currentTarget.value) || 0 })}
                     />
                 </div>
                 <div class="space-y-1.5">
                     <Label class="text-xs">Order</Label>
                     <Input
+                        disabled={busy}
                         class="h-8 text-sm"
                         type="number"
                         value={item.order}
                         onchange={(e) =>
-                            onUpdate(item.id, { order: parseInt(e.currentTarget.value) || 0 })}
+                            handleUpdate({ order: parseInt(e.currentTarget.value) || 0 })}
                     />
                 </div>
             </div>
@@ -216,10 +262,11 @@
                             <div class="space-y-1.5">
                                 <Label class="text-xs">Insertion Role</Label>
                                 <select
+                                    disabled={busy}
                                     class="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     value={item.role}
                                     onchange={(e) =>
-                                        onUpdate(item.id, {
+                                        handleUpdate({
                                             role: e.currentTarget.value as LLMRole
                                         })}
                                 >
@@ -231,13 +278,14 @@
                             <div class="space-y-1.5">
                                 <Label class="text-xs">Probability (%)</Label>
                                 <Input
+                                    disabled={busy}
                                     class="h-8 text-sm"
                                     type="number"
                                     min="0"
                                     max="100"
                                     value={item.probability}
                                     onchange={(e) =>
-                                        onUpdate(item.id, {
+                                        handleUpdate({
                                             probability: parseInt(e.currentTarget.value) || 0
                                         })}
                                 />
@@ -250,9 +298,10 @@
                                     type="checkbox"
                                     class="size-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
                                     checked={item.scanDepth !== undefined}
+                                    disabled={busy}
                                     id="scanDepthToggle"
                                     onchange={(e) =>
-                                        onUpdate(item.id, {
+                                        handleUpdate({
                                             scanDepth: e.currentTarget.checked ? 5 : undefined
                                         })}
                                 />
@@ -262,11 +311,12 @@
                                 >
                                 {#if item.scanDepth !== undefined}
                                     <Input
+                                        disabled={busy}
                                         class="h-7 w-20 ml-2 text-xs"
                                         type="number"
                                         value={item.scanDepth}
                                         onchange={(e) =>
-                                            onUpdate(item.id, {
+                                            handleUpdate({
                                                 scanDepth: parseInt(e.currentTarget.value) || 5
                                             })}
                                     />
@@ -279,9 +329,10 @@
                                         type="checkbox"
                                         class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
                                         checked={item.useRegex}
+                                        disabled={busy}
                                         onchange={(e) => {
                                             const checked = e.currentTarget.checked;
-                                            onUpdate(item.id, {
+                                            handleUpdate({
                                                 useRegex: checked,
                                                 useMultipleKeys: checked
                                                     ? false
@@ -296,9 +347,9 @@
                                         type="checkbox"
                                         class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
                                         checked={item.useMultipleKeys}
-                                        disabled={item.useRegex}
+                                        disabled={busy || item.useRegex}
                                         onchange={(e) =>
-                                            onUpdate(item.id, {
+                                            handleUpdate({
                                                 useMultipleKeys: e.currentTarget.checked
                                             })}
                                     />
@@ -309,8 +360,9 @@
                                         type="checkbox"
                                         class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
                                         checked={item.recursive}
+                                        disabled={busy}
                                         onchange={(e) =>
-                                            onUpdate(item.id, {
+                                            handleUpdate({
                                                 recursive: e.currentTarget.checked
                                             })}
                                     />
@@ -321,8 +373,9 @@
                                         type="checkbox"
                                         class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
                                         checked={item.noRecursiveSearch}
+                                        disabled={busy}
                                         onchange={(e) =>
-                                            onUpdate(item.id, {
+                                            handleUpdate({
                                                 noRecursiveSearch: e.currentTarget.checked
                                             })}
                                     />
