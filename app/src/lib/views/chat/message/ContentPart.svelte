@@ -15,6 +15,7 @@
     import { SvelteMap } from 'svelte/reactivity';
     import { AssetService } from '$lib/services/asset';
     import type { RuntimeContext } from '$lib/types/context';
+    import { externalLinks } from '$lib/ui';
 
     export interface ContentPartRenderContext {
         ctx: RuntimeContext;
@@ -179,6 +180,7 @@
         data-keiai-message-scope={renderContext.messageScope}
         use:morphHtml={renderedHtml}
         use:hydrateAssets={renderedHtml}
+        use:externalLinks={renderedHtml}
         class="prose prose-sm max-w-none {isUser
             ? '**:text-primary-foreground prose-invert'
             : 'dark:prose-invert'} leading-relaxed"
