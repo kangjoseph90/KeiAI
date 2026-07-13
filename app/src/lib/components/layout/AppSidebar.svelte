@@ -61,13 +61,14 @@
         switchLocalUser,
         createAndSwitchLocalUser
     } from '$lib/stores';
-    import { characterPickerOpen } from '$lib/ui';
+    import { appConfirm, characterPickerOpen, toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { getFolderColorClass } from '$lib/components/entitylist/folders';
     import { addRoomCharacterFromLibrary, setGlobalVariable } from '$lib/managers';
     import type { RouteState } from '$lib/router';
     import { syncChatGreetings } from '$lib/managers';
     import { compareSortOrder } from '$lib/utils/ordering';
+    import { getErrorMessage } from '$lib/types/errors';
 
     interface Props {
         collapsed?: boolean;
@@ -85,6 +86,7 @@
     let roomNameDraft = $state('');
     let switchingUserId = $state<string | null>(null);
     let creatingUser = $state(false);
+    let sidebarAction = $state<string | null>(null);
 
     const filteredChats = $derived(() => {
         const query = chatSearch.trim().toLowerCase();
@@ -107,14 +109,34 @@
         void loadLocalUsers();
     });
 
+    async function runSidebarAction(
+        key: string,
+        errorTitle: string,
+        action: () => void | Promise<void>
+    ): Promise<void> {
+        if (sidebarAction) return;
+        sidebarAction = key;
+        try {
+            await action();
+        } catch (error) {
+            toast.error({ title: errorTitle, description: getErrorMessage(error) });
+        } finally {
+            sidebarAction = null;
+        }
+    }
+
     async function handleCreateChat() {
         if (!$activeRoom) return;
-
-        const chat = await createChat($activeRoom.id, {
-            title: `New Chat ${$roomChats.length + 1}`
+        const roomId = $activeRoom.id;
+        await runSidebarAction('create-chat', 'Could not create chat', async () => {
+            const chat = await createChat(roomId, {
+                title: `New Chat ${$roomChats.length + 1}`
+            });
+            await syncChatGreetings(chat.id);
+            if ($activeRoom?.id === roomId) {
+                onNavigate({ view: 'room', roomId, chatId: chat.id });
+            }
         });
-        await syncChatGreetings(chat.id);
-        onNavigate({ view: 'room', roomId: $activeRoom.id, chatId: chat.id });
     }
 
     function handleSelectRoom(roomId: string) {
@@ -127,62 +149,100 @@
 
     async function handleSelectCharacter(characterId: string) {
         if (!$activeChat) return;
-        await setChatSelectedCharacter($activeChat.id, characterId);
+        const chatId = $activeChat.id;
+        await runSidebarAction(
+            `select-character:${characterId}`,
+            'Could not select character',
+            () => setChatSelectedCharacter(chatId, characterId)
+        );
     }
 
     async function handleSetDefaultCharacter(characterId: string) {
         if (!$activeChat) return;
-        await setChatDefaultCharacter($activeChat.id, characterId);
+        const chatId = $activeChat.id;
+        await runSidebarAction(
+            `default-character:${characterId}`,
+            'Could not set default character',
+            () => setChatDefaultCharacter(chatId, characterId)
+        );
     }
 
     async function handleAddCharacters(characterIds: string[]) {
         if (!$activeRoom) return;
-        for (const characterId of characterIds) {
-            await addRoomCharacter($activeRoom.id, characterId);
-        }
-        if (!$activeChat) return;
-        await syncChatGreetings($activeChat.id);
+        const roomId = $activeRoom.id;
+        const chatId = $activeChat?.id;
+        await runSidebarAction('add-characters', 'Could not add characters', async () => {
+            for (const characterId of characterIds) {
+                await addRoomCharacter(roomId, characterId);
+            }
+            if (chatId) await syncChatGreetings(chatId);
+        });
     }
 
     async function handleCopyCharacters(characterIds: string[]) {
         if (!$activeRoom) return;
-        for (const characterId of characterIds) {
-            await addRoomCharacterFromLibrary($activeRoom.id, characterId);
-        }
-        if ($activeChat) {
-            await syncChatGreetings($activeChat.id);
-        }
+        const roomId = $activeRoom.id;
+        const chatId = $activeChat?.id;
+        await runSidebarAction('copy-characters', 'Could not copy characters', async () => {
+            for (const characterId of characterIds) {
+                await addRoomCharacterFromLibrary(roomId, characterId);
+            }
+            if (chatId) await syncChatGreetings(chatId);
+        });
     }
 
     async function handleRemoveCharacter(characterId: string) {
         if (!$activeRoom) return;
-        await removeRoomCharacter($activeRoom.id, characterId);
-        if (!$activeChat) return;
-        await syncChatGreetings($activeChat.id);
+        const roomId = $activeRoom.id;
+        const chatId = $activeChat?.id;
+        const character = $roomCharacters.find((item) => item.id === characterId);
+        await runSidebarAction(
+            `remove-character:${characterId}`,
+            'Could not remove character',
+            async () => {
+                const confirmed = await appConfirm({
+                    title: 'Remove character from room?',
+                    description: `Remove "${character?.name ?? 'this character'}" from this room?`,
+                    confirmText: 'Remove',
+                    variant: 'destructive'
+                });
+                if (!confirmed || $activeRoom?.id !== roomId) return;
+                await removeRoomCharacter(roomId, characterId);
+                if (chatId) await syncChatGreetings(chatId);
+            }
+        );
     }
 
     async function handleSelectChat(chatId: string) {
         if (!$activeRoom) return;
-        await syncChatGreetings(chatId);
-        onNavigate({ view: 'room', roomId: $activeRoom.id, chatId });
+        const roomId = $activeRoom.id;
+        await runSidebarAction(`select-chat:${chatId}`, 'Could not open chat', async () => {
+            await syncChatGreetings(chatId);
+            if ($activeRoom?.id === roomId) onNavigate({ view: 'room', roomId, chatId });
+        });
     }
 
     async function handleRenameChat(chatId: string) {
         const title = editingChatTitle.trim();
         if (!title) return;
 
-        await updateChat(chatId, { title });
-        editingChatId = null;
-        editingChatTitle = '';
+        await runSidebarAction(`rename-chat:${chatId}`, 'Could not rename chat', async () => {
+            await updateChat(chatId, { title });
+            editingChatId = null;
+            editingChatTitle = '';
+        });
     }
 
     async function handleRenameRoom() {
         if (!$activeRoom || $isMultiRoom) return;
         const name = roomNameDraft.trim();
         if (!name) return;
-        await updateRoom($activeRoom.id, { name });
-        editingRoomName = false;
-        roomNameDraft = '';
+        const roomId = $activeRoom.id;
+        await runSidebarAction('rename-room', 'Could not rename room', async () => {
+            await updateRoom(roomId, { name });
+            editingRoomName = false;
+            roomNameDraft = '';
+        });
     }
 
     function startRenameRoom() {
@@ -193,27 +253,56 @@
 
     async function handleDeleteChat(chatId: string) {
         if (!$activeRoom) return;
-
-        await deleteChat(chatId, $activeRoom.id);
-        if ($activeChat?.id === chatId) {
-            onNavigate({ view: 'room', roomId: $activeRoom.id });
-        }
+        const roomId = $activeRoom.id;
+        const chat = $roomChats.find((item) => item.id === chatId);
+        await runSidebarAction(`delete-chat:${chatId}`, 'Could not delete chat', async () => {
+            const confirmed = await appConfirm({
+                title: 'Delete chat?',
+                description: `Delete "${chat?.title || 'Untitled Chat'}" and its messages?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed || $activeRoom?.id !== roomId) return;
+            await deleteChat(chatId, roomId);
+            if ($activeRoom?.id === roomId && $activeChat?.id === chatId) {
+                onNavigate({ view: 'room', roomId });
+            }
+        });
     }
 
     async function handleToggleChange(key: string, value: string) {
-        await setGlobalVariable(`toggle_${key}`, value);
+        try {
+            await setGlobalVariable(`toggle_${key}`, value);
+        } catch (error) {
+            toast.error({
+                title: 'Could not update variable',
+                description: getErrorMessage(error)
+            });
+        }
     }
 
     async function handleSwitchUser(userId: string) {
         if ($migrationLocked || switchingUserId || creatingUser) return;
         switchingUserId = userId;
-        await switchLocalUser(userId);
+        try {
+            await switchLocalUser(userId);
+        } catch (error) {
+            toast.error({ title: 'Could not switch user', description: getErrorMessage(error) });
+        } finally {
+            switchingUserId = null;
+        }
     }
 
     async function handleCreateUser() {
         if ($migrationLocked || switchingUserId || creatingUser) return;
         creatingUser = true;
-        await createAndSwitchLocalUser();
+        try {
+            await createAndSwitchLocalUser();
+        } catch (error) {
+            toast.error({ title: 'Could not create user', description: getErrorMessage(error) });
+        } finally {
+            creatingUser = false;
+        }
     }
 
     function startRenameChat(chatId: string, title: string) {
@@ -442,7 +531,13 @@
                                         }
                                     }}
                                 />
-                                <Button type="submit" size="icon" class="size-8">
+                                <Button
+                                    type="submit"
+                                    size="icon"
+                                    class="size-8"
+                                    disabled={sidebarAction !== null}
+                                    aria-busy={sidebarAction === 'rename-room'}
+                                >
                                     <Check class="size-3.5" />
                                 </Button>
                                 <Button
@@ -450,6 +545,7 @@
                                     variant="ghost"
                                     size="icon"
                                     class="size-8"
+                                    disabled={sidebarAction !== null}
                                     onclick={() => {
                                         editingRoomName = false;
                                         roomNameDraft = '';
@@ -469,6 +565,7 @@
                                     class="size-8 shrink-0 text-muted-foreground"
                                     title="Rename room"
                                     aria-label="Rename room"
+                                    disabled={sidebarAction !== null}
                                     onclick={startRenameRoom}
                                 >
                                     <Edit3 class="size-3.5" />
@@ -490,6 +587,7 @@
                                 class="size-6 text-muted-foreground hover:text-foreground"
                                 title="Add characters"
                                 aria-label="Add characters"
+                                disabled={sidebarAction !== null}
                                 onclick={() => ($characterPickerOpen = true)}
                             >
                                 <Plus class="size-3.5" />
@@ -582,7 +680,10 @@
                                             ? 'text-primary opacity-100'
                                             : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
                                         title="Set default character"
-                                        disabled={!$activeChat}
+                                        aria-label={`Set ${character.name} as default character`}
+                                        disabled={!$activeChat || sidebarAction !== null}
+                                        aria-busy={sidebarAction ===
+                                            `default-character:${character.id}`}
                                         onclick={() => handleSetDefaultCharacter(character.id)}
                                     >
                                         <Pin class="size-3" />
@@ -590,6 +691,10 @@
                                     <button
                                         class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
                                         title="Remove from room"
+                                        aria-label={`Remove ${character.name} from room`}
+                                        disabled={sidebarAction !== null}
+                                        aria-busy={sidebarAction ===
+                                            `remove-character:${character.id}`}
                                         onclick={() => handleRemoveCharacter(character.id)}
                                     >
                                         <X class="size-3" />
@@ -616,6 +721,8 @@
                             class="size-8 shrink-0"
                             title="New chat"
                             aria-label="New chat"
+                            disabled={sidebarAction !== null}
+                            aria-busy={sidebarAction === 'create-chat'}
                             onclick={handleCreateChat}
                         >
                             <Plus class="size-4" />
@@ -714,7 +821,14 @@
                                                         }
                                                     }}
                                                 />
-                                                <Button type="submit" size="icon" class="size-7">
+                                                <Button
+                                                    type="submit"
+                                                    size="icon"
+                                                    class="size-7"
+                                                    disabled={sidebarAction !== null}
+                                                    aria-busy={sidebarAction ===
+                                                        `rename-chat:${chat.id}`}
+                                                >
                                                     <Check class="size-3" />
                                                 </Button>
                                                 <Button
@@ -722,6 +836,7 @@
                                                     variant="ghost"
                                                     size="icon"
                                                     class="size-7"
+                                                    disabled={sidebarAction !== null}
                                                     onclick={() => {
                                                         editingChatId = null;
                                                         editingChatTitle = '';
@@ -745,6 +860,7 @@
                                                 <button
                                                     class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
                                                     title="Rename chat"
+                                                    disabled={sidebarAction !== null}
                                                     onclick={() =>
                                                         startRenameChat(
                                                             chat.id,
@@ -756,6 +872,10 @@
                                                 <button
                                                     class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
                                                     title="Delete chat"
+                                                    aria-label={`Delete ${chat.title || 'Untitled Chat'}`}
+                                                    disabled={sidebarAction !== null}
+                                                    aria-busy={sidebarAction ===
+                                                        `delete-chat:${chat.id}`}
                                                     onclick={() => handleDeleteChat(chat.id)}
                                                 >
                                                     <Trash2 class="size-3" />
