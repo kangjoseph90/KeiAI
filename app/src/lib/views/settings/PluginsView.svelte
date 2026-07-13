@@ -32,8 +32,11 @@
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
+    import { appConfirm, toast } from '$lib/ui';
+    import { AppError, getErrorMessage } from '$lib/types/errors';
 
     let expandedPluginIds = $state<Record<string, boolean>>({});
+    let busyAction = $state<string | null>(null);
 
     let loadedPluginIds = $state<string[]>(
         pluginManager.getInstances().map((inst) => inst.pluginId)
@@ -43,33 +46,154 @@
         expandedPluginIds[id] = !expandedPluginIds[id];
     }
 
-    async function handleLoad(id: string) {
-        await pluginManager.loadPlugin(id);
+    function refreshLoadedPlugins(): void {
         loadedPluginIds = pluginManager.getInstances().map((inst) => inst.pluginId);
+    }
+
+    function isPluginLoaded(id: string): boolean {
+        return pluginManager.getInstances().some((instance) => instance.pluginId === id);
+    }
+
+    async function restorePluginRuntime(
+        id: string,
+        originalError: unknown,
+        failureMessage: string
+    ): Promise<never> {
+        try {
+            await pluginManager.loadPlugin(id);
+        } catch (recoveryError) {
+            throw new AppError('INVALID_INPUT', failureMessage, {
+                originalError,
+                recoveryError
+            });
+        }
+        throw originalError;
+    }
+
+    async function handleLoad(id: string) {
+        if (busyAction) return;
+        busyAction = `load:${id}`;
+        try {
+            await pluginManager.loadPlugin(id);
+        } catch (error) {
+            toast.error({ title: 'Plugin load failed', description: getErrorMessage(error) });
+        } finally {
+            refreshLoadedPlugins();
+            busyAction = null;
+        }
     }
 
     async function handleUnload(id: string) {
-        await pluginManager.unloadPlugin(id);
-        loadedPluginIds = pluginManager.getInstances().map((inst) => inst.pluginId);
+        if (busyAction) return;
+        busyAction = `unload:${id}`;
+        try {
+            await pluginManager.unloadPlugin(id);
+        } catch (error) {
+            toast.error({ title: 'Plugin unload failed', description: getErrorMessage(error) });
+        } finally {
+            refreshLoadedPlugins();
+            busyAction = null;
+        }
     }
 
     async function handleCreate() {
-        const plugin = await createPlugin();
-        expandedPluginIds[plugin.id] = true;
+        if (busyAction) return;
+        busyAction = 'create';
+        try {
+            const plugin = await createPlugin();
+            expandedPluginIds[plugin.id] = true;
+        } catch (error) {
+            toast.error({ title: 'Could not add plugin', description: getErrorMessage(error) });
+        } finally {
+            busyAction = null;
+        }
+    }
+
+    async function handleDelete(plugin: Plugin) {
+        if (busyAction) return;
+        busyAction = `delete:${plugin.id}`;
+        const wasLoaded = isPluginLoaded(plugin.id);
+        try {
+            const confirmed = await appConfirm({
+                title: 'Delete plugin?',
+                description: `Delete "${plugin.name}" and its local configuration?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed) return;
+            if (wasLoaded) await pluginManager.unloadPlugin(plugin.id);
+            try {
+                await deletePlugin(plugin.id);
+            } catch (error) {
+                if (wasLoaded) {
+                    await restorePluginRuntime(
+                        plugin.id,
+                        error,
+                        'Plugin deletion failed and the previous runtime could not be restored'
+                    );
+                }
+                throw error;
+            }
+        } catch (error) {
+            toast.error({ title: 'Could not delete plugin', description: getErrorMessage(error) });
+        } finally {
+            refreshLoadedPlugins();
+            busyAction = null;
+        }
+    }
+
+    async function handleToggleEnabled(plugin: Plugin) {
+        if (busyAction) return;
+        busyAction = `toggle:${plugin.id}`;
+        const disablingLoaded = plugin.enabled && isPluginLoaded(plugin.id);
+        try {
+            if (disablingLoaded) await pluginManager.unloadPlugin(plugin.id);
+            try {
+                await updatePlugin(plugin.id, { enabled: !plugin.enabled });
+            } catch (error) {
+                if (disablingLoaded) {
+                    await restorePluginRuntime(
+                        plugin.id,
+                        error,
+                        'Plugin update failed and the previous runtime could not be restored'
+                    );
+                }
+                throw error;
+            }
+        } catch (error) {
+            toast.error({
+                title: 'Plugin state change failed',
+                description: getErrorMessage(error)
+            });
+        } finally {
+            refreshLoadedPlugins();
+            busyAction = null;
+        }
+    }
+
+    async function updatePluginSafely(
+        pluginId: string,
+        changes: Parameters<typeof updatePlugin>[1]
+    ): Promise<void> {
+        try {
+            await updatePlugin(pluginId, changes);
+        } catch (error) {
+            toast.error({ title: 'Plugin update failed', description: getErrorMessage(error) });
+        }
     }
 
     async function handleUpdateArgValue(plugin: Plugin, key: string, value: string) {
         const newArgs = { ...plugin.args, [key]: value };
-        await updatePlugin(plugin.id, { args: newArgs });
+        await updatePluginSafely(plugin.id, { args: newArgs });
     }
 
     async function handleAddArg(plugin: Plugin, key: string, value: string) {
         const newArgs = { ...plugin.args, [key]: value };
-        await updatePlugin(plugin.id, { args: newArgs });
+        await updatePluginSafely(plugin.id, { args: newArgs });
     }
 
     async function handleRemoveArg(plugin: Plugin, keyToRemove: string) {
-        await updatePlugin(plugin.id, {
+        await updatePluginSafely(plugin.id, {
             args: {
                 [keyToRemove]: undefined
             }
@@ -80,7 +204,13 @@
 {#if $appSettings}
     <div class="flex flex-col gap-4 px-2">
         <ListActionBar description="Extend KeiAI with custom behavior.">
-            <Button size="sm" class="gap-1.5" onclick={handleCreate}>
+            <Button
+                size="sm"
+                class="gap-1.5"
+                disabled={busyAction !== null}
+                aria-busy={busyAction === 'create'}
+                onclick={handleCreate}
+            >
                 <Plus class="size-4" /> Add Plugin
             </Button>
         </ListActionBar>
@@ -130,10 +260,11 @@
 
                         <Input
                             value={plugin.name}
+                            disabled={busyAction !== null}
                             aria-label="Plugin name"
                             class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
                             onchange={(e) =>
-                                updatePlugin(plugin.id, { name: e.currentTarget.value })}
+                                updatePluginSafely(plugin.id, { name: e.currentTarget.value })}
                         />
                         <!-- Version Badge -->
                         {#if plugin.version && plugin.version.trim() !== ''}
@@ -157,7 +288,9 @@
                             class="size-8 shrink-0 text-muted-foreground"
                             title={plugin.enabled ? 'Disable plugin' : 'Enable plugin'}
                             aria-label={plugin.enabled ? 'Disable plugin' : 'Enable plugin'}
-                            onclick={() => updatePlugin(plugin.id, { enabled: !plugin.enabled })}
+                            disabled={busyAction !== null}
+                            aria-busy={busyAction === `toggle:${plugin.id}`}
+                            onclick={() => handleToggleEnabled(plugin)}
                         >
                             {#if plugin.enabled}
                                 <Eye class="size-4" />
@@ -174,6 +307,8 @@
                                     class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
                                     title="Unload plug-in"
                                     aria-label="Unload plug-in"
+                                    disabled={busyAction !== null}
+                                    aria-busy={busyAction === `unload:${plugin.id}`}
                                     onclick={() => handleUnload(plugin.id)}
                                 >
                                     <Square class="size-4" />
@@ -185,6 +320,8 @@
                                     class="size-8 shrink-0 text-muted-foreground hover:text-foreground"
                                     title="Load plug-in"
                                     aria-label="Load plug-in"
+                                    disabled={busyAction !== null}
+                                    aria-busy={busyAction === `load:${plugin.id}`}
                                     onclick={() => handleLoad(plugin.id)}
                                 >
                                     <Play class="size-4" />
@@ -197,7 +334,9 @@
                             variant="ghost"
                             class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
                             aria-label="Delete plugin"
-                            onclick={() => deletePlugin(plugin.id)}
+                            disabled={busyAction !== null}
+                            aria-busy={busyAction === `delete:${plugin.id}`}
+                            onclick={() => handleDelete(plugin)}
                         >
                             <Trash2 class="size-4" />
                         </Button>
@@ -215,8 +354,9 @@
                                         class="h-8 text-xs bg-background"
                                         placeholder="No description"
                                         value={plugin.description}
+                                        disabled={busyAction !== null}
                                         onchange={(e) =>
-                                            updatePlugin(plugin.id, {
+                                            updatePluginSafely(plugin.id, {
                                                 description: e.currentTarget.value
                                             })}
                                     />
@@ -227,8 +367,9 @@
                                         class="h-8 text-xs bg-background"
                                         placeholder="1.0.0"
                                         value={plugin.version}
+                                        disabled={busyAction !== null}
                                         onchange={(e) =>
-                                            updatePlugin(plugin.id, {
+                                            updatePluginSafely(plugin.id, {
                                                 version: e.currentTarget.value
                                             })}
                                     />
@@ -237,13 +378,16 @@
 
                             <!-- 2. Code -->
                             <div class="space-y-1.5">
-                                <Label class="text-xs">JavaScript Source Code</Label>
+                                <Label class="text-xs">CharJS Source Code</Label>
                                 <Textarea
                                     class="min-h-32 text-xs font-mono bg-background"
                                     placeholder="Code"
                                     value={plugin.code}
+                                    disabled={busyAction !== null}
                                     onchange={(e) =>
-                                        updatePlugin(plugin.id, { code: e.currentTarget.value })}
+                                        updatePluginSafely(plugin.id, {
+                                            code: e.currentTarget.value
+                                        })}
                                 />
                             </div>
 
