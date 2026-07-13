@@ -9,6 +9,8 @@
     import PresetsTab from './chatbot/PresetsTab.svelte';
     import ScriptsTab from './chatbot/ScriptsTab.svelte';
     import TogglesTab from './chatbot/TogglesTab.svelte';
+    import { toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     type Tab = 'prompt' | 'scripts' | 'toggles' | 'presets';
     let activeTab = $state<Tab>('prompt');
@@ -31,8 +33,17 @@
         const preset = $activePreset;
         if (!preset) return;
 
-        selectedPromptNodeId = selectExistingNode(result.workflow, selectedPromptNodeId);
-        await updatePreset(preset.id, { chatWorkflow: result.patch });
+        try {
+            await updatePreset(preset.id, { chatWorkflow: result.patch });
+            if ($activePreset?.id === preset.id) {
+                selectedPromptNodeId = selectExistingNode(result.workflow, selectedPromptNodeId);
+            }
+        } catch (error) {
+            toast.error({
+                title: 'Prompt update failed',
+                description: getErrorMessage(error, 'The prompt change could not be saved')
+            });
+        }
     }
 
     function findFirstAgentId(workflow: WorkflowDefinition): string | null {

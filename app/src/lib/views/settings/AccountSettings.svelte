@@ -39,6 +39,7 @@
     } from 'lucide-svelte';
     import { getErrorMessage } from '$lib/types/errors';
     import { PB_URL } from '$lib/config';
+    import { appConfirm, toast } from '$lib/ui';
 
     type AuthView = 'signup' | 'login';
     type LoginMethod = 'password' | 'recovery' | 'pairing' | 'delete_remote';
@@ -68,13 +69,19 @@
     const currentServerUrl = $derived($activeUser?.selfHostUrl ?? PB_URL);
     const currentServerLabel = $derived(isSelfHosted ? 'Self-host' : 'Kei Cloud');
 
-    async function runAction(action: () => Promise<void | string | null>, successText: string) {
+    async function runAction(
+        action: () => Promise<void | string | null>,
+        successText: string,
+        confirm?: () => Promise<boolean>
+    ) {
+        if (loading) return;
         loading = true;
         errorMsg = '';
         successMsg = '';
         displayRecovery = '';
         migrationProgress = null;
         try {
+            if (confirm && !(await confirm())) return;
             const result = await action();
             if (typeof result === 'string') displayRecovery = result;
             successMsg = successText;
@@ -85,6 +92,7 @@
             pairingCodeInput = '';
         } catch (e) {
             errorMsg = getErrorMessage(e);
+            toast.error({ title: 'Account action failed', description: errorMsg });
         } finally {
             loading = false;
         }
@@ -93,52 +101,63 @@
     function handleCreateAccount() {
         if (password !== confirmPassword) {
             errorMsg = 'Passwords do not match.';
+            toast.error({ title: 'Could not create account', description: errorMsg });
             return;
         }
-        runAction(
+        void runAction(
             () => performCreateAccount(username, password, email || undefined),
             'Account created. Save your recovery code.'
         );
     }
 
     function handlePasswordLogin() {
-        runAction(() => performSignIn(username, password), 'Signed in successfully.');
+        void runAction(() => performSignIn(username, password), 'Signed in successfully.');
     }
 
     function handleRecover() {
         if (newPassword !== confirmPassword) {
             errorMsg = 'Passwords do not match.';
+            toast.error({ title: 'Could not recover account', description: errorMsg });
             return;
         }
-        runAction(
+        void runAction(
             () => performRecoverAndReset(recoveryCode, newPassword),
             'Device recovered. Save your new recovery code.'
         );
     }
 
     function handlePairNewDevice() {
-        runAction(() => performPairWithCode(pairingCodeInput), 'Device paired successfully.');
+        void runAction(() => performPairWithCode(pairingCodeInput), 'Device paired successfully.');
     }
 
     function handleRecoverDelete() {
-        runAction(
+        void runAction(
             () => performDeleteWithRecoveryCode(recoveryCode),
-            'Remote account deleted. Local data remains available.'
+            'Remote account deleted. Local data remains available.',
+            () =>
+                appConfirm({
+                    title: 'Delete remote account?',
+                    description:
+                        'This permanently deletes the encrypted remote account. Local data on this device remains available.',
+                    confirmText: 'Delete',
+                    variant: 'destructive'
+                })
         );
     }
 
     function handleChangePassword() {
-        runAction(
+        void runAction(
             () => performChangePassword(password, newPassword),
             'Password changed. Save your new recovery code.'
         );
     }
 
     function handleLogout() {
-        runAction(() => performLogout(), 'Signed out on this device.');
+        void runAction(() => performLogout(), 'Signed out on this device.');
     }
 
     async function handleGeneratePairing() {
+        if (loading) return;
         loading = true;
         errorMsg = '';
         generatedPairingCode = '';
@@ -146,6 +165,7 @@
             generatedPairingCode = await AuthService.createPairingCode();
         } catch (e) {
             errorMsg = getErrorMessage(e);
+            toast.error({ title: 'Could not generate pairing code', description: errorMsg });
         } finally {
             loading = false;
         }
@@ -155,10 +175,11 @@
         const nextUrl = isSelfHosted ? undefined : selfHostUrl.trim();
         if (!isSelfHosted && !nextUrl) {
             errorMsg = 'Self-host URL is required.';
+            toast.error({ title: 'Could not change server', description: errorMsg });
             return;
         }
 
-        runAction(
+        void runAction(
             () =>
                 performSetSelfHostUrl(nextUrl, {
                     onProgress: (progress) => {
@@ -181,7 +202,7 @@
             {/if}
         </CardDescription>
     </CardHeader>
-    <CardContent class="flex flex-col gap-5">
+    <CardContent class="flex flex-col gap-5" aria-busy={loading}>
         {#if errorMsg}
             <div
                 class="rounded-md bg-destructive/15 p-3 text-sm text-destructive border border-destructive/20 font-medium"

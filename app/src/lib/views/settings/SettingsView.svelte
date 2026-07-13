@@ -31,9 +31,12 @@
     import ChatSettings from './ChatSettings.svelte';
     import LanguageSettings from './LanguageSettings.svelte';
     import PluginsView from './PluginsView.svelte';
+    import { toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     let activeTab = $state<SettingsTab>('models');
     let { settingsTab }: { settingsTab?: SettingsTab } = $props();
+    let settingsBusy = $state(false);
 
     const tabs = [
         { id: 'models', label: 'Models', icon: Cpu },
@@ -56,7 +59,21 @@
 
     async function handleToggleTheme() {
         const currentTheme = $appSettings?.theme === 'dark' ? 'light' : 'dark';
-        await updateSettings({ theme: currentTheme });
+        await updateSettingsSafely({ theme: currentTheme });
+    }
+
+    async function updateSettingsSafely(
+        changes: Parameters<typeof updateSettings>[0]
+    ): Promise<void> {
+        if (settingsBusy) return;
+        settingsBusy = true;
+        try {
+            await updateSettings(changes);
+        } catch (error) {
+            toast.error({ title: 'Setting update failed', description: getErrorMessage(error) });
+        } finally {
+            settingsBusy = false;
+        }
     }
 
     function backToChat() {
@@ -193,6 +210,8 @@
                                             variant="outline"
                                             size="sm"
                                             class="gap-1.5"
+                                            disabled={settingsBusy}
+                                            aria-busy={settingsBusy}
                                             onclick={handleToggleTheme}
                                         >
                                             <RefreshCw class="size-4" />
@@ -227,8 +246,9 @@
                                             class="size-5 shrink-0 rounded border-primary"
                                             checked={$appSettings?.chat?.saveMessagesOnSwipe !==
                                                 false}
+                                            disabled={settingsBusy}
                                             onchange={(e) =>
-                                                updateSettings({
+                                                updateSettingsSafely({
                                                     chat: {
                                                         saveMessagesOnSwipe: e.currentTarget.checked
                                                     }
@@ -251,8 +271,9 @@
                                             class="size-5 shrink-0 rounded border-primary"
                                             checked={$appSettings?.chat?.expandStepsOnGeneration !==
                                                 false}
+                                            disabled={settingsBusy}
                                             onchange={(e) =>
-                                                updateSettings({
+                                                updateSettingsSafely({
                                                     chat: {
                                                         expandStepsOnGeneration:
                                                             e.currentTarget.checked
