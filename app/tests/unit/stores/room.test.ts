@@ -20,6 +20,7 @@ import {
     chatPersonas,
     characters,
     messages,
+    multiRooms,
     personas,
     roomChats,
     roomCharacters,
@@ -28,6 +29,7 @@ import {
 import { ChatService, RoomService } from '$lib/services';
 import { getCharacter } from '$lib/stores/content/character';
 import {
+    clearActiveChat,
     ensureRoomHasChat,
     resolveChatSelections,
     selectChat,
@@ -65,11 +67,20 @@ vi.mock('$lib/stores/content/character', () => ({
 }));
 
 vi.mock('$lib/stores/content/chat', () => ({
+    clearActiveChat: vi.fn(),
     ensureRoomHasChat: vi.fn(),
     selectChat: vi.fn(),
     updateChat: vi.fn(),
     resolveChatSelections: vi.fn().mockResolvedValue(undefined)
 }));
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((innerResolve) => {
+        resolve = innerResolve;
+    });
+    return { promise, resolve };
+}
 
 vi.mock('$lib/utils/id', () => ({
     generateId: vi.fn(() => 'folder-new')
@@ -135,6 +146,7 @@ describe('Room Store', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         rooms.clear();
+        multiRooms.clear();
         characters.clear();
         personas.clear();
         roomChats.clear();
@@ -183,6 +195,11 @@ describe('Room Store', () => {
         vi.mocked(updateChat).mockResolvedValue(undefined);
         vi.mocked(ensureRoomHasChat).mockResolvedValue(mockChat);
         vi.mocked(selectChat).mockResolvedValue(undefined);
+        vi.mocked(clearActiveChat).mockImplementation(() => {
+            activeChatId.set(null);
+            messages.clear();
+            chatLorebooks.clear();
+        });
     });
 
     it('loads rooms into the room store', async () => {
@@ -202,7 +219,7 @@ describe('Room Store', () => {
         });
         expect(get(roomChats)).toEqual([mockChat]);
         expect(get(roomCharacters)).toEqual([mockCharacter]);
-        expect(selectChat).toHaveBeenCalledWith('chat-1');
+        expect(selectChat).toHaveBeenCalledWith('chat-1', expect.any(Function));
         expect(RoomService.update).toHaveBeenCalledWith(
             'room-1',
             expect.objectContaining({
@@ -215,6 +232,37 @@ describe('Room Store', () => {
         vi.mocked(RoomService.get).mockResolvedValue(null);
 
         await expect(selectRoom('missing')).rejects.toThrow(AppError);
+    });
+
+    it('drops stale results when a newer room is selected', async () => {
+        const firstRoom = deferred<Room | null>();
+        const secondRoom: Room = {
+            ...mockRoom,
+            id: 'room-2',
+            name: 'Room 2',
+            chats: { refs: { 'chat-2': { id: 'chat-2', sortOrder: 'a' } }, folders: {} },
+            characters: {
+                refs: { 'char-1': mockRoom.characters.refs['char-1'] },
+                folders: {}
+            }
+        };
+        const secondChat: Chat = { ...mockChat, id: 'chat-2', roomId: 'room-2' };
+        vi.mocked(RoomService.get).mockImplementation((roomId) =>
+            roomId === 'room-1' ? firstRoom.promise : Promise.resolve(secondRoom)
+        );
+        vi.mocked(ChatService.listByRoom).mockImplementation((roomId) =>
+            Promise.resolve(roomId === 'room-2' ? [secondChat] : [mockChat])
+        );
+
+        const firstSelection = selectRoom('room-1');
+        const secondSelection = selectRoom('room-2');
+        firstRoom.resolve(mockRoom);
+        await Promise.all([firstSelection, secondSelection]);
+
+        expect(get(activeRoom)?.id).toBe('room-2');
+        expect(ChatService.listByRoom).toHaveBeenCalledTimes(1);
+        expect(ChatService.listByRoom).toHaveBeenCalledWith('room-2');
+        expect(selectChat).toHaveBeenCalledWith('chat-2', expect.any(Function));
     });
 
     it('clears room-level and nested chat stores', () => {
@@ -234,6 +282,7 @@ describe('Room Store', () => {
         expect(get(messages)).toEqual([]);
         expect(get(chatLorebooks)).toEqual([]);
         expect(get(chatPersonas)).toEqual([]);
+        expect(clearActiveChat).toHaveBeenCalled();
     });
 
     it('creates, updates, and deletes rooms through the service', async () => {

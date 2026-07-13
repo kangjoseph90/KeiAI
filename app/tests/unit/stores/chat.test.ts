@@ -39,6 +39,14 @@ import { AppError } from '$lib/types/errors';
 import type { Chat, Lorebook, Room } from '$lib/services';
 import type { FolderDef } from '$lib/types/refs';
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((innerResolve) => {
+        resolve = innerResolve;
+    });
+    return { promise, resolve };
+}
+
 vi.mock('$lib/services', () => ({
     ChatService: {
         get: vi.fn(),
@@ -144,7 +152,7 @@ describe('Chat Store', () => {
             await selectChat('chat-1');
 
             expect(get(activeChat)?.id).toBe(mockChat.id);
-            expect(loadInitialMessages).toHaveBeenCalledWith('chat-1', 30);
+            expect(loadInitialMessages).toHaveBeenCalledWith('chat-1', 30, expect.any(Function));
             expect(get(chatLorebooks)).toEqual([]);
             expect(updateRoom).toHaveBeenCalledWith('room-1', { lastActiveChatId: 'chat-1' });
         });
@@ -211,6 +219,26 @@ describe('Chat Store', () => {
             vi.mocked(ChatService.get).mockResolvedValue(null);
 
             await expect(selectChat('invalid')).rejects.toThrow(AppError);
+        });
+
+        it('drops stale results when a newer chat is selected', async () => {
+            const firstChat = deferred<Chat | null>();
+            const secondChat: Chat = { ...mockChat, id: 'chat-2', title: 'Second Chat' };
+            vi.mocked(ChatService.get).mockImplementation((chatId) =>
+                chatId === 'chat-1' ? firstChat.promise : Promise.resolve(secondChat)
+            );
+
+            const firstSelection = selectChat('chat-1');
+            const secondSelection = selectChat('chat-2');
+            firstChat.resolve(mockChat);
+            await Promise.all([firstSelection, secondSelection]);
+
+            expect(get(activeChat)?.id).toBe('chat-2');
+            expect(loadInitialMessages).toHaveBeenCalledTimes(1);
+            expect(loadInitialMessages).toHaveBeenCalledWith('chat-2', 30, expect.any(Function));
+            expect(updateRoom).not.toHaveBeenCalledWith('room-1', {
+                lastActiveChatId: 'chat-1'
+            });
         });
     });
 

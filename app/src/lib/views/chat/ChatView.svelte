@@ -78,6 +78,7 @@
     let hasMoreNewer = $state(false);
     let previousActiveChatId = $state<string | undefined>();
     let dragCounter = $state(0);
+    let chatViewEpoch = 0;
 
     const MESSAGE_PAGE_SIZE = 30;
     const MESSAGE_WINDOW_SIZE = 120;
@@ -96,8 +97,11 @@
         if (activeChatId === previousActiveChatId) return;
 
         previousActiveChatId = activeChatId;
+        chatViewEpoch += 1;
         hasMoreOlder = true;
         hasMoreNewer = false;
+        isLoadingOlder = false;
+        isLoadingNewer = false;
         pendingAttachments = [];
         dragCounter = 0;
         lastMessageCount = 0;
@@ -120,6 +124,10 @@
     async function handleScroll() {
         if (!scrollContainerEl || !$activeChat) return;
 
+        const activeChatId = $activeChat.id;
+        const epoch = chatViewEpoch;
+        const isCurrent = () => $activeChat?.id === activeChatId && chatViewEpoch === epoch;
+
         const { scrollTop, scrollHeight, clientHeight } = scrollContainerEl;
 
         // In flex-col-reverse:
@@ -137,8 +145,9 @@
             isLoadingOlder = true;
 
             try {
-                const loaded = await loadOlderMessages($activeChat.id, MESSAGE_PAGE_SIZE);
+                const loaded = await loadOlderMessages(activeChatId, MESSAGE_PAGE_SIZE, isCurrent);
                 await tick();
+                if (!isCurrent()) return;
 
                 if (loaded === 0) {
                     hasMoreOlder = false;
@@ -146,20 +155,22 @@
 
                 const overflow = $displayMessages.length - MESSAGE_WINDOW_SIZE;
                 if (overflow > 0) {
-                    await dropNewerMessages($activeChat.id, overflow);
+                    await dropNewerMessages(activeChatId, overflow);
+                    if (!isCurrent()) return;
                     hasMoreNewer = true;
                 }
             } catch (err) {
                 logger.error('Failed to load older messages:', err);
             } finally {
-                isLoadingOlder = false;
+                if (isCurrent()) isLoadingOlder = false;
             }
         } else if (absScrollTop < 30 && !isLoadingNewer && hasMoreNewer) {
             isLoadingNewer = true;
 
             try {
-                const loaded = await loadNewerMessages($activeChat.id, MESSAGE_PAGE_SIZE);
+                const loaded = await loadNewerMessages(activeChatId, MESSAGE_PAGE_SIZE, isCurrent);
                 await tick();
+                if (!isCurrent()) return;
 
                 if (loaded === 0) {
                     hasMoreNewer = false;
@@ -167,7 +178,8 @@
 
                 const overflow = $displayMessages.length - MESSAGE_WINDOW_SIZE;
                 if (overflow > 0) {
-                    await dropOlderMessages($activeChat.id, overflow);
+                    await dropOlderMessages(activeChatId, overflow);
+                    if (!isCurrent()) return;
                     hasMoreOlder = true;
                 }
 
@@ -175,7 +187,7 @@
             } catch (err) {
                 logger.error('Failed to load newer messages:', err);
             } finally {
-                isLoadingNewer = false;
+                if (isCurrent()) isLoadingNewer = false;
             }
         }
     }

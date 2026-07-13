@@ -13,7 +13,7 @@ import type { DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { getCharacter } from './character';
-import { resolveChatSelections, selectChat, ensureRoomHasChat } from './chat';
+import { clearActiveChat, resolveChatSelections, selectChat, ensureRoomHasChat } from './chat';
 import {
     rooms,
     multiRooms,
@@ -23,15 +23,31 @@ import {
     roomChats,
     activeChat,
     activeChatId,
-    chatLorebooks,
-    chatSelections,
-    messages,
-    messageIndexes,
-    translations,
     multiRoomCharacters,
     multiRoomPersonas
 } from '../state';
 import { getAppSettings, updateSettings } from './settings';
+
+let roomSelectionVersion = 0;
+let roomSelectionQueue: Promise<void> = Promise.resolve();
+
+export function scheduleRoomSelection(
+    operation: (isCurrent: () => boolean) => Promise<void>,
+    isContextCurrent: () => boolean = () => true
+): Promise<void> {
+    if (!isContextCurrent()) return Promise.resolve();
+    const version = ++roomSelectionVersion;
+    clearActiveRoomState();
+    const isCurrent = () => version === roomSelectionVersion && isContextCurrent();
+
+    const queued = roomSelectionQueue
+        .catch(() => undefined)
+        .then(async () => {
+            if (isCurrent()) await operation(isCurrent);
+        });
+    roomSelectionQueue = queued;
+    return queued;
+}
 
 export async function getRoom(roomId: string): Promise<Room | null> {
     const active = get(activeRoom);
@@ -49,14 +65,24 @@ export async function loadRooms(): Promise<void> {
     rooms.setAll(sortByRefs(list, settings.rooms.refs));
 }
 
-export async function selectRoom(roomId: string): Promise<void> {
+export function selectRoom(
+    roomId: string,
+    isContextCurrent: () => boolean = () => true
+): Promise<void> {
+    return scheduleRoomSelection(
+        (isCurrent) => selectRoomInternal(roomId, isCurrent),
+        isContextCurrent
+    );
+}
+
+async function selectRoomInternal(roomId: string, isCurrent: () => boolean): Promise<void> {
     const room = await getRoom(roomId);
+    if (!isCurrent()) return;
     if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
     if (room.scopeType === 'room') {
         throw new AppError('INVALID_INPUT', `Cannot select multi room with selectRoom: ${roomId}`);
     }
 
-    clearActiveRoom();
     isMultiRoom.set(false);
     rooms.set(room.id, room);
     activeRoomId.set(room.id);
@@ -66,6 +92,7 @@ export async function selectRoom(roomId: string): Promise<void> {
         ChatService.listByRoom(roomId),
         Promise.all(characterIds.map(async (id) => [id, await getCharacter(id)] as const))
     ]);
+    if (!isCurrent()) return;
 
     const staleCharacterRefs: Record<string, undefined> = {};
     for (const [id, character] of characterEntries) {
@@ -80,21 +107,28 @@ export async function selectRoom(roomId: string): Promise<void> {
         await updateRoom(roomId, {
             characters: { refs: staleCharacterRefs }
         });
+        if (!isCurrent()) return;
     }
 
     if (roomChats.size === 0) {
         await ensureRoomHasChat(roomId);
+        if (!isCurrent()) return;
     }
 
     const lastActive = room.lastActiveChatId;
     const fallbackId = get(roomChats)[0]?.id;
     const targetId = lastActive && roomChats.get(lastActive) ? lastActive : fallbackId;
     if (targetId) {
-        await selectChat(targetId);
+        await selectChat(targetId, isCurrent);
     }
 }
 
 export function clearActiveRoom(): void {
+    roomSelectionVersion += 1;
+    clearActiveRoomState();
+}
+
+function clearActiveRoomState(): void {
     if (get(isMultiRoom)) {
         MultiRoomService.closeRoom();
     }
@@ -103,12 +137,7 @@ export function clearActiveRoom(): void {
     roomChats.clear();
     multiRoomCharacters.clear();
     multiRoomPersonas.clear();
-    activeChatId.set(null);
-    chatSelections.set(null);
-    chatLorebooks.clear();
-    messages.clear();
-    messageIndexes.set(new Map());
-    translations.clear();
+    clearActiveChat();
 }
 
 export async function createRoom(fields: DeepPartial<RoomFields> = {}): Promise<Room> {

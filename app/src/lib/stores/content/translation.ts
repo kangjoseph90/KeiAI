@@ -28,30 +28,32 @@ export function findLoadedTranslation(messageId: string, sourceHash: string): Tr
 
 export async function loadTranslationsForMessages(
     chatId: string,
-    messageIds: string[]
+    messageIds: string[],
+    isContextCurrent: () => boolean = () => true
 ): Promise<void> {
     if (messageIds.length === 0) {
-        if (get(activeChatId) === chatId) {
+        if (get(activeChatId) === chatId && isContextCurrent()) {
             translations.setAll([]);
         }
         return;
     }
 
     const loaded = await TranslationService.listByMessages(messageIds);
-    if (get(activeChatId) === chatId) {
+    if (get(activeChatId) === chatId && isContextCurrent()) {
         translations.setAll(loaded);
     }
 }
 
 export async function addTranslationsForMessages(
     chatId: string,
-    messageIds: string[]
+    messageIds: string[],
+    isContextCurrent: () => boolean = () => true
 ): Promise<void> {
     if (messageIds.length === 0) return;
 
     const loaded = await TranslationService.listByMessages(messageIds);
     if (loaded.length === 0) return;
-    if (get(activeChatId) !== chatId) return;
+    if (get(activeChatId) !== chatId || !isContextCurrent()) return;
 
     translations.batch(() => {
         for (const translation of loaded) {

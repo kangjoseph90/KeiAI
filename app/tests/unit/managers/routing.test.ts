@@ -18,6 +18,14 @@ vi.mock('$lib/stores', () => ({
     selectRoom: vi.fn()
 }));
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((innerResolve) => {
+        resolve = innerResolve;
+    });
+    return { promise, resolve };
+}
+
 describe('routing context restoration', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -31,8 +39,8 @@ describe('routing context restoration', () => {
         await restoreRoomContext('room-1');
         await restoreRoomContext('multi-1');
 
-        expect(selectRoom).toHaveBeenCalledWith('room-1');
-        expect(selectMultiRoom).toHaveBeenCalledWith('multi-1');
+        expect(selectRoom).toHaveBeenCalledWith('room-1', expect.any(Function));
+        expect(selectMultiRoom).toHaveBeenCalledWith('multi-1', expect.any(Function));
     });
 
     it('tries a multi-room restore when a room record is not local yet', async () => {
@@ -40,7 +48,7 @@ describe('routing context restoration', () => {
 
         await restoreRoomContext('multi-1');
 
-        expect(selectMultiRoom).toHaveBeenCalledWith('multi-1');
+        expect(selectMultiRoom).toHaveBeenCalledWith('multi-1', expect.any(Function));
     });
 
     it('opens the room session before a room-scoped studio resource', async () => {
@@ -51,10 +59,10 @@ describe('routing context restoration', () => {
         await restoreCharacterContext('char-1');
         await restorePersonaContext('persona-1');
 
-        expect(selectMultiRoom).toHaveBeenNthCalledWith(1, 'multi-1');
-        expect(selectCharacter).toHaveBeenCalledWith('char-1');
-        expect(selectMultiRoom).toHaveBeenNthCalledWith(2, 'multi-1');
-        expect(selectPersona).toHaveBeenCalledWith('persona-1');
+        expect(selectMultiRoom).toHaveBeenNthCalledWith(1, 'multi-1', expect.any(Function));
+        expect(selectCharacter).toHaveBeenCalledWith('char-1', expect.any(Function));
+        expect(selectMultiRoom).toHaveBeenNthCalledWith(2, 'multi-1', expect.any(Function));
+        expect(selectPersona).toHaveBeenCalledWith('persona-1', expect.any(Function));
     });
 
     it('opens user-scoped studio resources without a room session', async () => {
@@ -66,8 +74,8 @@ describe('routing context restoration', () => {
         await restorePersonaContext('persona-1');
 
         expect(selectMultiRoom).not.toHaveBeenCalled();
-        expect(selectCharacter).toHaveBeenCalledWith('char-1');
-        expect(selectPersona).toHaveBeenCalledWith('persona-1');
+        expect(selectCharacter).toHaveBeenCalledWith('char-1', expect.any(Function));
+        expect(selectPersona).toHaveBeenCalledWith('persona-1', expect.any(Function));
     });
 
     it('rejects missing studio resources', async () => {
@@ -75,5 +83,18 @@ describe('routing context restoration', () => {
 
         await expect(restoreCharacterContext('missing')).rejects.toThrow('Character not found');
         await expect(restorePersonaContext('missing')).rejects.toThrow('Persona not found');
+    });
+
+    it('does not select a resource after its route becomes stale', async () => {
+        const scope = deferred<{ scopeType: 'user'; scopeId: string } | null>();
+        let isCurrent = true;
+        vi.mocked(RecordScopeService.resolve).mockReturnValue(scope.promise);
+
+        const restoration = restoreCharacterContext('char-1', () => isCurrent);
+        isCurrent = false;
+        scope.resolve({ scopeType: 'user', scopeId: 'user-1' });
+        await restoration;
+
+        expect(selectCharacter).not.toHaveBeenCalled();
     });
 });

@@ -41,6 +41,8 @@ const chatSelectionCache = createCache<{ characterId?: string; personaId?: strin
     100
 );
 
+let chatSelectionVersion = 0;
+
 /**
  * Returns chat from store cache first, then from DB if needed.
  * Returns null if not found.
@@ -143,24 +145,33 @@ export async function resolveChatSelections(chatId: string): Promise<void> {
     }
 }
 
-export async function selectChat(chatId: string): Promise<void> {
+export async function selectChat(
+    chatId: string,
+    isContextCurrent: () => boolean = () => true
+): Promise<void> {
+    if (!isContextCurrent() || get(activeChatId) === chatId) return;
+
+    const version = ++chatSelectionVersion;
+    clearChatViewState();
+    const isCurrent = () => version === chatSelectionVersion && isContextCurrent();
+
     const chat = await getChat(chatId);
+    if (!isCurrent()) return;
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
-    chatSelections.set(null);
-    chatLorebooks.clear();
-    messageIndexes.set(new Map());
-    translations.clear();
     roomChats.set(chat.id, chat);
     activeChatId.set(chat.id);
-    await loadInitialMessages(chatId, 30);
+    await loadInitialMessages(chatId, 30, isCurrent);
+    if (!isCurrent()) return;
     await repairChatMessageRefs(chatId);
+    if (!isCurrent()) return;
 
     const personaIds = Object.keys(chat.personas.refs);
     const [lorebooks, personaEntries] = await Promise.all([
         LorebookService.listByOwner(chatId),
         Promise.all(personaIds.map(async (id) => [id, await getPersona(id)] as const))
     ]);
+    if (!isCurrent()) return;
 
     const stalePersonaRefs: Record<string, undefined> = {};
     for (const [id, persona] of personaEntries) {
@@ -175,14 +186,21 @@ export async function selectChat(chatId: string): Promise<void> {
         await updateChat(chatId, {
             personas: { refs: stalePersonaRefs }
         });
+        if (!isCurrent()) return;
     }
 
     await resolveChatSelections(chatId);
+    if (!isCurrent()) return;
 
     await updateRoom(chat.roomId, { lastActiveChatId: chatId });
 }
 
 export function clearActiveChat(): void {
+    chatSelectionVersion += 1;
+    clearChatViewState();
+}
+
+function clearChatViewState(): void {
     activeChatId.set(null);
     chatSelections.set(null);
     chatLorebooks.clear();

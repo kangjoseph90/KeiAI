@@ -96,6 +96,7 @@
 
     // Sync store state when route changes (back/forward nav)
     let prevRoute: RouteState | null = null;
+    let navigationVersion = 0;
     $effect(() => {
         const r = $route;
         if (!ready || !prevRoute) {
@@ -118,6 +119,8 @@
             return;
         }
         prevRoute = r;
+        const version = ++navigationVersion;
+        const isCurrent = () => version === navigationVersion;
 
         (async () => {
             try {
@@ -128,32 +131,33 @@
                     clearActivePersona();
                 } else if (r.view === 'room') {
                     if (r.roomId && $activeRoom?.id !== r.roomId) {
-                        await restoreRoomContext(r.roomId);
+                        await restoreRoomContext(r.roomId, isCurrent);
+                        if (!isCurrent()) return;
                     }
                     if (r.chatId && $activeChat?.id !== r.chatId) {
-                        await selectChat(r.chatId);
+                        await selectChat(r.chatId, isCurrent);
                     } else if (!r.chatId) {
                         const resolvedChatId = get(activeChatId);
-                        if (resolvedChatId) {
+                        if (resolvedChatId && isCurrent()) {
                             navigate({ ...r, chatId: resolvedChatId });
                         }
                     }
                 } else if (r.view === 'characterStudio') {
                     if (r.charId && $activeCharacter?.id !== r.charId) {
-                        await restoreCharacterContext(r.charId);
+                        await restoreCharacterContext(r.charId, isCurrent);
                     }
                 } else if (r.view === 'moduleStudio') {
                     if (r.moduleId && $activeModule?.id !== r.moduleId) {
-                        await selectModule(r.moduleId);
+                        await selectModule(r.moduleId, isCurrent);
                     }
                 } else if (r.view === 'personaStudio') {
                     if (r.personaId && $activePersona?.id !== r.personaId) {
-                        await restorePersonaContext(r.personaId);
+                        await restorePersonaContext(r.personaId, isCurrent);
                     }
                 }
             } catch (e) {
                 logger.error('Navigation failed:', e);
-                navigate({ view: 'home' });
+                if (isCurrent()) navigate({ view: 'home' });
             }
         })();
     });

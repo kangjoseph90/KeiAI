@@ -19,6 +19,14 @@ import {
 } from '$lib/services';
 import { getLastContentText } from '$lib/workflow/agent/llm';
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((innerResolve) => {
+        resolve = innerResolve;
+    });
+    return { promise, resolve };
+}
+
 // Mock Services
 vi.mock('$lib/services', () => ({
     MessageService: {
@@ -127,6 +135,20 @@ describe('Message Store', () => {
             expect(MessageService.getMessagesAfter).toHaveBeenCalledWith(mockChatId, 'a', 50);
             // derived store sorts by sortOrder: 'a' < 'b'
             expect(get(messages)).toEqual([mockMessage, newerMsg]);
+        });
+
+        it('drops pagination results after the view epoch changes', async () => {
+            messages.setAll([mockMessage]);
+            const olderMessages = deferred<Message[]>();
+            let isCurrent = true;
+            vi.mocked(MessageService.getMessagesBefore).mockReturnValue(olderMessages.promise);
+
+            const loading = loadOlderMessages(mockChatId, 50, () => isCurrent);
+            isCurrent = false;
+            olderMessages.resolve([{ ...mockMessage, id: 'msg-old', sortOrder: '0' }]);
+
+            await expect(loading).resolves.toBe(0);
+            expect(get(messages)).toEqual([mockMessage]);
         });
     });
 

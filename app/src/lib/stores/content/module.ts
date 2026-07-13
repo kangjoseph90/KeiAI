@@ -34,6 +34,8 @@ import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
 import type { AssetFields } from '$lib/types/asset';
 
+let moduleSelectionVersion = 0;
+
 /**
  * Returns module from store cache first, then from DB if needed.
  * Returns null if not found.
@@ -93,8 +95,17 @@ export async function loadModules(): Promise<void> {
     modules.setAll(sortByRefs(mods, settings.modules.refs));
 }
 
-export async function selectModule(moduleId: string): Promise<void> {
+export async function selectModule(
+    moduleId: string,
+    isContextCurrent: () => boolean = () => true
+): Promise<void> {
+    if (!isContextCurrent()) return;
+    const version = ++moduleSelectionVersion;
+    clearActiveModuleState();
+    const isCurrent = () => version === moduleSelectionVersion && isContextCurrent();
+
     const mod = await getModule(moduleId);
+    if (!isCurrent()) return;
     if (!mod) throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
 
     modules.set(mod.id, mod);
@@ -105,6 +116,7 @@ export async function selectModule(moduleId: string): Promise<void> {
         ScriptService.listByOwner(moduleId),
         CharJSService.listByOwner(moduleId)
     ]);
+    if (!isCurrent()) return;
 
     moduleLorebooks.setAll(sortByRefs(lorebooks, mod.lorebooks.refs));
     moduleScripts.setAll(sortByRefs(scripts, mod.scripts.refs));
@@ -112,6 +124,11 @@ export async function selectModule(moduleId: string): Promise<void> {
 }
 
 export function clearActiveModule(): void {
+    moduleSelectionVersion += 1;
+    clearActiveModuleState();
+}
+
+function clearActiveModuleState(): void {
     activeModuleId.set(null);
     moduleLorebooks.clear();
     moduleScripts.clear();

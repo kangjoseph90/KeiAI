@@ -21,6 +21,8 @@ import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import type { AppSettings } from '$lib/services';
 
+let personaSelectionVersion = 0;
+
 /**
  * Returns persona from store cache first, then from DB if needed.
  * Returns null if not found.
@@ -53,8 +55,15 @@ export async function loadPersonas(): Promise<void> {
     personas.setAll(sortByRefs(list, settings.personas.refs));
 }
 
-export async function selectPersona(personaId: string): Promise<void> {
+export async function selectPersona(
+    personaId: string,
+    isContextCurrent: () => boolean = () => true
+): Promise<void> {
+    if (!isContextCurrent()) return;
+    const version = ++personaSelectionVersion;
+    activePersonaId.set(null);
     const persona = await getPersona(personaId);
+    if (version !== personaSelectionVersion || !isContextCurrent()) return;
     if (!persona) throw new AppError('NOT_FOUND', `Persona not found: ${personaId}`);
 
     if (persona.scopeType === 'user') {
@@ -66,6 +75,7 @@ export async function selectPersona(personaId: string): Promise<void> {
 }
 
 export function clearActivePersona(): void {
+    personaSelectionVersion += 1;
     activePersonaId.set(null);
 }
 
