@@ -1,6 +1,7 @@
 import { AppError } from '$lib/types/errors';
 import { readRisuPreset, readRisuPresetJson } from './risu';
 import type { KeiPresetPackageV1 } from './types';
+import { detectFileKind } from '$lib/utils/file';
 
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
@@ -16,6 +17,19 @@ export async function readPresetFile(file: File): Promise<KeiPresetPackageV1> {
     }
     if (name.endsWith('.json') || name.endsWith('.keipreset')) {
         return readRisuPresetJson(JSON.parse(TEXT_DECODER.decode(bytes)) as unknown);
+    }
+
+    if (detectFileKind(bytes) === 'json') {
+        return readRisuPresetJson(JSON.parse(TEXT_DECODER.decode(bytes)) as unknown);
+    }
+    try {
+        return await readRisuPreset(bytes, true);
+    } catch {
+        try {
+            return await readRisuPreset(bytes, false);
+        } catch {
+            // Fall through to the user-facing unsupported-file error.
+        }
     }
 
     throw new AppError('INVALID_INPUT', `Unsupported preset file: ${file.name}`);

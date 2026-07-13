@@ -1,6 +1,13 @@
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { readFile, writeFile } from '@tauri-apps/plugin-fs';
 import type { IDialogAdapter, FileDialogOptions, SaveBytesOptions } from './types';
+import {
+    detectFileKind,
+    fileNameFromPath,
+    mimeTypeForFileKind,
+    mimeTypeFromName,
+    withDetectedExtension
+} from '$lib/utils/file';
 
 /**
  * Tauri Dialog Adapter
@@ -44,29 +51,10 @@ export class TauriDialogAdapter implements IDialogAdapter {
 
 async function readPathAsFile(path: string): Promise<File> {
     const bytes = await readFile(path);
-    const name = fileNameFromPath(path);
-    return new File([bytes.slice()], name, { type: mimeTypeFromName(name) });
-}
-
-function fileNameFromPath(path: string): string {
-    return path.split(/[\\/]/).pop() || 'file';
-}
-
-function mimeTypeFromName(name: string): string {
-    const extension = name.split('.').pop()?.toLowerCase();
-    if (extension === 'png') return 'image/png';
-    if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
-    if (extension === 'webp') return 'image/webp';
-    if (extension === 'gif') return 'image/gif';
-    if (extension === 'json' || extension === 'keipreset') return 'application/json';
-    if (
-        extension === 'zip' ||
-        extension === 'charx' ||
-        extension === 'keichar' ||
-        extension === 'keimodule' ||
-        extension === 'keipersona'
-    ) {
-        return 'application/zip';
-    }
-    return 'application/octet-stream';
+    const kind = detectFileKind(bytes);
+    const name = withDetectedExtension(fileNameFromPath(path), kind);
+    const namedMime = mimeTypeFromName(name);
+    return new File([bytes.slice()], name, {
+        type: namedMime === 'application/octet-stream' ? mimeTypeForFileKind(kind) : namedMime
+    });
 }

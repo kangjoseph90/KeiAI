@@ -117,6 +117,19 @@ describe('Dialog Adapters', () => {
             expect(result?.map((file) => file.name)).toEqual(['file1.png', 'file2.png']);
         });
 
+        it('recovers image metadata from an Android content URI', async () => {
+            vi.mocked(open).mockResolvedValue('content://media/images/image%3A42');
+            vi.mocked(readFile).mockResolvedValue(
+                new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+            );
+
+            const result = await adapter.openFile();
+
+            expect(result?.name).toBe('image:42.png');
+            expect(result?.type).toBe('image/png');
+            expect(readFile).toHaveBeenCalledWith('content://media/images/image%3A42');
+        });
+
         it('saveBytes should map to tauri save() and writeFile()', async () => {
             vi.mocked(save).mockResolvedValue('/path/to/save.png');
             const bytes = new Uint8Array([1, 2, 3]);
