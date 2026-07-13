@@ -58,6 +58,7 @@
     let editingId = $state<string | null>(null);
     let editName = $state('');
     let deleting = $state(false);
+    let resourceAction = $state<string | null>(null);
 
     const tabs = [
         { id: 'profile' as const, label: 'Profile', icon: UserRound },
@@ -96,12 +97,41 @@
     }
 
     async function handleAvatarUpload() {
-        const file = await appDialog.openFile({
-            title: 'Upload Persona Avatar',
-            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
-        });
-        if (!$activePersona || !file) return;
-        await updatePersonaAvatar($activePersona.id, file);
+        if (!$activePersona || resourceAction) return;
+        const personaId = $activePersona.id;
+        resourceAction = 'avatar-upload';
+        try {
+            const file = await appDialog.openFile({
+                title: 'Upload Persona Avatar',
+                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+            });
+            if (!file || $activePersona?.id !== personaId) return;
+            await updatePersonaAvatar(personaId, file);
+        } catch (error) {
+            toast.error({ title: 'Could not update avatar', description: getErrorMessage(error) });
+        } finally {
+            resourceAction = null;
+        }
+    }
+
+    async function handleAvatarRemove() {
+        if (!$activePersona?.avatar || resourceAction) return;
+        const target = $activePersona;
+        resourceAction = 'avatar-remove';
+        try {
+            const confirmed = await appConfirm({
+                title: 'Remove persona avatar?',
+                description: `Remove the avatar for "${target.name}"?`,
+                confirmText: 'Remove',
+                variant: 'destructive'
+            });
+            if (!confirmed || $activePersona?.id !== target.id) return;
+            await removePersonaAvatar(target.id);
+        } catch (error) {
+            toast.error({ title: 'Could not remove avatar', description: getErrorMessage(error) });
+        } finally {
+            resourceAction = null;
+        }
     }
 
     async function handleDelete() {
@@ -132,30 +162,65 @@
     }
 
     async function saveRename(ref: AssetRef) {
-        if (!$activePersona) return;
+        if (!$activePersona || resourceAction) return;
         const val = editName.trim();
-        if (val && val !== ref.name) {
-            await updatePersona($activePersona.id, {
+        if (!val || val === ref.name) {
+            editingId = null;
+            return;
+        }
+
+        const personaId = $activePersona.id;
+        resourceAction = `asset-rename:${ref.id}`;
+        try {
+            await updatePersona(personaId, {
                 assets: {
                     refs: { [ref.id]: { ...ref, name: val } }
                 }
             });
+            if ($activePersona?.id === personaId) editingId = null;
+        } catch (error) {
+            toast.error({ title: 'Could not rename asset', description: getErrorMessage(error) });
+        } finally {
+            resourceAction = null;
         }
-        editingId = null;
     }
 
     async function handleAssetFileSelect() {
-        const file = await appDialog.openFile({
-            title: 'Upload Persona Asset',
-            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
-        });
-        if (!$activePersona || !file) return;
-        await createPersonaAsset($activePersona.id, file);
+        if (!$activePersona || resourceAction) return;
+        const personaId = $activePersona.id;
+        resourceAction = 'asset-upload';
+        try {
+            const file = await appDialog.openFile({
+                title: 'Upload Persona Asset',
+                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+            });
+            if (!file || $activePersona?.id !== personaId) return;
+            await createPersonaAsset(personaId, file);
+        } catch (error) {
+            toast.error({ title: 'Could not upload asset', description: getErrorMessage(error) });
+        } finally {
+            resourceAction = null;
+        }
     }
 
-    async function handleDeleteAsset(assetId: string) {
-        if (!$activePersona) return;
-        await deletePersonaAsset($activePersona.id, assetId);
+    async function handleDeleteAsset(ref: AssetRef) {
+        if (!$activePersona || resourceAction) return;
+        const personaId = $activePersona.id;
+        resourceAction = `asset-delete:${ref.id}`;
+        try {
+            const confirmed = await appConfirm({
+                title: 'Delete persona asset?',
+                description: `Delete "${ref.name}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed || $activePersona?.id !== personaId) return;
+            await deletePersonaAsset(personaId, ref.id);
+        } catch (error) {
+            toast.error({ title: 'Could not delete asset', description: getErrorMessage(error) });
+        } finally {
+            resourceAction = null;
+        }
     }
 </script>
 
@@ -328,6 +393,8 @@
                                                 </div>
                                                 <button
                                                     class="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                                    disabled={resourceAction !== null}
+                                                    aria-busy={resourceAction === 'avatar-upload'}
                                                     onclick={handleAvatarUpload}
                                                     title="Upload avatar"
                                                 >
@@ -351,9 +418,11 @@
                                                     <Button
                                                         variant="destructive"
                                                         size="sm"
-                                                        disabled={!$activePersona.avatar}
-                                                        onclick={() =>
-                                                            removePersonaAvatar($activePersona!.id)}
+                                                        disabled={!$activePersona.avatar ||
+                                                            resourceAction !== null}
+                                                        aria-busy={resourceAction ===
+                                                            'avatar-remove'}
+                                                        onclick={handleAvatarRemove}
                                                     >
                                                         Remove Avatar
                                                     </Button>
@@ -396,6 +465,8 @@
                                             variant="secondary"
                                             size="sm"
                                             class="gap-1"
+                                            disabled={resourceAction !== null}
+                                            aria-busy={resourceAction === 'asset-upload'}
                                             onclick={handleAssetFileSelect}
                                         >
                                             <Plus class="size-3" /> Add
@@ -470,6 +541,7 @@
                                                     >
                                                         <Input
                                                             bind:value={editName}
+                                                            disabled={resourceAction !== null}
                                                             class="h-7 text-xs bg-background w-full"
                                                             autofocus
                                                             onblur={() => saveRename(ref)}
@@ -496,6 +568,7 @@
                                                     size="icon-sm"
                                                     class="size-7"
                                                     title="Rename"
+                                                    disabled={resourceAction !== null}
                                                     onclick={() => startRename(ref)}
                                                 >
                                                     <Pencil class="size-3" />
@@ -505,7 +578,10 @@
                                                     size="icon-sm"
                                                     class="size-7 text-destructive hover:text-destructive"
                                                     title="Delete"
-                                                    onclick={() => handleDeleteAsset(ref.id)}
+                                                    disabled={resourceAction !== null}
+                                                    aria-busy={resourceAction ===
+                                                        `asset-delete:${ref.id}`}
+                                                    onclick={() => handleDeleteAsset(ref)}
                                                 >
                                                     <Trash2 class="size-3" />
                                                 </Button>

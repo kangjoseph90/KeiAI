@@ -309,11 +309,11 @@
                                 onUpdate={async (changes) => {
                                     await updateCharacter(changes);
                                 }}
-                                onUpdateAvatar={async (file) => {
-                                    await updateCharacterAvatar($activeCharacter!.id, file);
+                                onUpdateAvatar={async (characterId, file) => {
+                                    await updateCharacterAvatar(characterId, file);
                                 }}
-                                onRemoveAvatar={async () => {
-                                    await removeCharacterAvatar($activeCharacter!.id);
+                                onRemoveAvatar={async (characterId) => {
+                                    await removeCharacterAvatar(characterId);
                                 }}
                             />
                         {:else if activeTab === 'greetings'}

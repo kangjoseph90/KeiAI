@@ -8,6 +8,8 @@
     import type { Character } from '$lib/services';
     import { SvelteSet } from 'svelte/reactivity';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
+    import { appConfirm, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     interface Props {
         character: Character;
@@ -21,6 +23,7 @@
 
     let { character, onCreate, onUpdate, onDelete }: Props = $props();
     let expanded = new SvelteSet<string>();
+    let busyAction = $state<string | null>(null);
 
     function toggleExpand(id: string) {
         if (expanded.has(id)) expanded.delete(id);
@@ -35,6 +38,8 @@
     }
 
     async function handleAdd() {
+        if (busyAction) return;
+        const characterId = character.id;
         const sortOrder = generateSortOrder(
             Object.fromEntries(
                 Object.values(character.greetings ?? {}).map((g) => [
@@ -43,18 +48,80 @@
                 ])
             )
         );
-        const greetingId = await onCreate({ content: '', sortOrder });
-        expanded.add(greetingId);
+        busyAction = 'create';
+        try {
+            const greetingId = await onCreate({ content: '', sortOrder });
+            if (character.id === characterId) expanded.add(greetingId);
+        } catch (error) {
+            toast.error({ title: 'Could not add greeting', description: getErrorMessage(error) });
+        } finally {
+            busyAction = null;
+        }
     }
 
     async function handleReorder(id: string, newSortOrder: string) {
-        await onUpdate(id, { sortOrder: newSortOrder });
+        if (busyAction) return;
+        busyAction = `reorder:${id}`;
+        try {
+            await onUpdate(id, { sortOrder: newSortOrder });
+        } catch (error) {
+            toast.error({
+                title: 'Could not reorder greeting',
+                description: getErrorMessage(error)
+            });
+        } finally {
+            busyAction = null;
+        }
+    }
+
+    async function handleUpdate(id: string, content: string) {
+        if (busyAction) return;
+        busyAction = `update:${id}`;
+        try {
+            await onUpdate(id, { content });
+        } catch (error) {
+            toast.error({
+                title: 'Could not update greeting',
+                description: getErrorMessage(error)
+            });
+        } finally {
+            busyAction = null;
+        }
+    }
+
+    async function handleDelete(id: string) {
+        if (busyAction) return;
+        const characterId = character.id;
+        busyAction = `delete:${id}`;
+        try {
+            const confirmed = await appConfirm({
+                title: 'Delete greeting?',
+                description: 'This greeting will be permanently deleted.',
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed || character.id !== characterId) return;
+            await onDelete(id);
+        } catch (error) {
+            toast.error({
+                title: 'Could not delete greeting',
+                description: getErrorMessage(error)
+            });
+        } finally {
+            busyAction = null;
+        }
     }
 </script>
 
 <section class="space-y-6">
     <ListActionBar description="Opening messages for new conversations.">
-        <Button size="sm" class="gap-1.5" onclick={handleAdd}>
+        <Button
+            size="sm"
+            class="gap-1.5"
+            disabled={busyAction !== null}
+            aria-busy={busyAction === 'create'}
+            onclick={handleAdd}
+        >
             <Plus class="size-4" /> Add
         </Button>
     </ListActionBar>
@@ -104,7 +171,9 @@
                         size="icon"
                         variant="ghost"
                         class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-                        onclick={() => onDelete(g.id)}
+                        disabled={busyAction !== null}
+                        aria-busy={busyAction === `delete:${g.id}`}
+                        onclick={() => handleDelete(g.id)}
                         aria-label="Delete greeting"
                     >
                         <Trash2 class="size-4" />
@@ -117,8 +186,9 @@
                         <Textarea
                             rows={6}
                             value={g.content}
+                            disabled={busyAction !== null}
                             placeholder="Write greeting message..."
-                            onchange={(e) => onUpdate(g.id, { content: e.currentTarget.value })}
+                            onchange={(e) => handleUpdate(g.id, e.currentTarget.value)}
                             class="text-xs bg-background leading-relaxed"
                         />
                     </div>

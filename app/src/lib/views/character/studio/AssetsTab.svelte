@@ -17,7 +17,9 @@
     } from '$lib/stores';
     import type { Character } from '$lib/services';
     import type { AssetRef } from '$lib/types/refs';
+    import { getErrorMessage } from '$lib/types/errors';
     import { appDialog } from '$lib/adapters/dialog';
+    import { appConfirm, toast } from '$lib/ui';
 
     interface Props {
         character: Character;
@@ -27,6 +29,7 @@
 
     let editingId = $state<string | null>(null);
     let editName = $state('');
+    let busyAction = $state<string | null>(null);
 
     const assetRefs = $derived(Object.values(character.assets.refs));
 
@@ -36,8 +39,16 @@
     }
 
     async function saveRename(ref: AssetRef) {
+        if (busyAction) return;
         const val = editName.trim();
-        if (val && val !== ref.name) {
+        if (!val || val === ref.name) {
+            editingId = null;
+            return;
+        }
+
+        const characterId = character.id;
+        busyAction = `rename:${ref.id}`;
+        try {
             await updateCharacter(character.id, {
                 assets: {
                     refs: {
@@ -45,27 +56,62 @@
                     }
                 }
             });
+            if (character.id === characterId) editingId = null;
+        } catch (error) {
+            toast.error({ title: 'Could not rename asset', description: getErrorMessage(error) });
+        } finally {
+            busyAction = null;
         }
-        editingId = null;
     }
 
     async function handleAdd() {
-        const file = await appDialog.openFile({
-            title: 'Upload Character Asset',
-            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
-        });
-        if (!file) return;
-        await createCharacterAsset(character.id, file);
+        if (busyAction) return;
+        const characterId = character.id;
+        busyAction = 'upload';
+        try {
+            const file = await appDialog.openFile({
+                title: 'Upload Character Asset',
+                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+            });
+            if (!file || character.id !== characterId) return;
+            await createCharacterAsset(characterId, file);
+        } catch (error) {
+            toast.error({ title: 'Could not upload asset', description: getErrorMessage(error) });
+        } finally {
+            busyAction = null;
+        }
     }
 
-    async function handleDelete(assetId: string) {
-        await deleteCharacterAsset(character.id, assetId);
+    async function handleDelete(ref: AssetRef) {
+        if (busyAction) return;
+        const characterId = character.id;
+        busyAction = `delete:${ref.id}`;
+        try {
+            const confirmed = await appConfirm({
+                title: 'Delete character asset?',
+                description: `Delete "${ref.name}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed || character.id !== characterId) return;
+            await deleteCharacterAsset(characterId, ref.id);
+        } catch (error) {
+            toast.error({ title: 'Could not delete asset', description: getErrorMessage(error) });
+        } finally {
+            busyAction = null;
+        }
     }
 </script>
 
 <section class="space-y-4">
     <ListActionBar description="Images and files used by this character.">
-        <Button size="sm" class="gap-1.5" onclick={handleAdd}>
+        <Button
+            size="sm"
+            class="gap-1.5"
+            disabled={busyAction !== null}
+            aria-busy={busyAction === 'upload'}
+            onclick={handleAdd}
+        >
             <Upload class="size-4" /> Upload
         </Button>
     </ListActionBar>
@@ -115,6 +161,7 @@
                         >
                             <Input
                                 bind:value={editName}
+                                disabled={busyAction !== null}
                                 class="h-7 text-xs bg-background w-full"
                                 autofocus
                                 onblur={() => saveRename(ref)}
@@ -140,6 +187,7 @@
                         size="icon-sm"
                         class="size-7"
                         title="Rename"
+                        disabled={busyAction !== null}
                         onclick={() => startRename(ref)}
                     >
                         <Pencil class="size-3" />
@@ -149,7 +197,9 @@
                         size="icon-sm"
                         class="size-7 text-destructive hover:text-destructive"
                         title="Delete"
-                        onclick={() => handleDelete(ref.id)}
+                        disabled={busyAction !== null}
+                        aria-busy={busyAction === `delete:${ref.id}`}
+                        onclick={() => handleDelete(ref)}
                     >
                         <Trash2 class="size-3" />
                     </Button>

@@ -14,24 +14,56 @@
     import AssetView from '$lib/components/AssetView.svelte';
     import type { Character, CharacterContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
+    import { getErrorMessage } from '$lib/types/errors';
     import { appDialog } from '$lib/adapters/dialog';
+    import { appConfirm, toast } from '$lib/ui';
 
     interface Props {
         character: Character;
         onUpdate: (changes: DeepPartial<CharacterContent>) => void | Promise<void>;
-        onUpdateAvatar: (file: File) => void | Promise<void>;
-        onRemoveAvatar: () => void | Promise<void>;
+        onUpdateAvatar: (characterId: string, file: File) => void | Promise<void>;
+        onRemoveAvatar: (characterId: string) => void | Promise<void>;
     }
 
     let { character, onUpdate, onUpdateAvatar, onRemoveAvatar }: Props = $props();
+    let avatarAction = $state<'upload' | 'remove' | null>(null);
 
     async function handleAvatarUpload() {
-        const file = await appDialog.openFile({
-            title: 'Upload Character Avatar',
-            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
-        });
-        if (!file) return;
-        await onUpdateAvatar(file);
+        if (avatarAction) return;
+        const characterId = character.id;
+        avatarAction = 'upload';
+        try {
+            const file = await appDialog.openFile({
+                title: 'Upload Character Avatar',
+                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+            });
+            if (!file || character.id !== characterId) return;
+            await onUpdateAvatar(characterId, file);
+        } catch (error) {
+            toast.error({ title: 'Could not update avatar', description: getErrorMessage(error) });
+        } finally {
+            avatarAction = null;
+        }
+    }
+
+    async function handleAvatarRemove() {
+        if (!character.avatar || avatarAction) return;
+        const characterId = character.id;
+        avatarAction = 'remove';
+        try {
+            const confirmed = await appConfirm({
+                title: 'Remove character avatar?',
+                description: `Remove the avatar for "${character.name}"?`,
+                confirmText: 'Remove',
+                variant: 'destructive'
+            });
+            if (!confirmed || character.id !== characterId) return;
+            await onRemoveAvatar(characterId);
+        } catch (error) {
+            toast.error({ title: 'Could not remove avatar', description: getErrorMessage(error) });
+        } finally {
+            avatarAction = null;
+        }
     }
 </script>
 
@@ -71,6 +103,9 @@
                     </div>
                     <button
                         class="absolute inset-0 flex items-center justify-center bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        disabled={avatarAction !== null}
+                        aria-busy={avatarAction === 'upload'}
+                        aria-label="Upload character avatar"
                         onclick={handleAvatarUpload}
                     >
                         <Upload class="size-6" />
@@ -89,8 +124,9 @@
                         <Button
                             variant="destructive"
                             size="sm"
-                            disabled={!character.avatar}
-                            onclick={onRemoveAvatar}
+                            disabled={!character.avatar || avatarAction !== null}
+                            aria-busy={avatarAction === 'remove'}
+                            onclick={handleAvatarRemove}
                         >
                             Remove Avatar
                         </Button>

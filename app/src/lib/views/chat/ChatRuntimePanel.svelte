@@ -121,12 +121,35 @@
     }
 
     async function handleInlayUpload() {
-        const file = await appDialog.openFile({
-            title: 'Upload Gallery Image',
-            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        if ($activeChat?.id !== chatId) return;
+        const targetChatId = chatId;
+        await runPanelAction('upload-inlay', 'Could not upload gallery image', async () => {
+            const file = await appDialog.openFile({
+                title: 'Upload Gallery Image',
+                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+            });
+            if (!file || $activeChat?.id !== targetChatId) return;
+            await createChatInlay(targetChatId, file);
         });
-        if (!$activeChat || !file) return;
-        await createChatInlay(chatId, file);
+    }
+
+    async function handleInlayDelete(assetId: string, name: string) {
+        if ($activeChat?.id !== chatId) return;
+        const targetChatId = chatId;
+        await runPanelAction(
+            `delete-inlay:${assetId}`,
+            'Could not delete gallery image',
+            async () => {
+                const confirmed = await appConfirm({
+                    title: 'Delete gallery image?',
+                    description: `Delete "${name}"?`,
+                    confirmText: 'Delete',
+                    variant: 'destructive'
+                });
+                if (!confirmed || $activeChat?.id !== targetChatId) return;
+                await deleteChatInlay(targetChatId, assetId);
+            }
+        );
     }
 
     async function handlePersonaSelect(personaId: string) {
@@ -427,6 +450,9 @@
                                 variant="secondary"
                                 size="icon"
                                 class="size-7"
+                                disabled={panelAction !== null}
+                                aria-busy={panelAction === 'upload-inlay'}
+                                aria-label="Upload gallery image"
                                 onclick={handleInlayUpload}
                             >
                                 <Plus class="size-3" />
@@ -487,9 +513,12 @@
                                     type="button"
                                     class="absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
                                     title="Delete"
+                                    aria-label={`Delete ${ref.name}`}
+                                    disabled={panelAction !== null}
+                                    aria-busy={panelAction === `delete-inlay:${ref.id}`}
                                     onclick={(event) => {
                                         event.stopPropagation();
-                                        deleteChatInlay(chatId, ref.id);
+                                        void handleInlayDelete(ref.id, ref.name);
                                     }}
                                 >
                                     <X class="size-3" />
