@@ -2,6 +2,8 @@
     import { Dialog, DialogContent, DialogHeader, DialogTitle } from '$lib/components/ui/dialog';
     import type { WorkflowDefinition, WorkflowEditResult, WorkflowPatch } from '$lib/workflow';
     import WorkflowGraphTab from './WorkflowGraphTab.svelte';
+    import { toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     interface Props {
         open: boolean;
@@ -22,6 +24,8 @@
     let draftWorkflow = $state.raw<WorkflowDefinition>({ nodes: {} });
     let selectedNodeId = $state<string | null>(null);
     let wasOpen = $state(false);
+    let saving = $state(false);
+    const patchQueue: WorkflowPatch[] = [];
 
     $effect(() => {
         if (open && !wasOpen) {
@@ -33,7 +37,25 @@
     async function applyEdit(result: WorkflowEditResult) {
         draftWorkflow = result.workflow;
         selectedNodeId = selectExistingNode(draftWorkflow, selectedNodeId);
-        await onPatch(result.patch);
+        patchQueue.push(result.patch);
+        if (saving) return;
+
+        saving = true;
+        try {
+            while (patchQueue.length > 0) {
+                const patch = patchQueue.shift();
+                if (patch) await onPatch(patch);
+            }
+        } catch (error) {
+            patchQueue.length = 0;
+            resetDraft();
+            toast.error({
+                title: 'Workflow update failed',
+                description: getErrorMessage(error, 'The workflow change could not be saved')
+            });
+        } finally {
+            saving = false;
+        }
     }
 
     function resetDraft() {
@@ -64,7 +86,7 @@
             <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
-        <div class="flex min-h-0 flex-1 flex-col sm:px-0 sm:pb-0">
+        <div class="flex min-h-0 flex-1 flex-col sm:px-0 sm:pb-0" aria-busy={saving}>
             <WorkflowGraphTab
                 workflow={draftWorkflow}
                 {selectedNodeId}
