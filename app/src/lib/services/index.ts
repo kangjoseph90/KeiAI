@@ -14,6 +14,7 @@ export * from './content/plugin';
 export * from './content/preset';
 export * from './content/tool';
 export * from './content/translation';
+export * from './content/record_buffer';
 export * from './content/file';
 export * from './content/scope';
 export * from './session';

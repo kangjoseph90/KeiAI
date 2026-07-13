@@ -21,14 +21,21 @@ interface BufferEntry<TRecord extends DataRecord> {
     options?: DatabaseWriteOptions;
     flushTimer: ReturnType<typeof setTimeout> | null;
     maxWaitTimer: ReturnType<typeof setTimeout> | null;
-    firstBufferedAt: number;
     flushPromise: Promise<void> | null;
     version: number;
+    error: AppError | null;
 }
+
+export type RecordBufferPersistenceState = 'healthy' | 'failed';
 
 class RecordBuffer {
     private readonly entries = new Map<BufferKey, BufferEntry<DataRecord>>();
     private readonly readCache = new LRUCache<BufferKey, DataRecord>(500);
+    private readonly persistenceListeners = new Set<
+        (state: RecordBufferPersistenceState) => void
+    >();
+    private persistenceState: RecordBufferPersistenceState = 'healthy';
+
     constructor() {
         this.installWriteInvalidationHook();
         this.installLifecycleFlushHooks();
@@ -96,6 +103,19 @@ class RecordBuffer {
         await Promise.all(keys.map((key) => this.flushKey(key)));
     }
 
+    async retryFailed(): Promise<void> {
+        const keys = Array.from(this.entries.values())
+            .filter((entry) => entry.error)
+            .map((entry) => entry.key);
+        await Promise.all(keys.map((key) => this.flushKey(key)));
+    }
+
+    subscribePersistenceState(listener: (state: RecordBufferPersistenceState) => void): () => void {
+        this.persistenceListeners.add(listener);
+        listener(this.persistenceState);
+        return () => this.persistenceListeners.delete(listener);
+    }
+
     drop(tableName: TableName, id: string): void {
         const key = this.getKey(tableName, id);
         this.readCache.delete(key);
@@ -104,6 +124,7 @@ class RecordBuffer {
         if (!entry) return;
         this.clearTimers(entry);
         this.entries.delete(key);
+        this.refreshPersistenceState();
     }
 
     private getKey(tableName: TableName, id: string): BufferKey {
@@ -123,9 +144,9 @@ class RecordBuffer {
             options,
             flushTimer: null,
             maxWaitTimer: null,
-            firstBufferedAt: clock.now(),
             flushPromise: null,
-            version: 0
+            version: 0,
+            error: null
         };
         this.entries.set(key, created as BufferEntry<DataRecord>);
         this.schedule(created as BufferEntry<DataRecord>);
@@ -138,12 +159,12 @@ class RecordBuffer {
         }
 
         entry.flushTimer = setTimeout(() => {
-            void this.flushKey(entry.key);
+            void this.flushKey(entry.key).catch(() => undefined);
         }, WRITE_DEBOUNCE_MS);
 
         if (!entry.maxWaitTimer) {
             entry.maxWaitTimer = setTimeout(() => {
-                void this.flushKey(entry.key);
+                void this.flushKey(entry.key).catch(() => undefined);
             }, WRITE_MAX_WAIT_MS);
         }
     }
@@ -179,6 +200,7 @@ class RecordBuffer {
 
         try {
             await entry.flushPromise;
+            entry.error = null;
 
             const current = this.entries.get(key);
             if (current === entry && current.version === flushVersion) {
@@ -186,9 +208,16 @@ class RecordBuffer {
             } else if (current === entry) {
                 this.schedule(current);
             }
+            this.refreshPersistenceState();
         } catch (error) {
-            this.schedule(entry);
-            throw new AppError('DB_WRITE_FAILED', `Failed to flush queued write: ${key}`, error);
+            this.clearTimers(entry);
+            entry.error = new AppError(
+                'DB_WRITE_FAILED',
+                `Failed to flush queued write: ${key}`,
+                error
+            );
+            this.refreshPersistenceState();
+            throw entry.error;
         } finally {
             entry.flushPromise = null;
         }
@@ -208,7 +237,7 @@ class RecordBuffer {
         if (typeof window === 'undefined') return;
 
         const flushSoon = () => {
-            void this.flushAll();
+            void this.flushAll().catch(() => undefined);
         };
 
         window.addEventListener('pagehide', flushSoon);
@@ -218,6 +247,19 @@ class RecordBuffer {
                 flushSoon();
             }
         });
+    }
+
+    private getPersistenceState(): RecordBufferPersistenceState {
+        return Array.from(this.entries.values()).some((entry) => entry.error)
+            ? 'failed'
+            : 'healthy';
+    }
+
+    private refreshPersistenceState(): void {
+        const state = this.getPersistenceState();
+        if (state === this.persistenceState) return;
+        this.persistenceState = state;
+        for (const listener of this.persistenceListeners) listener(state);
     }
 }
 
