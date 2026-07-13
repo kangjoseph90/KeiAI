@@ -28,6 +28,8 @@
         "clipboard-manager:allow-read-image",
         "clipboard-manager:allow-write-image",
         "sql:default",
-        "stronghold:default"
+        "sql:allow-execute",
+        "stronghold:default",
+        "store:default"
     ]
 }

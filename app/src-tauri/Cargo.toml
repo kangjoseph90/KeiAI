@@ -25,7 +25,8 @@ tauri = { version = "2.10.0", features = ["protocol-asset"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
-tauri-plugin-stronghold = "2"
+tauri-plugin-stronghold = { version = "2", features = ["kdf"] }
+tauri-plugin-store = "2"
 tauri-plugin-http = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
