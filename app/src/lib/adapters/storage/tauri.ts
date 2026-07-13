@@ -14,7 +14,6 @@ const logger = createLogger('adapter:storage:tauri');
  * Uses asset:// protocol for zero-copy rendering in the webview.
  */
 export class TauriStorageAdapter implements IStorageAdapter {
-    private urlCache = new Map<string, string>();
     private baseDir: string | null = null;
 
     private async getBaseDir(): Promise<string> {
@@ -43,35 +42,21 @@ export class TauriStorageAdapter implements IStorageAdapter {
     }
 
     async getRenderUrl(path: string): Promise<string | null> {
-        const cached = this.urlCache.get(path);
-        if (cached) return cached;
-
         const fullPath = await this.resolvePath(path);
         const fileExists = await exists(fullPath);
         if (!fileExists) return null;
 
         // convertFileSrc produces asset://localhost/... which the webview renders natively.
         // No memory allocation needed — no revoke required either.
-        const url = convertFileSrc(fullPath);
-        this.urlCache.set(path, url);
-        return url;
+        return convertFileSrc(fullPath);
     }
 
-    async revokeRenderUrl(url: string): Promise<void> {
-        // asset:// URLs have no memory to free, just clean up the cache map
-        for (const [path, cached] of this.urlCache) {
-            if (cached === url) {
-                this.urlCache.delete(path);
-                break;
-            }
-        }
-    }
+    async revokeRenderUrl(_url: string): Promise<void> {}
 
     async write(path: string, data: Uint8Array | Blob): Promise<void> {
         const fullPath = await this.resolvePath(path, true); // createDirs = true
         const bytes = data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : data;
         await writeFile(fullPath, bytes);
-        this.urlCache.delete(path);
     }
 
     async read(path: string): Promise<Uint8Array | null> {
@@ -85,7 +70,6 @@ export class TauriStorageAdapter implements IStorageAdapter {
         try {
             const fullPath = await this.resolvePath(path);
             await remove(fullPath);
-            this.urlCache.delete(path);
         } catch (e) {
             logger.error(`TauriStorageAdapter.delete(${path}) failed:`, e);
         }
