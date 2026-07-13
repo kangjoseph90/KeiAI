@@ -36,8 +36,62 @@ describe('pointerDrag', () => {
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         vi.useRealTimers();
         document.body.replaceChildren();
+    });
+
+    it('attaches window listeners only for an active pointer session', () => {
+        const addEventListener = vi.spyOn(window, 'addEventListener');
+        const removeEventListener = vi.spyOn(window, 'removeEventListener');
+        const action = pointerDrag(node, options);
+
+        expect(addEventListener).not.toHaveBeenCalledWith(
+            'pointermove',
+            expect.any(Function),
+            expect.anything()
+        );
+
+        node.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'mouse' }));
+
+        expect(addEventListener).toHaveBeenCalledWith('pointermove', expect.any(Function), {
+            passive: false
+        });
+        expect(addEventListener).toHaveBeenCalledWith('pointerup', expect.any(Function), {
+            passive: false
+        });
+        expect(addEventListener).toHaveBeenCalledWith('pointercancel', expect.any(Function));
+        expect(addEventListener).toHaveBeenCalledWith('blur', expect.any(Function));
+
+        window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'mouse' }));
+
+        expect(removeEventListener).toHaveBeenCalledWith('pointermove', expect.any(Function));
+        expect(removeEventListener).toHaveBeenCalledWith('pointerup', expect.any(Function));
+        expect(removeEventListener).toHaveBeenCalledWith('pointercancel', expect.any(Function));
+        expect(removeEventListener).toHaveBeenCalledWith('blur', expect.any(Function));
+        action?.destroy?.();
+    });
+
+    it('prevents touch scrolling only after long-press activation', async () => {
+        const addEventListener = vi.spyOn(window, 'addEventListener');
+        const removeEventListener = vi.spyOn(window, 'removeEventListener');
+        const action = pointerDrag(node, options);
+
+        node.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
+        expect(addEventListener).not.toHaveBeenCalledWith(
+            'touchmove',
+            expect.any(Function),
+            expect.anything()
+        );
+
+        await vi.advanceTimersByTimeAsync(280);
+        expect(addEventListener).toHaveBeenCalledWith('touchmove', expect.any(Function), {
+            passive: false
+        });
+
+        window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
+        expect(removeEventListener).toHaveBeenCalledWith('touchmove', expect.any(Function));
+        action?.destroy?.();
     });
 
     it('starts a touch drag after a long press and drops at the pointer position', async () => {

@@ -27,29 +27,61 @@ describe('Dialog Adapters', () => {
         });
 
         afterEach(() => {
+            vi.useRealTimers();
             vi.restoreAllMocks();
         });
 
         it('openFile should resolve the selected file on web', async () => {
             const file = new File(['hello'], 'hello.txt', { type: 'text/plain' });
-            mockInputSelection([file]);
+            let picker: HTMLInputElement | null = null;
+            mockInputSelection([file], (input) => (picker = input));
 
             const result = await adapter.openFile({
                 filters: [{ name: 'Text', extensions: ['txt'] }]
             });
 
             expect(result).toBe(file);
+            expect(picker).not.toBeNull();
+            expect(picker!.multiple).toBe(false);
+            expect(picker!.accept).toBe('.txt');
+            expect(picker!.isConnected).toBe(false);
         });
 
         it('openMultipleFiles should resolve selected files', async () => {
             const files = [new File(['a'], 'a.txt'), new File(['b'], 'b.txt')];
-            mockInputSelection(files);
+            let picker: HTMLInputElement | null = null;
+            mockInputSelection(files, (input) => (picker = input));
 
             const result = await adapter.openMultipleFiles();
             expect(result).toEqual(files);
+            expect(picker).not.toBeNull();
+            expect(picker!.multiple).toBe(true);
+            expect(picker!.isConnected).toBe(false);
+        });
+
+        it('cleans up the picker when selection is cancelled', async () => {
+            let picker: HTMLInputElement | null = null;
+            mockInputCancel((input) => (picker = input));
+
+            const result = await adapter.openFile();
+
+            expect(result).toBeNull();
+            expect(picker).not.toBeNull();
+            expect(picker!.isConnected).toBe(false);
+        });
+
+        it('treats focus return without a selection as cancellation', async () => {
+            vi.useFakeTimers();
+            mockInputFocusReturn();
+
+            const pending = adapter.openFile();
+            await vi.advanceTimersByTimeAsync(150);
+
+            await expect(pending).resolves.toBeNull();
         });
 
         it('saveBytes should trigger a browser download', async () => {
+            vi.useFakeTimers();
             const originalCreateElement = document.createElement.bind(document);
             const anchor = document.createElement('a');
             const click = vi.fn();
@@ -73,6 +105,10 @@ describe('Dialog Adapters', () => {
             expect(anchor.href).toBe('blob:test');
             expect(click).toHaveBeenCalled();
             expect(createObjectURL).toHaveBeenCalled();
+            expect(anchor.isConnected).toBe(false);
+            expect(revokeObjectURL).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(1_000);
             expect(revokeObjectURL).toHaveBeenCalledWith('blob:test');
         });
     });
@@ -152,21 +188,49 @@ describe('Dialog Adapters', () => {
     });
 });
 
-function mockInputSelection(files: File[]): void {
+function mockInputSelection(files: File[], onCreate?: (input: HTMLInputElement) => void): void {
     const originalCreateElement = document.createElement.bind(document);
     vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
         const element = originalCreateElement(tagName);
         if (tagName !== 'input') return element;
 
+        const input = element as HTMLInputElement;
+        onCreate?.(input);
         Object.defineProperty(element, 'files', {
             configurable: true,
             value: files
         });
         element.click = vi.fn(() => {
             setTimeout(() => {
-                (element as HTMLInputElement).onchange?.(new Event('change'));
+                element.dispatchEvent(new Event('change'));
             }, 0);
         });
+        return element;
+    });
+}
+
+function mockInputCancel(onCreate?: (input: HTMLInputElement) => void): void {
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+        const element = originalCreateElement(tagName);
+        if (tagName !== 'input') return element;
+
+        const input = element as HTMLInputElement;
+        onCreate?.(input);
+        input.click = vi.fn(() => {
+            setTimeout(() => input.dispatchEvent(new Event('cancel')), 0);
+        });
+        return input;
+    });
+}
+
+function mockInputFocusReturn(): void {
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+        const element = originalCreateElement(tagName);
+        if (tagName !== 'input') return element;
+
+        element.click = vi.fn(() => window.dispatchEvent(new Event('focus')));
         return element;
     });
 }

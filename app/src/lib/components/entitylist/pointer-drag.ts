@@ -73,6 +73,37 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
     let animationFrame: number | null = null;
     let suppressClickUntil = 0;
     let previousBodyUserSelect: string | null = null;
+    let sessionListenersAttached = false;
+    let touchMoveListenerAttached = false;
+
+    function addSessionListeners(): void {
+        if (sessionListenersAttached) return;
+        sessionListenersAttached = true;
+        window.addEventListener('pointermove', handlePointerMove, { passive: false });
+        window.addEventListener('pointerup', finish, { passive: false });
+        window.addEventListener('pointercancel', cancel);
+        window.addEventListener('blur', handleBlur);
+    }
+
+    function addTouchMoveListener(): void {
+        if (touchMoveListenerAttached) return;
+        touchMoveListenerAttached = true;
+        window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    }
+
+    function removeSessionListeners(): void {
+        if (sessionListenersAttached) {
+            sessionListenersAttached = false;
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', finish);
+            window.removeEventListener('pointercancel', cancel);
+            window.removeEventListener('blur', handleBlur);
+        }
+        if (touchMoveListenerAttached) {
+            touchMoveListenerAttached = false;
+            window.removeEventListener('touchmove', handleTouchMove);
+        }
+    }
 
     function clearTimer(): void {
         if (holdTimer) clearTimeout(holdTimer);
@@ -110,20 +141,13 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
         stopFrame();
         removeGhost();
         releasePointerCapture();
+        removeSessionListeners();
         pointerId = null;
         pointerType = null;
         origin = null;
         latest = null;
         grabOffset = null;
         active = false;
-        restoreSelection();
-        node.classList.remove('pointer-drag-source');
-    }
-
-    function resetVisualDragState(): void {
-        clearTimer();
-        stopFrame();
-        removeGhost();
         restoreSelection();
         node.classList.remove('pointer-drag-source');
     }
@@ -147,6 +171,8 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
         if (pointerId === null || !latest) return;
         active = true;
         clearTimer();
+        node.setPointerCapture?.(pointerId);
+        if (pointerType !== 'mouse') addTouchMoveListener();
         suppressSelection();
         node.classList.add('pointer-drag-source');
         ghost = node.cloneNode(true) as HTMLElement;
@@ -166,18 +192,26 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
         });
         updateGhost(latest);
         document.body.appendChild(ghost);
-        navigator.vibrate?.(20);
+        try {
+            navigator.vibrate?.(20);
+        } catch {
+            // Haptics are optional and may be blocked by the browser or WebView.
+        }
         options.onStart();
         animationFrame = requestAnimationFrame(runFrame);
     }
 
     function handlePointerDown(event: PointerEvent): void {
-        if (options.disabled || event.button !== 0 || isInteractiveDragTarget(event.target)) {
+        if (
+            options.disabled ||
+            pointerId !== null ||
+            event.button !== 0 ||
+            isInteractiveDragTarget(event.target)
+        ) {
             return;
         }
 
         pointerId = event.pointerId;
-        node.setPointerCapture?.(event.pointerId);
         pointerType = event.pointerType;
         origin = { x: event.clientX, y: event.clientY };
         latest = origin;
@@ -186,6 +220,7 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
             x: event.clientX - rect.left,
             y: event.clientY - rect.top
         };
+        addSessionListeners();
         if (event.pointerType !== 'mouse') {
             holdTimer = setTimeout(startDrag, HOLD_DELAY_MS);
         }
@@ -216,8 +251,9 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
         if (wasActive) {
             event.preventDefault();
             suppressClickUntil = performance.now() + 600;
-            resetVisualDragState();
+            reset();
             await options.onDrop(point.x, point.y);
+            return;
         }
         reset();
     }
@@ -253,11 +289,6 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
     node.addEventListener('pointerdown', handlePointerDown);
     node.addEventListener('click', handleClick, true);
     node.addEventListener('contextmenu', handleContextMenu);
-    window.addEventListener('pointermove', handlePointerMove, { passive: false });
-    window.addEventListener('pointerup', finish, { passive: false });
-    window.addEventListener('pointercancel', cancel);
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
-    window.addEventListener('blur', handleBlur);
 
     return {
         update(nextOptions) {
@@ -269,11 +300,6 @@ export const pointerDrag: Action<HTMLElement, PointerDragOptions> = (node, initi
             node.removeEventListener('pointerdown', handlePointerDown);
             node.removeEventListener('click', handleClick, true);
             node.removeEventListener('contextmenu', handleContextMenu);
-            window.removeEventListener('pointermove', handlePointerMove);
-            window.removeEventListener('pointerup', finish);
-            window.removeEventListener('pointercancel', cancel);
-            window.removeEventListener('touchmove', handleTouchMove);
-            window.removeEventListener('blur', handleBlur);
         }
     };
 };

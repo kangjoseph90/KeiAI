@@ -89,7 +89,8 @@ describe('chat task notifications', () => {
         await vi.waitFor(() => {
             expect(toast.success).toHaveBeenCalledWith({
                 title: 'Response ready',
-                description: 'A chat response has finished generating.'
+                description: 'A chat response has finished generating.',
+                persistent: true
             });
         });
     });

@@ -1,7 +1,7 @@
 import type { IDialogAdapter, FileDialogOptions, SaveBytesOptions } from './types';
-import { createLogger } from '$lib/adapters/logger';
 
-const logger = createLogger('adapter:dialog:web');
+const FILE_PICKER_FOCUS_SETTLE_MS = 150;
+const DOWNLOAD_URL_REVOKE_DELAY_MS = 1_000;
 
 /**
  * Web Dialog Adapter
@@ -13,19 +13,63 @@ const logger = createLogger('adapter:dialog:web');
  */
 export class WebDialogAdapter implements IDialogAdapter {
     async openFile(options?: FileDialogOptions): Promise<File | null> {
-        const files = await this.openMultipleFiles(options);
+        const files = await this.pickFiles(false, options);
         return files?.[0] ?? null;
     }
 
     async openMultipleFiles(options?: FileDialogOptions): Promise<File[] | null> {
-        return new Promise((resolve) => {
+        return this.pickFiles(true, options);
+    }
+
+    private pickFiles(multiple: boolean, options?: FileDialogOptions): Promise<File[] | null> {
+        return new Promise((resolve, reject) => {
             const input = document.createElement('input');
             input.type = 'file';
-            input.multiple = true;
+            input.multiple = multiple;
             input.accept = acceptString(options?.filters);
-            input.onchange = () => resolve(input.files ? Array.from(input.files) : null);
-            input.oncancel = () => resolve(null);
-            input.click();
+            input.hidden = true;
+
+            let settled = false;
+            let focusTimer: ReturnType<typeof setTimeout> | null = null;
+
+            const cleanup = () => {
+                if (focusTimer) clearTimeout(focusTimer);
+                input.removeEventListener('change', handleChange);
+                input.removeEventListener('cancel', handleCancel);
+                window.removeEventListener('focus', handleWindowFocus);
+                input.remove();
+            };
+            const settle = (files: File[] | null) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(files);
+            };
+            const handleChange = () => {
+                const files = input.files ? Array.from(input.files) : [];
+                settle(files.length > 0 ? files : null);
+            };
+            const handleCancel = () => settle(null);
+            const handleWindowFocus = () => {
+                if (focusTimer) clearTimeout(focusTimer);
+                focusTimer = setTimeout(() => {
+                    focusTimer = null;
+                    if (!input.files || input.files.length === 0) settle(null);
+                }, FILE_PICKER_FOCUS_SETTLE_MS);
+            };
+
+            input.addEventListener('change', handleChange);
+            input.addEventListener('cancel', handleCancel);
+            window.addEventListener('focus', handleWindowFocus);
+            document.body.appendChild(input);
+
+            try {
+                input.click();
+            } catch (error) {
+                settled = true;
+                cleanup();
+                reject(error);
+            }
         });
     }
 
@@ -35,9 +79,16 @@ export class WebDialogAdapter implements IDialogAdapter {
         const anchor = document.createElement('a');
         anchor.href = url;
         anchor.download = options.fileName;
-        anchor.click();
-        URL.revokeObjectURL(url);
-        return true;
+        anchor.hidden = true;
+        document.body.appendChild(anchor);
+
+        try {
+            anchor.click();
+            return true;
+        } finally {
+            anchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_URL_REVOKE_DELAY_MS);
+        }
     }
 }
 

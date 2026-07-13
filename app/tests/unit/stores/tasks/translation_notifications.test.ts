@@ -106,7 +106,8 @@ describe('translation task notifications', () => {
         await vi.waitFor(() => {
             expect(toast.success).toHaveBeenCalledWith({
                 title: 'Translation ready',
-                description: 'A translation has finished generating.'
+                description: 'A translation has finished generating.',
+                persistent: true
             });
         });
     });

@@ -13,7 +13,8 @@ export async function showTaskNotificationOrToast(
     title: string,
     description: string
 ): Promise<void> {
-    if (!isDocumentVisible()) {
+    const startedHidden = !isDocumentVisible();
+    if (startedHidden) {
         const shown = await NotificationService.show({
             title,
             body: description
@@ -21,5 +22,10 @@ export async function showTaskNotificationOrToast(
         if (shown) return;
     }
 
-    toast[toastKind]({ title, description });
+    const shouldPersist = startedHidden && !isDocumentVisible();
+    toast[toastKind]({
+        title,
+        description,
+        ...(shouldPersist ? { persistent: true } : {})
+    });
 }
