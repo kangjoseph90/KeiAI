@@ -28,8 +28,6 @@
 
     let loading = $state(false);
     let avatarPicking = $state(false);
-    let errorMsg = $state('');
-    let successMsg = $state('');
     let identityFingerprint = $state('');
     let profileUserId: string | null = null;
     let actionVersion = 0;
@@ -44,8 +42,6 @@
         userAvatar = '';
         loading = false;
         avatarPicking = false;
-        errorMsg = '';
-        successMsg = '';
     });
 
     $effect(() => {
@@ -73,15 +69,16 @@
         avatarPicking = true;
 
         try {
-            errorMsg = '';
             const file = await appDialog.openFile({
                 title: 'Upload Profile Avatar',
                 filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
             });
             if (!file || $activeUser?.id !== userId || version !== actionVersion) return;
             if (file.size > AVATAR_MAX_SIZE) {
-                errorMsg = 'Avatar image must be under 5MB';
-                toast.error({ title: 'Could not use avatar', description: errorMsg });
+                toast.error({
+                    title: 'Could not use avatar',
+                    description: 'Avatar image must be under 5MB'
+                });
                 return;
             }
             const { blob } = await preprocessImage(file, {
@@ -95,8 +92,7 @@
             userAvatar = avatar;
         } catch (e) {
             if ($activeUser?.id !== userId || version !== actionVersion) return;
-            errorMsg = getErrorMessage(e);
-            toast.error({ title: 'Could not prepare avatar', description: errorMsg });
+            toast.error({ title: 'Could not prepare avatar', description: getErrorMessage(e) });
         } finally {
             if ($activeUser?.id === userId && version === actionVersion) avatarPicking = false;
         }
@@ -108,8 +104,6 @@
         if (!userId) return;
         const version = ++actionVersion;
         loading = true;
-        errorMsg = '';
-        successMsg = '';
 
         try {
             await updateUser({
@@ -117,11 +111,10 @@
                 ...(userAvatar ? { avatar: userAvatar } : {})
             });
             if ($activeUser?.id !== userId || version !== actionVersion) return;
-            successMsg = 'User updated successfully.';
+            toast.success({ title: 'Profile saved' });
         } catch (e) {
             if ($activeUser?.id !== userId || version !== actionVersion) return;
-            errorMsg = getErrorMessage(e);
-            toast.error({ title: 'Could not save profile', description: errorMsg });
+            toast.error({ title: 'Could not save profile', description: getErrorMessage(e) });
         } finally {
             if ($activeUser?.id === userId && version === actionVersion) loading = false;
         }
@@ -136,22 +129,6 @@
         </CardDescription>
     </CardHeader>
     <CardContent class="flex flex-col gap-4" aria-busy={loading || avatarPicking}>
-        {#if errorMsg}
-            <div
-                class="rounded-md bg-destructive/15 p-3 text-sm text-destructive border border-destructive/20 font-medium"
-            >
-                {errorMsg}
-            </div>
-        {/if}
-
-        {#if successMsg}
-            <div
-                class="rounded-md bg-green-500/15 p-3 text-sm text-green-600 dark:text-green-400 border border-green-500/20 font-medium"
-            >
-                {successMsg}
-            </div>
-        {/if}
-
         <div class="flex items-center gap-6 mb-2">
             <div class="relative group">
                 <Avatar.Root

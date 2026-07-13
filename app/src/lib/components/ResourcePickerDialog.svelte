@@ -29,11 +29,11 @@
         config: EntityListConfig;
         attachedIds: string[];
         ownerTable: ResourceTable;
-        onAdd: (ids: string[]) => Promise<void>;
+        onAdd: (ids: string[]) => Promise<void | boolean>;
         roomTabLabel?: string;
         libraryResources?: PickerResource[];
         libraryConfig?: EntityListConfig;
-        onCopy?: (ids: string[]) => Promise<void>;
+        onCopy?: (ids: string[]) => Promise<void | boolean>;
     }
 
     let {
@@ -113,12 +113,13 @@
         if (selectedIds.length === 0 || adding) return;
         adding = true;
         try {
+            let completed: void | boolean;
             if (source === 'library' && onCopy) {
-                await onCopy(selectedIds);
+                completed = await onCopy(selectedIds);
             } else {
-                await onAdd(selectedIds);
+                completed = await onAdd(selectedIds);
             }
-            open = false;
+            if (completed !== false) open = false;
         } finally {
             adding = false;
         }

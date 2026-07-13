@@ -5,6 +5,7 @@
 
     let {
         showLightExport,
+        exporting,
         deleting,
         onExportRisu,
         onExportLight,
@@ -12,6 +13,7 @@
         onDelete
     }: {
         showLightExport: boolean;
+        exporting: string | null;
         deleting: boolean;
         onExportRisu: () => void | Promise<void>;
         onExportLight: () => void | Promise<void>;
@@ -33,7 +35,13 @@
                         Persona image with portable Risu metadata.
                     </p>
                 </div>
-                <Button variant="outline" class="gap-1.5" onclick={onExportRisu}>
+                <Button
+                    variant="outline"
+                    class="gap-1.5"
+                    disabled={exporting !== null}
+                    aria-busy={exporting === 'risu'}
+                    onclick={onExportRisu}
+                >
                     <Download class="size-4" /> Export PNG
                 </Button>
             </div>
@@ -45,7 +53,13 @@
                             Compact KeiAI archive that references synchronized assets.
                         </p>
                     </div>
-                    <Button variant="outline" class="gap-1.5" onclick={onExportLight}>
+                    <Button
+                        variant="outline"
+                        class="gap-1.5"
+                        disabled={exporting !== null}
+                        aria-busy={exporting === 'keipersona-light'}
+                        onclick={onExportLight}
+                    >
                         <Download class="size-4" /> Export Light
                     </Button>
                 </div>
@@ -57,7 +71,13 @@
                         Self-contained KeiAI archive with assets included.
                     </p>
                 </div>
-                <Button variant="outline" class="gap-1.5" onclick={onExportBaked}>
+                <Button
+                    variant="outline"
+                    class="gap-1.5"
+                    disabled={exporting !== null}
+                    aria-busy={exporting === 'keipersona-baked'}
+                    onclick={onExportBaked}
+                >
                     <Download class="size-4" /> Export Baked
                 </Button>
             </div>

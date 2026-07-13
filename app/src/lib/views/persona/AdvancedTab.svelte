@@ -3,6 +3,7 @@
 
     let {
         showLightExport,
+        exporting,
         deleting,
         onExportRisu,
         onExportLight,
@@ -10,6 +11,7 @@
         onDelete
     }: {
         showLightExport: boolean;
+        exporting: string | null;
         deleting: boolean;
         onExportRisu: () => void | Promise<void>;
         onExportLight: () => void | Promise<void>;
@@ -18,4 +20,12 @@
     } = $props();
 </script>
 
-<ExportTab {showLightExport} {deleting} {onExportRisu} {onExportLight} {onExportBaked} {onDelete} />
+<ExportTab
+    {showLightExport}
+    {exporting}
+    {deleting}
+    {onExportRisu}
+    {onExportLight}
+    {onExportBaked}
+    {onDelete}
+/>

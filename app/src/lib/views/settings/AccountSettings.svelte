@@ -39,7 +39,7 @@
     } from 'lucide-svelte';
     import { getErrorMessage } from '$lib/types/errors';
     import { PB_URL } from '$lib/config';
-    import { appConfirm, toast } from '$lib/ui';
+    import { appConfirm } from '$lib/ui';
 
     type AuthView = 'signup' | 'login';
     type LoginMethod = 'password' | 'recovery' | 'pairing' | 'delete_remote';
@@ -92,7 +92,6 @@
             pairingCodeInput = '';
         } catch (e) {
             errorMsg = getErrorMessage(e);
-            toast.error({ title: 'Account action failed', description: errorMsg });
         } finally {
             loading = false;
         }
@@ -101,7 +100,6 @@
     function handleCreateAccount() {
         if (password !== confirmPassword) {
             errorMsg = 'Passwords do not match.';
-            toast.error({ title: 'Could not create account', description: errorMsg });
             return;
         }
         void runAction(
@@ -117,7 +115,6 @@
     function handleRecover() {
         if (newPassword !== confirmPassword) {
             errorMsg = 'Passwords do not match.';
-            toast.error({ title: 'Could not recover account', description: errorMsg });
             return;
         }
         void runAction(
@@ -165,7 +162,6 @@
             generatedPairingCode = await AuthService.createPairingCode();
         } catch (e) {
             errorMsg = getErrorMessage(e);
-            toast.error({ title: 'Could not generate pairing code', description: errorMsg });
         } finally {
             loading = false;
         }
@@ -175,7 +171,6 @@
         const nextUrl = isSelfHosted ? undefined : selfHostUrl.trim();
         if (!isSelfHosted && !nextUrl) {
             errorMsg = 'Self-host URL is required.';
-            toast.error({ title: 'Could not change server', description: errorMsg });
             return;
         }
 

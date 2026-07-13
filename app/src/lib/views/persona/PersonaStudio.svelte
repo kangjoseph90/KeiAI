@@ -59,6 +59,8 @@
     let editName = $state('');
     let deleting = $state(false);
     let resourceAction = $state<string | null>(null);
+    type ExportButton = 'risu' | 'keipersona-light' | 'keipersona-baked';
+    let exporting = $state<ExportButton | null>(null);
 
     const tabs = [
         { id: 'profile' as const, label: 'Profile', icon: UserRound },
@@ -152,6 +154,24 @@
             toast.error({ title: 'Could not delete persona', description: getErrorMessage(error) });
         } finally {
             deleting = false;
+        }
+    }
+
+    async function handleExport(
+        id: ExportButton,
+        request:
+            | { kind: 'risu'; format: 'png' }
+            | { kind: 'keipersona'; assetMode: 'light' | 'baked' }
+    ) {
+        if (!$activePersona || exporting) return;
+        const targetId = $activePersona.id;
+        exporting = id;
+        try {
+            await exportPersonaFile(targetId, request);
+        } catch (error) {
+            toast.error({ title: 'Could not export persona', description: getErrorMessage(error) });
+        } finally {
+            exporting = null;
         }
     }
 
@@ -593,19 +613,20 @@
                         {:else if activeTab === 'advanced'}
                             <AdvancedTab
                                 showLightExport={isKeiServer()}
+                                {exporting}
                                 {deleting}
                                 onExportRisu={() =>
-                                    exportPersonaFile($activePersona!.id, {
+                                    handleExport('risu', {
                                         kind: 'risu',
                                         format: 'png'
                                     })}
                                 onExportLight={() =>
-                                    exportPersonaFile($activePersona!.id, {
+                                    handleExport('keipersona-light', {
                                         kind: 'keipersona',
                                         assetMode: 'light'
                                     })}
                                 onExportBaked={() =>
-                                    exportPersonaFile($activePersona!.id, {
+                                    handleExport('keipersona-baked', {
                                         kind: 'keipersona',
                                         assetMode: 'baked'
                                     })}

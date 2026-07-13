@@ -39,7 +39,7 @@
         dropNewerMessages,
         createChatInlay
     } from '$lib/stores';
-    import { characterPickerOpen, personaPickerOpen } from '$lib/ui';
+    import { appConfirm, characterPickerOpen, personaPickerOpen, toast } from '$lib/ui';
     import { runChat, stopChat, dismissChat } from '$lib/tasks';
     import {
         getLastContentText,
@@ -61,6 +61,7 @@
         hasDroppableFiles,
         selectImageFiles
     } from './composer-assets';
+    import { getErrorMessage } from '$lib/types/errors';
 
     let { roomId, chatId }: { roomId: string; chatId?: string } = $props();
 
@@ -78,6 +79,8 @@
     let hasMoreNewer = $state(false);
     let previousActiveChatId = $state<string | undefined>();
     let dragCounter = $state(0);
+    type MessageAction = 'save' | 'delete' | 'swipe' | 'fork';
+    let messageAction = $state<{ messageId: string; type: MessageAction } | null>(null);
     let chatViewEpoch = 0;
 
     const MESSAGE_PAGE_SIZE = 30;
@@ -358,6 +361,24 @@
         runChat($activeChat.id, selectedCharacter.id, selectedPersona.id);
     }
 
+    async function runMessageAction(
+        messageId: string,
+        type: MessageAction,
+        errorTitle: string,
+        action: (targetChatId: string) => Promise<void>
+    ): Promise<void> {
+        const targetChatId = $activeChat?.id;
+        if (!targetChatId || messageAction) return;
+        messageAction = { messageId, type };
+        try {
+            await action(targetChatId);
+        } catch (error) {
+            toast.error({ title: errorTitle, description: getErrorMessage(error) });
+        } finally {
+            messageAction = null;
+        }
+    }
+
     async function handleUpdateMessage(id: string) {
         if (!editMessageText.trim()) return;
         const msg = $displayMessages.find((m) => m.id === id);
@@ -379,12 +400,14 @@
             newParts.push({ type: 'content', text: editMessageText });
         }
 
-        await updateMessage(id, {
-            swipes: {
-                [msg.activeSwipeId]: { ...activeSwipe, parts: newParts }
-            }
+        await runMessageAction(id, 'save', 'Could not save message', async (targetChatId) => {
+            await updateMessage(id, {
+                swipes: {
+                    [msg.activeSwipeId]: { ...activeSwipe, parts: newParts }
+                }
+            });
+            if ($activeChat?.id === targetChatId) editModeId = null;
         });
-        editModeId = null;
     }
 
     async function handleRegenerate() {
@@ -396,13 +419,36 @@
     }
 
     async function handleSwipe(messageId: string, newSwipeId: string) {
-        await updateMessage(messageId, { activeSwipeId: newSwipeId });
+        await runMessageAction(messageId, 'swipe', 'Could not change swipe', () =>
+            updateMessage(messageId, { activeSwipeId: newSwipeId })
+        );
     }
 
     /** Fork the chat at a given message — copies all history up to that point into a new chat. */
     async function handleFork(messageId: string) {
-        const newChatId = await forkChat(messageId);
-        handleSwitchChat(newChatId);
+        await runMessageAction(messageId, 'fork', 'Could not fork chat', async (targetChatId) => {
+            const newChatId = await forkChat(messageId);
+            if ($activeChat?.id === targetChatId) await handleSwitchChat(newChatId);
+        });
+    }
+
+    async function handleDeleteMessage(messageId: string) {
+        await runMessageAction(
+            messageId,
+            'delete',
+            'Could not delete message',
+            async (targetChatId) => {
+                const confirmed = await appConfirm({
+                    title: 'Delete message?',
+                    description:
+                        'Delete this message and all of its swipes? This cannot be undone.',
+                    confirmText: 'Delete',
+                    variant: 'destructive'
+                });
+                if (!confirmed || $activeChat?.id !== targetChatId) return;
+                await deleteMessage(targetChatId, messageId);
+            }
+        );
     }
 
     async function handleSwitchChat(targetChatId: string) {
@@ -511,12 +557,16 @@
                                         : '';
                                 }}
                                 onSave={() => handleUpdateMessage(msg.id)}
-                                onDelete={() => deleteMessage($activeChat!.id, msg.id)}
+                                onDelete={() => handleDeleteMessage(msg.id)}
                                 onCancelEdit={() => (editModeId = null)}
                                 onDismissError={() => dismissChat($activeChat!.id)}
                                 onRegenerate={() => handleRegenerate()}
                                 onSwipe={(newSwipeId) => handleSwipe(msg.id, newSwipeId)}
                                 onFork={() => handleFork(msg.id)}
+                                actionsDisabled={messageAction !== null}
+                                busyAction={messageAction?.messageId === msg.id
+                                    ? messageAction.type
+                                    : null}
                                 isLastMessage={msg.id ===
                                     $displayMessages[$displayMessages.length - 1]?.id}
                             />

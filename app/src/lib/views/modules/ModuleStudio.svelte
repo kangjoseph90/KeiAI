@@ -119,6 +119,8 @@
         exporting = id;
         try {
             await exportModuleFile($activeModule.id, request);
+        } catch (error) {
+            toast.error({ title: 'Could not export module', description: getErrorMessage(error) });
         } finally {
             exporting = null;
         }

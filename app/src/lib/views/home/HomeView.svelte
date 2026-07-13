@@ -174,14 +174,16 @@
     async function runHomeAction(
         key: string,
         errorTitle: string,
-        action: () => void | Promise<void>
-    ): Promise<void> {
-        if (homeAction) return;
+        action: () => void | Promise<unknown>
+    ): Promise<boolean> {
+        if (homeAction) return false;
         homeAction = key;
         try {
             await action();
+            return true;
         } catch (error) {
             toast.error({ title: errorTitle, description: getErrorMessage(error) });
+            return false;
         } finally {
             homeAction = null;
         }
@@ -192,17 +194,20 @@
         errorTitle: string,
         title: string,
         description: string,
-        action: () => void | Promise<void>
-    ): Promise<void> {
-        await runHomeAction(key, errorTitle, async () => {
-            const confirmed = await appConfirm({
+        action: () => void | Promise<unknown>,
+        confirmText = 'Delete'
+    ): Promise<boolean> {
+        let confirmed = false;
+        const completed = await runHomeAction(key, errorTitle, async () => {
+            confirmed = await appConfirm({
                 title,
                 description,
-                confirmText: 'Delete',
+                confirmText,
                 variant: 'destructive'
             });
             if (confirmed) await action();
         });
+        return completed && confirmed;
     }
 
     async function handleCreateRoom() {
@@ -318,26 +323,33 @@
 
     async function handleManagedVisibility(visibility: 'private' | 'public') {
         if (!managedRoomId || !managedRoom) return;
-        await updateMultiRoomIndex(managedRoomId, {
-            visibility,
-            publicName: visibility === 'public' ? managedRoom.name : undefined
-        });
+        const roomId = managedRoomId;
+        const roomName = managedRoom.name;
+        await runHomeAction('manage-visibility', 'Could not change room visibility', () =>
+            updateMultiRoomIndex(roomId, {
+                visibility,
+                publicName: visibility === 'public' ? roomName : undefined
+            })
+        );
     }
 
     async function handleRevokeMember(roomId: string, memberUserId: string) {
-        if (
-            !(await appConfirm({
-                title: 'Remove member?',
-                description: `Remove member ${memberUserId} from this room?`,
-                confirmText: 'Remove',
-                variant: 'destructive'
-            }))
-        ) {
-            return;
-        }
+        if (approvingMemberId) return;
         approvingMemberId = `${roomId}:${memberUserId}`;
         try {
-            await revokeMultiRoomMember(roomId, memberUserId);
+            await runHomeAction(
+                `revoke-member:${memberUserId}`,
+                'Could not remove member',
+                async () => {
+                    const confirmed = await appConfirm({
+                        title: 'Remove member?',
+                        description: `Remove member ${memberUserId} from this room?`,
+                        confirmText: 'Remove',
+                        variant: 'destructive'
+                    });
+                    if (confirmed) await revokeMultiRoomMember(roomId, memberUserId);
+                }
+            );
         } finally {
             approvingMemberId = '';
         }
@@ -410,32 +422,25 @@
         );
     }
 
-    async function handleDeleteMultiRoom(roomId: string, name: string) {
-        if (
-            !(await appConfirm({
-                title: 'Delete multi room?',
-                description: `Delete multi room "${name}"?`,
-                confirmText: 'Delete',
-                variant: 'destructive'
-            }))
-        ) {
-            return;
-        }
-        await deleteMultiRoom(roomId);
+    async function handleDeleteMultiRoom(roomId: string, name: string): Promise<boolean> {
+        return runConfirmedHomeAction(
+            `delete-multi-room:${roomId}`,
+            'Could not delete multi room',
+            'Delete multi room?',
+            `Delete multi room "${name}"?`,
+            () => deleteMultiRoom(roomId)
+        );
     }
 
-    async function handleLeaveMultiRoom(roomId: string, name: string) {
-        if (
-            !(await appConfirm({
-                title: 'Leave multi room?',
-                description: `Leave multi room "${name}"?`,
-                confirmText: 'Leave',
-                variant: 'destructive'
-            }))
-        ) {
-            return;
-        }
-        await leaveMultiRoom(roomId);
+    async function handleLeaveMultiRoom(roomId: string, name: string): Promise<boolean> {
+        return runConfirmedHomeAction(
+            `leave-multi-room:${roomId}`,
+            'Could not leave multi room',
+            'Leave multi room?',
+            `Leave multi room "${name}"?`,
+            () => leaveMultiRoom(roomId),
+            'Leave'
+        );
     }
 
     async function handleImportPersona() {
@@ -1313,6 +1318,7 @@
     members={managedRoomMembers}
     currentUserId={$userId}
     busyMemberId={busyManagedMemberId}
+    busyAction={homeAction}
     onVisibilityChange={handleManagedVisibility}
     onApprove={async (memberUserId) => {
         if (!managedRoomId) return;
@@ -1328,12 +1334,14 @@
     }}
     onDelete={async () => {
         if (!managedRoomId || !managedRoom) return;
-        await handleDeleteMultiRoom(managedRoomId, managedRoom.name);
-        manageDialogOpen = false;
+        if (await handleDeleteMultiRoom(managedRoomId, managedRoom.name)) {
+            manageDialogOpen = false;
+        }
     }}
     onLeave={async () => {
         if (!managedRoomId || !managedRoom) return;
-        await handleLeaveMultiRoom(managedRoomId, managedRoom.name);
-        manageDialogOpen = false;
+        if (await handleLeaveMultiRoom(managedRoomId, managedRoom.name)) {
+            manageDialogOpen = false;
+        }
     }}
 />

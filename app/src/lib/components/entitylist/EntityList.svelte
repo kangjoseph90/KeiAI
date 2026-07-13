@@ -15,7 +15,8 @@
     import { compareSortOrder, generateSortOrder } from '$lib/utils/ordering';
     import { generateKeyBetween } from 'fractional-indexing';
     import EntityList from './EntityList.svelte';
-    import { appPrompt } from '$lib/ui';
+    import { appPrompt, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
     import { isInteractiveDragTarget, pointerDrag } from './pointer-drag';
 
     interface FolderSnippetPayload {
@@ -98,6 +99,7 @@
         draggedParentId: string | undefined;
         dragOverId: string | null;
         dragOverZone: 'before' | 'after' | 'overlap' | null;
+        dropPending: boolean;
         collapsedFolders: Record<string, boolean>;
     }
 
@@ -109,6 +111,7 @@
         draggedParentId: undefined,
         dragOverId: null,
         dragOverZone: null,
+        dropPending: false,
         collapsedFolders: {}
     });
 
@@ -344,8 +347,9 @@
                             sortOrder: secondKey
                         });
                     }
-                } catch {
+                } catch (error) {
                     await onDeleteFolder(newFolder.id);
+                    throw error;
                 }
             }
         } else {
@@ -411,12 +415,23 @@
     }
 
     async function handlePointerDrop(clientX: number, clientY: number) {
+        if (ctx.dropPending) return;
         const target = handlePointerDragMove(clientX, clientY);
         if (!target) {
             resetDragState();
             return;
         }
-        await dropOnTarget(target.node, target.targetParentId, target.siblings);
+        ctx.dropPending = true;
+        try {
+            await dropOnTarget(target.node, target.targetParentId, target.siblings);
+        } catch (error) {
+            toast.error({
+                title: 'Could not move item',
+                description: getErrorMessage(error)
+            });
+        } finally {
+            ctx.dropPending = false;
+        }
     }
 
     // ─── Folder Children Lookup ──────────────────────────────────────────
@@ -687,7 +702,10 @@
     {/if}
 {/snippet}
 
-<div class="relative flex flex-col w-full {ctx.draggedId ? 'drag-active' : ''}">
+<div
+    class="relative flex flex-col w-full {ctx.draggedId ? 'drag-active' : ''}"
+    aria-busy={ctx.dropPending}
+>
     <div class={layout === 'grid' ? gridClass : listClass}>
         {#each visualItems as visualNode (visualNode.id)}
             {#if visualNode.type === 'folder'}
@@ -700,7 +718,7 @@
                         data-entity-dnd-id={visualNode.id}
                         data-entity-dnd-type="folder"
                         use:pointerDrag={{
-                            disabled: mode === 'browse',
+                            disabled: mode === 'browse' || ctx.dropPending,
                             onStart: () => {
                                 ctx.draggedId = visualNode.id;
                                 ctx.draggedType = visualNode.type;
@@ -782,7 +800,7 @@
                     data-entity-dnd-id={visualNode.id}
                     data-entity-dnd-type="entity"
                     use:pointerDrag={{
-                        disabled: mode === 'browse',
+                        disabled: mode === 'browse' || ctx.dropPending,
                         onStart: () => {
                             ctx.draggedId = visualNode.id;
                             ctx.draggedType = visualNode.type;

@@ -28,6 +28,7 @@
         members: MultiRoomMember[];
         currentUserId: string | null;
         busyMemberId?: string | null;
+        busyAction?: string | null;
         onVisibilityChange: (visibility: MultiRoom['visibility']) => Promise<void>;
         onApprove: (userId: string) => Promise<void>;
         onReject: (userId: string) => Promise<void>;
@@ -43,6 +44,7 @@
         members,
         currentUserId,
         busyMemberId = null,
+        busyAction = null,
         onVisibilityChange,
         onApprove,
         onReject,
@@ -70,7 +72,7 @@
         </DialogHeader>
 
         {#if room && meta}
-            <div class="divide-y">
+            <div class="divide-y" aria-busy={busyAction !== null || busyMemberId !== null}>
                 <section class="space-y-3 px-6 py-4">
                     <div class="flex items-center justify-between gap-4">
                         <div>
@@ -84,7 +86,8 @@
                                 size="sm"
                                 variant={meta.visibility === 'private' ? 'secondary' : 'ghost'}
                                 class="h-7 gap-1.5 px-2.5 text-xs"
-                                disabled={!isOwner}
+                                disabled={!isOwner || busyAction !== null || busyMemberId !== null}
+                                aria-busy={busyAction === 'manage-visibility'}
                                 onclick={() => onVisibilityChange('private')}
                             >
                                 <Lock class="size-3.5" /> Private
@@ -93,7 +96,8 @@
                                 size="sm"
                                 variant={meta.visibility === 'public' ? 'secondary' : 'ghost'}
                                 class="h-7 gap-1.5 px-2.5 text-xs"
-                                disabled={!isOwner}
+                                disabled={!isOwner || busyAction !== null || busyMemberId !== null}
+                                aria-busy={busyAction === 'manage-visibility'}
                                 onclick={() => onVisibilityChange('public')}
                             >
                                 <Globe2 class="size-3.5" /> Public
@@ -119,7 +123,7 @@
                                             size="icon-sm"
                                             variant="outline"
                                             title="Approve member"
-                                            disabled={busyMemberId === member.userId}
+                                            disabled={busyAction !== null || busyMemberId !== null}
                                             onclick={() => onApprove(member.userId)}
                                         >
                                             <Check class="size-4" />
@@ -128,7 +132,7 @@
                                             size="icon-sm"
                                             variant="ghost"
                                             title="Reject request"
-                                            disabled={busyMemberId === member.userId}
+                                            disabled={busyAction !== null || busyMemberId !== null}
                                             onclick={() => onReject(member.userId)}
                                         >
                                             <X class="size-4" />
@@ -172,7 +176,8 @@
                                         variant="ghost"
                                         class="text-muted-foreground hover:text-destructive"
                                         title="Remove member"
-                                        disabled={busyMemberId === member.userId}
+                                        disabled={busyAction !== null || busyMemberId !== null}
+                                        aria-busy={busyAction === `revoke-member:${member.userId}`}
                                         onclick={() => onRevoke(member.userId)}
                                     >
                                         <UserMinus class="size-4" />
@@ -186,11 +191,23 @@
 
             <DialogFooter class="border-t px-6 py-4">
                 {#if isOwner}
-                    <Button variant="destructive" class="gap-2" onclick={onDelete}>
+                    <Button
+                        variant="destructive"
+                        class="gap-2"
+                        disabled={busyAction !== null || busyMemberId !== null}
+                        aria-busy={busyAction === `delete-multi-room:${room.id}`}
+                        onclick={onDelete}
+                    >
                         <Trash2 class="size-4" /> Delete room
                     </Button>
                 {:else}
-                    <Button variant="outline" class="gap-2 text-destructive" onclick={onLeave}>
+                    <Button
+                        variant="outline"
+                        class="gap-2 text-destructive"
+                        disabled={busyAction !== null || busyMemberId !== null}
+                        aria-busy={busyAction === `leave-multi-room:${room.id}`}
+                        onclick={onLeave}
+                    >
                         <LogOut class="size-4" /> Leave room
                     </Button>
                 {/if}

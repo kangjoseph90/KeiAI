@@ -70,6 +70,8 @@
         characterId,
         personaId,
         isLastMessage = false,
+        actionsDisabled = false,
+        busyAction = null,
         onEdit = () => {},
         onSave = () => {},
         onCancelEdit = () => {},
@@ -87,6 +89,8 @@
         characterId?: string;
         personaId?: string;
         isLastMessage?: boolean;
+        actionsDisabled?: boolean;
+        busyAction?: 'save' | 'delete' | 'swipe' | 'fork' | null;
         onEdit?: () => void;
         onSave?: (text: string) => void;
         onCancelEdit?: () => void;
@@ -426,12 +430,28 @@
         <!-- Edit Mode -->
         {#if isEditing && message.displayStatus === 'completed'}
             <div class="flex w-full flex-col gap-2">
-                <Textarea bind:value={editText} class="min-h-16 w-full" />
+                <Textarea
+                    bind:value={editText}
+                    class="min-h-16 w-full"
+                    disabled={actionsDisabled}
+                />
                 <div class="flex justify-end gap-2">
-                    <Button size="sm" class="gap-1.5" onclick={() => onSave(editText)}>
+                    <Button
+                        size="sm"
+                        class="gap-1.5"
+                        disabled={actionsDisabled}
+                        aria-busy={busyAction === 'save'}
+                        onclick={() => onSave(editText)}
+                    >
                         <Check class="size-4" /> Save
                     </Button>
-                    <Button size="sm" variant="outline" class="gap-1.5" onclick={onCancelEdit}>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        class="gap-1.5"
+                        disabled={actionsDisabled}
+                        onclick={onCancelEdit}
+                    >
                         <X class="size-4" /> Cancel
                     </Button>
                 </div>
@@ -602,7 +622,8 @@
                     <div class="flex items-center gap-0.5 text-xs text-muted-foreground mr-1">
                         <button
                             class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
-                            disabled={swipePos <= 0}
+                            disabled={actionsDisabled || swipePos <= 0}
+                            aria-busy={busyAction === 'swipe'}
                             onclick={() => onSwipe(sortedSwipes[swipePos - 1].id)}
                         >
                             <ChevronLeft class="size-4 md:size-3.5" />
@@ -612,7 +633,8 @@
                         >
                         <button
                             class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
-                            disabled={swipePos >= sortedSwipes.length - 1}
+                            disabled={actionsDisabled || swipePos >= sortedSwipes.length - 1}
+                            aria-busy={busyAction === 'swipe'}
                             onclick={() => onSwipe(sortedSwipes[swipePos + 1].id)}
                         >
                             <ChevronRight class="size-4 md:size-3.5" />
@@ -691,6 +713,8 @@
                         variant="ghost"
                         size="sm"
                         class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                        disabled={actionsDisabled}
+                        aria-busy={busyAction === 'fork'}
                         onclick={onFork}
                     >
                         <GitBranch class="size-3.5 md:size-3" />
@@ -702,6 +726,7 @@
                     variant="ghost"
                     size="sm"
                     class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                    disabled={actionsDisabled}
                     onclick={onEdit}
                 >
                     <Pencil class="size-3.5 md:size-3" />
@@ -712,6 +737,8 @@
                     variant="ghost"
                     size="sm"
                     class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground hover:text-destructive"
+                    disabled={actionsDisabled}
+                    aria-busy={busyAction === 'delete'}
                     onclick={onDelete}
                 >
                     <Trash2 class="size-3.5 md:size-3" />

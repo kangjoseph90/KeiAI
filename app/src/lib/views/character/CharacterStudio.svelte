@@ -157,6 +157,11 @@
         exporting = id;
         try {
             await exportCharacterFile($activeCharacter.id, request);
+        } catch (error) {
+            toast.error({
+                title: 'Could not export character',
+                description: getErrorMessage(error)
+            });
         } finally {
             exporting = null;
         }

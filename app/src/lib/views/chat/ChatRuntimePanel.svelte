@@ -68,14 +68,16 @@
     async function runPanelAction(
         key: string,
         errorTitle: string,
-        action: () => Promise<void>
-    ): Promise<void> {
-        if (panelAction) return;
+        action: () => void | Promise<unknown>
+    ): Promise<boolean> {
+        if (panelAction) return false;
         panelAction = key;
         try {
             await action();
+            return true;
         } catch (error) {
             toast.error({ title: errorTitle, description: getErrorMessage(error) });
+            return false;
         } finally {
             panelAction = null;
         }
@@ -104,16 +106,19 @@
     });
 
     async function handleChatLorebookAdd() {
-        if (!newChatLorebookName.trim()) return;
-        await createChatLorebook(chatId, {
-            name: newChatLorebookName,
-            key: '',
-            secondKey: '',
-            content: '',
-            depth: 0,
-            disabled: false
+        const name = newChatLorebookName.trim();
+        if (!name || $activeChat?.id !== chatId) return;
+        await runPanelAction('add-lorebook', 'Could not add lorebook', async () => {
+            await createChatLorebook(chatId, {
+                name,
+                key: '',
+                secondKey: '',
+                content: '',
+                depth: 0,
+                disabled: false
+            });
+            if ($activeChat?.id === chatId) newChatLorebookName = '';
         });
-        newChatLorebookName = '';
     }
 
     function openPersonaSettings(personaId: string) {
@@ -153,27 +158,33 @@
     }
 
     async function handlePersonaSelect(personaId: string) {
-        if (!$activeChat) return;
-        await setChatSelectedPersona(chatId, personaId);
+        if ($activeChat?.id !== chatId) return;
+        await runPanelAction(`select-persona:${personaId}`, 'Could not select persona', () =>
+            setChatSelectedPersona(chatId, personaId)
+        );
     }
 
     async function handleSetDefaultPersona(personaId: string) {
-        if (!$activeChat) return;
-        await setChatDefaultPersona(chatId, personaId);
+        if ($activeChat?.id !== chatId) return;
+        await runPanelAction(`default-persona:${personaId}`, 'Could not set default persona', () =>
+            setChatDefaultPersona(chatId, personaId)
+        );
     }
 
     async function handlePersonasAdd(personaIds: string[]) {
-        if (!$activeChat) return;
-        for (const personaId of personaIds) {
-            await addChatPersona(chatId, personaId);
-        }
+        if ($activeChat?.id !== chatId) return;
+        return runPanelAction('add-personas', 'Could not add personas', async () => {
+            for (const personaId of personaIds) await addChatPersona(chatId, personaId);
+        });
     }
 
     async function handlePersonasCopy(personaIds: string[]) {
-        if (!$activeChat) return;
-        for (const personaId of personaIds) {
-            await addChatPersonaFromLibrary(chatId, personaId);
-        }
+        if ($activeChat?.id !== chatId) return;
+        return runPanelAction('copy-personas', 'Could not copy personas', async () => {
+            for (const personaId of personaIds) {
+                await addChatPersonaFromLibrary(chatId, personaId);
+            }
+        });
     }
 
     async function handlePersonaRemove(personaId: string) {
@@ -200,7 +211,10 @@
     }
 </script>
 
-<div class="flex h-full flex-col border-l border-sidebar-border bg-sidebar">
+<div
+    class="flex h-full flex-col border-l border-sidebar-border bg-sidebar"
+    aria-busy={panelAction !== null}
+>
     <!-- Panel Header -->
     <div
         class="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border bg-sidebar px-3"
@@ -230,6 +244,7 @@
                             class="size-6 text-muted-foreground hover:text-foreground"
                             title="Add personas"
                             aria-label="Add personas"
+                            disabled={panelAction !== null}
                             onclick={() => ($personaPickerOpen = true)}
                         >
                             <Plus class="size-3.5" />
@@ -304,6 +319,8 @@
                                         ? 'text-primary opacity-100'
                                         : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
                                     title="Set default persona"
+                                    disabled={panelAction !== null}
+                                    aria-busy={panelAction === `default-persona:${persona.id}`}
                                     onclick={() => handleSetDefaultPersona(persona.id)}
                                 >
                                     <Pin class="size-3" />
@@ -367,12 +384,15 @@
                             placeholder="New lorebook..."
                             class="h-8 text-xs bg-background"
                             bind:value={newChatLorebookName}
+                            disabled={panelAction !== null}
                             onkeydown={(e) => e.key === 'Enter' && handleChatLorebookAdd()}
                         />
                         <Button
                             variant="secondary"
                             size="icon"
                             class="size-8 shrink-0"
+                            disabled={panelAction !== null || !newChatLorebookName.trim()}
+                            aria-busy={panelAction === 'add-lorebook'}
                             onclick={handleChatLorebookAdd}
                         >
                             <Plus class="size-4" />
