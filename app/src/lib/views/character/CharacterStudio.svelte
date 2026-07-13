@@ -51,6 +51,8 @@
     } from '$lib/managers';
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { CharacterContent, Lorebook, Script, CharJS } from '$lib/services';
+    import { appConfirm, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     // Tab Components
     import ProfileTab from '../character/studio/ProfileTab.svelte';
@@ -71,6 +73,7 @@
     type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
     let activeTab = $state<CharacterStudioTab>('profile');
     let exporting = $state<ExportButton | null>(null);
+    let deleting = $state(false);
 
     const isChatSynced = $derived(() => {
         if (!$activeChat) return false;
@@ -160,9 +163,27 @@
     }
 
     async function handleDeleteCharacter() {
-        if (!$activeCharacter) return;
-        await deleteCharacter($activeCharacter.id);
-        backToChat();
+        if (!$activeCharacter || deleting) return;
+        const target = $activeCharacter;
+        deleting = true;
+        try {
+            const confirmed = await appConfirm({
+                title: 'Delete character?',
+                description: `Delete "${target.name}" and its owned resources? This cannot be undone.`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed || $activeCharacter?.id !== target.id) return;
+            await deleteCharacter(target.id);
+            backToChat();
+        } catch (error) {
+            toast.error({
+                title: 'Could not delete character',
+                description: getErrorMessage(error)
+            });
+        } finally {
+            deleting = false;
+        }
     }
 </script>
 
@@ -458,6 +479,7 @@
                             <AdvancedTab
                                 character={$activeCharacter}
                                 {exporting}
+                                {deleting}
                                 showLightExport={isKeiServer()}
                                 onUpdate={async (changes) => {
                                     await updateCharacter(changes);

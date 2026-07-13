@@ -5,12 +5,14 @@
 
     let {
         showLightExport,
+        deleting,
         onExportRisu,
         onExportLight,
         onExportBaked,
         onDelete
     }: {
         showLightExport: boolean;
+        deleting: boolean;
         onExportRisu: () => void | Promise<void>;
         onExportLight: () => void | Promise<void>;
         onExportBaked: () => void | Promise<void>;
@@ -73,7 +75,13 @@
                     This removes the local persona and its owned assets.
                 </p>
             </div>
-            <Button variant="destructive" class="gap-1.5" onclick={onDelete}>
+            <Button
+                variant="destructive"
+                class="gap-1.5"
+                disabled={deleting}
+                aria-busy={deleting}
+                onclick={onDelete}
+            >
                 <Trash2 class="size-4" /> Delete Persona
             </Button>
         </CardContent>

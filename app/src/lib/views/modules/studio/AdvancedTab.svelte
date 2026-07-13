@@ -15,6 +15,7 @@
         module,
         enabled,
         exporting,
+        deleting,
         showLightExport,
         onUpdate,
         onToggleEnabled,
@@ -24,6 +25,7 @@
         module: Module;
         enabled: boolean;
         exporting: ExportButton | null;
+        deleting: boolean;
         showLightExport: boolean;
         onUpdate: (changes: DeepPartial<ModuleContent>) => void | Promise<void>;
         onToggleEnabled: (next: boolean) => void | Promise<void>;
@@ -106,7 +108,13 @@
                     This removes the module and its owned resources.
                 </p>
             </div>
-            <Button variant="destructive" class="gap-1.5" onclick={onDelete}>
+            <Button
+                variant="destructive"
+                class="gap-1.5"
+                disabled={deleting}
+                aria-busy={deleting}
+                onclick={onDelete}
+            >
                 <Trash2 class="size-4" /> Delete Module
             </Button>
         </CardContent>

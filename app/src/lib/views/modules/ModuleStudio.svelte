@@ -44,6 +44,8 @@
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { ModuleContent, Lorebook, Script, CharJS } from '$lib/services';
     import type { ModuleFileExport } from '$lib/porters/module';
+    import { appConfirm, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     // Tab Components
     import ProfileTab from './studio/ProfileTab.svelte';
@@ -63,6 +65,7 @@
     type ExportButton = 'risu' | 'keimodule-light' | 'keimodule-baked';
     let activeTab = $state<ModuleStudioTab>('profile');
     let exporting = $state<ExportButton | null>(null);
+    let deleting = $state(false);
 
     async function updateModuleContent(changes: DeepPartial<ModuleContent>) {
         if (!$activeModule) return;
@@ -122,9 +125,24 @@
     }
 
     async function handleDeleteModule() {
-        if (!$activeModule) return;
-        await deleteModule($activeModule.id);
-        backToContext();
+        if (!$activeModule || deleting) return;
+        const target = $activeModule;
+        deleting = true;
+        try {
+            const confirmed = await appConfirm({
+                title: 'Delete module?',
+                description: `Delete "${target.name}" and its owned resources? This cannot be undone.`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed || $activeModule?.id !== target.id) return;
+            await deleteModule(target.id);
+            backToContext();
+        } catch (error) {
+            toast.error({ title: 'Could not delete module', description: getErrorMessage(error) });
+        } finally {
+            deleting = false;
+        }
     }
 </script>
 
@@ -373,6 +391,7 @@
                                 module={$activeModule}
                                 {enabled}
                                 {exporting}
+                                {deleting}
                                 showLightExport={isKeiServer()}
                                 onUpdate={async (changes) => {
                                     await updateModuleContent(changes);

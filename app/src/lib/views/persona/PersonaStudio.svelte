@@ -49,12 +49,15 @@
     import { exportPersonaFile } from '$lib/managers/persona';
     import type { AssetRef } from '$lib/types/refs';
     import { appDialog } from '$lib/adapters/dialog';
+    import { appConfirm, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     let { personaId, personaTab }: { personaId: string; personaTab?: PersonaStudioTab } = $props();
 
     let activeTab = $state<PersonaStudioTab>('profile');
     let editingId = $state<string | null>(null);
     let editName = $state('');
+    let deleting = $state(false);
 
     const tabs = [
         { id: 'profile' as const, label: 'Profile', icon: UserRound },
@@ -102,9 +105,24 @@
     }
 
     async function handleDelete() {
-        if (!$activePersona) return;
-        await deletePersona($activePersona.id);
-        backToContext();
+        if (!$activePersona || deleting) return;
+        const target = $activePersona;
+        deleting = true;
+        try {
+            const confirmed = await appConfirm({
+                title: 'Delete persona?',
+                description: `Delete "${target.name}" and its owned assets? This cannot be undone.`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed || $activePersona?.id !== target.id) return;
+            await deletePersona(target.id);
+            backToContext();
+        } catch (error) {
+            toast.error({ title: 'Could not delete persona', description: getErrorMessage(error) });
+        } finally {
+            deleting = false;
+        }
     }
 
     // Asset methods
@@ -499,6 +517,7 @@
                         {:else if activeTab === 'advanced'}
                             <AdvancedTab
                                 showLightExport={isKeiServer()}
+                                {deleting}
                                 onExportRisu={() =>
                                     exportPersonaFile($activePersona!.id, {
                                         kind: 'risu',

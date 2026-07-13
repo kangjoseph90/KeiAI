@@ -45,13 +45,14 @@
         updateChatFolder,
         updateChatLorebook
     } from '$lib/stores';
-    import { personaPickerOpen } from '$lib/ui';
+    import { appConfirm, personaPickerOpen, toast } from '$lib/ui';
     import { navigate } from '$lib/router';
     import { addChatPersonaFromLibrary, getChatVariables } from '$lib/managers';
     import type { ChatContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
     import { appDialog } from '$lib/adapters/dialog';
+    import { getErrorMessage } from '$lib/types/errors';
 
     interface Props {
         chatId: string;
@@ -62,6 +63,23 @@
 
     let newChatLorebookName = $state('');
     let variables = $state<[string, string][]>([]);
+    let panelAction = $state<string | null>(null);
+
+    async function runPanelAction(
+        key: string,
+        errorTitle: string,
+        action: () => Promise<void>
+    ): Promise<void> {
+        if (panelAction) return;
+        panelAction = key;
+        try {
+            await action();
+        } catch (error) {
+            toast.error({ title: errorTitle, description: getErrorMessage(error) });
+        } finally {
+            panelAction = null;
+        }
+    }
 
     const pickerPersonas = $derived($isMultiRoom ? $multiRoomPersonas : $personas);
     const personaPickerConfig = $derived(
@@ -136,8 +154,22 @@
     }
 
     async function handlePersonaRemove(personaId: string) {
-        if (!$activeChat) return;
-        await removeChatPersona(chatId, personaId);
+        if ($activeChat?.id !== chatId) return;
+        const persona = $chatPersonas.find((item) => item.id === personaId);
+        await runPanelAction(
+            `remove-persona:${personaId}`,
+            'Could not remove persona',
+            async () => {
+                const confirmed = await appConfirm({
+                    title: 'Remove persona from chat?',
+                    description: `Remove "${persona?.name ?? 'this persona'}" from this chat?`,
+                    confirmText: 'Remove',
+                    variant: 'destructive'
+                });
+                if (!confirmed || $activeChat?.id !== chatId) return;
+                await removeChatPersona(chatId, personaId);
+            }
+        );
     }
 
     function initial(name: string): string {
@@ -254,8 +286,12 @@
                                     <Pin class="size-3" />
                                 </button>
                                 <button
+                                    type="button"
                                     class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
                                     title="Remove from chat"
+                                    aria-label={`Remove ${persona.name} from chat`}
+                                    disabled={panelAction !== null}
+                                    aria-busy={panelAction === `remove-persona:${persona.id}`}
                                     onclick={() => handlePersonaRemove(persona.id)}
                                 >
                                     <X class="size-3" />
