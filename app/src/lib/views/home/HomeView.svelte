@@ -55,7 +55,7 @@
         updateGlobalFolder,
         userId
     } from '$lib/stores';
-    import { appAlert, appConfirm } from '$lib/ui';
+    import { appAlert, appConfirm, toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { importCharacterFile } from '$lib/managers';
     import { importModuleFile } from '$lib/managers/module';
@@ -67,6 +67,7 @@
     import { getErrorMessage } from '$lib/types/errors';
     import { approveMultiRoomJoinRequest } from '$lib/stores';
     import MultiRoomManageDialog from './MultiRoomManageDialog.svelte';
+    import { onDestroy } from 'svelte';
 
     interface Props {
         space?: 'library' | 'multiRooms';
@@ -79,9 +80,7 @@
     let tab = $state<Tab>('rooms');
     let query = $state('');
     let creatingMultiRoom = $state(false);
-    let importingCharacter = $state(false);
-    let importingPersona = $state(false);
-    let importingModule = $state(false);
+    let homeAction = $state<string | null>(null);
     let multiRoomName = $state('');
     let multiRoomVisibility = $state<'private' | 'public'>('private');
     let joinRoomId = $state('');
@@ -94,6 +93,7 @@
     let managedRoomId = $state<string | null>(null);
     let manageDialogOpen = $state(false);
     let viewportWidth = $state(1024);
+    let destroyed = false;
     const libraryEntityLayout = $derived(viewportWidth < 768 ? 'list' : 'grid');
 
     const filteredRooms = $derived(() => {
@@ -153,6 +153,10 @@
     );
     const busyManagedMemberId = $derived(approvingMemberId.split(':')[1] ?? null);
 
+    onDestroy(() => {
+        destroyed = true;
+    });
+
     $effect(() => {
         if (space === 'multiRooms') {
             tab = 'multiRooms';
@@ -167,9 +171,45 @@
         }
     });
 
+    async function runHomeAction(
+        key: string,
+        errorTitle: string,
+        action: () => void | Promise<void>
+    ): Promise<void> {
+        if (homeAction) return;
+        homeAction = key;
+        try {
+            await action();
+        } catch (error) {
+            toast.error({ title: errorTitle, description: getErrorMessage(error) });
+        } finally {
+            homeAction = null;
+        }
+    }
+
+    async function runConfirmedHomeAction(
+        key: string,
+        errorTitle: string,
+        title: string,
+        description: string,
+        action: () => void | Promise<void>
+    ): Promise<void> {
+        await runHomeAction(key, errorTitle, async () => {
+            const confirmed = await appConfirm({
+                title,
+                description,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (confirmed) await action();
+        });
+    }
+
     async function handleCreateRoom() {
-        const room = await createRoom();
-        onNavigate({ view: 'room', roomId: room.id });
+        await runHomeAction('create-room', 'Could not create room', async () => {
+            const room = await createRoom();
+            if (!destroyed) onNavigate({ view: 'room', roomId: room.id });
+        });
     }
 
     async function handleCreateMultiRoom() {
@@ -309,71 +349,65 @@
     }
 
     async function handleCreateCharacter() {
-        const character = await createCharacter();
-        onNavigate({ view: 'characterStudio', charId: character.id });
+        await runHomeAction('create-character', 'Could not create character', async () => {
+            const character = await createCharacter();
+            if (!destroyed) onNavigate({ view: 'characterStudio', charId: character.id });
+        });
     }
 
     async function handleCreateModule() {
-        const mod = await createModule();
-        onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+        await runHomeAction('create-module', 'Could not create module', async () => {
+            const mod = await createModule();
+            if (!destroyed) onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+        });
+    }
+
+    async function handleSetModuleEnabled(moduleId: string, enabled: boolean) {
+        await runHomeAction(`toggle-module:${moduleId}`, 'Could not update module', () =>
+            setModuleEnabled(moduleId, enabled)
+        );
     }
 
     async function handleImportModule() {
-        if (importingModule) return;
-
-        importingModule = true;
-        try {
+        await runHomeAction('import-module', 'Could not import module', async () => {
             const mod = await importModuleFile({
                 allowLightAssets: isKeiServer(),
                 select: true
             });
-            if (mod) onNavigate({ view: 'moduleStudio', moduleId: mod.id });
-        } finally {
-            importingModule = false;
-        }
+            if (mod && !destroyed) onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+        });
     }
 
     async function handleImportCharacter() {
-        if (importingCharacter) return;
-
-        importingCharacter = true;
-        try {
+        await runHomeAction('import-character', 'Could not import character', async () => {
             const character = await importCharacterFile({
                 allowLightAssets: isKeiServer(),
                 select: true
             });
-            if (character) onNavigate({ view: 'characterStudio', charId: character.id });
-        } finally {
-            importingCharacter = false;
-        }
+            if (character && !destroyed) {
+                onNavigate({ view: 'characterStudio', charId: character.id });
+            }
+        });
     }
 
     async function handleDeleteCharacter(characterId: string, name: string) {
-        if (
-            !(await appConfirm({
-                title: 'Delete character?',
-                description: `Delete character "${name}"?`,
-                confirmText: 'Delete',
-                variant: 'destructive'
-            }))
-        ) {
-            return;
-        }
-        await deleteCharacter(characterId);
+        await runConfirmedHomeAction(
+            `delete-character:${characterId}`,
+            'Could not delete character',
+            'Delete character?',
+            `Delete character "${name}"?`,
+            () => deleteCharacter(characterId)
+        );
     }
 
     async function handleDeleteRoom(roomId: string, name: string) {
-        if (
-            !(await appConfirm({
-                title: 'Delete room?',
-                description: `Delete room "${name}"?`,
-                confirmText: 'Delete',
-                variant: 'destructive'
-            }))
-        ) {
-            return;
-        }
-        await deleteRoom(roomId);
+        await runConfirmedHomeAction(
+            `delete-room:${roomId}`,
+            'Could not delete room',
+            'Delete room?',
+            `Delete room "${name}"?`,
+            () => deleteRoom(roomId)
+        );
     }
 
     async function handleDeleteMultiRoom(roomId: string, name: string) {
@@ -405,51 +439,40 @@
     }
 
     async function handleImportPersona() {
-        if (importingPersona) return;
-
-        importingPersona = true;
-        try {
+        await runHomeAction('import-persona', 'Could not import persona', async () => {
             const persona = await importPersonaFile({
                 allowLightAssets: isKeiServer(),
                 select: true
             });
-            if (persona) onNavigate({ view: 'personaStudio', personaId: persona.id });
-        } finally {
-            importingPersona = false;
-        }
+            if (persona && !destroyed) onNavigate({ view: 'personaStudio', personaId: persona.id });
+        });
     }
 
     async function handleDeletePersona(personaId: string, name: string) {
-        if (
-            !(await appConfirm({
-                title: 'Delete persona?',
-                description: `Delete persona "${name}"?`,
-                confirmText: 'Delete',
-                variant: 'destructive'
-            }))
-        ) {
-            return;
-        }
-        await deletePersona(personaId);
+        await runConfirmedHomeAction(
+            `delete-persona:${personaId}`,
+            'Could not delete persona',
+            'Delete persona?',
+            `Delete persona "${name}"?`,
+            () => deletePersona(personaId)
+        );
     }
 
     async function handleDeleteModule(moduleId: string, name: string) {
-        if (
-            !(await appConfirm({
-                title: 'Delete module?',
-                description: `Delete module "${name}"?`,
-                confirmText: 'Delete',
-                variant: 'destructive'
-            }))
-        ) {
-            return;
-        }
-        await deleteModule(moduleId);
+        await runConfirmedHomeAction(
+            `delete-module:${moduleId}`,
+            'Could not delete module',
+            'Delete module?',
+            `Delete module "${name}"?`,
+            () => deleteModule(moduleId)
+        );
     }
 
     async function handleCreatePersona() {
-        const persona = await createPersona();
-        onNavigate({ view: 'personaStudio', personaId: persona.id });
+        await runHomeAction('create-persona', 'Could not create persona', async () => {
+            const persona = await createPersona();
+            if (!destroyed) onNavigate({ view: 'personaStudio', personaId: persona.id });
+        });
     }
 
     function searchPlaceholder(): string {
@@ -467,7 +490,7 @@
 
 <svelte:window bind:innerWidth={viewportWidth} />
 
-<div class="flex h-full flex-col overflow-hidden bg-background">
+<div class="flex h-full flex-col overflow-hidden bg-background" aria-busy={homeAction !== null}>
     <header class="shrink-0 border-b px-8 py-6">
         <div class="flex items-center justify-between gap-4">
             <div>
@@ -487,7 +510,12 @@
                 </p>
             </div>
             {#if tab === 'rooms'}
-                <Button class="gap-2" onclick={handleCreateRoom}>
+                <Button
+                    class="gap-2"
+                    disabled={homeAction !== null}
+                    aria-busy={homeAction === 'create-room'}
+                    onclick={handleCreateRoom}
+                >
                     <Plus class="size-4" /> New Room
                 </Button>
             {:else if tab === 'multiRooms'}
@@ -538,12 +566,18 @@
                     <Button
                         variant="outline"
                         class="gap-2"
-                        disabled={importingCharacter}
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'import-character'}
                         onclick={handleImportCharacter}
                     >
                         <Upload class="size-4" /> Import
                     </Button>
-                    <Button class="gap-2" onclick={handleCreateCharacter}>
+                    <Button
+                        class="gap-2"
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'create-character'}
+                        onclick={handleCreateCharacter}
+                    >
                         <Plus class="size-4" /> New Character
                     </Button>
                 </div>
@@ -552,13 +586,19 @@
                     <Button
                         variant="outline"
                         class="gap-2"
-                        disabled={importingModule}
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'import-module'}
                         onclick={handleImportModule}
                     >
                         <Upload class="size-4" />
                         Import
                     </Button>
-                    <Button class="gap-2" onclick={handleCreateModule}>
+                    <Button
+                        class="gap-2"
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'create-module'}
+                        onclick={handleCreateModule}
+                    >
                         <Plus class="size-4" /> New Module
                     </Button>
                 </div>
@@ -567,13 +607,19 @@
                     <Button
                         variant="outline"
                         class="gap-2"
-                        disabled={importingPersona}
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'import-persona'}
                         onclick={handleImportPersona}
                     >
                         <Upload class="size-4" />
                         Import
                     </Button>
-                    <Button class="gap-2" onclick={handleCreatePersona}>
+                    <Button
+                        class="gap-2"
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'create-persona'}
+                        onclick={handleCreatePersona}
+                    >
                         <Plus class="size-4" /> New Persona
                     </Button>
                 </div>
@@ -667,7 +713,12 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Rooms hold character refs, chats, and conversation context.
                                     </p>
-                                    <Button class="mt-5 gap-2" onclick={handleCreateRoom}>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === 'create-room'}
+                                        onclick={handleCreateRoom}
+                                    >
                                         <Plus class="size-4" />
                                         New Room
                                     </Button>
@@ -701,6 +752,9 @@
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-destructive"
                                         title="Delete room"
+                                        aria-label={`Delete ${room.name}`}
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === `delete-room:${room.id}`}
                                         onclick={() => handleDeleteRoom(room.id, room.name)}
                                     >
                                         <Trash2 class="size-4" />
@@ -959,7 +1013,12 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Characters are global resources you can add to rooms.
                                     </p>
-                                    <Button class="mt-5 gap-2" onclick={handleCreateCharacter}>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === 'create-character'}
+                                        onclick={handleCreateCharacter}
+                                    >
                                         <Plus class="size-4" />
                                         New Character
                                     </Button>
@@ -1008,6 +1067,10 @@
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-destructive"
                                         title="Delete character"
+                                        aria-label={`Delete ${character.name}`}
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction ===
+                                            `delete-character:${character.id}`}
                                         onclick={() =>
                                             handleDeleteCharacter(character.id, character.name)}
                                     >
@@ -1052,7 +1115,12 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Modules package reusable context, scripts, and display.
                                     </p>
-                                    <Button class="mt-5 gap-2" onclick={handleCreateModule}>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === 'create-module'}
+                                        onclick={handleCreateModule}
+                                    >
                                         <Plus class="size-4" />
                                         New Module
                                     </Button>
@@ -1096,9 +1164,11 @@
                                         aria-label={enabled
                                             ? 'Deactivate globally'
                                             : 'Activate globally'}
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === `toggle-module:${mod.id}`}
                                         onclick={(event) => {
                                             event.stopPropagation();
-                                            setModuleEnabled(mod.id, !enabled);
+                                            void handleSetModuleEnabled(mod.id, !enabled);
                                         }}
                                     >
                                         <Zap class="size-4 {enabled ? 'fill-amber-500/10' : ''}" />
@@ -1108,6 +1178,9 @@
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-destructive"
                                         title="Delete module"
+                                        aria-label={`Delete ${mod.name}`}
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === `delete-module:${mod.id}`}
                                         onclick={(event) => {
                                             event.stopPropagation();
                                             handleDeleteModule(mod.id, mod.name);
@@ -1155,7 +1228,12 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Personas are user speakers you can attach to chats.
                                     </p>
-                                    <Button class="mt-5 gap-2" onclick={handleCreatePersona}>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === 'create-persona'}
+                                        onclick={handleCreatePersona}
+                                    >
                                         <Plus class="size-4" />
                                         New Persona
                                     </Button>
@@ -1204,6 +1282,9 @@
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-destructive"
                                         title="Delete persona"
+                                        aria-label={`Delete ${persona.name}`}
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === `delete-persona:${persona.id}`}
                                         onclick={() =>
                                             handleDeletePersona(persona.id, persona.name)}
                                     >
