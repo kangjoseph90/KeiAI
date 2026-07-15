@@ -1,7 +1,5 @@
 <script lang="ts">
     import {
-        ChevronLeft,
-        ChevronRight,
         Image as ImageIcon,
         Settings2,
         Pencil,
@@ -9,10 +7,10 @@
         Trash2,
         Upload,
         User,
-        UserRound,
-        X
+        UserRound
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
+    import { WorkspaceShell } from '$lib/components/layout';
     import {
         Card,
         CardContent,
@@ -67,11 +65,6 @@
         { id: 'assets' as const, label: 'Assets', icon: ImageIcon },
         { id: 'advanced' as const, label: 'Advanced', icon: Settings2 }
     ];
-
-    let hasSelectedTab = $derived(personaTab !== undefined);
-    let activeTabLabel = $derived(
-        tabs.find((tab) => tab.id === activeTab)?.label ?? 'Persona Studio'
-    );
 
     $effect(() => {
         if (personaTab) activeTab = personaTab;
@@ -270,372 +263,281 @@
     </div>
 {/snippet}
 
-<div class="flex h-full min-h-0 flex-col bg-background">
-    <div class="flex min-h-0 flex-1 overflow-hidden">
-        <nav
-            class="min-h-0 w-full shrink-0 flex-col border-r bg-muted/30 md:flex md:min-w-64 md:w-[max(16rem,calc((100vw-72rem)/2+16rem))] {hasSelectedTab
-                ? 'hidden'
-                : 'flex'}"
-            aria-label="Persona Studio sections"
-        >
-            <div class="flex h-14 shrink-0 items-center border-b px-2 md:hidden">
-                {@render identityAvatar('size-8')}
-                <div class="min-w-0 flex-1 px-2">
-                    <p class="truncate text-sm font-semibold">
-                        {$activePersona?.name ?? 'Persona'}
-                    </p>
-                    <p class="text-[11px] text-muted-foreground">Persona Studio</p>
-                </div>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onclick={backToContext}
-                    aria-label="Close studio"
-                >
-                    <X class="size-5" />
-                </Button>
-            </div>
-            <div
-                class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-4 md:ml-auto md:w-64 md:flex-none md:px-4 md:pb-4 md:pt-8"
-            >
-                {#if $activePersona}
-                    <div class="mb-4 hidden items-center gap-3 px-3 md:flex">
-                        {@render identityAvatar('size-10')}
-                        <div class="min-w-0">
-                            <p class="truncate text-sm font-medium">{$activePersona.name}</p>
-                            <p class="text-xs text-muted-foreground">Persona Studio</p>
-                        </div>
-                    </div>
-                {/if}
-                {#each tabs as tab (tab.id)}
-                    <button
-                        class="flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors md:min-h-0 {activeTab ===
-                        tab.id
-                            ? hasSelectedTab
-                                ? 'bg-primary text-primary-foreground shadow-sm'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground md:bg-primary md:text-primary-foreground md:shadow-sm'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-                        onclick={() => openTab(tab.id)}
-                        aria-current={activeTab === tab.id ? 'page' : undefined}
-                    >
-                        <tab.icon class="size-4" />
-                        <span>{tab.label}</span>
-                        <ChevronRight class="ml-auto size-4 md:hidden" />
-                    </button>
-                {/each}
-            </div>
-        </nav>
-
-        <main
-            class="min-h-0 flex-1 flex-col overflow-hidden md:flex {hasSelectedTab
-                ? 'flex'
-                : 'hidden'}"
-        >
-            <div
-                class="flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
-            >
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    class="md:hidden"
-                    onclick={returnToTabs}
-                    aria-label="Back to Persona Studio sections"
-                >
-                    <ChevronLeft class="size-5" />
-                </Button>
-                <div class="md:hidden">{@render identityAvatar('size-8')}</div>
-                <div class="min-w-0 flex-1 px-2 md:px-0">
-                    <p class="truncate text-sm font-semibold md:text-xl">{activeTabLabel}</p>
-                    {#if $activePersona}
-                        <p class="hidden truncate text-xs text-muted-foreground md:block">
-                            {$activePersona.name}
-                        </p>
-                    {/if}
-                </div>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onclick={backToContext}
-                    aria-label="Close studio"
-                >
-                    <X class="size-5" />
-                </Button>
-            </div>
-            {#if !$activePersona}
-                <div class="flex flex-1 items-center justify-center">
-                    <p class="text-muted-foreground">Loading persona data...</p>
-                </div>
-            {:else}
-                <ScrollArea class="min-h-0 flex-1">
-                    <div class="max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
-                        {#if activeTab === 'profile'}
-                            <section class="space-y-6">
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Basic Information</CardTitle>
-                                        <CardDescription>
-                                            How this persona appears in chats and prompt context.
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent class="space-y-6">
-                                        <div class="flex items-center gap-6">
-                                            <div class="group relative">
-                                                <div
-                                                    class="size-24 overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
-                                                >
-                                                    <AssetView
-                                                        asset={$activePersona.avatar
-                                                            ? {
-                                                                  scopeType:
-                                                                      $activePersona.scopeType,
-                                                                  scopeId: $activePersona.scopeId,
-                                                                  ownerTable: 'personas',
-                                                                  ownerId: $activePersona.id,
-                                                                  hash: $activePersona.avatar.hash,
-                                                                  encKey: $activePersona.avatar
-                                                                      .encKey
-                                                              }
-                                                            : null}
-                                                        alt={$activePersona.name}
-                                                        class="size-full object-cover"
-                                                        fallback="none"
+<WorkspaceShell
+    workspaceName="Persona Studio"
+    entityName={$activePersona?.name}
+    sections={tabs}
+    activeSection={activeTab}
+    showDetail={personaTab !== undefined}
+    onSelect={openTab}
+    onBack={returnToTabs}
+    onClose={backToContext}
+    closeLabel="Close studio"
+    identity={identityAvatar}
+>
+    {#if !$activePersona}
+        <div class="flex flex-1 items-center justify-center">
+            <p class="text-muted-foreground">Loading persona data...</p>
+        </div>
+    {:else}
+        <ScrollArea class="min-h-0 flex-1">
+            <div class="max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
+                {#if activeTab === 'profile'}
+                    <section class="space-y-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Basic Information</CardTitle>
+                                <CardDescription>
+                                    How this persona appears in chats and prompt context.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent class="space-y-6">
+                                <div class="flex items-center gap-6">
+                                    <div class="group relative">
+                                        <div
+                                            class="size-24 overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
+                                        >
+                                            <AssetView
+                                                asset={$activePersona.avatar
+                                                    ? {
+                                                          scopeType: $activePersona.scopeType,
+                                                          scopeId: $activePersona.scopeId,
+                                                          ownerTable: 'personas',
+                                                          ownerId: $activePersona.id,
+                                                          hash: $activePersona.avatar.hash,
+                                                          encKey: $activePersona.avatar.encKey
+                                                      }
+                                                    : null}
+                                                alt={$activePersona.name}
+                                                class="size-full object-cover"
+                                                fallback="none"
+                                            >
+                                                {#if !$activePersona.avatar}
+                                                    <div
+                                                        class="flex size-full items-center justify-center"
                                                     >
-                                                        {#if !$activePersona.avatar}
-                                                            <div
-                                                                class="flex size-full items-center justify-center"
-                                                            >
-                                                                <User
-                                                                    class="size-10 text-muted-foreground/50"
-                                                                />
-                                                            </div>
-                                                        {/if}
-                                                    </AssetView>
-                                                </div>
-                                                <button
-                                                    class="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                                                    disabled={resourceAction !== null}
-                                                    aria-busy={resourceAction === 'avatar-upload'}
-                                                    onclick={handleAvatarUpload}
-                                                    title="Upload avatar"
-                                                >
-                                                    <Upload class="size-6" />
-                                                </button>
-                                            </div>
-
-                                            <div class="flex-1 space-y-4">
-                                                <div class="grid gap-1.5">
-                                                    <Label>Persona Name</Label>
-                                                    <Input
-                                                        value={$activePersona.name}
-                                                        oninput={(e) =>
-                                                            updatePersona($activePersona!.id, {
-                                                                name: e.currentTarget.value
-                                                            })}
-                                                        placeholder="Enter persona name..."
-                                                    />
-                                                </div>
-                                                <div class="flex items-center gap-2">
-                                                    <Button
-                                                        variant="destructive"
-                                                        size="sm"
-                                                        disabled={!$activePersona.avatar ||
-                                                            resourceAction !== null}
-                                                        aria-busy={resourceAction ===
-                                                            'avatar-remove'}
-                                                        onclick={handleAvatarRemove}
-                                                    >
-                                                        Remove Avatar
-                                                    </Button>
-                                                </div>
-                                            </div>
+                                                        <User
+                                                            class="size-10 text-muted-foreground/50"
+                                                        />
+                                                    </div>
+                                                {/if}
+                                            </AssetView>
                                         </div>
+                                        <button
+                                            class="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                            disabled={resourceAction !== null}
+                                            aria-busy={resourceAction === 'avatar-upload'}
+                                            onclick={handleAvatarUpload}
+                                            title="Upload avatar"
+                                        >
+                                            <Upload class="size-6" />
+                                        </button>
+                                    </div>
 
+                                    <div class="flex-1 space-y-4">
                                         <div class="grid gap-1.5">
-                                            <Label>Persona Description</Label>
-                                            <Textarea
-                                                rows={5}
-                                                value={$activePersona.description}
+                                            <Label>Persona Name</Label>
+                                            <Input
+                                                value={$activePersona.name}
                                                 oninput={(e) =>
                                                     updatePersona($activePersona!.id, {
-                                                        description: e.currentTarget.value
+                                                        name: e.currentTarget.value
                                                     })}
-                                                placeholder="Describe how this persona should speak, act, or be represented..."
+                                                placeholder="Enter persona name..."
                                             />
-                                            <p class="text-xs text-muted-foreground">
-                                                Used for persona prompt blocks and chat participant
-                                                context.
-                                            </p>
                                         </div>
-                                    </CardContent>
-                                </Card>
-                            </section>
-                        {:else if activeTab === 'assets'}
-                            <section class="space-y-4">
-                                <div class="flex items-center justify-between">
-                                    <Label
-                                        class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
-                                    >
-                                        Assets
-                                    </Label>
-                                    <div class="flex items-center gap-2">
-                                        <Badge variant="outline" class="text-[10px] font-mono"
-                                            >{assetRefs.length}</Badge
-                                        >
-                                        <Button
-                                            variant="secondary"
-                                            size="sm"
-                                            class="gap-1"
-                                            disabled={resourceAction !== null}
-                                            aria-busy={resourceAction === 'asset-upload'}
-                                            onclick={handleAssetFileSelect}
-                                        >
-                                            <Plus class="size-3" /> Add
-                                        </Button>
+                                        <div class="flex items-center gap-2">
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                disabled={!$activePersona.avatar ||
+                                                    resourceAction !== null}
+                                                aria-busy={resourceAction === 'avatar-remove'}
+                                                onclick={handleAvatarRemove}
+                                            >
+                                                Remove Avatar
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <EntityList
-                                    entities={assetRefs}
-                                    config={$activePersona.assets}
-                                    layout="list"
-                                    onCreateFolder={(name, parentId, sortOrder) =>
-                                        createPersonaFolder(
-                                            $activePersona!.id,
-                                            'assets',
-                                            name,
-                                            parentId,
-                                            sortOrder
-                                        )}
-                                    onUpdateFolder={(id, changes) =>
-                                        updatePersonaFolder(
-                                            $activePersona!.id,
-                                            'assets',
-                                            id,
-                                            changes
-                                        )}
-                                    onDeleteFolder={(id) =>
-                                        deletePersonaFolder($activePersona!.id, 'assets', id)}
-                                    onMoveItem={(itemId, newFolderId, newSortOrder) =>
-                                        movePersonaItem(
-                                            $activePersona!.id,
-                                            'assets',
-                                            itemId,
-                                            newFolderId,
-                                            newSortOrder
-                                        )}
+                                <div class="grid gap-1.5">
+                                    <Label>Persona Description</Label>
+                                    <Textarea
+                                        rows={5}
+                                        value={$activePersona.description}
+                                        oninput={(e) =>
+                                            updatePersona($activePersona!.id, {
+                                                description: e.currentTarget.value
+                                            })}
+                                        placeholder="Describe how this persona should speak, act, or be represented..."
+                                    />
+                                    <p class="text-xs text-muted-foreground">
+                                        Used for persona prompt blocks and chat participant context.
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </section>
+                {:else if activeTab === 'assets'}
+                    <section class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <Label
+                                class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+                            >
+                                Assets
+                            </Label>
+                            <div class="flex items-center gap-2">
+                                <Badge variant="outline" class="text-[10px] font-mono"
+                                    >{assetRefs.length}</Badge
                                 >
-                                    {#snippet empty()}
-                                        <EmptyListPlaceholder
-                                            message="No assets. Use Add to upload an image or file."
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    class="gap-1"
+                                    disabled={resourceAction !== null}
+                                    aria-busy={resourceAction === 'asset-upload'}
+                                    onclick={handleAssetFileSelect}
+                                >
+                                    <Plus class="size-3" /> Add
+                                </Button>
+                            </div>
+                        </div>
+
+                        <EntityList
+                            entities={assetRefs}
+                            config={$activePersona.assets}
+                            layout="list"
+                            onCreateFolder={(name, parentId, sortOrder) =>
+                                createPersonaFolder(
+                                    $activePersona!.id,
+                                    'assets',
+                                    name,
+                                    parentId,
+                                    sortOrder
+                                )}
+                            onUpdateFolder={(id, changes) =>
+                                updatePersonaFolder($activePersona!.id, 'assets', id, changes)}
+                            onDeleteFolder={(id) =>
+                                deletePersonaFolder($activePersona!.id, 'assets', id)}
+                            onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                                movePersonaItem(
+                                    $activePersona!.id,
+                                    'assets',
+                                    itemId,
+                                    newFolderId,
+                                    newSortOrder
+                                )}
+                        >
+                            {#snippet empty()}
+                                <EmptyListPlaceholder
+                                    message="No assets. Use Add to upload an image or file."
+                                />
+                            {/snippet}
+                            {#snippet item({ entity: ref })}
+                                <div
+                                    class="group flex items-center gap-3 rounded-md border bg-background p-2 transition-colors hover:bg-muted/50"
+                                >
+                                    <div
+                                        class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
+                                    >
+                                        <AssetView
+                                            asset={{
+                                                scopeType: $activePersona!.scopeType,
+                                                scopeId: $activePersona!.scopeId,
+                                                ownerTable: 'personas',
+                                                ownerId: $activePersona!.id,
+                                                hash: ref.hash,
+                                                encKey: ref.encKey
+                                            }}
+                                            alt={ref.name}
+                                            class="size-full object-cover"
+                                            fallback="icon"
                                         />
-                                    {/snippet}
-                                    {#snippet item({ entity: ref })}
-                                        <div
-                                            class="group flex items-center gap-3 rounded-md border bg-background p-2 transition-colors hover:bg-muted/50"
-                                        >
-                                            <div
-                                                class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
+                                    </div>
+                                    <div class="min-w-0 flex-1">
+                                        {#if editingId === ref.id}
+                                            <form
+                                                class="flex items-center gap-1.5"
+                                                onsubmit={(e) => {
+                                                    e.preventDefault();
+                                                    saveRename(ref);
+                                                }}
                                             >
-                                                <AssetView
-                                                    asset={{
-                                                        scopeType: $activePersona!.scopeType,
-                                                        scopeId: $activePersona!.scopeId,
-                                                        ownerTable: 'personas',
-                                                        ownerId: $activePersona!.id,
-                                                        hash: ref.hash,
-                                                        encKey: ref.encKey
+                                                <Input
+                                                    bind:value={editName}
+                                                    disabled={resourceAction !== null}
+                                                    class="h-7 text-xs bg-background w-full"
+                                                    autofocus
+                                                    onblur={() => saveRename(ref)}
+                                                    onkeydown={(e) => {
+                                                        if (e.key === 'Escape') {
+                                                            editingId = null;
+                                                        }
                                                     }}
-                                                    alt={ref.name}
-                                                    class="size-full object-cover"
-                                                    fallback="icon"
                                                 />
-                                            </div>
-                                            <div class="min-w-0 flex-1">
-                                                {#if editingId === ref.id}
-                                                    <form
-                                                        class="flex items-center gap-1.5"
-                                                        onsubmit={(e) => {
-                                                            e.preventDefault();
-                                                            saveRename(ref);
-                                                        }}
-                                                    >
-                                                        <Input
-                                                            bind:value={editName}
-                                                            disabled={resourceAction !== null}
-                                                            class="h-7 text-xs bg-background w-full"
-                                                            autofocus
-                                                            onblur={() => saveRename(ref)}
-                                                            onkeydown={(e) => {
-                                                                if (e.key === 'Escape') {
-                                                                    editingId = null;
-                                                                }
-                                                            }}
-                                                        />
-                                                    </form>
-                                                {:else}
-                                                    <span class="truncate text-sm">{ref.name}</span>
-                                                    <span
-                                                        class="text-[10px] text-muted-foreground ml-2 font-mono"
-                                                        >{ref.mimeType}</span
-                                                    >
-                                                {/if}
-                                            </div>
-                                            <div
-                                                class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            </form>
+                                        {:else}
+                                            <span class="truncate text-sm">{ref.name}</span>
+                                            <span
+                                                class="text-[10px] text-muted-foreground ml-2 font-mono"
+                                                >{ref.mimeType}</span
                                             >
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon-sm"
-                                                    class="size-7"
-                                                    title="Rename"
-                                                    disabled={resourceAction !== null}
-                                                    onclick={() => startRename(ref)}
-                                                >
-                                                    <Pencil class="size-3" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon-sm"
-                                                    class="size-7 text-destructive hover:text-destructive"
-                                                    title="Delete"
-                                                    disabled={resourceAction !== null}
-                                                    aria-busy={resourceAction ===
-                                                        `asset-delete:${ref.id}`}
-                                                    onclick={() => handleDeleteAsset(ref)}
-                                                >
-                                                    <Trash2 class="size-3" />
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    {/snippet}
-                                </EntityList>
-                            </section>
-                        {:else if activeTab === 'advanced'}
-                            <AdvancedTab
-                                showLightExport={isKeiServer()}
-                                {exporting}
-                                {deleting}
-                                onExportRisu={() =>
-                                    handleExport('risu', {
-                                        kind: 'risu',
-                                        format: 'png'
-                                    })}
-                                onExportLight={() =>
-                                    handleExport('keipersona-light', {
-                                        kind: 'keipersona',
-                                        assetMode: 'light'
-                                    })}
-                                onExportBaked={() =>
-                                    handleExport('keipersona-baked', {
-                                        kind: 'keipersona',
-                                        assetMode: 'baked'
-                                    })}
-                                onDelete={handleDelete}
-                            />
-                        {/if}
-                    </div>
-                </ScrollArea>
-            {/if}
-        </main>
-    </div>
-</div>
+                                        {/if}
+                                    </div>
+                                    <div
+                                        class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        <Button
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            class="size-7"
+                                            title="Rename"
+                                            disabled={resourceAction !== null}
+                                            onclick={() => startRename(ref)}
+                                        >
+                                            <Pencil class="size-3" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            class="size-7 text-destructive hover:text-destructive"
+                                            title="Delete"
+                                            disabled={resourceAction !== null}
+                                            aria-busy={resourceAction === `asset-delete:${ref.id}`}
+                                            onclick={() => handleDeleteAsset(ref)}
+                                        >
+                                            <Trash2 class="size-3" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            {/snippet}
+                        </EntityList>
+                    </section>
+                {:else if activeTab === 'advanced'}
+                    <AdvancedTab
+                        showLightExport={isKeiServer()}
+                        {exporting}
+                        {deleting}
+                        onExportRisu={() =>
+                            handleExport('risu', {
+                                kind: 'risu',
+                                format: 'png'
+                            })}
+                        onExportLight={() =>
+                            handleExport('keipersona-light', {
+                                kind: 'keipersona',
+                                assetMode: 'light'
+                            })}
+                        onExportBaked={() =>
+                            handleExport('keipersona-baked', {
+                                kind: 'keipersona',
+                                assetMode: 'baked'
+                            })}
+                        onDelete={handleDelete}
+                    />
+                {/if}
+            </div>
+        </ScrollArea>
+    {/if}
+</WorkspaceShell>

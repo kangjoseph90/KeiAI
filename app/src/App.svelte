@@ -6,7 +6,7 @@
     import { SyncManager } from '$lib/services/sync';
     import { clock } from '$lib/utils/clock';
     import { appKV } from '$lib/adapters/kv';
-    import AppSidebar from '$lib/components/layout/AppSidebar.svelte';
+    import { AppSidebar } from '$lib/components/layout';
     import { Button } from '$lib/components/ui/button';
     import {
         loadGlobalState,
@@ -111,6 +111,7 @@
             logger.warn('Route restore failed, falling back to home:', e);
             clearActiveRoom();
             clearActiveCharacter();
+            clearActiveModule();
             clearActivePersona();
             navigate({ view: 'home' });
         }

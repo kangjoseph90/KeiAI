@@ -1,17 +1,14 @@
 <script lang="ts">
     import {
-        ChevronLeft,
-        ChevronRight,
         User,
         MessageSquare,
         Book,
         Code,
         Image as ImageIcon,
         Settings2,
-        Monitor,
-        X
+        Monitor
     } from 'lucide-svelte';
-    import { Button } from '$lib/components/ui/button';
+    import { WorkspaceShell } from '$lib/components/layout';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import AssetView from '$lib/components/AssetView.svelte';
     import {
@@ -105,11 +102,6 @@
         { id: 'assets', label: 'Assets', icon: ImageIcon },
         { id: 'advanced', label: 'Advanced', icon: Settings2 }
     ] as const;
-
-    let hasSelectedTab = $derived(characterTab !== undefined);
-    let activeTabLabel = $derived(
-        tabs.find((tab) => tab.id === activeTab)?.label ?? 'Character Studio'
-    );
 
     $effect(() => {
         if (characterTab) activeTab = characterTab;
@@ -218,284 +210,171 @@
     </div>
 {/snippet}
 
-<div class="flex h-full min-h-0 flex-col bg-background">
-    <div class="flex min-h-0 flex-1 overflow-hidden">
-        <!-- Sidebar Navigation -->
-        <nav
-            class="min-h-0 w-full shrink-0 flex-col border-r bg-muted/30 md:flex md:min-w-64 md:w-[max(16rem,calc((100vw-72rem)/2+16rem))] {hasSelectedTab
-                ? 'hidden'
-                : 'flex'}"
-            aria-label="Character Studio sections"
-        >
-            <div class="flex h-14 shrink-0 items-center border-b px-2 md:hidden">
-                {@render identityAvatar('size-8')}
-                <div class="min-w-0 flex-1 px-2">
-                    <p class="truncate text-sm font-semibold">
-                        {$activeCharacter?.name ?? 'Character'}
-                    </p>
-                    <p class="text-[11px] text-muted-foreground">Character Studio</p>
-                </div>
-                <Button variant="ghost" size="icon" onclick={backToChat} aria-label="Close studio">
-                    <X class="size-5" />
-                </Button>
-            </div>
-            <div
-                class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-4 md:ml-auto md:w-64 md:flex-none md:px-4 md:pb-4 md:pt-8"
-            >
-                {#if $activeCharacter}
-                    <div class="mb-4 hidden items-center gap-3 px-3 md:flex">
-                        {@render identityAvatar('size-10')}
-                        <div class="min-w-0">
-                            <p class="truncate text-sm font-medium">{$activeCharacter.name}</p>
-                            <p class="text-xs text-muted-foreground">Character Studio</p>
-                        </div>
-                    </div>
+<WorkspaceShell
+    workspaceName="Character Studio"
+    entityName={$activeCharacter?.name}
+    sections={tabs}
+    activeSection={activeTab}
+    showDetail={characterTab !== undefined}
+    onSelect={openTab}
+    onBack={returnToTabs}
+    onClose={backToChat}
+    closeLabel="Close studio"
+    identity={identityAvatar}
+>
+    {#if !$activeCharacter}
+        <div class="flex flex-1 items-center justify-center">
+            <p class="text-muted-foreground">Loading character data...</p>
+        </div>
+    {:else}
+        <ScrollArea class="min-h-0 flex-1">
+            <div class="max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
+                {#if activeTab === 'profile'}
+                    <ProfileTab
+                        character={$activeCharacter}
+                        onUpdate={async (changes) => {
+                            await updateCharacter(changes);
+                        }}
+                        onUpdateAvatar={async (characterId, file) => {
+                            await updateCharacterAvatar(characterId, file);
+                        }}
+                        onRemoveAvatar={async (characterId) => {
+                            await removeCharacterAvatar(characterId);
+                        }}
+                    />
+                {:else if activeTab === 'greetings'}
+                    <GreetingsTab
+                        character={$activeCharacter}
+                        onCreate={handleCreateGreeting}
+                        onUpdate={handleUpdateGreeting}
+                        onDelete={handleDeleteGreeting}
+                    />
+                {:else if activeTab === 'display'}
+                    <DisplayTab
+                        character={$activeCharacter}
+                        onUpdate={async (changes) => {
+                            await updateCharacter(changes);
+                        }}
+                    />
+                {:else if activeTab === 'lorebooks'}
+                    <LorebooksTab
+                        lorebooks={$characterLorebooks}
+                        config={$activeCharacter!.lorebooks}
+                        onCreate={async (data) => {
+                            return createCharacterLorebook($activeCharacter!.id, data as Lorebook);
+                        }}
+                        onUpdate={async (id, changes) => {
+                            await updateCharacterLorebook($activeCharacter!.id, id, changes);
+                        }}
+                        onDelete={async (id) => {
+                            await deleteCharacterLorebook($activeCharacter!.id, id);
+                        }}
+                        onCreateFolder={(name: string, parentId?: string, sortOrder?: string) =>
+                            createCharacterFolder(
+                                $activeCharacter!.id,
+                                'lorebooks',
+                                name,
+                                parentId,
+                                sortOrder
+                            )}
+                        onUpdateFolder={(id, changes) =>
+                            updateCharacterFolder($activeCharacter!.id, 'lorebooks', id, changes)}
+                        onDeleteFolder={(id) =>
+                            deleteCharacterFolder($activeCharacter!.id, 'lorebooks', id)}
+                        onMoveItem={(itemId, newFolderId, newSortOrder) =>
+                            moveCharacterItem(
+                                $activeCharacter!.id,
+                                'lorebooks',
+                                itemId,
+                                newFolderId,
+                                newSortOrder
+                            )}
+                    />
+                {:else if activeTab === 'scripts'}
+                    <ScriptsTab
+                        scripts={$characterScripts}
+                        charJS={$characterCharJS}
+                        scriptsConfig={$activeCharacter!.scripts}
+                        charjsConfig={$activeCharacter!.charjs}
+                        onCreateScript={async (data) => {
+                            return createCharacterScript($activeCharacter!.id, data as Script);
+                        }}
+                        onUpdateScript={async (id, changes) => {
+                            await updateCharacterScript($activeCharacter!.id, id, changes);
+                        }}
+                        onDeleteScript={async (id) => {
+                            await deleteCharacterScript($activeCharacter!.id, id);
+                        }}
+                        onCreateCharJS={async (data) => {
+                            return createCharacterCharJS($activeCharacter!.id, data as CharJS);
+                        }}
+                        onUpdateCharJS={async (id, changes) => {
+                            await updateCharacterCharJS($activeCharacter!.id, id, changes);
+                        }}
+                        onDeleteCharJS={async (id) => {
+                            await deleteCharacterCharJS($activeCharacter!.id, id);
+                        }}
+                        scriptFolders={{
+                            onCreateFolder: (name: string, parentId?: string, sortOrder?: string) =>
+                                createCharacterFolder(
+                                    $activeCharacter!.id,
+                                    'scripts',
+                                    name,
+                                    parentId,
+                                    sortOrder
+                                ),
+                            onUpdateFolder: (id, changes) =>
+                                updateCharacterFolder($activeCharacter!.id, 'scripts', id, changes),
+                            onDeleteFolder: (id) =>
+                                deleteCharacterFolder($activeCharacter!.id, 'scripts', id),
+                            onMoveItem: (itemId, newFolderId, newSortOrder) =>
+                                moveCharacterItem(
+                                    $activeCharacter!.id,
+                                    'scripts',
+                                    itemId,
+                                    newFolderId,
+                                    newSortOrder
+                                )
+                        }}
+                        charjsFolders={{
+                            onCreateFolder: (name: string, parentId?: string, sortOrder?: string) =>
+                                createCharacterFolder(
+                                    $activeCharacter!.id,
+                                    'charjs',
+                                    name,
+                                    parentId,
+                                    sortOrder
+                                ),
+                            onUpdateFolder: (id, changes) =>
+                                updateCharacterFolder($activeCharacter!.id, 'charjs', id, changes),
+                            onDeleteFolder: (id) =>
+                                deleteCharacterFolder($activeCharacter!.id, 'charjs', id),
+                            onMoveItem: (itemId, newFolderId, newSortOrder) =>
+                                moveCharacterItem(
+                                    $activeCharacter!.id,
+                                    'charjs',
+                                    itemId,
+                                    newFolderId,
+                                    newSortOrder
+                                )
+                        }}
+                    />
+                {:else if activeTab === 'assets'}
+                    <AssetsTab character={$activeCharacter} />
+                {:else if activeTab === 'advanced'}
+                    <AdvancedTab
+                        character={$activeCharacter}
+                        {exporting}
+                        {deleting}
+                        showLightExport={isKeiServer()}
+                        onUpdate={async (changes) => {
+                            await updateCharacter(changes);
+                        }}
+                        onExport={handleExport}
+                        onDelete={handleDeleteCharacter}
+                    />
                 {/if}
-                {#each tabs as tab (tab.id)}
-                    <button
-                        class="flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors md:min-h-0 {activeTab ===
-                        tab.id
-                            ? hasSelectedTab
-                                ? 'bg-primary text-primary-foreground shadow-sm'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground md:bg-primary md:text-primary-foreground md:shadow-sm'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-                        onclick={() => openTab(tab.id)}
-                        aria-current={activeTab === tab.id ? 'page' : undefined}
-                    >
-                        <tab.icon class="size-4" />
-                        <span>{tab.label}</span>
-                        <ChevronRight class="ml-auto size-4 md:hidden" />
-                    </button>
-                {/each}
             </div>
-        </nav>
-
-        <!-- Main Workspace -->
-        <main
-            class="min-h-0 flex-1 flex-col overflow-hidden md:flex {hasSelectedTab
-                ? 'flex'
-                : 'hidden'}"
-        >
-            <div
-                class="flex h-14 w-full max-w-4xl shrink-0 items-center border-b px-2 md:mt-4 md:border-b-0 md:px-8"
-            >
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    class="md:hidden"
-                    onclick={returnToTabs}
-                    aria-label="Back to Character Studio sections"
-                >
-                    <ChevronLeft class="size-5" />
-                </Button>
-                <div class="md:hidden">{@render identityAvatar('size-8')}</div>
-                <div class="min-w-0 flex-1 px-2 md:px-0">
-                    <p class="truncate text-sm font-semibold md:text-xl">{activeTabLabel}</p>
-                    {#if $activeCharacter}
-                        <p class="hidden truncate text-xs text-muted-foreground md:block">
-                            {$activeCharacter.name}
-                        </p>
-                    {/if}
-                </div>
-                <Button variant="ghost" size="icon" onclick={backToChat} aria-label="Close studio">
-                    <X class="size-5" />
-                </Button>
-            </div>
-            {#if !$activeCharacter}
-                <div class="flex flex-1 items-center justify-center">
-                    <p class="text-muted-foreground">Loading character data...</p>
-                </div>
-            {:else}
-                <ScrollArea class="min-h-0 flex-1">
-                    <div class="max-w-4xl p-4 md:px-8 md:pb-8 md:pt-4">
-                        {#if activeTab === 'profile'}
-                            <ProfileTab
-                                character={$activeCharacter}
-                                onUpdate={async (changes) => {
-                                    await updateCharacter(changes);
-                                }}
-                                onUpdateAvatar={async (characterId, file) => {
-                                    await updateCharacterAvatar(characterId, file);
-                                }}
-                                onRemoveAvatar={async (characterId) => {
-                                    await removeCharacterAvatar(characterId);
-                                }}
-                            />
-                        {:else if activeTab === 'greetings'}
-                            <GreetingsTab
-                                character={$activeCharacter}
-                                onCreate={handleCreateGreeting}
-                                onUpdate={handleUpdateGreeting}
-                                onDelete={handleDeleteGreeting}
-                            />
-                        {:else if activeTab === 'display'}
-                            <DisplayTab
-                                character={$activeCharacter}
-                                onUpdate={async (changes) => {
-                                    await updateCharacter(changes);
-                                }}
-                            />
-                        {:else if activeTab === 'lorebooks'}
-                            <LorebooksTab
-                                lorebooks={$characterLorebooks}
-                                config={$activeCharacter!.lorebooks}
-                                onCreate={async (data) => {
-                                    return createCharacterLorebook(
-                                        $activeCharacter!.id,
-                                        data as Lorebook
-                                    );
-                                }}
-                                onUpdate={async (id, changes) => {
-                                    await updateCharacterLorebook(
-                                        $activeCharacter!.id,
-                                        id,
-                                        changes
-                                    );
-                                }}
-                                onDelete={async (id) => {
-                                    await deleteCharacterLorebook($activeCharacter!.id, id);
-                                }}
-                                onCreateFolder={(
-                                    name: string,
-                                    parentId?: string,
-                                    sortOrder?: string
-                                ) =>
-                                    createCharacterFolder(
-                                        $activeCharacter!.id,
-                                        'lorebooks',
-                                        name,
-                                        parentId,
-                                        sortOrder
-                                    )}
-                                onUpdateFolder={(id, changes) =>
-                                    updateCharacterFolder(
-                                        $activeCharacter!.id,
-                                        'lorebooks',
-                                        id,
-                                        changes
-                                    )}
-                                onDeleteFolder={(id) =>
-                                    deleteCharacterFolder($activeCharacter!.id, 'lorebooks', id)}
-                                onMoveItem={(itemId, newFolderId, newSortOrder) =>
-                                    moveCharacterItem(
-                                        $activeCharacter!.id,
-                                        'lorebooks',
-                                        itemId,
-                                        newFolderId,
-                                        newSortOrder
-                                    )}
-                            />
-                        {:else if activeTab === 'scripts'}
-                            <ScriptsTab
-                                scripts={$characterScripts}
-                                charJS={$characterCharJS}
-                                scriptsConfig={$activeCharacter!.scripts}
-                                charjsConfig={$activeCharacter!.charjs}
-                                onCreateScript={async (data) => {
-                                    return createCharacterScript(
-                                        $activeCharacter!.id,
-                                        data as Script
-                                    );
-                                }}
-                                onUpdateScript={async (id, changes) => {
-                                    await updateCharacterScript($activeCharacter!.id, id, changes);
-                                }}
-                                onDeleteScript={async (id) => {
-                                    await deleteCharacterScript($activeCharacter!.id, id);
-                                }}
-                                onCreateCharJS={async (data) => {
-                                    return createCharacterCharJS(
-                                        $activeCharacter!.id,
-                                        data as CharJS
-                                    );
-                                }}
-                                onUpdateCharJS={async (id, changes) => {
-                                    await updateCharacterCharJS($activeCharacter!.id, id, changes);
-                                }}
-                                onDeleteCharJS={async (id) => {
-                                    await deleteCharacterCharJS($activeCharacter!.id, id);
-                                }}
-                                scriptFolders={{
-                                    onCreateFolder: (
-                                        name: string,
-                                        parentId?: string,
-                                        sortOrder?: string
-                                    ) =>
-                                        createCharacterFolder(
-                                            $activeCharacter!.id,
-                                            'scripts',
-                                            name,
-                                            parentId,
-                                            sortOrder
-                                        ),
-                                    onUpdateFolder: (id, changes) =>
-                                        updateCharacterFolder(
-                                            $activeCharacter!.id,
-                                            'scripts',
-                                            id,
-                                            changes
-                                        ),
-                                    onDeleteFolder: (id) =>
-                                        deleteCharacterFolder($activeCharacter!.id, 'scripts', id),
-                                    onMoveItem: (itemId, newFolderId, newSortOrder) =>
-                                        moveCharacterItem(
-                                            $activeCharacter!.id,
-                                            'scripts',
-                                            itemId,
-                                            newFolderId,
-                                            newSortOrder
-                                        )
-                                }}
-                                charjsFolders={{
-                                    onCreateFolder: (
-                                        name: string,
-                                        parentId?: string,
-                                        sortOrder?: string
-                                    ) =>
-                                        createCharacterFolder(
-                                            $activeCharacter!.id,
-                                            'charjs',
-                                            name,
-                                            parentId,
-                                            sortOrder
-                                        ),
-                                    onUpdateFolder: (id, changes) =>
-                                        updateCharacterFolder(
-                                            $activeCharacter!.id,
-                                            'charjs',
-                                            id,
-                                            changes
-                                        ),
-                                    onDeleteFolder: (id) =>
-                                        deleteCharacterFolder($activeCharacter!.id, 'charjs', id),
-                                    onMoveItem: (itemId, newFolderId, newSortOrder) =>
-                                        moveCharacterItem(
-                                            $activeCharacter!.id,
-                                            'charjs',
-                                            itemId,
-                                            newFolderId,
-                                            newSortOrder
-                                        )
-                                }}
-                            />
-                        {:else if activeTab === 'assets'}
-                            <AssetsTab character={$activeCharacter} />
-                        {:else if activeTab === 'advanced'}
-                            <AdvancedTab
-                                character={$activeCharacter}
-                                {exporting}
-                                {deleting}
-                                showLightExport={isKeiServer()}
-                                onUpdate={async (changes) => {
-                                    await updateCharacter(changes);
-                                }}
-                                onExport={handleExport}
-                                onDelete={handleDeleteCharacter}
-                            />
-                        {/if}
-                    </div>
-                </ScrollArea>
-            {/if}
-        </main>
-    </div>
-</div>
+        </ScrollArea>
+    {/if}
+</WorkspaceShell>
