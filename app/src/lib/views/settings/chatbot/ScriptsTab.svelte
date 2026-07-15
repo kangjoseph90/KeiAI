@@ -16,10 +16,13 @@
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
+    import { toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     let { preset }: { preset: Preset } = $props();
     let currentScripts = $state<Script[]>([]);
     let editingScriptId = $state<string | null>(null);
+    let creating = $state(false);
 
     $effect(() => {
         const unsubscribe = presetScripts.subscribe((scripts) => (currentScripts = scripts));
@@ -27,14 +30,29 @@
     });
 
     async function handleAddScript() {
-        const script = await createPresetScript(preset.id, { name: 'New Script' });
-        editingScriptId = script.id;
+        if (creating) return;
+        const presetId = preset.id;
+        creating = true;
+        try {
+            const script = await createPresetScript(presetId, { name: 'New Script' });
+            if (preset.id === presetId) editingScriptId = script.id;
+        } catch (error) {
+            toast.error({ title: 'Could not add script', description: getErrorMessage(error) });
+        } finally {
+            creating = false;
+        }
     }
 </script>
 
 <div class="flex flex-col gap-4 px-2">
     <ListActionBar description="Transform model output after generation.">
-        <Button size="sm" class="gap-1.5" onclick={handleAddScript}>
+        <Button
+            size="sm"
+            class="gap-1.5"
+            disabled={creating}
+            aria-busy={creating}
+            onclick={handleAddScript}
+        >
             <Plus class="size-4" /> Add
         </Button>
     </ListActionBar>

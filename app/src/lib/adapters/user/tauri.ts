@@ -1,8 +1,10 @@
 import Dexie from 'dexie';
 import Database from '@tauri-apps/plugin-sql';
-import { Stronghold } from '@tauri-apps/plugin-stronghold';
+import { Store as StrongholdStore, Stronghold } from '@tauri-apps/plugin-stronghold';
 import { appLocalDataDir } from '@tauri-apps/api/path';
 import { Store as TauriStore } from '@tauri-apps/plugin-store';
+import { createLogger } from '$lib/adapters/logger';
+import { AppError } from '$lib/types/errors';
 import { UserWriteEventEmitter } from './events';
 import type {
     IUserAdapter,
@@ -11,6 +13,8 @@ import type {
     UserWriteEventListener,
     UserWriteOperation
 } from './types';
+
+const logger = createLogger('adapter:user:tauri');
 
 /**
  * Tauri User Adapter
@@ -69,6 +73,12 @@ interface SQLiteUserRow {
     selfHostUrl: string | null;
 }
 
+interface SecureKeySnapshot {
+    masterKey: Uint8Array | null;
+    identityPublic: Uint8Array | null;
+    identityPrivate: Uint8Array | null;
+}
+
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
 export class TauriUserAdapter implements IUserAdapter {
@@ -78,6 +88,7 @@ export class TauriUserAdapter implements IUserAdapter {
     // Lazy singletons — initialised on first use
     private sqlitePromise: Promise<Database> | null = null;
     private strongholdPromise: Promise<Stronghold> | null = null;
+    private strongholdStorePromise: Promise<StrongholdStore> | null = null;
 
     subscribeWriteEvents(listener: UserWriteEventListener): () => void {
         return this.writeEvents.subscribe(listener);
@@ -126,20 +137,34 @@ export class TauriUserAdapter implements IUserAdapter {
     }
 
     private async sqliteSave(user: UserRecord): Promise<void> {
+        await this.sqliteSaveRow({
+            id: user.id,
+            userId: user.id,
+            name: user.name,
+            username: user.username ?? null,
+            email: user.email ?? null,
+            avatar: user.avatar,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+            selfHostUrl: user.selfHostUrl ?? null
+        });
+    }
+
+    private async sqliteSaveRow(row: SQLiteUserRow): Promise<void> {
         const db = await this.getSQLite();
         await db.execute(
             `INSERT OR REPLACE INTO users (id, userId, name, username, email, avatar, createdAt, updatedAt, selfHostUrl)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
-                user.id,
-                user.id,
-                user.name,
-                user.username ?? null,
-                user.email ?? null,
-                user.avatar,
-                user.createdAt,
-                user.updatedAt,
-                user.selfHostUrl ?? null
+                row.id,
+                row.userId,
+                row.name,
+                row.username,
+                row.email,
+                row.avatar,
+                row.createdAt,
+                row.updatedAt,
+                row.selfHostUrl
             ]
         );
     }
@@ -182,12 +207,22 @@ export class TauriUserAdapter implements IUserAdapter {
         return this.strongholdPromise;
     }
 
-    private async getStore() {
-        const stronghold = await this.getStronghold();
-        // createClient is idempotent in Stronghold v2: returns existing client
-        // if one was already created for this path.
-        const client = await stronghold.createClient('KeiAI');
-        return client.getStore();
+    private async getStore(): Promise<StrongholdStore> {
+        if (this.strongholdStorePromise) return this.strongholdStorePromise;
+
+        this.strongholdStorePromise = (async () => {
+            const stronghold = await this.getStronghold();
+            try {
+                return (await stronghold.loadClient('KeiAI')).getStore();
+            } catch {
+                return (await stronghold.createClient('KeiAI')).getStore();
+            }
+        })().catch((error: unknown) => {
+            this.strongholdStorePromise = null;
+            throw error;
+        });
+
+        return this.strongholdStorePromise;
     }
 
     // ── IUserAdapter ──────────────────────────────────────────────────────────
@@ -227,43 +262,94 @@ export class TauriUserAdapter implements IUserAdapter {
     }
 
     async saveUser(user: UserRecord, options?: UserWriteOptions): Promise<void> {
-        // 1. Dexie — stores the live CryptoKey via Structured Clone
-        await this.authDB.users.put(user);
+        let rawKey: Uint8Array | null = null;
+        let privateKeyBytes: Uint8Array | null = null;
+        let secureSnapshot: SecureKeySnapshot | null = null;
+        let previousDexie: UserRecord | undefined;
+        let previousSQLite: SQLiteUserRow | null = null;
+        let writesStarted = false;
 
-        // 2. SQLite mirror — no masterKey
-        await this.sqliteSave(user);
-
-        // 3. Stronghold — backup raw bytes for durable local identity recovery.
         try {
-            const rawKey = new Uint8Array(await crypto.subtle.exportKey('raw', user.masterKey));
-            await this.backupMasterKey(user.id, rawKey);
-            rawKey.fill(0); // scrub from memory after storing
-
+            rawKey = new Uint8Array(await crypto.subtle.exportKey('raw', user.masterKey));
             const pubJwk = await crypto.subtle.exportKey('jwk', user.identityKeyPair.publicKey);
-            const privRaw = new Uint8Array(
+            privateKeyBytes = new Uint8Array(
                 (await crypto.subtle.exportKey(
                     'pkcs8',
                     user.identityKeyPair.privateKey
                 )) as ArrayBuffer
             );
-            await this.backupIdentityKeys(user.id, pubJwk, privRaw);
-            privRaw.fill(0);
-        } catch {
-            // Keep the IndexedDB copy if the platform refuses export.
+
+            [previousDexie, previousSQLite, secureSnapshot] = await Promise.all([
+                this.authDB.users.get(user.id),
+                this.sqliteGetOne(user.id),
+                this.snapshotSecureKeys(user.id)
+            ]);
+
+            writesStarted = true;
+            await this.writeSecureKeys(user.id, rawKey, pubJwk, privateKeyBytes);
+            await this.authDB.users.put(user);
+            await this.sqliteSave(user);
+        } catch (error) {
+            const rollbackErrors =
+                writesStarted && secureSnapshot
+                    ? await this.restoreUserState(
+                          user.id,
+                          previousDexie,
+                          previousSQLite,
+                          secureSnapshot
+                      )
+                    : [];
+
+            logger.error(`Failed to durably save local user ${user.id}`, error);
+            if (rollbackErrors.length > 0) {
+                logger.error(`Failed to fully roll back local user ${user.id}`, rollbackErrors);
+            }
+            throw new AppError(
+                'USER_ADAPTER_ERROR',
+                rollbackErrors.length > 0
+                    ? 'Local identity save failed and the previous identity could not be fully restored. Restart the app before retrying.'
+                    : 'Secure local identity save failed. The previous identity was restored; retry after checking app storage access.',
+                { error, rollbackErrors }
+            );
+        } finally {
+            rawKey?.fill(0);
+            privateKeyBytes?.fill(0);
+            scrubSecureSnapshot(secureSnapshot);
         }
 
         this.emitWriteEvent('put', [user.id], options);
     }
 
     async deleteUser(id: string, options?: UserWriteOptions): Promise<void> {
-        // Hard-delete in both stores
-        const db = await this.getSQLite();
-        await this.authDB.users.delete(id);
-        await db.execute(`DELETE FROM users WHERE id = $1`, [id]);
+        const [previousDexie, previousSQLite, secureSnapshot] = await Promise.all([
+            this.authDB.users.get(id),
+            this.sqliteGetOne(id),
+            this.snapshotSecureKeys(id)
+        ]);
 
-        // Note: we intentionally leave the Stronghold entry intact.
-        // The raw key is harmless without the user record and removal is
-        // not required for correctness.
+        try {
+            const db = await this.getSQLite();
+            await this.authDB.users.delete(id);
+            await db.execute(`DELETE FROM users WHERE id = $1`, [id]);
+            await this.deleteSecureKeys(id);
+        } catch (error) {
+            const rollbackErrors = await this.restoreUserState(
+                id,
+                previousDexie,
+                previousSQLite,
+                secureSnapshot
+            );
+            throw new AppError(
+                'USER_ADAPTER_ERROR',
+                rollbackErrors.length > 0
+                    ? 'Local user deletion failed and could not be fully rolled back. Restart the app before retrying.'
+                    : 'Local user deletion failed. No local identity data was removed.',
+                { error, rollbackErrors }
+            );
+        } finally {
+            scrubSecureSnapshot(secureSnapshot);
+        }
+
         this.emitWriteEvent('purge', [id], options);
     }
 
@@ -277,9 +363,10 @@ export class TauriUserAdapter implements IUserAdapter {
     async restoreMasterKey(id: string): Promise<Uint8Array | null> {
         try {
             const store = await this.getStore();
-            const data = (await store.get(`masterKey:${id}`)) as number[] | null;
+            const data = await store.get(`masterKey:${id}`);
             return data ? new Uint8Array(data) : null;
-        } catch {
+        } catch (error) {
+            logger.warn(`Failed to restore master key for local user ${id}`, error);
             return null;
         }
     }
@@ -302,8 +389,8 @@ export class TauriUserAdapter implements IUserAdapter {
     ): Promise<{ publicKeyJwk: JsonWebKey; rawPrivateKey: Uint8Array } | null> {
         try {
             const store = await this.getStore();
-            const pubData = (await store.get(`identityPub:${id}`)) as number[] | null;
-            const privData = (await store.get(`identityPriv:${id}`)) as number[] | null;
+            const pubData = await store.get(`identityPub:${id}`);
+            const privData = await store.get(`identityPriv:${id}`);
             if (!pubData || !privData) return null;
 
             const pubJson = new TextDecoder().decode(new Uint8Array(pubData));
@@ -312,9 +399,89 @@ export class TauriUserAdapter implements IUserAdapter {
                 publicKeyJwk: JSON.parse(pubJson) as JsonWebKey,
                 rawPrivateKey: new Uint8Array(privData)
             };
-        } catch {
+        } catch (error) {
+            logger.warn(`Failed to restore identity keys for local user ${id}`, error);
             return null;
         }
+    }
+
+    private async snapshotSecureKeys(id: string): Promise<SecureKeySnapshot> {
+        const store = await this.getStore();
+        const [masterKey, identityPublic, identityPrivate] = await Promise.all([
+            store.get(`masterKey:${id}`),
+            store.get(`identityPub:${id}`),
+            store.get(`identityPriv:${id}`)
+        ]);
+        return {
+            masterKey: masterKey ? new Uint8Array(masterKey) : null,
+            identityPublic: identityPublic ? new Uint8Array(identityPublic) : null,
+            identityPrivate: identityPrivate ? new Uint8Array(identityPrivate) : null
+        };
+    }
+
+    private async writeSecureKeys(
+        id: string,
+        rawKey: Uint8Array,
+        publicKeyJwk: JsonWebKey,
+        rawPrivateKey: Uint8Array
+    ): Promise<void> {
+        const store = await this.getStore();
+        const stronghold = await this.getStronghold();
+        const publicBytes = new TextEncoder().encode(JSON.stringify(publicKeyJwk));
+        await store.insert(`masterKey:${id}`, Array.from(rawKey));
+        await store.insert(`identityPub:${id}`, Array.from(publicBytes));
+        await store.insert(`identityPriv:${id}`, Array.from(rawPrivateKey));
+        await stronghold.save();
+    }
+
+    private async deleteSecureKeys(id: string): Promise<void> {
+        const store = await this.getStore();
+        const stronghold = await this.getStronghold();
+        await store.remove(`masterKey:${id}`);
+        await store.remove(`identityPub:${id}`);
+        await store.remove(`identityPriv:${id}`);
+        await stronghold.save();
+    }
+
+    private async restoreSecureKeys(id: string, snapshot: SecureKeySnapshot): Promise<void> {
+        const store = await this.getStore();
+        const stronghold = await this.getStronghold();
+        await restoreStrongholdValue(store, `masterKey:${id}`, snapshot.masterKey);
+        await restoreStrongholdValue(store, `identityPub:${id}`, snapshot.identityPublic);
+        await restoreStrongholdValue(store, `identityPriv:${id}`, snapshot.identityPrivate);
+        await stronghold.save();
+    }
+
+    private async restoreUserState(
+        id: string,
+        previousDexie: UserRecord | undefined,
+        previousSQLite: SQLiteUserRow | null,
+        secureSnapshot: SecureKeySnapshot
+    ): Promise<unknown[]> {
+        const rollbackErrors: unknown[] = [];
+        const attempts = [
+            async () => {
+                if (previousDexie) await this.authDB.users.put(previousDexie);
+                else await this.authDB.users.delete(id);
+            },
+            async () => {
+                if (previousSQLite) await this.sqliteSaveRow(previousSQLite);
+                else {
+                    const db = await this.getSQLite();
+                    await db.execute(`DELETE FROM users WHERE id = $1`, [id]);
+                }
+            },
+            async () => this.restoreSecureKeys(id, secureSnapshot)
+        ];
+
+        for (const attempt of attempts) {
+            try {
+                await attempt();
+            } catch (error) {
+                rollbackErrors.push(error);
+            }
+        }
+        return rollbackErrors;
     }
 
     // ── Recovery helpers ──────────────────────────────────────────────────────
@@ -337,47 +504,72 @@ export class TauriUserAdapter implements IUserAdapter {
         const idKeys = await this.restoreIdentityKeys(row.id);
 
         if (!rawKey || !idKeys) {
+            rawKey?.fill(0);
+            idKeys?.rawPrivateKey.fill(0);
             // Stronghold entry missing — no way to reconstruct CryptoKeys
             return null;
         }
 
-        const masterKey = await crypto.subtle.importKey(
-            'raw',
-            rawKey.buffer as ArrayBuffer,
-            { name: 'AES-GCM' },
-            true,
-            ['encrypt', 'decrypt']
-        );
+        try {
+            const masterKey = await crypto.subtle.importKey(
+                'raw',
+                rawKey.buffer as ArrayBuffer,
+                { name: 'AES-GCM' },
+                true,
+                ['encrypt', 'decrypt']
+            );
 
-        const publicKey = await crypto.subtle.importKey(
-            'jwk',
-            idKeys.publicKeyJwk,
-            { name: 'RSA-OAEP', hash: 'SHA-256' },
-            true,
-            ['encrypt']
-        );
+            const publicKey = await crypto.subtle.importKey(
+                'jwk',
+                idKeys.publicKeyJwk,
+                { name: 'RSA-OAEP', hash: 'SHA-256' },
+                true,
+                ['encrypt']
+            );
 
-        const privateKey = await crypto.subtle.importKey(
-            'pkcs8',
-            idKeys.rawPrivateKey.buffer as ArrayBuffer,
-            { name: 'RSA-OAEP', hash: 'SHA-256' },
-            true,
-            ['decrypt']
-        );
+            const privateKey = await crypto.subtle.importKey(
+                'pkcs8',
+                idKeys.rawPrivateKey.buffer as ArrayBuffer,
+                { name: 'RSA-OAEP', hash: 'SHA-256' },
+                true,
+                ['decrypt']
+            );
 
-        return {
-            id: row.id,
-            name: row.name,
-            username: row.username ?? undefined,
-            email: row.email ?? undefined,
-            avatar: row.avatar,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-            selfHostUrl: row.selfHostUrl ?? undefined,
-            masterKey,
-            identityKeyPair: { publicKey, privateKey }
-        };
+            return {
+                id: row.id,
+                name: row.name,
+                username: row.username ?? undefined,
+                email: row.email ?? undefined,
+                avatar: row.avatar,
+                createdAt: row.createdAt,
+                updatedAt: row.updatedAt,
+                selfHostUrl: row.selfHostUrl ?? undefined,
+                masterKey,
+                identityKeyPair: { publicKey, privateKey }
+            };
+        } finally {
+            rawKey.fill(0);
+            idKeys.rawPrivateKey.fill(0);
+        }
     }
+}
+
+async function restoreStrongholdValue(
+    store: StrongholdStore,
+    key: string,
+    value: Uint8Array | null
+): Promise<void> {
+    if (value) {
+        await store.insert(key, Array.from(value));
+    } else {
+        await store.remove(key);
+    }
+}
+
+function scrubSecureSnapshot(snapshot: SecureKeySnapshot | null): void {
+    snapshot?.masterKey?.fill(0);
+    snapshot?.identityPublic?.fill(0);
+    snapshot?.identityPrivate?.fill(0);
 }
 
 export const tauriUser = new TauriUserAdapter();

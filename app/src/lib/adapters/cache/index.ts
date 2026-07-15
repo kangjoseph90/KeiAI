@@ -7,55 +7,33 @@
  * mixes with domain records and is never synced.
  */
 
-import Dexie, { type Table } from 'dexie';
+import { isTauri } from '@tauri-apps/api/core';
 import { LRUCache } from '$lib/utils/cache';
-import type { CacheStore } from './types';
+import { WebCacheBackend } from './web';
+import { TauriCacheBackend } from './tauri';
+import type { CacheBackend, CacheEntry, CacheStore } from './types';
 
 export type { CacheStore } from './types';
 
-// ─── Dexie Schema ──────────────────────────────────────────────────
-
-interface CacheRecord {
-    nskey: string; // compound key: `${namespace}:${key}`
-    namespace: string;
-    key: string;
-    value: unknown;
-}
-
-class CacheDB extends Dexie {
-    entries!: Table<CacheRecord, string>;
-
-    constructor() {
-        super('KeiCacheDB');
-        this.version(1).stores({
-            entries: 'nskey, namespace'
-        });
-    }
-}
-
-const db = new CacheDB();
-
-// ─── Factory ───────────────────────────────────────────────────────
+const backend: CacheBackend = isTauri() ? new TauriCacheBackend() : new WebCacheBackend();
 
 export function createCache<T>(namespace: string, capacity: number): CacheStore<T> {
     const lru = new LRUCache<string, T>(capacity);
-    let dirty = false;
+    const pendingWrites = new Set<string>();
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
     const FLUSH_DELAY_MS = 1000;
 
-    // Auto-load: starts immediately, flush awaits completion to avoid data loss
     const loadPromise: Promise<void> = (async () => {
-        const records = await db.entries.where('namespace').equals(namespace).toArray();
-        for (const record of records) {
-            if (!lru.has(record.key)) {
-                lru.set(record.key, record.value as T);
+        const entries = await backend.loadAll(namespace);
+        for (const { key, value } of entries) {
+            if (!lru.has(key)) {
+                lru.set(key, value as T);
             }
         }
     })();
 
     function scheduleFlush(): void {
         if (flushTimer !== null) return;
-        dirty = true;
         flushTimer = setTimeout(() => {
             flushTimer = null;
             void flush();
@@ -64,21 +42,22 @@ export function createCache<T>(namespace: string, capacity: number): CacheStore<
 
     async function flush(): Promise<void> {
         await loadPromise;
-        if (!dirty) return;
-        dirty = false;
-        const entries: CacheRecord[] = [];
-        for (const [key, value] of lru.entries()) {
-            entries.push({
-                nskey: `${namespace}:${key}`,
-                namespace,
-                key,
-                value
-            });
+        if (pendingWrites.size === 0) return;
+
+        const changed = new Set(pendingWrites);
+        pendingWrites.clear();
+
+        const toPut: CacheEntry[] = [];
+        const toDelete: string[] = [];
+        for (const key of changed) {
+            if (lru.has(key)) {
+                toPut.push({ key, value: lru.get(key) as T });
+            } else {
+                toDelete.push(key);
+            }
         }
-        await db.transaction('rw', db.entries, async () => {
-            await db.entries.where('namespace').equals(namespace).delete();
-            await db.entries.bulkPut(entries);
-        });
+
+        await backend.sync(namespace, toPut, toDelete);
     }
 
     return {
@@ -88,11 +67,13 @@ export function createCache<T>(namespace: string, capacity: number): CacheStore<
 
         set(key: string, value: T): void {
             lru.set(key, value);
+            pendingWrites.add(key);
             scheduleFlush();
         },
 
         delete(key: string): void {
             lru.delete(key);
+            pendingWrites.add(key);
             scheduleFlush();
         },
 

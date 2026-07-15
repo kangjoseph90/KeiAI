@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     exportModulePackage,
     importModulePackage,
+    readModuleFile,
+    writeModuleFile,
     type KeiModulePackageV1
 } from '$lib/porters/module';
 import { AssetService } from '$lib/services/asset';
@@ -351,3 +353,19 @@ function makePackage(overrides: Partial<KeiModulePackageV1> = {}): KeiModulePack
         ...overrides
     };
 }
+
+describe('extensionless native module imports', () => {
+    it('detects a Kei module archive by content', async () => {
+        const bytes = writeModuleFile(makePackage(), {
+            kind: 'keimodule',
+            assetMode: 'baked'
+        });
+
+        await expect(
+            readModuleFile(new File([bytes.slice()], 'content:42'))
+        ).resolves.toMatchObject({
+            kind: 'keiai.module',
+            module: { name: 'Imported Module' }
+        });
+    });
+});

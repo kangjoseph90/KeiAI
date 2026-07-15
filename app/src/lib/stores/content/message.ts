@@ -105,19 +105,29 @@ export async function repairChatMessageRefs(chatId: string): Promise<void> {
  * Service errors propagate to the caller — this function does not catch them.
  * Callers (e.g. route load functions) are responsible for error boundaries.
  */
-export async function loadInitialMessages(chatId: string, limit = 50): Promise<void> {
+export async function loadInitialMessages(
+    chatId: string,
+    limit = 50,
+    isContextCurrent: () => boolean = () => true
+): Promise<void> {
     const initialMsgs = await MessageService.getMessagesBefore(chatId, '\uffff', limit);
-    if (get(activeChatId) === chatId) {
+    if (get(activeChatId) === chatId && isContextCurrent()) {
         messages.setAll(initialMsgs);
         await loadTranslationsForMessages(
             chatId,
-            initialMsgs.map((msg) => msg.id)
+            initialMsgs.map((msg) => msg.id),
+            isContextCurrent
         );
-        await refreshMessageIndexes(chatId);
+        if (get(activeChatId) !== chatId || !isContextCurrent()) return;
+        await refreshMessageIndexes(chatId, isContextCurrent);
     }
 }
 
-export async function loadOlderMessages(chatId: string, limit = 50): Promise<number> {
+export async function loadOlderMessages(
+    chatId: string,
+    limit = 50,
+    isContextCurrent: () => boolean = () => true
+): Promise<number> {
     const msgs = get(messages);
     if (msgs.length === 0) return 0;
 
@@ -125,22 +135,28 @@ export async function loadOlderMessages(chatId: string, limit = 50): Promise<num
     const olderMsgs = await MessageService.getMessagesBefore(chatId, oldestCursor, limit);
 
     // Store update — only if still viewing this chat
-    if (olderMsgs.length > 0 && get(activeChatId) === chatId) {
+    if (olderMsgs.length > 0 && get(activeChatId) === chatId && isContextCurrent()) {
         messages.batch(() => {
             for (const msg of olderMsgs) messages.set(msg.id, msg);
         });
         await addTranslationsForMessages(
             chatId,
-            olderMsgs.map((msg) => msg.id)
+            olderMsgs.map((msg) => msg.id),
+            isContextCurrent
         );
-        await refreshMessageIndexes(chatId);
+        if (get(activeChatId) !== chatId || !isContextCurrent()) return 0;
+        await refreshMessageIndexes(chatId, isContextCurrent);
         return olderMsgs.length;
     }
 
     return 0;
 }
 
-export async function loadNewerMessages(chatId: string, limit = 50): Promise<number> {
+export async function loadNewerMessages(
+    chatId: string,
+    limit = 50,
+    isContextCurrent: () => boolean = () => true
+): Promise<number> {
     const msgs = get(messages);
     if (msgs.length === 0) return 0;
 
@@ -148,15 +164,17 @@ export async function loadNewerMessages(chatId: string, limit = 50): Promise<num
     const newerMsgs = await MessageService.getMessagesAfter(chatId, newestCursor, limit);
 
     // Store update — only if still viewing this chat
-    if (newerMsgs.length > 0 && get(activeChatId) === chatId) {
+    if (newerMsgs.length > 0 && get(activeChatId) === chatId && isContextCurrent()) {
         messages.batch(() => {
             for (const msg of newerMsgs) messages.set(msg.id, msg);
         });
         await addTranslationsForMessages(
             chatId,
-            newerMsgs.map((msg) => msg.id)
+            newerMsgs.map((msg) => msg.id),
+            isContextCurrent
         );
-        await refreshMessageIndexes(chatId);
+        if (get(activeChatId) !== chatId || !isContextCurrent()) return 0;
+        await refreshMessageIndexes(chatId, isContextCurrent);
         return newerMsgs.length;
     }
 
@@ -335,8 +353,11 @@ export async function deleteMessageSwipe(messageId: string, swipeId: string): Pr
  * Re-calculates global indexes for all currently loaded messages.
  * Uses countByChatBefore to find the offset of the first message.
  */
-export async function refreshMessageIndexes(chatId: string): Promise<void> {
-    if (get(activeChatId) !== chatId) return;
+export async function refreshMessageIndexes(
+    chatId: string,
+    isContextCurrent: () => boolean = () => true
+): Promise<void> {
+    if (get(activeChatId) !== chatId || !isContextCurrent()) return;
 
     const msgs = get(messages);
     if (msgs.length === 0) {
@@ -346,6 +367,7 @@ export async function refreshMessageIndexes(chatId: string): Promise<void> {
 
     // DB count of messages before the first one in our window
     const offset = await MessageService.countByChatBefore(chatId, msgs[0].sortOrder);
+    if (get(activeChatId) !== chatId || !isContextCurrent()) return;
 
     const newMap = new Map<string, number>();
     msgs.forEach((msg, i) => {

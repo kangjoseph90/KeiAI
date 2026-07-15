@@ -4,7 +4,7 @@ import type {
     LLMStreamHandler,
     PluginLLMHandlerConfig
 } from '../types';
-import type { OpenAIChat } from '../types';
+import type { LLMMessage } from '../types';
 import type { PluginInstance } from '$lib/plugins';
 import { debounceStream } from '$lib/utils/stream';
 
@@ -16,7 +16,7 @@ export class PluginLLMStreamHandler implements LLMStreamHandler {
     ) {}
 
     async *stream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
@@ -25,7 +25,7 @@ export class PluginLLMStreamHandler implements LLMStreamHandler {
     }
 
     private async *rawStream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {

@@ -36,10 +36,12 @@ describe('recordBuffer', () => {
         vi.useFakeTimers();
         vi.mocked(localDB.getRecord).mockResolvedValue(undefined);
         buffer.drop('messages', 'msg-1');
+        buffer.drop('messages', 'msg-2');
     });
 
     afterEach(() => {
         buffer.drop('messages', 'msg-1');
+        buffer.drop('messages', 'msg-2');
         vi.useRealTimers();
     });
 
@@ -209,5 +211,59 @@ describe('recordBuffer', () => {
 
         buffer.drop('messages', 'msg-1');
         expect(await buffer.get<DataRecord>('messages', 'msg-1')).toBeNull();
+    });
+
+    it('keeps failed writes queued and reports persistence health', async () => {
+        vi.mocked(localDB.putRecord).mockRejectedValue(new Error('quota exceeded'));
+        const states: string[] = [];
+        const unsubscribe = buffer.subscribePersistenceState((state) => states.push(state));
+
+        buffer.update<DataRecord>({
+            tableName: 'messages',
+            record: makeRecord(),
+            patch: makeRecord().data
+        });
+
+        await expect(buffer.flush('messages', 'msg-1')).rejects.toThrow(
+            'Failed to flush queued write'
+        );
+
+        expect(states).toEqual(['healthy', 'failed']);
+        expect(await buffer.get<DataRecord>('messages', 'msg-1')).toEqual(makeRecord());
+
+        await vi.runOnlyPendingTimersAsync();
+        expect(localDB.putRecord).toHaveBeenCalledTimes(1);
+        unsubscribe();
+    });
+
+    it('reports one global failure and retries all failed writes together', async () => {
+        vi.mocked(localDB.putRecord)
+            .mockRejectedValueOnce(new Error('database unavailable'))
+            .mockRejectedValueOnce(new Error('database unavailable'))
+            .mockResolvedValue(undefined);
+        const states: string[] = [];
+        const unsubscribe = buffer.subscribePersistenceState((state) => states.push(state));
+
+        buffer.update<DataRecord>({
+            tableName: 'messages',
+            record: makeRecord(),
+            patch: makeRecord().data
+        });
+        await expect(buffer.flush('messages', 'msg-1')).rejects.toThrow();
+
+        buffer.update<DataRecord>({
+            tableName: 'messages',
+            record: makeRecord({ id: 'msg-2' }),
+            patch: makeRecord().data
+        });
+        await expect(buffer.flush('messages', 'msg-2')).rejects.toThrow();
+
+        expect(states).toEqual(['healthy', 'failed']);
+
+        await buffer.retryFailed();
+
+        expect(states).toEqual(['healthy', 'failed', 'healthy']);
+        expect(localDB.putRecord).toHaveBeenCalledTimes(4);
+        unsubscribe();
     });
 });

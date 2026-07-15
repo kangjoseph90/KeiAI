@@ -14,23 +14,56 @@
     import AssetView from '$lib/components/AssetView.svelte';
     import type { Character, CharacterContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
+    import { getErrorMessage } from '$lib/types/errors';
+    import { appDialog } from '$lib/adapters/dialog';
+    import { appConfirm, toast } from '$lib/ui';
 
     interface Props {
         character: Character;
         onUpdate: (changes: DeepPartial<CharacterContent>) => void | Promise<void>;
-        onUpdateAvatar: (file: File) => void | Promise<void>;
-        onRemoveAvatar: () => void | Promise<void>;
+        onUpdateAvatar: (characterId: string, file: File) => void | Promise<void>;
+        onRemoveAvatar: (characterId: string) => void | Promise<void>;
     }
 
     let { character, onUpdate, onUpdateAvatar, onRemoveAvatar }: Props = $props();
-    let avatarInput = $state<HTMLInputElement>();
+    let avatarAction = $state<'upload' | 'remove' | null>(null);
 
-    async function handleAvatarUpload(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
-        if (!file) return;
-        await onUpdateAvatar(file);
-        target.value = '';
+    async function handleAvatarUpload() {
+        if (avatarAction) return;
+        const characterId = character.id;
+        avatarAction = 'upload';
+        try {
+            const file = await appDialog.openFile({
+                title: 'Upload Character Avatar',
+                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+            });
+            if (!file || character.id !== characterId) return;
+            await onUpdateAvatar(characterId, file);
+        } catch (error) {
+            toast.error({ title: 'Could not update avatar', description: getErrorMessage(error) });
+        } finally {
+            avatarAction = null;
+        }
+    }
+
+    async function handleAvatarRemove() {
+        if (!character.avatar || avatarAction) return;
+        const characterId = character.id;
+        avatarAction = 'remove';
+        try {
+            const confirmed = await appConfirm({
+                title: 'Remove character avatar?',
+                description: `Remove the avatar for "${character.name}"?`,
+                confirmText: 'Remove',
+                variant: 'destructive'
+            });
+            if (!confirmed || character.id !== characterId) return;
+            await onRemoveAvatar(characterId);
+        } catch (error) {
+            toast.error({ title: 'Could not remove avatar', description: getErrorMessage(error) });
+        } finally {
+            avatarAction = null;
+        }
     }
 </script>
 
@@ -41,10 +74,10 @@
             <CardDescription>How the character is identified in the application.</CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
-            <div class="flex items-center gap-6">
-                <div class="relative group">
+            <div class="flex items-center gap-4 sm:gap-6">
+                <div class="group relative shrink-0">
                     <div
-                        class="size-24 rounded-full border-2 border-primary/20 overflow-hidden bg-muted"
+                        class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted sm:size-24"
                     >
                         <AssetView
                             asset={character.avatar
@@ -69,20 +102,16 @@
                         </AssetView>
                     </div>
                     <button
-                        class="absolute inset-0 flex items-center justify-center bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        onclick={() => avatarInput?.click()}
+                        class="absolute inset-0 flex items-center justify-center rounded-full bg-transparent transition-opacity lg:bg-black/40 lg:text-white lg:opacity-0 lg:group-hover:opacity-100"
+                        disabled={avatarAction !== null}
+                        aria-busy={avatarAction === 'upload'}
+                        aria-label="Upload character avatar"
+                        onclick={handleAvatarUpload}
                     >
-                        <Upload class="size-6" />
+                        <Upload class="hidden size-6 lg:block" />
                     </button>
-                    <input
-                        bind:this={avatarInput}
-                        type="file"
-                        accept="image/*"
-                        class="hidden"
-                        onchange={handleAvatarUpload}
-                    />
                 </div>
-                <div class="flex-1 space-y-4">
+                <div class="min-w-0 flex-1 space-y-4">
                     <div class="grid gap-1.5">
                         <Label>Character Name</Label>
                         <Input
@@ -91,14 +120,26 @@
                             placeholder="Enter character name..."
                         />
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-1">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            class="gap-1 px-2"
+                            disabled={avatarAction !== null}
+                            aria-busy={avatarAction === 'upload'}
+                            onclick={handleAvatarUpload}
+                        >
+                            <Upload class="size-4" /> Upload avatar
+                        </Button>
                         <Button
                             variant="destructive"
                             size="sm"
-                            disabled={!character.avatar}
-                            onclick={onRemoveAvatar}
+                            class="gap-1 px-2"
+                            disabled={!character.avatar || avatarAction !== null}
+                            aria-busy={avatarAction === 'remove'}
+                            onclick={handleAvatarRemove}
                         >
-                            Remove Avatar
+                            Remove avatar
                         </Button>
                     </div>
                 </div>

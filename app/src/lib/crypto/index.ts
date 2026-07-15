@@ -12,3 +12,4 @@ export * from './pairing';
 export * from './types';
 export * from './hash';
 export * from './encoding';
+export * from './environment';

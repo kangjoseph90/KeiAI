@@ -15,19 +15,36 @@ export const PROXY_URL = import.meta.env.VITE_PROXY_URL ?? '';
 /** PocketBase server URL */
 export const PB_URL = import.meta.env.VITE_PB_URL ?? '';
 
+export interface EnvironmentConfigIssue {
+    title: string;
+    message: string;
+    missingVariables: string[];
+}
+
+interface EnvironmentConfig {
+    pbUrl: string;
+    proxyUrl: string;
+}
+
+export function getEnvironmentConfigIssue(
+    config: EnvironmentConfig = { pbUrl: PB_URL, proxyUrl: PROXY_URL }
+): EnvironmentConfigIssue | null {
+    const missingVariables: string[] = [];
+    if (!config.pbUrl.trim()) missingVariables.push('VITE_PB_URL');
+    if (!config.proxyUrl.trim()) missingVariables.push('VITE_PROXY_URL');
+
+    if (missingVariables.length === 0) return null;
+
+    return {
+        title: 'Environment configuration required',
+        message: `Set ${missingVariables.join(' and ')} before starting KeiAI.`,
+        missingVariables
+    };
+}
+
 /** Safe mode — disables pipes, events */
 let safeMode = false;
 export const isSafeMode = () => safeMode;
 export const setSafeMode = (v: boolean) => {
     safeMode = v;
 };
-
-// Validation (Fail fast in non-worker context if required vars are missing)
-if (typeof window !== 'undefined') {
-    if (!PROXY_URL) {
-        console.warn('VITE_PROXY_URL is not set. External API calls may fail due to CORS.');
-    }
-    if (!PB_URL) {
-        console.error('VITE_PB_URL is not set. PocketBase connection will fail.');
-    }
-}

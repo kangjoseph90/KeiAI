@@ -8,6 +8,7 @@ import {
     risuModuleToKeiPackage,
     writeRisuModulePackage
 } from './risu';
+import { detectFileKind } from '$lib/utils/file';
 
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
@@ -23,6 +24,15 @@ export async function readModuleFile(file: File): Promise<KeiModulePackageV1> {
     if (name.endsWith('.risum')) return readRisuModulePackage(bytes);
     if (name.endsWith('.keimodule')) return readKeiModule(bytes);
     if (name.endsWith('.json')) return readModuleJson(bytes);
+
+    const kind = detectFileKind(bytes);
+    if (kind === 'json') return readModuleJson(bytes);
+    if (kind === 'zip') return readKeiModule(bytes);
+    try {
+        return readRisuModulePackage(bytes);
+    } catch {
+        // Fall through to the user-facing unsupported-file error.
+    }
 
     throw new AppError('INVALID_INPUT', `Unsupported module file: ${file.name}`);
 }

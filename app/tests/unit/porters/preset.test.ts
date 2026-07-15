@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     exportPresetPackage,
     importPresetPackage,
+    readPresetFile,
+    writePresetFile,
     type KeiPresetPackageV1
 } from '$lib/porters/preset';
 import { readRisuPresetJson } from '$lib/porters/preset/risu';
@@ -230,3 +232,16 @@ function makePackage(overrides: Partial<KeiPresetPackageV1> = {}): KeiPresetPack
         ...overrides
     };
 }
+
+describe('extensionless native preset imports', () => {
+    it('detects a JSON preset by content', async () => {
+        const bytes = await writePresetFile(makePackage(), { kind: 'keipreset' });
+
+        await expect(
+            readPresetFile(new File([bytes.slice()], 'content:42'))
+        ).resolves.toMatchObject({
+            kind: 'keiai.preset',
+            preset: { name: 'Imported Preset' }
+        });
+    });
+});

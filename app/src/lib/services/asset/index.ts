@@ -267,6 +267,9 @@ export class AssetService {
     }
 
     static clear(): void {
+        for (const entry of AssetService.urlCache.values()) {
+            if (entry.url) void appAsset.revokeRenderUrl(entry.url);
+        }
         AssetService.urlCache.clear();
         AssetService.assetKeyByUrl.clear();
         AssetService.pendingLoads.clear();

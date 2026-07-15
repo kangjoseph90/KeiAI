@@ -24,7 +24,7 @@ import type {
     MultiRoom,
     MultiRoomMember
 } from '$lib/services';
-import type { AssetSyncStatus, SyncStatus } from '$lib/services';
+import type { SyncStatus } from '$lib/services';
 import type { DisplayMessage, ChatTask, TranslationTask } from './types';
 import { EntityStore } from './entity_store';
 import { compareSortOrder, sortByRefs } from '$lib/utils/ordering';
@@ -42,7 +42,8 @@ export const localUsers = writable<User[]>([]);
 export const pbConnected = writable<boolean>(false);
 export const dataSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const userSyncStatus = writable<SyncStatus>({ state: 'idle' });
-export const assetSyncStatus = writable<AssetSyncStatus>({ state: 'idle', pendingCount: 0 });
+export const multiSyncStatus = writable<SyncStatus>({ state: 'idle' });
+export const assetSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const migrationLocked = writable(false);
 
 // ─── Derived Auth State ──────────────────────────────────────────────

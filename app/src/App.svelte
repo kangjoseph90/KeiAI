@@ -6,7 +6,8 @@
     import { SyncManager } from '$lib/services/sync';
     import { clock } from '$lib/utils/clock';
     import { appKV } from '$lib/adapters/kv';
-    import AppSidebar from '$lib/components/layout/AppSidebar.svelte';
+    import { AppSidebar } from '$lib/components/layout';
+    import { Button } from '$lib/components/ui/button';
     import {
         loadGlobalState,
         loadUser,
@@ -40,10 +41,19 @@
     } from '$lib/router';
     import { getErrorMessage } from '$lib/types/errors';
     import { createLogger } from '$lib/adapters/logger';
+    import ModalHost from '$lib/components/app/ModalHost.svelte';
+    import ToastHost from '$lib/components/app/ToastHost.svelte';
+    import { getWebCryptoAvailabilityIssue, type WebCryptoAvailabilityIssue } from '$lib/crypto';
+    import { getEnvironmentConfigIssue } from '$lib/config';
 
     let ready = $state(false);
     let errorMsg = $state('');
+    let cryptoIssue = $state<WebCryptoAvailabilityIssue | null>(null);
     let sidebarCollapsed = $state(false);
+    // Match Tailwind's `max-lg` range, including fractional CSS viewport widths.
+    const COMPACT_SHELL_QUERY = '(max-width: 1023.98px)';
+    let compactShellMedia: MediaQueryList | undefined;
+    const environmentIssue = getEnvironmentConfigIssue();
     const logger = createLogger('route:page');
 
     function navigateFromHome(r: RouteState) {
@@ -51,10 +61,26 @@
     }
 
     function navigateFromSidebar(r: RouteState) {
-        if (window.matchMedia('(max-width: 767px)').matches) {
+        if (compactShellMedia?.matches ?? window.matchMedia(COMPACT_SHELL_QUERY).matches) {
             sidebarCollapsed = true;
         }
         navigate(r);
+    }
+
+    function handleCompactShellChange(event: MediaQueryListEvent): void {
+        sidebarCollapsed = event.matches;
+    }
+
+    function handleShellKeydown(event: KeyboardEvent): void {
+        if (
+            event.defaultPrevented ||
+            event.key !== 'Escape' ||
+            sidebarCollapsed ||
+            !compactShellMedia?.matches
+        ) {
+            return;
+        }
+        sidebarCollapsed = true;
     }
 
     // Restore route from URL on boot
@@ -85,6 +111,7 @@
             logger.warn('Route restore failed, falling back to home:', e);
             clearActiveRoom();
             clearActiveCharacter();
+            clearActiveModule();
             clearActivePersona();
             navigate({ view: 'home' });
         }
@@ -92,6 +119,7 @@
 
     // Sync store state when route changes (back/forward nav)
     let prevRoute: RouteState | null = null;
+    let navigationVersion = 0;
     $effect(() => {
         const r = $route;
         if (!ready || !prevRoute) {
@@ -114,6 +142,8 @@
             return;
         }
         prevRoute = r;
+        const version = ++navigationVersion;
+        const isCurrent = () => version === navigationVersion;
 
         (async () => {
             try {
@@ -124,32 +154,33 @@
                     clearActivePersona();
                 } else if (r.view === 'room') {
                     if (r.roomId && $activeRoom?.id !== r.roomId) {
-                        await restoreRoomContext(r.roomId);
+                        await restoreRoomContext(r.roomId, isCurrent);
+                        if (!isCurrent()) return;
                     }
                     if (r.chatId && $activeChat?.id !== r.chatId) {
-                        await selectChat(r.chatId);
+                        await selectChat(r.chatId, isCurrent);
                     } else if (!r.chatId) {
                         const resolvedChatId = get(activeChatId);
-                        if (resolvedChatId) {
+                        if (resolvedChatId && isCurrent()) {
                             navigate({ ...r, chatId: resolvedChatId });
                         }
                     }
                 } else if (r.view === 'characterStudio') {
                     if (r.charId && $activeCharacter?.id !== r.charId) {
-                        await restoreCharacterContext(r.charId);
+                        await restoreCharacterContext(r.charId, isCurrent);
                     }
                 } else if (r.view === 'moduleStudio') {
                     if (r.moduleId && $activeModule?.id !== r.moduleId) {
-                        await selectModule(r.moduleId);
+                        await selectModule(r.moduleId, isCurrent);
                     }
                 } else if (r.view === 'personaStudio') {
                     if (r.personaId && $activePersona?.id !== r.personaId) {
-                        await restorePersonaContext(r.personaId);
+                        await restorePersonaContext(r.personaId, isCurrent);
                     }
                 }
             } catch (e) {
                 logger.error('Navigation failed:', e);
-                navigate({ view: 'home' });
+                if (isCurrent()) navigate({ view: 'home' });
             }
         })();
     });
@@ -158,7 +189,14 @@
 
     onMount(async () => {
         try {
-            sidebarCollapsed = window.matchMedia('(max-width: 767px)').matches;
+            if (environmentIssue) return;
+
+            cryptoIssue = getWebCryptoAvailabilityIssue();
+            if (cryptoIssue) return;
+
+            compactShellMedia = window.matchMedia(COMPACT_SHELL_QUERY);
+            sidebarCollapsed = compactShellMedia.matches;
+            compactShellMedia.addEventListener('change', handleCompactShellChange);
             startSyncStatusTracking();
             await clock.init(appKV);
             const { user, restored } = await UserService.restoreOrCreateUser();
@@ -180,25 +218,118 @@
         }
     });
 
+    function retryStartup(): void {
+        window.location.reload();
+    }
+
     onDestroy(() => {
         SyncManager.stopAutoSync();
         stopSyncStatusTracking();
+        compactShellMedia?.removeEventListener('change', handleCompactShellChange);
         _cleanupHash?.();
     });
 </script>
 
-<main class="flex h-screen bg-background text-foreground overflow-hidden">
-    {#if errorMsg}
-        <div
-            class="absolute inset-x-0 top-0 z-50 bg-destructive px-4 py-2 text-center text-sm font-medium text-white"
-        >
-            {errorMsg}
-        </div>
-    {/if}
+<svelte:window onkeydown={handleShellKeydown} />
 
-    {#if !ready}
-        <div class="flex flex-1 items-center justify-center">
-            <p class="text-muted-foreground text-sm">Initializing Secure Local Session...</p>
+{#snippet startupIssue(
+    label: string,
+    title: string,
+    message: string,
+    instructions: string[],
+    retryLabel: string | null
+)}
+    <div class="flex flex-1 items-center justify-center p-4 sm:p-6">
+        <section
+            class="w-full max-w-lg rounded-xl border bg-card p-5 shadow-sm sm:p-6"
+            role="alert"
+        >
+            <div
+                class="mb-4 inline-flex rounded-full bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive"
+            >
+                {label}
+            </div>
+            <h1 class="text-xl font-semibold">{title}</h1>
+            <p class="mt-3 break-words text-sm leading-6 text-muted-foreground">{message}</p>
+            {#if instructions.length > 0}
+                <div class="mt-5 rounded-lg border bg-muted/30 p-4 text-sm">
+                    <p class="font-medium">How to continue</p>
+                    <ul class="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+                        {#each instructions as instruction (instruction)}
+                            <li>{instruction}</li>
+                        {/each}
+                    </ul>
+                </div>
+            {/if}
+            {#if retryLabel}
+                <Button class="mt-5" onclick={retryStartup}>{retryLabel}</Button>
+            {/if}
+        </section>
+    </div>
+{/snippet}
+
+{#snippet routeLoading(label: string)}
+    <div class="flex min-h-0 flex-1 items-center justify-center p-6" role="status">
+        <p class="text-sm text-muted-foreground">Loading {label}...</p>
+    </div>
+{/snippet}
+
+{#snippet routeLoadError(loadError: unknown)}
+    <div class="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
+        <section
+            class="w-full max-w-lg rounded-xl border border-destructive/30 bg-card p-5"
+            role="alert"
+        >
+            <h1 class="text-lg font-semibold">This view could not be loaded</h1>
+            <p class="mt-2 break-words text-sm text-muted-foreground">
+                {getErrorMessage(loadError)}
+            </p>
+            <Button class="mt-4" onclick={retryStartup}>Retry</Button>
+        </section>
+    </div>
+{/snippet}
+
+<main
+    class="app-shell flex min-h-0 overflow-hidden bg-background text-foreground"
+    aria-busy={!ready && !environmentIssue && !cryptoIssue && !errorMsg}
+>
+    {#if environmentIssue}
+        {@render startupIssue(
+            'Startup blocked',
+            environmentIssue.title,
+            environmentIssue.message,
+            [
+                `Add ${environmentIssue.missingVariables.join(' and ')} to the root .env file.`,
+                'Restart the development server or rebuild the app after updating the environment.'
+            ],
+            'Retry startup'
+        )}
+    {:else if cryptoIssue}
+        {@render startupIssue(
+            'Startup blocked',
+            cryptoIssue.title,
+            cryptoIssue.message,
+            [
+                'Open KeiAI from an HTTPS address.',
+                'Use a modern browser with Web Crypto support.',
+                'Use the native Tauri app when available.'
+            ],
+            null
+        )}
+    {:else if errorMsg}
+        {@render startupIssue(
+            'Startup failed',
+            'KeiAI could not finish starting',
+            errorMsg,
+            [
+                'Your local data has not been removed.',
+                'Check storage permissions and connectivity before retrying.'
+            ],
+            'Retry startup'
+        )}
+    {:else if !ready}
+        <div class="flex flex-1 items-center justify-center p-6">
+            <p class="text-sm text-muted-foreground" role="status">Loading KeiAI...</p>
         </div>
     {:else}
         {#if $route.view !== 'settings' && $route.view !== 'characterStudio' && $route.view !== 'moduleStudio' && $route.view !== 'personaStudio'}
@@ -214,34 +345,65 @@
         <!-- Main Content -->
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
             {#if $route.view === 'room' && $route.roomId}
-                {#await import('$lib/views/chat/ChatView.svelte') then m}
+                {#await import('$lib/views/chat/ChatView.svelte')}
+                    {@render routeLoading('chat')}
+                {:then m}
                     <m.default roomId={$route.roomId} chatId={$route.chatId} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else if $route.view === 'characterStudio' && $route.charId}
-                {#await import('$lib/views/character/CharacterStudio.svelte') then m}
+                {#await import('$lib/views/character/CharacterStudio.svelte')}
+                    {@render routeLoading('character editor')}
+                {:then m}
                     <m.default charId={$route.charId} characterTab={$route.characterTab} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else if $route.view === 'moduleStudio' && $route.moduleId}
-                {#await import('$lib/views/modules/ModuleStudio.svelte') then m}
+                {#await import('$lib/views/modules/ModuleStudio.svelte')}
+                    {@render routeLoading('module editor')}
+                {:then m}
                     <m.default moduleId={$route.moduleId} moduleTab={$route.moduleTab} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else if $route.view === 'personaStudio' && $route.personaId}
-                {#await import('$lib/views/persona/PersonaStudio.svelte') then m}
+                {#await import('$lib/views/persona/PersonaStudio.svelte')}
+                    {@render routeLoading('persona editor')}
+                {:then m}
                     <m.default personaId={$route.personaId} personaTab={$route.personaTab} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else if $route.view === 'settings'}
-                {#await import('$lib/views/settings/SettingsView.svelte') then m}
+                {#await import('$lib/views/settings/SettingsView.svelte')}
+                    {@render routeLoading('settings')}
+                {:then m}
                     <m.default settingsTab={$route.settingsTab} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else if $route.view === 'multiRoom'}
-                {#await import('$lib/views/home/HomeView.svelte') then m}
+                {#await import('$lib/views/home/HomeView.svelte')}
+                    {@render routeLoading('rooms')}
+                {:then m}
                     <m.default space="multiRooms" onNavigate={navigateFromHome} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else}
-                {#await import('$lib/views/home/HomeView.svelte') then m}
+                {#await import('$lib/views/home/HomeView.svelte')}
+                    {@render routeLoading('library')}
+                {:then m}
                     <m.default space="library" onNavigate={navigateFromHome} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {/if}
         </div>
     {/if}
 </main>
+
+<ModalHost />
+<ToastHost />

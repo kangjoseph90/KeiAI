@@ -1,42 +1,99 @@
-import type { IDialogAdapter, FileDialogOptions } from './types';
-import { createLogger } from '$lib/adapters/logger';
+import type { IDialogAdapter, FileDialogOptions, SaveBytesOptions } from './types';
 
-const logger = createLogger('adapter:dialog:web');
+const FILE_PICKER_FOCUS_SETTLE_MS = 150;
+const DOWNLOAD_URL_REVOKE_DELAY_MS = 1_000;
 
 /**
  * Web Dialog Adapter
  *
  * Uses browser primitives for dialogs.
- * Note: openFile/saveFile return empty strings or blobs since the web cannot access absolute file paths.
- * Real file content reading requires `<input type="file">` which is best handled in Svelte components.
- * This adapter provides basic fallbacks.
+ * Uses transient DOM elements for browser file picking and downloads.
+ * The rest of the app should call this adapter instead of creating file inputs
+ * or download anchors directly.
  */
 export class WebDialogAdapter implements IDialogAdapter {
-    async openFile(_options?: FileDialogOptions): Promise<string | null> {
-        // Cannot return a raw path on the web.
-        // Returns a dummy path to indicate "success" if you were to wire this to an input element
-        // but realistically, you should use an Upload button in the UI for the web.
-        logger.warn('openFile is not fully supported on the web. Returning null.');
-        return null;
+    async openFile(options?: FileDialogOptions): Promise<File | null> {
+        const files = await this.pickFiles(false, options);
+        return files?.[0] ?? null;
     }
 
-    async openMultipleFiles(_options?: FileDialogOptions): Promise<string[] | null> {
-        logger.warn('openMultipleFiles is not fully supported on the web. Returning null.');
-        return null;
+    async openMultipleFiles(options?: FileDialogOptions): Promise<File[] | null> {
+        return this.pickFiles(true, options);
     }
 
-    async saveFile(_options?: FileDialogOptions): Promise<string | null> {
-        logger.warn('saveFile is not fully supported on the web. Returning null.');
-        return null;
+    private pickFiles(multiple: boolean, options?: FileDialogOptions): Promise<File[] | null> {
+        return new Promise((resolve, reject) => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = multiple;
+            input.accept = acceptString(options?.filters);
+            input.hidden = true;
+
+            let settled = false;
+            let focusTimer: ReturnType<typeof setTimeout> | null = null;
+
+            const cleanup = () => {
+                if (focusTimer) clearTimeout(focusTimer);
+                input.removeEventListener('change', handleChange);
+                input.removeEventListener('cancel', handleCancel);
+                window.removeEventListener('focus', handleWindowFocus);
+                input.remove();
+            };
+            const settle = (files: File[] | null) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(files);
+            };
+            const handleChange = () => {
+                const files = input.files ? Array.from(input.files) : [];
+                settle(files.length > 0 ? files : null);
+            };
+            const handleCancel = () => settle(null);
+            const handleWindowFocus = () => {
+                if (focusTimer) clearTimeout(focusTimer);
+                focusTimer = setTimeout(() => {
+                    focusTimer = null;
+                    if (!input.files || input.files.length === 0) settle(null);
+                }, FILE_PICKER_FOCUS_SETTLE_MS);
+            };
+
+            input.addEventListener('change', handleChange);
+            input.addEventListener('cancel', handleCancel);
+            window.addEventListener('focus', handleWindowFocus);
+            document.body.appendChild(input);
+
+            try {
+                input.click();
+            } catch (error) {
+                settled = true;
+                cleanup();
+                reject(error);
+            }
+        });
     }
 
-    async message(text: string, _title?: string): Promise<void> {
-        alert(text);
-    }
+    async saveBytes(options: SaveBytesOptions): Promise<boolean> {
+        const blob = new Blob([options.bytes.slice()], { type: options.mimeType });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = options.fileName;
+        anchor.hidden = true;
+        document.body.appendChild(anchor);
 
-    async confirm(text: string, _title?: string): Promise<boolean> {
-        return window.confirm(text);
+        try {
+            anchor.click();
+            return true;
+        } finally {
+            anchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_URL_REVOKE_DELAY_MS);
+        }
     }
+}
+
+function acceptString(filters?: FileDialogOptions['filters']): string {
+    return filters?.flatMap((filter) => filter.extensions.map((ext) => `.${ext}`)).join(',') ?? '';
 }
 
 export const webDialog = new WebDialogAdapter();

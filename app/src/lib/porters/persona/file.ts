@@ -5,6 +5,7 @@ import { base64ToBytes, bytesToBase64 } from '../character/package';
 import { denormalizeRisuTemplate, normalizeRisuTemplate } from '../risu/template';
 import type { KeiPersonaPackageV1 } from './types';
 import type { KeiPackageExportMode } from '../utils';
+import { detectFileKind } from '$lib/utils/file';
 
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
@@ -29,6 +30,9 @@ export async function readPersonaFile(file: File): Promise<KeiPersonaPackageV1> 
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (name.endsWith('.png')) return readRisuPersonaPng(bytes);
     if (name.endsWith('.keipersona')) return readKeiPersona(bytes);
+    const kind = detectFileKind(bytes);
+    if (kind === 'png') return readRisuPersonaPng(bytes);
+    if (kind === 'zip') return readKeiPersona(bytes);
     throw new AppError('INVALID_INPUT', `Unsupported persona file: ${file.name}`);
 }
 

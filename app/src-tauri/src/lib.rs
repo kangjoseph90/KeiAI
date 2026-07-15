@@ -1,5 +1,7 @@
 mod tokenizer;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -7,8 +9,15 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_stronghold::Builder::new(|_pass| todo!()).build())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
+            let stronghold_dir = app.path().app_local_data_dir()?;
+            std::fs::create_dir_all(&stronghold_dir)?;
+            let salt_path = stronghold_dir.join("stronghold-salt.bin");
+            app.handle()
+                .plugin(tauri_plugin_stronghold::Builder::with_argon2(&salt_path).build())?;
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

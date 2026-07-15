@@ -26,7 +26,7 @@ export type LLMStreamContent = {
 
 export interface LLMStreamHandler {
     stream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options?: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent>;
@@ -34,11 +34,22 @@ export interface LLMStreamHandler {
 
 // ─── Chat Message ────────────────────────────────────────────────────────────
 
-/** OpenAI-compatible chat message type */
-export interface OpenAIChat {
+export type LLMContentPart =
+    | { type: 'text'; text: string }
+    | { type: 'image'; mimeType: string; data: string };
+
+/** Returns only the text portions of a multimodal message. */
+export function getTextContent(content: LLMContentPart[]): string {
+    return content
+        .filter((part): part is Extract<LLMContentPart, { type: 'text' }> => part.type === 'text')
+        .map((part) => part.text)
+        .join('');
+}
+
+/** Provider-neutral multimodal message used throughout the app. */
+export interface LLMMessage {
     role: LLMRole;
-    content: string;
-    thought?: string;
+    content: LLMContentPart[];
 }
 
 /**

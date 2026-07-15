@@ -18,8 +18,9 @@ import {
     throwIfAborted,
     workflowValueToString
 } from '../util';
-import { agentPartsToOpenAIChats, serializeAgentParts, type AgentPart } from './llm';
+import { agentPartsToLLMMessages, serializeAgentParts, type AgentPart } from './llm';
 import { buildPrompt } from './prompt';
+import { getChat } from '$lib/stores';
 
 type AgentMacroResult =
     | { status: 'value'; macros: Map<string, Macro> }
@@ -40,6 +41,9 @@ export async function executeAgentNode({
     if (!ctx?.presetId) {
         throw new AppError('INVALID_INPUT', 'Agent node requires ctx.presetId');
     }
+    if (!ctx?.chatId) {
+        throw new AppError('INVALID_INPUT', 'Agent node requires ctx.chatId');
+    }
     if (!messages) {
         throw new AppError('INVALID_INPUT', 'Agent node requires paged messages');
     }
@@ -49,15 +53,21 @@ export async function executeAgentNode({
         output.emit(0, agentMacrosResult.event);
         return;
     }
+
     const agentMacros = agentMacrosResult.macros;
-    const [settings, modelConfig, parameters, lorebooks] = await Promise.all([
+    const [settings, chat, modelConfig, parameters, lorebooks] = await Promise.all([
         getAppSettings(),
+        getChat(ctx.chatId),
         resolveLLMModelConfig(node.llmType, ctx.presetId),
         resolveLLMParameters(node.llmType, ctx.presetId),
         shouldResolveLorebooks(node) && ctx.chatId
             ? getMergedLorebooks(ctx.chatId, ctx.characterId)
             : Promise.resolve([])
     ]);
+
+    if (!chat) {
+        throw new AppError('NOT_FOUND', `Chat not found: ${ctx.chatId}`);
+    }
 
     if (!modelConfig) {
         throw new AppError('INVALID_INPUT', `No model configured for LLM type: ${node.llmType}`);
@@ -70,6 +80,7 @@ export async function executeAgentNode({
 
     const basePrompt = await buildPrompt({
         agent: node,
+        chat,
         lorebooks,
         messages,
         tokenizer: modelConfig.tokenizer ?? 'o200k_base',
@@ -90,7 +101,7 @@ export async function executeAgentNode({
 
     for (let loop = 0; loop < MAX_AGENT_TOOL_CALL_LOOPS; loop += 1) {
         throwIfAborted(signal);
-        const followupPrompt = [...basePrompt, ...agentPartsToOpenAIChats(completedParts)];
+        const followupPrompt = [...basePrompt, ...agentPartsToLLMMessages(completedParts)];
         let latestRequestState: LLMStreamContent | null = null;
 
         for await (const state of handler.stream(followupPrompt, signal, {

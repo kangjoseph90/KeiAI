@@ -1,4 +1,4 @@
-import type { OpenAIChat } from '$lib/llm/types';
+import type { LLMMessage } from '$lib/llm/types';
 import type { RuntimeContext } from '$lib/types/context';
 
 export interface PipelineHandler<T, K extends string = string> {
@@ -11,7 +11,7 @@ export interface PipelineHandler<T, K extends string = string> {
 export interface PipelinePhaseType {
     input: string;
     request: string;
-    prompt: OpenAIChat[];
+    prompt: LLMMessage[];
     output: string;
     display: string;
 }

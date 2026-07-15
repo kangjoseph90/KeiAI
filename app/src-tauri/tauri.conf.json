@@ -15,12 +15,18 @@
                 "title": "KeiAI",
                 "width": 800,
                 "height": 600,
+                "minWidth": 360,
+                "minHeight": 480,
                 "resizable": true,
                 "fullscreen": false
             }
         ],
         "security": {
-            "csp": null
+            "csp": null,
+            "assetProtocol": {
+                "enable": true,
+                "scope": ["$APPDATA/assets/**"]
+            }
         }
     },
     "bundle": {

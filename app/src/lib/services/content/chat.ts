@@ -178,7 +178,7 @@ export class ChatService {
         id: string,
         asset: File | AssetFields,
         sortOrder: string
-    ): Promise<Chat> {
+    ): Promise<{ chat: Chat; ref: AssetRef }> {
         const record = await buffer.get<ChatRecord>('chats', id);
         if (!record || record.isDeleted || !canAccessScope(record)) {
             throw new AppError('NOT_FOUND', 'Chat not found');
@@ -239,11 +239,14 @@ export class ChatService {
         }
 
         return {
-            ...updated,
-            id: record.id,
-            roomId: record.roomId,
-            scopeType: record.scopeType,
-            scopeId: record.scopeId
+            chat: {
+                ...updated,
+                id: record.id,
+                roomId: record.roomId,
+                scopeType: record.scopeType,
+                scopeId: record.scopeId
+            },
+            ref: newRef
         };
     }
 

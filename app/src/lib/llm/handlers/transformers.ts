@@ -6,11 +6,12 @@
  */
 
 import { appInference } from '$lib/adapters/inference';
+import { getTextContent } from '../types';
 import type {
     LLMStreamHandler,
     LLMStreamContent,
     LLMStreamOptions,
-    OpenAIChat,
+    LLMMessage,
     LLMStreamHandlerConfig
 } from '../types';
 import { debounceStream } from '$lib/utils/stream';
@@ -23,7 +24,7 @@ export class TransformersLLMStreamHandler implements LLMStreamHandler {
     }
 
     async *stream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         _signal: AbortSignal,
         options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
@@ -32,11 +33,15 @@ export class TransformersLLMStreamHandler implements LLMStreamHandler {
     }
 
     private async *rawStream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
         const parameters = options.parameters ?? {};
-        const stream = appInference.generate({ modelId: this.config.modelId }, messages, {
+        const textMessages = messages.map((message) => ({
+            role: message.role,
+            content: getTextContent(message.content)
+        }));
+        const stream = appInference.generate({ modelId: this.config.modelId }, textMessages, {
             device: 'webgpu', // LLM generation strongly prefers WebGPU
             max_new_tokens: options.maxResponse ?? 512,
             temperature: (parameters['temperature'] as number) ?? 0.7,

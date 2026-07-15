@@ -8,7 +8,6 @@
  * Instances are lazy-loaded on first use and cached in managed state.
  * Token data files are bundled as Tauri resources under `token/`.
  */
-
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
@@ -63,9 +62,8 @@ pub fn count_tokens(
     // tiktoken-rs: o200k_base (built-in, no file needed)
     if encoding == "o200k_base" {
         if state.tiktoken.is_none() {
-            state.tiktoken = Some(
-                tiktoken_rs::o200k_base().map_err(|e| format!("tiktoken init failed: {e}"))?,
-            );
+            state.tiktoken =
+                Some(tiktoken_rs::o200k_base().map_err(|e| format!("tiktoken init failed: {e}"))?);
         }
         let count = state
             .tiktoken
@@ -86,7 +84,7 @@ pub fn count_tokens(
 
     let tokenizer = state.hf.get(&encoding).unwrap();
     let encoded = tokenizer
-        .encode(&text, false)
+        .encode(text.as_str(), false)
         .map_err(|e| format!("Encoding failed: {e}"))?;
     Ok(encoded.get_ids().len())
 }

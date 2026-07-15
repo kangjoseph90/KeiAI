@@ -27,6 +27,10 @@ export class WebWindowAdapter implements IWindowAdapter {
         logger.warn('Window close may not work on the web unless the script opened the window.');
     }
 
+    async reload(): Promise<void> {
+        globalThis.location.reload();
+    }
+
     async setTitle(title: string): Promise<void> {
         document.title = title;
     }

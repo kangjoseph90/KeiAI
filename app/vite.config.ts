@@ -1,4 +1,5 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { svelteTesting } from '@testing-library/svelte/vite';
 import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
@@ -6,7 +7,7 @@ import { resolve } from 'path';
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
-    plugins: [tailwindcss(), svelte()],
+    plugins: [tailwindcss(), svelte(), svelteTesting({ autoCleanup: false })],
     envDir: '../',
 
     resolve: {

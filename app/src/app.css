@@ -8,6 +8,14 @@
 
 :root {
     --radius: 0.625rem;
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-left: env(safe-area-inset-left, 0px);
+    --overlay-available-width: calc(100vw - 2rem - var(--safe-area-left) - var(--safe-area-right));
+    --overlay-available-height: calc(
+        100dvh - 2rem - var(--safe-area-top) - var(--safe-area-bottom)
+    );
     --background: oklch(1 0 0);
     --foreground: oklch(0.141 0.005 285.823);
     --card: oklch(1 0 0);
@@ -114,6 +122,14 @@
 }
 
 @layer base {
+    html,
+    body,
+    #app {
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+    }
+
     * {
         @apply border-border outline-ring/50;
         scrollbar-color: color-mix(in oklab, var(--muted-foreground) 45%, transparent) transparent;
@@ -121,6 +137,9 @@
     }
     body {
         @apply bg-background text-foreground;
+        margin: 0;
+        overflow: hidden;
+        overscroll-behavior: none;
     }
 
     *::-webkit-scrollbar {
@@ -149,13 +168,158 @@
     }
 }
 
+.app-shell {
+    box-sizing: border-box;
+    height: 100vh;
+    height: 100dvh;
+    padding: var(--safe-area-top) var(--safe-area-right) var(--safe-area-bottom)
+        var(--safe-area-left);
+}
+
+.app-dialog-content {
+    width: var(--overlay-available-width);
+    max-height: calc(100vh - 2rem - var(--safe-area-top) - var(--safe-area-bottom));
+    max-height: var(--overlay-available-height);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    overflow-wrap: anywhere;
+}
+
+.app-dialog-content.overflow-hidden {
+    overflow: hidden;
+}
+
+.app-dialog-content :where(img, video, canvas) {
+    max-width: 100%;
+}
+
+.app-dialog-content.app-dialog-fullscreen {
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    translate: none;
+    transform: none;
+    border-radius: 0;
+    padding: var(--safe-area-top) var(--safe-area-right) var(--safe-area-bottom)
+        var(--safe-area-left);
+    overflow: hidden;
+}
+
+.toast-viewport {
+    right: max(1rem, var(--safe-area-right));
+    bottom: max(1rem, var(--safe-area-bottom));
+    width: min(24rem, var(--overlay-available-width));
+    max-height: var(--overlay-available-height);
+}
+
+@media (min-width: 768px) {
+    .app-dialog-content.app-dialog-fullscreen {
+        inset: auto;
+        top: 50%;
+        left: 50%;
+        width: var(--overlay-available-width);
+        height: 90vh;
+        height: 90dvh;
+        translate: -50% -50%;
+        transform: none;
+        border-radius: var(--radius);
+        padding: 1.5rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .app-dialog-content.app-dialog-fullscreen {
+        width: min(92vw, var(--overlay-available-width));
+    }
+}
+
+@media (max-width: 1023px) {
+    .app-sidebar[data-compact-open='true'] {
+        top: var(--safe-area-top);
+        bottom: var(--safe-area-bottom);
+        left: var(--safe-area-left);
+        height: auto;
+    }
+
+    .app-sidebar-room-panel {
+        width: min(
+            22.75rem,
+            calc(100vw - 6.25rem - var(--safe-area-left) - var(--safe-area-right))
+        );
+    }
+
+    .app-chat-runtime-panel {
+        width: min(
+            22.75rem,
+            calc(100vw - 6.25rem - var(--safe-area-left) - var(--safe-area-right))
+        );
+    }
+}
+
+@media (hover: none), (pointer: coarse) {
+    .touch-visible {
+        opacity: 1 !important;
+    }
+
+    .touch-action-row {
+        display: flex !important;
+        opacity: 1 !important;
+    }
+
+    [data-slot='button'][data-size^='icon'],
+    .touch-target {
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+@layer base {
+    :where(button, a[href], [role='button'], input, textarea, select):focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+    }
+}
+
 /* Markdown prose styles */
 .prose pre {
     @apply overflow-x-auto rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-100;
+    max-width: 100%;
 }
 .prose code:not(pre code) {
     @apply rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground;
+    overflow-wrap: anywhere;
 }
 .prose pre code.hljs {
     @apply p-0 text-sm;
+}
+
+.prose {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.prose :where(img, video) {
+    max-width: 100%;
+    height: auto;
+}
+
+.prose table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
 }

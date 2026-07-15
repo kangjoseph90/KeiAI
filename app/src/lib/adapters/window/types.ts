@@ -8,6 +8,7 @@ export interface IWindowAdapter {
     maximize(): Promise<void>;
     unmaximize(): Promise<void>;
     close(): Promise<void>;
+    reload(): Promise<void>;
     setTitle(title: string): Promise<void>;
     setAlwaysOnTop(alwaysOnTop: boolean): Promise<void>;
 }

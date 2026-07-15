@@ -6,6 +6,8 @@
     import type { WorkflowDefinition, WorkflowEditResult } from '$lib/workflow';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
     import WorkflowPromptTab from '$lib/views/workflow/WorkflowPromptTab.svelte';
+    import { toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     let translationWorkflowEditorOpen = $state(false);
     let selectedTranslationNodeId = $state<string | null>(null);
@@ -18,8 +20,31 @@
     });
 
     async function applyTranslationPromptEdit(result: WorkflowEditResult) {
-        selectedTranslationNodeId = selectExistingNode(result.workflow, selectedTranslationNodeId);
-        await updateSettings({ translation: { workflow: result.patch } });
+        try {
+            await updateSettings({ translation: { workflow: result.patch } });
+            selectedTranslationNodeId = selectExistingNode(
+                result.workflow,
+                selectedTranslationNodeId
+            );
+        } catch (error) {
+            toast.error({
+                title: 'Translation workflow update failed',
+                description: getErrorMessage(error, 'The workflow change could not be saved')
+            });
+        }
+    }
+
+    async function updateTranslationSettings(
+        changes: Parameters<typeof updateSettings>[0]
+    ): Promise<void> {
+        try {
+            await updateSettings(changes);
+        } catch (error) {
+            toast.error({
+                title: 'Translation setting failed',
+                description: getErrorMessage(error, 'The translation setting could not be saved')
+            });
+        }
     }
 
     function findFirstAgentId(workflow: WorkflowDefinition): string | null {
@@ -53,7 +78,7 @@
                     value={$appSettings?.translation.targetLanguage ?? ''}
                     placeholder="e.g. Korean"
                     onchange={(event) =>
-                        updateSettings({
+                        updateTranslationSettings({
                             translation: {
                                 targetLanguage: event.currentTarget.value
                             }
@@ -73,7 +98,7 @@
                     class="size-5 shrink-0 rounded border-primary"
                     checked={$appSettings?.translation?.autoShowTranslation === true}
                     onchange={(e) =>
-                        updateSettings({
+                        updateTranslationSettings({
                             translation: {
                                 autoShowTranslation: e.currentTarget.checked
                             }

@@ -1,5 +1,14 @@
 <script lang="ts">
-    import { Plus, Trash2, Globe, Key, ChevronDown, ChevronRight, Settings2 } from 'lucide-svelte';
+    import {
+        Plus,
+        Trash2,
+        Globe,
+        Key,
+        ChevronDown,
+        ChevronRight,
+        GripVertical,
+        Settings2
+    } from 'lucide-svelte';
     import { SvelteSet } from 'svelte/reactivity';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
@@ -21,8 +30,11 @@
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
+    import { appConfirm, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
-    let expandedModels = new SvelteSet();
+    const expandedModels = new SvelteSet<string>();
+    let busyAction = $state<string | null>(null);
 
     const handlers: LLMHandler[] = ['openai_compatible', 'anthropic', 'google'];
 
@@ -36,51 +48,93 @@
     ];
 
     async function handleAddModel() {
-        const models = Object.values($appSettings?.custom?.llm?.models ?? {});
-        const modelId = await createCustomLLMModel({
-            name: 'New Custom Model',
-            modelId: '',
-            baseUrl: '',
-            apiKey: '',
-            handler: 'openai_compatible',
-            tokenizer: 'o200k_base',
-            sortOrder: generateSortOrder(
-                Object.fromEntries(
-                    models.map((model) => [model.id, { id: model.id, sortOrder: model.sortOrder }])
+        if (busyAction) return;
+        busyAction = 'create';
+        try {
+            const models = Object.values($appSettings?.custom?.llm?.models ?? {});
+            const modelId = await createCustomLLMModel({
+                name: 'New Custom Model',
+                modelId: '',
+                baseUrl: '',
+                apiKey: '',
+                handler: 'openai_compatible',
+                tokenizer: 'o200k_base',
+                sortOrder: generateSortOrder(
+                    Object.fromEntries(
+                        models.map((model) => [
+                            model.id,
+                            { id: model.id, sortOrder: model.sortOrder }
+                        ])
+                    )
                 )
-            )
-        });
-
-        const next = new SvelteSet(expandedModels);
-        next.add(modelId);
-        expandedModels = next;
+            });
+            expandedModels.add(modelId);
+        } catch (error) {
+            toast.error({ title: 'Could not add model', description: getErrorMessage(error) });
+        } finally {
+            busyAction = null;
+        }
     }
 
     async function handleRemove(id: string) {
-        await deleteCustomLLMModel(id);
-        const next = new SvelteSet(expandedModels);
-        next.delete(id);
-        expandedModels = next;
+        if (busyAction) return;
+        busyAction = `delete:${id}`;
+        try {
+            const model = $appSettings?.custom?.llm?.models?.[id];
+            const confirmed = await appConfirm({
+                title: 'Delete custom model?',
+                description: `Delete "${model?.name ?? 'this custom model'}"? Presets that reference it may need to be updated.`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed) return;
+            await deleteCustomLLMModel(id);
+            expandedModels.delete(id);
+        } catch (error) {
+            toast.error({ title: 'Could not delete model', description: getErrorMessage(error) });
+        } finally {
+            busyAction = null;
+        }
     }
 
     async function handleReorder(id: string, newSortOrder: string) {
-        await updateCustomLLMModel(id, { sortOrder: newSortOrder });
+        if (busyAction) return;
+        try {
+            await updateCustomLLMModel(id, { sortOrder: newSortOrder });
+        } catch (error) {
+            toast.error({ title: 'Could not reorder model', description: getErrorMessage(error) });
+        }
+    }
+
+    async function updateModelSafely(
+        id: string,
+        changes: Parameters<typeof updateCustomLLMModel>[1]
+    ): Promise<void> {
+        try {
+            await updateCustomLLMModel(id, changes);
+        } catch (error) {
+            toast.error({ title: 'Could not update model', description: getErrorMessage(error) });
+        }
     }
 
     function toggleExpand(id: string) {
-        const next = new SvelteSet(expandedModels);
-        if (next.has(id)) {
-            next.delete(id);
+        if (expandedModels.has(id)) {
+            expandedModels.delete(id);
         } else {
-            next.add(id);
+            expandedModels.add(id);
         }
-        expandedModels = next;
     }
 </script>
 
 <div class="flex flex-col gap-4 px-2">
     <ListActionBar description="Models from custom API endpoints.">
-        <Button size="sm" class="gap-1.5" onclick={handleAddModel}>
+        <Button
+            size="sm"
+            class="gap-1.5"
+            disabled={busyAction !== null}
+            aria-busy={busyAction === 'create'}
+            onclick={handleAddModel}
+        >
             <Plus class="size-4" /> Add
         </Button>
     </ListActionBar>
@@ -98,6 +152,12 @@
             >
                 <!-- 헤더 영역 -->
                 <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+                    <div
+                        class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+                        aria-hidden="true"
+                    >
+                        <GripVertical class="size-4" />
+                    </div>
                     <button
                         type="button"
                         class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -113,8 +173,9 @@
 
                     <Input
                         value={model.name}
+                        disabled={busyAction !== null}
                         onchange={(e) =>
-                            updateCustomLLMModel(model.id, {
+                            updateModelSafely(model.id, {
                                 name: e.currentTarget.value
                             })}
                         aria-label="Model name"
@@ -131,6 +192,8 @@
                         class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
                         onclick={() => handleRemove(model.id)}
                         aria-label="Delete model"
+                        disabled={busyAction !== null}
+                        aria-busy={busyAction === `delete:${model.id}`}
                     >
                         <Trash2 class="size-4" />
                     </Button>
@@ -144,10 +207,11 @@
                                 <Label class="text-xs">Model ID (Internal)</Label>
                                 <Input
                                     value={model.modelId}
+                                    disabled={busyAction !== null}
                                     placeholder="e.g. llama-3-8b"
                                     class="h-8 text-xs bg-background"
                                     onchange={(e) =>
-                                        updateCustomLLMModel(model.id, {
+                                        updateModelSafely(model.id, {
                                             modelId: e.currentTarget.value
                                         })}
                                 />
@@ -158,10 +222,11 @@
                                 </Label>
                                 <Input
                                     value={model.baseUrl}
+                                    disabled={busyAction !== null}
                                     placeholder="https://api.your-provider.com/v1"
                                     class="h-8 text-xs bg-background"
                                     onchange={(e) =>
-                                        updateCustomLLMModel(model.id, {
+                                        updateModelSafely(model.id, {
                                             baseUrl: e.currentTarget.value
                                         })}
                                 />
@@ -175,10 +240,11 @@
                             <Input
                                 type="password"
                                 value={model.apiKey ?? ''}
+                                disabled={busyAction !== null}
                                 placeholder="sk-..."
                                 class="h-8 text-xs bg-background"
                                 onchange={(e) =>
-                                    updateCustomLLMModel(model.id, {
+                                    updateModelSafely(model.id, {
                                         apiKey: e.currentTarget.value
                                     })}
                             />
@@ -190,8 +256,9 @@
                                 <select
                                     class="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm"
                                     value={model.tokenizer}
+                                    disabled={busyAction !== null}
                                     onchange={(e) =>
-                                        updateCustomLLMModel(model.id, {
+                                        updateModelSafely(model.id, {
                                             tokenizer: e.currentTarget.value as LLMTokenizer
                                         })}
                                 >
@@ -207,8 +274,9 @@
                                 <select
                                     class="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm"
                                     value={model.handler}
+                                    disabled={busyAction !== null}
                                     onchange={(e) =>
-                                        updateCustomLLMModel(model.id, {
+                                        updateModelSafely(model.id, {
                                             handler: e.currentTarget.value as LLMHandler
                                         })}
                                 >

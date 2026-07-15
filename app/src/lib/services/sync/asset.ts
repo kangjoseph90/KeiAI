@@ -20,11 +20,6 @@ export type AssetCollection = 'records' | 'multi_room_records';
 export const USER_ASSETS_COLLECTION: AssetCollection = 'records';
 export const ROOM_ASSETS_COLLECTION: AssetCollection = 'multi_room_records';
 
-export interface AssetSyncStatus extends SyncStatus {
-    pendingCount: number;
-    currentAssetId?: string;
-}
-
 const UPLOAD_CONCURRENCY = 3;
 const logger = createLogger('sync:asset');
 
@@ -32,14 +27,14 @@ export class AssetSyncEngineImpl {
     private runPromise: Promise<void> | null = null;
     private rerunRequested = false;
     private stopped = false;
-    private readonly listeners = new Set<(status: AssetSyncStatus) => void>();
-    private status: AssetSyncStatus = { state: 'idle', pendingCount: 0 };
+    private readonly listeners = new Set<(status: SyncStatus) => void>();
+    private status: SyncStatus = { state: 'idle' };
 
-    getState(): AssetSyncStatus {
+    getState(): SyncStatus {
         return this.cloneStatus(this.status);
     }
 
-    subscribeStatus(listener: (status: AssetSyncStatus) => void): () => void {
+    subscribeStatus(listener: (status: SyncStatus) => void): () => void {
         this.listeners.add(listener);
         listener(this.getState());
         return () => {
@@ -63,8 +58,6 @@ export class AssetSyncEngineImpl {
         this.rerunRequested = false;
         this.updateStatus({
             state: 'idle',
-            pendingCount: 0,
-            currentAssetId: undefined,
             progress: undefined
         });
     }
@@ -86,8 +79,6 @@ export class AssetSyncEngineImpl {
                 if (!this.rerunRequested) {
                     this.updateStatus({
                         state: 'idle',
-                        pendingCount: 0,
-                        currentAssetId: undefined,
                         progress: undefined
                     });
                 }
@@ -114,7 +105,12 @@ export class AssetSyncEngineImpl {
                 .map((entry) => ({ syncScope, entry }))
         );
 
-        this.updateStatus({ pendingCount: pending.length, progress: undefined });
+        this.updateStatus({
+            progress: {
+                completed: 0,
+                total: pending.length
+            }
+        });
         if (pending.length === 0) return;
 
         const semaphore = new Semaphore(UPLOAD_CONCURRENCY);
@@ -127,7 +123,6 @@ export class AssetSyncEngineImpl {
                     if (fatalError || this.stopped) return;
 
                     this.updateStatus({
-                        currentAssetId: item.entry.id,
                         progress: {
                             completed,
                             total: pending.length,
@@ -147,7 +142,6 @@ export class AssetSyncEngineImpl {
                     } finally {
                         completed++;
                         this.updateStatus({
-                            pendingCount: Math.max(pending.length - completed, 0),
                             progress: {
                                 completed,
                                 total: pending.length,
@@ -186,16 +180,15 @@ export class AssetSyncEngineImpl {
         await AssetService.markRemote(entry);
     }
 
-    private updateStatus(patch: Partial<AssetSyncStatus>): void {
+    private updateStatus(patch: Partial<SyncStatus>): void {
         this.status = { ...this.status, ...patch };
         if (patch.progress === undefined) this.status.progress = undefined;
-        if (patch.currentAssetId === undefined) this.status.currentAssetId = undefined;
         for (const listener of this.listeners) {
             listener(this.getState());
         }
     }
 
-    private cloneStatus(status: AssetSyncStatus): AssetSyncStatus {
+    private cloneStatus(status: SyncStatus): SyncStatus {
         return {
             ...status,
             progress: status.progress ? ({ ...status.progress } as SyncProgress) : undefined

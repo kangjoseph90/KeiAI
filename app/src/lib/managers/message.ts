@@ -1,6 +1,6 @@
 import { AppError } from '$lib/types/errors';
 import { createMessageSwipe, deleteMessageSwipe, getMessage, updateMessage } from '$lib/stores';
-import type { Message } from '$lib/services';
+import type { Message, MessageSwipeFields } from '$lib/services';
 import type { AgentPart } from '$lib/workflow/agent/llm';
 
 export interface PrepareNextSwipeInput {
@@ -8,7 +8,21 @@ export interface PrepareNextSwipeInput {
     variables: Record<string, string>;
     speakerId?: string;
     speakerName?: string;
+    attachments?: string[];
     replaceActiveSwipe?: boolean;
+}
+
+function buildSwipeFields(input: PrepareNextSwipeInput): MessageSwipeFields {
+    const fields: MessageSwipeFields = {
+        parts: input.parts,
+        variables: input.variables
+    };
+
+    if (input.speakerId !== undefined) fields.speakerId = input.speakerId;
+    if (input.speakerName !== undefined) fields.speakerName = input.speakerName;
+    if (input.attachments?.length) fields.attachments = Array.from(input.attachments);
+
+    return fields;
 }
 
 export async function prepareNextSwipe(
@@ -25,12 +39,7 @@ export async function prepareNextSwipe(
         current = await deleteMessageSwipe(current.id, current.activeSwipeId);
     }
 
-    const created = await createMessageSwipe(current.id, {
-        parts: input.parts,
-        variables: input.variables,
-        speakerId: input.speakerId,
-        speakerName: input.speakerName
-    });
+    const created = await createMessageSwipe(current.id, buildSwipeFields(input));
 
     await updateMessage(current.id, { activeSwipeId: created.swipeId });
 

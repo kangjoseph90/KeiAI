@@ -55,6 +55,7 @@
         updateGlobalFolder,
         userId
     } from '$lib/stores';
+    import { appAlert, appConfirm, toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { importCharacterFile } from '$lib/managers';
     import { importModuleFile } from '$lib/managers/module';
@@ -66,6 +67,7 @@
     import { getErrorMessage } from '$lib/types/errors';
     import { approveMultiRoomJoinRequest } from '$lib/stores';
     import MultiRoomManageDialog from './MultiRoomManageDialog.svelte';
+    import { onDestroy } from 'svelte';
 
     interface Props {
         space?: 'library' | 'multiRooms';
@@ -78,9 +80,7 @@
     let tab = $state<Tab>('rooms');
     let query = $state('');
     let creatingMultiRoom = $state(false);
-    let importingCharacter = $state(false);
-    let importingPersona = $state(false);
-    let importingModule = $state(false);
+    let homeAction = $state<string | null>(null);
     let multiRoomName = $state('');
     let multiRoomVisibility = $state<'private' | 'public'>('private');
     let joinRoomId = $state('');
@@ -92,6 +92,9 @@
     let approvingMemberId = $state('');
     let managedRoomId = $state<string | null>(null);
     let manageDialogOpen = $state(false);
+    let viewportWidth = $state(1024);
+    let destroyed = false;
+    const libraryEntityLayout = $derived(viewportWidth < 768 ? 'list' : 'grid');
 
     const filteredRooms = $derived(() => {
         const normalized = query.trim().toLowerCase();
@@ -150,6 +153,10 @@
     );
     const busyManagedMemberId = $derived(approvingMemberId.split(':')[1] ?? null);
 
+    onDestroy(() => {
+        destroyed = true;
+    });
+
     $effect(() => {
         if (space === 'multiRooms') {
             tab = 'multiRooms';
@@ -164,9 +171,50 @@
         }
     });
 
+    async function runHomeAction(
+        key: string,
+        errorTitle: string,
+        action: () => void | Promise<unknown>
+    ): Promise<boolean> {
+        if (homeAction) return false;
+        homeAction = key;
+        try {
+            await action();
+            return true;
+        } catch (error) {
+            toast.error({ title: errorTitle, description: getErrorMessage(error) });
+            return false;
+        } finally {
+            homeAction = null;
+        }
+    }
+
+    async function runConfirmedHomeAction(
+        key: string,
+        errorTitle: string,
+        title: string,
+        description: string,
+        action: () => void | Promise<unknown>,
+        confirmText = 'Delete'
+    ): Promise<boolean> {
+        let confirmed = false;
+        const completed = await runHomeAction(key, errorTitle, async () => {
+            confirmed = await appConfirm({
+                title,
+                description,
+                confirmText,
+                variant: 'destructive'
+            });
+            if (confirmed) await action();
+        });
+        return completed && confirmed;
+    }
+
     async function handleCreateRoom() {
-        const room = await createRoom();
-        onNavigate({ view: 'room', roomId: room.id });
+        await runHomeAction('create-room', 'Could not create room', async () => {
+            const room = await createRoom();
+            if (!destroyed) onNavigate({ view: 'room', roomId: room.id });
+        });
     }
 
     async function handleCreateMultiRoom() {
@@ -221,15 +269,19 @@
             const formatted = formatPublicKeyFingerprint(fingerprint);
 
             if (!trusted) {
-                const ok = confirm(
-                    `First time seeing ${user.username || user.userId}.\nFingerprint: ${formatted}`
-                );
+                const ok = await appConfirm({
+                    title: 'Trust member key?',
+                    description: `First time seeing ${user.username || user.userId}.\nFingerprint: ${formatted}`,
+                    confirmText: 'Trust',
+                    variant: 'destructive'
+                });
                 if (!ok) return;
                 await MultiRoomService.trustUserPublicKey(user, fingerprint);
             } else if (trusted.publicKeyFingerprint !== fingerprint) {
-                alert(
-                    `Public key fingerprint changed for ${user.username || user.userId}.\nPrevious: ${formatPublicKeyFingerprint(trusted.publicKeyFingerprint)}\nCurrent: ${formatted}`
-                );
+                await appAlert({
+                    title: 'Public key changed',
+                    description: `Public key fingerprint changed for ${user.username || user.userId}.\nPrevious: ${formatPublicKeyFingerprint(trusted.publicKeyFingerprint)}\nCurrent: ${formatted}`
+                });
                 return;
             } else {
                 await MultiRoomService.trustUserPublicKey(user, fingerprint);
@@ -271,17 +323,33 @@
 
     async function handleManagedVisibility(visibility: 'private' | 'public') {
         if (!managedRoomId || !managedRoom) return;
-        await updateMultiRoomIndex(managedRoomId, {
-            visibility,
-            publicName: visibility === 'public' ? managedRoom.name : undefined
-        });
+        const roomId = managedRoomId;
+        const roomName = managedRoom.name;
+        await runHomeAction('manage-visibility', 'Could not change room visibility', () =>
+            updateMultiRoomIndex(roomId, {
+                visibility,
+                publicName: visibility === 'public' ? roomName : undefined
+            })
+        );
     }
 
     async function handleRevokeMember(roomId: string, memberUserId: string) {
-        if (!confirm(`Remove member ${memberUserId} from this room?`)) return;
+        if (approvingMemberId) return;
         approvingMemberId = `${roomId}:${memberUserId}`;
         try {
-            await revokeMultiRoomMember(roomId, memberUserId);
+            await runHomeAction(
+                `revoke-member:${memberUserId}`,
+                'Could not remove member',
+                async () => {
+                    const confirmed = await appConfirm({
+                        title: 'Remove member?',
+                        description: `Remove member ${memberUserId} from this room?`,
+                        confirmText: 'Remove',
+                        variant: 'destructive'
+                    });
+                    if (confirmed) await revokeMultiRoomMember(roomId, memberUserId);
+                }
+            );
         } finally {
             approvingMemberId = '';
         }
@@ -293,102 +361,123 @@
     }
 
     async function handleCreateCharacter() {
-        const character = await createCharacter();
-        onNavigate({ view: 'characterStudio', charId: character.id });
+        await runHomeAction('create-character', 'Could not create character', async () => {
+            const character = await createCharacter();
+            if (!destroyed) onNavigate({ view: 'characterStudio', charId: character.id });
+        });
     }
 
     async function handleCreateModule() {
-        const mod = await createModule();
-        onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+        await runHomeAction('create-module', 'Could not create module', async () => {
+            const mod = await createModule();
+            if (!destroyed) onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+        });
     }
 
-    async function handleImportModule(event: Event) {
-        const input = event.currentTarget as HTMLInputElement;
-        const file = input.files?.[0];
-        input.value = '';
-        if (!file || importingModule) return;
+    async function handleSetModuleEnabled(moduleId: string, enabled: boolean) {
+        await runHomeAction(`toggle-module:${moduleId}`, 'Could not update module', () =>
+            setModuleEnabled(moduleId, enabled)
+        );
+    }
 
-        importingModule = true;
-        try {
-            const mod = await importModuleFile(file, {
+    async function handleImportModule() {
+        await runHomeAction('import-module', 'Could not import module', async () => {
+            const mod = await importModuleFile({
                 allowLightAssets: isKeiServer(),
                 select: true
             });
-            onNavigate({ view: 'moduleStudio', moduleId: mod.id });
-        } finally {
-            importingModule = false;
-        }
+            if (mod && !destroyed) onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+        });
     }
 
-    async function handleImportCharacter(event: Event) {
-        const input = event.currentTarget as HTMLInputElement;
-        const file = input.files?.[0];
-        input.value = '';
-        if (!file || importingCharacter) return;
-
-        importingCharacter = true;
-        try {
-            const character = await importCharacterFile(file, {
+    async function handleImportCharacter() {
+        await runHomeAction('import-character', 'Could not import character', async () => {
+            const character = await importCharacterFile({
                 allowLightAssets: isKeiServer(),
                 select: true
             });
-            onNavigate({ view: 'characterStudio', charId: character.id });
-        } finally {
-            importingCharacter = false;
-        }
+            if (character && !destroyed) {
+                onNavigate({ view: 'characterStudio', charId: character.id });
+            }
+        });
     }
 
     async function handleDeleteCharacter(characterId: string, name: string) {
-        if (!confirm(`Delete character "${name}"?`)) return;
-        await deleteCharacter(characterId);
+        await runConfirmedHomeAction(
+            `delete-character:${characterId}`,
+            'Could not delete character',
+            'Delete character?',
+            `Delete character "${name}"?`,
+            () => deleteCharacter(characterId)
+        );
     }
 
     async function handleDeleteRoom(roomId: string, name: string) {
-        if (!confirm(`Delete room "${name}"?`)) return;
-        await deleteRoom(roomId);
+        await runConfirmedHomeAction(
+            `delete-room:${roomId}`,
+            'Could not delete room',
+            'Delete room?',
+            `Delete room "${name}"?`,
+            () => deleteRoom(roomId)
+        );
     }
 
-    async function handleDeleteMultiRoom(roomId: string, name: string) {
-        if (!confirm(`Delete multi room "${name}"?`)) return;
-        await deleteMultiRoom(roomId);
+    async function handleDeleteMultiRoom(roomId: string, name: string): Promise<boolean> {
+        return runConfirmedHomeAction(
+            `delete-multi-room:${roomId}`,
+            'Could not delete multi room',
+            'Delete multi room?',
+            `Delete multi room "${name}"?`,
+            () => deleteMultiRoom(roomId)
+        );
     }
 
-    async function handleLeaveMultiRoom(roomId: string, name: string) {
-        if (!confirm(`Leave multi room "${name}"?`)) return;
-        await leaveMultiRoom(roomId);
+    async function handleLeaveMultiRoom(roomId: string, name: string): Promise<boolean> {
+        return runConfirmedHomeAction(
+            `leave-multi-room:${roomId}`,
+            'Could not leave multi room',
+            'Leave multi room?',
+            `Leave multi room "${name}"?`,
+            () => leaveMultiRoom(roomId),
+            'Leave'
+        );
     }
 
-    async function handleImportPersona(event: Event) {
-        const input = event.currentTarget as HTMLInputElement;
-        const file = input.files?.[0];
-        input.value = '';
-        if (!file || importingPersona) return;
-
-        importingPersona = true;
-        try {
-            const persona = await importPersonaFile(file, {
+    async function handleImportPersona() {
+        await runHomeAction('import-persona', 'Could not import persona', async () => {
+            const persona = await importPersonaFile({
                 allowLightAssets: isKeiServer(),
                 select: true
             });
-            onNavigate({ view: 'personaStudio', personaId: persona.id });
-        } finally {
-            importingPersona = false;
-        }
+            if (persona && !destroyed) onNavigate({ view: 'personaStudio', personaId: persona.id });
+        });
     }
 
     async function handleDeletePersona(personaId: string, name: string) {
-        if (!confirm(`Delete persona "${name}"?`)) return;
-        await deletePersona(personaId);
+        await runConfirmedHomeAction(
+            `delete-persona:${personaId}`,
+            'Could not delete persona',
+            'Delete persona?',
+            `Delete persona "${name}"?`,
+            () => deletePersona(personaId)
+        );
     }
 
     async function handleDeleteModule(moduleId: string, name: string) {
-        if (!confirm(`Delete module "${name}"?`)) return;
-        await deleteModule(moduleId);
+        await runConfirmedHomeAction(
+            `delete-module:${moduleId}`,
+            'Could not delete module',
+            'Delete module?',
+            `Delete module "${name}"?`,
+            () => deleteModule(moduleId)
+        );
     }
 
     async function handleCreatePersona() {
-        const persona = await createPersona();
-        onNavigate({ view: 'personaStudio', personaId: persona.id });
+        await runHomeAction('create-persona', 'Could not create persona', async () => {
+            const persona = await createPersona();
+            if (!destroyed) onNavigate({ view: 'personaStudio', personaId: persona.id });
+        });
     }
 
     function searchPlaceholder(): string {
@@ -404,10 +493,12 @@
     }
 </script>
 
-<div class="flex h-full flex-col overflow-hidden bg-background">
-    <header class="shrink-0 border-b px-8 py-6">
-        <div class="flex items-center justify-between gap-4">
-            <div>
+<svelte:window bind:innerWidth={viewportWidth} />
+
+<div class="flex h-full flex-col overflow-hidden bg-background" aria-busy={homeAction !== null}>
+    <header class="shrink-0 border-b px-4 py-4 sm:px-6 md:px-8 md:py-6">
+        <div class="flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-center">
+            <div class="min-w-0 pl-12 lg:pl-0">
                 <h1 class="text-xl font-semibold">
                     {space === 'multiRooms' ? 'Multi Rooms' : 'Library'}
                 </h1>
@@ -424,13 +515,18 @@
                 </p>
             </div>
             {#if tab === 'rooms'}
-                <Button class="gap-2" onclick={handleCreateRoom}>
+                <Button
+                    class="w-full gap-2 sm:w-auto"
+                    disabled={homeAction !== null}
+                    aria-busy={homeAction === 'create-room'}
+                    onclick={handleCreateRoom}
+                >
                     <Plus class="size-4" /> New Room
                 </Button>
             {:else if tab === 'multiRooms'}
                 {#if creatingMultiRoom}
                     <form
-                        class="flex w-full max-w-xl items-center justify-end gap-2"
+                        class="flex w-full flex-col items-stretch justify-end gap-2 sm:max-w-xl sm:flex-row sm:items-center"
                         onsubmit={(event) => {
                             event.preventDefault();
                             handleCreateMultiRoom();
@@ -438,11 +534,13 @@
                     >
                         <Input
                             bind:value={multiRoomName}
-                            class="max-w-xs"
+                            class="w-full sm:max-w-xs"
                             placeholder="Multi room name..."
                             autofocus
                         />
-                        <div class="flex shrink-0 rounded-md border bg-muted/30 p-1">
+                        <div
+                            class="flex shrink-0 rounded-md border bg-muted/30 p-1 max-sm:[&>*]:flex-1"
+                        >
                             <Button
                                 type="button"
                                 size="sm"
@@ -465,87 +563,87 @@
                         <Button type="submit">Create</Button>
                     </form>
                 {:else}
-                    <Button class="gap-2" onclick={() => (creatingMultiRoom = true)}>
+                    <Button
+                        class="w-full gap-2 sm:w-auto"
+                        onclick={() => (creatingMultiRoom = true)}
+                    >
                         <Plus class="size-4" />
                         New Multi Room
                     </Button>
                 {/if}
             {:else if tab === 'characters'}
-                <div class="flex gap-2">
+                <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
                     <Button
                         variant="outline"
                         class="gap-2"
-                        disabled={importingCharacter}
-                        onclick={() => document.getElementById('character-import-input')?.click()}
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'import-character'}
+                        onclick={handleImportCharacter}
                     >
                         <Upload class="size-4" /> Import
                     </Button>
-                    <Button class="gap-2" onclick={handleCreateCharacter}>
+                    <Button
+                        class="gap-2"
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'create-character'}
+                        onclick={handleCreateCharacter}
+                    >
                         <Plus class="size-4" /> New Character
                     </Button>
-                    <input
-                        id="character-import-input"
-                        type="file"
-                        class="hidden"
-                        accept=".json,.png,.charx,.jpg,.jpeg,.keichar"
-                        onchange={handleImportCharacter}
-                    />
                 </div>
             {:else if tab === 'modules'}
-                <div class="flex gap-2">
+                <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
                     <Button
                         variant="outline"
                         class="gap-2"
-                        disabled={importingModule}
-                        onclick={() => document.getElementById('module-import-input')?.click()}
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'import-module'}
+                        onclick={handleImportModule}
                     >
                         <Upload class="size-4" />
                         Import
                     </Button>
-                    <Button class="gap-2" onclick={handleCreateModule}>
+                    <Button
+                        class="gap-2"
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'create-module'}
+                        onclick={handleCreateModule}
+                    >
                         <Plus class="size-4" /> New Module
                     </Button>
-                    <input
-                        id="module-import-input"
-                        type="file"
-                        class="hidden"
-                        accept=".risum,.keimodule,.json"
-                        onchange={handleImportModule}
-                    />
                 </div>
             {:else}
-                <div class="flex gap-2">
+                <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
                     <Button
                         variant="outline"
                         class="gap-2"
-                        disabled={importingPersona}
-                        onclick={() => document.getElementById('persona-import-input')?.click()}
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'import-persona'}
+                        onclick={handleImportPersona}
                     >
                         <Upload class="size-4" />
                         Import
                     </Button>
-                    <Button class="gap-2" onclick={handleCreatePersona}>
+                    <Button
+                        class="gap-2"
+                        disabled={homeAction !== null}
+                        aria-busy={homeAction === 'create-persona'}
+                        onclick={handleCreatePersona}
+                    >
                         <Plus class="size-4" /> New Persona
                     </Button>
-                    <input
-                        id="persona-import-input"
-                        type="file"
-                        class="hidden"
-                        accept=".png,.keipersona"
-                        onchange={handleImportPersona}
-                    />
                 </div>
             {/if}
         </div>
     </header>
 
-    <main class="flex-1 overflow-y-auto px-8 py-8">
+    <main class="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 md:px-8 md:py-8">
         <div class="mx-auto max-w-6xl space-y-6">
             <div class="flex flex-wrap items-center justify-between gap-4">
                 {#if space === 'library'}
-                    <div class="flex rounded-md border bg-muted/30 p-1">
+                    <div class="flex w-full rounded-md border bg-muted/30 p-1 md:w-auto">
                         <button
-                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            class="min-w-0 flex-1 rounded px-2 py-1.5 text-sm font-medium transition-colors md:flex-none md:px-3 {tab ===
                             'rooms'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
@@ -554,7 +652,7 @@
                             Rooms
                         </button>
                         <button
-                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            class="min-w-0 flex-1 rounded px-2 py-1.5 text-sm font-medium transition-colors md:flex-none md:px-3 {tab ===
                             'characters'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
@@ -563,7 +661,7 @@
                             Characters
                         </button>
                         <button
-                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            class="min-w-0 flex-1 rounded px-2 py-1.5 text-sm font-medium transition-colors md:flex-none md:px-3 {tab ===
                             'personas'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
@@ -572,7 +670,7 @@
                             Personas
                         </button>
                         <button
-                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            class="min-w-0 flex-1 rounded px-2 py-1.5 text-sm font-medium transition-colors md:flex-none md:px-3 {tab ===
                             'modules'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
@@ -601,7 +699,7 @@
                     <EntityList
                         entities={filteredRooms()}
                         config={$appSettings.rooms}
-                        layout="grid"
+                        layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
                         onItemClick={(room) => onNavigate({ view: 'room', roomId: room.id })}
                         onCreateFolder={(name, parentId, sortOrder) =>
@@ -625,7 +723,12 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Rooms hold character refs, chats, and conversation context.
                                     </p>
-                                    <Button class="mt-5 gap-2" onclick={handleCreateRoom}>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === 'create-room'}
+                                        onclick={handleCreateRoom}
+                                    >
                                         <Plus class="size-4" />
                                         New Room
                                     </Button>
@@ -636,7 +739,7 @@
                             {@const characterCount = Object.keys(room.characters.refs).length}
                             {@const chatCount = Object.keys(room.chats.refs).length}
                             <div
-                                class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 group"
+                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 group"
                             >
                                 <div class="flex w-full items-center gap-3">
                                     <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
@@ -659,6 +762,9 @@
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-destructive"
                                         title="Delete room"
+                                        aria-label={`Delete ${room.name}`}
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === `delete-room:${room.id}`}
                                         onclick={() => handleDeleteRoom(room.id, room.name)}
                                     >
                                         <Trash2 class="size-4" />
@@ -684,7 +790,11 @@
                         >
                             <div class="flex gap-2">
                                 <Input bind:value={joinRoomId} placeholder="Room id" />
-                                <Button type="submit" disabled={joiningRoom || !joinRoomId.trim()}>
+                                <Button
+                                    type="submit"
+                                    aria-label="Request to join room"
+                                    disabled={joiningRoom || !joinRoomId.trim()}
+                                >
                                     <KeyRound class="size-4" />
                                 </Button>
                             </div>
@@ -699,7 +809,11 @@
                         >
                             <div class="flex gap-2">
                                 <Input bind:value={publicRoomQuery} placeholder="Public room" />
-                                <Button type="submit" disabled={searchingPublicRooms}>
+                                <Button
+                                    type="submit"
+                                    aria-label="Search public rooms"
+                                    disabled={searchingPublicRooms}
+                                >
                                     <Search class="size-4" />
                                 </Button>
                             </div>
@@ -752,6 +866,7 @@
                                                 size="icon-sm"
                                                 variant="outline"
                                                 title="Approve"
+                                                aria-label={`Approve ${request.member.userId}`}
                                                 disabled={approvingMemberId ===
                                                     `${request.roomId}:${request.member.userId}`}
                                                 onclick={() =>
@@ -766,6 +881,7 @@
                                                 size="icon-sm"
                                                 variant="ghost"
                                                 title="Reject"
+                                                aria-label={`Reject ${request.member.userId}`}
                                                 disabled={approvingMemberId ===
                                                     `${request.roomId}:${request.member.userId}`}
                                                 onclick={() =>
@@ -794,7 +910,7 @@
                     <EntityList
                         entities={filteredMultiRooms()}
                         config={$appSettings.multiRooms}
-                        layout="grid"
+                        layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
                         onItemClick={(room) => openMultiRoom(room.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
@@ -837,7 +953,7 @@
                                 (member) => member.status === 'accepted'
                             ).length}
                             <div
-                                class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
                             >
                                 <div class="flex w-full items-center gap-3">
                                     <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
@@ -862,6 +978,7 @@
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-foreground"
                                         title="Manage multi room"
+                                        aria-label={`Manage ${room.name}`}
                                         onclick={() => handleOpenMultiRoomManagement(room.id)}
                                     >
                                         <Settings2 class="size-4" />
@@ -891,7 +1008,7 @@
                     <EntityList
                         entities={filteredCharacters()}
                         config={$appSettings.characters}
-                        layout="grid"
+                        layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
                         onItemClick={(character) =>
                             onNavigate({ view: 'characterStudio', charId: character.id })}
@@ -917,7 +1034,12 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Characters are global resources you can add to rooms.
                                     </p>
-                                    <Button class="mt-5 gap-2" onclick={handleCreateCharacter}>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === 'create-character'}
+                                        onclick={handleCreateCharacter}
+                                    >
                                         <Plus class="size-4" />
                                         New Character
                                     </Button>
@@ -966,6 +1088,10 @@
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-destructive"
                                         title="Delete character"
+                                        aria-label={`Delete ${character.name}`}
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction ===
+                                            `delete-character:${character.id}`}
                                         onclick={() =>
                                             handleDeleteCharacter(character.id, character.name)}
                                     >
@@ -985,7 +1111,7 @@
                     <EntityList
                         entities={filteredModules()}
                         config={$appSettings.modules}
-                        layout="grid"
+                        layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
                         onItemClick={(mod) =>
                             onNavigate({ view: 'moduleStudio', moduleId: mod.id })}
@@ -1010,7 +1136,12 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Modules package reusable context, scripts, and display.
                                     </p>
-                                    <Button class="mt-5 gap-2" onclick={handleCreateModule}>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === 'create-module'}
+                                        onclick={handleCreateModule}
+                                    >
                                         <Plus class="size-4" />
                                         New Module
                                     </Button>
@@ -1054,9 +1185,11 @@
                                         aria-label={enabled
                                             ? 'Deactivate globally'
                                             : 'Activate globally'}
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === `toggle-module:${mod.id}`}
                                         onclick={(event) => {
                                             event.stopPropagation();
-                                            setModuleEnabled(mod.id, !enabled);
+                                            void handleSetModuleEnabled(mod.id, !enabled);
                                         }}
                                     >
                                         <Zap class="size-4 {enabled ? 'fill-amber-500/10' : ''}" />
@@ -1066,6 +1199,9 @@
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-destructive"
                                         title="Delete module"
+                                        aria-label={`Delete ${mod.name}`}
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === `delete-module:${mod.id}`}
                                         onclick={(event) => {
                                             event.stopPropagation();
                                             handleDeleteModule(mod.id, mod.name);
@@ -1087,7 +1223,7 @@
                     <EntityList
                         entities={filteredPersonas()}
                         config={$appSettings.personas}
-                        layout="grid"
+                        layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
                         onItemClick={(persona) =>
                             onNavigate({ view: 'personaStudio', personaId: persona.id })}
@@ -1113,7 +1249,12 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Personas are user speakers you can attach to chats.
                                     </p>
-                                    <Button class="mt-5 gap-2" onclick={handleCreatePersona}>
+                                    <Button
+                                        class="mt-5 gap-2"
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === 'create-persona'}
+                                        onclick={handleCreatePersona}
+                                    >
                                         <Plus class="size-4" />
                                         New Persona
                                     </Button>
@@ -1162,6 +1303,9 @@
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-destructive"
                                         title="Delete persona"
+                                        aria-label={`Delete ${persona.name}`}
+                                        disabled={homeAction !== null}
+                                        aria-busy={homeAction === `delete-persona:${persona.id}`}
                                         onclick={() =>
                                             handleDeletePersona(persona.id, persona.name)}
                                     >
@@ -1190,6 +1334,7 @@
     members={managedRoomMembers}
     currentUserId={$userId}
     busyMemberId={busyManagedMemberId}
+    busyAction={homeAction}
     onVisibilityChange={handleManagedVisibility}
     onApprove={async (memberUserId) => {
         if (!managedRoomId) return;
@@ -1205,12 +1350,14 @@
     }}
     onDelete={async () => {
         if (!managedRoomId || !managedRoom) return;
-        await handleDeleteMultiRoom(managedRoomId, managedRoom.name);
-        manageDialogOpen = false;
+        if (await handleDeleteMultiRoom(managedRoomId, managedRoom.name)) {
+            manageDialogOpen = false;
+        }
     }}
     onLeave={async () => {
         if (!managedRoomId || !managedRoom) return;
-        await handleLeaveMultiRoom(managedRoomId, managedRoom.name);
-        manageDialogOpen = false;
+        if (await handleLeaveMultiRoom(managedRoomId, managedRoom.name)) {
+            manageDialogOpen = false;
+        }
     }}
 />

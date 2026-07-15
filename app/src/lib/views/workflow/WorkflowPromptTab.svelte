@@ -6,6 +6,7 @@
         ChevronRight,
         Eye,
         EyeOff,
+        GripVertical,
         MessageSquareText,
         MessagesSquare,
         Plus,
@@ -24,6 +25,7 @@
     import type { DeepPartial } from '$lib/utils/defaults';
     import { generateSortOrder } from '$lib/utils/ordering';
     import type { LLMRole } from '$lib/types/models/llm';
+    import { appConfirm } from '$lib/ui';
     import {
         createBlock,
         deleteBlock,
@@ -54,6 +56,7 @@
         editWorkflowLabel = 'Edit workflow'
     }: Props = $props();
     let expandedBlocks = $state<Set<string>>(new Set());
+    let deletingBlockId = $state<string | null>(null);
 
     const agents = $derived(
         Object.values(workflow.nodes).filter((node): node is AgentNode => node.class === 'Agent')
@@ -101,6 +104,24 @@
         if (next.has(blockId)) next.delete(blockId);
         else next.add(blockId);
         expandedBlocks = next;
+    }
+
+    async function removeBlock(block: PromptBlock) {
+        if (!agent || deletingBlockId) return;
+        const agentId = agent.id;
+        deletingBlockId = block.id;
+        try {
+            const confirmed = await appConfirm({
+                title: 'Delete prompt block?',
+                description: `Delete "${block.name}" from this prompt?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed || agent?.id !== agentId) return;
+            await onEdit(deleteBlock(workflow, agentId, block.id));
+        } finally {
+            deletingBlockId = null;
+        }
     }
 </script>
 
@@ -180,6 +201,12 @@
                                 : 'opacity-55'}"
                         >
                             <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+                                <div
+                                    class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+                                    aria-hidden="true"
+                                >
+                                    <GripVertical class="size-4" />
+                                </div>
                                 <button
                                     class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                                     onclick={() => toggleBlock(block.id)}
@@ -267,8 +294,9 @@
                                     class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
                                     title="Delete block"
                                     aria-label="Delete block"
-                                    onclick={() =>
-                                        onEdit(deleteBlock(workflow, agent.id, block.id))}
+                                    disabled={deletingBlockId !== null}
+                                    aria-busy={deletingBlockId === block.id}
+                                    onclick={() => removeBlock(block)}
                                     ><Trash2 class="size-4" /></Button
                                 >
                             </div>

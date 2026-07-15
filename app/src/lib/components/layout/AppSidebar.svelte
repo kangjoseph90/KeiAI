@@ -4,15 +4,20 @@
         ChevronDown,
         ChevronLeft,
         ChevronRight,
+        Cloud,
+        CloudOff,
         Edit3,
         Folder,
         FolderOpen,
         Home,
+        LoaderCircle,
+        LockKeyhole,
         MessageSquare,
         Pin,
         Plus,
         Search,
         Settings,
+        RefreshCw,
         Trash2,
         User,
         UserCircle,
@@ -21,7 +26,8 @@
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
-    import ResourcePickerDialog from '$lib/components/ResourcePickerDialog.svelte';
+    import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
+    import ParticipantCardMenu from '$lib/components/ParticipantCardMenu.svelte';
     import RoomAvatar from '$lib/components/RoomAvatar.svelte';
     import { Button } from '$lib/components/ui/button';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -31,9 +37,8 @@
         activeUser,
         activePreset,
         activeRoom,
-        addRoomCharacter,
+        assetSyncStatus,
         appSettings,
-        characters,
         chatSelections,
         createChat,
         createGlobalFolder,
@@ -41,12 +46,14 @@
         deleteChat,
         deleteGlobalFolder,
         deleteRoomFolder,
+        dataSyncStatus,
         isMultiRoom,
+        isSyncLinked,
         localUsers,
         migrationLocked,
+        multiSyncStatus,
         moveGlobalItem,
         moveRoomItem,
-        multiRoomCharacters,
         removeRoomCharacter,
         roomChats,
         roomCharacters,
@@ -57,16 +64,20 @@
         updateGlobalFolder,
         updateRoom,
         updateRoomFolder,
+        userSyncStatus,
         loadLocalUsers,
         switchLocalUser,
         createAndSwitchLocalUser
     } from '$lib/stores';
+    import { appConfirm, characterPickerOpen, toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { getFolderColorClass } from '$lib/components/entitylist/folders';
-    import { addRoomCharacterFromLibrary, setGlobalVariable } from '$lib/managers';
+    import { setGlobalVariable } from '$lib/managers';
     import type { RouteState } from '$lib/router';
     import { syncChatGreetings } from '$lib/managers';
     import { compareSortOrder } from '$lib/utils/ordering';
+    import { getErrorMessage } from '$lib/types/errors';
+    import { SyncManager, type SyncStatus } from '$lib/services/sync';
 
     interface Props {
         collapsed?: boolean;
@@ -75,29 +86,103 @@
         onNavigate: (route: RouteState) => void;
     }
 
+    type SyncIndicatorState = SyncStatus['state'] | 'migration';
+
+    const SYNC_ICON_DELAY_MS = 400;
+    const SYNC_ICON_MIN_VISIBLE_MS = 500;
+
     let { collapsed = false, route, onToggle, onNavigate }: Props = $props();
 
     let chatSearch = $state('');
-    let characterPickerOpen = $state(false);
     let editingChatId = $state<string | null>(null);
     let editingChatTitle = $state('');
     let editingRoomName = $state(false);
     let roomNameDraft = $state('');
     let switchingUserId = $state<string | null>(null);
     let creatingUser = $state(false);
+    let retryingSync = $state(false);
+    let sidebarAction = $state<string | null>(null);
+    let syncIconState = $state<SyncIndicatorState>('idle');
+    let syncIconStartedAt = 0;
+
+    const syncState = $derived.by(() => {
+        if ($migrationLocked) return 'migration';
+        const states = [
+            $dataSyncStatus.state,
+            $userSyncStatus.state,
+            $assetSyncStatus.state,
+            $multiSyncStatus.state
+        ];
+        if (states.includes('auth_error')) return 'auth_error';
+        if (states.includes('quota_error')) return 'quota_error';
+        if (states.includes('network_error')) return 'network_error';
+        if (states.includes('syncing')) return 'syncing';
+        return 'idle';
+    });
+    const syncLabel = $derived(
+        syncState === 'migration'
+            ? 'Migration in progress'
+            : syncState === 'syncing'
+              ? 'Syncing encrypted data'
+              : syncState === 'network_error'
+                ? 'Sync paused: network unavailable. Activate to retry.'
+                : syncState === 'quota_error'
+                  ? 'Sync paused: remote storage quota reached. Activate to retry.'
+                  : syncState === 'auth_error'
+                    ? 'Sync paused: sign-in needs attention. Activate to retry.'
+                    : 'Encrypted data is synced. Activate to sync now.'
+    );
+
+    $effect(() => {
+        const nextState = syncState;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+
+        const showState = (state: SyncIndicatorState): void => {
+            syncIconState = state;
+            syncIconStartedAt = state === 'syncing' ? Date.now() : 0;
+        };
+
+        if (nextState === 'syncing' && syncIconState !== 'syncing') {
+            timer = setTimeout(() => showState('syncing'), SYNC_ICON_DELAY_MS);
+        } else if (nextState === 'idle' && syncIconState === 'syncing') {
+            const remaining = SYNC_ICON_MIN_VISIBLE_MS - (Date.now() - syncIconStartedAt);
+            if (remaining > 0) timer = setTimeout(() => showState('idle'), remaining);
+            else showState('idle');
+        } else {
+            showState(nextState);
+        }
+
+        return () => {
+            if (timer) clearTimeout(timer);
+        };
+    });
+
+    function syncStatusLabel(status: SyncStatus): string {
+        if (status.state === 'syncing') return 'Syncing';
+        if (status.state === 'network_error') return 'Network error';
+        if (status.state === 'quota_error') return 'Quota error';
+        if (status.state === 'auth_error') return 'Authentication error';
+        return 'Up to date';
+    }
+
+    function syncStatusColor(status: SyncStatus): string {
+        if (status.state === 'syncing') return 'bg-blue-500';
+        if (status.state === 'idle') return 'bg-green-500';
+        return 'bg-destructive';
+    }
+
+    function syncProgressLabel(status: SyncStatus): string | null {
+        if (status.progress) {
+            return `${status.progress.completed}/${status.progress.total}`;
+        }
+        return null;
+    }
 
     const filteredChats = $derived(() => {
         const query = chatSearch.trim().toLowerCase();
         if (!query) return $roomChats;
         return $roomChats.filter((chat) => chat.title.toLowerCase().includes(query));
     });
-
-    const pickerCharacters = $derived($isMultiRoom ? $multiRoomCharacters : $characters);
-    const characterPickerConfig = $derived(
-        $isMultiRoom
-            ? { refs: {}, folders: {} }
-            : ($appSettings?.characters ?? { refs: {}, folders: {} })
-    );
 
     const otherUsers = $derived(() =>
         $localUsers.filter((user) => user.id !== $activeUser?.id).reverse()
@@ -107,14 +192,46 @@
         void loadLocalUsers();
     });
 
+    async function handleSync(): Promise<void> {
+        if (retryingSync || syncState === 'syncing') return;
+        retryingSync = true;
+        try {
+            await SyncManager.syncAll();
+        } catch (error) {
+            toast.error({ title: 'Could not sync', description: getErrorMessage(error) });
+        } finally {
+            retryingSync = false;
+        }
+    }
+
+    async function runSidebarAction(
+        key: string,
+        errorTitle: string,
+        action: () => void | Promise<void>
+    ): Promise<void> {
+        if (sidebarAction) return;
+        sidebarAction = key;
+        try {
+            await action();
+        } catch (error) {
+            toast.error({ title: errorTitle, description: getErrorMessage(error) });
+        } finally {
+            sidebarAction = null;
+        }
+    }
+
     async function handleCreateChat() {
         if (!$activeRoom) return;
-
-        const chat = await createChat($activeRoom.id, {
-            title: `New Chat ${$roomChats.length + 1}`
+        const roomId = $activeRoom.id;
+        await runSidebarAction('create-chat', 'Could not create chat', async () => {
+            const chat = await createChat(roomId, {
+                title: `New Chat ${$roomChats.length + 1}`
+            });
+            await syncChatGreetings(chat.id);
+            if ($activeRoom?.id === roomId) {
+                onNavigate({ view: 'room', roomId, chatId: chat.id });
+            }
         });
-        await syncChatGreetings(chat.id);
-        onNavigate({ view: 'room', roomId: $activeRoom.id, chatId: chat.id });
     }
 
     function handleSelectRoom(roomId: string) {
@@ -127,62 +244,76 @@
 
     async function handleSelectCharacter(characterId: string) {
         if (!$activeChat) return;
-        await setChatSelectedCharacter($activeChat.id, characterId);
+        const chatId = $activeChat.id;
+        await runSidebarAction(
+            `select-character:${characterId}`,
+            'Could not select character',
+            () => setChatSelectedCharacter(chatId, characterId)
+        );
     }
 
     async function handleSetDefaultCharacter(characterId: string) {
         if (!$activeChat) return;
-        await setChatDefaultCharacter($activeChat.id, characterId);
-    }
-
-    async function handleAddCharacters(characterIds: string[]) {
-        if (!$activeRoom) return;
-        for (const characterId of characterIds) {
-            await addRoomCharacter($activeRoom.id, characterId);
-        }
-        if (!$activeChat) return;
-        await syncChatGreetings($activeChat.id);
-    }
-
-    async function handleCopyCharacters(characterIds: string[]) {
-        if (!$activeRoom) return;
-        for (const characterId of characterIds) {
-            await addRoomCharacterFromLibrary($activeRoom.id, characterId);
-        }
-        if ($activeChat) {
-            await syncChatGreetings($activeChat.id);
-        }
+        const chatId = $activeChat.id;
+        await runSidebarAction(
+            `default-character:${characterId}`,
+            'Could not set default character',
+            () => setChatDefaultCharacter(chatId, characterId)
+        );
     }
 
     async function handleRemoveCharacter(characterId: string) {
         if (!$activeRoom) return;
-        await removeRoomCharacter($activeRoom.id, characterId);
-        if (!$activeChat) return;
-        await syncChatGreetings($activeChat.id);
+        const roomId = $activeRoom.id;
+        const chatId = $activeChat?.id;
+        const character = $roomCharacters.find((item) => item.id === characterId);
+        await runSidebarAction(
+            `remove-character:${characterId}`,
+            'Could not remove character',
+            async () => {
+                const confirmed = await appConfirm({
+                    title: 'Remove character from room?',
+                    description: `Remove "${character?.name ?? 'this character'}" from this room?`,
+                    confirmText: 'Remove',
+                    variant: 'destructive'
+                });
+                if (!confirmed || $activeRoom?.id !== roomId) return;
+                await removeRoomCharacter(roomId, characterId);
+                if (chatId) await syncChatGreetings(chatId);
+            }
+        );
     }
 
     async function handleSelectChat(chatId: string) {
         if (!$activeRoom) return;
-        await syncChatGreetings(chatId);
-        onNavigate({ view: 'room', roomId: $activeRoom.id, chatId });
+        const roomId = $activeRoom.id;
+        await runSidebarAction(`select-chat:${chatId}`, 'Could not open chat', async () => {
+            await syncChatGreetings(chatId);
+            if ($activeRoom?.id === roomId) onNavigate({ view: 'room', roomId, chatId });
+        });
     }
 
     async function handleRenameChat(chatId: string) {
         const title = editingChatTitle.trim();
         if (!title) return;
 
-        await updateChat(chatId, { title });
-        editingChatId = null;
-        editingChatTitle = '';
+        await runSidebarAction(`rename-chat:${chatId}`, 'Could not rename chat', async () => {
+            await updateChat(chatId, { title });
+            editingChatId = null;
+            editingChatTitle = '';
+        });
     }
 
     async function handleRenameRoom() {
         if (!$activeRoom || $isMultiRoom) return;
         const name = roomNameDraft.trim();
         if (!name) return;
-        await updateRoom($activeRoom.id, { name });
-        editingRoomName = false;
-        roomNameDraft = '';
+        const roomId = $activeRoom.id;
+        await runSidebarAction('rename-room', 'Could not rename room', async () => {
+            await updateRoom(roomId, { name });
+            editingRoomName = false;
+            roomNameDraft = '';
+        });
     }
 
     function startRenameRoom() {
@@ -193,27 +324,56 @@
 
     async function handleDeleteChat(chatId: string) {
         if (!$activeRoom) return;
-
-        await deleteChat(chatId, $activeRoom.id);
-        if ($activeChat?.id === chatId) {
-            onNavigate({ view: 'room', roomId: $activeRoom.id });
-        }
+        const roomId = $activeRoom.id;
+        const chat = $roomChats.find((item) => item.id === chatId);
+        await runSidebarAction(`delete-chat:${chatId}`, 'Could not delete chat', async () => {
+            const confirmed = await appConfirm({
+                title: 'Delete chat?',
+                description: `Delete "${chat?.title || 'Untitled Chat'}" and its messages?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed || $activeRoom?.id !== roomId) return;
+            await deleteChat(chatId, roomId);
+            if ($activeRoom?.id === roomId && $activeChat?.id === chatId) {
+                onNavigate({ view: 'room', roomId });
+            }
+        });
     }
 
     async function handleToggleChange(key: string, value: string) {
-        await setGlobalVariable(`toggle_${key}`, value);
+        try {
+            await setGlobalVariable(`toggle_${key}`, value);
+        } catch (error) {
+            toast.error({
+                title: 'Could not update variable',
+                description: getErrorMessage(error)
+            });
+        }
     }
 
     async function handleSwitchUser(userId: string) {
         if ($migrationLocked || switchingUserId || creatingUser) return;
         switchingUserId = userId;
-        await switchLocalUser(userId);
+        try {
+            await switchLocalUser(userId);
+        } catch (error) {
+            toast.error({ title: 'Could not switch user', description: getErrorMessage(error) });
+        } finally {
+            switchingUserId = null;
+        }
     }
 
     async function handleCreateUser() {
         if ($migrationLocked || switchingUserId || creatingUser) return;
         creatingUser = true;
-        await createAndSwitchLocalUser();
+        try {
+            await createAndSwitchLocalUser();
+        } catch (error) {
+            toast.error({ title: 'Could not create user', description: getErrorMessage(error) });
+        } finally {
+            creatingUser = false;
+        }
     }
 
     function startRenameChat(chatId: string, title: string) {
@@ -226,23 +386,36 @@
     }
 </script>
 
+{#snippet syncStatusRow(label: string, status: SyncStatus)}
+    {@const progress = syncProgressLabel(status)}
+    <div class="flex items-center gap-2 px-2 py-1.5 text-xs">
+        <span class={`size-2 shrink-0 rounded-full ${syncStatusColor(status)}`}></span>
+        <span class="min-w-0 flex-1 font-medium">{label}</span>
+        <span class="text-muted-foreground">{syncStatusLabel(status)}</span>
+        {#if progress}
+            <span class="min-w-10 text-right font-mono text-muted-foreground">{progress}</span>
+        {/if}
+    </div>
+{/snippet}
+
 {#if !collapsed}
     <button
         type="button"
-        class="fixed inset-0 z-30 bg-black/35 md:hidden"
+        class="fixed inset-0 z-30 bg-black/35 lg:hidden"
         aria-label="Close room panel"
         onclick={onToggle}
     ></button>
 {/if}
 
 <aside
-    class="relative z-20 flex h-full shrink-0 bg-sidebar text-sidebar-foreground {collapsed
-        ? 'border-r max-md:z-20 max-md:w-0 max-md:border-0'
-        : 'border-r max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl'}"
+    data-compact-open={!collapsed}
+    class="app-sidebar relative z-20 flex h-full shrink-0 bg-sidebar text-sidebar-foreground {collapsed
+        ? 'border-r max-lg:z-20 max-lg:w-0 max-lg:border-0'
+        : 'border-r max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-40 max-lg:shadow-xl'}"
 >
     <div
         class="flex w-14 flex-col border-r border-sidebar-border bg-sidebar {collapsed
-            ? 'max-md:hidden'
+            ? 'max-lg:hidden'
             : ''}"
     >
         <div class="flex h-14 items-center justify-center border-b border-sidebar-border">
@@ -322,11 +495,71 @@
         </div>
 
         <div class="flex flex-col items-center gap-2 border-t border-sidebar-border p-2">
+            {#if $isSyncLinked || $migrationLocked}
+                <DropdownMenu.Root>
+                    <DropdownMenu.Trigger>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            class="size-9"
+                            title={syncLabel}
+                            aria-label={`View sync status: ${syncLabel}`}
+                            aria-busy={retryingSync || syncState === 'syncing'}
+                        >
+                            {#if syncIconState === 'migration'}
+                                <LockKeyhole
+                                    class="size-4 text-amber-600 dark:text-amber-400"
+                                    aria-hidden="true"
+                                />
+                            {:else if syncIconState === 'syncing'}
+                                <LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
+                            {:else if syncIconState === 'idle'}
+                                <Cloud
+                                    class="size-4 text-green-600 dark:text-green-400"
+                                    aria-hidden="true"
+                                />
+                            {:else}
+                                <CloudOff class="size-4 text-destructive" aria-hidden="true" />
+                            {/if}
+                        </Button>
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Content side="right" align="end" sideOffset={10} class="w-72 p-1">
+                        <DropdownMenu.Label class="px-2 py-1.5 text-xs"
+                            >Sync status</DropdownMenu.Label
+                        >
+                        {#if $migrationLocked}
+                            <div class="mx-1 mb-1 rounded-md bg-amber-500/10 px-2.5 py-2 text-xs">
+                                <p class="font-medium text-amber-700 dark:text-amber-300">
+                                    Migration in progress
+                                </p>
+                                <p class="mt-1 leading-4 text-muted-foreground">
+                                    Sync is paused until migration finishes.
+                                </p>
+                            </div>
+                            <DropdownMenu.Separator />
+                        {/if}
+                        {@render syncStatusRow('User', $userSyncStatus)}
+                        {@render syncStatusRow('Records', $dataSyncStatus)}
+                        {@render syncStatusRow('Assets', $assetSyncStatus)}
+                        {@render syncStatusRow('Multi-room', $multiSyncStatus)}
+                        <DropdownMenu.Separator />
+                        <DropdownMenu.Item
+                            class="cursor-pointer gap-2"
+                            disabled={$migrationLocked || retryingSync || syncState === 'syncing'}
+                            onclick={() => void handleSync()}
+                        >
+                            <RefreshCw class="size-4" />
+                            {retryingSync || syncState === 'syncing' ? 'Syncing...' : 'Sync now'}
+                        </DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                </DropdownMenu.Root>
+            {/if}
             <Button
                 variant="ghost"
                 size="icon"
                 class="size-9"
                 title="Settings"
+                aria-label="Settings"
                 onclick={() => onNavigate({ view: 'settings' })}
             >
                 <Settings class="size-4" />
@@ -338,6 +571,7 @@
                         size="icon"
                         class="size-9 overflow-hidden rounded-md"
                         title={$activeUser?.name ?? 'Current user'}
+                        aria-label={`Current user: ${$activeUser?.name ?? 'Unknown'}`}
                     >
                         {#if $activeUser?.avatar}
                             <img
@@ -419,9 +653,7 @@
     {#if $activeRoom}
         {#if !collapsed}
             <div class="relative flex">
-                <div
-                    class="flex w-[360px] flex-col bg-sidebar max-md:w-[calc(100vw-5.5rem)] max-md:max-w-[364px]"
-                >
+                <div class="app-sidebar-room-panel flex w-[360px] flex-col bg-sidebar">
                     <div class="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
                         {#if editingRoomName}
                             <form
@@ -442,7 +674,14 @@
                                         }
                                     }}
                                 />
-                                <Button type="submit" size="icon" class="size-8">
+                                <Button
+                                    type="submit"
+                                    size="icon"
+                                    class="size-8"
+                                    aria-label="Save room name"
+                                    disabled={sidebarAction !== null}
+                                    aria-busy={sidebarAction === 'rename-room'}
+                                >
                                     <Check class="size-3.5" />
                                 </Button>
                                 <Button
@@ -450,6 +689,7 @@
                                     variant="ghost"
                                     size="icon"
                                     class="size-8"
+                                    disabled={sidebarAction !== null}
                                     onclick={() => {
                                         editingRoomName = false;
                                         roomNameDraft = '';
@@ -469,6 +709,7 @@
                                     class="size-8 shrink-0 text-muted-foreground"
                                     title="Rename room"
                                     aria-label="Rename room"
+                                    disabled={sidebarAction !== null}
                                     onclick={startRenameRoom}
                                 >
                                     <Edit3 class="size-3.5" />
@@ -490,7 +731,8 @@
                                 class="size-6 text-muted-foreground hover:text-foreground"
                                 title="Add characters"
                                 aria-label="Add characters"
-                                onclick={() => (characterPickerOpen = true)}
+                                disabled={sidebarAction !== null}
+                                onclick={() => ($characterPickerOpen = true)}
                             >
                                 <Plus class="size-3.5" />
                             </Button>
@@ -529,10 +771,8 @@
                                 )}
                         >
                             {#snippet empty()}
-                                <div
-                                    class="col-span-3 rounded-md border border-dashed p-3 text-center"
-                                >
-                                    <p class="text-[11px] text-muted-foreground">No characters.</p>
+                                <div class="col-span-3">
+                                    <EmptyListPlaceholder message="No characters." />
                                 </div>
                             {/snippet}
                             {#snippet item({ entity: character })}
@@ -570,26 +810,48 @@
                                             >{character.name}</span
                                         >
                                     </div>
+                                    <ParticipantCardMenu
+                                        kind="character"
+                                        name={character.name}
+                                        {isDefault}
+                                        disabled={sidebarAction !== null}
+                                        defaultDisabled={!$activeChat}
+                                        defaultBusy={sidebarAction ===
+                                            `default-character:${character.id}`}
+                                        removeBusy={sidebarAction ===
+                                            `remove-character:${character.id}`}
+                                        onOpen={() => handleOpenCharacter(character.id)}
+                                        onSetDefault={() => handleSetDefaultCharacter(character.id)}
+                                        onRemove={() => handleRemoveCharacter(character.id)}
+                                    />
                                     <button
-                                        class="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
+                                        class="absolute -left-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100 lg:flex"
                                         title="Open character studio"
+                                        aria-label={`Open ${character.name} studio`}
                                         onclick={() => handleOpenCharacter(character.id)}
                                     >
                                         <Settings class="size-3" />
                                     </button>
                                     <button
-                                        class="absolute left-5 -top-1 flex size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity {isDefault
+                                        class="absolute left-5 -top-1 hidden size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity lg:flex {isDefault
                                             ? 'text-primary opacity-100'
                                             : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
                                         title="Set default character"
-                                        disabled={!$activeChat}
+                                        aria-label={`Set ${character.name} as default character`}
+                                        disabled={!$activeChat || sidebarAction !== null}
+                                        aria-busy={sidebarAction ===
+                                            `default-character:${character.id}`}
                                         onclick={() => handleSetDefaultCharacter(character.id)}
                                     >
                                         <Pin class="size-3" />
                                     </button>
                                     <button
-                                        class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                        class="absolute -right-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100 lg:flex"
                                         title="Remove from room"
+                                        aria-label={`Remove ${character.name} from room`}
+                                        disabled={sidebarAction !== null}
+                                        aria-busy={sidebarAction ===
+                                            `remove-character:${character.id}`}
                                         onclick={() => handleRemoveCharacter(character.id)}
                                     >
                                         <X class="size-3" />
@@ -616,6 +878,8 @@
                             class="size-8 shrink-0"
                             title="New chat"
                             aria-label="New chat"
+                            disabled={sidebarAction !== null}
+                            aria-busy={sidebarAction === 'create-chat'}
                             onclick={handleCreateChat}
                         >
                             <Plus class="size-4" />
@@ -651,11 +915,7 @@
                                     )}
                             >
                                 {#snippet empty()}
-                                    <div
-                                        class="px-3 py-8 text-center text-xs text-muted-foreground"
-                                    >
-                                        No chats yet.
-                                    </div>
+                                    <EmptyListPlaceholder message="No chats yet." />
                                 {/snippet}
                                 {#snippet folder({ folder: f, collapsed, toggle, parts })}
                                     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -714,7 +974,15 @@
                                                         }
                                                     }}
                                                 />
-                                                <Button type="submit" size="icon" class="size-7">
+                                                <Button
+                                                    type="submit"
+                                                    size="icon"
+                                                    class="size-7"
+                                                    aria-label="Save chat name"
+                                                    disabled={sidebarAction !== null}
+                                                    aria-busy={sidebarAction ===
+                                                        `rename-chat:${chat.id}`}
+                                                >
                                                     <Check class="size-3" />
                                                 </Button>
                                                 <Button
@@ -722,6 +990,7 @@
                                                     variant="ghost"
                                                     size="icon"
                                                     class="size-7"
+                                                    disabled={sidebarAction !== null}
                                                     onclick={() => {
                                                         editingChatId = null;
                                                         editingChatTitle = '';
@@ -743,8 +1012,10 @@
                                                     </span>
                                                 </div>
                                                 <button
-                                                    class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                                    class="touch-visible flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
                                                     title="Rename chat"
+                                                    aria-label={`Rename ${chat.title || 'Untitled Chat'}`}
+                                                    disabled={sidebarAction !== null}
                                                     onclick={() =>
                                                         startRenameChat(
                                                             chat.id,
@@ -754,8 +1025,12 @@
                                                     <Edit3 class="size-3" />
                                                 </button>
                                                 <button
-                                                    class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
+                                                    class="touch-visible flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
                                                     title="Delete chat"
+                                                    aria-label={`Delete ${chat.title || 'Untitled Chat'}`}
+                                                    disabled={sidebarAction !== null}
+                                                    aria-busy={sidebarAction ===
+                                                        `delete-chat:${chat.id}`}
                                                     onclick={() => handleDeleteChat(chat.id)}
                                                 >
                                                     <Trash2 class="size-3" />
@@ -876,55 +1151,41 @@
                         </div>
                     {/if}
                 </div>
-                <button
-                    type="button"
-                    class="absolute left-full top-1.5 z-30 flex h-11 w-8 items-center justify-center rounded-r-md border border-l-0 bg-sidebar text-muted-foreground shadow-sm transition-colors hover:bg-sidebar-accent hover:text-foreground max-md:hidden"
+                <Button
+                    variant="outline"
+                    size="icon-lg"
+                    class="absolute left-full top-1.5 z-30 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-lg:hidden"
                     title="Hide room panel"
                     aria-label="Hide room panel"
                     onclick={onToggle}
                 >
                     <ChevronLeft class="size-4" />
-                </button>
+                </Button>
             </div>
         {:else}
-            <button
-                type="button"
-                class="absolute left-full top-1.5 z-50 flex h-11 w-8 items-center justify-center rounded-r-md border border-l-0 bg-background/70 text-muted-foreground opacity-50 shadow-sm backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:opacity-100"
+            <Button
+                variant="outline"
+                size="icon-lg"
+                class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
                 title="Show room panel"
                 aria-label="Show room panel"
                 onclick={onToggle}
             >
                 <ChevronRight class="size-4" />
-            </button>
+            </Button>
         {/if}
     {/if}
 
     {#if !$activeRoom && collapsed}
-        <button
-            type="button"
-            class="absolute left-full top-1.5 z-50 flex h-11 w-8 items-center justify-center rounded-r-md border border-l-0 bg-background/70 text-muted-foreground opacity-50 shadow-sm backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:opacity-100 md:hidden"
+        <Button
+            variant="outline"
+            size="icon-lg"
+            class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent lg:hidden"
             title="Show sidebar"
             aria-label="Show sidebar"
             onclick={onToggle}
         >
             <ChevronRight class="size-4" />
-        </button>
+        </Button>
     {/if}
 </aside>
-
-<ResourcePickerDialog
-    bind:open={characterPickerOpen}
-    title="Add characters"
-    description="Choose who belongs in this room. You can add several at once."
-    singularLabel="character"
-    resourceLabel="characters"
-    resources={pickerCharacters}
-    config={characterPickerConfig}
-    attachedIds={$roomCharacters.map((character) => character.id)}
-    ownerTable="characters"
-    onAdd={handleAddCharacters}
-    roomTabLabel="Room characters"
-    libraryResources={$isMultiRoom ? $characters : undefined}
-    libraryConfig={$isMultiRoom ? $appSettings?.characters : undefined}
-    onCopy={$isMultiRoom ? handleCopyCharacters : undefined}
-/>

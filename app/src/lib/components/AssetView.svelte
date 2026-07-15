@@ -29,6 +29,8 @@
     let retryCount = 0;
     let ownedUrl: string | null = null;
     let requestedAssetKey: string | null = null;
+    let requestGeneration = 0;
+    let destroyed = false;
     const MAX_RETRIES = 2;
 
     // Lazy visibility tracking
@@ -52,13 +54,14 @@
     // Load only when visible + asset is set
     function loadAsset(locator: AssetReadLocator) {
         const key = assetRegistryId(locator);
+        const generation = ++requestGeneration;
         requestedAssetKey = key;
         loading = true;
         error = false;
 
         AssetService.read(locator)
             .then((res) => {
-                if (currentAssetKey() !== key) {
+                if (destroyed || generation !== requestGeneration || currentAssetKey() !== key) {
                     if (res) void AssetService.revokeUrl(res);
                     return;
                 }
@@ -72,12 +75,14 @@
                 }
             })
             .catch(() => {
-                if (currentAssetKey() !== key) return;
+                if (destroyed || generation !== requestGeneration || currentAssetKey() !== key)
+                    return;
                 setUrl(null);
                 error = true;
             })
             .finally(() => {
-                if (currentAssetKey() === key) loading = false;
+                if (!destroyed && generation === requestGeneration && currentAssetKey() === key)
+                    loading = false;
             });
     }
 
@@ -124,6 +129,7 @@
     }
 
     function resetAssetState(): void {
+        requestGeneration += 1;
         setUrl(null);
         loading = false;
         error = false;
@@ -131,6 +137,8 @@
     }
 
     onDestroy(() => {
+        destroyed = true;
+        requestGeneration += 1;
         setUrl(null);
     });
 </script>

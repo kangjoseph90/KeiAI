@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
     createTask: vi.fn(),
     clearTask: vi.fn(),
     setTaskError: vi.fn(),
+    notifyTaskComplete: vi.fn(),
+    notifyTaskError: vi.fn(),
     getTask: vi.fn(),
     createPagedMessages: vi.fn(),
     runtimeOptions: vi.fn(),
@@ -44,6 +46,8 @@ vi.mock('$lib/stores/tasks/translation', () => ({
     createTranslationTask: mocks.createTask,
     clearTranslationTask: mocks.clearTask,
     setTranslationTaskError: mocks.setTaskError,
+    notifyTranslationTaskComplete: mocks.notifyTaskComplete,
+    notifyTranslationTaskError: mocks.notifyTaskError,
     getTranslationTask: mocks.getTask
 }));
 
@@ -119,6 +123,9 @@ describe('translation task', () => {
     it('bounds history before the target message and streams the workflow result', async () => {
         await runTranslation('message-1');
 
+        expect(mocks.clearTask).toHaveBeenCalledWith('message-1');
+        expect(mocks.notifyTaskComplete).toHaveBeenCalledWith('message-1');
+        expect(mocks.notifyTaskError).not.toHaveBeenCalled();
         expect(mocks.createPagedMessages).toHaveBeenCalledWith('chat-1', 'b0');
         expect(mocks.createTask).toHaveBeenCalledWith(
             'message-1',
@@ -174,6 +181,26 @@ describe('translation task', () => {
 
         await expect(runTranslation('message-1')).rejects.toThrow('provider failed');
         expect(mocks.setTaskError).toHaveBeenCalledWith('message-1', 'provider failed');
+        expect(mocks.notifyTaskError).toHaveBeenCalledWith('message-1', 'provider failed');
         expect(mocks.clearTask).not.toHaveBeenCalled();
+    });
+
+    it('does not notify when the translation is aborted', async () => {
+        mocks.createTask.mockImplementation(
+            (_messageId, _sourceHash, controller: AbortController) => {
+                controller.abort();
+            }
+        );
+        mocks.runtimeStream.mockImplementation(async function* () {
+            yield 'partial';
+            throw new DOMException('Aborted', 'AbortError');
+        });
+
+        await expect(runTranslation('message-1')).rejects.toThrow('Aborted');
+
+        expect(mocks.clearTask).toHaveBeenCalledWith('message-1');
+        expect(mocks.setTaskError).not.toHaveBeenCalled();
+        expect(mocks.notifyTaskComplete).not.toHaveBeenCalled();
+        expect(mocks.notifyTaskError).not.toHaveBeenCalled();
     });
 });

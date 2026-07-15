@@ -5,12 +5,14 @@
  */
 
 import type {
+    LLMContentPart,
+    LLMMessage,
     LLMStreamContent,
     LLMStreamHandler,
     LLMStreamOptions,
-    OpenAIChat,
     RemoteLLMHandlerConfig
 } from '../types';
+import { getTextContent } from '../types';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { debounceStream } from '$lib/utils/stream';
@@ -18,8 +20,10 @@ import { buildUrl } from '$lib/utils/url';
 
 interface GeminiContent {
     role: string; // 'user' or 'model'
-    parts: Array<{ text: string }>;
+    parts: GeminiContentPart[];
 }
+
+type GeminiContentPart = { text: string } | { inlineData: { mimeType: string; data: string } };
 
 interface GeminiCompletion {
     candidates?: Array<{
@@ -37,7 +41,7 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
     }
 
     async *stream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
@@ -50,7 +54,7 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
     }
 
     private async *complete(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
@@ -65,7 +69,7 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
     }
 
     private async *rawStream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
@@ -131,7 +135,7 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
     }
 
     private async fetchCompletion(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions
     ): Promise<Response> {
@@ -149,12 +153,13 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
         const useProxy = config.useProxy ?? true;
 
         // Convert OpenAI messages to Gemini format
-        const systemMessage = messages.find((m) => m.role === 'system')?.content;
+        const systemContent = messages.find((m) => m.role === 'system')?.content;
+        const systemMessage = systemContent ? getTextContent(systemContent) : undefined;
         const chatMessages = messages.filter((m) => m.role !== 'system');
 
         const geminiMessages: GeminiContent[] = chatMessages.map((m) => ({
             role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.content }]
+            parts: toGeminiParts(m.content)
         }));
 
         const body: Record<string, unknown> = {
@@ -196,4 +201,14 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
 
         return response;
     }
+}
+
+function toGeminiParts(content: LLMContentPart[]): GeminiContentPart[] {
+    return content.map((part) => toGeminiPart(part));
+}
+
+function toGeminiPart(part: LLMContentPart): GeminiContentPart {
+    if (part.type === 'text') return { text: part.text };
+
+    return { inlineData: { mimeType: part.mimeType, data: part.data } };
 }

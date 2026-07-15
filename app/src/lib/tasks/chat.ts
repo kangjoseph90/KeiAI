@@ -12,7 +12,9 @@ import {
     createChatTask,
     setChatTaskError,
     getChatTask,
-    clearChatTask
+    clearChatTask,
+    notifyChatTaskComplete,
+    notifyChatTaskError
 } from '$lib/stores/tasks/chat';
 import { getChat, getCharacter, getAppSettings, getPersona, getPreset, getRoom } from '$lib/stores';
 import { PagedMessages } from '$lib/services/content/paged_messages';
@@ -152,16 +154,21 @@ export async function runChat(
 
         const finalMsg = await getMessage(preparedMessage.id);
         if (!finalMsg) {
-            setChatTaskError(chatId, 'Message not found after generation');
+            const errMsg = 'Message not found after generation';
+            setChatTaskError(chatId, errMsg);
+            notifyChatTaskError(chatId, errMsg);
             return;
         }
         const finalSwipe = finalMsg.swipes[targetSwipeId];
         if (!finalSwipe || getLastContentText(finalSwipe.parts).length === 0) {
-            setChatTaskError(chatId, 'Empty response from model');
+            const errMsg = 'Empty response from model';
+            setChatTaskError(chatId, errMsg);
+            notifyChatTaskError(chatId, errMsg);
             return;
         }
 
         clearChatTask(chatId);
+        notifyChatTaskComplete(chatId);
     } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
             clearChatTask(chatId);
@@ -172,6 +179,7 @@ export async function runChat(
         // setChatTaskError no-ops without a registered task (validation errors), so also log.
         logger.error(`Chat ${chatId} failed: ${errMsg}`);
         setChatTaskError(chatId, errMsg);
+        notifyChatTaskError(chatId, errMsg);
     }
 }
 

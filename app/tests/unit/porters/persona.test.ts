@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     exportPersonaPackage,
     importPersonaPackage,
+    readPersonaFile,
+    writePersonaFile,
     type KeiPersonaPackageV1
 } from '$lib/porters/persona';
 import { AssetService } from '$lib/services/asset';
@@ -209,3 +211,19 @@ function makePackage(overrides: Partial<KeiPersonaPackageV1> = {}): KeiPersonaPa
         ...overrides
     };
 }
+
+describe('extensionless native persona imports', () => {
+    it('detects a Kei persona archive by content', async () => {
+        const bytes = await writePersonaFile(makePackage(), {
+            kind: 'keipersona',
+            assetMode: 'baked'
+        });
+
+        await expect(
+            readPersonaFile(new File([bytes.slice()], 'content:42'))
+        ).resolves.toMatchObject({
+            kind: 'keiai.persona',
+            persona: { name: 'Imported Persona' }
+        });
+    });
+});

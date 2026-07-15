@@ -9,12 +9,14 @@
  */
 
 import type {
+    LLMContentPart,
+    LLMMessage,
     LLMStreamContent,
     LLMStreamHandler,
     LLMStreamOptions,
-    OpenAIChat,
     RemoteLLMHandlerConfig
 } from '../types';
+import { getTextContent } from '../types';
 import type { ToolCallRequest } from '$lib/services/content/tool';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
@@ -61,6 +63,15 @@ interface OpenAICompletion {
     }>;
 }
 
+type OpenAIRequestContent =
+    | string
+    | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
+
+interface OpenAIRequestMessage {
+    role: LLMMessage['role'];
+    content: OpenAIRequestContent;
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export class OpenAILLMStreamHandler implements LLMStreamHandler {
@@ -71,7 +82,7 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
     }
 
     async *stream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
@@ -83,7 +94,7 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
     }
 
     private async *complete(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
@@ -104,7 +115,7 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
     }
 
     private async *rawStream(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
@@ -200,7 +211,7 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
     // ─── Internals ──────────────────────────────────────────────────────────
 
     private async fetchCompletion(
-        messages: OpenAIChat[],
+        messages: LLMMessage[],
         signal: AbortSignal,
         options: LLMStreamOptions
     ): Promise<Response> {
@@ -213,7 +224,7 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
             ...parameters,
             max_tokens: options.maxResponse ?? 4096,
             model: config.modelId,
-            messages: messages.map((m) => ({ role: m.role, content: m.content })),
+            messages: messages.map(toOpenAIRequestMessage),
             stream: options.stream ?? true
         });
 
@@ -276,4 +287,24 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
             return { _raw: args };
         }
     }
+}
+
+function toOpenAIRequestMessage(message: LLMMessage): OpenAIRequestMessage {
+    const hasImage = message.content.some((part) => part.type === 'image');
+    return {
+        role: message.role,
+        content: hasImage
+            ? message.content.map(toOpenAIContentPart)
+            : getTextContent(message.content)
+    };
+}
+
+function toOpenAIContentPart(
+    part: LLMContentPart
+): Extract<OpenAIRequestContent, ReadonlyArray<unknown>>[number] {
+    if (part.type === 'text') return part;
+    return {
+        type: 'image_url',
+        image_url: { url: `data:${part.mimeType};base64,${part.data}` }
+    };
 }

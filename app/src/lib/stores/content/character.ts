@@ -39,6 +39,8 @@ import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
 import type { AssetFields } from '$lib/types/asset';
 
+let characterSelectionVersion = 0;
+
 export interface ImportCharacterPackageOptions {
     scopeType?: DataScopeType;
     allowLightAssets?: boolean;
@@ -111,8 +113,17 @@ export async function loadCharacters(): Promise<void> {
     characters.setAll(sortByRefs(list, settings.characters.refs));
 }
 
-export async function selectCharacter(characterId: string): Promise<void> {
+export async function selectCharacter(
+    characterId: string,
+    isContextCurrent: () => boolean = () => true
+): Promise<void> {
+    if (!isContextCurrent()) return;
+    const version = ++characterSelectionVersion;
+    clearActiveCharacterState();
+    const isCurrent = () => version === characterSelectionVersion && isContextCurrent();
+
     const character = await getCharacter(characterId);
+    if (!isCurrent()) return;
     if (!character) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
 
     if (character.scopeType === 'user') {
@@ -129,6 +140,7 @@ export async function selectCharacter(characterId: string): Promise<void> {
         CharJSService.listByOwner(characterId),
         Promise.all(moduleIds.map(async (id) => [id, await ModuleService.get(id)] as const))
     ]);
+    if (!isCurrent()) return;
 
     const staleModuleRefs: Record<string, undefined> = {};
     for (const [id, mod] of moduleEntries) {
@@ -149,6 +161,11 @@ export async function selectCharacter(characterId: string): Promise<void> {
 }
 
 export function clearActiveCharacter(): void {
+    characterSelectionVersion += 1;
+    clearActiveCharacterState();
+}
+
+function clearActiveCharacterState(): void {
     activeCharacterId.set(null);
     characterLorebooks.clear();
     characterScripts.clear();

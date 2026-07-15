@@ -103,8 +103,8 @@ describe('AssetService', () => {
     };
 
     beforeEach(() => {
-        vi.clearAllMocks();
         AssetService.clear();
+        vi.clearAllMocks();
         vi.mocked(getActiveSession).mockReturnValue({
             userId: mockUserId,
             masterKey: {} as CryptoKey,
@@ -184,6 +184,23 @@ describe('AssetService', () => {
 
         expect(url).toBe('blob:asset-123');
         expect(appAsset.getRenderUrl).toHaveBeenCalledWith(locator);
+    });
+
+    it('revokes cached render URLs when service state is cleared', async () => {
+        const locator: AssetReadLocator = {
+            scopeType: 'user',
+            scopeId: mockUserId,
+            ownerTable: 'characters',
+            ownerId: 'char-123',
+            hash: 'hash-123',
+            encKey: 'enc-key'
+        };
+        vi.mocked(appAsset.getRenderUrl).mockResolvedValue('blob:asset-123');
+
+        await AssetService.read(locator);
+        AssetService.clear();
+
+        expect(appAsset.revokeRenderUrl).toHaveBeenCalledWith('blob:asset-123');
     });
 
     it('downloads, verifies, decrypts, and caches remote ciphertext', async () => {

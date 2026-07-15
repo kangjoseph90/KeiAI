@@ -21,6 +21,7 @@ import { loadUser } from './user';
 import { clearActiveCharacter } from './content/character';
 import { clearActivePersona } from './content/persona';
 import { loadGlobalState } from './init';
+import { appWindow } from '$lib/adapters/window';
 
 // ─── PB Connection State ─────────────────────────────────────────────
 
@@ -126,5 +127,5 @@ export async function performLogout(): Promise<void> {
 export async function performCreateNewUser(): Promise<void> {
     SyncManager.stopAutoSync();
     await UserService.setActiveUser(''); // Clear activeUserId KV and reload
-    window.location.reload();
+    await appWindow.reload();
 }

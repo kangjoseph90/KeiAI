@@ -113,6 +113,25 @@ describe('hydrateAssets', () => {
         expect(AssetService.revokeUrl).toHaveBeenCalledWith('blob:asset-1');
     });
 
+    it('revokes cached URLs when their images leave the hydrated DOM', async () => {
+        vi.mocked(AssetService.read).mockResolvedValue('blob:removed-asset');
+
+        const node = document.createElement('div');
+        node.innerHTML = `<img data-keiai-asset='${JSON.stringify(testLocator)}' alt="" />`;
+        document.body.appendChild(node);
+
+        const action = hydrateAssets(node);
+        const img = node.querySelector('img') as HTMLImageElement;
+
+        observers[0].trigger(img);
+        await vi.waitFor(() => expect(img.dataset.keiaiAssetState).toBe('loaded'));
+
+        img.remove();
+        action?.update?.(undefined);
+
+        expect(AssetService.revokeUrl).toHaveBeenCalledWith('blob:removed-asset');
+    });
+
     it('reuses cached URL on error retry and cleans up after MAX_RETRIES', async () => {
         vi.mocked(AssetService.read).mockResolvedValue('blob:asset-2');
 

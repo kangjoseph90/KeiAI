@@ -5,6 +5,7 @@ import { readCharacterJson } from './json';
 import { readKeiChar, writeKeiChar } from './keichar';
 import { readCharacterPng, writeCharacterPng } from './png';
 import type { KeiCharacterPackageV1 } from './types';
+import { detectFileKind } from '$lib/utils/file';
 
 export async function readCharacterFile(file: File): Promise<KeiCharacterPackageV1> {
     const name = file.name.toLowerCase();
@@ -14,6 +15,17 @@ export async function readCharacterFile(file: File): Promise<KeiCharacterPackage
         return readCharX(file);
     }
     if (name.endsWith('.keichar')) return readKeiChar(file);
+
+    const kind = detectFileKind(new Uint8Array(await file.arrayBuffer()));
+    if (kind === 'json') return readCharacterJson(file);
+    if (kind === 'png') return readCharacterPng(file);
+    if (kind === 'zip') {
+        try {
+            return await readKeiChar(file);
+        } catch {
+            return readCharX(file);
+        }
+    }
     throw new AppError('INVALID_INPUT', `Unsupported character file: ${file.name}`);
 }
 

@@ -7,7 +7,7 @@ import { getAppSettings } from '$lib/stores/content/settings';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
 import type { LLMTokenizer, LLMTypeDefinition, PluginLLMModel } from '$lib/types/models/llm';
-import type { LLMStreamContent, OpenAIChat } from '$lib/llm/types';
+import type { LLMMessage, LLMStreamContent } from '$lib/llm/types';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
 
 const logger = createLogger('plugins:manager');
@@ -317,7 +317,7 @@ export class PluginManager {
 
             const parameters = (await resolveLLMParameters(llmType, settings.presetId)) ?? {};
             yield* handler.stream(
-                messages as OpenAIChat[],
+                messages as LLMMessage[],
                 abortSignal ?? new AbortController().signal,
                 {
                     parameters,

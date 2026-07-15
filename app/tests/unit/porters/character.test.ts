@@ -811,3 +811,19 @@ function makePackage(overrides: Partial<KeiCharacterPackageV1> = {}): KeiCharact
         ...overrides
     };
 }
+
+describe('extensionless native character imports', () => {
+    it('detects a Kei character archive by content', async () => {
+        const bytes = await writeCharacterFile(makePackage(), {
+            kind: 'keichar',
+            assetMode: 'baked'
+        });
+
+        await expect(
+            readCharacterFile(new File([bytes.slice()], 'content:42'))
+        ).resolves.toMatchObject({
+            kind: 'keiai.character',
+            character: { name: 'Imported' }
+        });
+    });
+});

@@ -12,7 +12,8 @@
         maxHeight = 200,
         minRows = 1,
         classname = '',
-        onkeydown = (_e: KeyboardEvent) => {}
+        onkeydown = (_e: KeyboardEvent) => {},
+        onpaste = (_e: ClipboardEvent) => {}
     }: {
         value?: string;
         placeholder?: string;
@@ -21,6 +22,7 @@
         minRows?: number;
         classname?: string;
         onkeydown?: (e: KeyboardEvent) => void;
+        onpaste?: (e: ClipboardEvent) => void;
     } = $props();
 
     let textareaEl: HTMLTextAreaElement | undefined = $state();
@@ -28,8 +30,11 @@
     function resize() {
         if (!textareaEl) return;
         textareaEl.style.height = 'auto';
-        const newHeight = Math.min(textareaEl.scrollHeight, maxHeight);
+        const borderHeight = textareaEl.offsetHeight - textareaEl.clientHeight;
+        const naturalHeight = textareaEl.scrollHeight + borderHeight;
+        const newHeight = Math.min(naturalHeight, maxHeight);
         textareaEl.style.height = `${newHeight}px`;
+        textareaEl.style.overflowY = naturalHeight > maxHeight ? 'auto' : 'hidden';
     }
 
     $effect(() => {
@@ -52,6 +57,7 @@
     rows={minRows}
     oninput={resize}
     {onkeydown}
+    {onpaste}
     class="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 {classname}"
-    style="max-height: {maxHeight}px; overflow-y: auto;"
+    style="max-height: {maxHeight}px; overflow-y: hidden;"
 ></textarea>

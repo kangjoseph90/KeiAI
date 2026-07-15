@@ -7,8 +7,13 @@
  */
 
 import { get } from 'svelte/store';
-import { chatTasks } from '../state';
+import { activeChatId, chatTasks } from '../state';
 import type { ChatTask } from '../types';
+import { isDocumentVisible, showTaskNotificationOrToast } from './notification';
+
+const CHAT_COMPLETE_TITLE = 'Response ready';
+const CHAT_COMPLETE_DESCRIPTION = 'A chat response has finished generating.';
+const CHAT_ERROR_TITLE = 'Chat task failed';
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +50,16 @@ export function setChatTaskError(chatId: string, errorMessage: string): void {
         next.set(chatId, { ...task, status: 'error', errorMessage });
         return next;
     });
+}
+
+export function notifyChatTaskComplete(chatId: string): void {
+    if (get(activeChatId) === chatId && isDocumentVisible()) return;
+
+    void showTaskNotificationOrToast('success', CHAT_COMPLETE_TITLE, CHAT_COMPLETE_DESCRIPTION);
+}
+
+export function notifyChatTaskError(_chatId: string, errorMessage: string): void {
+    void showTaskNotificationOrToast('error', CHAT_ERROR_TITLE, errorMessage);
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────

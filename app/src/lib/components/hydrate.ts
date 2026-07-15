@@ -21,13 +21,16 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
     const retryCounts = new WeakMap<HTMLImageElement, number>();
     const ownedUrls = new Set<string>();
     const boundRecovery = new WeakSet<HTMLImageElement>();
+    const observed = new Set<HTMLImageElement>();
     let destroyed = false;
 
     const observer = new IntersectionObserver(
         (entries) => {
             for (const entry of entries) {
                 if (!entry.isIntersecting) continue;
-                void hydrate(entry.target as HTMLImageElement);
+                const img = entry.target as HTMLImageElement;
+                stopObserving(img);
+                void hydrate(img);
             }
         },
         { rootMargin: '200px' }
@@ -55,7 +58,7 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
             if (img.getAttribute('src') !== cached.url) {
                 img.src = cached.url;
             }
-            observer.unobserve(img);
+            stopObserving(img);
             return;
         }
 
@@ -66,7 +69,7 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
             img.dataset.keiaiAssetState = 'loaded';
             loaded.set(img, { key, url: cachedUrl });
             ownedUrls.add(cachedUrl);
-            observer.unobserve(img);
+            stopObserving(img);
             return;
         }
 
@@ -91,7 +94,7 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
             ownedUrls.add(url);
             loaded.set(img, { key, url });
             urlCache.set(key, url);
-            observer.unobserve(img);
+            stopObserving(img);
         } catch {
             if (!destroyed && img.isConnected && img.dataset.keiaiAsset === asset) {
                 img.dataset.keiaiAssetState = 'error';
@@ -136,12 +139,16 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
     function scan(): void {
         if (destroyed) return;
 
+        const activeKeys = new Set<string>();
+        const activeImages = new Set<HTMLImageElement>();
         node.querySelectorAll<HTMLImageElement>(ASSET_SELECTOR).forEach((img) => {
+            activeImages.add(img);
             const asset = img.dataset.keiaiAsset;
             const locator = parseAssetLocator(asset);
             if (!locator) return;
 
             const key = assetRegistryId(locator);
+            activeKeys.add(key);
 
             const cached = loaded.get(img);
             if (cached?.key === key) {
@@ -152,7 +159,18 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
             }
             if (loading.has(img)) return;
             observer.observe(img);
+            observed.add(img);
         });
+
+        for (const img of observed) {
+            if (!activeImages.has(img)) stopObserving(img);
+        }
+
+        for (const [key, url] of urlCache) {
+            if (activeKeys.has(key)) continue;
+            urlCache.delete(key);
+            releaseUrl(url);
+        }
     }
 
     scan();
@@ -164,6 +182,7 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
         destroy() {
             destroyed = true;
             observer.disconnect();
+            observed.clear();
             for (const url of ownedUrls) {
                 void AssetService.revokeUrl(url);
             }
@@ -175,5 +194,10 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
     function releaseUrl(url: string): void {
         if (!ownedUrls.delete(url)) return;
         void AssetService.revokeUrl(url);
+    }
+
+    function stopObserving(img: HTMLImageElement): void {
+        observer.unobserve(img);
+        observed.delete(img);
     }
 };

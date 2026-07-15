@@ -14,6 +14,7 @@
     let {
         character,
         exporting,
+        deleting,
         showLightExport,
         onUpdate,
         onExport,
@@ -21,6 +22,7 @@
     }: {
         character: Character;
         exporting: ExportButton | null;
+        deleting: boolean;
         showLightExport: boolean;
         onUpdate: (changes: DeepPartial<CharacterContent>) => void | Promise<void>;
         onExport: (id: ExportButton, request: ExportCharacterFileRequest) => void | Promise<void>;
@@ -87,7 +89,13 @@
                     This removes the character and its owned resources.
                 </p>
             </div>
-            <Button variant="destructive" class="gap-1.5" onclick={onDelete}>
+            <Button
+                variant="destructive"
+                class="gap-1.5"
+                disabled={deleting}
+                aria-busy={deleting}
+                onclick={onDelete}
+            >
                 <Trash2 class="size-4" /> Delete Character
             </Button>
         </CardContent>

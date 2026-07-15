@@ -6,7 +6,8 @@
         Upload,
         ChevronDown,
         ChevronRight,
-        Check
+        Check,
+        GripVertical
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { Badge } from '$lib/components/ui/badge';
@@ -32,45 +33,94 @@
     import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
+    import { appConfirm, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
-    let importInput = $state<HTMLInputElement>();
     let expandedPresetIds = $state<Record<string, boolean>>({});
+    let busyAction = $state<string | null>(null);
+
+    async function runPresetAction(
+        key: string,
+        errorTitle: string,
+        action: () => void | Promise<void>
+    ): Promise<void> {
+        if (busyAction) return;
+        busyAction = key;
+        try {
+            await action();
+        } catch (error) {
+            toast.error({ title: errorTitle, description: getErrorMessage(error) });
+        } finally {
+            busyAction = null;
+        }
+    }
 
     function toggleExpanded(id: string) {
         expandedPresetIds[id] = !expandedPresetIds[id];
     }
 
     async function handleCreatePreset() {
-        const preset = await createPreset({
-            chatWorkflow: createDefaultChatWorkflow()
+        await runPresetAction('create', 'Could not create preset', async () => {
+            const preset = await createPreset({
+                chatWorkflow: createDefaultChatWorkflow()
+            });
+            await selectPreset(preset.id);
+            expandedPresetIds[preset.id] = true;
         });
-        await selectPreset(preset.id);
-        expandedPresetIds[preset.id] = true;
     }
 
-    async function handleImport(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
-        if (!file) return;
-        const preset = await importPresetFile(file, { select: true });
-        target.value = '';
-        if (preset) {
-            expandedPresetIds[preset.id] = true;
+    async function handleImport() {
+        await runPresetAction('import', 'Could not import preset', async () => {
+            const preset = await importPresetFile({ select: true });
+            if (preset) expandedPresetIds[preset.id] = true;
+        });
+    }
+
+    async function handleSelectPreset(id: string) {
+        await runPresetAction(`select:${id}`, 'Could not select preset', () => selectPreset(id));
+    }
+
+    async function handleExportPreset(id: string) {
+        await runPresetAction(`export:${id}`, 'Could not export preset', () =>
+            exportPresetFile(id, { kind: 'keipreset' })
+        );
+    }
+
+    async function handleDeletePreset(id: string, name: string) {
+        await runPresetAction(`delete:${id}`, 'Could not delete preset', async () => {
+            const confirmed = await appConfirm({
+                title: 'Delete preset?',
+                description: `Delete "${name}"? This cannot be undone.`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (confirmed) await deletePreset(id);
+        });
+    }
+
+    async function updatePresetSafely(
+        id: string,
+        changes: Parameters<typeof updatePreset>[1]
+    ): Promise<void> {
+        try {
+            await updatePreset(id, changes);
+        } catch (error) {
+            toast.error({ title: 'Could not update preset', description: getErrorMessage(error) });
         }
     }
 
     async function handleAddVariable(preset: Preset, key: string, value: string) {
         const defaultVariables = { ...preset.defaultVariables, [key]: value };
-        await updatePreset(preset.id, { defaultVariables });
+        await updatePresetSafely(preset.id, { defaultVariables });
     }
 
     async function handleUpdateVariableValue(preset: Preset, key: string, value: string) {
         const defaultVariables = { ...preset.defaultVariables, [key]: value };
-        await updatePreset(preset.id, { defaultVariables });
+        await updatePresetSafely(preset.id, { defaultVariables });
     }
 
     async function handleRemoveVariable(preset: Preset, keyToRemove: string) {
-        await updatePreset(preset.id, {
+        await updatePresetSafely(preset.id, {
             defaultVariables: {
                 [keyToRemove]: undefined
             }
@@ -80,19 +130,25 @@
 
 <div class="flex flex-col gap-4 px-2">
     <ListActionBar description="Reusable model and chat configurations.">
-        <Button size="sm" variant="outline" class="gap-1.5" onclick={() => importInput?.click()}>
+        <Button
+            size="sm"
+            variant="outline"
+            class="gap-1.5"
+            disabled={busyAction !== null}
+            aria-busy={busyAction === 'import'}
+            onclick={handleImport}
+        >
             <Upload class="size-4" /> Import
         </Button>
-        <Button size="sm" onclick={handleCreatePreset} class="gap-1.5">
+        <Button
+            size="sm"
+            onclick={handleCreatePreset}
+            class="gap-1.5"
+            disabled={busyAction !== null}
+            aria-busy={busyAction === 'create'}
+        >
             <Plus class="size-4" /> New Preset
         </Button>
-        <input
-            bind:this={importInput}
-            type="file"
-            accept=".risup,.risupreset,.keipreset,.json"
-            class="hidden"
-            onchange={handleImport}
-        />
     </ListActionBar>
 
     {#if $appSettings}
@@ -119,6 +175,12 @@
                 >
                     <!-- 헤더 영역 -->
                     <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+                        <div
+                            class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+                            aria-hidden="true"
+                        >
+                            <GripVertical class="size-4" />
+                        </div>
                         <button
                             type="button"
                             class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -137,8 +199,9 @@
                         <!-- Borderless Name Input -->
                         <Input
                             value={preset.name}
+                            disabled={busyAction !== null}
                             onchange={(e) =>
-                                updatePreset(preset.id, { name: e.currentTarget.value })}
+                                updatePresetSafely(preset.id, { name: e.currentTarget.value })}
                             aria-label="Preset name"
                             class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
                         />
@@ -160,7 +223,9 @@
                                 : 'text-muted-foreground'}"
                             title={$activePreset?.id === preset.id ? 'Active' : 'Use preset'}
                             aria-label={$activePreset?.id === preset.id ? 'Active' : 'Use preset'}
-                            onclick={() => selectPreset(preset.id)}
+                            disabled={busyAction !== null}
+                            aria-busy={busyAction === `select:${preset.id}`}
+                            onclick={() => handleSelectPreset(preset.id)}
                         >
                             <Check class="size-4" />
                         </Button>
@@ -171,7 +236,9 @@
                             class="size-8 shrink-0 text-muted-foreground hover:text-foreground"
                             title="Export Preset"
                             aria-label="Export Preset"
-                            onclick={() => exportPresetFile(preset.id, { kind: 'keipreset' })}
+                            disabled={busyAction !== null}
+                            aria-busy={busyAction === `export:${preset.id}`}
+                            onclick={() => handleExportPreset(preset.id)}
                         >
                             <Download class="size-4" />
                         </Button>
@@ -181,7 +248,9 @@
                             variant="ghost"
                             class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
                             aria-label="Delete preset"
-                            onclick={() => deletePreset(preset.id)}
+                            disabled={busyAction !== null}
+                            aria-busy={busyAction === `delete:${preset.id}`}
+                            onclick={() => handleDeletePreset(preset.id, preset.name)}
                         >
                             <Trash2 class="size-4" />
                         </Button>
@@ -197,8 +266,9 @@
                                     class="h-8 text-xs bg-background"
                                     placeholder="No description"
                                     value={preset.description}
+                                    disabled={busyAction !== null}
                                     onchange={(e) =>
-                                        updatePreset(preset.id, {
+                                        updatePresetSafely(preset.id, {
                                             description: e.currentTarget.value
                                         })}
                                 />

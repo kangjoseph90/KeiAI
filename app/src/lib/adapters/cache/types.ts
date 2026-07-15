@@ -18,3 +18,13 @@ export interface CacheStore<T> {
     /** Flush all in-memory entries to IndexedDB. */
     flush(): Promise<void>;
 }
+
+export interface CacheEntry {
+    key: string;
+    value: unknown;
+}
+
+export interface CacheBackend {
+    loadAll(namespace: string): Promise<CacheEntry[]>;
+    sync(namespace: string, puts: CacheEntry[], deletes: string[]): Promise<void>;
+}

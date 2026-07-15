@@ -1,21 +1,42 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkflowRuntime, type WorkflowDefinition } from '$lib/workflow';
-import type { OpenAIChat } from '$lib/llm/types';
+import { getTextContent, type LLMMessage } from '$lib/llm/types';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
+import type { Chat } from '$lib/services';
 
 const {
     mockSelectLLMHandler,
     mockResolveModelConfig,
     mockResolveParameters,
     mockGetSettings,
-    mockTokenCount
+    mockTokenCount,
+    mockGetChat
 } = vi.hoisted(() => ({
     mockSelectLLMHandler: vi.fn(),
     mockResolveModelConfig: vi.fn(),
     mockResolveParameters: vi.fn(),
     mockGetSettings: vi.fn(),
-    mockTokenCount: vi.fn()
+    mockTokenCount: vi.fn(),
+    mockGetChat: vi.fn()
 }));
+
+const stubChat: Chat = {
+    id: 'chat-1',
+    roomId: 'room-1',
+    scopeType: 'user',
+    scopeId: 'user-1',
+    title: 'Test Chat',
+    chatNote: '',
+    messageCount: 0,
+    personas: { refs: {}, folders: {} },
+    lorebooks: { refs: {}, folders: {} },
+    inlays: { refs: {}, folders: {} }
+};
+
+vi.mock('$lib/stores', async (importOriginal) => {
+    const original = await importOriginal<typeof import('$lib/stores')>();
+    return { ...original, getChat: mockGetChat };
+});
 
 vi.mock('$lib/stores/content/settings', () => ({
     getAppSettings: mockGetSettings
@@ -47,17 +68,18 @@ describe('executeAgentNode', () => {
             tokenizer: 'o200k_base'
         });
         mockResolveParameters.mockResolvedValue({ temperature: 0.5 });
+        mockGetChat.mockResolvedValue(stubChat);
         mockTokenCount.mockImplementation(async (text: string) => text.length);
     });
 
     it('builds a prompt from slots and streams serialized LLM output', async () => {
-        let receivedPrompt: OpenAIChat[] = [];
+        let receivedPrompt: LLMMessage[] = [];
         mockSelectLLMHandler.mockReturnValue({
-            stream: vi.fn(async function* (prompt: OpenAIChat[]) {
+            stream: vi.fn(async function* (prompt: LLMMessage[]) {
                 receivedPrompt = prompt;
                 yield {
                     thought: 'thinking',
-                    content: `result: ${prompt[0]?.content ?? ''}`
+                    content: `result: ${prompt[0] ? getTextContent(prompt[0].content) : ''}`
                 };
             })
         });
@@ -122,24 +144,26 @@ describe('executeAgentNode', () => {
         await expect(
             collectFinal(
                 new WorkflowRuntime(workflow, {
-                    ctx: { presetId: 'preset-1' },
+                    ctx: { presetId: 'preset-1', chatId: 'chat-1' },
                     messages: {} as PagedMessages
                 }).run()
             )
         ).resolves.toBe('<|thought|>thinking<|/thought|>result: Say hello');
 
-        expect(receivedPrompt).toEqual([{ role: 'user', content: 'Say hello' }]);
+        expect(receivedPrompt).toEqual([
+            { role: 'user', content: [{ type: 'text', text: 'Say hello' }] }
+        ]);
         expect(mockResolveModelConfig).toHaveBeenCalledWith('chat', 'preset-1');
         expect(mockResolveParameters).toHaveBeenCalledWith('chat', 'preset-1');
     });
 
     it('requires named slot macros for agent inputs', async () => {
-        let receivedPrompt: OpenAIChat[] = [];
+        let receivedPrompt: LLMMessage[] = [];
         mockSelectLLMHandler.mockReturnValue({
-            stream: vi.fn(async function* (prompt: OpenAIChat[]) {
+            stream: vi.fn(async function* (prompt: LLMMessage[]) {
                 receivedPrompt = prompt;
                 yield {
-                    content: `result: ${prompt[0]?.content ?? ''}`
+                    content: `result: ${prompt[0] ? getTextContent(prompt[0].content) : ''}`
                 };
             })
         });
@@ -204,13 +228,15 @@ describe('executeAgentNode', () => {
         await expect(
             collectFinal(
                 new WorkflowRuntime(workflow, {
-                    ctx: { presetId: 'preset-1' },
+                    ctx: { presetId: 'preset-1', chatId: 'chat-1' },
                     messages: {} as PagedMessages
                 }).run()
             )
         ).resolves.toBe('result: Say ERROR then hello');
 
-        expect(receivedPrompt).toEqual([{ role: 'user', content: 'Say ERROR then hello' }]);
+        expect(receivedPrompt).toEqual([
+            { role: 'user', content: [{ type: 'text', text: 'Say ERROR then hello' }] }
+        ]);
     });
 
     it('keeps the Output iterator open until a detached Agent finishes', async () => {
@@ -273,7 +299,7 @@ describe('executeAgentNode', () => {
             }
         };
         const iterator = new WorkflowRuntime(workflow, {
-            ctx: { presetId: 'preset-1' },
+            ctx: { presetId: 'preset-1', chatId: 'chat-1' },
             messages: {} as PagedMessages
         })
             .run()
@@ -348,7 +374,7 @@ describe('executeAgentNode', () => {
 
         const values: string[] = [];
         for await (const value of new WorkflowRuntime(workflow, {
-            ctx: { presetId: 'preset-1' },
+            ctx: { presetId: 'preset-1', chatId: 'chat-1' },
             messages: {} as PagedMessages
         }).run()) {
             values.push(value);

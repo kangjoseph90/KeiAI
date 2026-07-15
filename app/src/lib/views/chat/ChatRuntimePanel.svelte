@@ -8,22 +8,21 @@
         Variable,
         ImageIcon,
         FileText,
-        ChevronRight,
+        Paperclip,
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
-    import ResourcePickerDialog from '$lib/components/ResourcePickerDialog.svelte';
+    import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
+    import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
+    import ParticipantCardMenu from '$lib/components/ParticipantCardMenu.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Badge } from '$lib/components/ui/badge';
-    import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import { Textarea } from '$lib/components/ui/textarea';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import {
         activeChat,
-        addChatPersona,
-        appSettings,
         chatPersonas,
         chatLorebooks,
         chatSelections,
@@ -33,9 +32,7 @@
         deleteChatLorebook,
         deleteChatFolder,
         deleteChatInlay,
-        isMultiRoom,
-        multiRoomPersonas,
-        personas,
+        messages,
         removeChatPersona,
         setChatDefaultPersona,
         setChatSelectedPersona,
@@ -44,29 +41,42 @@
         updateChatFolder,
         updateChatLorebook
     } from '$lib/stores';
+    import { appConfirm, personaPickerOpen, toast } from '$lib/ui';
     import { navigate } from '$lib/router';
-    import { addChatPersonaFromLibrary, getChatVariables } from '$lib/managers';
+    import { getChatVariables, setChatVariables } from '$lib/managers';
     import type { ChatContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
+    import { appDialog } from '$lib/adapters/dialog';
+    import { getErrorMessage } from '$lib/types/errors';
 
     interface Props {
         chatId: string;
+        onSelectInlay?: (assetId: string) => void;
     }
 
-    let { chatId }: Props = $props();
+    let { chatId, onSelectInlay }: Props = $props();
 
-    let newChatLorebookName = $state('');
-    let personaPickerOpen = $state(false);
-    let inlayFileInput = $state<HTMLInputElement>();
-    let variables = $state<[string, string][]>([]);
+    let variables = $state<Record<string, string>>({});
+    let panelAction = $state<string | null>(null);
 
-    const pickerPersonas = $derived($isMultiRoom ? $multiRoomPersonas : $personas);
-    const personaPickerConfig = $derived(
-        $isMultiRoom
-            ? { refs: {}, folders: {} }
-            : ($appSettings?.personas ?? { refs: {}, folders: {} })
-    );
+    async function runPanelAction(
+        key: string,
+        errorTitle: string,
+        action: () => void | Promise<unknown>
+    ): Promise<boolean> {
+        if (panelAction) return false;
+        panelAction = key;
+        try {
+            await action();
+            return true;
+        } catch (error) {
+            toast.error({ title: errorTitle, description: getErrorMessage(error) });
+            return false;
+        } finally {
+            panelAction = null;
+        }
+    }
 
     async function updateChat(changes: DeepPartial<ChatContent>) {
         if (!$activeChat) return;
@@ -76,65 +86,126 @@
     $effect(() => {
         if (chatId) {
             getChatVariables(chatId).then((v) => {
-                variables = Object.entries(v);
+                variables = v;
             });
         } else {
-            variables = [];
+            variables = {};
         }
     });
 
+    async function persistVariables(next: Record<string, string>): Promise<boolean> {
+        if ($messages.length === 0) return false;
+
+        const previous = variables;
+        variables = next;
+        try {
+            await setChatVariables(chatId, next);
+            return true;
+        } catch (error) {
+            variables = previous;
+            toast.error({
+                title: 'Could not update chat variables',
+                description: getErrorMessage(error)
+            });
+            return false;
+        }
+    }
+
+    async function handleVariableUpdate(key: string, value: string): Promise<void> {
+        await persistVariables({ ...variables, [key]: value });
+    }
+
+    function handleVariableAdd(key: string, value: string): Promise<boolean> {
+        return persistVariables({ ...variables, [key]: value });
+    }
+
+    async function handleVariableRemove(key: string): Promise<void> {
+        const next = { ...variables };
+        delete next[key];
+        await persistVariables(next);
+    }
+
     async function handleChatLorebookAdd() {
-        if (!newChatLorebookName.trim()) return;
-        await createChatLorebook(chatId, {
-            name: newChatLorebookName,
-            key: '',
-            secondKey: '',
-            content: '',
-            depth: 0,
-            disabled: false
+        if ($activeChat?.id !== chatId) return;
+        await runPanelAction('add-lorebook', 'Could not add lorebook', async () => {
+            await createChatLorebook(chatId, {
+                name: 'New Lorebook',
+                key: '',
+                secondKey: '',
+                content: '',
+                depth: 0,
+                disabled: false
+            });
         });
-        newChatLorebookName = '';
     }
 
     function openPersonaSettings(personaId: string) {
         navigate({ view: 'personaStudio', personaId });
     }
 
-    async function handleInlayUpload(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
-        if (!$activeChat || !file) return;
-        await createChatInlay(chatId, file);
-        target.value = '';
+    async function handleInlayUpload() {
+        if ($activeChat?.id !== chatId) return;
+        const targetChatId = chatId;
+        await runPanelAction('upload-inlay', 'Could not upload gallery image', async () => {
+            const file = await appDialog.openFile({
+                title: 'Upload Gallery Image',
+                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+            });
+            if (!file || $activeChat?.id !== targetChatId) return;
+            await createChatInlay(targetChatId, file);
+        });
+    }
+
+    async function handleInlayDelete(assetId: string, name: string) {
+        if ($activeChat?.id !== chatId) return;
+        const targetChatId = chatId;
+        await runPanelAction(
+            `delete-inlay:${assetId}`,
+            'Could not delete gallery image',
+            async () => {
+                const confirmed = await appConfirm({
+                    title: 'Delete gallery image?',
+                    description: `Delete "${name}"?`,
+                    confirmText: 'Delete',
+                    variant: 'destructive'
+                });
+                if (!confirmed || $activeChat?.id !== targetChatId) return;
+                await deleteChatInlay(targetChatId, assetId);
+            }
+        );
     }
 
     async function handlePersonaSelect(personaId: string) {
-        if (!$activeChat) return;
-        await setChatSelectedPersona(chatId, personaId);
+        if ($activeChat?.id !== chatId) return;
+        await runPanelAction(`select-persona:${personaId}`, 'Could not select persona', () =>
+            setChatSelectedPersona(chatId, personaId)
+        );
     }
 
     async function handleSetDefaultPersona(personaId: string) {
-        if (!$activeChat) return;
-        await setChatDefaultPersona(chatId, personaId);
-    }
-
-    async function handlePersonasAdd(personaIds: string[]) {
-        if (!$activeChat) return;
-        for (const personaId of personaIds) {
-            await addChatPersona(chatId, personaId);
-        }
-    }
-
-    async function handlePersonasCopy(personaIds: string[]) {
-        if (!$activeChat) return;
-        for (const personaId of personaIds) {
-            await addChatPersonaFromLibrary(chatId, personaId);
-        }
+        if ($activeChat?.id !== chatId) return;
+        await runPanelAction(`default-persona:${personaId}`, 'Could not set default persona', () =>
+            setChatDefaultPersona(chatId, personaId)
+        );
     }
 
     async function handlePersonaRemove(personaId: string) {
-        if (!$activeChat) return;
-        await removeChatPersona(chatId, personaId);
+        if ($activeChat?.id !== chatId) return;
+        const persona = $chatPersonas.find((item) => item.id === personaId);
+        await runPanelAction(
+            `remove-persona:${personaId}`,
+            'Could not remove persona',
+            async () => {
+                const confirmed = await appConfirm({
+                    title: 'Remove persona from chat?',
+                    description: `Remove "${persona?.name ?? 'this persona'}" from this chat?`,
+                    confirmText: 'Remove',
+                    variant: 'destructive'
+                });
+                if (!confirmed || $activeChat?.id !== chatId) return;
+                await removeChatPersona(chatId, personaId);
+            }
+        );
     }
 
     function initial(name: string): string {
@@ -142,7 +213,10 @@
     }
 </script>
 
-<div class="flex h-full flex-col border-l border-sidebar-border bg-sidebar">
+<div
+    class="flex h-full flex-col border-l border-sidebar-border bg-sidebar"
+    aria-busy={panelAction !== null}
+>
     <!-- Panel Header -->
     <div
         class="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border bg-sidebar px-3"
@@ -155,7 +229,7 @@
         </div>
     </div>
 
-    <ScrollArea class="flex-1">
+    <ScrollArea class="min-h-0 flex-1">
         <div class="pb-20">
             <!-- Persona Summary -->
             {#if $activeChat}
@@ -172,7 +246,8 @@
                             class="size-6 text-muted-foreground hover:text-foreground"
                             title="Add personas"
                             aria-label="Add personas"
-                            onclick={() => (personaPickerOpen = true)}
+                            disabled={panelAction !== null}
+                            onclick={() => ($personaPickerOpen = true)}
                         >
                             <Plus class="size-3.5" />
                         </Button>
@@ -196,10 +271,10 @@
                             moveChatItem(chatId, 'personas', itemId, newFolderId, newSortOrder)}
                     >
                         {#snippet empty()}
-                            <div class="col-span-3 rounded-md border border-dashed p-3 text-center">
-                                <p class="text-[10px] text-muted-foreground">
-                                    No personas attached to this chat.
-                                </p>
+                            <div class="col-span-3">
+                                <EmptyListPlaceholder
+                                    message="No personas attached to this chat."
+                                />
                             </div>
                         {/snippet}
                         {#snippet item({ entity: persona })}
@@ -234,25 +309,44 @@
                                     </div>
                                     <span class="w-full truncate text-[11px]">{persona.name}</span>
                                 </div>
+                                <ParticipantCardMenu
+                                    kind="persona"
+                                    name={persona.name}
+                                    {isDefault}
+                                    disabled={panelAction !== null}
+                                    defaultBusy={panelAction === `default-persona:${persona.id}`}
+                                    removeBusy={panelAction === `remove-persona:${persona.id}`}
+                                    onOpen={() => openPersonaSettings(persona.id)}
+                                    onSetDefault={() => handleSetDefaultPersona(persona.id)}
+                                    onRemove={() => handlePersonaRemove(persona.id)}
+                                />
                                 <button
-                                    class="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
+                                    class="absolute -left-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100 lg:flex"
                                     title="Open persona settings"
+                                    aria-label={`Open ${persona.name} settings`}
                                     onclick={() => openPersonaSettings(persona.id)}
                                 >
                                     <Settings class="size-3" />
                                 </button>
                                 <button
-                                    class="absolute left-5 -top-1 flex size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity {isDefault
+                                    class="absolute left-5 -top-1 hidden size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity lg:flex {isDefault
                                         ? 'text-primary opacity-100'
                                         : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
                                     title="Set default persona"
+                                    aria-label={`Set ${persona.name} as default persona`}
+                                    disabled={panelAction !== null}
+                                    aria-busy={panelAction === `default-persona:${persona.id}`}
                                     onclick={() => handleSetDefaultPersona(persona.id)}
                                 >
                                     <Pin class="size-3" />
                                 </button>
                                 <button
-                                    class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                    type="button"
+                                    class="absolute -right-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100 lg:flex"
                                     title="Remove from chat"
+                                    aria-label={`Remove ${persona.name} from chat`}
+                                    disabled={panelAction !== null}
+                                    aria-busy={panelAction === `remove-persona:${persona.id}`}
                                     onclick={() => handlePersonaRemove(persona.id)}
                                 >
                                     <X class="size-3" />
@@ -295,26 +389,21 @@
                         >
                             <Book class="size-3" /> Chat Lorebooks
                         </Label>
-                        <Badge variant="outline" class="text-[10px] font-mono"
-                            >{$chatLorebooks.length}</Badge
-                        >
-                    </div>
-
-                    <div class="flex gap-1.5">
-                        <Input
-                            placeholder="New lorebook..."
-                            class="h-8 text-xs bg-background"
-                            bind:value={newChatLorebookName}
-                            onkeydown={(e) => e.key === 'Enter' && handleChatLorebookAdd()}
-                        />
-                        <Button
-                            variant="secondary"
-                            size="icon"
-                            class="size-8 shrink-0"
-                            onclick={handleChatLorebookAdd}
-                        >
-                            <Plus class="size-4" />
-                        </Button>
+                        <div class="flex items-center gap-2">
+                            <Badge variant="outline" class="text-[10px] font-mono"
+                                >{$chatLorebooks.length}</Badge
+                            >
+                            <Button
+                                variant="secondary"
+                                size="icon-sm"
+                                disabled={panelAction !== null}
+                                aria-busy={panelAction === 'add-lorebook'}
+                                aria-label="Add chat lorebook"
+                                onclick={handleChatLorebookAdd}
+                            >
+                                <Plus class="size-3.5" />
+                            </Button>
+                        </div>
                     </div>
 
                     <EntityList
@@ -330,9 +419,7 @@
                             moveChatItem(chatId, 'lorebooks', itemId, newFolderId, newSortOrder)}
                     >
                         {#snippet empty()}
-                            <p class="py-2 text-center text-[10px] italic text-muted-foreground">
-                                No chat lorebooks.
-                            </p>
+                            <EmptyListPlaceholder message="No chat lorebooks." />
                         {/snippet}
                         {#snippet item({ entity: lb })}
                             <LorebookItem
@@ -352,24 +439,19 @@
                         <Variable class="size-3" /> Chat Variables
                     </Label>
 
-                    <div class="bg-background border rounded-md divide-y overflow-hidden">
-                        {#each variables as [key, val] (key)}
-                            <div
-                                class="px-3 py-2 flex items-center justify-between gap-2 text-[11px]"
-                            >
-                                <code class="bg-muted px-1 rounded text-primary font-mono"
-                                    >{key}</code
-                                >
-                                <span class="text-muted-foreground truncate max-w-[120px]"
-                                    >{val || '(empty)'}</span
-                                >
-                            </div>
-                        {:else}
-                            <p class="p-3 text-[10px] text-muted-foreground italic text-center">
-                                No active variables.
-                            </p>
-                        {/each}
-                    </div>
+                    <KeyValueEditor
+                        disabled={$messages.length === 0}
+                        emptyMessage="No active variables."
+                        data={variables}
+                        onUpdateValue={handleVariableUpdate}
+                        onAdd={handleVariableAdd}
+                        onRemove={handleVariableRemove}
+                    />
+                    {#if $messages.length === 0}
+                        <p class="text-[10px] leading-4 text-muted-foreground">
+                            Send a message to create an editable variable snapshot.
+                        </p>
+                    {/if}
                 </section>
 
                 <!-- Runtime Assets (Inlays) -->
@@ -388,17 +470,13 @@
                                 variant="secondary"
                                 size="icon"
                                 class="size-7"
-                                onclick={() => inlayFileInput?.click()}
+                                disabled={panelAction !== null}
+                                aria-busy={panelAction === 'upload-inlay'}
+                                aria-label="Upload gallery image"
+                                onclick={handleInlayUpload}
                             >
                                 <Plus class="size-3" />
                             </Button>
-                            <input
-                                bind:this={inlayFileInput}
-                                type="file"
-                                accept="image/*"
-                                class="hidden"
-                                onchange={handleInlayUpload}
-                            />
                         </div>
                     </div>
                     <EntityList
@@ -415,34 +493,51 @@
                             moveChatItem(chatId, 'inlays', itemId, newFolderId, newSortOrder)}
                     >
                         {#snippet empty()}
-                            <div
-                                class="col-span-full aspect-square rounded border border-dashed border-muted-foreground/30 flex items-center justify-center"
-                            >
-                                <p class="text-[10px] text-muted-foreground">No images.</p>
+                            <div class="col-span-full">
+                                <EmptyListPlaceholder message="No images." />
                             </div>
                         {/snippet}
                         {#snippet item({ entity: ref })}
                             {@const chat = $activeChat!}
-                            <div
-                                class="group relative aspect-square rounded-lg border overflow-hidden"
-                            >
-                                <AssetView
-                                    asset={{
-                                        scopeType: chat.scopeType,
-                                        scopeId: chat.scopeId,
-                                        ownerTable: 'chats',
-                                        ownerId: chat.id,
-                                        hash: ref.hash,
-                                        encKey: ref.encKey
-                                    }}
-                                    alt={ref.name}
-                                    class="size-full object-cover"
-                                    fallback="none"
-                                />
+                            <div class="group relative aspect-square overflow-visible rounded-lg">
+                                <div class="absolute inset-0 overflow-hidden rounded-lg border">
+                                    <AssetView
+                                        asset={{
+                                            scopeType: chat.scopeType,
+                                            scopeId: chat.scopeId,
+                                            ownerTable: 'chats',
+                                            ownerId: chat.id,
+                                            hash: ref.hash,
+                                            encKey: ref.encKey
+                                        }}
+                                        alt={ref.name}
+                                        class="size-full object-cover"
+                                        fallback="none"
+                                    />
+                                </div>
                                 <button
-                                    class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                    type="button"
+                                    class="touch-visible absolute -left-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
+                                    title="Attach to message"
+                                    aria-label={`Attach ${ref.name} to message`}
+                                    onclick={(event) => {
+                                        event.stopPropagation();
+                                        onSelectInlay?.(ref.id);
+                                    }}
+                                >
+                                    <Paperclip class="size-3" />
+                                </button>
+                                <button
+                                    type="button"
+                                    class="touch-visible absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
                                     title="Delete"
-                                    onclick={() => deleteChatInlay(chatId, ref.id)}
+                                    aria-label={`Delete ${ref.name}`}
+                                    disabled={panelAction !== null}
+                                    aria-busy={panelAction === `delete-inlay:${ref.id}`}
+                                    onclick={(event) => {
+                                        event.stopPropagation();
+                                        void handleInlayDelete(ref.id, ref.name);
+                                    }}
                                 >
                                     <X class="size-3" />
                                 </button>
@@ -453,34 +548,4 @@
             {/if}
         </div>
     </ScrollArea>
-
-    <!-- Footer Action -->
-    <div class="shrink-0 border-t border-sidebar-border bg-sidebar p-3">
-        <Button
-            variant="ghost"
-            size="sm"
-            class="w-full justify-between text-xs font-normal text-muted-foreground group"
-            onclick={() => navigate({ view: 'settings', settingsTab: 'models' })}
-        >
-            Open Settings
-            <ChevronRight class="size-3 transition-transform group-hover:translate-x-0.5" />
-        </Button>
-    </div>
 </div>
-
-<ResourcePickerDialog
-    bind:open={personaPickerOpen}
-    title="Add personas"
-    description="Choose the personas available in this chat. You can add several at once."
-    singularLabel="persona"
-    resourceLabel="personas"
-    resources={pickerPersonas}
-    config={personaPickerConfig}
-    attachedIds={$chatPersonas.map((persona) => persona.id)}
-    ownerTable="personas"
-    onAdd={handlePersonasAdd}
-    roomTabLabel="Room personas"
-    libraryResources={$isMultiRoom ? $personas : undefined}
-    libraryConfig={$isMultiRoom ? $appSettings?.personas : undefined}
-    onCopy={$isMultiRoom ? handlePersonasCopy : undefined}
-/>

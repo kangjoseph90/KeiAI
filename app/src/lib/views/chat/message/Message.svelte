@@ -19,7 +19,8 @@
         GitBranch,
         Copy,
         RefreshCw,
-        Languages
+        Languages,
+        ImageOff
     } from 'lucide-svelte';
     import { onDestroy } from 'svelte';
     import AssetView from '$lib/components/AssetView.svelte';
@@ -39,6 +40,7 @@
     import ToolCallPart from './ToolCallPart.svelte';
     import {
         activeRoom,
+        activeChat,
         appSettings,
         chatAssetsMap,
         getActiveModulesForCharacter,
@@ -56,6 +58,7 @@
     } from '$lib/tasks';
     import { getErrorMessage } from '$lib/types/errors';
     import type { RuntimeContext } from '$lib/types/context';
+    import { copyTextToClipboard } from '$lib/ui';
 
     // ── Props ─────────────────────────────────────────────────────────────────
 
@@ -67,6 +70,8 @@
         characterId,
         personaId,
         isLastMessage = false,
+        actionsDisabled = false,
+        busyAction = null,
         onEdit = () => {},
         onSave = () => {},
         onCancelEdit = () => {},
@@ -84,6 +89,8 @@
         characterId?: string;
         personaId?: string;
         isLastMessage?: boolean;
+        actionsDisabled?: boolean;
+        busyAction?: 'save' | 'delete' | 'swipe' | 'fork' | null;
         onEdit?: () => void;
         onSave?: (text: string) => void;
         onCancelEdit?: () => void;
@@ -156,6 +163,41 @@
 
     let parts = $derived<AgentPart[]>(activeSwipe?.parts ?? []);
     let indexedParts = $derived(parts.map((part, index) => ({ part, index })));
+    let attachmentLocators = $derived.by(() => {
+        const chat = $activeChat;
+        const attachments: {
+            id: string;
+            name: string;
+            locator: AssetReadLocator | null;
+        }[] = [];
+
+        for (const attachmentId of activeSwipe?.attachments ?? []) {
+            const ref = chat?.id === message.chatId ? chat.inlays.refs[attachmentId] : undefined;
+            if (!ref || !chat) {
+                attachments.push({
+                    id: attachmentId,
+                    name: 'Attachment unavailable',
+                    locator: null
+                });
+                continue;
+            }
+
+            attachments.push({
+                id: ref.id,
+                name: ref.name,
+                locator: {
+                    scopeType: chat.scopeType,
+                    scopeId: chat.scopeId,
+                    ownerTable: 'chats',
+                    ownerId: chat.id,
+                    hash: ref.hash,
+                    encKey: ref.encKey
+                }
+            });
+        }
+
+        return attachments;
+    });
 
     let lastContentIdx = $derived(findLastContentIndex(parts));
 
@@ -193,7 +235,7 @@
     // ── Actions ───────────────────────────────────────────────────────────────
 
     async function handleCopy() {
-        await navigator.clipboard.writeText(visibleContent);
+        if (!(await copyTextToClipboard(visibleContent, 'Copied message'))) return;
         copied = true;
         onCopy();
         setTimeout(() => (copied = false), 2000);
@@ -388,12 +430,28 @@
         <!-- Edit Mode -->
         {#if isEditing && message.displayStatus === 'completed'}
             <div class="flex w-full flex-col gap-2">
-                <Textarea bind:value={editText} class="min-h-16 w-full" />
+                <Textarea
+                    bind:value={editText}
+                    class="min-h-16 w-full"
+                    disabled={actionsDisabled}
+                />
                 <div class="flex justify-end gap-2">
-                    <Button size="sm" class="gap-1.5" onclick={() => onSave(editText)}>
+                    <Button
+                        size="sm"
+                        class="gap-1.5"
+                        disabled={actionsDisabled}
+                        aria-busy={busyAction === 'save'}
+                        onclick={() => onSave(editText)}
+                    >
                         <Check class="size-4" /> Save
                     </Button>
-                    <Button size="sm" variant="outline" class="gap-1.5" onclick={onCancelEdit}>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        class="gap-1.5"
+                        disabled={actionsDisabled}
+                        onclick={onCancelEdit}
+                    >
                         <X class="size-4" /> Cancel
                     </Button>
                 </div>
@@ -422,88 +480,119 @@
 
             <!-- Message Content -->
         {:else}
-            <!-- Bubble -->
-            <div
-                class="relative flex flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-foreground'}"
-            >
-                {#if message.displayStatus === 'generating' && parts.length === 0}
-                    <span
-                        class="flex items-center gap-1.5 {isUser
-                            ? 'text-primary-foreground/70'
-                            : 'text-muted-foreground'}"
-                    >
-                        <Loader2 class="size-3 animate-spin" />
-                        {isUser ? 'Sending...' : 'Thinking...'}
-                    </span>
-                {:else if parts.length === 0}
-                    <div class="min-h-5"></div>
-                {:else}
-                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- CSS is scoped by data-keiai-message-scope -->
-                    {@html messageStyleHtml}
-
-                    {#if traceCount > 0}
-                        <button
-                            type="button"
-                            class="trace-summary-btn"
-                            onclick={() => (detailsOpen = !detailsOpen)}
-                            aria-label="Toggle trace timeline"
+            {#if parts.length > 0 || attachmentLocators.length === 0}
+                <!-- Bubble -->
+                <div
+                    class="relative flex flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-foreground'}"
+                >
+                    {#if message.displayStatus === 'generating' && parts.length === 0}
+                        <span
+                            class="flex items-center gap-1.5 {isUser
+                                ? 'text-primary-foreground/70'
+                                : 'text-muted-foreground'}"
                         >
-                            <span class="trace-root-dot"></span>
-                            <span class="font-medium"
-                                >{traceCount} step{traceCount > 1 ? 's' : ''}</span
-                            >
-                        </button>
-                    {/if}
+                            <Loader2 class="size-3 animate-spin" />
+                            {isUser ? 'Sending...' : 'Thinking...'}
+                        </span>
+                    {:else if parts.length === 0}
+                        <div class="min-h-5"></div>
+                    {:else}
+                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- CSS is scoped by data-keiai-message-scope -->
+                        {@html messageStyleHtml}
 
-                    <div class="trace-flat-list">
-                        {#each indexedParts as entry (entry.index)}
-                            {@const isTrace = entry.index < traceCount}
-                            {@const isFirstTrace = entry.index === 0}
-                            {@const isLastTrace = entry.index === traceCount - 1}
-                            {@const shouldHide = isTrace && traceCount > 0 && !detailsOpen}
-
-                            <div
-                                class="trace-flat-item {isTrace
-                                    ? 'is-trace'
-                                    : 'is-answer'} {isFirstTrace
-                                    ? 'is-first-trace'
-                                    : ''} {isLastTrace ? 'is-last-trace' : ''} {shouldHide
-                                    ? 'hidden'
-                                    : ''}"
+                        {#if traceCount > 0}
+                            <button
+                                type="button"
+                                class="trace-summary-btn"
+                                onclick={() => (detailsOpen = !detailsOpen)}
+                                aria-label="Toggle trace timeline"
                             >
-                                {#if isTrace}
-                                    <span class="trace-dot"></span>
-                                {/if}
-                                <div class="trace-flat-body">
-                                    {#if entry.part.type === 'thought'}
-                                        <ThoughtPart
-                                            text={entry.part.text}
-                                            collapsible={traceCount > 1}
-                                        />
-                                    {:else if entry.part.type === 'tool_call'}
-                                        <ToolCallPart
-                                            name={entry.part.name}
-                                            status={entry.part.status}
-                                        />
-                                    {:else if entry.part.type === 'content'}
-                                        <ContentPart
-                                            text={entry.index === answerStartIdx &&
-                                            translatedContent &&
-                                            showTranslation
-                                                ? translatedContent
-                                                : entry.part.text}
-                                            {renderContext}
-                                            {isUser}
-                                        />
+                                <span class="trace-root-dot"></span>
+                                <span class="font-medium"
+                                    >{traceCount} step{traceCount > 1 ? 's' : ''}</span
+                                >
+                            </button>
+                        {/if}
+
+                        <div class="trace-flat-list">
+                            {#each indexedParts as entry (entry.index)}
+                                {@const isTrace = entry.index < traceCount}
+                                {@const isFirstTrace = entry.index === 0}
+                                {@const isLastTrace = entry.index === traceCount - 1}
+                                {@const shouldHide = isTrace && traceCount > 0 && !detailsOpen}
+
+                                <div
+                                    class="trace-flat-item {isTrace
+                                        ? 'is-trace'
+                                        : 'is-answer'} {isFirstTrace
+                                        ? 'is-first-trace'
+                                        : ''} {isLastTrace ? 'is-last-trace' : ''} {shouldHide
+                                        ? 'hidden'
+                                        : ''}"
+                                >
+                                    {#if isTrace}
+                                        <span class="trace-dot"></span>
                                     {/if}
+                                    <div class="trace-flat-body">
+                                        {#if entry.part.type === 'thought'}
+                                            <ThoughtPart
+                                                text={entry.part.text}
+                                                collapsible={traceCount > 1}
+                                            />
+                                        {:else if entry.part.type === 'tool_call'}
+                                            <ToolCallPart
+                                                name={entry.part.name}
+                                                status={entry.part.status}
+                                            />
+                                        {:else if entry.part.type === 'content'}
+                                            <ContentPart
+                                                text={entry.index === answerStartIdx &&
+                                                translatedContent &&
+                                                showTranslation
+                                                    ? translatedContent
+                                                    : entry.part.text}
+                                                {renderContext}
+                                                {isUser}
+                                            />
+                                        {/if}
+                                    </div>
                                 </div>
-                            </div>
-                        {/each}
-                    </div>
-                {/if}
-            </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            {/if}
+
+            {#if attachmentLocators.length > 0}
+                <div
+                    class="flex flex-wrap gap-2 {parts.length > 0 ? 'mt-1' : ''} {isUser
+                        ? 'justify-end'
+                        : 'justify-start'}"
+                >
+                    {#each attachmentLocators as attachment (attachment.id)}
+                        <div class="size-24 overflow-hidden rounded-md border bg-muted">
+                            {#if attachment.locator}
+                                <AssetView
+                                    asset={attachment.locator}
+                                    alt={attachment.name}
+                                    class="size-full object-cover"
+                                    fallback="none"
+                                />
+                            {:else}
+                                <div
+                                    class="flex size-full items-center justify-center text-muted-foreground"
+                                    title={attachment.name}
+                                    aria-label={attachment.name}
+                                >
+                                    <ImageOff class="size-5" />
+                                </div>
+                            {/if}
+                        </div>
+                    {/each}
+                </div>
+            {/if}
 
             {#if translationError}
                 <div class="flex items-center gap-2 text-xs text-destructive">
@@ -521,133 +610,153 @@
             {/if}
 
             <!-- Single Action Row (hover) -->
-            {#if message.displayStatus === 'completed'}
-                <div
-                    class="-my-1 hidden items-center gap-2 transition-opacity group-focus-within:flex md:my-0 md:flex md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 {isUser
-                        ? 'flex-row-reverse'
-                        : 'flex-row'}"
+            <div
+                class="touch-action-row -my-1 hidden items-center gap-2 transition-opacity group-focus-within:flex md:my-0 md:flex md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 {isUser
+                    ? 'flex-row-reverse'
+                    : 'flex-row'} {message.displayStatus !== 'completed'
+                    ? 'pointer-events-none invisible select-none'
+                    : ''}"
+            >
+                <!-- Swipe Navigator (Character only, multiple swipes) -->
+                {#if !isUser && sortedSwipes.length > 1}
+                    <div class="flex items-center gap-0.5 text-xs text-muted-foreground mr-1">
+                        <button
+                            class="touch-target rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
+                            disabled={actionsDisabled || swipePos <= 0}
+                            aria-busy={busyAction === 'swipe'}
+                            aria-label="Previous swipe"
+                            onclick={() => onSwipe(sortedSwipes[swipePos - 1].id)}
+                        >
+                            <ChevronLeft class="size-4 md:size-3.5" />
+                        </button>
+                        <span class="tabular-nums font-medium"
+                            >{swipePos + 1} / {sortedSwipes.length}</span
+                        >
+                        <button
+                            class="touch-target rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
+                            disabled={actionsDisabled || swipePos >= sortedSwipes.length - 1}
+                            aria-busy={busyAction === 'swipe'}
+                            aria-label="Next swipe"
+                            onclick={() => onSwipe(sortedSwipes[swipePos + 1].id)}
+                        >
+                            <ChevronRight class="size-4 md:size-3.5" />
+                        </button>
+                    </div>
+                {/if}
+
+                <!-- Copy -->
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                    onclick={handleCopy}
+                    aria-label={copied ? 'Copied message' : 'Copy message'}
                 >
-                    <!-- Swipe Navigator (Character only, multiple swipes) -->
-                    {#if !isUser && sortedSwipes.length > 1}
-                        <div class="flex items-center gap-0.5 text-xs text-muted-foreground mr-1">
-                            <button
-                                class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
-                                disabled={swipePos <= 0}
-                                onclick={() => onSwipe(sortedSwipes[swipePos - 1].id)}
-                            >
-                                <ChevronLeft class="size-4 md:size-3.5" />
-                            </button>
-                            <span class="tabular-nums font-medium"
-                                >{swipePos + 1} / {sortedSwipes.length}</span
-                            >
-                            <button
-                                class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
-                                disabled={swipePos >= sortedSwipes.length - 1}
-                                onclick={() => onSwipe(sortedSwipes[swipePos + 1].id)}
-                            >
-                                <ChevronRight class="size-4 md:size-3.5" />
-                            </button>
-                        </div>
-                    {/if}
-
-                    <!-- Copy -->
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                        onclick={handleCopy}
-                    >
-                        {#if copied}
-                            <Check class="size-3.5 md:size-3" />
-                        {:else}
-                            <Copy class="size-3.5 md:size-3" />
-                        {/if}
-                    </Button>
-
-                    {#if matchingTranslationTask?.status === 'generating'}
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                            onclick={() => stopTranslation(message.id)}
-                            title="Stop translation"
-                        >
-                            <Loader2 class="size-3.5 md:size-3 animate-spin" />
-                        </Button>
+                    {#if copied}
+                        <Check class="size-3.5 md:size-3" />
                     {:else}
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs {showTranslation &&
-                            cachedTranslation
-                                ? 'bg-primary/15 text-primary hover:bg-primary/25'
-                                : 'text-muted-foreground'}"
-                            onclick={() => {
-                                if (cachedTranslation) {
-                                    showTranslation = !showTranslation;
-                                } else {
-                                    handleTranslate();
-                                }
-                            }}
-                            ondblclick={(e) => {
-                                e.stopPropagation();
+                        <Copy class="size-3.5 md:size-3" />
+                    {/if}
+                </Button>
+
+                {#if matchingTranslationTask?.status === 'generating'}
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                        onclick={() => stopTranslation(message.id)}
+                        title="Stop translation"
+                        aria-label="Stop translation"
+                    >
+                        <Loader2 class="size-3.5 md:size-3 animate-spin" />
+                    </Button>
+                {:else}
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs {showTranslation &&
+                        cachedTranslation
+                            ? 'bg-primary/15 text-primary hover:bg-primary/25'
+                            : 'text-muted-foreground'}"
+                        onclick={() => {
+                            if (cachedTranslation) {
+                                showTranslation = !showTranslation;
+                            } else {
                                 handleTranslate();
-                            }}
-                            title={cachedTranslation
-                                ? showTranslation
-                                    ? 'Show original (double click to retranslate)'
-                                    : 'Show translation'
-                                : 'Translate'}
-                        >
-                            <Languages class="size-3.5 md:size-3" />
-                        </Button>
-                    {/if}
+                            }
+                        }}
+                        ondblclick={(e) => {
+                            e.stopPropagation();
+                            handleTranslate();
+                        }}
+                        title={cachedTranslation
+                            ? showTranslation
+                                ? 'Show original (double click to retranslate)'
+                                : 'Show translation'
+                            : 'Translate'}
+                        aria-label={cachedTranslation
+                            ? showTranslation
+                                ? 'Show original message'
+                                : 'Show translated message'
+                            : 'Translate message'}
+                    >
+                        <Languages class="size-3.5 md:size-3" />
+                    </Button>
+                {/if}
 
-                    {#if !isUser}
-                        <!-- Regenerate: last char message only -->
-                        {#if isLastMessage}
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                                onclick={onRegenerate}
-                            >
-                                <RefreshCw class="size-3.5 md:size-3" />
-                            </Button>
-                        {/if}
-
-                        <!-- Fork: always available for char messages -->
+                {#if !isUser}
+                    <!-- Regenerate: last char message only -->
+                    {#if isLastMessage}
                         <Button
                             variant="ghost"
                             size="sm"
-                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                            onclick={onFork}
+                            class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                            onclick={onRegenerate}
+                            aria-label="Regenerate response"
                         >
-                            <GitBranch class="size-3.5 md:size-3" />
+                            <RefreshCw class="size-3.5 md:size-3" />
                         </Button>
                     {/if}
 
-                    <!-- Edit -->
+                    <!-- Fork: always available for char messages -->
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                        onclick={onEdit}
+                        class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                        disabled={actionsDisabled}
+                        aria-busy={busyAction === 'fork'}
+                        aria-label="Fork chat from message"
+                        onclick={onFork}
                     >
-                        <Pencil class="size-3.5 md:size-3" />
+                        <GitBranch class="size-3.5 md:size-3" />
                     </Button>
+                {/if}
 
-                    <!-- Delete -->
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground hover:text-destructive"
-                        onclick={onDelete}
-                    >
-                        <Trash2 class="size-3.5 md:size-3" />
-                    </Button>
-                </div>
-            {/if}
+                <!-- Edit -->
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                    disabled={actionsDisabled}
+                    onclick={onEdit}
+                    aria-label="Edit message"
+                >
+                    <Pencil class="size-3.5 md:size-3" />
+                </Button>
+
+                <!-- Delete -->
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground hover:text-destructive"
+                    disabled={actionsDisabled}
+                    aria-busy={busyAction === 'delete'}
+                    aria-label="Delete message"
+                    onclick={onDelete}
+                >
+                    <Trash2 class="size-3.5 md:size-3" />
+                </Button>
+            </div>
         {/if}
     </div>
 </div>

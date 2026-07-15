@@ -11,81 +11,121 @@
     } from '$lib/components/ui/card';
     import { Label } from '$lib/components/ui/label';
     import * as Avatar from '$lib/components/ui/avatar';
-    import { Upload, UserRoundPen } from 'lucide-svelte';
+    import { Trash2, Upload, UserRoundPen } from 'lucide-svelte';
     import { getErrorMessage } from '$lib/types/errors';
     import { blobToDataUrl, preprocessImage } from '$lib/utils/image';
     import { MultiRoomService } from '$lib/services';
     import { formatPublicKeyFingerprint } from '$lib/crypto';
+    import { appDialog } from '$lib/adapters/dialog';
+    import { toast } from '$lib/ui';
 
     const AVATAR_MAX_SIZE = 5 * 1024 * 1024;
     const AVATAR_IMAGE_SIZE = 512;
     const AVATAR_WEBP_QUALITY = 0.85;
 
     let userName = $state('');
-    let userAvatar = $state('');
-    let fileInputRef: HTMLInputElement;
+    let avatarDraft = $state<string | null>(null);
 
     let loading = $state(false);
-    let errorMsg = $state('');
-    let successMsg = $state('');
+    let avatarPicking = $state(false);
     let identityFingerprint = $state('');
+    let profileUserId: string | null = null;
+    let actionVersion = 0;
+    const displayedAvatar = $derived(
+        avatarDraft === null ? ($activeUser?.avatar ?? '') : avatarDraft
+    );
 
     $effect(() => {
-        if ($activeUser && !userName) {
-            userName = $activeUser.name;
-        }
+        const user = $activeUser;
+        const userId = user?.id ?? null;
+        if (userId === profileUserId) return;
+        profileUserId = userId;
+        actionVersion++;
+        userName = user?.name ?? '';
+        avatarDraft = null;
+        loading = false;
+        avatarPicking = false;
     });
 
     $effect(() => {
-        if ($activeUser) {
+        const userId = $activeUser?.id;
+        if (userId) {
             void MultiRoomService.getOwnPublicKeyFingerprint()
                 .then((fingerprint) => {
+                    if ($activeUser?.id !== userId) return;
                     identityFingerprint = formatPublicKeyFingerprint(fingerprint);
                 })
                 .catch(() => {
+                    if ($activeUser?.id !== userId) return;
                     identityFingerprint = '';
                 });
+        } else {
+            identityFingerprint = '';
         }
     });
 
-    async function handleAvatarUpload(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
-        if (!file) return;
-
-        if (file.size > AVATAR_MAX_SIZE) {
-            errorMsg = 'Avatar image must be under 5MB';
-            return;
-        }
+    async function handleAvatarUpload() {
+        if (avatarPicking || loading) return;
+        const userId = $activeUser?.id;
+        if (!userId) return;
+        const version = ++actionVersion;
+        avatarPicking = true;
 
         try {
-            errorMsg = '';
+            const file = await appDialog.openFile({
+                title: 'Upload Profile Avatar',
+                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+            });
+            if (!file || $activeUser?.id !== userId || version !== actionVersion) return;
+            if (file.size > AVATAR_MAX_SIZE) {
+                toast.error({
+                    title: 'Could not use avatar',
+                    description: 'Avatar image must be under 5MB'
+                });
+                return;
+            }
             const { blob } = await preprocessImage(file, {
                 maxWidth: AVATAR_IMAGE_SIZE,
                 maxHeight: AVATAR_IMAGE_SIZE,
                 quality: AVATAR_WEBP_QUALITY
             });
-            userAvatar = await blobToDataUrl(blob);
+            if ($activeUser?.id !== userId || version !== actionVersion) return;
+            const avatar = await blobToDataUrl(blob);
+            if ($activeUser?.id !== userId || version !== actionVersion) return;
+            avatarDraft = avatar;
         } catch (e) {
-            errorMsg = getErrorMessage(e);
+            if ($activeUser?.id !== userId || version !== actionVersion) return;
+            toast.error({ title: 'Could not prepare avatar', description: getErrorMessage(e) });
+        } finally {
+            if ($activeUser?.id === userId && version === actionVersion) avatarPicking = false;
         }
     }
 
+    function handleAvatarRemove() {
+        if (avatarPicking || loading || !displayedAvatar) return;
+        avatarDraft = '';
+    }
+
     async function handleUpdateUser() {
+        if (loading || avatarPicking) return;
+        const userId = $activeUser?.id;
+        if (!userId) return;
+        const version = ++actionVersion;
         loading = true;
-        errorMsg = '';
-        successMsg = '';
 
         try {
             await updateUser({
-                name: userName,
-                ...(userAvatar ? { avatar: userAvatar } : {})
+                name: userName.trim(),
+                ...(avatarDraft === null ? {} : { avatar: avatarDraft })
             });
-            successMsg = 'User updated successfully.';
+            if ($activeUser?.id !== userId || version !== actionVersion) return;
+            avatarDraft = null;
+            toast.success({ title: 'Profile saved' });
         } catch (e) {
-            errorMsg = getErrorMessage(e);
+            if ($activeUser?.id !== userId || version !== actionVersion) return;
+            toast.error({ title: 'Could not save profile', description: getErrorMessage(e) });
         } finally {
-            loading = false;
+            if ($activeUser?.id === userId && version === actionVersion) loading = false;
         }
     }
 </script>
@@ -97,59 +137,59 @@
             Your profile is stored locally and syncs to your devices securely via PocketBase.
         </CardDescription>
     </CardHeader>
-    <CardContent class="flex flex-col gap-4">
-        {#if errorMsg}
-            <div
-                class="rounded-md bg-destructive/15 p-3 text-sm text-destructive border border-destructive/20 font-medium"
-            >
-                {errorMsg}
-            </div>
-        {/if}
-
-        {#if successMsg}
-            <div
-                class="rounded-md bg-green-500/15 p-3 text-sm text-green-600 dark:text-green-400 border border-green-500/20 font-medium"
-            >
-                {successMsg}
-            </div>
-        {/if}
-
-        <div class="flex items-center gap-6 mb-2">
-            <div class="relative group">
+    <CardContent class="flex flex-col gap-4" aria-busy={loading || avatarPicking}>
+        <div class="mb-2 flex items-center gap-4 sm:gap-6">
+            <div class="group relative shrink-0">
                 <Avatar.Root
-                    class="size-20 border-2 border-muted hover:border-primary transition-colors cursor-pointer"
-                    onclick={() => fileInputRef.click()}
+                    class="size-20 border-2 border-muted transition-colors hover:border-primary sm:size-24"
                 >
-                    <!-- Show selected data URL if present, otherwise existing avatar -->
-                    <Avatar.Image
-                        src={userAvatar || $activeUser?.avatar}
-                        alt={userName}
-                        class="object-cover"
-                    />
+                    <Avatar.Image src={displayedAvatar} alt={userName} class="object-cover" />
                     <Avatar.Fallback class="text-xl font-bold"
                         >{(userName || 'U').charAt(0).toUpperCase()}</Avatar.Fallback
                     >
                 </Avatar.Root>
                 <button
                     type="button"
-                    onclick={() => fileInputRef.click()}
-                    class="absolute inset-0 bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-full transition-opacity cursor-pointer"
+                    onclick={handleAvatarUpload}
+                    disabled={loading || avatarPicking}
+                    aria-busy={avatarPicking}
+                    aria-label="Upload profile avatar"
+                    class="absolute inset-0 flex cursor-pointer items-center justify-center rounded-full bg-transparent transition-opacity lg:bg-background/60 lg:opacity-0 lg:backdrop-blur-sm lg:group-hover:opacity-100"
                 >
-                    <Upload class="size-6 text-foreground" />
+                    <Upload class="hidden size-6 text-foreground lg:block" />
                 </button>
             </div>
 
-            <input
-                bind:this={fileInputRef}
-                type="file"
-                accept="image/png, image/jpeg, image/webp"
-                class="hidden"
-                onchange={handleAvatarUpload}
-            />
-
-            <div class="flex-1 space-y-2">
+            <div class="min-w-0 flex-1 space-y-2">
                 <Label>Display Name</Label>
-                <Input bind:value={userName} placeholder="Your display name" />
+                <Input
+                    bind:value={userName}
+                    placeholder="Your display name"
+                    disabled={loading || avatarPicking}
+                />
+                <div class="flex flex-wrap gap-1">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        class="gap-1 px-2"
+                        disabled={loading || avatarPicking}
+                        aria-busy={avatarPicking}
+                        onclick={handleAvatarUpload}
+                    >
+                        <Upload class="size-4" /> Upload avatar
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        class="gap-1 px-2"
+                        disabled={loading || avatarPicking || !displayedAvatar}
+                        onclick={handleAvatarRemove}
+                    >
+                        <Trash2 class="size-4" /> Remove avatar
+                    </Button>
+                </div>
             </div>
         </div>
 
@@ -162,7 +202,12 @@
             </div>
         {/if}
 
-        <Button class="w-full" disabled={loading || !userName} onclick={handleUpdateUser}>
+        <Button
+            class="w-full"
+            disabled={loading || avatarPicking || !userName.trim()}
+            aria-busy={loading}
+            onclick={handleUpdateUser}
+        >
             <UserRoundPen class="mr-2 size-4" /> Save Profile
         </Button>
     </CardContent>

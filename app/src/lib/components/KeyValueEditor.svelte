@@ -5,6 +5,7 @@
     import { Label } from './ui/label';
 
     interface Props {
+        disabled?: boolean;
         emptyMessage?: string;
         data: Record<string, string>;
         error?: string;
@@ -14,6 +15,7 @@
     }
 
     let {
+        disabled = false,
         emptyMessage = 'No variables defined.',
         data,
         error = '',
@@ -70,6 +72,7 @@
 
                         <!-- Value Input (Compact Flat Design) -->
                         <Input
+                            {disabled}
                             class="h-7 flex-1 text-xs bg-background/50 border hover:bg-background border-input rounded px-2 focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0 focus-visible:border-primary"
                             value={String(value)}
                             aria-label={`Value for ${key}`}
@@ -78,6 +81,7 @@
 
                         <!-- Delete Button (Compact Ghost) -->
                         <Button
+                            {disabled}
                             variant="ghost"
                             size="icon"
                             class="size-7 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
@@ -100,18 +104,25 @@
             onsubmit={handleAdd}
         >
             <Input
+                {disabled}
                 class="h-7 w-36 sm:w-40 shrink-0 font-mono text-xs bg-background border focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0"
                 bind:value={newKey}
                 placeholder="key"
                 aria-label="New key name"
             />
             <Input
+                {disabled}
                 class="h-7 flex-1 text-xs bg-background border focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0"
                 bind:value={newValue}
                 placeholder="value"
                 aria-label="New key value"
             />
-            <Button type="submit" size="sm" class="h-7 gap-1 px-3 text-xs shrink-0 font-medium">
+            <Button
+                type="submit"
+                size="sm"
+                class="h-7 gap-1 px-3 text-xs shrink-0 font-medium"
+                {disabled}
+            >
                 <Plus class="size-3" /> Add
             </Button>
         </form>

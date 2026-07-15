@@ -7,12 +7,17 @@ import {
 } from '$lib/porters/module';
 import { importModulePackage as importModulePackageToStore } from '$lib/stores';
 import type { Module } from '$lib/services';
-import { downloadBytes, sanitizeFileName } from '$lib/utils/file';
+import { sanitizeFileName } from '$lib/utils/file';
+import { appDialog } from '$lib/adapters/dialog';
 
 export async function importModuleFile(
-    file: File,
     options: { allowLightAssets?: boolean; select?: boolean } = {}
-): Promise<Module> {
+): Promise<Module | null> {
+    const file = await appDialog.openFile({
+        title: 'Import Module',
+        filters: [{ name: 'Module files', extensions: ['risum', 'keimodule', 'json'] }]
+    });
+    if (!file) return null;
     const pkg = await readModuleFile(file);
     return importModulePackageToStore(pkg, {
         allowLightAssets: options.allowLightAssets ?? false,
@@ -24,9 +29,12 @@ export async function exportModuleFile(moduleId: string, request: ModuleFileExpo
     const assetMode = request.kind === 'keimodule' ? request.assetMode : 'baked';
     const pkg = await exportModulePackage(moduleId, assetMode);
     const bytes = await writeModuleFile(pkg, request);
-    downloadBytes(
+    const extension = moduleFileExtension(request);
+    await appDialog.saveBytes({
         bytes,
-        `${sanitizeFileName(pkg.module.name || 'module')}.${moduleFileExtension(request)}`,
-        'application/octet-stream'
-    );
+        fileName: `${sanitizeFileName(pkg.module.name || 'module')}.${extension}`,
+        mimeType: 'application/octet-stream',
+        title: 'Export Module',
+        filters: [{ name: extension.toUpperCase(), extensions: [extension] }]
+    });
 }

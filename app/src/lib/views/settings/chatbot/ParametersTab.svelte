@@ -12,6 +12,8 @@
     import { pluginManager } from '$lib/plugins';
     import type { Preset } from '$lib/services/content/preset';
     import { getWorkflowLLMTypes } from '$lib/workflow/agent/llm';
+    import { toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     interface Props {
         preset: Preset;
@@ -47,8 +49,19 @@
         return Object.values(definitions);
     });
 
+    async function updateParameters(changes: Parameters<typeof updatePreset>[1]): Promise<void> {
+        try {
+            await updatePreset(preset.id, changes);
+        } catch (error) {
+            toast.error({
+                title: 'Could not update parameters',
+                description: getErrorMessage(error)
+            });
+        }
+    }
+
     function enableOverride(type: LLMType) {
-        updatePreset(preset.id, {
+        void updateParameters({
             parameters: {
                 [type]: {}
             }
@@ -56,7 +69,7 @@
     }
 
     function disableOverride(type: LLMType) {
-        updatePreset(preset.id, {
+        void updateParameters({
             parameters: {
                 [type]: undefined
             }
@@ -64,7 +77,7 @@
     }
 
     function updateParameter(type: LLMType, param: LLMParameter, value: string) {
-        updatePreset(preset.id, {
+        void updateParameters({
             parameters: {
                 [type]: {
                     [param]: value === '' ? undefined : parseFloat(value)

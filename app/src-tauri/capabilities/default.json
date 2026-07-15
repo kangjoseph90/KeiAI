@@ -5,6 +5,7 @@
     "windows": ["main"],
     "permissions": [
         "core:default",
+        "dialog:default",
         "fs:default",
         "fs:allow-read-text-file",
         "fs:allow-write-text-file",
@@ -14,7 +15,21 @@
         "fs:allow-exists",
         "fs:allow-app-read-recursive",
         "fs:allow-app-write-recursive",
+        "fs:allow-home-read-recursive",
+        "fs:allow-home-write-recursive",
+        {
+            "identifier": "http:default",
+            "allow": ["https://*:*", "http://*:*"]
+        },
+        "notification:default",
+        "opener:allow-default-urls",
+        "clipboard-manager:allow-read-text",
+        "clipboard-manager:allow-write-text",
+        "clipboard-manager:allow-read-image",
+        "clipboard-manager:allow-write-image",
         "sql:default",
-        "stronghold:default"
+        "sql:allow-execute",
+        "stronghold:default",
+        "store:default"
     ]
 }

@@ -13,7 +13,7 @@ import { getChatVariable, setChatVariable } from '$lib/managers';
 import { generateId } from '$lib/utils/id';
 import { getAppSettings } from '$lib/stores/content/settings';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
-import type { OpenAIChat } from '$lib/llm/types';
+import type { LLMMessage } from '$lib/llm/types';
 
 const DEFAULT_AUX_LLM_TYPE = 'aux';
 const DEFAULT_AUX_MAX_RESPONSE = 4096;
@@ -205,7 +205,7 @@ function injectLowLevelAPIs(
     const callLLMFn = ctx.newFunction('callLLM', (typeHandle, messagesHandle, optionsHandle) => {
         const options = readLLMCallOptions(optionsHandle ? ctx.dump(optionsHandle) : undefined);
         const type = options.type ?? ctx.getString(typeHandle) ?? DEFAULT_AUX_LLM_TYPE;
-        const messages = ctx.dump(messagesHandle) as OpenAIChat[];
+        const messages = ctx.dump(messagesHandle) as LLMMessage[];
         const promise = ctx.newPromise();
 
         (async () => {

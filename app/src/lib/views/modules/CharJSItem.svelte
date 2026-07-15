@@ -6,7 +6,9 @@
     import { Textarea } from '$lib/components/ui/textarea';
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
-    import { ChevronDown, ChevronRight, Eye, EyeOff, Trash2 } from 'lucide-svelte';
+    import { ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, Trash2 } from 'lucide-svelte';
+    import { appConfirm, toast } from '$lib/ui';
+    import { getErrorMessage } from '$lib/types/errors';
 
     let {
         item,
@@ -22,6 +24,7 @@
 
     let expanded = $state(false);
     let openedInitially = $state(false);
+    let busy = $state(false);
 
     $effect(() => {
         if (initiallyEditing && !openedInitially) {
@@ -29,19 +32,60 @@
             expanded = true;
         }
     });
+
+    async function handleUpdate(changes: DeepPartial<CharJS>): Promise<void> {
+        if (busy) return;
+        busy = true;
+        try {
+            await onUpdate(item.id, changes);
+        } catch (error) {
+            toast.error({ title: 'CharJS update failed', description: getErrorMessage(error) });
+        } finally {
+            busy = false;
+        }
+    }
+
+    async function handleDelete(): Promise<void> {
+        if (busy) return;
+        busy = true;
+        try {
+            const confirmed = await appConfirm({
+                title: 'Delete CharJS entry?',
+                description: `Delete "${item.name}"?`,
+                confirmText: 'Delete',
+                variant: 'destructive'
+            });
+            if (!confirmed) return;
+            await onDelete(item.id);
+        } catch (error) {
+            toast.error({
+                title: 'Could not delete CharJS entry',
+                description: getErrorMessage(error)
+            });
+        } finally {
+            busy = false;
+        }
+    }
 </script>
 
 <div
+    aria-busy={busy}
     class="group overflow-hidden rounded-xl border bg-card shadow-sm transition-[border-color,box-shadow,opacity] hover:border-border/80 hover:shadow-md {item.enabled
         ? ''
         : 'opacity-55'}"
 >
     <div class="flex min-h-14 items-center gap-2 px-3 py-2">
+        <div
+            class="flex h-8 w-5 shrink-0 cursor-grab active:cursor-grabbing select-none items-center justify-center text-muted-foreground/45 transition-colors hover:text-muted-foreground"
+            aria-hidden="true"
+        >
+            <GripVertical class="size-4" />
+        </div>
         <button
             type="button"
             class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
             onclick={() => (expanded = !expanded)}
-            aria-label={expanded ? 'Collapse script' : 'Expand script'}
+            aria-label={expanded ? 'Collapse CharJS entry' : 'Expand CharJS entry'}
         >
             {#if expanded}
                 <ChevronDown class="size-4" />
@@ -51,10 +95,11 @@
         </button>
 
         <Input
+            disabled={busy}
             value={item.name}
-            aria-label="Script name"
+            aria-label="CharJS name"
             class="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 font-medium shadow-none focus-visible:ring-0 text-sm leading-relaxed"
-            onchange={(e) => onUpdate(item.id, { name: e.currentTarget.value })}
+            onchange={(e) => handleUpdate({ name: e.currentTarget.value })}
         />
 
         {#if !item.enabled}
@@ -65,9 +110,10 @@
             size="icon"
             variant="ghost"
             class="size-8 shrink-0 text-muted-foreground"
-            title={item.enabled ? 'Disable script' : 'Enable script'}
-            aria-label={item.enabled ? 'Disable script' : 'Enable script'}
-            onclick={() => onUpdate(item.id, { enabled: !item.enabled })}
+            title={item.enabled ? 'Disable CharJS' : 'Enable CharJS'}
+            aria-label={item.enabled ? 'Disable CharJS' : 'Enable CharJS'}
+            disabled={busy}
+            onclick={() => handleUpdate({ enabled: !item.enabled })}
         >
             {#if item.enabled}
                 <Eye class="size-4" />
@@ -79,9 +125,10 @@
             size="icon"
             variant="ghost"
             class="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-            title="Delete script"
-            aria-label="Delete script"
-            onclick={() => onDelete(item.id)}
+            title="Delete CharJS entry"
+            aria-label="Delete CharJS entry"
+            disabled={busy}
+            onclick={handleDelete}
         >
             <Trash2 class="size-4" />
         </Button>
@@ -92,10 +139,11 @@
             <div class="space-y-1.5">
                 <Label class="text-xs">Code</Label>
                 <Textarea
+                    disabled={busy}
                     class="min-h-48 resize-y bg-background font-mono text-sm leading-relaxed"
                     value={item.code}
-                    placeholder="// Write character JavaScript behavior here..."
-                    onchange={(e) => onUpdate(item.id, { code: e.currentTarget.value })}
+                    placeholder="// Write CharJS behavior here..."
+                    onchange={(e) => handleUpdate({ code: e.currentTarget.value })}
                 />
             </div>
         </div>
