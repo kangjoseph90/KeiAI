@@ -435,20 +435,21 @@
 {#if !collapsed}
     <button
         type="button"
-        class="fixed inset-0 z-30 bg-black/35 md:hidden"
+        class="fixed inset-0 z-30 bg-black/35 lg:hidden"
         aria-label="Close room panel"
         onclick={onToggle}
     ></button>
 {/if}
 
 <aside
-    class="relative z-20 flex h-full shrink-0 bg-sidebar text-sidebar-foreground {collapsed
-        ? 'border-r max-md:z-20 max-md:w-0 max-md:border-0'
-        : 'border-r max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl'}"
+    data-compact-open={!collapsed}
+    class="app-sidebar relative z-20 flex h-full shrink-0 bg-sidebar text-sidebar-foreground {collapsed
+        ? 'border-r max-lg:z-20 max-lg:w-0 max-lg:border-0'
+        : 'border-r max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-40 max-lg:shadow-xl'}"
 >
     <div
         class="flex w-14 flex-col border-r border-sidebar-border bg-sidebar {collapsed
-            ? 'max-md:hidden'
+            ? 'max-lg:hidden'
             : ''}"
     >
         <div class="flex h-14 items-center justify-center border-b border-sidebar-border">
@@ -684,9 +685,7 @@
     {#if $activeRoom}
         {#if !collapsed}
             <div class="relative flex">
-                <div
-                    class="flex w-[360px] flex-col bg-sidebar max-md:w-[calc(100vw-5.5rem)] max-md:max-w-[364px]"
-                >
+                <div class="app-sidebar-room-panel flex w-[360px] flex-col bg-sidebar">
                     <div class="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
                         {#if editingRoomName}
                             <form
@@ -1169,7 +1168,7 @@
                 <Button
                     variant="outline"
                     size="icon-lg"
-                    class="absolute left-full top-1.5 z-30 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-md:hidden"
+                    class="absolute left-full top-1.5 z-30 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-lg:hidden"
                     title="Hide room panel"
                     aria-label="Hide room panel"
                     onclick={onToggle}
@@ -1195,7 +1194,7 @@
         <Button
             variant="outline"
             size="icon-lg"
-            class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent md:hidden"
+            class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent lg:hidden"
             title="Show sidebar"
             aria-label="Show sidebar"
             onclick={onToggle}

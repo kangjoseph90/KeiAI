@@ -50,6 +50,9 @@
     let errorMsg = $state('');
     let cryptoIssue = $state<WebCryptoAvailabilityIssue | null>(null);
     let sidebarCollapsed = $state(false);
+    // Match Tailwind's `max-lg` range, including fractional CSS viewport widths.
+    const COMPACT_SHELL_QUERY = '(max-width: 1023.98px)';
+    let compactShellMedia: MediaQueryList | undefined;
     const environmentIssue = getEnvironmentConfigIssue();
     const logger = createLogger('route:page');
 
@@ -58,10 +61,26 @@
     }
 
     function navigateFromSidebar(r: RouteState) {
-        if (window.matchMedia('(max-width: 767px)').matches) {
+        if (compactShellMedia?.matches ?? window.matchMedia(COMPACT_SHELL_QUERY).matches) {
             sidebarCollapsed = true;
         }
         navigate(r);
+    }
+
+    function handleCompactShellChange(event: MediaQueryListEvent): void {
+        sidebarCollapsed = event.matches;
+    }
+
+    function handleShellKeydown(event: KeyboardEvent): void {
+        if (
+            event.defaultPrevented ||
+            event.key !== 'Escape' ||
+            sidebarCollapsed ||
+            !compactShellMedia?.matches
+        ) {
+            return;
+        }
+        sidebarCollapsed = true;
     }
 
     // Restore route from URL on boot
@@ -174,7 +193,9 @@
             cryptoIssue = getWebCryptoAvailabilityIssue();
             if (cryptoIssue) return;
 
-            sidebarCollapsed = window.matchMedia('(max-width: 767px)').matches;
+            compactShellMedia = window.matchMedia(COMPACT_SHELL_QUERY);
+            sidebarCollapsed = compactShellMedia.matches;
+            compactShellMedia.addEventListener('change', handleCompactShellChange);
             startSyncStatusTracking();
             await clock.init(appKV);
             const { user, restored } = await UserService.restoreOrCreateUser();
@@ -203,9 +224,12 @@
     onDestroy(() => {
         SyncManager.stopAutoSync();
         stopSyncStatusTracking();
+        compactShellMedia?.removeEventListener('change', handleCompactShellChange);
         _cleanupHash?.();
     });
 </script>
+
+<svelte:window onkeydown={handleShellKeydown} />
 
 {#snippet startupIssue(
     label: string,
@@ -265,7 +289,7 @@
 {/snippet}
 
 <main
-    class="flex h-screen overflow-hidden bg-background text-foreground"
+    class="app-shell flex min-h-0 overflow-hidden bg-background text-foreground"
     aria-busy={!ready && !environmentIssue && !cryptoIssue && !errorMsg}
 >
     {#if environmentIssue}
