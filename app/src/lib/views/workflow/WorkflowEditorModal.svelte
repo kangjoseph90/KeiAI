@@ -79,9 +79,7 @@
 </script>
 
 <Dialog bind:open>
-    <DialogContent
-        class="flex h-[100dvh] max-w-none flex-col gap-0 p-0 sm:gap-4 sm:p-6 inset-0 translate-x-0 translate-y-0 rounded-none md:inset-auto md:top-1/2 md:left-1/2 md:h-[90vh] md:max-w-[calc(100%-2rem)] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-lg lg:max-w-[92vw]"
-    >
+    <DialogContent class="app-dialog-fullscreen flex flex-col gap-0 md:gap-4">
         <DialogHeader class="hidden shrink-0 sm:p-0 md:block">
             <DialogTitle>{title}</DialogTitle>
         </DialogHeader>

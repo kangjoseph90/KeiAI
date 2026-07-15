@@ -59,7 +59,7 @@
 </script>
 
 <Dialog bind:open>
-    <DialogContent class="max-h-[calc(100vh-2rem)] overflow-y-auto p-0 sm:max-w-xl">
+    <DialogContent class="p-0 sm:max-w-xl">
         <DialogHeader class="border-b px-6 py-5 pr-12 text-left">
             <div class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <Shield class="size-3.5" />

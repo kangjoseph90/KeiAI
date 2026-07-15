@@ -128,7 +128,7 @@
 
 <Dialog bind:open>
     <DialogContent
-        class="grid h-[min(42rem,calc(100vh-2rem))] max-w-[calc(100%-2rem)] grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl"
+        class="grid h-[min(42rem,var(--overlay-available-height))] max-w-[calc(100%-2rem)] grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl"
     >
         <DialogHeader class="border-b px-5 py-4 pr-12 text-left">
             <DialogTitle class="text-base">{title}</DialogTitle>
