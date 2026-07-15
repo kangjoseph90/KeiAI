@@ -8,15 +8,14 @@
         Variable,
         ImageIcon,
         FileText,
-        ChevronRight,
         Paperclip,
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
+    import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ResourcePickerDialog from '$lib/components/ResourcePickerDialog.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Badge } from '$lib/components/ui/badge';
-    import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import { Textarea } from '$lib/components/ui/textarea';
@@ -61,7 +60,6 @@
 
     let { chatId, onSelectInlay }: Props = $props();
 
-    let newChatLorebookName = $state('');
     let variables = $state<[string, string][]>([]);
     let panelAction = $state<string | null>(null);
 
@@ -106,18 +104,16 @@
     });
 
     async function handleChatLorebookAdd() {
-        const name = newChatLorebookName.trim();
-        if (!name || $activeChat?.id !== chatId) return;
+        if ($activeChat?.id !== chatId) return;
         await runPanelAction('add-lorebook', 'Could not add lorebook', async () => {
             await createChatLorebook(chatId, {
-                name,
+                name: 'New Lorebook',
                 key: '',
                 secondKey: '',
                 content: '',
                 depth: 0,
                 disabled: false
             });
-            if ($activeChat?.id === chatId) newChatLorebookName = '';
         });
     }
 
@@ -269,10 +265,10 @@
                             moveChatItem(chatId, 'personas', itemId, newFolderId, newSortOrder)}
                     >
                         {#snippet empty()}
-                            <div class="col-span-3 rounded-md border border-dashed p-3 text-center">
-                                <p class="text-[10px] text-muted-foreground">
-                                    No personas attached to this chat.
-                                </p>
+                            <div class="col-span-3">
+                                <EmptyListPlaceholder
+                                    message="No personas attached to this chat."
+                                />
                             </div>
                         {/snippet}
                         {#snippet item({ entity: persona })}
@@ -374,29 +370,21 @@
                         >
                             <Book class="size-3" /> Chat Lorebooks
                         </Label>
-                        <Badge variant="outline" class="text-[10px] font-mono"
-                            >{$chatLorebooks.length}</Badge
-                        >
-                    </div>
-
-                    <div class="flex gap-1.5">
-                        <Input
-                            placeholder="New lorebook..."
-                            class="h-8 text-xs bg-background"
-                            bind:value={newChatLorebookName}
-                            disabled={panelAction !== null}
-                            onkeydown={(e) => e.key === 'Enter' && handleChatLorebookAdd()}
-                        />
-                        <Button
-                            variant="secondary"
-                            size="icon"
-                            class="size-8 shrink-0"
-                            disabled={panelAction !== null || !newChatLorebookName.trim()}
-                            aria-busy={panelAction === 'add-lorebook'}
-                            onclick={handleChatLorebookAdd}
-                        >
-                            <Plus class="size-4" />
-                        </Button>
+                        <div class="flex items-center gap-2">
+                            <Badge variant="outline" class="text-[10px] font-mono"
+                                >{$chatLorebooks.length}</Badge
+                            >
+                            <Button
+                                variant="secondary"
+                                size="icon-sm"
+                                disabled={panelAction !== null}
+                                aria-busy={panelAction === 'add-lorebook'}
+                                aria-label="Add chat lorebook"
+                                onclick={handleChatLorebookAdd}
+                            >
+                                <Plus class="size-3.5" />
+                            </Button>
+                        </div>
                     </div>
 
                     <EntityList
@@ -412,9 +400,7 @@
                             moveChatItem(chatId, 'lorebooks', itemId, newFolderId, newSortOrder)}
                     >
                         {#snippet empty()}
-                            <p class="py-2 text-center text-[10px] italic text-muted-foreground">
-                                No chat lorebooks.
-                            </p>
+                            <EmptyListPlaceholder message="No chat lorebooks." />
                         {/snippet}
                         {#snippet item({ entity: lb })}
                             <LorebookItem
@@ -493,10 +479,8 @@
                             moveChatItem(chatId, 'inlays', itemId, newFolderId, newSortOrder)}
                     >
                         {#snippet empty()}
-                            <div
-                                class="col-span-full aspect-square rounded border border-dashed border-muted-foreground/30 flex items-center justify-center"
-                            >
-                                <p class="text-[10px] text-muted-foreground">No images.</p>
+                            <div class="col-span-full">
+                                <EmptyListPlaceholder message="No images." />
                             </div>
                         {/snippet}
                         {#snippet item({ entity: ref })}

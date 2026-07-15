@@ -496,15 +496,16 @@
                 <ChatBackground chatId={$activeChat.id} {defaultCharacter} />
 
                 {#if !inspectorOpen}
-                    <button
-                        type="button"
-                        class="absolute right-0 top-1.5 z-20 flex h-11 w-8 items-center justify-center rounded-l-md border border-r-0 bg-background/70 text-muted-foreground opacity-50 shadow-sm backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                    <Button
+                        variant="outline"
+                        size="icon-lg"
+                        class="absolute right-0 top-1.5 z-20 size-11 rounded-none rounded-l-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
                         title="Show chat context"
                         aria-label="Show chat context"
                         onclick={() => (inspectorOpen = true)}
                     >
                         <ChevronLeft class="size-4" />
-                    </button>
+                    </Button>
                 {/if}
 
                 {#if isLoadingOlder}
@@ -715,15 +716,16 @@
                 <div
                     class="relative w-[360px] shrink-0 max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[calc(100%-2rem)] max-md:max-w-[420px]"
                 >
-                    <button
-                        type="button"
-                        class="absolute right-full top-1.5 z-30 flex h-11 w-8 items-center justify-center rounded-l-md border border-r-0 bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground max-md:hidden"
+                    <Button
+                        variant="outline"
+                        size="icon-lg"
+                        class="absolute right-full top-1.5 z-30 size-11 rounded-none rounded-l-md border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-md:hidden"
                         title="Hide chat context"
                         aria-label="Hide chat context"
                         onclick={() => (inspectorOpen = false)}
                     >
                         <ChevronRight class="size-4" />
-                    </button>
+                    </Button>
                     <ChatRuntimePanel chatId={$activeChat.id} onSelectInlay={addAttachment} />
                 </div>
             {/if}

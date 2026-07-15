@@ -1,6 +1,11 @@
-import { AssetSyncEngine, DataRecordSyncEngine, UserRecordSyncEngine } from '$lib/services/sync';
+import {
+    AssetSyncEngine,
+    DataRecordSyncEngine,
+    MultiRecordSyncEngine,
+    UserRecordSyncEngine
+} from '$lib/services/sync';
 import type { SyncStatus } from '$lib/services/sync/base';
-import { assetSyncStatus, dataSyncStatus, userSyncStatus } from '../state';
+import { assetSyncStatus, dataSyncStatus, multiSyncStatus, userSyncStatus } from '../state';
 import { startDataStoreSync, stopDataStoreSync } from './data';
 import { startMultiStoreSync, stopMultiStoreSync } from './multi';
 import { startUserStoreSync, stopUserStoreSync } from './user';
@@ -16,6 +21,9 @@ export function startSyncStatusTracking(): void {
         }),
         UserRecordSyncEngine.subscribeStatus((status) => {
             userSyncStatus.set(status);
+        }),
+        MultiRecordSyncEngine.subscribeStatus((status) => {
+            multiSyncStatus.set(status);
         }),
         AssetSyncEngine.subscribeStatus((status) => {
             assetSyncStatus.set(status);
@@ -37,7 +45,8 @@ export function startSyncStatusTracking(): void {
 
         dataSyncStatus.set({ state: 'idle' });
         userSyncStatus.set({ state: 'idle' });
-        assetSyncStatus.set({ state: 'idle', pendingCount: 0 });
+        multiSyncStatus.set({ state: 'idle' });
+        assetSyncStatus.set({ state: 'idle' });
         stopTracking = null;
     };
 }

@@ -4,15 +4,20 @@
         ChevronDown,
         ChevronLeft,
         ChevronRight,
+        Cloud,
+        CloudOff,
         Edit3,
         Folder,
         FolderOpen,
         Home,
+        LoaderCircle,
+        LockKeyhole,
         MessageSquare,
         Pin,
         Plus,
         Search,
         Settings,
+        RefreshCw,
         Trash2,
         User,
         UserCircle,
@@ -21,6 +26,7 @@
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
+    import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ResourcePickerDialog from '$lib/components/ResourcePickerDialog.svelte';
     import RoomAvatar from '$lib/components/RoomAvatar.svelte';
     import { Button } from '$lib/components/ui/button';
@@ -31,6 +37,7 @@
         activeUser,
         activePreset,
         activeRoom,
+        assetSyncStatus,
         addRoomCharacter,
         appSettings,
         characters,
@@ -41,9 +48,12 @@
         deleteChat,
         deleteGlobalFolder,
         deleteRoomFolder,
+        dataSyncStatus,
         isMultiRoom,
+        isSyncLinked,
         localUsers,
         migrationLocked,
+        multiSyncStatus,
         moveGlobalItem,
         moveRoomItem,
         multiRoomCharacters,
@@ -57,6 +67,7 @@
         updateGlobalFolder,
         updateRoom,
         updateRoomFolder,
+        userSyncStatus,
         loadLocalUsers,
         switchLocalUser,
         createAndSwitchLocalUser
@@ -69,6 +80,7 @@
     import { syncChatGreetings } from '$lib/managers';
     import { compareSortOrder } from '$lib/utils/ordering';
     import { getErrorMessage } from '$lib/types/errors';
+    import { SyncManager, type SyncStatus } from '$lib/services/sync';
 
     interface Props {
         collapsed?: boolean;
@@ -76,6 +88,11 @@
         onToggle: () => void;
         onNavigate: (route: RouteState) => void;
     }
+
+    type SyncIndicatorState = SyncStatus['state'] | 'migration';
+
+    const SYNC_ICON_DELAY_MS = 400;
+    const SYNC_ICON_MIN_VISIBLE_MS = 500;
 
     let { collapsed = false, route, onToggle, onNavigate }: Props = $props();
 
@@ -86,7 +103,83 @@
     let roomNameDraft = $state('');
     let switchingUserId = $state<string | null>(null);
     let creatingUser = $state(false);
+    let retryingSync = $state(false);
     let sidebarAction = $state<string | null>(null);
+    let syncIconState = $state<SyncIndicatorState>('idle');
+    let syncIconStartedAt = 0;
+
+    const syncState = $derived.by(() => {
+        if ($migrationLocked) return 'migration';
+        const states = [
+            $dataSyncStatus.state,
+            $userSyncStatus.state,
+            $assetSyncStatus.state,
+            $multiSyncStatus.state
+        ];
+        if (states.includes('auth_error')) return 'auth_error';
+        if (states.includes('quota_error')) return 'quota_error';
+        if (states.includes('network_error')) return 'network_error';
+        if (states.includes('syncing')) return 'syncing';
+        return 'idle';
+    });
+    const syncLabel = $derived(
+        syncState === 'migration'
+            ? 'Migration in progress'
+            : syncState === 'syncing'
+              ? 'Syncing encrypted data'
+              : syncState === 'network_error'
+                ? 'Sync paused: network unavailable. Activate to retry.'
+                : syncState === 'quota_error'
+                  ? 'Sync paused: remote storage quota reached. Activate to retry.'
+                  : syncState === 'auth_error'
+                    ? 'Sync paused: sign-in needs attention. Activate to retry.'
+                    : 'Encrypted data is synced. Activate to sync now.'
+    );
+
+    $effect(() => {
+        const nextState = syncState;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+
+        const showState = (state: SyncIndicatorState): void => {
+            syncIconState = state;
+            syncIconStartedAt = state === 'syncing' ? Date.now() : 0;
+        };
+
+        if (nextState === 'syncing' && syncIconState !== 'syncing') {
+            timer = setTimeout(() => showState('syncing'), SYNC_ICON_DELAY_MS);
+        } else if (nextState === 'idle' && syncIconState === 'syncing') {
+            const remaining = SYNC_ICON_MIN_VISIBLE_MS - (Date.now() - syncIconStartedAt);
+            if (remaining > 0) timer = setTimeout(() => showState('idle'), remaining);
+            else showState('idle');
+        } else {
+            showState(nextState);
+        }
+
+        return () => {
+            if (timer) clearTimeout(timer);
+        };
+    });
+
+    function syncStatusLabel(status: SyncStatus): string {
+        if (status.state === 'syncing') return 'Syncing';
+        if (status.state === 'network_error') return 'Network error';
+        if (status.state === 'quota_error') return 'Quota error';
+        if (status.state === 'auth_error') return 'Authentication error';
+        return 'Up to date';
+    }
+
+    function syncStatusColor(status: SyncStatus): string {
+        if (status.state === 'syncing') return 'bg-blue-500';
+        if (status.state === 'idle') return 'bg-green-500';
+        return 'bg-destructive';
+    }
+
+    function syncProgressLabel(status: SyncStatus): string | null {
+        if (status.progress) {
+            return `${status.progress.completed}/${status.progress.total}`;
+        }
+        return null;
+    }
 
     const filteredChats = $derived(() => {
         const query = chatSearch.trim().toLowerCase();
@@ -108,6 +201,18 @@
     $effect(() => {
         void loadLocalUsers();
     });
+
+    async function handleSync(): Promise<void> {
+        if (retryingSync || syncState === 'syncing') return;
+        retryingSync = true;
+        try {
+            await SyncManager.syncAll();
+        } catch (error) {
+            toast.error({ title: 'Could not sync', description: getErrorMessage(error) });
+        } finally {
+            retryingSync = false;
+        }
+    }
 
     async function runSidebarAction(
         key: string,
@@ -315,6 +420,18 @@
     }
 </script>
 
+{#snippet syncStatusRow(label: string, status: SyncStatus)}
+    {@const progress = syncProgressLabel(status)}
+    <div class="flex items-center gap-2 px-2 py-1.5 text-xs">
+        <span class={`size-2 shrink-0 rounded-full ${syncStatusColor(status)}`}></span>
+        <span class="min-w-0 flex-1 font-medium">{label}</span>
+        <span class="text-muted-foreground">{syncStatusLabel(status)}</span>
+        {#if progress}
+            <span class="min-w-10 text-right font-mono text-muted-foreground">{progress}</span>
+        {/if}
+    </div>
+{/snippet}
+
 {#if !collapsed}
     <button
         type="button"
@@ -411,6 +528,65 @@
         </div>
 
         <div class="flex flex-col items-center gap-2 border-t border-sidebar-border p-2">
+            {#if $isSyncLinked || $migrationLocked}
+                <DropdownMenu.Root>
+                    <DropdownMenu.Trigger>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            class="size-9"
+                            title={syncLabel}
+                            aria-label={`View sync status: ${syncLabel}`}
+                            aria-busy={retryingSync || syncState === 'syncing'}
+                        >
+                            {#if syncIconState === 'migration'}
+                                <LockKeyhole
+                                    class="size-4 text-amber-600 dark:text-amber-400"
+                                    aria-hidden="true"
+                                />
+                            {:else if syncIconState === 'syncing'}
+                                <LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
+                            {:else if syncIconState === 'idle'}
+                                <Cloud
+                                    class="size-4 text-green-600 dark:text-green-400"
+                                    aria-hidden="true"
+                                />
+                            {:else}
+                                <CloudOff class="size-4 text-destructive" aria-hidden="true" />
+                            {/if}
+                        </Button>
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Content side="right" align="end" sideOffset={10} class="w-72 p-1">
+                        <DropdownMenu.Label class="px-2 py-1.5 text-xs"
+                            >Sync status</DropdownMenu.Label
+                        >
+                        {#if $migrationLocked}
+                            <div class="mx-1 mb-1 rounded-md bg-amber-500/10 px-2.5 py-2 text-xs">
+                                <p class="font-medium text-amber-700 dark:text-amber-300">
+                                    Migration in progress
+                                </p>
+                                <p class="mt-1 leading-4 text-muted-foreground">
+                                    Sync is paused until migration finishes.
+                                </p>
+                            </div>
+                            <DropdownMenu.Separator />
+                        {/if}
+                        {@render syncStatusRow('User', $userSyncStatus)}
+                        {@render syncStatusRow('Records', $dataSyncStatus)}
+                        {@render syncStatusRow('Assets', $assetSyncStatus)}
+                        {@render syncStatusRow('Multi-room', $multiSyncStatus)}
+                        <DropdownMenu.Separator />
+                        <DropdownMenu.Item
+                            class="cursor-pointer gap-2"
+                            disabled={$migrationLocked || retryingSync || syncState === 'syncing'}
+                            onclick={() => void handleSync()}
+                        >
+                            <RefreshCw class="size-4" />
+                            {retryingSync || syncState === 'syncing' ? 'Syncing...' : 'Sync now'}
+                        </DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                </DropdownMenu.Root>
+            {/if}
             <Button
                 variant="ghost"
                 size="icon"
@@ -627,10 +803,8 @@
                                 )}
                         >
                             {#snippet empty()}
-                                <div
-                                    class="col-span-3 rounded-md border border-dashed p-3 text-center"
-                                >
-                                    <p class="text-[11px] text-muted-foreground">No characters.</p>
+                                <div class="col-span-3">
+                                    <EmptyListPlaceholder message="No characters." />
                                 </div>
                             {/snippet}
                             {#snippet item({ entity: character })}
@@ -758,11 +932,7 @@
                                     )}
                             >
                                 {#snippet empty()}
-                                    <div
-                                        class="px-3 py-8 text-center text-xs text-muted-foreground"
-                                    >
-                                        No chats yet.
-                                    </div>
+                                    <EmptyListPlaceholder message="No chats yet." />
                                 {/snippet}
                                 {#snippet folder({ folder: f, collapsed, toggle, parts })}
                                     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -996,39 +1166,42 @@
                         </div>
                     {/if}
                 </div>
-                <button
-                    type="button"
-                    class="absolute left-full top-1.5 z-30 flex h-11 w-8 items-center justify-center rounded-r-md border border-l-0 bg-sidebar text-muted-foreground shadow-sm transition-colors hover:bg-sidebar-accent hover:text-foreground max-md:hidden"
+                <Button
+                    variant="outline"
+                    size="icon-lg"
+                    class="absolute left-full top-1.5 z-30 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-md:hidden"
                     title="Hide room panel"
                     aria-label="Hide room panel"
                     onclick={onToggle}
                 >
                     <ChevronLeft class="size-4" />
-                </button>
+                </Button>
             </div>
         {:else}
-            <button
-                type="button"
-                class="absolute left-full top-1.5 z-50 flex h-11 w-8 items-center justify-center rounded-r-md border border-l-0 bg-background/70 text-muted-foreground opacity-50 shadow-sm backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:opacity-100"
+            <Button
+                variant="outline"
+                size="icon-lg"
+                class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent"
                 title="Show room panel"
                 aria-label="Show room panel"
                 onclick={onToggle}
             >
                 <ChevronRight class="size-4" />
-            </button>
+            </Button>
         {/if}
     {/if}
 
     {#if !$activeRoom && collapsed}
-        <button
-            type="button"
-            class="absolute left-full top-1.5 z-50 flex h-11 w-8 items-center justify-center rounded-r-md border border-l-0 bg-background/70 text-muted-foreground opacity-50 shadow-sm backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:opacity-100 md:hidden"
+        <Button
+            variant="outline"
+            size="icon-lg"
+            class="absolute left-full top-1.5 z-50 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar/70 text-muted-foreground opacity-50 shadow-none backdrop-blur-sm transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:opacity-100 focus-visible:opacity-100 dark:bg-sidebar/70 dark:hover:bg-sidebar-accent md:hidden"
             title="Show sidebar"
             aria-label="Show sidebar"
             onclick={onToggle}
         >
             <ChevronRight class="size-4" />
-        </button>
+        </Button>
     {/if}
 </aside>
 

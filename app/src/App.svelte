@@ -7,6 +7,7 @@
     import { clock } from '$lib/utils/clock';
     import { appKV } from '$lib/adapters/kv';
     import AppSidebar from '$lib/components/layout/AppSidebar.svelte';
+    import { Button } from '$lib/components/ui/button';
     import {
         loadGlobalState,
         loadUser,
@@ -43,11 +44,13 @@
     import ModalHost from '$lib/components/app/ModalHost.svelte';
     import ToastHost from '$lib/components/app/ToastHost.svelte';
     import { getWebCryptoAvailabilityIssue, type WebCryptoAvailabilityIssue } from '$lib/crypto';
+    import { getEnvironmentConfigIssue } from '$lib/config';
 
     let ready = $state(false);
     let errorMsg = $state('');
     let cryptoIssue = $state<WebCryptoAvailabilityIssue | null>(null);
     let sidebarCollapsed = $state(false);
+    const environmentIssue = getEnvironmentConfigIssue();
     const logger = createLogger('route:page');
 
     function navigateFromHome(r: RouteState) {
@@ -166,6 +169,8 @@
 
     onMount(async () => {
         try {
+            if (environmentIssue) return;
+
             cryptoIssue = getWebCryptoAvailabilityIssue();
             if (cryptoIssue) return;
 
@@ -191,6 +196,10 @@
         }
     });
 
+    function retryStartup(): void {
+        window.location.reload();
+    }
+
     onDestroy(() => {
         SyncManager.stopAutoSync();
         stopSyncStatusTracking();
@@ -198,47 +207,104 @@
     });
 </script>
 
-<main class="flex h-screen bg-background text-foreground overflow-hidden">
-    {#if cryptoIssue}
-        <div class="flex flex-1 items-center justify-center p-6">
-            <section class="w-full max-w-lg rounded-xl border bg-card p-6 shadow-sm">
-                <div
-                    class="mb-4 inline-flex rounded-full bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive"
-                >
-                    Startup blocked
-                </div>
-                <h1 class="text-xl font-semibold">{cryptoIssue.title}</h1>
-                <p class="mt-3 text-sm leading-6 text-muted-foreground">
-                    {cryptoIssue.message}
-                </p>
+{#snippet startupIssue(
+    label: string,
+    title: string,
+    message: string,
+    instructions: string[],
+    retryLabel: string | null
+)}
+    <div class="flex flex-1 items-center justify-center p-4 sm:p-6">
+        <section
+            class="w-full max-w-lg rounded-xl border bg-card p-5 shadow-sm sm:p-6"
+            role="alert"
+        >
+            <div
+                class="mb-4 inline-flex rounded-full bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive"
+            >
+                {label}
+            </div>
+            <h1 class="text-xl font-semibold">{title}</h1>
+            <p class="mt-3 break-words text-sm leading-6 text-muted-foreground">{message}</p>
+            {#if instructions.length > 0}
                 <div class="mt-5 rounded-lg border bg-muted/30 p-4 text-sm">
                     <p class="font-medium">How to continue</p>
                     <ul class="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-                        <li>Open KeiAI from an HTTPS address.</li>
-                        <li>Use a modern browser with Web Crypto support.</li>
-                        <li>Use the native Tauri app when available.</li>
+                        {#each instructions as instruction (instruction)}
+                            <li>{instruction}</li>
+                        {/each}
                     </ul>
                 </div>
-                <p class="mt-4 text-xs text-muted-foreground">
-                    During local development, plain HTTP network URLs may not expose
-                    <code>crypto.subtle</code>. Use HTTPS or localhost-style access for device
-                    testing.
-                </p>
-            </section>
-        </div>
-    {:else if errorMsg}
-        <div
-            class="absolute inset-x-0 top-0 z-50 bg-destructive px-4 py-2 text-center text-sm font-medium text-white"
-        >
-            {errorMsg}
-        </div>
-    {/if}
+            {/if}
+            {#if retryLabel}
+                <Button class="mt-5" onclick={retryStartup}>{retryLabel}</Button>
+            {/if}
+        </section>
+    </div>
+{/snippet}
 
-    {#if cryptoIssue}
-        <!-- Startup is intentionally blocked until Web Crypto is available. -->
+{#snippet routeLoading(label: string)}
+    <div class="flex min-h-0 flex-1 items-center justify-center p-6" role="status">
+        <p class="text-sm text-muted-foreground">Loading {label}...</p>
+    </div>
+{/snippet}
+
+{#snippet routeLoadError(loadError: unknown)}
+    <div class="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
+        <section
+            class="w-full max-w-lg rounded-xl border border-destructive/30 bg-card p-5"
+            role="alert"
+        >
+            <h1 class="text-lg font-semibold">This view could not be loaded</h1>
+            <p class="mt-2 break-words text-sm text-muted-foreground">
+                {getErrorMessage(loadError)}
+            </p>
+            <Button class="mt-4" onclick={retryStartup}>Retry</Button>
+        </section>
+    </div>
+{/snippet}
+
+<main
+    class="flex h-screen overflow-hidden bg-background text-foreground"
+    aria-busy={!ready && !environmentIssue && !cryptoIssue && !errorMsg}
+>
+    {#if environmentIssue}
+        {@render startupIssue(
+            'Startup blocked',
+            environmentIssue.title,
+            environmentIssue.message,
+            [
+                `Add ${environmentIssue.missingVariables.join(' and ')} to the root .env file.`,
+                'Restart the development server or rebuild the app after updating the environment.'
+            ],
+            'Retry startup'
+        )}
+    {:else if cryptoIssue}
+        {@render startupIssue(
+            'Startup blocked',
+            cryptoIssue.title,
+            cryptoIssue.message,
+            [
+                'Open KeiAI from an HTTPS address.',
+                'Use a modern browser with Web Crypto support.',
+                'Use the native Tauri app when available.'
+            ],
+            null
+        )}
+    {:else if errorMsg}
+        {@render startupIssue(
+            'Startup failed',
+            'KeiAI could not finish starting',
+            errorMsg,
+            [
+                'Your local data has not been removed.',
+                'Check storage permissions and connectivity before retrying.'
+            ],
+            'Retry startup'
+        )}
     {:else if !ready}
-        <div class="flex flex-1 items-center justify-center">
-            <p class="text-muted-foreground text-sm">Initializing Secure Local Session...</p>
+        <div class="flex flex-1 items-center justify-center p-6">
+            <p class="text-sm text-muted-foreground" role="status">Loading KeiAI...</p>
         </div>
     {:else}
         {#if $route.view !== 'settings' && $route.view !== 'characterStudio' && $route.view !== 'moduleStudio' && $route.view !== 'personaStudio'}
@@ -254,32 +320,60 @@
         <!-- Main Content -->
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
             {#if $route.view === 'room' && $route.roomId}
-                {#await import('$lib/views/chat/ChatView.svelte') then m}
+                {#await import('$lib/views/chat/ChatView.svelte')}
+                    {@render routeLoading('chat')}
+                {:then m}
                     <m.default roomId={$route.roomId} chatId={$route.chatId} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else if $route.view === 'characterStudio' && $route.charId}
-                {#await import('$lib/views/character/CharacterStudio.svelte') then m}
+                {#await import('$lib/views/character/CharacterStudio.svelte')}
+                    {@render routeLoading('character editor')}
+                {:then m}
                     <m.default charId={$route.charId} characterTab={$route.characterTab} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else if $route.view === 'moduleStudio' && $route.moduleId}
-                {#await import('$lib/views/modules/ModuleStudio.svelte') then m}
+                {#await import('$lib/views/modules/ModuleStudio.svelte')}
+                    {@render routeLoading('module editor')}
+                {:then m}
                     <m.default moduleId={$route.moduleId} moduleTab={$route.moduleTab} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else if $route.view === 'personaStudio' && $route.personaId}
-                {#await import('$lib/views/persona/PersonaStudio.svelte') then m}
+                {#await import('$lib/views/persona/PersonaStudio.svelte')}
+                    {@render routeLoading('persona editor')}
+                {:then m}
                     <m.default personaId={$route.personaId} personaTab={$route.personaTab} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else if $route.view === 'settings'}
-                {#await import('$lib/views/settings/SettingsView.svelte') then m}
+                {#await import('$lib/views/settings/SettingsView.svelte')}
+                    {@render routeLoading('settings')}
+                {:then m}
                     <m.default settingsTab={$route.settingsTab} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else if $route.view === 'multiRoom'}
-                {#await import('$lib/views/home/HomeView.svelte') then m}
+                {#await import('$lib/views/home/HomeView.svelte')}
+                    {@render routeLoading('rooms')}
+                {:then m}
                     <m.default space="multiRooms" onNavigate={navigateFromHome} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {:else}
-                {#await import('$lib/views/home/HomeView.svelte') then m}
+                {#await import('$lib/views/home/HomeView.svelte')}
+                    {@render routeLoading('library')}
+                {:then m}
                     <m.default space="library" onNavigate={navigateFromHome} />
+                {:catch loadError}
+                    {@render routeLoadError(loadError)}
                 {/await}
             {/if}
         </div>

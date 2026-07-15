@@ -29,6 +29,7 @@ export const localUsers = readonly(StoreState.localUsers);
 export const pbConnected = readonly(StoreState.pbConnected);
 export const dataSyncStatus = readonly(StoreState.dataSyncStatus);
 export const userSyncStatus = readonly(StoreState.userSyncStatus);
+export const multiSyncStatus = readonly(StoreState.multiSyncStatus);
 export const assetSyncStatus = readonly(StoreState.assetSyncStatus);
 export const migrationLocked = readonly(StoreState.migrationLocked);
 export const characters = readonly(StoreState.characters);

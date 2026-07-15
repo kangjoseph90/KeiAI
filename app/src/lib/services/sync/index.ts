@@ -17,7 +17,6 @@ export { UserRecordSyncEngine } from './user';
 export { AssetSyncEngine } from './asset';
 export { MultiRecordSyncEngine } from './multi';
 export type { SyncState, SyncProgress, SyncStatus } from './base';
-export type { AssetSyncStatus } from './asset';
 
 import { DataRecordSyncEngine } from './data';
 import { UserRecordSyncEngine } from './user';

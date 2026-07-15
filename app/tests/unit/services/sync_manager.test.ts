@@ -99,7 +99,7 @@ vi.mock('$lib/services/sync/asset', () => {
     const engine = {
         start: vi.fn(async () => {}),
         stop: vi.fn(),
-        getState: vi.fn(() => ({ state: 'idle', pendingCount: 0 })),
+        getState: vi.fn(() => ({ state: 'idle' })),
         subscribeStatus: vi.fn(() => () => {})
     };
     return {
