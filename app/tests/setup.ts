@@ -3,17 +3,11 @@
  *
  * Configures:
  * - fake-indexeddb for Dexie testing
- * - @testing-library matchers
  * - PocketBase mocking
  */
 
-import { beforeAll, afterEach, vi, expect } from 'vitest';
-import { cleanup } from '@testing-library/svelte';
-import * as matchers from '@testing-library/jest-dom/matchers';
+import { beforeAll, afterEach, vi } from 'vitest';
 import fakeIndexedDB, { IDBKeyRange as FDBKeyRange } from 'fake-indexeddb';
-
-// Extend Vitest's expect with jest-dom matchers
-expect.extend(matchers);
 
 // ─── Mock PocketBase ─────────────────────────────────────────────────────
 
@@ -127,9 +121,6 @@ vi.mock('@tauri-apps/plugin-stronghold', () => ({
 // ─── Cleanup ─────────────────────────────────────────────────────────────
 
 afterEach(() => {
-    // Cleanup testing-library DOM state
-    cleanup();
-
     // Clear all mocks after each test
     vi.clearAllMocks();
 });
