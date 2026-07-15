@@ -726,7 +726,7 @@
                     onclick={() => (inspectorOpen = false)}
                 ></button>
                 <div
-                    class="relative w-[360px] shrink-0 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-40 max-lg:w-[calc(100%-2rem)] max-lg:max-w-[420px]"
+                    class="app-chat-runtime-panel relative w-[360px] shrink-0 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-40"
                 >
                     <Button
                         variant="outline"

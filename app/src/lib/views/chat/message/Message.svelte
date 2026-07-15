@@ -611,7 +611,7 @@
 
             <!-- Single Action Row (hover) -->
             <div
-                class="-my-1 hidden items-center gap-2 transition-opacity group-focus-within:flex md:my-0 md:flex md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 {isUser
+                class="touch-action-row -my-1 hidden items-center gap-2 transition-opacity group-focus-within:flex md:my-0 md:flex md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 {isUser
                     ? 'flex-row-reverse'
                     : 'flex-row'} {message.displayStatus !== 'completed'
                     ? 'pointer-events-none invisible select-none'
@@ -621,9 +621,10 @@
                 {#if !isUser && sortedSwipes.length > 1}
                     <div class="flex items-center gap-0.5 text-xs text-muted-foreground mr-1">
                         <button
-                            class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
+                            class="touch-target rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
                             disabled={actionsDisabled || swipePos <= 0}
                             aria-busy={busyAction === 'swipe'}
+                            aria-label="Previous swipe"
                             onclick={() => onSwipe(sortedSwipes[swipePos - 1].id)}
                         >
                             <ChevronLeft class="size-4 md:size-3.5" />
@@ -632,9 +633,10 @@
                             >{swipePos + 1} / {sortedSwipes.length}</span
                         >
                         <button
-                            class="rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
+                            class="touch-target rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
                             disabled={actionsDisabled || swipePos >= sortedSwipes.length - 1}
                             aria-busy={busyAction === 'swipe'}
+                            aria-label="Next swipe"
                             onclick={() => onSwipe(sortedSwipes[swipePos + 1].id)}
                         >
                             <ChevronRight class="size-4 md:size-3.5" />
@@ -646,8 +648,9 @@
                 <Button
                     variant="ghost"
                     size="sm"
-                    class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                    class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
                     onclick={handleCopy}
+                    aria-label={copied ? 'Copied message' : 'Copy message'}
                 >
                     {#if copied}
                         <Check class="size-3.5 md:size-3" />
@@ -660,9 +663,10 @@
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                        class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
                         onclick={() => stopTranslation(message.id)}
                         title="Stop translation"
+                        aria-label="Stop translation"
                     >
                         <Loader2 class="size-3.5 md:size-3 animate-spin" />
                     </Button>
@@ -670,7 +674,7 @@
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs {showTranslation &&
+                        class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs {showTranslation &&
                         cachedTranslation
                             ? 'bg-primary/15 text-primary hover:bg-primary/25'
                             : 'text-muted-foreground'}"
@@ -690,6 +694,11 @@
                                 ? 'Show original (double click to retranslate)'
                                 : 'Show translation'
                             : 'Translate'}
+                        aria-label={cachedTranslation
+                            ? showTranslation
+                                ? 'Show original message'
+                                : 'Show translated message'
+                            : 'Translate message'}
                     >
                         <Languages class="size-3.5 md:size-3" />
                     </Button>
@@ -701,8 +710,9 @@
                         <Button
                             variant="ghost"
                             size="sm"
-                            class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                            class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
                             onclick={onRegenerate}
+                            aria-label="Regenerate response"
                         >
                             <RefreshCw class="size-3.5 md:size-3" />
                         </Button>
@@ -712,9 +722,10 @@
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                        class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
                         disabled={actionsDisabled}
                         aria-busy={busyAction === 'fork'}
+                        aria-label="Fork chat from message"
                         onclick={onFork}
                     >
                         <GitBranch class="size-3.5 md:size-3" />
@@ -725,9 +736,10 @@
                 <Button
                     variant="ghost"
                     size="sm"
-                    class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                    class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
                     disabled={actionsDisabled}
                     onclick={onEdit}
+                    aria-label="Edit message"
                 >
                     <Pencil class="size-3.5 md:size-3" />
                 </Button>
@@ -736,9 +748,10 @@
                 <Button
                     variant="ghost"
                     size="sm"
-                    class="h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground hover:text-destructive"
+                    class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground hover:text-destructive"
                     disabled={actionsDisabled}
                     aria-busy={busyAction === 'delete'}
+                    aria-label="Delete message"
                     onclick={onDelete}
                 >
                     <Trash2 class="size-3.5 md:size-3" />

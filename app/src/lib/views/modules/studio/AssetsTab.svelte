@@ -180,13 +180,14 @@
                     {/if}
                 </div>
                 <div
-                    class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    class="touch-visible flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                     <Button
                         variant="ghost"
                         size="icon-sm"
                         class="size-7"
                         title="Rename"
+                        aria-label={`Rename ${ref.name}`}
                         disabled={busyAction !== null}
                         onclick={() => startRename(ref)}
                     >
@@ -197,6 +198,7 @@
                         size="icon-sm"
                         class="size-7 text-destructive hover:text-destructive"
                         title="Delete"
+                        aria-label={`Delete ${ref.name}`}
                         disabled={busyAction !== null}
                         aria-busy={busyAction === `delete:${ref.id}`}
                         onclick={() => handleDelete(ref)}

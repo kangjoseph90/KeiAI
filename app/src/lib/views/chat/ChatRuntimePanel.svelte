@@ -14,6 +14,7 @@
     import AssetView from '$lib/components/AssetView.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
+    import ParticipantCardMenu from '$lib/components/ParticipantCardMenu.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
@@ -308,18 +309,31 @@
                                     </div>
                                     <span class="w-full truncate text-[11px]">{persona.name}</span>
                                 </div>
+                                <ParticipantCardMenu
+                                    kind="persona"
+                                    name={persona.name}
+                                    {isDefault}
+                                    disabled={panelAction !== null}
+                                    defaultBusy={panelAction === `default-persona:${persona.id}`}
+                                    removeBusy={panelAction === `remove-persona:${persona.id}`}
+                                    onOpen={() => openPersonaSettings(persona.id)}
+                                    onSetDefault={() => handleSetDefaultPersona(persona.id)}
+                                    onRemove={() => handlePersonaRemove(persona.id)}
+                                />
                                 <button
-                                    class="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
+                                    class="absolute -left-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100 lg:flex"
                                     title="Open persona settings"
+                                    aria-label={`Open ${persona.name} settings`}
                                     onclick={() => openPersonaSettings(persona.id)}
                                 >
                                     <Settings class="size-3" />
                                 </button>
                                 <button
-                                    class="absolute left-5 -top-1 flex size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity {isDefault
+                                    class="absolute left-5 -top-1 hidden size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity lg:flex {isDefault
                                         ? 'text-primary opacity-100'
                                         : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
                                     title="Set default persona"
+                                    aria-label={`Set ${persona.name} as default persona`}
                                     disabled={panelAction !== null}
                                     aria-busy={panelAction === `default-persona:${persona.id}`}
                                     onclick={() => handleSetDefaultPersona(persona.id)}
@@ -328,7 +342,7 @@
                                 </button>
                                 <button
                                     type="button"
-                                    class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                    class="absolute -right-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100 lg:flex"
                                     title="Remove from chat"
                                     aria-label={`Remove ${persona.name} from chat`}
                                     disabled={panelAction !== null}
@@ -503,7 +517,7 @@
                                 </div>
                                 <button
                                     type="button"
-                                    class="absolute -left-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
+                                    class="touch-visible absolute -left-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
                                     title="Attach to message"
                                     aria-label={`Attach ${ref.name} to message`}
                                     onclick={(event) => {
@@ -515,7 +529,7 @@
                                 </button>
                                 <button
                                     type="button"
-                                    class="absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                    class="touch-visible absolute -right-1 -top-1 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
                                     title="Delete"
                                     aria-label={`Delete ${ref.name}`}
                                     disabled={panelAction !== null}

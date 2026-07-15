@@ -790,7 +790,11 @@
                         >
                             <div class="flex gap-2">
                                 <Input bind:value={joinRoomId} placeholder="Room id" />
-                                <Button type="submit" disabled={joiningRoom || !joinRoomId.trim()}>
+                                <Button
+                                    type="submit"
+                                    aria-label="Request to join room"
+                                    disabled={joiningRoom || !joinRoomId.trim()}
+                                >
                                     <KeyRound class="size-4" />
                                 </Button>
                             </div>
@@ -805,7 +809,11 @@
                         >
                             <div class="flex gap-2">
                                 <Input bind:value={publicRoomQuery} placeholder="Public room" />
-                                <Button type="submit" disabled={searchingPublicRooms}>
+                                <Button
+                                    type="submit"
+                                    aria-label="Search public rooms"
+                                    disabled={searchingPublicRooms}
+                                >
                                     <Search class="size-4" />
                                 </Button>
                             </div>
@@ -858,6 +866,7 @@
                                                 size="icon-sm"
                                                 variant="outline"
                                                 title="Approve"
+                                                aria-label={`Approve ${request.member.userId}`}
                                                 disabled={approvingMemberId ===
                                                     `${request.roomId}:${request.member.userId}`}
                                                 onclick={() =>
@@ -872,6 +881,7 @@
                                                 size="icon-sm"
                                                 variant="ghost"
                                                 title="Reject"
+                                                aria-label={`Reject ${request.member.userId}`}
                                                 disabled={approvingMemberId ===
                                                     `${request.roomId}:${request.member.userId}`}
                                                 onclick={() =>
@@ -968,6 +978,7 @@
                                         size="icon-sm"
                                         class="shrink-0 text-muted-foreground hover:text-foreground"
                                         title="Manage multi room"
+                                        aria-label={`Manage ${room.name}`}
                                         onclick={() => handleOpenMultiRoomManagement(room.id)}
                                     >
                                         <Settings2 class="size-4" />

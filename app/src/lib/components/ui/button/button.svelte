@@ -59,6 +59,7 @@
     <a
         bind:this={ref}
         data-slot="button"
+        data-size={size}
         class={cn(buttonVariants({ variant, size }), className)}
         href={disabled ? undefined : href}
         rel="external"
@@ -73,6 +74,7 @@
     <button
         bind:this={ref}
         data-slot="button"
+        data-size={size}
         class={cn(buttonVariants({ variant, size }), className)}
         {type}
         {disabled}

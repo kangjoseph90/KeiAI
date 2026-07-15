@@ -27,6 +27,7 @@
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
+    import ParticipantCardMenu from '$lib/components/ParticipantCardMenu.svelte';
     import RoomAvatar from '$lib/components/RoomAvatar.svelte';
     import { Button } from '$lib/components/ui/button';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -558,6 +559,7 @@
                 size="icon"
                 class="size-9"
                 title="Settings"
+                aria-label="Settings"
                 onclick={() => onNavigate({ view: 'settings' })}
             >
                 <Settings class="size-4" />
@@ -569,6 +571,7 @@
                         size="icon"
                         class="size-9 overflow-hidden rounded-md"
                         title={$activeUser?.name ?? 'Current user'}
+                        aria-label={`Current user: ${$activeUser?.name ?? 'Unknown'}`}
                     >
                         {#if $activeUser?.avatar}
                             <img
@@ -675,6 +678,7 @@
                                     type="submit"
                                     size="icon"
                                     class="size-8"
+                                    aria-label="Save room name"
                                     disabled={sidebarAction !== null}
                                     aria-busy={sidebarAction === 'rename-room'}
                                 >
@@ -806,15 +810,30 @@
                                             >{character.name}</span
                                         >
                                     </div>
+                                    <ParticipantCardMenu
+                                        kind="character"
+                                        name={character.name}
+                                        {isDefault}
+                                        disabled={sidebarAction !== null}
+                                        defaultDisabled={!$activeChat}
+                                        defaultBusy={sidebarAction ===
+                                            `default-character:${character.id}`}
+                                        removeBusy={sidebarAction ===
+                                            `remove-character:${character.id}`}
+                                        onOpen={() => handleOpenCharacter(character.id)}
+                                        onSetDefault={() => handleSetDefaultCharacter(character.id)}
+                                        onRemove={() => handleRemoveCharacter(character.id)}
+                                    />
                                     <button
-                                        class="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100"
+                                        class="absolute -left-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100 lg:flex"
                                         title="Open character studio"
+                                        aria-label={`Open ${character.name} studio`}
                                         onclick={() => handleOpenCharacter(character.id)}
                                     >
                                         <Settings class="size-3" />
                                     </button>
                                     <button
-                                        class="absolute left-5 -top-1 flex size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity {isDefault
+                                        class="absolute left-5 -top-1 hidden size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity lg:flex {isDefault
                                             ? 'text-primary opacity-100'
                                             : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
                                         title="Set default character"
@@ -827,7 +846,7 @@
                                         <Pin class="size-3" />
                                     </button>
                                     <button
-                                        class="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                                        class="absolute -right-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100 lg:flex"
                                         title="Remove from room"
                                         aria-label={`Remove ${character.name} from room`}
                                         disabled={sidebarAction !== null}
@@ -959,6 +978,7 @@
                                                     type="submit"
                                                     size="icon"
                                                     class="size-7"
+                                                    aria-label="Save chat name"
                                                     disabled={sidebarAction !== null}
                                                     aria-busy={sidebarAction ===
                                                         `rename-chat:${chat.id}`}
@@ -992,8 +1012,9 @@
                                                     </span>
                                                 </div>
                                                 <button
-                                                    class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                                    class="touch-visible flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
                                                     title="Rename chat"
+                                                    aria-label={`Rename ${chat.title || 'Untitled Chat'}`}
                                                     disabled={sidebarAction !== null}
                                                     onclick={() =>
                                                         startRenameChat(
@@ -1004,7 +1025,7 @@
                                                     <Edit3 class="size-3" />
                                                 </button>
                                                 <button
-                                                    class="flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
+                                                    class="touch-visible flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
                                                     title="Delete chat"
                                                     aria-label={`Delete ${chat.title || 'Untitled Chat'}`}
                                                     disabled={sidebarAction !== null}

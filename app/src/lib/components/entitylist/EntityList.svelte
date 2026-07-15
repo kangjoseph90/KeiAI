@@ -551,7 +551,7 @@
     {#if mode === 'manage'}
         <div
             role="none"
-            class="opacity-0 group-hover/folder:opacity-100 focus-within:opacity-100 transition-opacity"
+            class="touch-visible opacity-0 group-hover/folder:opacity-100 focus-within:opacity-100 transition-opacity"
             onclick={(e) => e.stopPropagation()}
         >
             <DropdownMenu.Root>
@@ -560,6 +560,7 @@
                         variant="ghost"
                         size="icon-sm"
                         class="size-7 hover:bg-muted-foreground/10 text-inherit"
+                        aria-label={`Actions for ${f.name}`}
                     >
                         <MoreVertical class="size-3.5" />
                     </Button>
@@ -592,6 +593,7 @@
                                     ? 'ring-2 ring-primary ring-offset-1 ring-offset-background'
                                     : ''}"
                                 title={colorName}
+                                aria-label={`Set folder color to ${colorName}`}
                                 onclick={() => onUpdateFolder(f.id, { color: colorName })}
                             >
                             </button>

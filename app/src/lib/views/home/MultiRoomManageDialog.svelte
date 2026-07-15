@@ -125,6 +125,7 @@
                                             size="icon-sm"
                                             variant="outline"
                                             title="Approve member"
+                                            aria-label={`Approve ${member.userId}`}
                                             disabled={busyAction !== null || busyMemberId !== null}
                                             onclick={() => onApprove(member.userId)}
                                         >
@@ -134,6 +135,7 @@
                                             size="icon-sm"
                                             variant="ghost"
                                             title="Reject request"
+                                            aria-label={`Reject ${member.userId}`}
                                             disabled={busyAction !== null || busyMemberId !== null}
                                             onclick={() => onReject(member.userId)}
                                         >
@@ -178,6 +180,7 @@
                                         variant="ghost"
                                         class="text-muted-foreground hover:text-destructive"
                                         title="Remove member"
+                                        aria-label={`Remove ${member.userId}`}
                                         disabled={busyAction !== null || busyMemberId !== null}
                                         aria-busy={busyAction === `revoke-member:${member.userId}`}
                                         onclick={() => onRevoke(member.userId)}

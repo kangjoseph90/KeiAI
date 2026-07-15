@@ -292,12 +292,10 @@
                                 </CardDescription>
                             </CardHeader>
                             <CardContent class="space-y-6">
-                                <div
-                                    class="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-6"
-                                >
-                                    <div class="group relative">
+                                <div class="flex items-center gap-4 sm:gap-6">
+                                    <div class="group relative shrink-0">
                                         <div
-                                            class="size-24 overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
+                                            class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted sm:size-24"
                                         >
                                             <AssetView
                                                 asset={$activePersona.avatar
@@ -326,17 +324,18 @@
                                             </AssetView>
                                         </div>
                                         <button
-                                            class="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                            class="absolute inset-0 flex items-center justify-center rounded-full bg-transparent transition-opacity lg:bg-black/40 lg:text-white lg:opacity-0 lg:group-hover:opacity-100"
                                             disabled={resourceAction !== null}
                                             aria-busy={resourceAction === 'avatar-upload'}
                                             onclick={handleAvatarUpload}
                                             title="Upload avatar"
+                                            aria-label="Upload persona avatar"
                                         >
-                                            <Upload class="size-6" />
+                                            <Upload class="hidden size-6 lg:block" />
                                         </button>
                                     </div>
 
-                                    <div class="w-full flex-1 space-y-4">
+                                    <div class="min-w-0 flex-1 space-y-4">
                                         <div class="grid gap-1.5">
                                             <Label>Persona Name</Label>
                                             <Input
@@ -348,16 +347,27 @@
                                                 placeholder="Enter persona name..."
                                             />
                                         </div>
-                                        <div class="flex items-center gap-2">
+                                        <div class="flex flex-wrap items-center gap-1">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                class="gap-1 px-2"
+                                                disabled={resourceAction !== null}
+                                                aria-busy={resourceAction === 'avatar-upload'}
+                                                onclick={handleAvatarUpload}
+                                            >
+                                                <Upload class="size-4" /> Upload avatar
+                                            </Button>
                                             <Button
                                                 variant="destructive"
                                                 size="sm"
+                                                class="gap-1 px-2"
                                                 disabled={!$activePersona.avatar ||
                                                     resourceAction !== null}
                                                 aria-busy={resourceAction === 'avatar-remove'}
                                                 onclick={handleAvatarRemove}
                                             >
-                                                Remove Avatar
+                                                Remove avatar
                                             </Button>
                                         </div>
                                     </div>
@@ -488,13 +498,14 @@
                                         {/if}
                                     </div>
                                     <div
-                                        class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        class="touch-visible flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
                                     >
                                         <Button
                                             variant="ghost"
                                             size="icon-sm"
                                             class="size-7"
                                             title="Rename"
+                                            aria-label={`Rename ${ref.name}`}
                                             disabled={resourceAction !== null}
                                             onclick={() => startRename(ref)}
                                         >
@@ -505,6 +516,7 @@
                                             size="icon-sm"
                                             class="size-7 text-destructive hover:text-destructive"
                                             title="Delete"
+                                            aria-label={`Delete ${ref.name}`}
                                             disabled={resourceAction !== null}
                                             aria-busy={resourceAction === `asset-delete:${ref.id}`}
                                             onclick={() => handleDeleteAsset(ref)}

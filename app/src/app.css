@@ -250,6 +250,48 @@
             calc(100vw - 6.25rem - var(--safe-area-left) - var(--safe-area-right))
         );
     }
+
+    .app-chat-runtime-panel {
+        width: min(
+            22.75rem,
+            calc(100vw - 6.25rem - var(--safe-area-left) - var(--safe-area-right))
+        );
+    }
+}
+
+@media (hover: none), (pointer: coarse) {
+    .touch-visible {
+        opacity: 1 !important;
+    }
+
+    .touch-action-row {
+        display: flex !important;
+        opacity: 1 !important;
+    }
+
+    [data-slot='button'][data-size^='icon'],
+    .touch-target {
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+@layer base {
+    :where(button, a[href], [role='button'], input, textarea, select):focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+    }
 }
 
 /* Markdown prose styles */
