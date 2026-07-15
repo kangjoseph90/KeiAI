@@ -292,7 +292,9 @@
                                 </CardDescription>
                             </CardHeader>
                             <CardContent class="space-y-6">
-                                <div class="flex items-center gap-6">
+                                <div
+                                    class="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-6"
+                                >
                                     <div class="group relative">
                                         <div
                                             class="size-24 overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
@@ -334,7 +336,7 @@
                                         </button>
                                     </div>
 
-                                    <div class="flex-1 space-y-4">
+                                    <div class="w-full flex-1 space-y-4">
                                         <div class="grid gap-1.5">
                                             <Label>Persona Name</Label>
                                             <Input

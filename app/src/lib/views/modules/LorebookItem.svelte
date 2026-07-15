@@ -323,7 +323,9 @@
                                 {/if}
                             </div>
 
-                            <div class="grid grid-cols-2 gap-y-3 gap-x-2 select-none">
+                            <div
+                                class="grid grid-cols-1 gap-x-2 gap-y-3 select-none sm:grid-cols-2"
+                            >
                                 <label class="flex items-center gap-2 cursor-pointer text-xs">
                                     <input
                                         type="checkbox"

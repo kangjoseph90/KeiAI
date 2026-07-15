@@ -496,9 +496,9 @@
 <svelte:window bind:innerWidth={viewportWidth} />
 
 <div class="flex h-full flex-col overflow-hidden bg-background" aria-busy={homeAction !== null}>
-    <header class="shrink-0 border-b px-8 py-6">
-        <div class="flex items-center justify-between gap-4">
-            <div>
+    <header class="shrink-0 border-b px-4 py-4 sm:px-6 md:px-8 md:py-6">
+        <div class="flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-center">
+            <div class="min-w-0 pl-12 lg:pl-0">
                 <h1 class="text-xl font-semibold">
                     {space === 'multiRooms' ? 'Multi Rooms' : 'Library'}
                 </h1>
@@ -516,7 +516,7 @@
             </div>
             {#if tab === 'rooms'}
                 <Button
-                    class="gap-2"
+                    class="w-full gap-2 sm:w-auto"
                     disabled={homeAction !== null}
                     aria-busy={homeAction === 'create-room'}
                     onclick={handleCreateRoom}
@@ -526,7 +526,7 @@
             {:else if tab === 'multiRooms'}
                 {#if creatingMultiRoom}
                     <form
-                        class="flex w-full max-w-xl items-center justify-end gap-2"
+                        class="flex w-full flex-col items-stretch justify-end gap-2 sm:max-w-xl sm:flex-row sm:items-center"
                         onsubmit={(event) => {
                             event.preventDefault();
                             handleCreateMultiRoom();
@@ -534,11 +534,13 @@
                     >
                         <Input
                             bind:value={multiRoomName}
-                            class="max-w-xs"
+                            class="w-full sm:max-w-xs"
                             placeholder="Multi room name..."
                             autofocus
                         />
-                        <div class="flex shrink-0 rounded-md border bg-muted/30 p-1">
+                        <div
+                            class="flex shrink-0 rounded-md border bg-muted/30 p-1 max-sm:[&>*]:flex-1"
+                        >
                             <Button
                                 type="button"
                                 size="sm"
@@ -561,13 +563,16 @@
                         <Button type="submit">Create</Button>
                     </form>
                 {:else}
-                    <Button class="gap-2" onclick={() => (creatingMultiRoom = true)}>
+                    <Button
+                        class="w-full gap-2 sm:w-auto"
+                        onclick={() => (creatingMultiRoom = true)}
+                    >
                         <Plus class="size-4" />
                         New Multi Room
                     </Button>
                 {/if}
             {:else if tab === 'characters'}
-                <div class="flex gap-2">
+                <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
                     <Button
                         variant="outline"
                         class="gap-2"
@@ -587,7 +592,7 @@
                     </Button>
                 </div>
             {:else if tab === 'modules'}
-                <div class="flex gap-2">
+                <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
                     <Button
                         variant="outline"
                         class="gap-2"
@@ -608,7 +613,7 @@
                     </Button>
                 </div>
             {:else}
-                <div class="flex gap-2">
+                <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
                     <Button
                         variant="outline"
                         class="gap-2"
@@ -632,13 +637,13 @@
         </div>
     </header>
 
-    <main class="flex-1 overflow-y-auto px-8 py-8">
+    <main class="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 md:px-8 md:py-8">
         <div class="mx-auto max-w-6xl space-y-6">
             <div class="flex flex-wrap items-center justify-between gap-4">
                 {#if space === 'library'}
-                    <div class="flex rounded-md border bg-muted/30 p-1">
+                    <div class="flex w-full rounded-md border bg-muted/30 p-1 md:w-auto">
                         <button
-                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            class="min-w-0 flex-1 rounded px-2 py-1.5 text-sm font-medium transition-colors md:flex-none md:px-3 {tab ===
                             'rooms'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
@@ -647,7 +652,7 @@
                             Rooms
                         </button>
                         <button
-                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            class="min-w-0 flex-1 rounded px-2 py-1.5 text-sm font-medium transition-colors md:flex-none md:px-3 {tab ===
                             'characters'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
@@ -656,7 +661,7 @@
                             Characters
                         </button>
                         <button
-                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            class="min-w-0 flex-1 rounded px-2 py-1.5 text-sm font-medium transition-colors md:flex-none md:px-3 {tab ===
                             'personas'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
@@ -665,7 +670,7 @@
                             Personas
                         </button>
                         <button
-                            class="rounded px-3 py-1.5 text-sm font-medium transition-colors {tab ===
+                            class="min-w-0 flex-1 rounded px-2 py-1.5 text-sm font-medium transition-colors md:flex-none md:px-3 {tab ===
                             'modules'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
@@ -734,7 +739,7 @@
                             {@const characterCount = Object.keys(room.characters.refs).length}
                             {@const chatCount = Object.keys(room.chats.refs).length}
                             <div
-                                class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 group"
+                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 group"
                             >
                                 <div class="flex w-full items-center gap-3">
                                     <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
@@ -938,7 +943,7 @@
                                 (member) => member.status === 'accepted'
                             ).length}
                             <div
-                                class="flex w-full min-h-28 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
                             >
                                 <div class="flex w-full items-center gap-3">
                                     <div class="flex min-w-0 flex-1 items-center gap-3 text-left">

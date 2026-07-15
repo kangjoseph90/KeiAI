@@ -18,6 +18,8 @@
     import AutoResizeTextarea from '$lib/components/AutoResizeTextarea.svelte';
     import Message from './message/Message.svelte';
     import ChatRuntimePanel from './ChatRuntimePanel.svelte';
+    import ChatCharacterPicker from './ChatCharacterPicker.svelte';
+    import ChatPersonaPicker from './ChatPersonaPicker.svelte';
     import ChatBackground from './ChatBackground.svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import {
@@ -236,9 +238,14 @@
         )
             return;
 
-        if (!selectedCharacter) $characterPickerOpen = true;
-        if (!selectedPersona) $personaPickerOpen = true;
-        if (!selectedCharacter || !selectedPersona) return;
+        if (!selectedCharacter) {
+            $characterPickerOpen = true;
+            return;
+        }
+        if (!selectedPersona) {
+            $personaPickerOpen = true;
+            return;
+        }
 
         const ctx: RuntimeContext = {
             roomId,
@@ -354,9 +361,14 @@
     function handleGenerateResponse() {
         if (!$activeChat || $isChatRunning) return;
 
-        if (!selectedCharacter) $characterPickerOpen = true;
-        if (!selectedPersona) $personaPickerOpen = true;
-        if (!selectedCharacter || !selectedPersona) return;
+        if (!selectedCharacter) {
+            $characterPickerOpen = true;
+            return;
+        }
+        if (!selectedPersona) {
+            $personaPickerOpen = true;
+            return;
+        }
 
         runChat($activeChat.id, selectedCharacter.id, selectedPersona.id);
     }
@@ -643,7 +655,7 @@
                                 {/each}
                             </div>
                         {/if}
-                        <div class="flex gap-2">
+                        <div class="flex items-end gap-2">
                             <Button
                                 variant="secondary"
                                 size="icon"
@@ -709,17 +721,17 @@
             {#if inspectorOpen}
                 <button
                     type="button"
-                    class="absolute inset-0 z-30 bg-black/35 md:hidden"
+                    class="absolute inset-0 z-30 bg-black/35 lg:hidden"
                     aria-label="Close chat context"
                     onclick={() => (inspectorOpen = false)}
                 ></button>
                 <div
-                    class="relative w-[360px] shrink-0 max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[calc(100%-2rem)] max-md:max-w-[420px]"
+                    class="relative w-[360px] shrink-0 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-40 max-lg:w-[calc(100%-2rem)] max-lg:max-w-[420px]"
                 >
                     <Button
                         variant="outline"
                         size="icon-lg"
-                        class="absolute right-full top-1.5 z-30 size-11 rounded-none rounded-l-md border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-md:hidden"
+                        class="absolute right-full top-1.5 z-30 size-11 rounded-none rounded-l-md border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-lg:hidden"
                         title="Hide chat context"
                         aria-label="Hide chat context"
                         onclick={() => (inspectorOpen = false)}
@@ -732,3 +744,8 @@
         {/if}
     </div>
 </div>
+
+<ChatCharacterPicker {roomId} />
+{#if $activeChat}
+    <ChatPersonaPicker chatId={$activeChat.id} />
+{/if}

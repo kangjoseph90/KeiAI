@@ -29,13 +29,13 @@
             <CardDescription>How the module is identified in the application.</CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
-            <div class="flex items-center gap-6">
+            <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-6">
                 <div
                     class="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-primary/20 bg-muted"
                 >
                     <Package class="size-10 text-muted-foreground/50" />
                 </div>
-                <div class="flex-1 space-y-4">
+                <div class="w-full flex-1 space-y-4">
                     <div class="grid gap-1.5">
                         <Label>Module Name</Label>
                         <Input

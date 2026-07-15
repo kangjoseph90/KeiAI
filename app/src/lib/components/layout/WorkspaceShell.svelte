@@ -50,17 +50,27 @@
                 : 'flex'}"
             aria-label={`${workspaceName} sections`}
         >
-            <div class="flex h-14 shrink-0 items-center border-b px-2 md:hidden">
+            <div class="flex h-16 shrink-0 items-center gap-3 border-b px-4 md:hidden">
                 {#if identity}
-                    {@render identity('size-8')}
+                    {@render identity('size-9')}
                 {/if}
-                <div class="min-w-0 flex-1 px-2">
-                    <h1 class="truncate text-sm font-semibold">{entityName ?? workspaceName}</h1>
+                <div class="min-w-0 flex-1">
+                    <h1 class="truncate text-base font-semibold leading-tight">
+                        {entityName ?? workspaceName}
+                    </h1>
                     {#if entityName}
-                        <p class="text-[11px] text-muted-foreground">{workspaceName}</p>
+                        <p class="mt-0.5 truncate text-xs leading-tight text-muted-foreground">
+                            {workspaceName}
+                        </p>
                     {/if}
                 </div>
-                <Button variant="ghost" size="icon" onclick={onClose} aria-label={closeLabel}>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="shrink-0"
+                    onclick={onClose}
+                    aria-label={closeLabel}
+                >
                     <X class="size-5" />
                 </Button>
             </div>

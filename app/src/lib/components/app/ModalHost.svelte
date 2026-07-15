@@ -47,7 +47,9 @@
                 />
             {/if}
 
-            <Dialog.Footer>
+            <Dialog.Footer
+                class={current.type === 'alert' ? undefined : 'grid grid-cols-2 sm:flex'}
+            >
                 {#if current.type !== 'alert'}
                     <Button type="button" variant="outline" onclick={() => cancelModal(current)}>
                         {current.cancelText}

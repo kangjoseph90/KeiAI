@@ -27,7 +27,6 @@
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
-    import ResourcePickerDialog from '$lib/components/ResourcePickerDialog.svelte';
     import RoomAvatar from '$lib/components/RoomAvatar.svelte';
     import { Button } from '$lib/components/ui/button';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -38,9 +37,7 @@
         activePreset,
         activeRoom,
         assetSyncStatus,
-        addRoomCharacter,
         appSettings,
-        characters,
         chatSelections,
         createChat,
         createGlobalFolder,
@@ -56,7 +53,6 @@
         multiSyncStatus,
         moveGlobalItem,
         moveRoomItem,
-        multiRoomCharacters,
         removeRoomCharacter,
         roomChats,
         roomCharacters,
@@ -75,7 +71,7 @@
     import { appConfirm, characterPickerOpen, toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { getFolderColorClass } from '$lib/components/entitylist/folders';
-    import { addRoomCharacterFromLibrary, setGlobalVariable } from '$lib/managers';
+    import { setGlobalVariable } from '$lib/managers';
     import type { RouteState } from '$lib/router';
     import { syncChatGreetings } from '$lib/managers';
     import { compareSortOrder } from '$lib/utils/ordering';
@@ -187,13 +183,6 @@
         return $roomChats.filter((chat) => chat.title.toLowerCase().includes(query));
     });
 
-    const pickerCharacters = $derived($isMultiRoom ? $multiRoomCharacters : $characters);
-    const characterPickerConfig = $derived(
-        $isMultiRoom
-            ? { refs: {}, folders: {} }
-            : ($appSettings?.characters ?? { refs: {}, folders: {} })
-    );
-
     const otherUsers = $derived(() =>
         $localUsers.filter((user) => user.id !== $activeUser?.id).reverse()
     );
@@ -270,30 +259,6 @@
             'Could not set default character',
             () => setChatDefaultCharacter(chatId, characterId)
         );
-    }
-
-    async function handleAddCharacters(characterIds: string[]) {
-        if (!$activeRoom) return;
-        const roomId = $activeRoom.id;
-        const chatId = $activeChat?.id;
-        await runSidebarAction('add-characters', 'Could not add characters', async () => {
-            for (const characterId of characterIds) {
-                await addRoomCharacter(roomId, characterId);
-            }
-            if (chatId) await syncChatGreetings(chatId);
-        });
-    }
-
-    async function handleCopyCharacters(characterIds: string[]) {
-        if (!$activeRoom) return;
-        const roomId = $activeRoom.id;
-        const chatId = $activeChat?.id;
-        await runSidebarAction('copy-characters', 'Could not copy characters', async () => {
-            for (const characterId of characterIds) {
-                await addRoomCharacterFromLibrary(roomId, characterId);
-            }
-            if (chatId) await syncChatGreetings(chatId);
-        });
     }
 
     async function handleRemoveCharacter(characterId: string) {
@@ -1203,20 +1168,3 @@
         </Button>
     {/if}
 </aside>
-
-<ResourcePickerDialog
-    bind:open={$characterPickerOpen}
-    title="Add characters"
-    description="Choose who belongs in this room. You can add several at once."
-    singularLabel="character"
-    resourceLabel="characters"
-    resources={pickerCharacters}
-    config={characterPickerConfig}
-    attachedIds={$roomCharacters.map((character) => character.id)}
-    ownerTable="characters"
-    onAdd={handleAddCharacters}
-    roomTabLabel="Room characters"
-    libraryResources={$isMultiRoom ? $characters : undefined}
-    libraryConfig={$isMultiRoom ? $appSettings?.characters : undefined}
-    onCopy={$isMultiRoom ? handleCopyCharacters : undefined}
-/>

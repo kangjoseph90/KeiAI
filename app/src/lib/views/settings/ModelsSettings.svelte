@@ -12,11 +12,11 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
-    <div class="mb-6 flex min-w-0 shrink-0 items-center justify-between gap-2">
-        <div class="flex min-w-0 overflow-x-auto rounded-lg bg-muted/50 p-1">
+    <div class="mb-6 flex min-w-0 shrink-0 items-center justify-between gap-2 pt-4 md:pt-0">
+        <div class="flex w-full min-w-0 overflow-x-auto rounded-lg bg-muted/50 p-1 md:w-auto">
             {#each ['model', 'parameters', 'custom'] as tab (tab)}
                 <button
-                    class="rounded-md px-4 py-1.5 text-sm font-medium transition-colors {activeTab ===
+                    class="min-w-0 flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors md:flex-none md:px-4 {activeTab ===
                     tab
                         ? 'bg-background text-foreground shadow-sm'
                         : 'text-muted-foreground hover:text-foreground'}"

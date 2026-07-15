@@ -13,7 +13,7 @@
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
-    import ResourcePickerDialog from '$lib/components/ResourcePickerDialog.svelte';
+    import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
     import { Button } from '$lib/components/ui/button';
     import { Badge } from '$lib/components/ui/badge';
     import { Label } from '$lib/components/ui/label';
@@ -22,8 +22,6 @@
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import {
         activeChat,
-        addChatPersona,
-        appSettings,
         chatPersonas,
         chatLorebooks,
         chatSelections,
@@ -33,9 +31,7 @@
         deleteChatLorebook,
         deleteChatFolder,
         deleteChatInlay,
-        isMultiRoom,
-        multiRoomPersonas,
-        personas,
+        messages,
         removeChatPersona,
         setChatDefaultPersona,
         setChatSelectedPersona,
@@ -46,7 +42,7 @@
     } from '$lib/stores';
     import { appConfirm, personaPickerOpen, toast } from '$lib/ui';
     import { navigate } from '$lib/router';
-    import { addChatPersonaFromLibrary, getChatVariables } from '$lib/managers';
+    import { getChatVariables, setChatVariables } from '$lib/managers';
     import type { ChatContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
@@ -60,7 +56,7 @@
 
     let { chatId, onSelectInlay }: Props = $props();
 
-    let variables = $state<[string, string][]>([]);
+    let variables = $state<Record<string, string>>({});
     let panelAction = $state<string | null>(null);
 
     async function runPanelAction(
@@ -81,13 +77,6 @@
         }
     }
 
-    const pickerPersonas = $derived($isMultiRoom ? $multiRoomPersonas : $personas);
-    const personaPickerConfig = $derived(
-        $isMultiRoom
-            ? { refs: {}, folders: {} }
-            : ($appSettings?.personas ?? { refs: {}, folders: {} })
-    );
-
     async function updateChat(changes: DeepPartial<ChatContent>) {
         if (!$activeChat) return;
         await updateChatContent(chatId, changes);
@@ -96,12 +85,44 @@
     $effect(() => {
         if (chatId) {
             getChatVariables(chatId).then((v) => {
-                variables = Object.entries(v);
+                variables = v;
             });
         } else {
-            variables = [];
+            variables = {};
         }
     });
+
+    async function persistVariables(next: Record<string, string>): Promise<boolean> {
+        if ($messages.length === 0) return false;
+
+        const previous = variables;
+        variables = next;
+        try {
+            await setChatVariables(chatId, next);
+            return true;
+        } catch (error) {
+            variables = previous;
+            toast.error({
+                title: 'Could not update chat variables',
+                description: getErrorMessage(error)
+            });
+            return false;
+        }
+    }
+
+    async function handleVariableUpdate(key: string, value: string): Promise<void> {
+        await persistVariables({ ...variables, [key]: value });
+    }
+
+    function handleVariableAdd(key: string, value: string): Promise<boolean> {
+        return persistVariables({ ...variables, [key]: value });
+    }
+
+    async function handleVariableRemove(key: string): Promise<void> {
+        const next = { ...variables };
+        delete next[key];
+        await persistVariables(next);
+    }
 
     async function handleChatLorebookAdd() {
         if ($activeChat?.id !== chatId) return;
@@ -165,22 +186,6 @@
         await runPanelAction(`default-persona:${personaId}`, 'Could not set default persona', () =>
             setChatDefaultPersona(chatId, personaId)
         );
-    }
-
-    async function handlePersonasAdd(personaIds: string[]) {
-        if ($activeChat?.id !== chatId) return;
-        return runPanelAction('add-personas', 'Could not add personas', async () => {
-            for (const personaId of personaIds) await addChatPersona(chatId, personaId);
-        });
-    }
-
-    async function handlePersonasCopy(personaIds: string[]) {
-        if ($activeChat?.id !== chatId) return;
-        return runPanelAction('copy-personas', 'Could not copy personas', async () => {
-            for (const personaId of personaIds) {
-                await addChatPersonaFromLibrary(chatId, personaId);
-            }
-        });
     }
 
     async function handlePersonaRemove(personaId: string) {
@@ -420,24 +425,19 @@
                         <Variable class="size-3" /> Chat Variables
                     </Label>
 
-                    <div class="bg-background border rounded-md divide-y overflow-hidden">
-                        {#each variables as [key, val] (key)}
-                            <div
-                                class="px-3 py-2 flex items-center justify-between gap-2 text-[11px]"
-                            >
-                                <code class="bg-muted px-1 rounded text-primary font-mono"
-                                    >{key}</code
-                                >
-                                <span class="text-muted-foreground truncate max-w-[120px]"
-                                    >{val || '(empty)'}</span
-                                >
-                            </div>
-                        {:else}
-                            <p class="p-3 text-[10px] text-muted-foreground italic text-center">
-                                No active variables.
-                            </p>
-                        {/each}
-                    </div>
+                    <KeyValueEditor
+                        disabled={$messages.length === 0}
+                        emptyMessage="No active variables."
+                        data={variables}
+                        onUpdateValue={handleVariableUpdate}
+                        onAdd={handleVariableAdd}
+                        onRemove={handleVariableRemove}
+                    />
+                    {#if $messages.length === 0}
+                        <p class="text-[10px] leading-4 text-muted-foreground">
+                            Send a message to create an editable variable snapshot.
+                        </p>
+                    {/if}
                 </section>
 
                 <!-- Runtime Assets (Inlays) -->
@@ -535,20 +535,3 @@
         </div>
     </ScrollArea>
 </div>
-
-<ResourcePickerDialog
-    bind:open={$personaPickerOpen}
-    title="Add personas"
-    description="Choose the personas available in this chat. You can add several at once."
-    singularLabel="persona"
-    resourceLabel="personas"
-    resources={pickerPersonas}
-    config={personaPickerConfig}
-    attachedIds={$chatPersonas.map((persona) => persona.id)}
-    ownerTable="personas"
-    onAdd={handlePersonasAdd}
-    roomTabLabel="Room personas"
-    libraryResources={$isMultiRoom ? $personas : undefined}
-    libraryConfig={$isMultiRoom ? $appSettings?.personas : undefined}
-    onCopy={$isMultiRoom ? handlePersonasCopy : undefined}
-/>

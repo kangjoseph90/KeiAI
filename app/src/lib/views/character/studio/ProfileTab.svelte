@@ -74,7 +74,7 @@
             <CardDescription>How the character is identified in the application.</CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
-            <div class="flex items-center gap-6">
+            <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-6">
                 <div class="relative group">
                     <div
                         class="size-24 rounded-full border-2 border-primary/20 overflow-hidden bg-muted"
@@ -111,7 +111,7 @@
                         <Upload class="size-6" />
                     </button>
                 </div>
-                <div class="flex-1 space-y-4">
+                <div class="w-full flex-1 space-y-4">
                     <div class="grid gap-1.5">
                         <Label>Character Name</Label>
                         <Input
