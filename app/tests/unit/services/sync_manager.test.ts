@@ -82,13 +82,23 @@ vi.mock('$lib/adapters/multi', () => ({
 }));
 
 vi.mock('$lib/services/sync/user', () => {
+    let subscribed = false;
     const engine = {
-        subscribeRealtime: vi.fn(async () => {}),
-        unsubscribeRealtime: vi.fn(async () => {}),
+        subscribeRealtime: vi.fn(async () => {
+            subscribed = true;
+        }),
+        unsubscribeRealtime: vi.fn(async () => {
+            subscribed = false;
+        }),
         trigger: vi.fn(async () => {}),
         handleLocalWrite: vi.fn(),
         stop: vi.fn(),
-        isSubscribed: false
+        get isSubscribed() {
+            return subscribed;
+        },
+        set isSubscribed(v: boolean) {
+            subscribed = v;
+        }
     };
     return {
         UserRecordSyncEngine: engine
@@ -162,6 +172,7 @@ describe('SyncManager', () => {
         (MultiRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = false;
         vi.mocked(DataRecordSyncEngine.handleLocalWrite).mockClear();
         (DataRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = false;
+        (UserRecordSyncEngine as unknown as { isSubscribed: boolean }).isSubscribed = false;
         dbWriteListener = null;
         userWriteListener = null;
         multiWriteListener = null;
@@ -202,6 +213,38 @@ describe('SyncManager', () => {
             expect(localDB.subscribeWriteEvents).toHaveBeenCalledTimes(1);
             expect(appUser.subscribeWriteEvents).toHaveBeenCalledTimes(1);
             expect(appMulti.subscribeWriteEvents).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('syncAll', () => {
+        it('should establish realtime subscriptions after an unauthenticated start', async () => {
+            vi.mocked(DataRecordSyncEngine.subscribeRealtime).mockImplementationOnce(
+                async () => {}
+            );
+            vi.mocked(MultiRecordSyncEngine.subscribeRealtime).mockImplementationOnce(
+                async () => {}
+            );
+            vi.mocked(UserRecordSyncEngine.subscribeRealtime).mockImplementationOnce(
+                async () => {}
+            );
+
+            SyncManager.startAutoSync();
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(DataRecordSyncEngine.isSubscribed).toBe(false);
+            expect(MultiRecordSyncEngine.isSubscribed).toBe(false);
+            expect(UserRecordSyncEngine.isSubscribed).toBe(false);
+
+            await SyncManager.syncAll();
+
+            expect(DataRecordSyncEngine.subscribeRealtime).toHaveBeenCalledTimes(2);
+            expect(MultiRecordSyncEngine.subscribeRealtime).toHaveBeenCalledTimes(2);
+            expect(UserRecordSyncEngine.subscribeRealtime).toHaveBeenCalledTimes(2);
+            expect(DataRecordSyncEngine.isSubscribed).toBe(true);
+            expect(MultiRecordSyncEngine.isSubscribed).toBe(true);
+            expect(UserRecordSyncEngine.isSubscribed).toBe(true);
         });
     });
 
@@ -322,6 +365,10 @@ describe('SyncManager', () => {
             vi.mocked(AssetSyncEngine.start).mockClear();
 
             await visHandler();
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
             await Promise.resolve();
             await Promise.resolve();
             await Promise.resolve();
