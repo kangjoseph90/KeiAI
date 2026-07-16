@@ -79,7 +79,7 @@
 </script>
 
 <Dialog bind:open>
-    <DialogContent class="app-dialog-fullscreen flex flex-col gap-0 md:gap-4">
+    <DialogContent centered={false} class="app-dialog-fullscreen flex flex-col gap-0 md:gap-4">
         <DialogHeader class="hidden shrink-0 sm:p-0 md:block">
             <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -92,7 +92,6 @@
                 onEdit={applyEdit}
                 {onEditPrompt}
                 {title}
-                onClose={() => (open = false)}
             />
         </div>
     </DialogContent>
