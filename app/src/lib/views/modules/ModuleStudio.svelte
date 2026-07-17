@@ -59,7 +59,7 @@
 
     let { moduleId, moduleTab }: Props = $props();
 
-    type ExportButton = 'risu' | 'keimodule-light' | 'keimodule-baked';
+    type ExportButton = 'risu-charx' | 'risu-legacy' | 'keimodule-light' | 'keimodule-baked';
     let activeTab = $state<ModuleStudioTab>('profile');
     let exporting = $state<ExportButton | null>(null);
     let deleting = $state(false);

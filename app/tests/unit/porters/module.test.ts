@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     exportModulePackage,
     importModulePackage,
+    moduleFileExtension,
     readModuleFile,
     writeModuleFile,
     type KeiModulePackageV1
 } from '$lib/porters/module';
+import { unzip, zip } from '$lib/utils/zip';
 import { AssetService } from '$lib/services/asset';
 import {
     CharJSService,
@@ -367,5 +369,64 @@ describe('extensionless native module imports', () => {
             kind: 'keiai.module',
             module: { name: 'Imported Module' }
         });
+    });
+
+    it('detects a module CharX archive by content', async () => {
+        const bytes = writeModuleFile(makePackage(), { kind: 'risu', format: 'charx' });
+
+        await expect(
+            readModuleFile(new File([bytes.slice()], 'content:42'))
+        ).resolves.toMatchObject({
+            kind: 'keiai.module',
+            module: { name: 'Imported Module', description: 'Description' }
+        });
+    });
+});
+
+describe('module CharX files', () => {
+    it('round-trips the complete Kei module package through CharX', async () => {
+        const pkg = makePackage({
+            assets: { asset_0: { data: new Uint8Array([1, 2, 3]) } }
+        });
+        pkg.module.backgroundHTML = '<div>Background</div>';
+        pkg.module.messageCSS = '.message { color: red; }';
+        pkg.module.defaultVariables = { mood: 'quiet' };
+
+        const bytes = writeModuleFile(pkg, { kind: 'risu', format: 'charx' });
+        const entries = await unzip(bytes);
+        const card = JSON.parse(new TextDecoder().decode(entries['card.json'])) as {
+            data: { description: string; creator_notes: string };
+        };
+        const imported = await readModuleFile(new File([bytes.slice()], 'module.charx'));
+
+        expect(moduleFileExtension({ kind: 'risu', format: 'charx' })).toBe('charx');
+        expect(entries['module.risum']).toBeTruthy();
+        expect(card.data.description).toBe('');
+        expect(card.data.creator_notes).toBe('Description');
+        expect(imported).toEqual(pkg);
+    });
+
+    it('imports Risu-style CharX without a KeiAI extension', async () => {
+        const pkg = makePackage({
+            assets: { asset_0: { data: new Uint8Array([1, 2, 3]) } }
+        });
+        const entries = await unzip(writeModuleFile(pkg, { kind: 'risu', format: 'charx' }));
+        const card = JSON.parse(new TextDecoder().decode(entries['card.json'])) as {
+            data: { extensions: Record<string, unknown> };
+        };
+        delete card.data.extensions.keiai;
+        entries['card.json'] = new TextEncoder().encode(JSON.stringify(card));
+
+        const imported = await readModuleFile(
+            new File([zip(entries).slice()], 'risu-module.charx')
+        );
+
+        expect(imported.module.name).toBe('Imported Module');
+        expect(imported.module.description).toBe('Description');
+        expect(imported.module.allowLowLevel).toBe(true);
+        expect(imported.lorebooks).toHaveLength(1);
+        expect(imported.scripts).toHaveLength(1);
+        expect(imported.assets.asset_0?.data).toEqual(new Uint8Array([1, 2, 3]));
+        expect(imported.charjs).toEqual([]);
     });
 });

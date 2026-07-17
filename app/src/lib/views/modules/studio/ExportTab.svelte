@@ -4,7 +4,7 @@
     import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
     import type { ModuleFileExport } from '$lib/porters/module';
 
-    type ExportButton = 'risu' | 'keimodule-light' | 'keimodule-baked';
+    type ExportButton = 'risu-charx' | 'risu-legacy' | 'keimodule-light' | 'keimodule-baked';
 
     let {
         exporting,
@@ -25,18 +25,34 @@
         <CardContent class="divide-y p-0">
             <div class="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <p class="text-sm font-medium">Risu Module</p>
+                    <p class="text-sm font-medium">Risu CHARX</p>
                     <p class="mt-1 text-xs text-muted-foreground">
-                        Portable RisuAI module archive (.risum).
+                        Current RisuAI module format with embedded assets (.charx).
                     </p>
                 </div>
                 <Button
                     variant="outline"
                     class="gap-1.5 sm:self-center"
                     disabled={exporting !== null}
-                    onclick={() => onExport('risu', { kind: 'risu', format: 'risum' })}
+                    onclick={() => onExport('risu-charx', { kind: 'risu', format: 'charx' })}
                 >
-                    <Download class="size-4" /> Export Risu
+                    <Download class="size-4" /> Export CHARX
+                </Button>
+            </div>
+            <div class="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <p class="text-sm font-medium">Legacy Risu Module</p>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        Legacy RisuAI module archive for older clients (.risum).
+                    </p>
+                </div>
+                <Button
+                    variant="outline"
+                    class="gap-1.5 sm:self-center"
+                    disabled={exporting !== null}
+                    onclick={() => onExport('risu-legacy', { kind: 'risu', format: 'risum' })}
+                >
+                    <Download class="size-4" /> Export RISUM
                 </Button>
             </div>
             {#if showLightExport}

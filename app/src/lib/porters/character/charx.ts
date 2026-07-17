@@ -34,8 +34,17 @@ export async function readCharX(input: ZipInput): Promise<KeiCharacterPackageV1>
     return cardToKeiPackage(card, entries);
 }
 
-export function writeCharX(pkg: KeiCharacterPackageV1): Uint8Array {
+export function writeCharX(
+    pkg: KeiCharacterPackageV1,
+    options: { cardDescription?: string; creatorNotes?: string } = {}
+): Uint8Array {
     const card = keiPackageToCard(pkg, 'charx');
+    if (options.cardDescription !== undefined) {
+        card.data.description = options.cardDescription;
+    }
+    if (options.creatorNotes !== undefined) {
+        card.data.creator_notes = options.creatorNotes;
+    }
     const entries: Record<string, Uint8Array> = {
         'card.json': TEXT_ENCODER.encode(JSON.stringify(card, null, 2)),
         'module.risum': writeRisuModule(keiPackageToRisuModule(pkg))
