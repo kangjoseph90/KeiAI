@@ -22,5 +22,5 @@ export * from './user';
 export * from './multi';
 export * from './auth';
 export * from './sync';
-export * from './migration';
+export * from './connection';
 export * from './notification';

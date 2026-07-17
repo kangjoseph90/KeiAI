@@ -1,6 +1,5 @@
 <script lang="ts">
     import {
-        activeUser,
         isLoggedIn,
         userEmail,
         username as activeUsername,
@@ -10,11 +9,9 @@
         performDeleteWithRecoveryCode,
         performChangePassword,
         performLogout,
-        performPairWithCode,
-        performSetSelfHostUrl
+        performPairWithCode
     } from '$lib/stores';
     import { AuthService } from '$lib/services/auth';
-    import type { MigrationProgress } from '$lib/services';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import {
@@ -27,18 +24,15 @@
     import { Label } from '$lib/components/ui/label';
     import {
         AlertTriangle,
-        Cloud,
         Key,
         Link,
         LogIn,
         LogOut,
         QrCode,
-        Server,
         ShieldAlert,
         UserPlus
     } from 'lucide-svelte';
     import { getErrorMessage } from '$lib/types/errors';
-    import { PB_URL } from '$lib/config';
     import { appConfirm } from '$lib/ui';
 
     type AuthView = 'signup' | 'login';
@@ -53,21 +47,14 @@
     let newPassword = $state('');
     let pairingCodeInput = $state('');
     let generatedPairingCode = $state('');
-    let selfHostUrl = $derived($activeUser?.selfHostUrl ?? '');
-
     let loading = $state(false);
     let errorMsg = $state('');
     let successMsg = $state('');
     let displayRecovery = $state('');
-    let migrationProgress = $state<MigrationProgress | null>(null);
 
     let authView = $state<AuthView>('signup');
     let loginMethod = $state<LoginMethod>('password');
     let accountView = $state<AccountView>('security');
-
-    const isSelfHosted = $derived($activeUser?.selfHostUrl !== undefined);
-    const currentServerUrl = $derived($activeUser?.selfHostUrl ?? PB_URL);
-    const currentServerLabel = $derived(isSelfHosted ? 'Self-host' : 'Kei Cloud');
 
     async function runAction(
         action: () => Promise<void | string | null>,
@@ -79,7 +66,6 @@
         errorMsg = '';
         successMsg = '';
         displayRecovery = '';
-        migrationProgress = null;
         try {
             if (confirm && !(await confirm())) return;
             const result = await action();
@@ -166,24 +152,6 @@
             loading = false;
         }
     }
-
-    function handleServerChange() {
-        const nextUrl = isSelfHosted ? undefined : selfHostUrl.trim();
-        if (!isSelfHosted && !nextUrl) {
-            errorMsg = 'Self-host URL is required.';
-            return;
-        }
-
-        void runAction(
-            () =>
-                performSetSelfHostUrl(nextUrl, {
-                    onProgress: (progress) => {
-                        migrationProgress = progress;
-                    }
-                }),
-            isSelfHosted ? 'Returned to Kei Cloud.' : 'Self-host server selected.'
-        );
-    }
 </script>
 
 <Card>
@@ -193,7 +161,7 @@
             {#if $isLoggedIn}
                 Signed in{#if $activeUsername}: <strong>@{$activeUsername}</strong>{/if}
             {:else}
-                {currentServerLabel}: not signed in
+                Not signed in
             {/if}
         </CardDescription>
     </CardHeader>
@@ -233,63 +201,6 @@
                 </div>
             </div>
         {/if}
-
-        <section class="rounded-md border p-3">
-            <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                    <div class="flex items-center gap-2 text-sm font-medium">
-                        {#if isSelfHosted}
-                            <Server class="size-4" />
-                        {:else}
-                            <Cloud class="size-4" />
-                        {/if}
-                        {currentServerLabel}
-                    </div>
-                    <div class="mt-1 truncate text-xs text-muted-foreground">
-                        {currentServerUrl}
-                    </div>
-                </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={loading || $isLoggedIn}
-                    onclick={handleServerChange}
-                >
-                    {isSelfHosted ? 'Use Kei Cloud' : 'Use Self-host'}
-                </Button>
-            </div>
-
-            {#if !isSelfHosted && !$isLoggedIn}
-                <div class="mt-3 space-y-1">
-                    <Label>Self-host URL</Label>
-                    <Input
-                        bind:value={selfHostUrl}
-                        type="url"
-                        placeholder="https://sync.example.com"
-                        disabled={loading}
-                    />
-                </div>
-            {/if}
-
-            {#if migrationProgress}
-                <div class="mt-3 space-y-2 text-xs text-muted-foreground">
-                    <div class="flex justify-between">
-                        <span>{migrationProgress.phase}</span>
-                        <span>{migrationProgress.completed} / {migrationProgress.total}</span>
-                    </div>
-                    <div class="h-1.5 overflow-hidden rounded-full bg-muted">
-                        <div
-                            class="h-full bg-primary transition-all"
-                            style={`width: ${
-                                migrationProgress.total
-                                    ? (migrationProgress.completed / migrationProgress.total) * 100
-                                    : 0
-                            }%`}
-                        ></div>
-                    </div>
-                </div>
-            {/if}
-        </section>
 
         {#if !$isLoggedIn}
             <section class="space-y-4">

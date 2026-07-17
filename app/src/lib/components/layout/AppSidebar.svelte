@@ -50,7 +50,7 @@
         isMultiRoom,
         isSyncLinked,
         localUsers,
-        migrationLocked,
+        serverTransitionLocked,
         multiSyncStatus,
         moveGlobalItem,
         moveRoomItem,
@@ -86,7 +86,7 @@
         onNavigate: (route: RouteState) => void;
     }
 
-    type SyncIndicatorState = SyncStatus['state'] | 'migration';
+    type SyncIndicatorState = SyncStatus['state'] | 'server-transition';
 
     const SYNC_ICON_DELAY_MS = 400;
     const SYNC_ICON_MIN_VISIBLE_MS = 500;
@@ -106,7 +106,7 @@
     let syncIconStartedAt = 0;
 
     const syncState = $derived.by(() => {
-        if ($migrationLocked) return 'migration';
+        if ($serverTransitionLocked) return 'server-transition';
         const states = [
             $dataSyncStatus.state,
             $userSyncStatus.state,
@@ -120,8 +120,8 @@
         return 'idle';
     });
     const syncLabel = $derived(
-        syncState === 'migration'
-            ? 'Migration in progress'
+        syncState === 'server-transition'
+            ? 'Server change in progress'
             : syncState === 'syncing'
               ? 'Syncing encrypted data'
               : syncState === 'network_error'
@@ -353,7 +353,7 @@
     }
 
     async function handleSwitchUser(userId: string) {
-        if ($migrationLocked || switchingUserId || creatingUser) return;
+        if ($serverTransitionLocked || switchingUserId || creatingUser) return;
         switchingUserId = userId;
         try {
             await switchLocalUser(userId);
@@ -365,7 +365,7 @@
     }
 
     async function handleCreateUser() {
-        if ($migrationLocked || switchingUserId || creatingUser) return;
+        if ($serverTransitionLocked || switchingUserId || creatingUser) return;
         creatingUser = true;
         try {
             await createAndSwitchLocalUser();
@@ -495,7 +495,7 @@
         </div>
 
         <div class="flex flex-col items-center gap-2 border-t border-sidebar-border p-2">
-            {#if $isSyncLinked || $migrationLocked}
+            {#if $isSyncLinked || $serverTransitionLocked}
                 <DropdownMenu.Root>
                     <DropdownMenu.Trigger>
                         <Button
@@ -506,7 +506,7 @@
                             aria-label={`View sync status: ${syncLabel}`}
                             aria-busy={retryingSync || syncState === 'syncing'}
                         >
-                            {#if syncIconState === 'migration'}
+                            {#if syncIconState === 'server-transition'}
                                 <LockKeyhole
                                     class="size-4 text-amber-600 dark:text-amber-400"
                                     aria-hidden="true"
@@ -527,13 +527,13 @@
                         <DropdownMenu.Label class="px-2 py-1.5 text-xs"
                             >Sync status</DropdownMenu.Label
                         >
-                        {#if $migrationLocked}
+                        {#if $serverTransitionLocked}
                             <div class="mx-1 mb-1 rounded-md bg-amber-500/10 px-2.5 py-2 text-xs">
                                 <p class="font-medium text-amber-700 dark:text-amber-300">
-                                    Migration in progress
+                                    Server change in progress
                                 </p>
                                 <p class="mt-1 leading-4 text-muted-foreground">
-                                    Sync is paused until migration finishes.
+                                    Sync is paused until the server change finishes.
                                 </p>
                             </div>
                             <DropdownMenu.Separator />
@@ -545,7 +545,9 @@
                         <DropdownMenu.Separator />
                         <DropdownMenu.Item
                             class="cursor-pointer gap-2"
-                            disabled={$migrationLocked || retryingSync || syncState === 'syncing'}
+                            disabled={$serverTransitionLocked ||
+                                retryingSync ||
+                                syncState === 'syncing'}
                             onclick={() => void handleSync()}
                         >
                             <RefreshCw class="size-4" />
@@ -593,7 +595,9 @@
                     {#if $activeUser}
                         <DropdownMenu.Item
                             class="flex cursor-pointer items-center gap-2.5 rounded-none px-2.5 py-1.5 my-1 text-sm"
-                            disabled={$migrationLocked || creatingUser || switchingUserId !== null}
+                            disabled={$serverTransitionLocked ||
+                                creatingUser ||
+                                switchingUserId !== null}
                             onclick={() => onNavigate({ view: 'settings', settingsTab: 'profile' })}
                         >
                             <img
@@ -613,7 +617,7 @@
                         {#each otherUsers() as user (user.id)}
                             <DropdownMenu.Item
                                 class="flex cursor-pointer items-center gap-2.5 rounded-none px-2.5 py-1.5 my-1 text-sm"
-                                disabled={$migrationLocked ||
+                                disabled={$serverTransitionLocked ||
                                     creatingUser ||
                                     switchingUserId !== null}
                                 onclick={() => handleSwitchUser(user.id)}
@@ -633,7 +637,9 @@
                     <DropdownMenu.Separator class="my-1" />
                     <DropdownMenu.Item
                         class="flex cursor-pointer items-center gap-2.5 rounded-none px-2.5 py-1.5 my-1 text-sm"
-                        disabled={$migrationLocked || creatingUser || switchingUserId !== null}
+                        disabled={$serverTransitionLocked ||
+                            creatingUser ||
+                            switchingUserId !== null}
                         onclick={handleCreateUser}
                     >
                         <div

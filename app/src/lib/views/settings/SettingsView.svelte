@@ -7,7 +7,8 @@
         RefreshCw,
         Puzzle,
         MessageSquare,
-        Languages
+        Languages,
+        Network
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { WorkspaceShell } from '$lib/components/layout';
@@ -24,6 +25,7 @@
     import { navigate } from '$lib/router';
     import type { SettingsTab } from '$lib/router';
     import AccountSettings from './AccountSettings.svelte';
+    import ConnectionsSettings from './ConnectionsSettings.svelte';
     import ProfileSettings from './ProfileSettings.svelte';
     import ModelsSettings from './ModelsSettings.svelte';
     import ChatSettings from './ChatSettings.svelte';
@@ -43,6 +45,7 @@
         { id: 'language', label: 'Language', icon: Languages },
         { id: 'profile', label: 'Profile', icon: User },
         { id: 'account', label: 'Account', icon: Shield },
+        { id: 'connections', label: 'Connections', icon: Network },
         { id: 'general', label: 'General', icon: Settings }
     ] as const;
 
@@ -120,6 +123,8 @@
                     <ProfileSettings />
                 {:else if activeTab === 'account'}
                     <AccountSettings />
+                {:else if activeTab === 'connections'}
+                    <ConnectionsSettings />
                 {:else if activeTab === 'general'}
                     <div class="space-y-6">
                         <Card>

@@ -51,6 +51,7 @@ describe('WebUserAdapter (Dexie)', () => {
             updatedAt: Date.now(),
             masterKey: cryptoKey,
             identityKeyPair: {} as CryptoKeyPair,
+            connections: { server: { mode: 'default' }, proxy: { mode: 'default' } },
             ...overrides
         };
     }
@@ -264,17 +265,23 @@ describe('WebUserAdapter (Dexie)', () => {
             expect(await adapter.getUser('local-1')).toBeDefined();
             expect((await adapter.getAllUsers()).length).toBe(1);
 
-            const linked = {
+            const linked: UserRecord = {
                 ...local,
                 name: 'Linked User',
                 email: 'user@example.com',
-                selfHostUrl: 'https://sync.example.test'
+                connections: {
+                    server: { mode: 'custom', customUrl: 'https://sync.example.test' },
+                    proxy: { mode: 'default' }
+                }
             };
             await adapter.saveUser(linked);
 
             const retrieved = await adapter.getUser('local-1');
             expect(retrieved?.email).toBe('user@example.com');
-            expect(retrieved?.selfHostUrl).toBe('https://sync.example.test');
+            expect(retrieved?.connections.server).toEqual({
+                mode: 'custom',
+                customUrl: 'https://sync.example.test'
+            });
         });
 
         it('should handle multiple local identities', async () => {
@@ -324,7 +331,8 @@ describe('IUserAdapter interface contract', () => {
             createdAt: Date.now(),
             updatedAt: Date.now(),
             masterKey: getKey,
-            identityKeyPair: {} as CryptoKeyPair
+            identityKeyPair: {} as CryptoKeyPair,
+            connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
         };
 
         const promises = [

@@ -5,15 +5,26 @@
  * These are used across the application, including Web Workers.
  */
 
+import { normalizeUrl } from './utils/url';
+
 /** Official KeiAI server URLs (hardcoded) */
 export const KEI_PB_URL = 'https://api.keiai.xyz';
 export const KEI_CDN_URL = 'https://cdn.keiai.xyz';
+export const KEI_PROXY_URL = 'https://proxy.keiai.xyz';
 
 /** Proxy URL for bypassing CORS on the web */
 export const PROXY_URL = import.meta.env.VITE_PROXY_URL ?? '';
 
 /** PocketBase server URL */
 export const PB_URL = import.meta.env.VITE_PB_URL ?? '';
+
+export function isKeiDefaultServer(): boolean {
+    return normalizeUrl(PB_URL) === normalizeUrl(KEI_PB_URL);
+}
+
+export function isKeiDefaultProxy(): boolean {
+    return normalizeUrl(PROXY_URL) === normalizeUrl(KEI_PROXY_URL);
+}
 
 export interface EnvironmentConfigIssue {
     title: string;
@@ -23,15 +34,13 @@ export interface EnvironmentConfigIssue {
 
 interface EnvironmentConfig {
     pbUrl: string;
-    proxyUrl: string;
 }
 
 export function getEnvironmentConfigIssue(
-    config: EnvironmentConfig = { pbUrl: PB_URL, proxyUrl: PROXY_URL }
+    config: EnvironmentConfig = { pbUrl: PB_URL }
 ): EnvironmentConfigIssue | null {
     const missingVariables: string[] = [];
     if (!config.pbUrl.trim()) missingVariables.push('VITE_PB_URL');
-    if (!config.proxyUrl.trim()) missingVariables.push('VITE_PROXY_URL');
 
     if (missingVariables.length === 0) return null;
 

@@ -103,7 +103,9 @@ vi.mock('$lib/services/user', () => ({
         saveUser: vi.fn(() => Promise.resolve()),
         updateUser: vi.fn(() => Promise.resolve()),
         clearActiveUser: vi.fn(() => Promise.resolve()),
-        getActiveSelfHostUrl: vi.fn(() => Promise.resolve(undefined)),
+        getActiveConnections: vi.fn(() =>
+            Promise.resolve({ server: { mode: 'default' }, proxy: { mode: 'default' } })
+        ),
         getUser: vi.fn(),
         setActiveUser: vi.fn(() => Promise.resolve()),
         restoreOrCreateUser: vi.fn()
@@ -155,7 +157,8 @@ describe('AuthService', () => {
         vi.mocked(UserService.getUser).mockResolvedValue({
             id: 'user-123',
             name: 'Local 1',
-            avatar: ''
+            avatar: '',
+            connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
         });
     });
 

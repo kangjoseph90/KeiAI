@@ -36,7 +36,7 @@
         moveModuleItem
     } from '$lib/stores';
     import { navigate, type ModuleStudioTab } from '$lib/router';
-    import { isKeiServer } from '$lib/adapters/pb';
+    import { isKeiServer } from '$lib/services';
     import { exportModuleFile } from '$lib/managers/module';
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { ModuleContent, Lorebook, Script, CharJS } from '$lib/services';

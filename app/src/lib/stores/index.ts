@@ -31,7 +31,8 @@ export const dataSyncStatus = readonly(StoreState.dataSyncStatus);
 export const userSyncStatus = readonly(StoreState.userSyncStatus);
 export const multiSyncStatus = readonly(StoreState.multiSyncStatus);
 export const assetSyncStatus = readonly(StoreState.assetSyncStatus);
-export const migrationLocked = readonly(StoreState.migrationLocked);
+export const serverTransitionLocked = readonly(StoreState.serverTransitionLocked);
+export const serverTransitionProgress = readonly(StoreState.serverTransitionProgress);
 export const characters = readonly(StoreState.characters);
 export const rooms = readonly(StoreState.rooms);
 export const multiRooms = readonly(StoreState.multiRooms);
@@ -87,7 +88,7 @@ export {
     userEmail,
     userId,
     username,
-    isSyncServerConfigured,
+    isCustomServer,
     isLocalOnly,
     isSyncLinked
 } from './state';
@@ -109,6 +110,7 @@ export * from './content/merged';
 export * from './tasks/chat';
 export * from './tasks/translation';
 export * from './auth';
+export * from './connection';
 export * from './user';
 export * from './sync';
 export * from './init';

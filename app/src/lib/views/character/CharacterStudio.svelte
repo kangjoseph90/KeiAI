@@ -40,7 +40,7 @@
         deleteCharacter
     } from '$lib/stores';
     import { navigate, type CharacterStudioTab } from '$lib/router';
-    import { isKeiServer } from '$lib/adapters/pb';
+    import { isKeiServer } from '$lib/services';
     import {
         exportCharacterFile,
         syncChatGreetings,

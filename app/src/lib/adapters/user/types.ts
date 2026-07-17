@@ -7,6 +7,7 @@
  */
 
 import type { DatabaseMutationOrigin } from '$lib/adapters/db';
+import type { UserConnectionSettings } from '$lib/types/connections';
 
 // ─── Write Event Types ────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ export interface UserRecord {
     masterKey: CryptoKey; // The live CryptoKey object
     identityKeyPair: CryptoKeyPair; // RSA-OAEP key pair for asymmetric operations (multi-room)
 
-    selfHostUrl?: string; // Selected sync server for account operations; not link state
+    connections: UserConnectionSettings; // Local-only server and proxy selection
     username?: string; // Login alias on the current sync server
     email?: string; // Optional contact email for notices; not used for auth
 }

@@ -29,7 +29,8 @@ describe('UserService', () => {
         createdAt: 1000,
         updatedAt: 2000,
         masterKey: {} as CryptoKey,
-        identityKeyPair: {} as CryptoKeyPair
+        identityKeyPair: {} as CryptoKeyPair,
+        connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
     };
 
     beforeEach(() => {
@@ -48,7 +49,9 @@ describe('UserService', () => {
                 id: mockUserId,
                 name: 'John Doe',
                 avatar: 'avatar.png',
-                email: 'john@example.com'
+                email: 'john@example.com',
+                username: undefined,
+                connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
             });
             expect(appUser.getUser).toHaveBeenCalledWith(mockUserId);
         });

@@ -32,6 +32,7 @@ import type { EntityListConfig, AssetRef } from '$lib/types/refs';
 import { normalizeAssetName, type AssetNameIndex } from '$lib/template/display';
 import type { AssetReadLocator } from '$lib/services/asset';
 import type { DataScopeType, TableName } from '$lib/adapters/db';
+import type { ConnectionChangeProgress } from '$lib/services';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
@@ -44,7 +45,8 @@ export const dataSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const userSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const multiSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const assetSyncStatus = writable<SyncStatus>({ state: 'idle' });
-export const migrationLocked = writable(false);
+export const serverTransitionLocked = writable(false);
+export const serverTransitionProgress = writable<ConnectionChangeProgress | null>(null);
 
 // ─── Derived Auth State ──────────────────────────────────────────────
 export const isLoggedIn = derived(
@@ -54,7 +56,10 @@ export const isLoggedIn = derived(
 export const userEmail = derived(activeUser, (u) => u?.email ?? null);
 export const username = derived(activeUser, (u) => u?.username ?? null);
 export const userId = derived(activeUser, (u) => u?.id ?? null);
-export const isSyncServerConfigured = derived(activeUser, (u) => u?.selfHostUrl !== undefined);
+export const isCustomServer = derived(
+    activeUser,
+    (user) => user?.connections.server.mode === 'custom'
+);
 export const isLocalOnly = derived(
     [activeUser, pbConnected],
     ([user, connected]) => user !== null && !connected

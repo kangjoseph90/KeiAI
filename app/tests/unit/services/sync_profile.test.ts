@@ -83,8 +83,8 @@ describe('UserRecordSyncEngine', () => {
                 id: mockUserId,
                 name: 'New Name',
                 avatar: 'avatar.png',
-                selfHostUrl: 'http://test'
-            } as UserRecord);
+                connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
+            } as unknown as UserRecord);
             vi.mocked(mockCollection.update).mockResolvedValue({
                 id: mockUserId
             } as unknown as RecordModel);
@@ -112,8 +112,8 @@ describe('UserRecordSyncEngine', () => {
                 id: mockUserId,
                 name: 'Name',
                 avatar: 'data:image/png;base64,abc',
-                selfHostUrl: 'http://test'
-            } as UserRecord);
+                connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
+            } as unknown as UserRecord);
 
             service.handleLocalWrite({
                 tableName: 'users',
@@ -170,8 +170,8 @@ describe('UserRecordSyncEngine', () => {
                 id: mockUserId,
                 name: 'Local Name',
                 avatar: '',
-                selfHostUrl: 'http://test'
-            } as UserRecord);
+                connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
+            } as unknown as UserRecord);
 
             await service.trigger();
 
@@ -194,8 +194,8 @@ describe('UserRecordSyncEngine', () => {
                 id: mockUserId,
                 name: 'Name',
                 avatar: '',
-                selfHostUrl: 'http://test'
-            } as UserRecord);
+                connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
+            } as unknown as UserRecord);
             await service.subscribeRealtime();
 
             expect(mockCollection.subscribe).toHaveBeenCalledWith(mockUserId, expect.any(Function));

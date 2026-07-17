@@ -46,7 +46,7 @@ describe('Proxy worker', () => {
 					headers: headersRecord,
 					data: bodyText,
 				}),
-				{ status: 200 }
+				{ status: 200 },
 			);
 		});
 	});
@@ -63,6 +63,24 @@ describe('Proxy worker', () => {
 
 			expect(response.status).toBe(200);
 			expect(await response.text()).toBe('OK');
+			expect(response.headers.get('Access-Control-Allow-Origin')).toBeTruthy();
+		});
+	});
+
+	describe('Protocol spec', () => {
+		it('advertises the compatible proxy protocol', async () => {
+			const request = new IncomingRequest('http://example.com/spec', {
+				headers: { Origin: 'http://localhost:5173' },
+			});
+			const response = await worker.fetch(request, {} as any, createExecutionContext());
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+			expect(await response.json()).toEqual({
+				service: 'keiai-proxy',
+				protocolVersion: 1,
+				capabilities: ['generic-fetch', 'streaming'],
+			});
 		});
 	});
 
@@ -107,6 +125,7 @@ describe('Proxy worker', () => {
 
 			expect(response.status).toBe(400);
 			expect(await response.text()).toContain('x-target-url');
+			expect(response.headers.get('Access-Control-Allow-Origin')).toBeTruthy();
 		});
 
 		it('returns 405 for non-POST requests', async () => {

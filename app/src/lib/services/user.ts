@@ -21,9 +21,14 @@ import { minidenticon } from 'minidenticons';
 import { AppError } from '$lib/types/errors';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { pb } from '$lib/adapters/pb';
-import { PB_URL } from '$lib/config';
 import { buffer } from './content/record_buffer';
 import { AssetService } from './asset';
+import { createDefaultUserConnections, type UserConnectionSettings } from '$lib/types/connections';
+import {
+    applyUserConnectionRuntime,
+    resetConnectionRuntime,
+    resolveServerUrl
+} from './connection/runtime';
 
 export interface UserFields {
     name: string;
@@ -34,7 +39,7 @@ export interface UserFields {
 
 export interface User extends UserFields {
     id: string;
-    selfHostUrl?: string;
+    connections: UserConnectionSettings;
 }
 
 function getDefaultAvatarUrl(seed: string): string {
@@ -47,7 +52,7 @@ export function toUser(user: UserRecord): User {
         id: user.id,
         name: user.name,
         avatar: user.avatar,
-        selfHostUrl: user.selfHostUrl,
+        connections: user.connections,
         username: user.username,
         email: user.email
     };
@@ -73,7 +78,7 @@ export class UserService {
             identityKeyPair: user.identityKeyPair
         });
         await appKV.set('activeUserId', userId);
-        pb.baseUrl = user.selfHostUrl || PB_URL;
+        applyUserConnectionRuntime(user.connections);
         if (!options.preserveAuth) {
             pb.authStore.clear();
         }
@@ -82,7 +87,7 @@ export class UserService {
     static async clearActiveUser(): Promise<void> {
         clearSession();
         await appKV.set('activeUserId', '');
-        pb.baseUrl = PB_URL;
+        resetConnectionRuntime();
         pb.authStore.clear();
     }
 
@@ -147,7 +152,8 @@ export class UserService {
             createdAt: now,
             updatedAt: now,
             masterKey,
-            identityKeyPair
+            identityKeyPair,
+            connections: createDefaultUserConnections()
         };
 
         await appUser.saveUser(user);
@@ -158,7 +164,7 @@ export class UserService {
         id: string;
         name?: string;
         avatar?: string;
-        selfHostUrl?: string;
+        connections: UserConnectionSettings;
         username?: string;
         email?: string;
         masterKey: CryptoKey;
@@ -167,9 +173,15 @@ export class UserService {
         const existing = await appUser.getUser(params.id);
         const now = clock.now();
 
-        // selfHostUrl MUST be updated through migration stage, not through auth flow
-        if (existing && existing.selfHostUrl !== params.selfHostUrl) {
-            throw new AppError('INVALID_INPUT', 'selfHostUrl cannot be changed through login');
+        if (
+            existing &&
+            resolveServerUrl(existing.connections.server) !==
+                resolveServerUrl(params.connections.server)
+        ) {
+            throw new AppError(
+                'INVALID_INPUT',
+                'This account belongs to a different server connection.'
+            );
         }
 
         const record: UserRecord = {
@@ -180,7 +192,7 @@ export class UserService {
             updatedAt: now,
             masterKey: params.masterKey,
             identityKeyPair: params.identityKeyPair,
-            selfHostUrl: params.selfHostUrl, // server specific fields, need to overwrite
+            connections: existing?.connections ?? params.connections,
             username: params.username,
             email: params.email
         };
@@ -203,33 +215,27 @@ export class UserService {
         return toUser(updated);
     }
 
-    static async getActiveSelfHostUrl(): Promise<string | undefined> {
+    static async getActiveConnections(): Promise<UserConnectionSettings> {
         const { userId } = getActiveSession();
         const user = await appUser.getUser(userId);
         if (!user) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
-        return user.selfHostUrl;
+        return user.connections;
     }
 
-    static async updateSelfHostUrl(userId: string, hostUrl?: string): Promise<void> {
+    static async updateConnections(
+        userId: string,
+        connections: UserConnectionSettings
+    ): Promise<User> {
         const user = await appUser.getUser(userId);
         if (!user) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
-        user.selfHostUrl = hostUrl;
+        user.connections = connections;
         user.updatedAt = clock.now();
         await appUser.saveUser(user, { origin: 'sync' });
-
-        try {
-            const { userId: currentUserId } = getActiveSession();
-            if (currentUserId === userId) {
-                pb.baseUrl = hostUrl || PB_URL;
-                pb.authStore.clear();
-            }
-        } catch (error) {
-            // Ignore
-        }
+        return toUser(user);
     }
 
     /**

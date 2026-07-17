@@ -26,7 +26,11 @@ export interface HttpOptions {
     signal?: AbortSignal;
 }
 
+export type ProxyRuntimeConfig = { mode: 'proxy'; baseUrl: string } | { mode: 'direct' };
+
 export interface IHttpAdapter {
+    configureProxy(config: ProxyRuntimeConfig): void;
+    getProxyConfig(): ProxyRuntimeConfig;
     fetch(url: string, init?: RequestInit, options?: HttpOptions): Promise<Response>;
     get<T>(url: string, headers?: Record<string, string>, options?: HttpOptions): Promise<T>;
     post<T>(

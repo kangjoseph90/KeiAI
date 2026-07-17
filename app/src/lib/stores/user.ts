@@ -6,7 +6,7 @@
 
 import {
     getActiveSession,
-    MigrationService,
+    ConnectionService,
     toUser,
     UserService,
     type UserFields
@@ -56,7 +56,7 @@ export async function updateUser(changes: DeepPartial<UserFields>): Promise<void
  * and route context from bleeding across users.
  */
 export async function switchLocalUser(userId: string): Promise<void> {
-    if (MigrationService.isLocked()) return;
+    if (ConnectionService.isServerTransitionLocked()) return;
 
     const { userId: currentUserId } = getActiveSession();
     if (userId === currentUserId) return;
@@ -70,7 +70,7 @@ export async function switchLocalUser(userId: string): Promise<void> {
  * Create a fresh local identity, seed its default content, and make it active.
  */
 export async function createAndSwitchLocalUser(): Promise<void> {
-    if (MigrationService.isLocked()) return;
+    if (ConnectionService.isServerTransitionLocked()) return;
 
     SyncManager.stopAutoSync();
     const user = await UserService.createUser();

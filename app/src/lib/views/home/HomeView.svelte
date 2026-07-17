@@ -60,7 +60,7 @@
     import { importCharacterFile } from '$lib/managers';
     import { importModuleFile } from '$lib/managers/module';
     import { importPersonaFile } from '$lib/managers/persona';
-    import { isKeiServer } from '$lib/adapters/pb';
+    import { isKeiServer } from '$lib/services';
     import type { RouteState } from '$lib/router';
     import { MultiRoomService, type PublicMultiRoom } from '$lib/services';
     import { formatPublicKeyFingerprint } from '$lib/crypto';

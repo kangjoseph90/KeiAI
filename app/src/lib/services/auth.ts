@@ -33,6 +33,7 @@ import {
     type RecoveryBundle
 } from '$lib/crypto';
 import { UserService } from './user';
+import type { UserConnectionSettings } from '$lib/types/connections';
 import { getActiveSession } from './session';
 import { DataRecordSyncEngine, MultiRecordSyncEngine, SyncManager } from './sync';
 import { decryptUserProfile, encryptUserProfile } from './sync/user';
@@ -86,7 +87,7 @@ export class AuthService {
         email?: string
     ): Promise<string> {
         const normalizedUsername = normalizeUsername(username);
-        const currentSelfHostUrl = await UserService.getActiveSelfHostUrl();
+        const currentConnections = await UserService.getActiveConnections();
 
         const { userId, masterKey, identityKeyPair } = getActiveSession();
         const existing = await UserService.getUser(userId);
@@ -138,7 +139,7 @@ export class AuthService {
             rawPrivateKey?.fill(0);
         }
 
-        await this.authenticateExisting(normalizedUsername, password, salt, currentSelfHostUrl);
+        await this.authenticateExisting(normalizedUsername, password, salt, currentConnections);
         return recoveryCode;
     }
 
@@ -147,14 +148,14 @@ export class AuthService {
      */
     static async signIn(username: string, password: string): Promise<void> {
         const normalizedUsername = normalizeUsername(username);
-        const currentSelfHostUrl = await UserService.getActiveSelfHostUrl();
+        const currentConnections = await UserService.getActiveConnections();
 
         const { salt } = await this.getSalt(normalizedUsername);
         await this.authenticateExisting(
             normalizedUsername,
             password,
             fromBase64(salt),
-            currentSelfHostUrl
+            currentConnections
         );
     }
 
@@ -168,7 +169,7 @@ export class AuthService {
         const { backHalf } = splitRecoveryCode(recoveryCode);
         const authTokenHash = await hashRecoveryAuthToken(backHalf);
 
-        const currentSelfHostUrl = await UserService.getActiveSelfHostUrl();
+        const currentConnections = await UserService.getActiveConnections();
 
         const resp = (await pb.send('/api/recovery/lookup', {
             method: 'POST',
@@ -217,7 +218,7 @@ export class AuthService {
             newKeys.loginKey.fill(0);
         }
 
-        await this.authenticateExisting(resp.username, newPassword, salt, currentSelfHostUrl);
+        await this.authenticateExisting(resp.username, newPassword, salt, currentConnections);
         return newRecoveryCode;
     }
 
@@ -241,7 +242,7 @@ export class AuthService {
      */
     static async changePassword(oldPassword: string, newPassword: string): Promise<string> {
         const { userId } = getActiveSession();
-        const currentSelfHostUrl = await UserService.getActiveSelfHostUrl();
+        const currentConnections = await UserService.getActiveConnections();
 
         const record = pb.authStore.record;
         const username = (record?.username as string | undefined) ?? null;
@@ -282,7 +283,7 @@ export class AuthService {
                 recoveryAuthTokenHash: toBase64(newRecovery.recoveryAuthTokenHash)
             });
 
-            await this.authenticateExisting(username, newPassword, newSalt, currentSelfHostUrl);
+            await this.authenticateExisting(username, newPassword, newSalt, currentConnections);
             return newRecovery.recoveryCode.fullCode;
         } finally {
             oldKeys.encryptionKey.fill(0);
@@ -325,7 +326,7 @@ export class AuthService {
      * Connect this device using an 8-char pairing code.
      */
     static async connectWithPairingCode(pairingCode: string): Promise<void> {
-        const currentSelfHostUrl = await UserService.getActiveSelfHostUrl();
+        const currentConnections = await UserService.getActiveConnections();
 
         const { lookupId } = await derivePairingKeys(pairingCode);
 
@@ -362,7 +363,7 @@ export class AuthService {
                 avatar: profile?.avatar,
                 masterKey,
                 identityKeyPair,
-                selfHostUrl: currentSelfHostUrl,
+                connections: currentConnections,
                 username,
                 email: serverRecord?.email
             });
@@ -403,7 +404,7 @@ export class AuthService {
         username: string,
         password: string,
         salt: Uint8Array<ArrayBuffer>,
-        selfHostUrl?: string
+        connections: UserConnectionSettings
     ): Promise<void> {
         const keys = await deriveKeys(password, salt);
         let rawM: Uint8Array<ArrayBuffer> | null = null;
@@ -445,7 +446,7 @@ export class AuthService {
                     avatar: profile?.avatar,
                     masterKey,
                     identityKeyPair: { publicKey, privateKey },
-                    selfHostUrl,
+                    connections,
                     username: authData.record.username,
                     email: authData.record.email || undefined
                 });

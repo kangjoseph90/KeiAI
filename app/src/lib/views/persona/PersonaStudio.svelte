@@ -43,7 +43,7 @@
         movePersonaItem
     } from '$lib/stores';
     import { navigate, type PersonaStudioTab } from '$lib/router';
-    import { isKeiServer } from '$lib/adapters/pb';
+    import { isKeiServer } from '$lib/services';
     import { exportPersonaFile } from '$lib/managers/persona';
     import type { AssetRef } from '$lib/types/refs';
     import { appDialog } from '$lib/adapters/dialog';

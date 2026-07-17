@@ -4,7 +4,7 @@
  * Derived stores: isLoggedIn, isLocalOnly, userEmail, userId, pbConnected.
  * Action functions: performCreateAccount, performSignIn, performRecoverAndReset,
  *   performChangePassword, performUnlinkSync, performLogout,
- *   performDeleteWithRecoveryCode, performSetSelfHostUrl.
+ *   performDeleteWithRecoveryCode.
  *
  * Action functions wrap AuthService calls and handle post-auth store refresh.
  * UI components call these instead of AuthService directly — this keeps
@@ -14,8 +14,8 @@
  * since stores/index.ts re-exports from this file indirectly via views.
  */
 
-import { activeUser, migrationLocked, pbConnected } from './state';
-import { AuthService, MigrationService, UserService, type MigrationOptions } from '$lib/services';
+import { pbConnected } from './state';
+import { AuthService, UserService } from '$lib/services';
 import { SyncManager } from '$lib/services/sync';
 import { loadUser } from './user';
 import { clearActiveCharacter } from './content/character';
@@ -29,10 +29,6 @@ pbConnected.set(AuthService.isPbConnected());
 
 AuthService.onPbAuthChange((isValid) => {
     pbConnected.set(isValid);
-});
-
-MigrationService.onLockChange((locked) => {
-    migrationLocked.set(locked);
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -85,19 +81,6 @@ export async function performDeleteWithRecoveryCode(recoveryCode: string): Promi
 export async function performPairWithCode(pairingCode: string): Promise<void> {
     await AuthService.connectWithPairingCode(pairingCode);
     await refreshAfterLogin();
-}
-
-export async function performSetSelfHostUrl(
-    selfHostUrl?: string,
-    options?: MigrationOptions
-): Promise<void> {
-    const nextUrl = selfHostUrl?.trim() || undefined;
-    if (nextUrl) {
-        await MigrationService.enterSelfHost(nextUrl, options);
-    } else {
-        await MigrationService.leaveSelfHost(options);
-    }
-    await loadUser();
 }
 
 export async function performChangePassword(

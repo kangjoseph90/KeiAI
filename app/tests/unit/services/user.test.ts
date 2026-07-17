@@ -30,7 +30,12 @@ vi.mock('$lib/crypto', () => ({
 vi.mock('$lib/utils/id', () => ({ generateId: vi.fn(() => 'local-id') }));
 vi.mock('$lib/utils/clock', () => ({ clock: { now: vi.fn(() => 1000) } }));
 vi.mock('minidenticons', () => ({ minidenticon: vi.fn((seed: string) => `<svg>${seed}</svg>`) }));
-vi.mock('$lib/config', () => ({ PB_URL: 'https://sync.example.test' }));
+vi.mock('$lib/config', () => ({
+    PB_URL: 'https://sync.example.test',
+    PROXY_URL: 'https://proxy.example.test',
+    KEI_PB_URL: 'https://api.keiai.xyz',
+    KEI_PROXY_URL: 'https://proxy.keiai.xyz'
+}));
 
 vi.mock('$lib/adapters/asset', () => ({
     appAsset: {
@@ -77,7 +82,8 @@ describe('UserService', () => {
             createdAt: 1,
             updatedAt: 1,
             masterKey: mockMasterKey,
-            identityKeyPair: mockIdentityKeyPair
+            identityKeyPair: mockIdentityKeyPair,
+            connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
         });
 
         const restored = await UserService.restoreOrCreateUser();
@@ -117,7 +123,7 @@ describe('UserService', () => {
             email: 'notice@example.test',
             masterKey: mockMasterKey,
             identityKeyPair: mockIdentityKeyPair,
-            selfHostUrl: 'https://sync.example.test',
+            connections: { server: { mode: 'default' }, proxy: { mode: 'default' } },
             name: 'Synced'
         });
 
@@ -126,7 +132,7 @@ describe('UserService', () => {
                 id: 'user-1',
                 email: 'notice@example.test',
                 name: 'Synced',
-                selfHostUrl: 'https://sync.example.test'
+                connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
             }),
             { origin: 'sync' }
         );
@@ -140,7 +146,7 @@ describe('UserService', () => {
             avatar: '',
             createdAt: 1,
             updatedAt: 1,
-            selfHostUrl: 'https://sync.example.test',
+            connections: { server: { mode: 'default' }, proxy: { mode: 'default' } },
             username: 'kei',
             masterKey: mockMasterKey,
             identityKeyPair: mockIdentityKeyPair
@@ -151,7 +157,7 @@ describe('UserService', () => {
         expect(appUser.saveUser).toHaveBeenCalledWith(
             expect.objectContaining({
                 id: 'user-1',
-                selfHostUrl: 'https://sync.example.test'
+                connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
             })
         );
         const savedUser = vi.mocked(appUser.saveUser).mock.calls[0][0];

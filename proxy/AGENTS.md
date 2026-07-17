@@ -55,6 +55,18 @@ No database. No logging. No state. Just HTTP forwarding with CORS headers.
 
 Health check endpoint. Returns `200 OK`.
 
+### `/spec`
+
+Protocol discovery endpoint used before saving a custom proxy connection.
+
+```json
+{
+	"service": "keiai-proxy",
+	"protocolVersion": 1,
+	"capabilities": ["generic-fetch", "streaming"]
+}
+```
+
 ### `/proxy`
 
 Generic proxy endpoint. Accepts POST requests with the following headers:
@@ -105,6 +117,8 @@ const response = await fetch('/proxy', {
 - Header-based target specification (RisuAI-style pattern)
 - CORS support (preflight + response headers)
 - Health check endpoint
+- Protocol discovery endpoint
+- CORS headers on success and error responses
 - Streaming support (body pass-through)
 
 ### Testing

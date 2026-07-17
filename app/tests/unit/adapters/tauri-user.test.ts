@@ -11,7 +11,7 @@ interface SqlRow {
     avatar: string;
     createdAt: number;
     updatedAt: number;
-    selfHostUrl: string | null;
+    connections: string;
 }
 
 const native = vi.hoisted(() => ({
@@ -53,7 +53,7 @@ vi.mock('@tauri-apps/plugin-sql', () => ({
                         avatar: String(values[5]),
                         createdAt: Number(values[6]),
                         updatedAt: Number(values[7]),
-                        selfHostUrl: typeof values[8] === 'string' ? values[8] : null
+                        connections: String(values[8])
                     };
                     native.sqlRows.set(row.id, row);
                 } else if (query.includes('DELETE FROM users')) {
@@ -246,6 +246,7 @@ async function makeUser(id: string, name: string): Promise<UserRecord> {
         createdAt: 1,
         updatedAt: name === 'Original' ? 1 : 2,
         masterKey,
-        identityKeyPair
+        identityKeyPair,
+        connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
     };
 }

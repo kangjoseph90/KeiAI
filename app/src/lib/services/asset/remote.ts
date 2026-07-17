@@ -5,7 +5,8 @@
  * Hard quota is enforced by the upload endpoint for the paying scope.
  */
 
-import { isKeiServer, pb } from '$lib/adapters/pb';
+import { pb } from '$lib/adapters/pb';
+import { isKeiServer } from '../connection/runtime';
 import { appHttp } from '$lib/adapters/http';
 import { AppError } from '$lib/types/errors';
 import { KEI_CDN_URL } from '$lib/config';
