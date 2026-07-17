@@ -18,9 +18,8 @@
         updateCharacterContent,
         updateCharacterAvatar,
         removeCharacterAvatar,
-        createCharacterGreeting,
+        saveCharacterGreeting,
         deleteCharacterGreeting,
-        updateCharacterGreeting,
         characterLorebooks,
         createCharacterLorebook,
         updateCharacterLorebook,
@@ -116,29 +115,21 @@
         navigate({ view: 'characterStudio', charId });
     }
 
-    async function handleCreateGreeting(fields: { content: string; sortOrder: string }) {
+    async function handleSaveGreeting(
+        id: string,
+        changes: { content?: string; sortOrder?: string }
+    ) {
         if (!$activeCharacter) return '';
-        const { greetingId } = await createCharacterGreeting($activeCharacter.id, fields);
+        await saveCharacterGreeting($activeCharacter.id, id, changes);
         if (isChatSynced() && $activeChat) {
             await syncChatGreetings($activeChat.id);
         }
-        return greetingId;
+        return id;
     }
 
     async function handleDeleteGreeting(id: string) {
         if (!$activeCharacter) return;
         await deleteCharacterGreeting($activeCharacter.id, id);
-        if (isChatSynced() && $activeChat) {
-            await syncChatGreetings($activeChat.id);
-        }
-    }
-
-    async function handleUpdateGreeting(
-        id: string,
-        changes: { content?: string; sortOrder?: string }
-    ) {
-        if (!$activeCharacter) return;
-        await updateCharacterGreeting($activeCharacter.id, id, changes);
         if (isChatSynced() && $activeChat) {
             await syncChatGreetings($activeChat.id);
         }
@@ -245,8 +236,7 @@
                 {:else if activeTab === 'greetings'}
                     <GreetingsTab
                         character={$activeCharacter}
-                        onCreate={handleCreateGreeting}
-                        onUpdate={handleUpdateGreeting}
+                        onSave={handleSaveGreeting}
                         onDelete={handleDeleteGreeting}
                     />
                 {:else if activeTab === 'display'}

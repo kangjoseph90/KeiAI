@@ -21,11 +21,9 @@ vi.mock('$lib/stores/tasks/chat', () => ({
 
 vi.mock('$lib/stores/content/message', () => ({
     createMessage: vi.fn().mockResolvedValue(undefined),
-    createMessageSwipe: vi.fn(),
     updateMessage: vi.fn().mockResolvedValue(undefined),
     updateMessageSwipe: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
-    deleteMessageSwipe: vi.fn(),
     getLastMessage: vi.fn(),
     getMessage: vi.fn()
 }));

@@ -270,50 +270,23 @@ export async function importCharacterPackage(
 
 // ─── Greeting CRUD ───────────────────────────────────────────────
 
-export async function createCharacterGreeting(
-    characterId: string,
-    fields: { content: string; sortOrder: string }
-): Promise<{ greetingId: string; character: Character }> {
-    const { greetingId, character: updated } = await CharacterService.createGreeting(
-        characterId,
-        fields
-    );
-
-    if (updated.scopeType === 'user') {
-        characters.set(characterId, updated);
-    } else if (updated.scopeId === get(activeRoomId)) {
-        multiRoomCharacters.set(characterId, updated);
-    }
-    return { greetingId, character: updated };
-}
-
-export async function updateCharacterGreeting(
+export async function saveCharacterGreeting(
     characterId: string,
     greetingId: string,
     changes: { content?: string; sortOrder?: string }
-): Promise<Character> {
-    const updated = await CharacterService.updateGreeting(characterId, greetingId, changes);
-
-    if (updated.scopeType === 'user') {
-        characters.set(characterId, updated);
-    } else if (updated.scopeId === get(activeRoomId)) {
-        multiRoomCharacters.set(characterId, updated);
-    }
-    return updated;
+): Promise<void> {
+    await updateCharacterContent(characterId, {
+        greetings: { [greetingId]: { ...changes, id: greetingId } }
+    });
 }
 
 export async function deleteCharacterGreeting(
     characterId: string,
     greetingId: string
-): Promise<Character> {
-    const updated = await CharacterService.deleteGreeting(characterId, greetingId);
-
-    if (updated.scopeType === 'user') {
-        characters.set(characterId, updated);
-    } else if (updated.scopeId === get(activeRoomId)) {
-        multiRoomCharacters.set(characterId, updated);
-    }
-    return updated;
+): Promise<void> {
+    await updateCharacterContent(characterId, {
+        greetings: { [greetingId]: undefined }
+    });
 }
 
 export async function updateCharacterAvatar(characterId: string, file: File): Promise<void> {

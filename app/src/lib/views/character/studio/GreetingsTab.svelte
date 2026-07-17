@@ -4,6 +4,7 @@
     import { Textarea } from '$lib/components/ui/textarea';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateId } from '$lib/utils/id';
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
     import type { Character } from '$lib/services';
     import { SvelteSet } from 'svelte/reactivity';
@@ -13,15 +14,14 @@
 
     interface Props {
         character: Character;
-        onCreate: (fields: { content: string; sortOrder: string }) => string | Promise<string>;
-        onUpdate: (
+        onSave: (
             id: string,
             changes: { content?: string; sortOrder?: string }
-        ) => void | Promise<void>;
+        ) => string | void | Promise<string | void>;
         onDelete: (id: string) => void | Promise<void>;
     }
 
-    let { character, onCreate, onUpdate, onDelete }: Props = $props();
+    let { character, onSave, onDelete }: Props = $props();
     let expanded = new SvelteSet<string>();
     let busyAction = $state<string | null>(null);
 
@@ -48,9 +48,10 @@
                 ])
             )
         );
+        const greetingId = generateId();
         busyAction = 'create';
         try {
-            const greetingId = await onCreate({ content: '', sortOrder });
+            await onSave(greetingId, { content: '', sortOrder });
             if (character.id === characterId) expanded.add(greetingId);
         } catch (error) {
             toast.error({ title: 'Could not add greeting', description: getErrorMessage(error) });
@@ -63,7 +64,7 @@
         if (busyAction) return;
         busyAction = `reorder:${id}`;
         try {
-            await onUpdate(id, { sortOrder: newSortOrder });
+            await onSave(id, { sortOrder: newSortOrder });
         } catch (error) {
             toast.error({
                 title: 'Could not reorder greeting',
@@ -78,7 +79,7 @@
         if (busyAction) return;
         busyAction = `update:${id}`;
         try {
-            await onUpdate(id, { content });
+            await onSave(id, { content });
         } catch (error) {
             toast.error({
                 title: 'Could not update greeting',

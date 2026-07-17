@@ -252,50 +252,6 @@ export class MessageService {
         }
     }
 
-    static async createSwipe(
-        messageId: string,
-        fields: MessageSwipeFields
-    ): Promise<{ swipeId: string; message: Message }> {
-        const swipeId = generateId();
-        const updatedMessage = await this.update(messageId, {
-            swipes: {
-                [swipeId]: {
-                    ...fields,
-                    id: swipeId,
-                    createdAt: clock.now()
-                }
-            }
-        });
-
-        return { swipeId, message: updatedMessage };
-    }
-
-    static async updateSwipe(
-        messageId: string,
-        swipeId: string,
-        changes: DeepPartial<MessageSwipe>
-    ): Promise<Message> {
-        return this.update(messageId, {
-            swipes: {
-                [swipeId]: changes
-            }
-        });
-    }
-
-    static async deleteSwipe(messageId: string, swipeId: string): Promise<Message> {
-        const message = await this.get(messageId);
-        if (!message) throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
-
-        const remainingIds = Object.keys(message.swipes).filter((id) => id !== swipeId);
-        const nextActiveId =
-            message.activeSwipeId === swipeId ? (remainingIds[0] ?? '') : message.activeSwipeId;
-
-        return this.update(messageId, {
-            swipes: { [swipeId]: undefined },
-            activeSwipeId: nextActiveId
-        });
-    }
-
     static async countByChat(chatId: string): Promise<number> {
         // create and delete bypasses the write queue - doesn't need to flush the queue
         return localDB.countByIndex('messages', 'chatId', chatId);

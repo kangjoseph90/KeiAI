@@ -14,12 +14,7 @@
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { Badge } from '$lib/components/ui/badge';
-    import {
-        appSettings,
-        createCustomLLMModel,
-        updateCustomLLMModel,
-        deleteCustomLLMModel
-    } from '$lib/stores';
+    import { appSettings, saveCustomLLMModel, deleteCustomLLMModel } from '$lib/stores';
     import {
         type LLMHandler,
         type LLMTokenizer,
@@ -27,6 +22,7 @@
         getLLMTokenizerName
     } from '$lib/types/models/llm';
     import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateId } from '$lib/utils/id';
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
@@ -52,7 +48,8 @@
         busyAction = 'create';
         try {
             const models = Object.values($appSettings?.custom?.llm?.models ?? {});
-            const modelId = await createCustomLLMModel({
+            const modelId = `custom::${generateId()}`;
+            await saveCustomLLMModel(modelId, {
                 name: 'New Custom Model',
                 modelId: '',
                 baseUrl: '',
@@ -100,7 +97,7 @@
     async function handleReorder(id: string, newSortOrder: string) {
         if (busyAction) return;
         try {
-            await updateCustomLLMModel(id, { sortOrder: newSortOrder });
+            await saveCustomLLMModel(id, { sortOrder: newSortOrder });
         } catch (error) {
             toast.error({ title: 'Could not reorder model', description: getErrorMessage(error) });
         }
@@ -108,10 +105,10 @@
 
     async function updateModelSafely(
         id: string,
-        changes: Parameters<typeof updateCustomLLMModel>[1]
+        changes: Parameters<typeof saveCustomLLMModel>[1]
     ): Promise<void> {
         try {
-            await updateCustomLLMModel(id, changes);
+            await saveCustomLLMModel(id, changes);
         } catch (error) {
             toast.error({ title: 'Could not update model', description: getErrorMessage(error) });
         }

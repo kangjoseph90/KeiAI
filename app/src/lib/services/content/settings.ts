@@ -5,8 +5,6 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { buffer } from './record_buffer';
 import { clock } from '$lib/utils/clock';
-import type { CustomLLMModel } from '$lib/types/models/llm';
-import { generateId } from '$lib/utils/id';
 import type {
     AnthropicProviderConfig,
     CustomProviderConfig,
@@ -281,57 +279,5 @@ export class SettingsService {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update settings', error);
         }
-    }
-
-    static async createCustomLLMModel(
-        fields: DeepPartial<CustomLLMModel> & { sortOrder: string }
-    ): Promise<{ modelId: string; settings: AppSettings }> {
-        const modelId = `custom::${generateId()}`;
-        const settings = await this.update({
-            custom: {
-                llm: {
-                    models: {
-                        [modelId]: {
-                            ...fields,
-                            id: modelId,
-                            provider: 'custom'
-                        }
-                    }
-                }
-            }
-        });
-
-        return { modelId, settings };
-    }
-
-    static async updateCustomLLMModel(
-        modelId: string,
-        changes: DeepPartial<CustomLLMModel & { sortOrder: string }>
-    ): Promise<AppSettings> {
-        return this.update({
-            custom: {
-                llm: {
-                    models: {
-                        [modelId]: {
-                            ...changes,
-                            id: modelId,
-                            provider: 'custom'
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    static async deleteCustomLLMModel(modelId: string): Promise<AppSettings> {
-        return this.update({
-            custom: {
-                llm: {
-                    models: {
-                        [modelId]: undefined
-                    }
-                }
-            }
-        });
     }
 }

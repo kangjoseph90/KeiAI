@@ -32,25 +32,25 @@ export async function updateSettings(changes: DeepPartial<AppSettings>): Promise
 
 // ─── Custom LLM Model CRUD ──────────────────────────────────────────
 
-export async function createCustomLLMModel(
-    fields: DeepPartial<CustomLLMModel> & { sortOrder: string }
-): Promise<string> {
-    const { modelId, settings } = await SettingsService.createCustomLLMModel(fields);
-    appSettings.set(settings);
-    return modelId;
-}
-
-export async function updateCustomLLMModel(
+export async function saveCustomLLMModel(
     modelId: string,
     changes: DeepPartial<CustomLLMModel & { sortOrder: string }>
 ): Promise<void> {
-    const updated = await SettingsService.updateCustomLLMModel(modelId, changes);
-    appSettings.set(updated);
+    await updateSettings({
+        custom: {
+            llm: {
+                models: {
+                    [modelId]: { ...changes, id: modelId, provider: 'custom' }
+                }
+            }
+        }
+    });
 }
 
 export async function deleteCustomLLMModel(modelId: string): Promise<void> {
-    const updated = await SettingsService.deleteCustomLLMModel(modelId);
-    appSettings.set(updated);
+    await updateSettings({
+        custom: { llm: { models: { [modelId]: undefined } } }
+    });
 }
 
 // ─── Global Folder & Item Management ──────────────────────

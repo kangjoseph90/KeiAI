@@ -10,13 +10,7 @@
  */
 
 import { get } from 'svelte/store';
-import {
-    MessageService,
-    type MessageFields,
-    type Message,
-    type MessageSwipe,
-    type MessageSwipeFields
-} from '$lib/services';
+import { MessageService, type MessageFields, type Message, type MessageSwipe } from '$lib/services';
 import { messages, activeChatId, messageIndexes, activeChat } from '../state';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
@@ -310,41 +304,12 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
     await refreshMessageIndexes(chatId);
 }
 
-export async function createMessageSwipe(
-    messageId: string,
-    fields: MessageSwipeFields
-): Promise<{ swipeId: string; message: Message }> {
-    const { swipeId, message: updated } = await MessageService.createSwipe(messageId, fields);
-
-    if (shouldSyncMessage(updated.chatId, updated)) {
-        messages.set(messageId, updated);
-    }
-
-    return { swipeId, message: updated };
-}
-
 export async function updateMessageSwipe(
     messageId: string,
     swipeId: string,
     changes: DeepPartial<MessageSwipe>
-): Promise<Message> {
-    const updated = await MessageService.updateSwipe(messageId, swipeId, changes);
-
-    if (shouldSyncMessage(updated.chatId, updated)) {
-        messages.set(messageId, updated);
-    }
-
-    return updated;
-}
-
-export async function deleteMessageSwipe(messageId: string, swipeId: string): Promise<Message> {
-    const updated = await MessageService.deleteSwipe(messageId, swipeId);
-
-    if (shouldSyncMessage(updated.chatId, updated)) {
-        messages.set(messageId, updated);
-    }
-
-    return updated;
+): Promise<void> {
+    await updateMessage(messageId, { swipes: { [swipeId]: changes } });
 }
 
 // ─── Internal Helpers ──────────────────────────────────────────────────

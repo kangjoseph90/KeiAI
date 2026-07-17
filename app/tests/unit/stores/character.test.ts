@@ -8,6 +8,8 @@ import {
     updateCharacterContent,
     createCharacter,
     deleteCharacter,
+    saveCharacterGreeting,
+    deleteCharacterGreeting,
     createCharacterLorebook,
     deleteCharacterLorebook,
     createCharacterScript,
@@ -254,6 +256,46 @@ describe('Character Store', () => {
 
             expect(get(characters)).toHaveLength(0);
             expect(get(appSettings)?.characters.refs['char-1']).toBeUndefined();
+        });
+    });
+
+    describe('Greeting Management', () => {
+        it('upserts a greeting through the generic character update', async () => {
+            vi.mocked(CharacterService.update).mockResolvedValue({
+                ...mockCharacter,
+                greetings: {
+                    'greeting-1': {
+                        id: 'greeting-1',
+                        content: 'Hello',
+                        sortOrder: 'a'
+                    }
+                }
+            });
+
+            await saveCharacterGreeting('char-1', 'greeting-1', {
+                content: 'Hello',
+                sortOrder: 'a'
+            });
+
+            expect(CharacterService.update).toHaveBeenCalledWith('char-1', {
+                greetings: {
+                    'greeting-1': {
+                        content: 'Hello',
+                        sortOrder: 'a',
+                        id: 'greeting-1'
+                    }
+                }
+            });
+        });
+
+        it('deletes a greeting through the generic character update', async () => {
+            vi.mocked(CharacterService.update).mockResolvedValue(mockCharacter);
+
+            await deleteCharacterGreeting('char-1', 'greeting-1');
+
+            expect(CharacterService.update).toHaveBeenCalledWith('char-1', {
+                greetings: { 'greeting-1': undefined }
+            });
         });
     });
 

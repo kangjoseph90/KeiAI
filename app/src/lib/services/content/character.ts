@@ -442,41 +442,4 @@ export class CharacterService {
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete character', error);
         }
     }
-
-    // ─── Greeting CRUD ───────────────────────────────────────────────
-
-    static async createGreeting(
-        characterId: string,
-        fields: { content: string; sortOrder: string }
-    ): Promise<{ greetingId: string; character: Character }> {
-        const greetingId = generateId();
-        const updatedCharacter = await this.update(characterId, {
-            greetings: {
-                [greetingId]: {
-                    ...fields,
-                    id: greetingId
-                }
-            }
-        });
-
-        return { greetingId, character: updatedCharacter };
-    }
-
-    static async updateGreeting(
-        characterId: string,
-        greetingId: string,
-        changes: DeepPartial<Greeting>
-    ): Promise<Character> {
-        return this.update(characterId, {
-            greetings: {
-                [greetingId]: changes
-            }
-        });
-    }
-
-    static async deleteGreeting(characterId: string, greetingId: string): Promise<Character> {
-        return this.update(characterId, {
-            greetings: { [greetingId]: undefined }
-        });
-    }
 }
