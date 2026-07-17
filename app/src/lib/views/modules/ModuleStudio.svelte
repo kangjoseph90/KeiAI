@@ -6,6 +6,7 @@
         Monitor,
         Package,
         Settings2,
+        SlidersHorizontal,
         UserRound
     } from 'lucide-svelte';
     import { WorkspaceShell } from '$lib/components/layout';
@@ -51,6 +52,7 @@
     import DisplayTab from './studio/DisplayTab.svelte';
     import AssetsTab from './studio/AssetsTab.svelte';
     import AdvancedTab from './studio/AdvancedTab.svelte';
+    import TogglesTab from './studio/TogglesTab.svelte';
 
     interface Props {
         moduleId: string;
@@ -84,6 +86,7 @@
         { id: 'profile', label: 'Profile', icon: UserRound },
         { id: 'lorebooks', label: 'Lorebooks', icon: Book },
         { id: 'scripts', label: 'Scripts', icon: Code },
+        { id: 'toggles', label: 'Toggles', icon: SlidersHorizontal },
         { id: 'display', label: 'Display', icon: Monitor },
         { id: 'assets', label: 'Assets', icon: ImageIcon },
         { id: 'advanced', label: 'Advanced', icon: Settings2 }
@@ -277,6 +280,8 @@
                                 )
                         }}
                     />
+                {:else if activeTab === 'toggles'}
+                    <TogglesTab module={$activeModule} />
                 {:else if activeTab === 'display'}
                     <DisplayTab
                         module={$activeModule}

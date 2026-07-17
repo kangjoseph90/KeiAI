@@ -7,7 +7,7 @@ import { getPersona } from '$lib/stores/content/persona';
 import { getChat } from '$lib/stores/content/chat';
 import { getMessage } from '$lib/stores/content/message';
 import { getChatVariable, setChatVariable } from '$lib/managers/chat';
-import { getGlobalVariable } from '$lib/managers/preset';
+import { getToggleMacroValue } from '$lib/managers/toggle';
 import { getLastContentText } from '$lib/workflow/agent/llm';
 import { createLogger } from '$lib/adapters/logger';
 import type { RuntimeContext } from '$lib/types/context';
@@ -188,13 +188,9 @@ function collectBuiltInMacros(): Map<string, Macro[]> {
         if (!ctx.chatId || !key) return '';
         return (await getChatVariable(ctx.chatId, key)) ?? '';
     });
-    add('getglobalvar', async ([key]) => {
+    add('gettoggle', async ([key], ctx) => {
         if (!key) return '';
-        return (await getGlobalVariable(key)) ?? 'null';
-    });
-    add('gettoggle', async ([key]) => {
-        if (!key) return '';
-        return (await getGlobalVariable(`toggle_${key}`)) ?? 'null';
+        return getToggleMacroValue(key, ctx.characterId);
     });
     add('setvar', async ([key, value], ctx) => {
         if (!ctx.chatId || !key) return '';

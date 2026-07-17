@@ -19,8 +19,7 @@ export async function importPresetPackage(pkg: KeiPresetPackageV1): Promise<stri
         parameters: structuredClone(pkg.preset.parameters),
         chatWorkflow: structuredClone(pkg.preset.chatWorkflow),
         defaultVariables: { ...pkg.preset.defaultVariables },
-        globalVariables: { ...pkg.preset.globalVariables },
-        customToggles: structuredClone(pkg.preset.customToggles),
+        toggles: structuredClone(pkg.preset.toggles),
         scripts: { refs: {}, folders: {} }
     });
 

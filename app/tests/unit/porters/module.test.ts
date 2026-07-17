@@ -61,6 +61,7 @@ describe('module porters', () => {
         backgroundHTML: '',
         messageCSS: '',
         defaultVariables: { mood: 'quiet' },
+        toggles: { refs: {}, folders: {} },
         allowLowLevel: true,
         lorebooks: {
             refs: { lorebook_real: { id: 'lorebook_real', sortOrder: 'a' } },
@@ -290,6 +291,7 @@ function makePackage(overrides: Partial<KeiModulePackageV1> = {}): KeiModulePack
             backgroundHTML: '',
             messageCSS: '',
             defaultVariables: {},
+            toggles: { refs: {}, folders: {} },
             allowLowLevel: true,
             lorebooks: {
                 refs: { lorebook_0: { id: 'lorebook_0', sortOrder: 'a' } },

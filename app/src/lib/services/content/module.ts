@@ -14,6 +14,7 @@ import {
 } from './cascade';
 import { AssetService, type AssetOwner } from '../asset';
 import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
+import type { TogglePanel } from '$lib/types/toggle';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ export interface ModuleContent {
     backgroundHTML: string;
     messageCSS: string;
     defaultVariables: Record<string, string>;
+    toggles: TogglePanel;
     allowLowLevel: boolean;
 }
 
@@ -47,6 +49,7 @@ const defaultModuleFields: ModuleFields = {
     backgroundHTML: '',
     messageCSS: '',
     defaultVariables: {},
+    toggles: { refs: {}, folders: {} },
     allowLowLevel: false,
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },

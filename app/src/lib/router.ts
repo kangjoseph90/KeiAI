@@ -31,6 +31,7 @@ export type ModuleStudioTab =
     | 'profile'
     | 'lorebooks'
     | 'scripts'
+    | 'toggles'
     | 'display'
     | 'assets'
     | 'advanced';

@@ -8,6 +8,7 @@ describe('Risu template normalization', () => {
         );
 
         expect(normalizeRisuTemplate('{{chatindex}}')).toBe('{{messageindex}}');
+        expect(normalizeRisuTemplate('{{getglobalvar::legacy_value}}')).toBe('null');
 
         expect(normalizeRisuTemplate('<user> <bot> <char>')).toBe('{{user}} {{char}} {{char}}');
 

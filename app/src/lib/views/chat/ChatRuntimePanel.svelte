@@ -258,7 +258,7 @@
                         layout="grid"
                         gridClass="grid grid-cols-3 gap-2"
                         listClass="grid grid-cols-3 gap-2"
-                        childContainerClass="relative my-1 py-1.5 pl-2"
+                        childContainerClass="relative my-1 px-2 py-1.5"
                         onItemClick={(persona) => {
                             void handlePersonaSelect(persona.id);
                         }}

@@ -7,7 +7,6 @@ import {
     type PresetFileExport
 } from '$lib/porters/preset';
 import { importPresetPackage as importPresetPackageToStore } from '$lib/stores';
-import { getActivePreset, updatePresetContent } from '$lib/stores/content/preset';
 import type { Preset } from '$lib/services';
 import { sanitizeFileName } from '$lib/utils/file';
 import { appDialog } from '$lib/adapters/dialog';
@@ -35,30 +34,4 @@ export async function exportPresetFile(presetId: string, request: PresetFileExpo
         title: 'Export Preset',
         filters: [{ name: extension.toUpperCase(), extensions: [extension] }]
     });
-}
-
-export async function getGlobalVariable(key: string): Promise<string | null> {
-    const preset = getActivePreset();
-    if (!preset) return null;
-    return preset.globalVariables[key] ?? null;
-}
-
-export function getGlobalVariables(): Record<string, string> {
-    const preset = getActivePreset();
-    if (!preset) return {};
-    return { ...preset.globalVariables };
-}
-
-export async function setGlobalVariable(key: string, value: string): Promise<void> {
-    const preset = getActivePreset();
-    if (!preset) return;
-    await updatePresetContent(preset.id, {
-        globalVariables: { ...preset.globalVariables, [key]: value }
-    });
-}
-
-export async function setGlobalVariables(values: Record<string, string>): Promise<void> {
-    const preset = getActivePreset();
-    if (!preset) return;
-    await updatePresetContent(preset.id, { globalVariables: { ...values } });
 }

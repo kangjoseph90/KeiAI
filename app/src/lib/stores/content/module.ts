@@ -33,6 +33,7 @@ import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import type { DeepPartial } from '$lib/utils/defaults';
 import type { AssetFields } from '$lib/types/asset';
+import type { ToggleItem } from '$lib/types/toggle';
 
 let moduleSelectionVersion = 0;
 
@@ -209,6 +210,16 @@ export async function updateModuleContent(
 ): Promise<void> {
     const updated = await ModuleService.update(moduleId, changes);
     modules.set(moduleId, updated);
+}
+
+// ─── Module-owned Toggle CRUD ────────────────────────────────────────
+
+export async function saveModuleToggleItem(moduleId: string, item: ToggleItem): Promise<void> {
+    await updateModule(moduleId, { toggles: { refs: { [item.id]: item } } });
+}
+
+export async function deleteModuleToggleItem(moduleId: string, itemId: string): Promise<void> {
+    await updateModule(moduleId, { toggles: { refs: { [itemId]: undefined } } });
 }
 
 export async function deleteModule(moduleId: string): Promise<void> {
@@ -457,7 +468,7 @@ export async function deleteModuleCharJS(moduleId: string, charjsId: string): Pr
 
 // ─── Module-owned Folder & Item Management ──────────────────────
 
-export type ModuleFolderType = 'lorebooks' | 'scripts' | 'charjs' | 'assets';
+export type ModuleFolderType = 'lorebooks' | 'scripts' | 'charjs' | 'assets' | 'toggles';
 
 export async function createModuleFolder(
     moduleId: string,

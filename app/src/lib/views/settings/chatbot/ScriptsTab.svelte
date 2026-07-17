@@ -62,11 +62,11 @@
         config={preset.scripts}
         layout="list"
         onCreateFolder={(name, parentId, sortOrder) =>
-            createPresetFolder(preset.id, name, parentId, sortOrder)}
-        onUpdateFolder={(id, changes) => updatePresetFolder(preset.id, id, changes)}
-        onDeleteFolder={(id) => deletePresetFolder(preset.id, id)}
+            createPresetFolder(preset.id, 'scripts', name, parentId, sortOrder)}
+        onUpdateFolder={(id, changes) => updatePresetFolder(preset.id, 'scripts', id, changes)}
+        onDeleteFolder={(id) => deletePresetFolder(preset.id, 'scripts', id)}
         onMoveItem={(itemId, newFolderId, newSortOrder) =>
-            movePresetItem(preset.id, itemId, newFolderId, newSortOrder)}
+            movePresetItem(preset.id, 'scripts', itemId, newFolderId, newSortOrder)}
     >
         {#snippet empty()}
             <EmptyListPlaceholder message="No scripts defined for this preset." />

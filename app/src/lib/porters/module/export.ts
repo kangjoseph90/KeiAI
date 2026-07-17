@@ -56,6 +56,7 @@ export async function exportModulePackage(
         backgroundHTML: module.backgroundHTML,
         messageCSS: module.messageCSS,
         defaultVariables: { ...module.defaultVariables },
+        toggles: structuredClone(module.toggles),
         allowLowLevel: module.allowLowLevel,
         lorebooks: exportEntityList(module.lorebooks, lorebookMap, 'lorebook_folder'),
         scripts: exportEntityList(module.scripts, scriptMap, 'script_folder'),

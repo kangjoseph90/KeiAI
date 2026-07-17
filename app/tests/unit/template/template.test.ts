@@ -26,7 +26,7 @@ const {
     mockGetChat,
     mockGetMessage,
     mockGetChatVariable,
-    mockGetGlobalVariable,
+    mockGetToggleMacroValue,
     mockSetChatVariable
 } = vi.hoisted(() => ({
     mockCollectCharJSInstances: vi.fn(),
@@ -37,7 +37,7 @@ const {
     mockGetChat: vi.fn(),
     mockGetMessage: vi.fn(),
     mockGetChatVariable: vi.fn(),
-    mockGetGlobalVariable: vi.fn(),
+    mockGetToggleMacroValue: vi.fn(),
     mockSetChatVariable: vi.fn()
 }));
 
@@ -78,8 +78,8 @@ vi.mock('$lib/managers/chat', () => ({
     setChatVariable: mockSetChatVariable
 }));
 
-vi.mock('$lib/managers/preset', () => ({
-    getGlobalVariable: mockGetGlobalVariable
+vi.mock('$lib/managers/toggle', () => ({
+    getToggleMacroValue: mockGetToggleMacroValue
 }));
 
 function createPluginInstance(): PluginInstance {
@@ -164,9 +164,9 @@ describe('template', () => {
             if (key === 'mood') return 'very happy';
             return null;
         });
-        mockGetGlobalVariable.mockImplementation(async (key: string) => {
-            if (key === 'toggle_romance') return '1';
-            return null;
+        mockGetToggleMacroValue.mockImplementation(async (key: string) => {
+            if (key === 'romance') return '1';
+            return 'null';
         });
         mockSetChatVariable.mockResolvedValue(undefined);
         mockInvokeHandler.mockResolvedValue('Plugin Kei');

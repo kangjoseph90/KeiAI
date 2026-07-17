@@ -10,6 +10,7 @@ import { denormalizeRisuTemplate, normalizeRisuTemplate } from '../risu/template
 import { backgroundWithMessageCSS, extractStyleCSS } from '../risu/background';
 import type { KeiModulePackageV1 } from './types';
 import { refs, sortOrder } from '../utils';
+import { readRisuTogglePanel, writeRisuTogglePanel } from '../risu/toggle';
 
 type FullRisuModule = RawRisuModule & {
     lowLevelAccess?: boolean;
@@ -46,6 +47,7 @@ export function risuModuleToKeiPackage(risu: FullRisuModule): KeiModulePackageV1
             backgroundHTML: normalizeRisuTemplate(risu.backgroundEmbedding ?? ''),
             messageCSS: extractStyleCSS(normalizeRisuTemplate(risu.backgroundEmbedding ?? '')),
             defaultVariables: {},
+            toggles: readRisuTogglePanel(risu.customModuleToggle ?? ''),
             allowLowLevel: risu.lowLevelAccess ?? false,
             lorebooks: refs(lorebooks),
             scripts: refs(scripts),
@@ -87,6 +89,7 @@ export function keiPackageToRisuModule(pkg: KeiModulePackageV1): FullRisuModule 
             backgroundWithMessageCSS(pkg.module.backgroundHTML, pkg.module.messageCSS)
         ),
         lowLevelAccess: pkg.module.allowLowLevel,
+        customModuleToggle: writeRisuTogglePanel(pkg.module.toggles),
         id: 'keiai',
         lorebook: pkg.lorebooks.map(keiLorebookToRisuInternal),
         regex: pkg.scripts.map(keiScriptToRisu),

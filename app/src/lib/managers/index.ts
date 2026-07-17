@@ -11,3 +11,4 @@ export * from './message';
 export * from './multi';
 export * from './preset';
 export * from './routing';
+export * from './toggle';

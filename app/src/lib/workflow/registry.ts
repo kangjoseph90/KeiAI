@@ -8,15 +8,12 @@ import type {
     FileWriteNode,
     GateNode,
     GetChatVarNode,
-    GetGlobalVarNode,
     GetToggleNode,
     NumberCompareNode,
     NumberMathNode,
     NumberNode,
     OutputNode,
     SetChatVarNode,
-    SetGlobalVarNode,
-    SetToggleNode,
     StringConcatNode,
     StringIncludesNode,
     StringLengthNode,
@@ -168,60 +165,6 @@ export const GET_TOGGLE_NODE_DEFINITION: WorkflowNodeDefinition<GetToggleNode> =
         position: { x: 0, y: 0 },
         inputs: { name: null },
         inputValues: { name: '' }
-    })
-};
-
-export const SET_TOGGLE_NODE_DEFINITION: WorkflowNodeDefinition<SetToggleNode> = {
-    class: 'SetToggle',
-    label: 'Set Toggle',
-    category: 'variable',
-    inputs: {
-        content: { name: 'Content', type: 'string', required: true },
-        name: { name: 'Name', type: 'string', required: true }
-    },
-    outputs: {},
-    createDefault: (id) => ({
-        id,
-        name: 'Set Toggle',
-        class: 'SetToggle',
-        position: { x: 0, y: 0 },
-        inputs: { content: null, name: null },
-        inputValues: { content: '', name: '' }
-    })
-};
-
-export const GET_GLOBAL_VAR_NODE_DEFINITION: WorkflowNodeDefinition<GetGlobalVarNode> = {
-    class: 'GetGlobalVar',
-    label: 'Get Global Var',
-    category: 'variable',
-    inputs: { name: { name: 'Name', type: 'string', required: true } },
-    outputs: STRING_OUTPUT,
-    createDefault: (id) => ({
-        id,
-        name: 'Get Global Var',
-        class: 'GetGlobalVar',
-        position: { x: 0, y: 0 },
-        inputs: { name: null },
-        inputValues: { name: '' }
-    })
-};
-
-export const SET_GLOBAL_VAR_NODE_DEFINITION: WorkflowNodeDefinition<SetGlobalVarNode> = {
-    class: 'SetGlobalVar',
-    label: 'Set Global Var',
-    category: 'variable',
-    inputs: {
-        content: { name: 'Content', type: 'string', required: true },
-        name: { name: 'Name', type: 'string', required: true }
-    },
-    outputs: {},
-    createDefault: (id) => ({
-        id,
-        name: 'Set Global Var',
-        class: 'SetGlobalVar',
-        position: { x: 0, y: 0 },
-        inputs: { content: null, name: null },
-        inputValues: { content: '', name: '' }
     })
 };
 
@@ -644,9 +587,6 @@ export const WORKFLOW_NODE_DEFINITIONS = {
     Boolean: BOOLEAN_NODE_DEFINITION,
     Template: TEMPLATE_NODE_DEFINITION,
     GetToggle: GET_TOGGLE_NODE_DEFINITION,
-    SetToggle: SET_TOGGLE_NODE_DEFINITION,
-    GetGlobalVar: GET_GLOBAL_VAR_NODE_DEFINITION,
-    SetGlobalVar: SET_GLOBAL_VAR_NODE_DEFINITION,
     GetChatVar: GET_CHAT_VAR_NODE_DEFINITION,
     SetChatVar: SET_CHAT_VAR_NODE_DEFINITION,
     ToBoolean: TO_BOOLEAN_NODE_DEFINITION,

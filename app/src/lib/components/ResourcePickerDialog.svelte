@@ -178,7 +178,7 @@
                     mode="browse"
                     layout="grid"
                     gridClass="grid grid-cols-2 gap-1 sm:grid-cols-3"
-                    childContainerClass="relative mt-1 border-l pl-3"
+                    childContainerClass="relative mt-1 border-l px-3"
                     itemWrapperClass={() => 'min-w-0 p-1'}
                 >
                     {#snippet empty()}

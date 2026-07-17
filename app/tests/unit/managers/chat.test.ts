@@ -114,6 +114,7 @@ describe('ChatManager', () => {
         backgroundHTML: '',
         messageCSS: '',
         defaultVariables: { mood: 'module-calm', shared: 'global-module', moduleOnly: 'yes' },
+        toggles: { refs: {}, folders: {} },
         allowLowLevel: false,
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },
@@ -134,8 +135,7 @@ describe('ChatManager', () => {
         parameters: {},
         chatWorkflow: { nodes: {} },
         defaultVariables: { mood: 'preset-calm', shared: 'preset', presetOnly: 'yes' },
-        globalVariables: {},
-        customToggles: {},
+        toggles: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} }
     };
 

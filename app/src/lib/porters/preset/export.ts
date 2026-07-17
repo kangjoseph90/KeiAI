@@ -23,8 +23,7 @@ export async function exportPresetPackage(presetId: string): Promise<KeiPresetPa
         parameters: structuredClone(preset.parameters),
         chatWorkflow: structuredClone(preset.chatWorkflow),
         defaultVariables: { ...preset.defaultVariables },
-        globalVariables: { ...preset.globalVariables },
-        customToggles: structuredClone(preset.customToggles),
+        toggles: structuredClone(preset.toggles),
         scripts: exportEntityList(preset.scripts, scriptMap, 'script_folder')
     };
 

@@ -857,3 +857,22 @@
   - 새로고침 시 room-scoped content도 로컬 metadata를 통해 room session을 복구할 수 있다.
   - URL 구조는 단순하게 유지되지만, 아직 로컬에 없는 room-scoped Studio 딥링크는 지원하지 않는다.
 - 참고: ADR 035, ADR 036, ADR 037
+
+---
+
+## 040: EntityList 기반 커스텀 토글 시스템
+
+- 상태: 채택
+- 맥락: Risu는 커스텀 토글 그룹을 `group`과 `groupEnd` 표식이 섞인 선형 목록으로 표현한다. KeiAI에는 이미 계층형 `EntityListConfig` 모델과 렌더러가 있지만, 기존 토글 구현은 정렬 로직을 중복해서 구현하고 현재 값을 범용 `globalVariables` 맵에 저장하고 있었다.
+- 결정:
+  - Preset과 Module은 각각 자신의 토글 정의와 현재 값을 `EntityListConfig<ToggleItem>` 형태로 소유한다.
+  - 값을 가지는 각 컨트롤은 현재 값을 직접 저장한다. 별도의 값 맵이나 기본값 대체 규칙은 두지 않는다.
+  - 새로 만들거나 가져온 컨트롤은 체크박스 `false`, Select의 첫 번째 옵션, 빈 문자열 중 해당 타입에 맞는 값으로 초기화한다.
+  - 룸 패널과 정의 편집기는 `EntityList`를 재사용한다. 런타임은 browse 모드, 편집기는 manage 모드를 사용한다.
+  - Risu의 선형 그룹은 가져올 때 계층형 폴더로 변환하고, 내보낼 때 대응하는 `groupEnd`를 포함한 선형 표현으로 되돌린다.
+  - `getglobalvar::toggle_*`는 `gettoggle::*`로 변환하며, 그 밖의 `getglobalvar` 호출은 `null`로 폐기한다.
+  - 범용 global variable API와 관련 워크플로 노드는 제거한다. Chat variable은 별도 시스템으로 유지한다.
+  - Kei Preset과 Module 패키지 버전은 1을 유지하며, 이전 Kei payload 구조와의 호환은 제공하지 않는다.
+- 결과:
+  - 토글 계층, 드래그 앤 드롭, 폴더, 런타임 접기 상태와 값이 하나의 네이티브 모델을 사용한다.
+  - Module 토글의 현재 값은 해당 Module을 사용하는 모든 위치에서 공유된다.

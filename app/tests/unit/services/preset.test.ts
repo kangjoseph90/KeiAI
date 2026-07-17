@@ -89,8 +89,7 @@ describe('PresetService', () => {
             memoryRatio: 0.2
         }),
         defaultVariables: {},
-        globalVariables: {},
-        customToggles: {},
+        toggles: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} }
     };
 

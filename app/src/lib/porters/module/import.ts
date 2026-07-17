@@ -32,6 +32,7 @@ export async function importModulePackage(
             backgroundHTML: pkg.module.backgroundHTML ?? '',
             messageCSS: pkg.module.messageCSS ?? '',
             defaultVariables: { ...(pkg.module.defaultVariables ?? {}) },
+            toggles: structuredClone(pkg.module.toggles),
             allowLowLevel: pkg.module.allowLowLevel,
             lorebooks: { refs: {}, folders: {} },
             scripts: { refs: {}, folders: {} },
