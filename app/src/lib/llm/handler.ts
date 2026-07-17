@@ -23,7 +23,8 @@ import {
     type PluginLLMModel,
     BUILT_IN_LLM_MODELS,
     type LLMType,
-    type LLMParameters
+    type LLMParameters,
+    type LLMCapabilities
 } from '$lib/types/models/llm';
 import { pluginManager } from '$lib/plugins';
 import { getPreset } from '$lib/stores/content/preset';
@@ -67,7 +68,7 @@ export async function resolveLLMParameters(
 export function selectLLMHandler(
     modelConfig: LLMModelConfig,
     settings: AppSettings
-): LLMStreamHandler | null {
+): { handler: LLMStreamHandler; unsupported: LLMCapabilities } | null {
     const model = resolveModel(modelConfig, settings);
 
     if (!model) {
@@ -75,18 +76,20 @@ export function selectLLMHandler(
         return null;
     }
 
+    let handler: LLMStreamHandler | null;
+
     // Custom models: dispatch by handler field
     if (model.provider === 'custom') {
-        return selectCustomHandler(model);
+        handler = selectCustomHandler(model);
+    } else if (model.provider === 'plugin') {
+        // Plugin models: dispatch by plugin handler
+        handler = selectPluginHandler(model);
+    } else {
+        // Built-in models: dispatch by provider
+        handler = selectBuiltInHandler(model, settings);
     }
 
-    // Plugin models: dispatch by plugin handler
-    if (model.provider === 'plugin') {
-        return selectPluginHandler(model);
-    }
-
-    // Built-in models: dispatch by provider
-    return selectBuiltInHandler(model, settings);
+    return handler ? { handler, unsupported: model.unsupported ?? [] } : null;
 }
 
 function selectPluginHandler(model: PluginLLMModel): LLMStreamHandler | null {

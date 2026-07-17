@@ -68,6 +68,9 @@ export type LLMParameter =
 
 export type LLMParameters = Partial<Record<LLMParameter, number | string | boolean>>;
 
+export type LLMCapability = 'image_input' | 'streaming';
+export type LLMCapabilities = LLMCapability[];
+
 // Display names for UI
 
 const tokenizerNames: Record<LLMTokenizer, string> = {
@@ -113,6 +116,11 @@ const parameterNames: Record<LLMParameter, string> = {
     verbosity: 'Verbosity'
 };
 
+const capabilityNames: Record<LLMCapability, string> = {
+    image_input: 'Image input',
+    streaming: 'Streaming'
+};
+
 export function getLLMTokenizerName(encoding: LLMTokenizer): string {
     return tokenizerNames[encoding] || encoding;
 }
@@ -129,11 +137,16 @@ export function getLLMParameterName(param: LLMParameter): string {
     return parameterNames[param] || param;
 }
 
+export function getLLMCapabilityName(capability: LLMCapability): string {
+    return capabilityNames[capability] || capability;
+}
+
 export interface LLMModelBase {
     id: string;
     name: string;
     modelId: string; // The ID used by the provider API (e.g. "gpt-4o", "claude-2")
     tokenizer: LLMTokenizer;
+    unsupported?: LLMCapabilities;
 }
 
 export interface BuiltInLLMModel extends LLMModelBase {

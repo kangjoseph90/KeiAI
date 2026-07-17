@@ -6,8 +6,13 @@ import { getPlugin, updatePlugin } from '$lib/stores/content/plugin';
 import { getAppSettings } from '$lib/stores/content/settings';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
-import type { LLMTokenizer, LLMTypeDefinition, PluginLLMModel } from '$lib/types/models/llm';
-import type { LLMMessage, LLMStreamContent } from '$lib/llm/types';
+import type {
+    LLMCapability,
+    LLMTokenizer,
+    LLMTypeDefinition,
+    PluginLLMModel
+} from '$lib/types/models/llm';
+import type { LLMContentPart, LLMMessage, LLMStreamContent } from '$lib/llm/types';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
 
 const logger = createLogger('plugins:manager');
@@ -254,14 +259,25 @@ export class PluginManager {
         broker.expose('core.addLLMProvider', (modelId: unknown, fnId: unknown, opts: unknown) => {
             const mId = String(modelId);
             const fId = String(fnId);
-            const options = (opts || {}) as { tokenizer?: LLMTokenizer; name?: string };
+            const options = (opts || {}) as {
+                tokenizer?: LLMTokenizer;
+                name?: string;
+                unsupported?: unknown;
+            };
+            const unsupported = Array.isArray(options.unsupported)
+                ? options.unsupported.filter(
+                      (capability): capability is LLMCapability =>
+                          capability === 'image_input' || capability === 'streaming'
+                  )
+                : undefined;
 
             const model: PluginLLMModel = {
                 id: `plugin::${mId}`,
                 name: options.name || mId,
                 modelId: mId,
                 provider: 'plugin',
-                tokenizer: options.tokenizer || 'o200k_base'
+                tokenizer: options.tokenizer || 'o200k_base',
+                unsupported
             };
 
             instance.llmProviders.set(mId, { fnId: fId, model });
@@ -310,20 +326,30 @@ export class PluginManager {
                 throw new Error(`No model configured for LLM type: ${llmType}`);
             }
 
-            const handler = selectLLMHandler(modelConfig, settings);
-            if (!handler) {
+            const selected = selectLLMHandler(modelConfig, settings);
+            if (!selected) {
                 throw new Error('Failed to create LLM handler');
             }
+            const { handler, unsupported = [] } = selected;
+            const llmMessages = messages as LLMMessage[];
+            const preparedMessages = unsupported.includes('image_input')
+                ? llmMessages.map((message) => ({
+                      ...message,
+                      content: message.content.map(
+                          (part): LLMContentPart =>
+                              part.type === 'image'
+                                  ? { type: 'text', text: '[Image omitted]' }
+                                  : part
+                      )
+                  }))
+                : llmMessages;
 
             const parameters = (await resolveLLMParameters(llmType, settings.presetId)) ?? {};
-            yield* handler.stream(
-                messages as LLMMessage[],
-                abortSignal ?? new AbortController().signal,
-                {
-                    parameters,
-                    maxResponse: callOptions.maxResponse ?? DEFAULT_AUX_MAX_RESPONSE
-                }
-            );
+            yield* handler.stream(preparedMessages, abortSignal ?? new AbortController().signal, {
+                parameters,
+                maxResponse: callOptions.maxResponse ?? DEFAULT_AUX_MAX_RESPONSE,
+                stream: !unsupported.includes('streaming')
+            });
         }
 
         broker.expose('core.streamLLM', streamLLM);

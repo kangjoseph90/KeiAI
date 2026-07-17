@@ -13,7 +13,7 @@ import { getChatVariable, setChatVariable } from '$lib/managers';
 import { generateId } from '$lib/utils/id';
 import { getAppSettings } from '$lib/stores/content/settings';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
-import type { LLMMessage } from '$lib/llm/types';
+import type { LLMContentPart, LLMMessage } from '$lib/llm/types';
 
 const DEFAULT_AUX_LLM_TYPE = 'aux';
 const DEFAULT_AUX_MAX_RESPONSE = 4096;
@@ -221,16 +221,33 @@ function injectLowLevelAPIs(
                 throw new Error(`No model configured for LLM type: ${type}`);
             }
 
-            const handler = selectLLMHandler(modelConfig, settings);
-            if (!handler) {
+            const selected = selectLLMHandler(modelConfig, settings);
+            if (!selected) {
                 throw new Error('Failed to create LLM handler');
             }
+            const { handler, unsupported = [] } = selected;
+            const preparedMessages = unsupported.includes('image_input')
+                ? messages.map((message) => ({
+                      ...message,
+                      content: message.content.map(
+                          (part): LLMContentPart =>
+                              part.type === 'image'
+                                  ? { type: 'text', text: '[Image omitted]' }
+                                  : part
+                      )
+                  }))
+                : messages;
 
             let content = '';
-            for await (const chunk of handler.stream(messages, new AbortController().signal, {
-                parameters: (await resolveLLMParameters(type, settings.presetId)) ?? {},
-                maxResponse: options.maxResponse ?? DEFAULT_AUX_MAX_RESPONSE
-            })) {
+            for await (const chunk of handler.stream(
+                preparedMessages,
+                new AbortController().signal,
+                {
+                    parameters: (await resolveLLMParameters(type, settings.presetId)) ?? {},
+                    maxResponse: options.maxResponse ?? DEFAULT_AUX_MAX_RESPONSE,
+                    stream: !unsupported.includes('streaming')
+                }
+            )) {
                 content = chunk.content;
             }
 
