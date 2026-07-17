@@ -65,7 +65,7 @@
         const dryRunMacros = createDryRunMacros();
         const backgroundMacros = createBackgroundMacros($chatAssetsMap, ownerIds, rawAssetUrlCache);
         const templated = await runTemplate(html, ctx, dryRunMacros);
-        const processed = await runPipeline(chatId, 'display', templated, ctx);
+        const processed = await runPipeline('display', ctx, templated);
         const rendered = await runTemplate(processed, ctx, backgroundMacros);
         const scopedHtml = scopeStyleBlocks(
             rendered,

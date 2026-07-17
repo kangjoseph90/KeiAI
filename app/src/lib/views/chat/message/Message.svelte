@@ -327,7 +327,7 @@
 
         const displayMacros = createDisplayMacros(chatAssetsMap, ownerIds, cssRawAssetUrlCache);
         const templated = await runTemplate(cssSource, ctx);
-        const processed = await runPipeline(chatId, 'display', templated, ctx);
+        const processed = await runPipeline('display', ctx, templated);
         const withAssets = await runTemplate(processed, ctx, displayMacros);
         const scopeSelector = `[data-keiai-message-scope="${messageScope.replace(/"/g, '\\"')}"]`;
         const css = scopeCss(stripStyleTags(withAssets), scopeSelector);

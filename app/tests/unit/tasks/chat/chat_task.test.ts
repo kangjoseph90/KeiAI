@@ -33,6 +33,10 @@ vi.mock('$lib/managers', () => ({
     prepareNextSwipe: vi.fn()
 }));
 
+vi.mock('$lib/events', () => ({
+    emitEvent: vi.fn()
+}));
+
 vi.mock('$lib/services/content/tool', () => ({
     ToolCallService: {
         create: vi
@@ -199,7 +203,7 @@ vi.mock('$lib/llm/handler', () => ({
 }));
 
 vi.mock('$lib/pipeline', () => ({
-    runPipeline: vi.fn((_chatId: string, _phase: string, data: unknown) => Promise.resolve(data))
+    runPipeline: vi.fn((_phase: string, _ctx: unknown, data: unknown) => Promise.resolve(data))
 }));
 
 // Only runTemplate needs faking; pure helpers flow through from the real module.
@@ -232,6 +236,7 @@ import { getChat, getRoom } from '$lib/stores';
 import { buildPrompt } from '$lib/workflow/agent/prompt';
 import { selectLLMHandler } from '$lib/llm/handler';
 import { runPipeline } from '$lib/pipeline';
+import { emitEvent } from '$lib/events';
 import type { Chat, Message, Preset } from '$lib/services';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -379,15 +384,14 @@ describe('Chat Pipeline', () => {
         expect(promptInput?.ctx).not.toHaveProperty('speakerId');
         expect(promptInput?.ctx).not.toHaveProperty('speakerName');
         expect(runPipeline).toHaveBeenCalledWith(
-            mockChatId,
             'output',
-            'Hello world',
             expect.objectContaining({
                 characterId: 'char-1',
                 speakerId: 'char-1',
                 speakerName: 'Char 1',
                 role: 'assistant'
-            })
+            }),
+            'Hello world'
         );
         // Should NOT have an error
         expect(setChatTaskError).not.toHaveBeenCalled();
@@ -395,6 +399,15 @@ describe('Chat Pipeline', () => {
         expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
         expect(notifyChatTaskComplete).toHaveBeenCalledWith(mockChatId);
         expect(notifyChatTaskError).not.toHaveBeenCalled();
+        expect(emitEvent).toHaveBeenCalledWith(
+            'message:received',
+            expect.objectContaining({
+                chatId: 'chat-1',
+                characterId: 'char-1',
+                role: 'assistant'
+            }),
+            { content: 'Hello world' }
+        );
     });
 
     it('should prevent duplicate runs for the same chat', async () => {

@@ -15,7 +15,7 @@
     import { SvelteMap } from 'svelte/reactivity';
     import { AssetService } from '$lib/services/asset';
     import type { RuntimeContext } from '$lib/types/context';
-    import { externalLinks } from '$lib/ui';
+    import { eventButtons, externalLinks } from '$lib/ui';
 
     export interface ContentPartRenderContext {
         ctx: RuntimeContext;
@@ -121,7 +121,7 @@
         const dryRunMacros = createDryRunMacros();
         const displayMacros = createDisplayMacros(chatAssetsMap, ownerIds, rawAssetUrlCache);
         const templated = await runTemplate(text, ctx, dryRunMacros);
-        const processed = await runPipeline(chatId, 'display', templated, ctx);
+        const processed = await runPipeline('display', ctx, templated);
         const rendered = await runTemplate(processed, ctx, displayMacros);
         const protectedHtml = protectHtmlStyles(rendered);
         const rawHtml = await parseMarkdownAsync(protectedHtml.text);
@@ -181,6 +181,7 @@
         use:morphHtml={renderedHtml}
         use:hydrateAssets={renderedHtml}
         use:externalLinks={renderedHtml}
+        use:eventButtons={renderContext.ctx}
         class="prose prose-sm max-w-none {isUser
             ? '**:text-primary-foreground prose-invert'
             : 'dark:prose-invert'} leading-relaxed"

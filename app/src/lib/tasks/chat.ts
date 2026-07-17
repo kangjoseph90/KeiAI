@@ -38,6 +38,7 @@ import { WorkflowRuntime } from '$lib/workflow';
 import { createLogger } from '$lib/adapters/logger';
 import { AppError } from '$lib/types/errors';
 import type { RuntimeContext } from '$lib/types/context';
+import { emitEvent } from '$lib/events';
 
 export interface RunChatOptions {
     /** If set, this run is a reroll — write to this message's swipes instead of creating a new message */
@@ -142,7 +143,7 @@ export async function runChat(
                 const lastContent = finalParts[lastContentIdx];
                 if (lastContent.type === 'content') {
                     const templated = await runTemplate(lastContent.text, outputCtx);
-                    const piped = await runPipeline(chatId, 'output', templated, outputCtx);
+                    const piped = await runPipeline('output', outputCtx, templated);
                     const processed = await runTemplate(piped, outputCtx);
                     finalParts[lastContentIdx] = { type: 'content', text: processed };
                     await updateMessageSwipe(preparedMessage.id, targetSwipeId, {
@@ -166,6 +167,10 @@ export async function runChat(
             notifyChatTaskError(chatId, errMsg);
             return;
         }
+
+        void emitEvent('message:received', toMessageContext(finalMsg, messages.length, ctx), {
+            content: getLastContentText(finalSwipe.parts)
+        });
 
         clearChatTask(chatId);
         notifyChatTaskComplete(chatId);

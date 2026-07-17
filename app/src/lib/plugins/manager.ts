@@ -246,7 +246,7 @@ export class PluginManager {
         });
 
         broker.expose('core.emitEvent', (chatId: unknown, event: unknown, data: unknown) => {
-            emitEvent(String(chatId), String(event), data).catch((error: unknown) => {
+            emitEvent(String(event), { chatId: String(chatId) }, data).catch((error: unknown) => {
                 logger.error(`Plugin event emit failed:`, error);
             });
         });

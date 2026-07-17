@@ -52,6 +52,7 @@
     import { runTemplate } from '$lib/template';
     import { navigate } from '$lib/router';
     import { createLogger } from '$lib/adapters/logger';
+    import { emitEvent } from '$lib/events';
     import { tick } from 'svelte';
     import { forkChat, getChatVariables, prepareNextSwipe, syncChatGreetings } from '$lib/managers';
     import type { RuntimeContext } from '$lib/types/context';
@@ -258,7 +259,7 @@
             role: 'user'
         };
         const templated = await runTemplate(newMessageText, ctx);
-        const piped = await runPipeline($activeChat.id, 'input', templated, ctx);
+        const piped = await runPipeline('input', ctx, templated);
         const processedText = await runTemplate(piped, ctx);
         const attachments = Array.from(pendingAttachments);
 
@@ -275,6 +276,12 @@
             attachments,
             replaceActiveSwipe: true
         });
+
+        void emitEvent(
+            'message:sent',
+            { ...ctx, chatId: $activeChat.id, characterId: selectedCharacter.id },
+            { content: processedText }
+        );
 
         newMessageText = '';
         pendingAttachments = [];

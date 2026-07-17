@@ -2,9 +2,6 @@
 export interface EventType {
     'message:sent': { content: string };
     'message:received': { content: string };
-    'chat:started': Record<string, never>;
-    'chat:switched': Record<string, never>;
-    'chat:deleted': Record<string, never>;
 }
 
 /**

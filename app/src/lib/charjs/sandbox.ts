@@ -135,7 +135,7 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
         const data = dataHandle ? ctx.dump(dataHandle) : undefined;
 
         // Fire to host asynchronously. do not await to prevent deadlock
-        emitEvent(instance.chatId, event, data).catch(console.error);
+        emitEvent(event, { chatId: instance.chatId }, data).catch(console.error);
 
         return ctx.undefined;
     });
