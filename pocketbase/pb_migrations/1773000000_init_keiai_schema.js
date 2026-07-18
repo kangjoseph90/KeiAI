@@ -59,6 +59,7 @@ migrate(
     );
     freshUsers.passwordAuth.enabled = true;
     freshUsers.passwordAuth.identityFields = ["username"];
+    freshUsers.authToken.duration = 90 * 24 * 60 * 60;
     app.save(freshUsers);
 
     // ─── 2. Enable batch API ─────────────────────────────────────────

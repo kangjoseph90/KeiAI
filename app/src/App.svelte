@@ -2,7 +2,7 @@
     import './app.css';
     import { onMount, onDestroy } from 'svelte';
     import { get } from 'svelte/store';
-    import { UserService } from '$lib/services';
+    import { AuthService, UserService } from '$lib/services';
     import { SyncManager } from '$lib/services/sync';
     import { clock } from '$lib/utils/clock';
     import { appKV } from '$lib/adapters/kv';
@@ -201,6 +201,8 @@
             await clock.init(appKV);
             const { user, restored } = await UserService.restoreOrCreateUser();
             await UserService.setActiveUser(user.id, { preserveAuth: restored });
+            await AuthService.refreshPbAuth();
+            AuthService.startAutoRefresh();
             if (!restored) {
                 await initDefaultContents();
             }
@@ -223,6 +225,7 @@
     }
 
     onDestroy(() => {
+        AuthService.stopAutoRefresh();
         SyncManager.stopAutoSync();
         stopSyncStatusTracking();
         compactShellMedia?.removeEventListener('change', handleCompactShellChange);

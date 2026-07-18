@@ -41,6 +41,7 @@ import { AppError } from '$lib/types/errors';
 import { createLogger } from '$lib/adapters/logger';
 
 const logger = createLogger('service:auth');
+const AUTH_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 interface SaltResponse {
     salt: string;
@@ -64,6 +65,10 @@ function normalizeUsername(username: string): string {
 }
 
 export class AuthService {
+    private static refreshPromise: Promise<boolean> | null = null;
+    private static lastSuccessfulRefreshAt = 0;
+    private static refreshCleanups: Array<() => void> = [];
+
     // ─── PB Connection Helpers ────────────────────────────────────────
 
     /** Whether PocketBase currently holds a valid auth token. */
@@ -74,6 +79,73 @@ export class AuthService {
     /** Subscribe to PB auth state changes (token valid/invalid). */
     static onPbAuthChange(callback: (isValid: boolean) => void): void {
         pb.authStore.onChange(() => callback(pb.authStore.isValid));
+    }
+
+    /**
+     * Refresh the current PocketBase token without retaining login credentials.
+     * Transient failures leave a still-valid token intact; explicit auth rejection clears it.
+     */
+    static async refreshPbAuth(options: { force?: boolean } = {}): Promise<boolean> {
+        if (!pb.authStore.token) return false;
+        if (!pb.authStore.isValid) {
+            pb.authStore.clear();
+            return false;
+        }
+
+        if (
+            !options.force &&
+            Date.now() - this.lastSuccessfulRefreshAt < AUTH_REFRESH_INTERVAL_MS
+        ) {
+            return true;
+        }
+        if (this.refreshPromise) return this.refreshPromise;
+
+        const refresh = (async () => {
+            try {
+                await pb.collection('users').authRefresh();
+                this.lastSuccessfulRefreshAt = Date.now();
+                return true;
+            } catch (error) {
+                const status = (error as { status?: unknown })?.status;
+                if (status === 401 || status === 403 || !pb.authStore.isValid) {
+                    pb.authStore.clear();
+                    return false;
+                }
+                logger.warn('PocketBase auth refresh failed; keeping the valid token.', error);
+                return true;
+            }
+        })();
+
+        this.refreshPromise = refresh;
+        try {
+            return await refresh;
+        } finally {
+            if (this.refreshPromise === refresh) this.refreshPromise = null;
+        }
+    }
+
+    /** Refresh daily, and retry when the app returns online or to the foreground. */
+    static startAutoRefresh(): void {
+        if (typeof window === 'undefined' || this.refreshCleanups.length > 0) return;
+
+        const refresh = () => void this.refreshPbAuth();
+        const refreshTimer = window.setInterval(refresh, AUTH_REFRESH_INTERVAL_MS);
+        const visibilityListener = () => {
+            if (document.visibilityState === 'visible') refresh();
+        };
+
+        window.addEventListener('online', refresh);
+        document.addEventListener('visibilitychange', visibilityListener);
+        this.refreshCleanups = [
+            () => window.clearInterval(refreshTimer),
+            () => window.removeEventListener('online', refresh),
+            () => document.removeEventListener('visibilitychange', visibilityListener)
+        ];
+    }
+
+    static stopAutoRefresh(): void {
+        for (const cleanup of this.refreshCleanups) cleanup();
+        this.refreshCleanups = [];
     }
 
     // ─── Account Flows ────────────────────────────────────────────────
@@ -300,6 +372,7 @@ export class AuthService {
      */
     static async createPairingCode(): Promise<string> {
         const { userId, masterKey, identityKeyPair } = getActiveSession();
+        await this.refreshPbAuth({ force: true });
         if (!pb.authStore.isValid || !pb.authStore.record || pb.authStore.record.id !== userId) {
             throw new AppError('NOT_AUTHENTICATED', 'Must be connected to sync to pair a device.');
         }
