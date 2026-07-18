@@ -10,7 +10,12 @@
         type RawAssetUrlCache
     } from '$lib/template/display';
     import { parseMarkdownAsync } from '$lib/markdown';
-    import { protectHtmlStyles, restoreHtmlStyles, sanitizeWithStyle } from '$lib/utils/style';
+    import {
+        protectHtmlStyles,
+        restoreHtmlStyles,
+        sanitizeWithStyle,
+        scopeStyleBlocks
+    } from '$lib/utils/style';
     import { hydrateAssets } from '$lib/components/hydrate';
     import { SvelteMap } from 'svelte/reactivity';
     import { AssetService } from '$lib/services/asset';
@@ -38,14 +43,21 @@
     } = $props();
 
     let renderedHtml = $state('');
-    let lastSignature = '';
-    let renderVersion = 0;
+    let lastRequestedSignature = '';
     let lastRenderTime = 0;
     let renderTimeout: ReturnType<typeof setTimeout> | null = null;
+    let pendingRequest: RenderRequest | null = null;
+    let renderInFlight = false;
+    let destroyed = false;
 
     const RENDER_THROTTLE_MS = 150;
 
     const rawAssetUrlCache: RawAssetUrlCache = new SvelteMap();
+
+    interface RenderRequest {
+        text: string;
+        context: ContentPartRenderContext;
+    }
 
     const morphHtml: Action<HTMLElement, string> = (node, html) => {
         const template = document.createElement('template');
@@ -88,9 +100,14 @@
         return { update };
     };
 
-    function signature(ctx: RuntimeContext, cssSource: string, displayStatus: string): string {
+    function signature(
+        content: string,
+        ctx: RuntimeContext,
+        cssSource: string,
+        displayStatus: string
+    ): string {
         return [
-            text,
+            content,
             displayStatus,
             ctx.roomId ?? '',
             ctx.presetId ?? '',
@@ -106,68 +123,95 @@
         ].join('\u0000');
     }
 
-    async function render() {
-        const sig = signature(
-            renderContext.ctx,
-            renderContext.cssSource,
-            renderContext.displayStatus
-        );
-        if (sig === lastSignature) return;
-        lastSignature = sig;
-        const version = ++renderVersion;
-        lastRenderTime = Date.now();
-
-        const { ctx, chatId, ownerIds, chatAssetsMap } = renderContext;
+    async function render(request: RenderRequest): Promise<string> {
+        const { ctx, messageScope, ownerIds, chatAssetsMap } = request.context;
         const dryRunMacros = createDryRunMacros();
         const displayMacros = createDisplayMacros(chatAssetsMap, ownerIds, rawAssetUrlCache);
-        const templated = await runTemplate(text, ctx, dryRunMacros);
+        const templated = await runTemplate(request.text, ctx, dryRunMacros);
         const processed = await runPipeline('display', ctx, templated);
         const rendered = await runTemplate(processed, ctx, displayMacros);
-        const protectedHtml = protectHtmlStyles(rendered);
+        const scopeSelector = `[data-keiai-message-scope="${messageScope.replace(/"/g, '\\"')}"]`;
+        const scopedHtml = scopeStyleBlocks(rendered, scopeSelector);
+        const protectedHtml = protectHtmlStyles(scopedHtml);
         const rawHtml = await parseMarkdownAsync(protectedHtml.text);
         const restoredHtml = restoreHtmlStyles(rawHtml as string, protectedHtml.styles);
-        if (version !== renderVersion) return;
-        renderedHtml = sanitizeWithStyle(restoredHtml);
+        return sanitizeWithStyle(restoredHtml);
     }
 
-    function scheduleRender() {
-        if (renderContext.displayStatus !== 'generating') {
-            if (renderTimeout) {
-                clearTimeout(renderTimeout);
-                renderTimeout = null;
-            }
-            void render();
+    function requestRender() {
+        const context = renderContext;
+        const nextSignature = signature(
+            text,
+            context.ctx,
+            context.cssSource,
+            context.displayStatus
+        );
+        if (nextSignature === lastRequestedSignature) return;
+
+        lastRequestedSignature = nextSignature;
+        pendingRequest = {
+            text,
+            context
+        };
+        schedulePendingRender();
+    }
+
+    function schedulePendingRender() {
+        if (destroyed || renderInFlight || !pendingRequest) return;
+
+        if (pendingRequest.context.displayStatus !== 'generating') {
+            clearRenderTimeout();
+            void runPendingRender();
             return;
         }
 
         const elapsed = Date.now() - lastRenderTime;
         if (elapsed >= RENDER_THROTTLE_MS) {
-            if (renderTimeout) {
-                clearTimeout(renderTimeout);
-                renderTimeout = null;
-            }
-            void render();
+            clearRenderTimeout();
+            void runPendingRender();
             return;
         }
 
         if (!renderTimeout) {
             renderTimeout = setTimeout(() => {
                 renderTimeout = null;
-                void render();
+                void runPendingRender();
             }, RENDER_THROTTLE_MS - elapsed);
         }
     }
 
+    async function runPendingRender() {
+        if (destroyed || renderInFlight || !pendingRequest) return;
+
+        clearRenderTimeout();
+        const request = pendingRequest;
+        pendingRequest = null;
+        renderInFlight = true;
+        lastRenderTime = Date.now();
+
+        try {
+            const html = await render(request);
+            if (!destroyed) renderedHtml = html;
+        } finally {
+            renderInFlight = false;
+            schedulePendingRender();
+        }
+    }
+
+    function clearRenderTimeout() {
+        if (!renderTimeout) return;
+        clearTimeout(renderTimeout);
+        renderTimeout = null;
+    }
+
     $effect(() => {
-        scheduleRender();
+        requestRender();
     });
 
     onDestroy(() => {
-        renderVersion++;
-        if (renderTimeout) {
-            clearTimeout(renderTimeout);
-            renderTimeout = null;
-        }
+        destroyed = true;
+        pendingRequest = null;
+        clearRenderTimeout();
         for (const url of rawAssetUrlCache.values()) {
             if (url) void AssetService.revokeUrl(url);
         }

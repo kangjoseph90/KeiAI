@@ -9,6 +9,8 @@ import {
 import { classifyAsset } from '$lib/porters/types';
 import { writeRisuModule } from '$lib/porters/risu/module';
 import { unzip, zip } from '$lib/utils/zip';
+import { writePngTextChunks } from '$lib/utils/png';
+import { bytesToBase64 } from '$lib/porters/character/package';
 import { AssetService } from '$lib/services/asset';
 import {
     CharacterService,
@@ -414,6 +416,60 @@ describe('character porters', () => {
 
         expect(pkg.scripts[0]).toEqual(expect.objectContaining({ name: 'Card Script' }));
         expect(pkg.lorebooks[0]).toEqual(expect.objectContaining({ name: 'Module Lore' }));
+    });
+
+    it('imports JPEG-prefixed Risu CHARX polyglots', async () => {
+        const archive = zip({
+            'card.json': new TextEncoder().encode(
+                JSON.stringify({
+                    spec: 'chara_card_v3',
+                    spec_version: '3.0',
+                    data: makeMinimalCardData('Polyglot Card')
+                })
+            )
+        });
+        const jpegPrefix = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0xff, 0xd9]);
+        const polyglot = new Uint8Array(jpegPrefix.length + archive.length);
+        polyglot.set(jpegPrefix);
+        polyglot.set(archive, jpegPrefix.length);
+
+        await expect(
+            readCharacterFile(new File([polyglot.slice()], 'polyglot.charx'))
+        ).resolves.toMatchObject({ character: { name: 'Polyglot Card' } });
+    });
+
+    it('prefers the canonical card image when multiple icon assets exist', async () => {
+        const basePng = new Uint8Array([
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8,
+            4, 0, 0, 0, 181, 28, 12, 2, 0, 0, 0, 11, 73, 68, 65, 84, 120, 218, 99, 252, 255, 31, 0,
+            3, 3, 2, 0, 239, 191, 167, 219, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ]);
+        const card = {
+            spec: 'chara_card_v3',
+            spec_version: '3.0',
+            data: {
+                ...makeMinimalCardData('Two Icons'),
+                assets: [
+                    { type: 'icon', name: 'iconx', uri: '__asset:0', ext: 'webp' },
+                    { type: 'icon', name: 'main', uri: 'ccdefault:', ext: 'png' }
+                ]
+            }
+        };
+        const cardBytes = new TextEncoder().encode(JSON.stringify(card));
+        const png = writePngTextChunks(
+            basePng,
+            [
+                { key: 'chara-ext-asset_:0', value: bytesToBase64(new Uint8Array([1, 2, 3])) },
+                { key: 'ccv3', value: bytesToBase64(cardBytes) }
+            ],
+            []
+        );
+
+        const pkg = await readCharacterFile(new File([png.slice()], 'two-icons.png'));
+
+        expect(pkg.avatar?.data?.slice(0, 8)).toEqual(
+            new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
+        );
     });
 
     it('converts Risu lorebook decorators into Kei lorebook fields', async () => {
@@ -827,3 +883,23 @@ describe('extensionless native character imports', () => {
         });
     });
 });
+
+function makeMinimalCardData(name: string) {
+    return {
+        name,
+        description: '',
+        personality: '',
+        scenario: '',
+        first_mes: '',
+        alternate_greetings: [],
+        mes_example: '',
+        creator_notes: '',
+        system_prompt: '',
+        post_history_instructions: '',
+        tags: [],
+        creator: '',
+        character_version: '',
+        extensions: {},
+        group_only_greetings: []
+    };
+}

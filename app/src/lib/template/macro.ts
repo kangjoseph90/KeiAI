@@ -154,6 +154,8 @@ function collectBuiltInMacros(): Map<string, Macro[]> {
     addAliases(['date', 'datetimeformat'], (args) =>
         formatLocalDate(new Date(), args.join(':') || 'YYYY-MM-DD')
     );
+    addAliases(['screen_width', 'screenwidth'], () => viewportSize('width'));
+    addAliases(['screen_height', 'screenheight'], () => viewportSize('height'));
     add('round', ([value]) => String(Math.round(toNumber(value))));
     add('floor', ([value]) => String(Math.floor(toNumber(value))));
     add('ceil', ([value]) => String(Math.ceil(toNumber(value))));
@@ -336,6 +338,11 @@ function formatLocalDate(date: Date, format: string): string {
         (result, [token, value]) => result.replaceAll(token, value),
         format
     );
+}
+
+function viewportSize(axis: 'width' | 'height'): string {
+    if (typeof window === 'undefined') return '0';
+    return String(axis === 'width' ? window.innerWidth : window.innerHeight);
 }
 
 export function createDryRunMacros(): Map<string, Macro> {

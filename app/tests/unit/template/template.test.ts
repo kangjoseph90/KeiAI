@@ -230,6 +230,23 @@ describe('template', () => {
         );
     });
 
+    it('exposes Risu-compatible viewport macros', async () => {
+        const originalWidth = window.innerWidth;
+        const originalHeight = window.innerHeight;
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 640 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
+
+        await expect(
+            runTemplate(
+                '{{screen_width}}x{{screen_height}}:{{#if {{? {{screen_width}} <= 768 }} }}mobile{{/if}}',
+                {}
+            )
+        ).resolves.toBe('640x900:mobile');
+
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalHeight });
+    });
+
     it('collects charjs macros only when chatId is present', async () => {
         await collectTemplateMacros({});
         expect(mockCollectCharJSInstances).not.toHaveBeenCalled();

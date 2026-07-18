@@ -97,7 +97,9 @@ function readRisuCharacter(
 }
 
 function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPackageV1 {
-    const avatarAsset = risu.assets.find((asset) => asset.role === 'avatar');
+    const avatarAsset =
+        risu.assets.find((asset) => asset.role === 'avatar' && asset.name === 'main') ??
+        risu.assets.find((asset) => asset.role === 'avatar');
     const resources = risu.assets.filter((asset) => asset !== avatarAsset);
     const lorebooks = risu.lorebooks.map(
         (lorebook, index): KeiLorebookPayload => ({

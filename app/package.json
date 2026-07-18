@@ -88,6 +88,8 @@
         "morphdom": "^2.7.8",
         "msgpackr": "^2.0.1",
         "pocketbase": "^0.26.8",
+        "postcss": "^8.5.8",
+        "postcss-selector-parser": "^7.1.1",
         "quickjs-emscripten": "^0.32.0"
     }
 }

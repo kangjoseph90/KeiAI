@@ -101,6 +101,12 @@ importers:
       pocketbase:
         specifier: ^0.26.8
         version: 0.26.8
+      postcss:
+        specifier: ^8.5.8
+        version: 8.5.8
+      postcss-selector-parser:
+        specifier: ^7.1.1
+        version: 7.1.1
       quickjs-emscripten:
         specifier: ^0.32.0
         version: 0.32.0
