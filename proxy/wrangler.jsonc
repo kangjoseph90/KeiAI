@@ -7,8 +7,11 @@
 	"name": "keiai-proxy",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-02-24",
+	"workers_dev": true,
+	"preview_urls": false,
+	"keep_vars": true,
 	"observability": {
-		"enabled": true,
+		"enabled": false,
 	},
 	"compatibility_flags": ["nodejs_compat"],
 	/**
