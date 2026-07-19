@@ -291,7 +291,7 @@
 16. 전체 테이블 목록 (Table Registry)
 
 - 로컬 도메인 테이블:
-  - `settings`, `rooms`, `characters`, `personas`, `chats`, `messages`, `modules`, `presets`, `plugins`, `translations`, `tool_calls`.
+  - `settings`, `rooms`, `characters`, `personas`, `chats`, `messages`, `modules`, `presets`, `plugins`, `tool_calls`.
   - `tool_calls`는 local only.
   - 나머지 sync 대상 테이블은 `scopeType/scopeId`를 가진다.
 - 서버 동기화 테이블:

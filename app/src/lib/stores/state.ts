@@ -20,7 +20,6 @@ import type {
     Lorebook,
     Script,
     CharJS,
-    Translation,
     MultiRoom,
     MultiRoomMember
 } from '$lib/services';
@@ -151,16 +150,6 @@ export const messages = new EntityStore<Message>({
     sortFn: (a, b) => compareSortOrder(a.sortOrder, b.sortOrder)
 });
 export const messageIndexes = writable(new Map<string, number>());
-export const translations = new EntityStore<Translation>();
-export const translationsByMessage = derived(translations, ($translations) => {
-    const byMessage = new Map<string, Translation[]>();
-    for (const translation of $translations) {
-        const existing = byMessage.get(translation.messageId);
-        if (existing) existing.push(translation);
-        else byMessage.set(translation.messageId, [translation]);
-    }
-    return byMessage;
-});
 
 // ─── Character Studio Context───────────────────────────────────────
 export const activeCharacterId = writable<string | null>(null);

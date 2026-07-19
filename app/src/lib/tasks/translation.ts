@@ -5,12 +5,7 @@ import type { RuntimeContext } from '$lib/types/context';
 import { PagedMessages } from '$lib/services/content/paged_messages';
 import { getAppSettings } from '$lib/stores/content/settings';
 import { getChat } from '$lib/stores/content/chat';
-import { getMessage } from '$lib/stores/content/message';
-import {
-    createTranslation,
-    findLoadedTranslation,
-    updateTranslation
-} from '$lib/stores/content/translation';
+import { getMessage, updateMessageSwipe } from '$lib/stores/content/message';
 import {
     clearTranslationTask,
     createTranslationTask,
@@ -57,8 +52,7 @@ export async function runTranslation(
     if (!targetLanguage) throw new AppError('INVALID_INPUT', 'Target language is required');
 
     const sourceHash = await createTranslationSourceHash(source, targetLanguage);
-    const existing = findLoadedTranslation(messageId, sourceHash);
-    if (existing && !options.force) return;
+    if (activeSwipe.translation?.sourceHash === sourceHash && !options.force) return;
 
     const chat = await getChat(message.chatId);
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${message.chatId}`);
@@ -72,16 +66,10 @@ export async function runTranslation(
     const ctx = toMessageContext(message, messages.length, baseCtx);
     const controller = new AbortController();
     const localMacros = createTranslationMacros(source, targetLanguage);
-    const translation = existing
-        ? existing
-        : await createTranslation(message.chatId, message.id, {
-              sourceHash,
-              text: ''
-          });
-
-    if (existing) {
-        await updateTranslation(existing.id, { text: '' });
-    }
+    const swipeId = activeSwipe.id;
+    await updateMessageSwipe(message.id, swipeId, {
+        translation: { sourceHash, text: '' }
+    });
 
     createTranslationTask(messageId, sourceHash, controller);
 
@@ -96,7 +84,9 @@ export async function runTranslation(
         let finalContent = '';
         for await (const output of runtime.run()) {
             finalContent = getLastContentText(deserializeAgentParts(output));
-            await updateTranslation(translation.id, { text: finalContent });
+            if (!(await saveTranslationText(message.id, swipeId, sourceHash, finalContent))) {
+                throw new AppError('INVALID_INPUT', 'Translation source changed');
+            }
         }
 
         if (!finalContent.trim()) {
@@ -115,6 +105,22 @@ export async function runTranslation(
         }
         throw error;
     }
+}
+
+async function saveTranslationText(
+    messageId: string,
+    swipeId: string,
+    sourceHash: string,
+    text: string
+): Promise<boolean> {
+    const message = await getMessage(messageId);
+    const swipe = message?.swipes[swipeId];
+    if (swipe?.translation?.sourceHash !== sourceHash) return false;
+
+    await updateMessageSwipe(messageId, swipeId, {
+        translation: { sourceHash, text }
+    });
+    return true;
 }
 
 export function stopTranslation(messageId: string): void {

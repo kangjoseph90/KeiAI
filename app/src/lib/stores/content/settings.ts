@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import { SettingsService, type AppSettings } from '$lib/services';
+import { SettingsService, type AppSettings, type FileItem } from '$lib/services';
 import { appSettings } from '../state';
 import type { FolderDef } from '$lib/types/refs';
 import { generateSortOrder } from '$lib/utils/ordering';
@@ -62,7 +62,16 @@ export type GlobalFolderType =
     | 'personas'
     | 'presets'
     | 'modules'
-    | 'plugins';
+    | 'plugins'
+    | 'files';
+
+export async function saveGlobalFile(item: FileItem): Promise<void> {
+    await updateSettings({ files: { refs: { [item.id]: item } } });
+}
+
+export async function deleteGlobalFile(fileId: string): Promise<void> {
+    await updateSettings({ files: { refs: { [fileId]: undefined } } });
+}
 
 export async function createGlobalFolder(
     folderType: GlobalFolderType,

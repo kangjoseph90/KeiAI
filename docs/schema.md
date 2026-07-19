@@ -23,20 +23,23 @@ Service -> Local Adapter (plaintext domain tables)
 
 ### Workflow File namespaces
 
-Workflow files are synchronized string resources stored in the `files` table. A file address and
-its encryption/sync ownership are separate concepts.
+Workflow files are parent-owned string resources stored as `EntityListConfig<FileItem>`.
 
 ```text
-address:    namespace + namespaceId + path
-data scope: scopeType + scopeId
+address: namespace + path
+owner:   settings | room | chat
 ```
 
-- `global`: `namespaceId=userId`, always user-scoped.
-- `room`: `namespaceId=roomId`, inheriting the room record's user/room data scope.
-- `chat`: `namespaceId=chatId`, inheriting the chat record's user/room data scope.
+- `global`: owned by the user settings record.
+- `room`: owned by the room record.
+- `chat`: owned by the chat record.
 
-`FileRecord.ownerId` stores `namespaceId`; `namespace`, `path`, and string `content` live in the
-encrypted domain payload. Room/chat file records cascade when their namespace owner is deleted.
+Each item stores `path` and string `content`; its parent supplies encryption, synchronization, and
+deletion ownership. There is no separate workflow file table.
+
+Each message swipe may store one translation value containing `sourceHash` and `text`. A new
+translation replaces the previous value, and changing the swipe source removes it. There is no
+separate translation table.
 
 ---
 
@@ -86,11 +89,9 @@ export interface DataRecord extends DataScope {
 | `modules` | 개인 모듈 | user scope |
 | `presets` | 개인 프리셋 | user scope |
 | `plugins` | 개인 플러그인 | user scope |
-| `translations` | 메시지/스와이프 번역 | scope, `chatId`, `messageId`, `swipeId` |
-| `files` | Workflow string 파일 | scope, `ownerId` |
 | `tool_calls` | 로컬 tool call 상태 | local only |
 
-멀티룸에서도 모듈/프리셋/플러그인은 기본적으로 개인 설정을 사용한다. 멀티룸에 공유되는 컨텐츠는 room scope의 room/chat/message/character/persona/asset 계열이며, lorebook/script/CharJS는 해당 부모 암호문에 인라인된다.
+멀티룸에서도 모듈/프리셋/플러그인은 기본적으로 개인 설정을 사용한다. 멀티룸에 공유되는 컨텐츠는 room scope의 room/chat/message/character/persona/asset 계열이며, lorebook/script/CharJS는 해당 부모 암호문에 함께 저장된다.
 
 ---
 

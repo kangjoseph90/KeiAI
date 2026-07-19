@@ -63,7 +63,8 @@ describe('ChatManager', () => {
                 'char-2': { id: 'char-2', sortOrder: 'b' }
             },
             folders: {}
-        }
+        },
+        files: { refs: {}, folders: {} }
     };
     const mockChat: Chat = {
         id: 'chat-1',
@@ -75,7 +76,8 @@ describe('ChatManager', () => {
         messageCount: 0,
         lorebooks: { refs: {}, folders: {} },
         personas: { refs: {}, folders: {} },
-        inlays: { refs: {}, folders: {} }
+        inlays: { refs: {}, folders: {} },
+        files: { refs: {}, folders: {} }
     };
     const charOne: Character = {
         id: 'char-1',

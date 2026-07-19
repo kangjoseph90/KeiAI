@@ -109,7 +109,8 @@ describe('Room Store', () => {
                 staleChar: { id: 'staleChar', sortOrder: 'b' }
             },
             folders: {}
-        }
+        },
+        files: { refs: {}, folders: {} }
     };
     const mockChat: Chat = {
         id: 'chat-1',
@@ -121,7 +122,8 @@ describe('Room Store', () => {
         messageCount: 0,
         lorebooks: { refs: {}, folders: {} },
         personas: { refs: {}, folders: {} },
-        inlays: { refs: {}, folders: {} }
+        inlays: { refs: {}, folders: {} },
+        files: { refs: {}, folders: {} }
     };
     const mockCharacter: Character = {
         id: 'char-1',

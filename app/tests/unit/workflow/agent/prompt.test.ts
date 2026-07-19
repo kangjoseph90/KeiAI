@@ -74,7 +74,8 @@ const chat: Chat = {
     messageCount: 0,
     personas: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} },
-    inlays: { refs: {}, folders: {} }
+    inlays: { refs: {}, folders: {} },
+    files: { refs: {}, folders: {} }
 };
 
 const persona: Persona = {

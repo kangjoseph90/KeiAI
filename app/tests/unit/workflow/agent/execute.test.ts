@@ -30,7 +30,8 @@ const stubChat: Chat = {
     messageCount: 0,
     personas: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} },
-    inlays: { refs: {}, folders: {} }
+    inlays: { refs: {}, folders: {} },
+    files: { refs: {}, folders: {} }
 };
 
 vi.mock('$lib/stores', async (importOriginal) => {

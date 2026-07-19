@@ -47,8 +47,7 @@
         roomCharacters,
         chatPersonas,
         modules,
-        translationTasks,
-        translationsByMessage
+        translationTasks
     } from '$lib/stores';
     import {
         createTranslationSourceHash,
@@ -126,9 +125,9 @@
         translationTask?.sourceHash === translationSourceHash ? translationTask : undefined
     );
     let cachedTranslation = $derived(
-        $translationsByMessage
-            .get(message.id)
-            ?.find((translation) => translation.sourceHash === translationSourceHash) ?? null
+        activeSwipe?.translation?.sourceHash === translationSourceHash
+            ? activeSwipe.translation
+            : null
     );
     let translatedContent = $derived(cachedTranslation?.text ?? '');
     let visibleContent = $derived(

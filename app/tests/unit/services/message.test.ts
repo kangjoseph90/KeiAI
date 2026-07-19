@@ -218,7 +218,7 @@ describe('MessageService', () => {
     });
 
     describe('update', () => {
-        it('should update message swipes via write queue', async () => {
+        it('should update message swipes via write queue and clear stale translations', async () => {
             const existingRecord = {
                 id: 'msg-1',
                 chatId: 'chat-1',
@@ -245,6 +245,20 @@ describe('MessageService', () => {
 
             expect(getLastContentText(result.swipes[result.activeSwipeId].parts)).toBe(
                 'New content'
+            );
+            expect(buffer.update).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    patch: {
+                        swipes: {
+                            s1: {
+                                id: 's1',
+                                parts: [{ type: 'content', text: 'New content' }],
+                                createdAt: 2000,
+                                translation: undefined
+                            }
+                        }
+                    }
+                })
             );
             expect(localDB.putRecord).not.toHaveBeenCalled();
         });

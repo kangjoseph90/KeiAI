@@ -3,44 +3,59 @@ import { executeFileReadNode, executeFileWriteNode } from '$lib/workflow/file/ex
 import type { WorkflowInput, WorkflowNodeEvent, WorkflowOutput } from '$lib/workflow';
 
 const mocks = vi.hoisted(() => ({
-    getByPath: vi.fn(),
-    upsert: vi.fn(),
+    getSettings: vi.fn(),
+    updateSettings: vi.fn(),
     getRoom: vi.fn(),
+    updateRoom: vi.fn(),
     getChat: vi.fn(),
-    getActiveSession: vi.fn()
+    updateChat: vi.fn()
 }));
 
-vi.mock('$lib/services/content/file', () => ({
-    FileService: {
-        getByPath: mocks.getByPath,
-        upsert: mocks.upsert
-    }
+vi.mock('$lib/services/content/settings', () => ({
+    SettingsService: { get: mocks.getSettings, update: mocks.updateSettings }
 }));
 
 vi.mock('$lib/services/content/room', () => ({
-    RoomService: { get: mocks.getRoom }
+    RoomService: { get: mocks.getRoom, update: mocks.updateRoom }
 }));
 
 vi.mock('$lib/services/content/chat', () => ({
-    ChatService: { get: mocks.getChat }
+    ChatService: { get: mocks.getChat, update: mocks.updateChat }
 }));
 
-vi.mock('$lib/services/session', () => ({
-    getActiveSession: mocks.getActiveSession
+vi.mock('$lib/utils/id', () => ({
+    generateId: () => 'file-1'
+}));
+
+vi.mock('$lib/utils/ordering', () => ({
+    generateSortOrder: () => 'a0'
 }));
 
 describe('workflow file executors', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mocks.getActiveSession.mockReturnValue({ userId: 'user-1' });
-        mocks.getRoom.mockResolvedValue({ id: 'room-1', scopeType: 'user' });
-        mocks.getChat.mockResolvedValue({ id: 'chat-1', scopeType: 'room' });
-        mocks.upsert.mockResolvedValue(undefined);
+        mocks.getSettings.mockResolvedValue({ files: { refs: {}, folders: {} } });
+        mocks.getRoom.mockResolvedValue({
+            id: 'room-1',
+            files: { refs: {}, folders: {} }
+        });
+        mocks.getChat.mockResolvedValue({
+            id: 'chat-1',
+            files: {
+                refs: {
+                    stored: {
+                        id: 'stored',
+                        sortOrder: 'a0',
+                        path: 'dynamic.txt',
+                        content: 'saved content'
+                    }
+                },
+                folders: {}
+            }
+        });
     });
 
     it('reads once and pushes the stored content once', async () => {
-        mocks.getByPath.mockResolvedValue({ content: 'saved content' });
-
         const { output, events } = capture();
 
         await executeFileReadNode({
@@ -61,8 +76,7 @@ describe('workflow file executors', () => {
         });
 
         expect(events).toEqual([{ status: 'value', value: 'saved content' }]);
-        expect(mocks.getByPath).toHaveBeenCalledOnce();
-        expect(mocks.getByPath).toHaveBeenCalledWith('chat', 'chat-1', 'dynamic.txt');
+        expect(mocks.getChat).toHaveBeenCalledWith('chat-1');
     });
 
     it('waits for final content, writes once, and pushes once', async () => {
@@ -89,14 +103,51 @@ describe('workflow file executors', () => {
 
         expect(events).toEqual([]);
         expect(content.doneCount).toBe(1);
-        expect(mocks.upsert).toHaveBeenCalledOnce();
-        expect(mocks.upsert).toHaveBeenCalledWith(
-            'room',
-            'room-1',
-            'result.txt',
-            'final content',
-            'user'
-        );
+        expect(mocks.updateRoom).toHaveBeenCalledWith('room-1', {
+            files: {
+                refs: {
+                    'file-1': {
+                        path: 'result.txt',
+                        content: 'final content',
+                        id: 'file-1',
+                        sortOrder: 'a0'
+                    }
+                }
+            }
+        });
+    });
+
+    it('stores global files on settings', async () => {
+        const { output } = capture();
+
+        await executeFileWriteNode({
+            node: {
+                id: 'write-global',
+                name: 'Write Global',
+                class: 'FileWrite',
+                position: { x: 0, y: 0 },
+                namespace: 'global',
+                inputs: { path: null, content: null },
+                inputValues: { path: 'memory.txt', content: 'remember this' }
+            },
+            inputs: { path: input('memory.txt'), content: input('remember this') },
+            output,
+            emitRuntimeOutput: () => undefined,
+            signal: new AbortController().signal
+        });
+
+        expect(mocks.updateSettings).toHaveBeenCalledWith({
+            files: {
+                refs: {
+                    'file-1': {
+                        path: 'memory.txt',
+                        content: 'remember this',
+                        id: 'file-1',
+                        sortOrder: 'a0'
+                    }
+                }
+            }
+        });
     });
 });
 

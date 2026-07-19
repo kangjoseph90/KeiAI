@@ -616,6 +616,7 @@
   - refs와 folders가 별도 필드(`lorebookRefs`, `folders.lorebooks`)로 분산되어 응집도 낮음.
   - `.find(r => r.id === id)` 조회가 O(n).
 - 결정: **EntityListConfig<R> 도입 — refs + folders를 엔티티 타입별로 그룹화하고 Record로 전환**
+
   ```typescript
   interface EntityListConfig<R extends OrderedRef = OrderedRef> {
     refs?: Record<string, R>;
@@ -630,6 +631,7 @@
     - 추가: `{ lorebooks: { refs: { [id]: { id, sortOrder } } } }`
     - 삭제: `{ lorebooks: { refs: { [id]: undefined } } }` (deepMerge가 키 삭제)
     - 수정: `{ lorebooks: { refs: { [id]: { ...existing, ...changes } } } }`
+
 - 결과:
   - deepMerge가 키별 머지 → 동시에 다른 자식 수정 시 충돌 없음.
   - refs와 folders가 동일 EntityListConfig 내부에 응집.
@@ -896,3 +898,26 @@
   - 동기화 충돌 단위와 암호화 단위는 부모 전체가 된다.
   - 부모 삭제는 인라인 자원을 별도로 cascade하지 않는다.
 - 참고: ADR 025, ADR 033, docs/schema.md
+
+---
+
+## 042: Parent-owned workflow files and swipe translations
+
+- Status: Accepted
+- Context: Workflow files and translations were stored as independent synchronized records even
+  though their lifecycle never detached from settings, a room, a chat, or a message swipe. This
+  multiplied local rows and soft-delete markers and required dedicated services, stores, indexes,
+  synchronization kinds, and cascade rules.
+- Decision:
+  - Global, room, and chat workflow files are stored as `EntityListConfig<FileItem>` on Settings,
+    Room, and Chat respectively.
+  - Each message swipe stores at most one optional translation containing `sourceHash` and `text`.
+  - Starting a translation replaces the swipe's previous translation. Changing swipe parts removes
+    the translation, and asynchronous results are saved only while the captured hash remains current.
+  - The `files` and `translations` local tables and their services, stores, indexes, sync kinds, and
+    cascade rules are removed.
+- Consequences:
+  - File and translation changes synchronize with their owner record and create no child tombstones.
+  - File paths remain unique within their namespace owner.
+  - Message swipe updates are the single persistence path for translated text.
+- References: ADR 041, docs/schema.md

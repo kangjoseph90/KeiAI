@@ -489,7 +489,8 @@ describe('Chat Pipeline', () => {
             scopeId: 'user-1',
             name: 'Room 1',
             chats: { refs: {}, folders: {} },
-            characters: { refs: {}, folders: {} }
+            characters: { refs: {}, folders: {} },
+            files: { refs: {}, folders: {} }
         });
 
         await runChat(mockChatId, 'char-missing', 'persona-1');
@@ -630,7 +631,8 @@ describe('Chat Pipeline', () => {
                     refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a0' } },
                     folders: {}
                 },
-                inlays: { refs: {}, folders: {} }
+                inlays: { refs: {}, folders: {} },
+                files: { refs: {}, folders: {} }
             } as Chat);
             vi.mocked(MessageService.get).mockResolvedValue(mockExistingMessage as Message);
             vi.mocked(getLastMessage).mockResolvedValue(mockExistingMessage as Message);

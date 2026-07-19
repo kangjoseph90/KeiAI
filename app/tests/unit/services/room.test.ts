@@ -225,14 +225,7 @@ describe('RoomService', () => {
         await RoomService.delete('room-1');
 
         expect(localDB.transaction).toHaveBeenCalledWith(
-            expect.arrayContaining([
-                'rooms',
-                'chats',
-                'messages',
-                'tool_calls',
-                'translations',
-                'files'
-            ]),
+            expect.arrayContaining(['rooms', 'chats', 'messages', 'tool_calls']),
             'rw',
             expect.any(Function)
         );

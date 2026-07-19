@@ -1,7 +1,5 @@
 import type { LLMRole } from '$lib/types/models/llm';
-import type { EntityListConfig, OrderedRef } from '$lib/types/refs';
-import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
-import { generateId } from '$lib/utils/id';
+import type { OrderedRef } from '$lib/types/refs';
 
 export interface LorebookFields {
     name: string;
@@ -45,6 +43,13 @@ export interface CharJSFields {
 
 export interface CharJS extends OrderedRef, CharJSFields {}
 
+export interface FileFields {
+    path: string;
+    content: string;
+}
+
+export interface FileItem extends OrderedRef, FileFields {}
+
 export const defaultLorebookFields: LorebookFields = {
     name: 'New Lorebook',
     key: '',
@@ -78,4 +83,9 @@ export const defaultCharJSFields: CharJSFields = {
     name: 'New Script',
     code: '',
     enabled: true
+};
+
+export const defaultFileFields: FileFields = {
+    path: '',
+    content: ''
 };

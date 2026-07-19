@@ -27,9 +27,7 @@ export type TableName =
     | 'personas'
     | 'modules'
     | 'plugins'
-    | 'tool_calls'
-    | 'translations'
-    | 'files';
+    | 'tool_calls';
 
 export const SYNC_TABLES: TableName[] = [
     'rooms',
@@ -40,9 +38,7 @@ export const SYNC_TABLES: TableName[] = [
     'settings',
     'personas',
     'modules',
-    'plugins',
-    'translations',
-    'files'
+    'plugins'
 ];
 
 export const LOCAL_TABLES: TableName[] = ['tool_calls'];
@@ -141,19 +137,6 @@ export type PresetRecord = DataRecord;
 
 export interface ToolCallRecord extends DataRecord {
     chatId: string;
-}
-
-// ─── Translations ───────────────────────────────────────────────────
-
-export interface TranslationRecord extends DataRecord {
-    chatId: string;
-    messageId: string;
-}
-
-// ─── Files ──────────────────────────────────────────────────────────
-
-export interface FileRecord extends DataRecord {
-    ownerId: string;
 }
 
 // ─── Adapter Interface ──────────────────────────────────────────────

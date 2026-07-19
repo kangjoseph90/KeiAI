@@ -14,7 +14,7 @@ import {
 } from './cascade';
 import { AssetService, type AssetOwner } from '../asset';
 import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
-import { defaultLorebookFields, type Lorebook } from './resource';
+import { defaultFileFields, defaultLorebookFields, type FileItem, type Lorebook } from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -22,6 +22,7 @@ export interface ChatContent {
     title: string;
     chatNote: string;
     lorebooks: EntityListConfig<Lorebook>;
+    files: EntityListConfig<FileItem>;
 }
 
 export interface ChatRefs {
@@ -51,7 +52,8 @@ const defaultFields: ChatFields = {
     messageCount: 0,
     lorebooks: { refs: {}, folders: {} },
     personas: { refs: {}, folders: {} },
-    inlays: { refs: {}, folders: {} }
+    inlays: { refs: {}, folders: {} },
+    files: { refs: {}, folders: {} }
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -61,6 +63,10 @@ function parseFields(record: ChatRecord): ChatFields {
 
     for (const [id, ref] of Object.entries(fields.lorebooks.refs)) {
         fields.lorebooks.refs[id] = deepMerge(defaultLorebookFields, ref) as Lorebook;
+    }
+
+    for (const [id, ref] of Object.entries(fields.files.refs)) {
+        fields.files.refs[id] = deepMerge(defaultFileFields, ref) as FileItem;
     }
 
     return fields;

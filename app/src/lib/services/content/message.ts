@@ -23,6 +23,12 @@ export interface MessageSwipeFields {
     speakerId?: string; // personaId if role is 'user', characterId if role is 'assistant'
     speakerName?: string;
     attachments?: string[]; // reference ids of chat.inlays
+    translation?: MessageTranslation;
+}
+
+export interface MessageTranslation {
+    sourceHash: string;
+    text: string;
 }
 
 /**
@@ -62,6 +68,18 @@ const defaultMessageFields: MessageFields = {
 
 function parseFields(record: MessageRecord): MessageFields {
     return deepMerge(defaultMessageFields, record.data as DeepPartial<MessageFields>);
+}
+
+function normalizeChanges(changes: DeepPartial<MessageFields>): DeepPartial<MessageFields> {
+    if (!changes.swipes) return changes;
+
+    const swipes = Object.fromEntries(
+        Object.entries(changes.swipes).map(([id, swipe]) => [
+            id,
+            swipe && swipe.parts !== undefined ? { ...swipe, translation: undefined } : swipe
+        ])
+    );
+    return { ...changes, swipes };
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
@@ -200,12 +218,13 @@ export class MessageService {
 
         try {
             const current = parseFields(record);
-            const updated: MessageFields = deepMerge(current, changes);
+            const normalized = normalizeChanges(changes);
+            const updated: MessageFields = deepMerge(current, normalized);
 
             buffer.update<MessageRecord>({
                 tableName: 'messages',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
-                patch: changes as unknown as Record<string, unknown>
+                patch: normalized as unknown as Record<string, unknown>
             });
 
             return {

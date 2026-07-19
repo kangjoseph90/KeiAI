@@ -4,7 +4,8 @@ import {
     type ChatFields,
     type ChatContent,
     type Lorebook,
-    type Chat
+    type Chat,
+    type FileItem
 } from '$lib/services';
 import type { AssetRef, FolderDef } from '$lib/types/refs';
 import { compareSortOrder, generateSortOrder, sortByRefs } from '$lib/utils/ordering';
@@ -16,7 +17,6 @@ import {
     activeRoomId,
     chatSelections,
     messageIndexes,
-    translations,
     roomCharacters,
     chatPersonas
 } from '../state';
@@ -188,7 +188,6 @@ function clearChatViewState(): void {
     chatSelections.set(null);
     messages.clear();
     messageIndexes.set(new Map());
-    translations.clear();
 }
 
 export async function createChat(
@@ -337,6 +336,14 @@ export async function deleteChatLorebook(chatId: string, lorebookId: string): Pr
     await updateChat(chatId, { lorebooks: { refs: { [lorebookId]: undefined } } });
 }
 
+export async function saveChatFile(chatId: string, item: FileItem): Promise<void> {
+    await updateChat(chatId, { files: { refs: { [item.id]: item } } });
+}
+
+export async function deleteChatFile(chatId: string, fileId: string): Promise<void> {
+    await updateChat(chatId, { files: { refs: { [fileId]: undefined } } });
+}
+
 // ─── Chat Persona Ref CRUD ─────────────────────────────────────
 
 export async function addChatPersona(chatId: string, personaId: string): Promise<void> {
@@ -397,7 +404,7 @@ export async function deleteChatInlay(chatId: string, assetId: string): Promise<
 
 // ─── Chat-owned Folder & Item Management ──────────────────────
 
-export type ChatFolderType = 'lorebooks' | 'personas' | 'inlays';
+export type ChatFolderType = 'lorebooks' | 'personas' | 'inlays' | 'files';
 
 export async function createChatFolder(
     chatId: string,

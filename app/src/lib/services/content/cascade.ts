@@ -34,14 +34,9 @@ export interface ParentChildRelation {
 export const PARENT_CHILD: readonly ParentChildRelation[] = [
     // rooms → chats
     { parent: 'rooms', child: 'chats', fk: 'roomId' },
-    { parent: 'rooms', child: 'files', fk: 'ownerId' },
     // chats → owned resources + messages + chat-level tables
     { parent: 'chats', child: 'messages', fk: 'chatId', recurse: false },
-    { parent: 'chats', child: 'tool_calls', fk: 'chatId' },
-    { parent: 'chats', child: 'translations', fk: 'chatId' },
-    { parent: 'chats', child: 'files', fk: 'ownerId' },
-    // messages → message-level tables
-    { parent: 'messages', child: 'translations', fk: 'messageId' }
+    { parent: 'chats', child: 'tool_calls', fk: 'chatId' }
 ] as const;
 
 // ─── Types ──────────────────────────────────────────────────────────────

@@ -67,7 +67,8 @@ const chat: Chat = {
     messageCount: 0,
     lorebooks: emptyList(),
     personas: emptyList(),
-    inlays: emptyList()
+    inlays: emptyList(),
+    files: emptyList()
 };
 
 const preset: Preset = {

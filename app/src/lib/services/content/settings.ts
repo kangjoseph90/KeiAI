@@ -30,6 +30,7 @@ import type { ImageGenProvider } from '$lib/types/models/imagegen';
 import type { STTProvider } from '$lib/types/models/stt';
 import type { RerankerProvider } from '$lib/types/models/reranker';
 import type { WorkflowDefinition } from '$lib/workflow/types';
+import { defaultFileFields, type FileItem } from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ export interface AppSettingsContent {
     imagegenProvider: ImageGenProvider;
     sttProvider: STTProvider;
     rerankerProvider: RerankerProvider;
+    files: EntityListConfig<FileItem>;
 }
 
 export interface AppSettingsRefs {
@@ -226,13 +228,20 @@ export const defaultSettings: AppSettings = {
     personas: { refs: {}, folders: {} },
     presets: { refs: {}, folders: {} },
     modules: { refs: {}, folders: {} },
-    plugins: { refs: {}, folders: {} }
+    plugins: { refs: {}, folders: {} },
+    files: { refs: {}, folders: {} }
 };
 
 // ─── Service ──────────────────────────────────────────────────────────
 
 function parseFields(data: Record<string, unknown>): AppSettings {
-    return deepMerge(defaultSettings, data as DeepPartial<AppSettings>);
+    const fields = deepMerge(defaultSettings, data as DeepPartial<AppSettings>);
+
+    for (const [id, ref] of Object.entries(fields.files.refs)) {
+        fields.files.refs[id] = deepMerge(defaultFileFields, ref) as FileItem;
+    }
+
+    return fields;
 }
 
 export class SettingsService {
