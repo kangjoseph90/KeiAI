@@ -15,10 +15,11 @@ import type { LLMModelConfig, LLMParameters, LLMType } from '$lib/types/models/l
 import type { EntityListConfig } from '$lib/types/refs';
 import type { WorkflowDefinition } from '$lib/workflow/types';
 import type { TogglePanel } from '$lib/types/toggle';
+import { defaultScriptFields, type Script } from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
-export interface PresetContent {
+export interface PresetFields {
     name: string;
     description: string;
     models: Partial<Record<LLMType, LLMModelConfig>>;
@@ -26,13 +27,8 @@ export interface PresetContent {
     chatWorkflow: WorkflowDefinition;
     defaultVariables: Record<string, string>;
     toggles: TogglePanel;
+    scripts: EntityListConfig<Script>;
 }
-
-export interface PresetRefs {
-    scripts: EntityListConfig;
-}
-
-export interface PresetFields extends PresetContent, PresetRefs {}
 
 export interface Preset extends PresetFields {
     id: string;
@@ -62,7 +58,13 @@ export const defaultPresetFields: PresetFields = {
 // ─── Helpers ───────────────────────────────────────────────────────────
 
 function parseFields(record: PresetRecord): PresetFields {
-    return deepMerge(defaultPresetFields, record.data as DeepPartial<PresetFields>);
+    const fields = deepMerge(defaultPresetFields, record.data as DeepPartial<PresetFields>);
+
+    for (const [id, ref] of Object.entries(fields.scripts.refs)) {
+        fields.scripts.refs[id] = deepMerge(defaultScriptFields, ref) as Script;
+    }
+
+    return fields;
 }
 
 // ─── Service ───────────────────────────────────────────────────────────

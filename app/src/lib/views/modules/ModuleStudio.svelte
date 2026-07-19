@@ -16,20 +16,14 @@
         activeModule,
         activeRoom,
         appSettings,
-        moduleLorebooks,
-        moduleScripts,
-        moduleCharJS,
         setModuleEnabled,
         updateModule,
         deleteModule,
-        createModuleLorebook,
-        updateModuleLorebook,
+        saveModuleLorebook,
         deleteModuleLorebook,
-        createModuleScript,
-        updateModuleScript,
+        saveModuleScript,
         deleteModuleScript,
-        createModuleCharJS,
-        updateModuleCharJS,
+        saveModuleCharJS,
         deleteModuleCharJS,
         createModuleFolder,
         updateModuleFolder,
@@ -40,7 +34,7 @@
     import { isKeiServer } from '$lib/services';
     import { exportModuleFile } from '$lib/managers/module';
     import type { DeepPartial } from '$lib/utils/defaults';
-    import type { ModuleContent, Lorebook, Script, CharJS } from '$lib/services';
+    import type { ModuleContent } from '$lib/services';
     import type { ModuleFileExport } from '$lib/porters/module';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
@@ -60,6 +54,10 @@
     }
 
     let { moduleId, moduleTab }: Props = $props();
+
+    const lorebooks = $derived($activeModule ? Object.values($activeModule.lorebooks.refs) : []);
+    const scripts = $derived($activeModule ? Object.values($activeModule.scripts.refs) : []);
+    const charJS = $derived($activeModule ? Object.values($activeModule.charjs.refs) : []);
 
     type ExportButton = 'risu-charx' | 'risu-legacy' | 'keimodule-light' | 'keimodule-baked';
     let activeTab = $state<ModuleStudioTab>('profile');
@@ -179,13 +177,10 @@
                     />
                 {:else if activeTab === 'lorebooks'}
                     <LorebooksTab
-                        lorebooks={$moduleLorebooks}
+                        {lorebooks}
                         config={$activeModule.lorebooks}
-                        onCreate={async (data) => {
-                            return createModuleLorebook($activeModule!.id, data as Lorebook);
-                        }}
-                        onUpdate={async (id, changes) => {
-                            await updateModuleLorebook($activeModule!.id, id, changes);
+                        onSave={async (item) => {
+                            await saveModuleLorebook($activeModule!.id, item);
                         }}
                         onDelete={async (id) => {
                             await deleteModuleLorebook($activeModule!.id, id);
@@ -213,24 +208,18 @@
                     />
                 {:else if activeTab === 'scripts'}
                     <ScriptsTab
-                        scripts={$moduleScripts}
-                        charJS={$moduleCharJS}
+                        {scripts}
+                        {charJS}
                         scriptsConfig={$activeModule.scripts}
                         charjsConfig={$activeModule.charjs}
-                        onCreateScript={async (data) => {
-                            return createModuleScript($activeModule!.id, data as Script);
-                        }}
-                        onUpdateScript={async (id, changes) => {
-                            await updateModuleScript($activeModule!.id, id, changes);
+                        onSaveScript={async (item) => {
+                            await saveModuleScript($activeModule!.id, item);
                         }}
                         onDeleteScript={async (id) => {
                             await deleteModuleScript($activeModule!.id, id);
                         }}
-                        onCreateCharJS={async (data) => {
-                            return createModuleCharJS($activeModule!.id, data as CharJS);
-                        }}
-                        onUpdateCharJS={async (id, changes) => {
-                            await updateModuleCharJS($activeModule!.id, id, changes);
+                        onSaveCharJS={async (item) => {
+                            await saveModuleCharJS($activeModule!.id, item);
                         }}
                         onDeleteCharJS={async (id) => {
                             await deleteModuleCharJS($activeModule!.id, id);

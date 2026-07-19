@@ -148,8 +148,7 @@ function risuPresetToKeiPreset(risu: RisuPreset): KeiPresetPackageV1 {
             defaultVariables: readDefaultVariables(risu.templateDefaultVariables),
             toggles,
             scripts: refs(scripts)
-        },
-        scripts
+        }
     };
 }
 

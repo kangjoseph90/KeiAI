@@ -5,9 +5,7 @@ import type { Script } from '$lib/services';
 describe('applyRegexScript', () => {
     const baseScript: Script = {
         id: 'test-script',
-        ownerId: 'owner-1',
-        scopeType: 'user',
-        scopeId: 'user-1',
+        sortOrder: 'a',
         type: 'regex',
         name: 'Test Regex',
         regex: 'apple',

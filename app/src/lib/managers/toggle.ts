@@ -1,16 +1,11 @@
 import { getActiveModuleIds } from '$lib/stores/content/merged';
-import { getModule, updateModule } from '$lib/stores/content/module';
-import { getActivePreset, updatePresetContent } from '$lib/stores/content/preset';
-import type {
-    ToggleControlItem,
-    ToggleOwner,
-    ToggleValue,
-    ResolvedToggleSource
-} from '$lib/types/toggle';
+import { getModule, saveModuleToggleItem, updateModule } from '$lib/stores/content/module';
+import { getActivePreset, savePresetToggleItem, updatePreset } from '$lib/stores/content/preset';
+import type { ToggleControlItem, ToggleOwner, ResolvedToggleSource } from '$lib/types/toggle';
 import { AppError } from '$lib/types/errors';
 import type { Module, Preset } from '$lib/services';
 
-export function getToggleValue(item: ToggleControlItem): ToggleValue {
+export function getToggleValue(item: ToggleControlItem): boolean | string {
     switch (item.control.type) {
         case 'checkbox':
             return item.control.value;
@@ -21,34 +16,7 @@ export function getToggleValue(item: ToggleControlItem): ToggleValue {
     }
 }
 
-export function normalizeToggleValue(item: ToggleControlItem, value: unknown): ToggleValue {
-    const control = item.control;
-    switch (control.type) {
-        case 'checkbox': {
-            if (typeof value === 'boolean') return value;
-            const normalized = String(value ?? '')
-                .trim()
-                .toLowerCase();
-            if (normalized === '1' || normalized === 'true') return true;
-            if (normalized === '0' || normalized === 'false') return false;
-            throw new AppError('INVALID_INPUT', `Invalid checkbox value for toggle: ${item.key}`);
-        }
-        case 'select': {
-            const raw = String(value ?? '');
-            const optionById = control.options.find((candidate) => candidate.id === raw);
-            const optionIndex = /^\d+$/.test(raw) ? Number(raw) : -1;
-            const option = optionById ?? control.options[optionIndex];
-            if (!option) {
-                throw new AppError('INVALID_INPUT', `Invalid option for toggle: ${item.key}`);
-            }
-            return option.id;
-        }
-        case 'text':
-            return String(value ?? '');
-    }
-}
-
-export function serializeToggleValue(item: ToggleControlItem): string {
+function serializeToggleValue(item: ToggleControlItem): string {
     const control = item.control;
     switch (control.type) {
         case 'checkbox':
@@ -64,9 +32,7 @@ export function serializeToggleValue(item: ToggleControlItem): string {
     }
 }
 
-export async function getResolvedToggleSources(
-    characterId?: string
-): Promise<ResolvedToggleSource[]> {
+async function getResolvedToggleSources(characterId?: string): Promise<ResolvedToggleSource[]> {
     const preset = getActivePreset();
     if (!preset) return [];
 
@@ -116,27 +82,47 @@ export async function setToggleValue(
     const item = panel?.refs[itemId];
     if (!item || item.kind !== 'control') return;
 
-    const updated = withToggleValue(item, normalizeToggleValue(item, value));
+    const updated = updateToggleValue(item, value);
     if (owner.type === 'preset') {
-        await updatePresetContent(preset.id, {
-            toggles: { refs: { [item.id]: updated } }
-        });
+        await savePresetToggleItem(preset.id, updated);
         return;
     }
 
-    await updateModule(owner.id, {
-        toggles: { refs: { [item.id]: updated } }
-    });
+    await saveModuleToggleItem(owner.id, updated);
 }
 
-function withToggleValue(item: ToggleControlItem, value: ToggleValue): ToggleControlItem {
+function updateToggleValue(item: ToggleControlItem, input: unknown): ToggleControlItem {
     switch (item.control.type) {
-        case 'checkbox':
-            return { ...item, control: { ...item.control, value: value === true } };
-        case 'select':
-            return { ...item, control: { ...item.control, selectedOptionId: String(value) } };
+        case 'checkbox': {
+            if (typeof input === 'boolean') {
+                return { ...item, control: { ...item.control, value: input } };
+            }
+            const value = String(input ?? '')
+                .trim()
+                .toLowerCase();
+            if (value === '1' || value === 'true') {
+                return { ...item, control: { ...item.control, value: true } };
+            }
+            if (value === '0' || value === 'false') {
+                return { ...item, control: { ...item.control, value: false } };
+            }
+            throw new AppError('INVALID_INPUT', `Invalid checkbox value for toggle: ${item.key}`);
+        }
+        case 'select': {
+            const value = String(input ?? '');
+            const option =
+                item.control.options.find((candidate) => candidate.id === value) ??
+                (/^\d+$/.test(value) ? item.control.options[Number(value)] : undefined);
+            if (!option) {
+                throw new AppError('INVALID_INPUT', `Invalid option for toggle: ${item.key}`);
+            }
+            return {
+                ...item,
+                control: { ...item.control, selectedOptionId: option.id }
+            };
+        }
         case 'text':
-            return { ...item, control: { ...item.control, value: String(value) } };
+            return { ...item, control: { ...item.control, value: String(input ?? '') } };
     }
 }
 

@@ -44,7 +44,6 @@ export interface ToggleTextControl {
 }
 
 export type ToggleControl = ToggleCheckboxControl | ToggleSelectControl | ToggleTextControl;
-export type ToggleValue = boolean | string;
 
 export type ToggleOwner = { type: 'preset'; id: string } | { type: 'module'; id: string };
 

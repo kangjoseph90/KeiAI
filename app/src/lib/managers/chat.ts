@@ -1,9 +1,8 @@
-import { MessageService, LorebookService } from '$lib/services';
+import { MessageService } from '$lib/services';
 import { compareSortOrder } from '$lib/utils/ordering';
 import type { AgentPart } from '$lib/workflow/agent/llm';
 import {
     createChat,
-    createChatLorebook,
     createMessage,
     deleteMessage,
     getActivePreset,
@@ -234,7 +233,6 @@ export async function forkChat(messageId: string): Promise<string> {
     const {
         id: _id,
         roomId: _roomId,
-        lorebooks: _,
         personas: _personas,
         lastMessageId: __,
         greetingMessageId: ___,
@@ -283,13 +281,6 @@ export async function forkChat(messageId: string): Promise<string> {
         lastMessageId,
         messageCount: allMessages.length
     });
-
-    // Copy chat-specific lorebooks
-    const lorebooks = await LorebookService.listByOwner(originalChat.id);
-    for (const lb of lorebooks) {
-        const { id: _lbId, ownerId: _ownerId, ...lbFields } = lb;
-        await createChatLorebook(newChat.id, lbFields);
-    }
 
     return newChat.id;
 }

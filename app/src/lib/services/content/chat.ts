@@ -14,12 +14,14 @@ import {
 } from './cascade';
 import { AssetService, type AssetOwner } from '../asset';
 import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
+import { defaultLorebookFields, type Lorebook } from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ChatContent {
     title: string;
     chatNote: string;
+    lorebooks: EntityListConfig<Lorebook>;
 }
 
 export interface ChatRefs {
@@ -28,7 +30,6 @@ export interface ChatRefs {
     greetingMessageId?: string;
     defaultPersonaId?: string;
     defaultCharacterId?: string;
-    lorebooks: EntityListConfig;
     personas: EntityListConfig;
     inlays: EntityListConfig<AssetRef>;
 }
@@ -56,7 +57,13 @@ const defaultFields: ChatFields = {
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function parseFields(record: ChatRecord): ChatFields {
-    return deepMerge(defaultFields, record.data as DeepPartial<ChatFields>);
+    const fields = deepMerge(defaultFields, record.data as DeepPartial<ChatFields>);
+
+    for (const [id, ref] of Object.entries(fields.lorebooks.refs)) {
+        fields.lorebooks.refs[id] = deepMerge(defaultLorebookFields, ref) as Lorebook;
+    }
+
+    return fields;
 }
 
 function assetOwner(record: ChatRecord): AssetOwner {

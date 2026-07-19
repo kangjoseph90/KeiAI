@@ -112,7 +112,7 @@ export class PluginManager {
             iframe.srcdoc = html;
 
             // Setup transport and bind APIs BEFORE appending iframe,
-            // to catch any synchronous messages sent during inline script execution.
+            // to catch any synchronous messages sent during script execution.
             const transport = new HostTransport(iframe);
             const broker = new RPCBroker(transport);
 

@@ -69,9 +69,6 @@ export function risuModuleToKeiPackage(risu: FullRisuModule): KeiModulePackageV1
                 folders: {}
             }
         },
-        lorebooks,
-        scripts,
-        charjs: [],
         assets: Object.fromEntries(
             assets.map((asset, index) => [
                 asset.id,
@@ -91,8 +88,8 @@ export function keiPackageToRisuModule(pkg: KeiModulePackageV1): FullRisuModule 
         lowLevelAccess: pkg.module.allowLowLevel,
         customModuleToggle: writeRisuTogglePanel(pkg.module.toggles),
         id: 'keiai',
-        lorebook: pkg.lorebooks.map(keiLorebookToRisuInternal),
-        regex: pkg.scripts.map(keiScriptToRisu),
+        lorebook: Object.values(pkg.module.lorebooks.refs).map(keiLorebookToRisuInternal),
+        regex: Object.values(pkg.module.scripts.refs).map(keiScriptToRisu),
         assets: Object.entries(pkg.assets).map(([key, asset]) => [
             pkg.module.assets.refs[key]?.name ?? key,
             '',

@@ -18,7 +18,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
 
     const createMockLorebook = (overrides: Partial<Lorebook>): Lorebook => ({
         id: 'lb-' + Math.random(),
-        ownerId: 'user-1',
+        sortOrder: 'a',
         name: 'Mock',
         key: '',
         secondKey: '',
@@ -33,9 +33,7 @@ describe('Lorebook Resolver (resolveLorebookEntries)', () => {
         probability: 100,
         recursive: false,
         noRecursiveSearch: false,
-        ...overrides,
-        scopeType: 'user',
-        scopeId: 'user-1'
+        ...overrides
     });
 
     const createMockMessages = (contents: string[]): PagedMessages =>

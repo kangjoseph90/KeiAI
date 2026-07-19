@@ -228,8 +228,6 @@ describe('RoomService', () => {
             expect.arrayContaining([
                 'rooms',
                 'chats',
-                'lorebooks',
-                'scripts',
                 'messages',
                 'tool_calls',
                 'translations',

@@ -26,10 +26,13 @@ export function sortOrder(index: number): string {
     return SORT_ORDER_KEYS[index];
 }
 
-export function refs<T extends { id: string }>(items: T[]): EntityListConfig {
+export function refs<T extends { id: string }>(items: T[]): EntityListConfig<T & OrderedRef> {
     return {
         refs: Object.fromEntries(
-            items.map((item, index) => [item.id, { id: item.id, sortOrder: sortOrder(index) }])
+            items.map((item, index) => [
+                item.id,
+                { ...item, id: item.id, sortOrder: sortOrder(index) }
+            ])
         ),
         folders: {}
     };
@@ -180,6 +183,13 @@ export function remapEntityList<R extends OrderedRef>(
     }
 
     return { refs, folders };
+}
+
+export function importEntityList<R extends OrderedRef>(
+    list: EntityListConfig<R>
+): EntityListConfig<R> {
+    const idMap = Object.fromEntries(Object.keys(list.refs).map((id) => [id, generateId()]));
+    return remapEntityList(list, idMap);
 }
 
 /**

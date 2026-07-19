@@ -172,12 +172,6 @@ export class TauriDatabaseAdapter implements IDatabaseAdapter {
         // FK indices for 1:N parent→child queries
         sql += `CREATE INDEX IF NOT EXISTS "idx_chats_roomId" ON chats (roomId);
 `;
-        sql += `CREATE INDEX IF NOT EXISTS "idx_lorebooks_ownerId" ON lorebooks (ownerId);
-`;
-        sql += `CREATE INDEX IF NOT EXISTS "idx_scripts_ownerId" ON scripts (ownerId);
-`;
-        sql += `CREATE INDEX IF NOT EXISTS "idx_charjs_ownerId" ON charjs (ownerId);
-`;
         sql += `CREATE INDEX IF NOT EXISTS "idx_files_ownerId" ON files (ownerId);
 `;
 

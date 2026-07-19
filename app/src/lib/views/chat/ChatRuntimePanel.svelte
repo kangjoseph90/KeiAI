@@ -24,10 +24,9 @@
     import {
         activeChat,
         chatPersonas,
-        chatLorebooks,
         chatSelections,
         createChatFolder,
-        createChatLorebook,
+        saveChatLorebook,
         createChatInlay,
         deleteChatLorebook,
         deleteChatFolder,
@@ -38,17 +37,18 @@
         setChatSelectedPersona,
         moveChatItem,
         updateChatContent,
-        updateChatFolder,
-        updateChatLorebook
+        updateChatFolder
     } from '$lib/stores';
     import { appConfirm, personaPickerOpen, toast } from '$lib/ui';
     import { navigate } from '$lib/router';
     import { getChatVariables, setChatVariables } from '$lib/managers';
-    import type { ChatContent } from '$lib/services';
+    import { defaultLorebookFields, type ChatContent, type Lorebook } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
     import { appDialog } from '$lib/adapters/dialog';
     import { getErrorMessage } from '$lib/types/errors';
+    import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateId } from '$lib/utils/id';
 
     interface Props {
         chatId: string;
@@ -56,6 +56,8 @@
     }
 
     let { chatId, onSelectInlay }: Props = $props();
+
+    const lorebooks = $derived($activeChat ? Object.values($activeChat.lorebooks.refs) : []);
 
     let variables = $state<Record<string, string>>({});
     let panelAction = $state<string | null>(null);
@@ -128,14 +130,16 @@
     async function handleChatLorebookAdd() {
         if ($activeChat?.id !== chatId) return;
         await runPanelAction('add-lorebook', 'Could not add lorebook', async () => {
-            await createChatLorebook(chatId, {
-                name: 'New Lorebook',
-                key: '',
-                secondKey: '',
-                content: '',
+            const item: Lorebook = {
+                ...defaultLorebookFields,
                 depth: 0,
-                disabled: false
-            });
+                id: generateId(),
+                sortOrder: generateSortOrder(
+                    $activeChat!.lorebooks.refs,
+                    $activeChat!.lorebooks.folders
+                )
+            };
+            await saveChatLorebook(chatId, item);
         });
     }
 
@@ -391,7 +395,7 @@
                         </Label>
                         <div class="flex items-center gap-2">
                             <Badge variant="outline" class="text-[10px] font-mono"
-                                >{$chatLorebooks.length}</Badge
+                                >{lorebooks.length}</Badge
                             >
                             <Button
                                 variant="secondary"
@@ -407,7 +411,7 @@
                     </div>
 
                     <EntityList
-                        entities={$chatLorebooks}
+                        entities={lorebooks}
                         config={$activeChat.lorebooks}
                         layout="list"
                         onCreateFolder={(name, parentId, sortOrder) =>
@@ -424,7 +428,8 @@
                         {#snippet item({ entity: lb })}
                             <LorebookItem
                                 item={lb}
-                                onUpdate={(id, changes) => updateChatLorebook(chatId, id, changes)}
+                                onUpdate={(id, changes) =>
+                                    saveChatLorebook(chatId, { ...lb, ...changes, id })}
                                 onDelete={(id) => deleteChatLorebook(chatId, id)}
                             />
                         {/snippet}

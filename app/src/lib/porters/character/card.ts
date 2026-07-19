@@ -51,7 +51,7 @@ export function keiPackageToCard(
             character_book: {
                 extensions: {},
                 recursive_scanning: false,
-                entries: pkg.lorebooks.map(keiLorebookToRisuCardEntry)
+                entries: Object.values(pkg.character.lorebooks.refs).map(keiLorebookToRisuCardEntry)
             },
             assets: cardAssets,
             tags: [],
@@ -59,7 +59,7 @@ export function keiPackageToCard(
             character_version: '',
             extensions: {
                 risuai: {
-                    customScripts: pkg.scripts.map(keiScriptToRisu),
+                    customScripts: Object.values(pkg.character.scripts.refs).map(keiScriptToRisu),
                     triggerscript: [],
                     defaultVariables: writeDefaultVariables(pkg.character.defaultVariables),
                     backgroundHTML: denormalizeRisuTemplate(
@@ -85,8 +85,8 @@ export function keiPackageToRisuModule(pkg: KeiCharacterPackageV1) {
         description: `Module for ${pkg.character.name || 'Imported Character'}`,
         id: 'keiai_export_module',
         trigger: [],
-        regex: pkg.scripts.map(keiScriptToRisu),
-        lorebook: pkg.lorebooks.map(keiLorebookToRisuInternal)
+        regex: Object.values(pkg.character.scripts.refs).map(keiScriptToRisu),
+        lorebook: Object.values(pkg.character.lorebooks.refs).map(keiLorebookToRisuInternal)
     };
 }
 

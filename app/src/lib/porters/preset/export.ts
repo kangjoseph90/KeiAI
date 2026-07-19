@@ -1,20 +1,12 @@
-import { PresetService, ScriptService } from '$lib/services';
+import { PresetService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
 import type { KeiPresetPackageV1, KeiPresetPayload } from './types';
-import { createPortableIdMap, exportEntityList } from '../utils';
 
 export async function exportPresetPackage(presetId: string): Promise<KeiPresetPackageV1> {
     const preset = await PresetService.get(presetId);
     if (!preset) {
         throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
     }
-
-    const scripts = await ScriptService.listByOwner(presetId);
-
-    const scriptMap = createPortableIdMap(
-        scripts.map((item) => item.id),
-        'script'
-    );
 
     const portablePreset: KeiPresetPayload = {
         name: preset.name,
@@ -24,18 +16,12 @@ export async function exportPresetPackage(presetId: string): Promise<KeiPresetPa
         chatWorkflow: structuredClone(preset.chatWorkflow),
         defaultVariables: { ...preset.defaultVariables },
         toggles: structuredClone(preset.toggles),
-        scripts: exportEntityList(preset.scripts, scriptMap, 'script_folder')
+        scripts: structuredClone(preset.scripts)
     };
 
     return {
         version: 1,
         kind: 'keiai.preset',
-        preset: portablePreset,
-        scripts: scripts.map(
-            ({ id, ownerId: _ownerId, scopeType: _scopeType, scopeId: _scopeId, ...fields }) => ({
-                ...fields,
-                id: scriptMap[id]
-            })
-        )
+        preset: portablePreset
     };
 }

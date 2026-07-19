@@ -15,13 +15,18 @@ import {
 import { AssetService, type AssetOwner } from '../asset';
 import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
 import type { TogglePanel } from '$lib/types/toggle';
+import {
+    defaultLorebookFields,
+    defaultScriptFields,
+    defaultCharJSFields,
+    type Lorebook,
+    type Script,
+    type CharJS
+} from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ModuleRefs {
-    lorebooks: EntityListConfig;
-    scripts: EntityListConfig;
-    charjs: EntityListConfig;
     assets: EntityListConfig<AssetRef>;
 }
 
@@ -32,6 +37,9 @@ export interface ModuleContent {
     messageCSS: string;
     defaultVariables: Record<string, string>;
     toggles: TogglePanel;
+    lorebooks: EntityListConfig<Lorebook>;
+    scripts: EntityListConfig<Script>;
+    charjs: EntityListConfig<CharJS>;
     allowLowLevel: boolean;
 }
 
@@ -60,7 +68,21 @@ const defaultModuleFields: ModuleFields = {
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function parseFields(record: ModuleRecord): ModuleFields {
-    return deepMerge(defaultModuleFields, record.data as DeepPartial<ModuleFields>);
+    const fields = deepMerge(defaultModuleFields, record.data as DeepPartial<ModuleFields>);
+
+    for (const [id, ref] of Object.entries(fields.lorebooks.refs)) {
+        fields.lorebooks.refs[id] = deepMerge(defaultLorebookFields, ref) as Lorebook;
+    }
+
+    for (const [id, ref] of Object.entries(fields.scripts.refs)) {
+        fields.scripts.refs[id] = deepMerge(defaultScriptFields, ref) as Script;
+    }
+
+    for (const [id, ref] of Object.entries(fields.charjs.refs)) {
+        fields.charjs.refs[id] = deepMerge(defaultCharJSFields, ref) as CharJS;
+    }
+
+    return fields;
 }
 
 function assetOwner(record: ModuleRecord): AssetOwner {

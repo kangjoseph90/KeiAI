@@ -2,22 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setToggleValue } from '$lib/managers/toggle';
 import type { ToggleControlItem } from '$lib/types/toggle';
 
-const { mockGetActivePreset, mockGetModule, mockUpdateModule, mockUpdatePresetContent } =
+const { mockGetActivePreset, mockGetModule, mockSaveModuleToggleItem, mockSavePresetToggleItem } =
     vi.hoisted(() => ({
         mockGetActivePreset: vi.fn(),
         mockGetModule: vi.fn(),
-        mockUpdateModule: vi.fn(),
-        mockUpdatePresetContent: vi.fn()
+        mockSaveModuleToggleItem: vi.fn(),
+        mockSavePresetToggleItem: vi.fn()
     }));
 
 vi.mock('$lib/stores/content/merged', () => ({ getActiveModuleIds: vi.fn() }));
 vi.mock('$lib/stores/content/preset', () => ({
     getActivePreset: mockGetActivePreset,
-    updatePresetContent: mockUpdatePresetContent
+    savePresetToggleItem: mockSavePresetToggleItem
 }));
 vi.mock('$lib/stores/content/module', () => ({
     getModule: mockGetModule,
-    updateModule: mockUpdateModule
+    saveModuleToggleItem: mockSaveModuleToggleItem
 }));
 
 const checkbox: ToggleControlItem = {
@@ -61,27 +61,20 @@ describe('toggle value ownership', () => {
     it('writes a Preset control value back to the Preset panel', async () => {
         await setToggleValue({ type: 'preset', id: 'preset-1' }, checkbox.id, true);
 
-        expect(mockUpdatePresetContent).toHaveBeenCalledWith('preset-1', {
-            toggles: {
-                refs: { checkbox: { ...checkbox, control: { type: 'checkbox', value: true } } }
-            }
+        expect(mockSavePresetToggleItem).toHaveBeenCalledWith('preset-1', {
+            ...checkbox,
+            control: { type: 'checkbox', value: true }
         });
-        expect(mockUpdateModule).not.toHaveBeenCalled();
+        expect(mockSaveModuleToggleItem).not.toHaveBeenCalled();
     });
 
     it('writes a Module control value back to the Module panel', async () => {
         await setToggleValue({ type: 'module', id: 'module-1' }, select.id, '1');
 
-        expect(mockUpdateModule).toHaveBeenCalledWith('module-1', {
-            toggles: {
-                refs: {
-                    select: {
-                        ...select,
-                        control: { ...select.control, selectedOptionId: 'option-b' }
-                    }
-                }
-            }
+        expect(mockSaveModuleToggleItem).toHaveBeenCalledWith('module-1', {
+            ...select,
+            control: { ...select.control, selectedOptionId: 'option-b' }
         });
-        expect(mockUpdatePresetContent).not.toHaveBeenCalled();
+        expect(mockSavePresetToggleItem).not.toHaveBeenCalled();
     });
 });

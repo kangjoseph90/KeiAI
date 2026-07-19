@@ -25,14 +25,11 @@ export type TableName =
     | 'messages'
     | 'settings'
     | 'personas'
-    | 'lorebooks'
-    | 'scripts'
     | 'modules'
     | 'plugins'
     | 'tool_calls'
     | 'translations'
-    | 'files'
-    | 'charjs';
+    | 'files';
 
 export const SYNC_TABLES: TableName[] = [
     'rooms',
@@ -42,11 +39,8 @@ export const SYNC_TABLES: TableName[] = [
     'messages',
     'settings',
     'personas',
-    'lorebooks',
-    'scripts',
     'modules',
     'plugins',
-    'charjs',
     'translations',
     'files'
 ];
@@ -136,15 +130,6 @@ export type PersonaRecord = DataRecord;
 
 // ─── Single-table entities ───────────────────────────────────────────
 
-export interface LorebookRecord extends DataRecord {
-    ownerId: string;
-}
-export interface ScriptRecord extends DataRecord {
-    ownerId: string;
-}
-export interface CharJSRecord extends DataRecord {
-    ownerId: string;
-}
 export type ModuleRecord = DataRecord;
 export type PluginRecord = DataRecord;
 

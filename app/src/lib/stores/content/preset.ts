@@ -1,13 +1,5 @@
 import { get } from 'svelte/store';
-import {
-    PresetService,
-    ScriptService,
-    type PresetFields,
-    type Preset,
-    type ScriptFields,
-    type Script,
-    type PresetContent
-} from '$lib/services';
+import { PresetService, type PresetFields, type Preset, type Script } from '$lib/services';
 import {
     importPresetPackage as importPresetPackagePorter,
     type KeiPresetPackageV1
@@ -15,7 +7,7 @@ import {
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import type { FolderDef } from '$lib/types/refs';
-import { presets, activePreset, presetScripts } from '../state';
+import { presets, activePreset } from '../state';
 import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
@@ -38,15 +30,9 @@ export function getActivePreset(): Preset | null {
 }
 
 export async function getPresetScripts(presetId: string): Promise<Script[]> {
-    if (get(activePreset)?.id === presetId) {
-        return get(presetScripts);
-    }
     const preset = await getPreset(presetId);
     if (!preset) return [];
-    const results = await Promise.all(
-        Object.keys(preset.scripts.refs).map((id) => ScriptService.get(id))
-    );
-    return results.filter((sc): sc is Script => sc !== null);
+    return sortByRefs(Object.values(preset.scripts.refs), preset.scripts.refs);
 }
 
 /**
@@ -61,21 +47,12 @@ export async function loadPresets(): Promise<void> {
     const active = settings.presetId
         ? list.find((preset) => preset.id === settings.presetId)
         : null;
-    if (active) {
-        const scripts = await ScriptService.listByOwner(active.id);
-        presetScripts.setAll(sortByRefs(scripts, active.scripts.refs));
-    } else {
-        presetScripts.clear();
-    }
 }
 
 export async function selectPreset(presetId: string): Promise<void> {
     const preset = await getPreset(presetId);
     if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
     await updateSettings({ presetId: presetId });
-
-    const scripts = await ScriptService.listByOwner(presetId);
-    presetScripts.setAll(sortByRefs(scripts, preset.scripts.refs));
 }
 
 export async function createPreset(fields: DeepPartial<PresetFields> = {}): Promise<Preset> {
@@ -140,17 +117,6 @@ export async function updatePreset(
 ): Promise<void> {
     const updated = await PresetService.update(presetId, changes);
     presets.set(presetId, updated);
-    if (get(activePreset)?.id === presetId) {
-        presetScripts.setAll(sortByRefs(get(presetScripts), updated.scripts.refs));
-    }
-}
-
-export async function updatePresetContent(
-    presetId: string,
-    changes: DeepPartial<PresetContent>
-): Promise<void> {
-    const updated = await PresetService.update(presetId, changes);
-    presets.set(presetId, updated);
 }
 
 export async function deletePreset(presetId: string): Promise<void> {
@@ -186,14 +152,11 @@ export async function deletePreset(presetId: string): Promise<void> {
             await selectPreset(fallback.id);
         } else {
             await updateSettings({ presetId: undefined });
-            presetScripts.clear();
         }
     }
 }
 
-// ─── Block Actions ───────────────────────────────────────────────────
-
-// ─── Preset-owned Toggle CRUD ───────────────────────────────────────
+// ─── Preset-owned resources ────────────────────────────────────────────
 
 export async function savePresetToggleItem(presetId: string, item: ToggleItem): Promise<void> {
     await updatePreset(presetId, { toggles: { refs: { [item.id]: item } } });
@@ -203,69 +166,12 @@ export async function deletePresetToggleItem(presetId: string, itemId: string): 
     await updatePreset(presetId, { toggles: { refs: { [itemId]: undefined } } });
 }
 
-// ─── Preset-owned Script CRUD ───────────────────────────────────────
-
-export async function createPresetScript(
-    presetId: string,
-    fields: DeepPartial<ScriptFields>
-): Promise<Script> {
-    const preset = await getPreset(presetId);
-    if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
-
-    // Create Record in DB
-    const sc = await ScriptService.create(presetId, fields);
-
-    // Update parent's refs
-    const sortOrder = generateSortOrder(preset.scripts.refs, preset.scripts.folders);
-    try {
-        await updatePreset(presetId, {
-            scripts: { refs: { [sc.id]: { id: sc.id, sortOrder } } }
-        });
-    } catch (error) {
-        // If parent's refs update fails, roll back DB
-        await ScriptService.delete(sc.id);
-        throw error;
-    }
-
-    if (get(activePreset)?.id === presetId) {
-        presetScripts.set(sc.id, sc);
-    }
-
-    return sc;
-}
-
-export async function updatePresetScript(
-    presetId: string,
-    scriptId: string,
-    changes: DeepPartial<ScriptFields>
-): Promise<void> {
-    const updated = await ScriptService.update(scriptId, changes);
-    if (get(activePreset)?.id === presetId) {
-        presetScripts.set(scriptId, updated);
-    }
+export async function savePresetScript(presetId: string, item: Script): Promise<void> {
+    await updatePreset(presetId, { scripts: { refs: { [item.id]: item } } });
 }
 
 export async function deletePresetScript(presetId: string, scriptId: string): Promise<void> {
-    const preset = await getPreset(presetId);
-    if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
-
-    // Capture ref for potential rollback
-    const existingRef = preset.scripts.refs[scriptId];
-
-    // Remove from parent's refs
     await updatePreset(presetId, { scripts: { refs: { [scriptId]: undefined } } });
-
-    try {
-        await ScriptService.delete(scriptId);
-    } catch (error) {
-        // If DB delete fails, roll back parent's refs
-        await updatePreset(presetId, { scripts: { refs: { [scriptId]: existingRef } } });
-        throw error;
-    }
-
-    if (get(activePreset)?.id === presetId) {
-        presetScripts.delete(scriptId);
-    }
 }
 
 // ─── Preset-owned Folder & Item Management ──────────────────────

@@ -83,9 +83,6 @@ export interface DataRecord extends DataScope {
 | `personas` | 페르소나 | scope |
 | `chats` | room에 속한 채팅 | scope, `roomId` |
 | `messages` | chat에 속한 메시지 | scope, `chatId`, `[chatId+sortOrder]` |
-| `lorebooks` | owner가 소유하는 로어북 | scope, `ownerId` |
-| `scripts` | owner가 소유하는 스크립트 | scope, `ownerId` |
-| `charjs` | owner가 소유하는 CharJS | scope, `ownerId` |
 | `modules` | 개인 모듈 | user scope |
 | `presets` | 개인 프리셋 | user scope |
 | `plugins` | 개인 플러그인 | user scope |
@@ -93,7 +90,7 @@ export interface DataRecord extends DataScope {
 | `files` | Workflow string 파일 | scope, `ownerId` |
 | `tool_calls` | 로컬 tool call 상태 | local only |
 
-멀티룸에서도 모듈/프리셋/플러그인은 기본적으로 개인 설정을 사용한다. 멀티룸에 공유되는 컨텐츠는 room scope의 room/chat/message/character/persona/lorebook/script/charjs/asset 계열이다.
+멀티룸에서도 모듈/프리셋/플러그인은 기본적으로 개인 설정을 사용한다. 멀티룸에 공유되는 컨텐츠는 room scope의 room/chat/message/character/persona/asset 계열이며, lorebook/script/CharJS는 해당 부모 암호문에 인라인된다.
 
 ---
 
@@ -122,7 +119,7 @@ User Session
    ├─ Room key
    ├─ Room scoped Character / Persona
    ├─ Room scoped Chat / Message
-   ├─ Room scoped Lorebook / Script / CharJS
+   ├─ Character/Chat 안에 인라인된 Lorebook / Script / CharJS
    └─ Room scoped Asset
 ```
 
@@ -140,9 +137,7 @@ User Session
 |---|---|
 | Room => Chat | `ChatRecord.roomId`, `RoomFields.chats` |
 | Chat => Message | `MessageRecord.chatId`, `[chatId+sortOrder]` |
-| Character => Lorebook/Script/CharJS | child `ownerId=characterId` |
-| Chat => Lorebook | child `ownerId=chatId` |
-| Module => Lorebook/Script/CharJS | child `ownerId=moduleId` |
+Lorebook, regex script, CharJS는 독립 소유 관계가 아니다. Character/Chat/Module/Preset의 `EntityListConfig<Item>` 안에 내용, 정렬, 폴더 정보가 함께 저장되며 부모와 동일한 생명주기와 동기화 단위를 가진다.
 
 고볼륨 자식은 인덱스로 찾고, UI 순서/폴더는 부모 JSON의 `EntityListConfig`가 가진다.
 
@@ -179,7 +174,7 @@ User Session
 ```typescript
 {
     personas: EntityListConfig<ResourceRef>;
-    lorebooks: EntityListConfig<OrderedRef>;
+    lorebooks: EntityListConfig<Lorebook>;
     defaultCharacterId?: string;
     selectedCharacterId?: string;
     defaultPersonaId?: string;

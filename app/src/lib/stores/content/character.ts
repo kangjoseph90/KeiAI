@@ -1,16 +1,11 @@
 import { get } from 'svelte/store';
 import {
     CharacterService,
-    LorebookService,
-    ScriptService,
-    CharJSService,
     ModuleService,
     type CharacterFields,
     type CharacterContent,
     type Character,
-    type LorebookFields,
-    type ScriptFields,
-    type CharJSFields,
+    type Greeting,
     type Lorebook,
     type Script,
     type CharJS
@@ -27,9 +22,6 @@ import {
     multiRoomCharacters,
     isMultiRoom,
     activeCharacter,
-    characterLorebooks,
-    characterScripts,
-    characterCharJS,
     activeCharacterId,
     activeRoomId
 } from '../state';
@@ -69,44 +61,18 @@ export async function getCharacter(characterId: string): Promise<Character | nul
     return fetched;
 }
 
-/**
- * Returns lorebooks owned by a character.
- * Uses store cache for the active character, falls back to refs-based individual gets
- * (avoids listByOwner which bypasses the record buffer LRU cache).
- */
 export async function getCharacterLorebooks(characterId: string): Promise<Lorebook[]> {
-    if (characterId === get(activeCharacterId)) {
-        return get(characterLorebooks);
-    }
     const char = await getCharacter(characterId);
     if (!char) return [];
-    const results = await Promise.all(
-        Object.keys(char.lorebooks.refs).map((id) => LorebookService.get(id))
-    );
-    return results.filter((lb): lb is Lorebook => lb !== null);
+    return sortByRefs(Object.values(char.lorebooks.refs), char.lorebooks.refs);
 }
 
-/**
- * Returns scripts owned by a character.
- * Uses store cache for the active character, falls back to refs-based individual gets
- * (avoids listByOwner which bypasses the record buffer LRU cache).
- */
 export async function getCharacterScripts(characterId: string): Promise<Script[]> {
-    if (characterId === get(activeCharacterId)) {
-        return get(characterScripts);
-    }
     const char = await getCharacter(characterId);
     if (!char) return [];
-    const results = await Promise.all(
-        Object.keys(char.scripts.refs).map((id) => ScriptService.get(id))
-    );
-    return results.filter((sc): sc is Script => sc !== null);
+    return sortByRefs(Object.values(char.scripts.refs), char.scripts.refs);
 }
 
-/**
- * Service errors propagate to the caller — this function does not catch them.
- * Callers (e.g. route load functions) are responsible for error boundaries.
- */
 export async function loadCharacters(): Promise<void> {
     const settings = await getAppSettings();
     const list = await CharacterService.list();
@@ -134,12 +100,9 @@ export async function selectCharacter(
     activeCharacterId.set(character.id);
 
     const moduleIds = Object.keys(character.modules.refs);
-    const [lorebooks, scripts, charjs, moduleEntries] = await Promise.all([
-        LorebookService.listByOwner(characterId),
-        ScriptService.listByOwner(characterId),
-        CharJSService.listByOwner(characterId),
-        Promise.all(moduleIds.map(async (id) => [id, await ModuleService.get(id)] as const))
-    ]);
+    const moduleEntries = await Promise.all(
+        moduleIds.map(async (id) => [id, await ModuleService.get(id)] as const)
+    );
     if (!isCurrent()) return;
 
     const staleModuleRefs: Record<string, undefined> = {};
@@ -148,10 +111,6 @@ export async function selectCharacter(
             staleModuleRefs[id] = undefined;
         }
     }
-
-    characterLorebooks.setAll(sortByRefs(lorebooks, character.lorebooks.refs));
-    characterScripts.setAll(sortByRefs(scripts, character.scripts.refs));
-    characterCharJS.setAll(sortByRefs(charjs, character.charjs.refs));
 
     if (Object.keys(staleModuleRefs).length > 0) {
         await updateCharacter(characterId, {
@@ -167,9 +126,6 @@ export function clearActiveCharacter(): void {
 
 function clearActiveCharacterState(): void {
     activeCharacterId.set(null);
-    characterLorebooks.clear();
-    characterScripts.clear();
-    characterCharJS.clear();
 }
 
 export async function updateCharacter(
@@ -268,27 +224,6 @@ export async function importCharacterPackage(
     return character;
 }
 
-// ─── Greeting CRUD ───────────────────────────────────────────────
-
-export async function saveCharacterGreeting(
-    characterId: string,
-    greetingId: string,
-    changes: { content?: string; sortOrder?: string }
-): Promise<void> {
-    await updateCharacterContent(characterId, {
-        greetings: { [greetingId]: { ...changes, id: greetingId } }
-    });
-}
-
-export async function deleteCharacterGreeting(
-    characterId: string,
-    greetingId: string
-): Promise<void> {
-    await updateCharacterContent(characterId, {
-        greetings: { [greetingId]: undefined }
-    });
-}
-
 export async function updateCharacterAvatar(characterId: string, file: File): Promise<void> {
     const updated = await CharacterService.updateAvatar(characterId, file);
     if (updated.scopeType === 'user') {
@@ -371,189 +306,44 @@ export async function deleteCharacter(characterId: string): Promise<void> {
     }
 }
 
-// ─── Character-owned Lorebook CRUD ─────────────────────────────────
+// ─── Character-owned resources ─────────────────────────────────────
 
-export async function createCharacterLorebook(
+export async function saveCharacterGreeting(characterId: string, item: Greeting): Promise<void> {
+    await updateCharacter(characterId, { greetings: { [item.id]: item } });
+}
+
+export async function deleteCharacterGreeting(
     characterId: string,
-    fields: DeepPartial<LorebookFields>
-): Promise<Lorebook> {
-    const char = await getCharacter(characterId);
-    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
+    greetingId: string
+): Promise<void> {
+    await updateCharacter(characterId, { greetings: { [greetingId]: undefined } });
+}
 
-    const lb = await LorebookService.create(characterId, fields, char.scopeType);
-
-    const sortOrder = generateSortOrder(char.lorebooks.refs, char.lorebooks.folders);
-    try {
-        await updateCharacter(characterId, {
-            lorebooks: { refs: { [lb.id]: { id: lb.id, sortOrder } } }
-        });
-    } catch (error) {
-        await LorebookService.delete(lb.id);
-        throw error;
-    }
-
-    if (characterId === get(activeCharacterId)) {
-        characterLorebooks.set(lb.id, lb);
-    }
-
-    return lb;
+export async function saveCharacterLorebook(characterId: string, item: Lorebook): Promise<void> {
+    await updateCharacter(characterId, { lorebooks: { refs: { [item.id]: item } } });
 }
 
 export async function deleteCharacterLorebook(
     characterId: string,
     lorebookId: string
 ): Promise<void> {
-    const char = await getCharacter(characterId);
-    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-
-    // Capture ref for potential rollback
-    const existingRef = char.lorebooks.refs[lorebookId];
-
-    // Remove from parent's refs
     await updateCharacter(characterId, { lorebooks: { refs: { [lorebookId]: undefined } } });
-
-    try {
-        await LorebookService.delete(lorebookId);
-    } catch (error) {
-        await updateCharacter(characterId, { lorebooks: { refs: { [lorebookId]: existingRef } } });
-        throw error;
-    }
-
-    if (characterId === get(activeCharacterId)) {
-        characterLorebooks.delete(lorebookId);
-    }
 }
 
-export async function updateCharacterLorebook(
-    characterId: string,
-    lorebookId: string,
-    changes: DeepPartial<LorebookFields>
-): Promise<void> {
-    const updated = await LorebookService.update(lorebookId, changes);
-    if (characterId === get(activeCharacterId)) {
-        characterLorebooks.set(lorebookId, updated);
-    }
-}
-
-// ─── Character-owned Script CRUD ───────────────────────────────────
-
-export async function createCharacterScript(
-    characterId: string,
-    fields: DeepPartial<ScriptFields>
-): Promise<Script> {
-    const char = await getCharacter(characterId);
-    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-
-    const sc = await ScriptService.create(characterId, fields, char.scopeType);
-
-    const sortOrder = generateSortOrder(char.scripts.refs, char.scripts.folders);
-    try {
-        await updateCharacter(characterId, {
-            scripts: { refs: { [sc.id]: { id: sc.id, sortOrder } } }
-        });
-    } catch (error) {
-        await ScriptService.delete(sc.id);
-        throw error;
-    }
-
-    if (characterId === get(activeCharacterId)) {
-        characterScripts.set(sc.id, sc);
-    }
-
-    return sc;
+export async function saveCharacterScript(characterId: string, item: Script): Promise<void> {
+    await updateCharacter(characterId, { scripts: { refs: { [item.id]: item } } });
 }
 
 export async function deleteCharacterScript(characterId: string, scriptId: string): Promise<void> {
-    const char = await getCharacter(characterId);
-    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-
-    // Capture ref for potential rollback
-    const existingRef = char.scripts.refs[scriptId];
-
-    // Remove from parent's refs
     await updateCharacter(characterId, { scripts: { refs: { [scriptId]: undefined } } });
-
-    try {
-        await ScriptService.delete(scriptId);
-    } catch (error) {
-        await updateCharacter(characterId, { scripts: { refs: { [scriptId]: existingRef } } });
-        throw error;
-    }
-
-    if (characterId === get(activeCharacterId)) {
-        characterScripts.delete(scriptId);
-    }
 }
 
-export async function updateCharacterScript(
-    characterId: string,
-    scriptId: string,
-    changes: DeepPartial<ScriptFields>
-): Promise<void> {
-    const updated = await ScriptService.update(scriptId, changes);
-    if (characterId === get(activeCharacterId)) {
-        characterScripts.set(scriptId, updated);
-    }
-}
-
-// ─── Character-owned CharJS CRUD ───────────────────────────────────
-
-export async function createCharacterCharJS(
-    characterId: string,
-    fields: DeepPartial<CharJSFields>
-): Promise<CharJS> {
-    const char = await getCharacter(characterId);
-    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-    const cjs = await CharJSService.create(characterId, fields, char.scopeType);
-
-    const sortOrder = generateSortOrder(char.charjs.refs, char.charjs.folders);
-    try {
-        await updateCharacter(characterId, {
-            charjs: { refs: { [cjs.id]: { id: cjs.id, sortOrder } } }
-        });
-    } catch (error) {
-        await CharJSService.delete(cjs.id);
-        throw error;
-    }
-
-    if (characterId === get(activeCharacterId)) {
-        characterCharJS.set(cjs.id, cjs);
-    }
-
-    return cjs;
+export async function saveCharacterCharJS(characterId: string, item: CharJS): Promise<void> {
+    await updateCharacter(characterId, { charjs: { refs: { [item.id]: item } } });
 }
 
 export async function deleteCharacterCharJS(characterId: string, charjsId: string): Promise<void> {
-    const char = await getCharacter(characterId);
-    if (!char) throw new AppError('NOT_FOUND', `Character not found: ${characterId}`);
-
-    // Capture ref for potential rollback
-    const existingRef = char.charjs.refs[charjsId];
-
-    // Remove from parent's refs
     await updateCharacter(characterId, { charjs: { refs: { [charjsId]: undefined } } });
-
-    try {
-        await CharJSService.delete(charjsId);
-    } catch (error) {
-        await updateCharacter(characterId, { charjs: { refs: { [charjsId]: existingRef } } });
-        throw error;
-    }
-
-    if (characterId === get(activeCharacterId)) {
-        characterCharJS.delete(charjsId);
-    }
-}
-
-export async function updateCharacterCharJS(
-    characterId: string,
-    charjsId: string,
-    changes: DeepPartial<CharJSFields>
-): Promise<void> {
-    const updated = await CharJSService.update(charjsId, changes);
-    if (characterId === get(activeCharacterId)) {
-        characterCharJS.set(charjsId, updated);
-    }
 }
 
 // ─── Character-owned Folder & Item Management ──────────────────────

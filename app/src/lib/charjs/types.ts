@@ -1,7 +1,7 @@
 import type { QuickJSAsyncContext, QuickJSAsyncRuntime, QuickJSHandle } from 'quickjs-emscripten';
 import type { Mutex } from '$lib/utils/mutex';
 
-import type { CharJS } from '$lib/services/content/charjs';
+import type { CharJS } from '$lib/services';
 
 export type ModeKind = 'pipe' | 'event' | 'template';
 

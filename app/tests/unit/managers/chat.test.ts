@@ -10,7 +10,6 @@ import {
 } from '$lib/managers/chat';
 import {
     createChat,
-    createChatLorebook,
     createMessage,
     deleteMessage,
     getActivePreset,
@@ -24,13 +23,12 @@ import {
     updateChat,
     updateMessage
 } from '$lib/stores';
-import { LorebookService, MessageService } from '$lib/services';
+import { MessageService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
-import type { Character, Chat, Lorebook, Message, Module, Preset, Room } from '$lib/services';
+import type { Character, Chat, Message, Module, Preset, Room } from '$lib/services';
 
 vi.mock('$lib/stores', () => ({
     createChat: vi.fn(),
-    createChatLorebook: vi.fn(),
     createMessage: vi.fn(),
     deleteMessage: vi.fn(),
     getActivePreset: vi.fn(),
@@ -46,9 +44,6 @@ vi.mock('$lib/stores', () => ({
 }));
 
 vi.mock('$lib/services', () => ({
-    LorebookService: {
-        listByOwner: vi.fn()
-    },
     MessageService: {
         getMessagesBefore: vi.fn(),
         create: vi.fn()
@@ -414,12 +409,6 @@ describe('ChatManager', () => {
             },
             activeSwipeId: 's1'
         };
-        const mockLorebook = {
-            id: 'lb-1',
-            ownerId: 'chat-1',
-            content: 'some content'
-        } as unknown as Lorebook;
-
         beforeEach(() => {
             vi.mocked(getMessage).mockResolvedValue(mockMessage as unknown as Message);
             vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([
@@ -427,9 +416,7 @@ describe('ChatManager', () => {
             ] as unknown as Message[]);
             vi.mocked(getChat).mockResolvedValue(mockChat);
             vi.mocked(createChat).mockResolvedValue({ ...mockChat, id: 'new-chat-id' });
-            vi.mocked(LorebookService.listByOwner).mockResolvedValue([mockLorebook]);
             vi.mocked(MessageService.create).mockResolvedValue({} as unknown as Message);
-            vi.mocked(createChatLorebook).mockResolvedValue({} as unknown as Lorebook);
         });
 
         it('forks chat using room ownership', async () => {
@@ -447,10 +434,6 @@ describe('ChatManager', () => {
                     messageCount: 2,
                     lastMessageId: undefined
                 })
-            );
-            expect(createChatLorebook).toHaveBeenCalledWith(
-                'new-chat-id',
-                expect.objectContaining({ content: 'some content' })
             );
         });
 

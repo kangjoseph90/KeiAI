@@ -5,9 +5,6 @@ import {
     ChatService,
     RoomService,
     CharacterService,
-    LorebookService,
-    ScriptService,
-    CharJSService,
     PersonaService,
     PresetService,
     ModuleService,
@@ -29,23 +26,14 @@ import {
     activeRoom,
     activeRoomId,
     appSettings,
-    characterCharJS,
-    characterLorebooks,
-    characterScripts,
     characters,
-    chatLorebooks,
-    chatScripts,
     messages,
-    moduleCharJS,
-    moduleLorebooks,
-    moduleScripts,
     modules,
     multiRoomCharacters,
     multiRoomPersonas,
     multiRooms,
     personas,
     plugins,
-    presetScripts,
     presets,
     roomChats,
     rooms
@@ -170,138 +158,6 @@ async function syncPersonasByIds(ids: string[]): Promise<void> {
     }
 }
 
-async function syncLorebooksByIds(ids: string[]): Promise<void> {
-    const entries = await Promise.all(
-        ids.map(async (id) => [id, await LorebookService.get(id)] as const)
-    );
-    const currentCharacterId = get(activeCharacterId);
-    const currentChatId = get(activeChatId);
-    const currentModuleId = get(activeModuleId);
-
-    characterLorebooks.batch(() => {
-        for (const [id, lorebook] of entries) {
-            characterLorebooks.delete(id);
-            if (lorebook && currentCharacterId && lorebook.ownerId === currentCharacterId) {
-                characterLorebooks.set(id, lorebook);
-            }
-        }
-    });
-
-    chatLorebooks.batch(() => {
-        for (const [id, lorebook] of entries) {
-            chatLorebooks.delete(id);
-            if (lorebook && currentChatId && lorebook.ownerId === currentChatId) {
-                chatLorebooks.set(id, lorebook);
-            }
-        }
-    });
-
-    moduleLorebooks.batch(() => {
-        for (const [id, lorebook] of entries) {
-            moduleLorebooks.delete(id);
-            if (lorebook && currentModuleId && lorebook.ownerId === currentModuleId) {
-                moduleLorebooks.set(id, lorebook);
-            }
-        }
-    });
-
-    const character = get(activeCharacter);
-    if (character) reorderStoreByRefs(characterLorebooks, character.lorebooks.refs);
-
-    const chat = get(activeChat);
-    if (chat) reorderStoreByRefs(chatLorebooks, chat.lorebooks.refs);
-
-    const module = get(activeModule);
-    if (module) reorderStoreByRefs(moduleLorebooks, module.lorebooks.refs);
-}
-
-async function syncScriptsByIds(ids: string[]): Promise<void> {
-    const entries = await Promise.all(
-        ids.map(async (id) => [id, await ScriptService.get(id)] as const)
-    );
-    const currentCharacterId = get(activeCharacterId);
-    const currentChatId = get(activeChatId);
-    const currentModuleId = get(activeModuleId);
-    const currentPresetId = get(activePreset)?.id;
-
-    characterScripts.batch(() => {
-        for (const [id, script] of entries) {
-            characterScripts.delete(id);
-            if (script && currentCharacterId && script.ownerId === currentCharacterId) {
-                characterScripts.set(id, script);
-            }
-        }
-    });
-
-    chatScripts.batch(() => {
-        for (const [id, script] of entries) {
-            chatScripts.delete(id);
-            if (script && currentChatId && script.ownerId === currentChatId) {
-                chatScripts.set(id, script);
-            }
-        }
-    });
-
-    moduleScripts.batch(() => {
-        for (const [id, script] of entries) {
-            moduleScripts.delete(id);
-            if (script && currentModuleId && script.ownerId === currentModuleId) {
-                moduleScripts.set(id, script);
-            }
-        }
-    });
-
-    presetScripts.batch(() => {
-        for (const [id, script] of entries) {
-            presetScripts.delete(id);
-            if (script && currentPresetId && script.ownerId === currentPresetId) {
-                presetScripts.set(id, script);
-            }
-        }
-    });
-
-    const character = get(activeCharacter);
-    if (character) reorderStoreByRefs(characterScripts, character.scripts.refs);
-
-    const module = get(activeModule);
-    if (module) reorderStoreByRefs(moduleScripts, module.scripts.refs);
-
-    const preset = get(activePreset);
-    if (preset) reorderStoreByRefs(presetScripts, preset.scripts.refs);
-}
-
-async function syncCharJSByIds(ids: string[]): Promise<void> {
-    const entries = await Promise.all(
-        ids.map(async (id) => [id, await CharJSService.get(id)] as const)
-    );
-    const currentCharacterId = get(activeCharacterId);
-    const currentModuleId = get(activeModuleId);
-
-    characterCharJS.batch(() => {
-        for (const [id, charjs] of entries) {
-            characterCharJS.delete(id);
-            if (charjs && currentCharacterId && charjs.ownerId === currentCharacterId) {
-                characterCharJS.set(id, charjs);
-            }
-        }
-    });
-
-    moduleCharJS.batch(() => {
-        for (const [id, charjs] of entries) {
-            moduleCharJS.delete(id);
-            if (charjs && currentModuleId && charjs.ownerId === currentModuleId) {
-                moduleCharJS.set(id, charjs);
-            }
-        }
-    });
-
-    const character = get(activeCharacter);
-    if (character) reorderStoreByRefs(characterCharJS, character.charjs.refs);
-
-    const module = get(activeModule);
-    if (module) reorderStoreByRefs(moduleCharJS, module.charjs.refs);
-}
-
 export function startDataStoreSync(): void {
     if (stopDataStoreSyncListener) return;
 
@@ -355,11 +211,6 @@ export function startDataStoreSync(): void {
                         const preset = get(activePreset);
                         if (preset && ids.includes(preset.id)) {
                             const detail = synced.get(preset.id) ?? null;
-                            if (detail) {
-                                reorderStoreByRefs(presetScripts, detail.scripts.refs);
-                            } else {
-                                presetScripts.clear();
-                            }
                         }
                         break;
                     }
@@ -368,11 +219,7 @@ export function startDataStoreSync(): void {
                         const currentModuleId = get(activeModuleId);
                         if (currentModuleId && ids.includes(currentModuleId)) {
                             const detail = synced.get(currentModuleId) ?? null;
-                            if (detail && get(activeModuleId) === currentModuleId) {
-                                reorderStoreByRefs(moduleLorebooks, detail.lorebooks.refs);
-                                reorderStoreByRefs(moduleScripts, detail.scripts.refs);
-                                reorderStoreByRefs(moduleCharJS, detail.charjs.refs);
-                            } else if (get(activeModuleId) === currentModuleId) {
+                            if (!detail && get(activeModuleId) === currentModuleId) {
                                 clearActiveModule();
                             }
                         }
@@ -387,11 +234,7 @@ export function startDataStoreSync(): void {
                         const currentCharacterId = get(activeCharacterId);
                         if (currentCharacterId && ids.includes(currentCharacterId)) {
                             const detail = synced.get(currentCharacterId) ?? null;
-                            if (detail && get(activeCharacterId) === currentCharacterId) {
-                                reorderStoreByRefs(characterLorebooks, detail.lorebooks.refs);
-                                reorderStoreByRefs(characterScripts, detail.scripts.refs);
-                                reorderStoreByRefs(characterCharJS, detail.charjs.refs);
-                            } else if (get(activeCharacterId) === currentCharacterId) {
+                            if (!detail && get(activeCharacterId) === currentCharacterId) {
                                 clearActiveCharacter();
                             }
                         }
@@ -437,18 +280,6 @@ export function startDataStoreSync(): void {
                             }
                         });
                         await refreshMessageIndexes(currentChatId);
-                        break;
-                    }
-                    case 'lorebooks': {
-                        await syncLorebooksByIds(ids);
-                        break;
-                    }
-                    case 'scripts': {
-                        await syncScriptsByIds(ids);
-                        break;
-                    }
-                    case 'charjs': {
-                        await syncCharJSByIds(ids);
                         break;
                     }
                 }

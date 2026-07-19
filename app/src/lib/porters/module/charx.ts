@@ -44,9 +44,6 @@ function modulePackageToCharacterPackage(pkg: KeiModulePackageV1): KeiCharacterP
             charjs: pkg.module.charjs,
             assets: pkg.module.assets
         },
-        lorebooks: pkg.lorebooks,
-        scripts: pkg.scripts,
-        charjs: pkg.charjs,
         assets: pkg.assets
     };
 }
@@ -71,9 +68,6 @@ function characterPackageToModulePackage(
             charjs: pkg.character.charjs,
             assets: pkg.character.assets
         },
-        lorebooks: pkg.lorebooks,
-        scripts: pkg.scripts,
-        charjs: pkg.charjs,
         assets: pkg.assets
     };
 }

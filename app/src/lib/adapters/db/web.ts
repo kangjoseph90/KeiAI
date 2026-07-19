@@ -17,15 +17,12 @@ import type {
     MessageRecord,
     SettingsRecord,
     PersonaRecord,
-    LorebookRecord,
-    ScriptRecord,
     ModuleRecord,
     PluginRecord,
     PresetRecord,
     ToolCallRecord,
     TranslationRecord,
     FileRecord,
-    CharJSRecord,
     DatabaseWriteOperation,
     RoomRecord,
     DataScopeType
@@ -41,14 +38,11 @@ class DexieStore extends Dexie {
     messages!: Table<MessageRecord, string>;
     settings!: Table<SettingsRecord, string>;
     personas!: Table<PersonaRecord, string>;
-    lorebooks!: Table<LorebookRecord, string>;
-    scripts!: Table<ScriptRecord, string>;
     modules!: Table<ModuleRecord, string>;
     plugins!: Table<PluginRecord, string>;
     tool_calls!: Table<ToolCallRecord, string>;
     translations!: Table<TranslationRecord, string>;
     files!: Table<FileRecord, string>;
-    charjs!: Table<CharJSRecord, string>;
 
     constructor() {
         super('KeiLocalDB');
@@ -66,10 +60,6 @@ class DexieStore extends Dexie {
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
             personas:
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
-            lorebooks:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted',
-            scripts:
-                'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted',
             modules:
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+updatedAt], updatedAt, isDeleted',
             plugins:
@@ -78,7 +68,6 @@ class DexieStore extends Dexie {
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], chatId, updatedAt, isDeleted',
             translations:
                 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+chatId], [scopeType+scopeId+messageId], chatId, messageId, updatedAt, isDeleted',
-            charjs: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted',
             files: 'id, scopeId, [scopeType+scopeId], [scopeType+scopeId+ownerId], [scopeType+scopeId+updatedAt], ownerId, updatedAt, isDeleted'
         });
     }

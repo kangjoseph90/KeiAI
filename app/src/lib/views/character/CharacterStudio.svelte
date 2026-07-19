@@ -20,17 +20,11 @@
         removeCharacterAvatar,
         saveCharacterGreeting,
         deleteCharacterGreeting,
-        characterLorebooks,
-        createCharacterLorebook,
-        updateCharacterLorebook,
+        saveCharacterLorebook,
         deleteCharacterLorebook,
-        characterScripts,
-        createCharacterScript,
-        updateCharacterScript,
+        saveCharacterScript,
         deleteCharacterScript,
-        characterCharJS,
-        createCharacterCharJS,
-        updateCharacterCharJS,
+        saveCharacterCharJS,
         deleteCharacterCharJS,
         createCharacterFolder,
         updateCharacterFolder,
@@ -46,7 +40,7 @@
         type ExportCharacterFileRequest
     } from '$lib/managers';
     import type { DeepPartial } from '$lib/utils/defaults';
-    import type { CharacterContent, Lorebook, Script, CharJS } from '$lib/services';
+    import type { CharacterContent, Greeting } from '$lib/services';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
 
@@ -65,6 +59,12 @@
     }
 
     let { charId, characterTab }: Props = $props();
+
+    const lorebooks = $derived(
+        $activeCharacter ? Object.values($activeCharacter.lorebooks.refs) : []
+    );
+    const scripts = $derived($activeCharacter ? Object.values($activeCharacter.scripts.refs) : []);
+    const charJS = $derived($activeCharacter ? Object.values($activeCharacter.charjs.refs) : []);
 
     type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
     let activeTab = $state<CharacterStudioTab>('profile');
@@ -115,16 +115,13 @@
         navigate({ view: 'characterStudio', charId });
     }
 
-    async function handleSaveGreeting(
-        id: string,
-        changes: { content?: string; sortOrder?: string }
-    ) {
+    async function handleSaveGreeting(item: Greeting) {
         if (!$activeCharacter) return '';
-        await saveCharacterGreeting($activeCharacter.id, id, changes);
+        await saveCharacterGreeting($activeCharacter.id, item);
         if (isChatSynced() && $activeChat) {
             await syncChatGreetings($activeChat.id);
         }
-        return id;
+        return item.id;
     }
 
     async function handleDeleteGreeting(id: string) {
@@ -248,13 +245,10 @@
                     />
                 {:else if activeTab === 'lorebooks'}
                     <LorebooksTab
-                        lorebooks={$characterLorebooks}
+                        {lorebooks}
                         config={$activeCharacter!.lorebooks}
-                        onCreate={async (data) => {
-                            return createCharacterLorebook($activeCharacter!.id, data as Lorebook);
-                        }}
-                        onUpdate={async (id, changes) => {
-                            await updateCharacterLorebook($activeCharacter!.id, id, changes);
+                        onSave={async (item) => {
+                            await saveCharacterLorebook($activeCharacter!.id, item);
                         }}
                         onDelete={async (id) => {
                             await deleteCharacterLorebook($activeCharacter!.id, id);
@@ -282,24 +276,18 @@
                     />
                 {:else if activeTab === 'scripts'}
                     <ScriptsTab
-                        scripts={$characterScripts}
-                        charJS={$characterCharJS}
+                        {scripts}
+                        {charJS}
                         scriptsConfig={$activeCharacter!.scripts}
                         charjsConfig={$activeCharacter!.charjs}
-                        onCreateScript={async (data) => {
-                            return createCharacterScript($activeCharacter!.id, data as Script);
-                        }}
-                        onUpdateScript={async (id, changes) => {
-                            await updateCharacterScript($activeCharacter!.id, id, changes);
+                        onSaveScript={async (item) => {
+                            await saveCharacterScript($activeCharacter!.id, item);
                         }}
                         onDeleteScript={async (id) => {
                             await deleteCharacterScript($activeCharacter!.id, id);
                         }}
-                        onCreateCharJS={async (data) => {
-                            return createCharacterCharJS($activeCharacter!.id, data as CharJS);
-                        }}
-                        onUpdateCharJS={async (id, changes) => {
-                            await updateCharacterCharJS($activeCharacter!.id, id, changes);
+                        onSaveCharJS={async (item) => {
+                            await saveCharacterCharJS($activeCharacter!.id, item);
                         }}
                         onDeleteCharJS={async (id) => {
                             await deleteCharacterCharJS($activeCharacter!.id, id);

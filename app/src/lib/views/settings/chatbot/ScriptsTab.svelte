@@ -2,39 +2,39 @@
     import { Plus } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import {
-        presetScripts,
-        createPresetScript,
-        updatePresetScript,
+        savePresetScript,
         deletePresetScript,
         createPresetFolder,
         updatePresetFolder,
         deletePresetFolder,
         movePresetItem
     } from '$lib/stores';
-    import type { Preset, Script } from '$lib/services';
+    import { defaultScriptFields, type Preset, type Script } from '$lib/services';
     import ScriptItem from '../../modules/ScriptItem.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import { toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateId } from '$lib/utils/id';
 
     let { preset }: { preset: Preset } = $props();
-    let currentScripts = $state<Script[]>([]);
+    const currentScripts = $derived(Object.values(preset.scripts.refs));
     let editingScriptId = $state<string | null>(null);
     let creating = $state(false);
-
-    $effect(() => {
-        const unsubscribe = presetScripts.subscribe((scripts) => (currentScripts = scripts));
-        return unsubscribe;
-    });
 
     async function handleAddScript() {
         if (creating) return;
         const presetId = preset.id;
         creating = true;
         try {
-            const script = await createPresetScript(presetId, { name: 'New Script' });
+            const script: Script = {
+                ...defaultScriptFields,
+                id: generateId(),
+                sortOrder: generateSortOrder(preset.scripts.refs, preset.scripts.folders)
+            };
+            await savePresetScript(presetId, script);
             if (preset.id === presetId) editingScriptId = script.id;
         } catch (error) {
             toast.error({ title: 'Could not add script', description: getErrorMessage(error) });
@@ -75,7 +75,8 @@
             <ScriptItem
                 item={script}
                 initiallyEditing={editingScriptId === script.id}
-                onUpdate={(id, changes) => updatePresetScript(preset.id, id, changes)}
+                onUpdate={(id, changes) =>
+                    savePresetScript(preset.id, { ...script, ...changes, id })}
                 onDelete={(id) => deletePresetScript(preset.id, id)}
             />
         {/snippet}

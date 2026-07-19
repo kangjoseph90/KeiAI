@@ -14,6 +14,14 @@ import {
 } from './cascade';
 import { AssetService, type AssetOwner } from '../asset';
 import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
+import {
+    defaultLorebookFields,
+    defaultScriptFields,
+    defaultCharJSFields,
+    type Lorebook,
+    type Script,
+    type CharJS
+} from './resource';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -31,15 +39,15 @@ export interface CharacterContent {
     messageCSS: string;
     greetings: Record<string, Greeting>;
     defaultVariables: Record<string, string>;
+    lorebooks: EntityListConfig<Lorebook>;
+    scripts: EntityListConfig<Script>;
+    charjs: EntityListConfig<CharJS>;
     allowLowLevel: boolean;
 }
 
 export interface CharacterRefs {
     avatar?: AssetFields;
     modules: EntityListConfig<ResourceRef>;
-    lorebooks: EntityListConfig;
-    scripts: EntityListConfig;
-    charjs: EntityListConfig;
     assets: EntityListConfig<AssetRef>;
 }
 
@@ -72,7 +80,21 @@ const defaultFields: CharacterFields = {
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function parseFields(record: CharacterRecord): CharacterFields {
-    return deepMerge(defaultFields, record.data as DeepPartial<CharacterFields>);
+    const fields = deepMerge(defaultFields, record.data as DeepPartial<CharacterFields>);
+
+    for (const [id, ref] of Object.entries(fields.lorebooks.refs)) {
+        fields.lorebooks.refs[id] = deepMerge(defaultLorebookFields, ref) as Lorebook;
+    }
+
+    for (const [id, ref] of Object.entries(fields.scripts.refs)) {
+        fields.scripts.refs[id] = deepMerge(defaultScriptFields, ref) as Script;
+    }
+
+    for (const [id, ref] of Object.entries(fields.charjs.refs)) {
+        fields.charjs.refs[id] = deepMerge(defaultCharJSFields, ref) as CharJS;
+    }
+
+    return fields;
 }
 
 function assetOwner(record: CharacterRecord): AssetOwner {

@@ -130,8 +130,6 @@ export const chatSelections = writable<{
     personaId?: string;
 } | null>(null);
 
-export const chatLorebooks = new EntityStore<Lorebook>();
-export const chatScripts = new EntityStore<Script>();
 export const chatPersonas = derived(
     [activeChat, personas, multiRoomPersonas, isMultiRoom],
     ([chat, list, multiList, multi]) => {
@@ -172,9 +170,6 @@ export const activeCharacter = derived(
 );
 export const hasActiveCharacter = derived(activeCharacterId, (id) => !!id);
 
-export const characterLorebooks = new EntityStore<Lorebook>();
-export const characterScripts = new EntityStore<Script>();
-export const characterCharJS = new EntityStore<CharJS>();
 export const characterModules = derived([activeCharacter, modules], ([character, list]) => {
     if (!character) return [];
     const ids = new Set(
@@ -201,13 +196,6 @@ export const activeModule = derived([activeModuleId, modules], ([id]) =>
     id ? (modules.get(id) ?? null) : null
 );
 export const hasActiveModule = derived(activeModuleId, (id) => !!id);
-
-export const moduleLorebooks = new EntityStore<Lorebook>();
-export const moduleScripts = new EntityStore<Script>();
-export const moduleCharJS = new EntityStore<CharJS>();
-
-// ─── Selected Preset Context ──────────────────────────────────────────
-export const presetScripts = new EntityStore<Script>();
 
 // ─── Runtime States (Ephemeral — not persisted to DB) ─────────────────
 /**

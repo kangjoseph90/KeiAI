@@ -761,7 +761,7 @@
                 {#if !isCollapsed}
                     <!-- Nested recursive call for children -->
                     <div class={layout === 'grid' ? 'col-span-full' : ''}>
-                        <!-- Nested content uses symmetric inline padding; indentation comes from margin. -->
+                        <!-- Nested content uses symmetric horizontal padding; indentation comes from margin. -->
                         <div
                             role="none"
                             data-entity-dnd-id={f.id}

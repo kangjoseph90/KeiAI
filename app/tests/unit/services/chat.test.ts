@@ -222,8 +222,6 @@ describe('ChatService', () => {
             expect(localDB.transaction).toHaveBeenCalledWith(
                 expect.arrayContaining([
                     'chats',
-                    'lorebooks',
-                    'scripts',
                     'messages',
                     'tool_calls',
                     'translations',
@@ -231,18 +229,6 @@ describe('ChatService', () => {
                 ]),
                 'rw',
                 expect.any(Function)
-            );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'lorebooks',
-                'ownerId',
-                'chat-1',
-                undefined
-            );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'scripts',
-                'ownerId',
-                'chat-1',
-                undefined
             );
             expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
                 'messages',

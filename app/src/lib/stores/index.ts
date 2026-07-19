@@ -3,12 +3,11 @@
  *
  * Level 1 (Global):    rooms, characters, personas, presets, modules, plugins, appSettings
  * Level 2 (Room):      activeRoom (detail), roomCharacters, roomChats — loaded on select
- * Level 3 (Chat):      activeChat (detail), messages, chatLorebooks, chatPersonas — loaded on enter
+ * Level 3 (Chat):      activeChat (detail), messages, chatPersonas — loaded on enter
  *
  * Relationship patterns:
- *   1:N (parent→child): Parent's blob holds OrderedRef[] → fetch children by ID batch
+ *   Parent-owned 1:N: Parent's blob holds items and ordering metadata
  *   N:M (consumer→resource): Consumer's blob holds ordered refs, optionally with context state
- *   Owned (ownerId FK): Lorebooks, scripts owned by character/chat/module → listByOwner()
  *   Exception: messages use chatId FK + createdAt ordering
  *
  * Leaving a layer clears its plaintext from memory.
@@ -44,10 +43,6 @@ export const modules = readonly(StoreState.modules);
 export const plugins = readonly(StoreState.plugins);
 export const activeModule = readonly(StoreState.activeModule);
 export const activeModuleId = readonly(StoreState.activeModuleId);
-export const moduleLorebooks = readonly(StoreState.moduleLorebooks);
-export const moduleScripts = readonly(StoreState.moduleScripts);
-export const moduleCharJS = readonly(StoreState.moduleCharJS);
-export const presetScripts = readonly(StoreState.presetScripts);
 export const activeCharacter = readonly(StoreState.activeCharacter);
 export const activeCharacterId = readonly(StoreState.activeCharacterId);
 export const activePersona = readonly(StoreState.activePersona);
@@ -58,15 +53,11 @@ export const isMultiRoom = readonly(StoreState.isMultiRoom);
 export const roomCharacters = readonly(StoreState.roomCharacters);
 export const multiRoomCharacters = readonly(StoreState.multiRoomCharacters);
 export const multiRoomPersonas = readonly(StoreState.multiRoomPersonas);
-export const characterLorebooks = readonly(StoreState.characterLorebooks);
-export const characterScripts = readonly(StoreState.characterScripts);
-export const characterCharJS = readonly(StoreState.characterCharJS);
 export const characterModules = readonly(StoreState.characterModules);
 export const roomChats = readonly(StoreState.roomChats);
 export const activeChat = readonly(StoreState.activeChat);
 export const activeChatId = readonly(StoreState.activeChatId);
 export const chatSelections = readonly(StoreState.chatSelections);
-export const chatLorebooks = readonly(StoreState.chatLorebooks);
 export const chatPersonas = readonly(StoreState.chatPersonas);
 export const messages = readonly(StoreState.messages);
 export const translations = readonly(StoreState.translations);

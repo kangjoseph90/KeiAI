@@ -351,33 +351,16 @@ describe('CharacterService', () => {
             await CharacterService.delete('char-1');
 
             expect(localDB.transaction).toHaveBeenCalledWith(
-                expect.arrayContaining(['characters', 'lorebooks', 'scripts', 'charjs']),
+                ['characters'],
                 'rw',
                 expect.any(Function)
             );
         });
 
-        it('should soft delete character-owned resources but not room chats', async () => {
+        it('deletes only the parent record because it owns the resources', async () => {
             await CharacterService.delete('char-1');
-
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'lorebooks',
-                'ownerId',
-                'char-1',
-                undefined
-            );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'scripts',
-                'ownerId',
-                'char-1',
-                undefined
-            );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'charjs',
-                'ownerId',
-                'char-1',
-                undefined
-            );
+            expect(localDB.softDeleteRecord).toHaveBeenCalledWith('characters', 'char-1');
+            expect(localDB.softDeleteByIndex).not.toHaveBeenCalled();
             expect(localDB.softDeleteByIndex).not.toHaveBeenCalledWith(
                 'messages',
                 'chatId',

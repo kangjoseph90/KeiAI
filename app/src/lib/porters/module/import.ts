@@ -1,10 +1,10 @@
-import { CharJSService, LorebookService, ModuleService, ScriptService } from '$lib/services';
+import { ModuleService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
 import type { KeiModulePackageV1 } from './types';
 import {
     importAssetPayloads,
+    importEntityList,
     materializeImportedAsset,
-    remapEntityList,
     remapImportedAssetFolders
 } from '../utils';
 
@@ -34,32 +34,14 @@ export async function importModulePackage(
             defaultVariables: { ...(pkg.module.defaultVariables ?? {}) },
             toggles: structuredClone(pkg.module.toggles),
             allowLowLevel: pkg.module.allowLowLevel,
-            lorebooks: { refs: {}, folders: {} },
-            scripts: { refs: {}, folders: {} },
-            charjs: { refs: {}, folders: {} },
+            lorebooks: importEntityList(pkg.module.lorebooks),
+            scripts: importEntityList(pkg.module.scripts),
+            charjs: importEntityList(pkg.module.charjs),
             assets: { refs: {}, folders: {} }
         });
         moduleId = module.id;
 
         const assetInputs = importAssetPayloads(pkg.assets, options.allowLightAssets ?? true);
-
-        const lorebookMap: Record<string, string> = {};
-        for (const { id, ...fields } of pkg.lorebooks) {
-            const lorebook = await LorebookService.create(module.id, fields);
-            lorebookMap[id] = lorebook.id;
-        }
-
-        const scriptMap: Record<string, string> = {};
-        for (const { id, ...fields } of pkg.scripts) {
-            const script = await ScriptService.create(module.id, fields);
-            scriptMap[id] = script.id;
-        }
-
-        const charjsMap: Record<string, string> = {};
-        for (const { id, ...fields } of pkg.charjs) {
-            const charjs = await CharJSService.create(module.id, fields);
-            charjsMap[id] = charjs.id;
-        }
 
         const layoutIdMap: Record<string, string> = {};
         const knownAssetIds = new Set<string>();
@@ -95,12 +77,6 @@ export async function importModulePackage(
                 await ModuleService.update(module.id, { assets: fixed });
             }
         }
-
-        await ModuleService.update(module.id, {
-            lorebooks: remapEntityList(pkg.module.lorebooks, lorebookMap),
-            scripts: remapEntityList(pkg.module.scripts, scriptMap),
-            charjs: remapEntityList(pkg.module.charjs, charjsMap)
-        });
 
         return module.id;
     } catch (error) {

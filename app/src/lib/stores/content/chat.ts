@@ -1,10 +1,8 @@
 import { get } from 'svelte/store';
 import {
     ChatService,
-    LorebookService,
     type ChatFields,
     type ChatContent,
-    type LorebookFields,
     type Lorebook,
     type Chat
 } from '$lib/services';
@@ -14,7 +12,6 @@ import {
     roomChats,
     activeChat,
     messages,
-    chatLorebooks,
     activeChatId,
     activeRoomId,
     chatSelections,
@@ -55,21 +52,10 @@ export async function getChat(chatId: string): Promise<Chat | null> {
     return ChatService.get(chatId);
 }
 
-/**
- * Returns lorebooks owned by a chat.
- * Uses store cache for the active chat, falls back to refs-based individual gets
- * (avoids listByOwner which bypasses the record buffer LRU cache).
- */
 export async function getChatLorebooks(chatId: string): Promise<Lorebook[]> {
-    if (chatId === get(activeChatId)) {
-        return get(chatLorebooks);
-    }
     const chat = await getChat(chatId);
     if (!chat) return [];
-    const results = await Promise.all(
-        Object.keys(chat.lorebooks.refs).map((id) => LorebookService.get(id))
-    );
-    return results.filter((lb): lb is Lorebook => lb !== null);
+    return sortByRefs(Object.values(chat.lorebooks.refs), chat.lorebooks.refs);
 }
 
 /**
@@ -167,10 +153,9 @@ export async function selectChat(
     if (!isCurrent()) return;
 
     const personaIds = Object.keys(chat.personas.refs);
-    const [lorebooks, personaEntries] = await Promise.all([
-        LorebookService.listByOwner(chatId),
-        Promise.all(personaIds.map(async (id) => [id, await getPersona(id)] as const))
-    ]);
+    const personaEntries = await Promise.all(
+        personaIds.map(async (id) => [id, await getPersona(id)] as const)
+    );
     if (!isCurrent()) return;
 
     const stalePersonaRefs: Record<string, undefined> = {};
@@ -179,8 +164,6 @@ export async function selectChat(
             stalePersonaRefs[id] = undefined;
         }
     }
-
-    chatLorebooks.setAll(sortByRefs(lorebooks, chat.lorebooks.refs));
 
     if (Object.keys(stalePersonaRefs).length > 0) {
         await updateChat(chatId, {
@@ -203,7 +186,6 @@ export function clearActiveChat(): void {
 function clearChatViewState(): void {
     activeChatId.set(null);
     chatSelections.set(null);
-    chatLorebooks.clear();
     messages.clear();
     messageIndexes.set(new Map());
     translations.clear();
@@ -345,65 +327,14 @@ export async function deleteChat(chatId: string, roomId: string): Promise<void> 
     }
 }
 
-// ─── Chat-owned Lorebook CRUD ─────────────────────────────────────
+// ─── Chat-owned resources ────────────────────────────────────────────
 
-export async function createChatLorebook(
-    chatId: string,
-    fields: DeepPartial<LorebookFields>
-): Promise<Lorebook> {
-    const chat = await getChat(chatId);
-    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
-
-    const lb = await LorebookService.create(chatId, fields, chat.scopeType);
-
-    const sortOrder = generateSortOrder(chat.lorebooks.refs, chat.lorebooks.folders);
-    try {
-        await updateChat(chatId, {
-            lorebooks: { refs: { [lb.id]: { id: lb.id, sortOrder } } }
-        });
-    } catch (error) {
-        await LorebookService.delete(lb.id);
-        throw error;
-    }
-
-    if (chatId === get(activeChatId)) {
-        chatLorebooks.set(lb.id, lb);
-    }
-
-    return lb;
+export async function saveChatLorebook(chatId: string, item: Lorebook): Promise<void> {
+    await updateChat(chatId, { lorebooks: { refs: { [item.id]: item } } });
 }
 
 export async function deleteChatLorebook(chatId: string, lorebookId: string): Promise<void> {
-    const chat = await getChat(chatId);
-    if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
-
-    // Capture ref for potential rollback
-    const existingRef = chat.lorebooks.refs[lorebookId];
-
-    // Remove from parent's refs
     await updateChat(chatId, { lorebooks: { refs: { [lorebookId]: undefined } } });
-
-    try {
-        await LorebookService.delete(lorebookId);
-    } catch (error) {
-        await updateChat(chatId, { lorebooks: { refs: { [lorebookId]: existingRef } } });
-        throw error;
-    }
-
-    if (chatId === get(activeChatId)) {
-        chatLorebooks.delete(lorebookId);
-    }
-}
-
-export async function updateChatLorebook(
-    chatId: string,
-    lorebookId: string,
-    changes: DeepPartial<LorebookFields>
-): Promise<void> {
-    const updated = await LorebookService.update(lorebookId, changes);
-    if (chatId === get(activeChatId)) {
-        chatLorebooks.set(lorebookId, updated);
-    }
 }
 
 // ─── Chat Persona Ref CRUD ─────────────────────────────────────
