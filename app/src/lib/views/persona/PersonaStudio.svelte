@@ -49,6 +49,7 @@
     import { appDialog } from '$lib/adapters/dialog';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { listItems } from '$lib/utils/ordering';
 
     let { personaId, personaTab }: { personaId: string; personaTab?: PersonaStudioTab } = $props();
 
@@ -79,7 +80,7 @@
         navigate({ view: 'personaStudio', personaId });
     }
 
-    const assetRefs = $derived($activePersona ? Object.values($activePersona.assets.refs) : []);
+    const assetRefs = $derived($activePersona ? listItems($activePersona.assets) : []);
 
     function backToContext() {
         if ($activeRoom && $activeChat) {

@@ -60,12 +60,6 @@
 
     let { charId, characterTab }: Props = $props();
 
-    const lorebooks = $derived(
-        $activeCharacter ? Object.values($activeCharacter.lorebooks.refs) : []
-    );
-    const scripts = $derived($activeCharacter ? Object.values($activeCharacter.scripts.refs) : []);
-    const charJS = $derived($activeCharacter ? Object.values($activeCharacter.charjs.refs) : []);
-
     type ExportButton = 'ccv3-png' | 'ccv3-charx' | 'keichar-light' | 'keichar-baked';
     let activeTab = $state<CharacterStudioTab>('profile');
     let exporting = $state<ExportButton | null>(null);
@@ -245,7 +239,6 @@
                     />
                 {:else if activeTab === 'lorebooks'}
                     <LorebooksTab
-                        {lorebooks}
                         config={$activeCharacter!.lorebooks}
                         onSave={async (item) => {
                             await saveCharacterLorebook($activeCharacter!.id, item);
@@ -276,8 +269,6 @@
                     />
                 {:else if activeTab === 'scripts'}
                     <ScriptsTab
-                        {scripts}
-                        {charJS}
                         scriptsConfig={$activeCharacter!.scripts}
                         charjsConfig={$activeCharacter!.charjs}
                         onSaveScript={async (item) => {

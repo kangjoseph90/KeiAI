@@ -18,9 +18,7 @@ export async function collectPipelineHandlers(
     ctx: RuntimeContext
 ): Promise<PipelineHandler<unknown>[]> {
     // ── 1. Regex script handlers ────────────────────────────────
-    const regexHandlers = ctx.chatId
-        ? await collectRegexHandlers(ctx.chatId, phase, ctx.characterId)
-        : [];
+    const regexHandlers = ctx.chatId ? await collectRegexHandlers(phase, ctx.characterId) : [];
 
     // ── 2. CharJS handlers (character + modules) ────────────────
     const charjsHandlers = ctx.chatId
@@ -37,11 +35,10 @@ export async function collectPipelineHandlers(
 }
 
 async function collectRegexHandlers(
-    chatId: string,
     phase: string,
     characterId?: string
 ): Promise<PipelineHandler<unknown>[]> {
-    const scripts = await getMergedScripts(chatId, characterId);
+    const scripts = await getMergedScripts(characterId);
     return scripts
         .filter((s) => s.phase === phase)
         .map((s) => ({

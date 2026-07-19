@@ -4,13 +4,7 @@
  * UI imports these functions; they call UserService + update Svelte stores.
  */
 
-import {
-    getActiveSession,
-    ConnectionService,
-    toUser,
-    UserService,
-    type UserFields
-} from '$lib/services';
+import { getActiveSession, ConnectionService, UserService, type UserFields } from '$lib/services';
 import { SyncManager } from '$lib/services/sync';
 import { activeUser, localUsers } from './state';
 import type { DeepPartial } from '$lib/utils/defaults';
@@ -37,7 +31,7 @@ export async function loadUser(): Promise<void> {
  */
 export async function loadLocalUsers(): Promise<void> {
     const users = await UserService.getAllUsers();
-    localUsers.set(users.map(toUser).sort((a, b) => a.name.localeCompare(b.name)));
+    localUsers.set(users.sort((a, b) => a.name.localeCompare(b.name)));
 }
 
 /**

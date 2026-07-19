@@ -8,12 +8,11 @@
     import LorebookItem from '../../modules/LorebookItem.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
-    import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateSortOrder, listItems } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
 
     interface Props {
-        lorebooks: Lorebook[];
-        config: EntityListConfig;
+        config: EntityListConfig<Lorebook>;
         onSave: (item: Lorebook) => void | Promise<void>;
         onDelete: (id: string) => void | Promise<void>;
         onCreateFolder: (name: string, parentId?: string, sortOrder?: string) => Promise<FolderDef>;
@@ -26,7 +25,6 @@
     }
 
     let {
-        lorebooks,
         config,
         onSave,
         onDelete,
@@ -49,7 +47,7 @@
     }
 
     async function handleUpdate(id: string, changes: DeepPartial<Lorebook>) {
-        const item = lorebooks.find((lorebook) => lorebook.id === id);
+        const item = config.refs[id];
         if (item) await onSave({ ...item, ...changes, id });
     }
 </script>
@@ -62,7 +60,7 @@
     </ListActionBar>
 
     <EntityList
-        entities={lorebooks}
+        entities={listItems(config)}
         {config}
         layout="list"
         {onCreateFolder}

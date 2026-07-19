@@ -16,11 +16,10 @@
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import { toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
-    import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateSortOrder, listItems } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
 
     let { preset }: { preset: Preset } = $props();
-    const currentScripts = $derived(Object.values(preset.scripts.refs));
     let editingScriptId = $state<string | null>(null);
     let creating = $state(false);
 
@@ -58,7 +57,7 @@
     </ListActionBar>
 
     <EntityList
-        entities={currentScripts}
+        entities={listItems(preset.scripts)}
         config={preset.scripts}
         layout="list"
         onCreateFolder={(name, parentId, sortOrder) =>

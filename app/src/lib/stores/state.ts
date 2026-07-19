@@ -26,7 +26,7 @@ import type {
 import type { SyncStatus } from '$lib/services';
 import type { DisplayMessage, ChatTask, TranslationTask } from './types';
 import { EntityStore } from './entity_store';
-import { compareSortOrder, sortByRefs } from '$lib/utils/ordering';
+import { compareSortOrder, listItems, sortByRefs } from '$lib/utils/ordering';
 import type { EntityListConfig, AssetRef } from '$lib/types/refs';
 import { normalizeAssetName, type AssetNameIndex } from '$lib/template/display';
 import type { AssetReadLocator } from '$lib/services/asset';
@@ -159,19 +159,6 @@ export const activeCharacter = derived(
 );
 export const hasActiveCharacter = derived(activeCharacterId, (id) => !!id);
 
-export const characterModules = derived([activeCharacter, modules], ([character, list]) => {
-    if (!character) return [];
-    const ids = new Set(
-        Object.entries(character.modules.refs)
-            .filter(([, ref]) => ref !== undefined)
-            .map(([id]) => id)
-    );
-    return sortByRefs(
-        list.filter((module) => ids.has(module.id)),
-        character.modules.refs
-    );
-});
-
 // ─── Persona Studio Context─────────────────────────────────────────
 export const activePersonaId = writable<string | null>(null);
 export const activePersona = derived([activePersonaId, personas, multiRoomPersonas], ([id]) =>
@@ -244,7 +231,7 @@ export const chatAssetsMap = derived(
         ) => {
             if (!assetsConfig?.refs) return;
             const ownerMap = new Map<string, AssetReadLocator[]>();
-            for (const ref of Object.values(assetsConfig.refs)) {
+            for (const ref of listItems(assetsConfig)) {
                 if (ref?.name && ref?.hash && ref?.encKey) {
                     const normalized = normalizeAssetName(ref.name);
                     if (normalized) {

@@ -5,7 +5,7 @@
         activeRoom,
         appSettings,
         chatAssetsMap,
-        getActiveModulesForCharacter,
+        selectActiveModules,
         modules,
         roomCharacters
     } from '$lib/stores';
@@ -81,7 +81,7 @@
 
     $effect(() => {
         const character = defaultCharacter;
-        const mods = getActiveModulesForCharacter(character, $appSettings, $modules);
+        const mods = selectActiveModules($appSettings, $modules);
         const html = [
             character?.backgroundHTML ?? '',
             ...mods.map((module) => module.backgroundHTML)

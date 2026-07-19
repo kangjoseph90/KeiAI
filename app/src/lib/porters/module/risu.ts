@@ -11,6 +11,7 @@ import { backgroundWithMessageCSS, extractStyleCSS } from '../risu/background';
 import type { KeiModulePackageV1 } from './types';
 import { refs, sortOrder } from '../utils';
 import { readRisuTogglePanel, writeRisuTogglePanel } from '../risu/toggle';
+import { listItems } from '$lib/utils/ordering';
 
 type FullRisuModule = RawRisuModule & {
     lowLevelAccess?: boolean;
@@ -88,8 +89,8 @@ export function keiPackageToRisuModule(pkg: KeiModulePackageV1): FullRisuModule 
         lowLevelAccess: pkg.module.allowLowLevel,
         customModuleToggle: writeRisuTogglePanel(pkg.module.toggles),
         id: 'keiai',
-        lorebook: Object.values(pkg.module.lorebooks.refs).map(keiLorebookToRisuInternal),
-        regex: Object.values(pkg.module.scripts.refs).map(keiScriptToRisu),
+        lorebook: listItems(pkg.module.lorebooks).map(keiLorebookToRisuInternal),
+        regex: listItems(pkg.module.scripts).map(keiScriptToRisu),
         assets: Object.entries(pkg.assets).map(([key, asset]) => [
             pkg.module.assets.refs[key]?.name ?? key,
             '',

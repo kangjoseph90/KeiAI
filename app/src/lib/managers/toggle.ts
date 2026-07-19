@@ -1,9 +1,10 @@
-import { getActiveModuleIds } from '$lib/stores/content/merged';
-import { getModule, saveModuleToggleItem, updateModule } from '$lib/stores/content/module';
-import { getActivePreset, savePresetToggleItem, updatePreset } from '$lib/stores/content/preset';
+import { getActiveModules } from '$lib/stores/content/merged';
+import { getModule, saveModuleToggleItem } from '$lib/stores/content/module';
+import { getActivePreset, savePresetToggleItem } from '$lib/stores/content/preset';
 import type { ToggleControlItem, ToggleOwner, ResolvedToggleSource } from '$lib/types/toggle';
 import { AppError } from '$lib/types/errors';
 import type { Module, Preset } from '$lib/services';
+import { listItems } from '$lib/utils/ordering';
 
 export function getToggleValue(item: ToggleControlItem): boolean | string {
     switch (item.control.type) {
@@ -30,18 +31,6 @@ function serializeToggleValue(item: ToggleControlItem): string {
         case 'text':
             return control.value;
     }
-}
-
-async function getResolvedToggleSources(characterId?: string): Promise<ResolvedToggleSource[]> {
-    const preset = getActivePreset();
-    if (!preset) return [];
-
-    const moduleIds = await getActiveModuleIds(characterId);
-    const activeModules = await Promise.all([...moduleIds].map((id) => getModule(id)));
-    return resolveToggleSources(
-        preset,
-        activeModules.filter((mod): mod is Module => mod !== null)
-    );
 }
 
 export function resolveToggleSources(
@@ -126,10 +115,13 @@ function updateToggleValue(item: ToggleControlItem, input: unknown): ToggleContr
     }
 }
 
-export async function getToggleMacroValue(key: string, characterId?: string): Promise<string> {
-    const sources = await getResolvedToggleSources(characterId);
+export async function getToggleMacroValue(key: string): Promise<string> {
+    const preset = getActivePreset();
+    if (!preset) return '';
+
+    const sources = resolveToggleSources(preset, await getActiveModules());
     for (const source of sources) {
-        const item = Object.values(source.panel.refs).find(
+        const item = listItems(source.panel).find(
             (candidate): candidate is ToggleControlItem =>
                 candidate.kind === 'control' && candidate.key === key
         );

@@ -170,7 +170,7 @@ vi.mock('$lib/stores/content/character', () => ({
 }));
 
 vi.mock('$lib/stores/content/merged', () => ({
-    getActiveModuleIds: vi.fn().mockResolvedValue(new Set()),
+    getActiveModules: vi.fn().mockResolvedValue([]),
     getMergedLorebooks: vi.fn().mockResolvedValue([])
 }));
 

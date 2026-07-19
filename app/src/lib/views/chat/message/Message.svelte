@@ -43,7 +43,7 @@
         activeChat,
         appSettings,
         chatAssetsMap,
-        getActiveModulesForCharacter,
+        selectActiveModules,
         roomCharacters,
         chatPersonas,
         modules,
@@ -257,7 +257,7 @@
     let renderContext = $derived.by(() => {
         const ownerId = message.role === 'assistant' ? displayCharacterId : characterId;
         const character = ownerId ? $roomCharacters.find((item) => item.id === ownerId) : undefined;
-        const activeModules = getActiveModulesForCharacter(character, $appSettings, $modules);
+        const activeModules = selectActiveModules($appSettings, $modules);
         const cssSource = [character?.messageCSS ?? '', ...activeModules.map((m) => m.messageCSS)]
             .filter((part) => part.trim())
             .join('\n');

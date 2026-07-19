@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getActiveSession } from '$lib/services/session';
-import { UserService } from '$lib/services/user';
+import { UserService, type UserRecord } from '$lib/services/user';
 
 const mockMasterKey = {} as CryptoKey;
 const mockIdentityKeyPair = {} as CryptoKeyPair;
@@ -92,6 +92,52 @@ describe('UserService', () => {
             user: expect.objectContaining({ id: 'user-1' }),
             restored: true
         });
+    });
+
+    it('normalizes connection settings on legacy user records', async () => {
+        vi.mocked(appKV.get).mockResolvedValue('user-1');
+        vi.mocked(appUser.getUser).mockResolvedValue({
+            id: 'user-1',
+            createdAt: 1,
+            updatedAt: 1,
+            masterKey: mockMasterKey,
+            identityKeyPair: mockIdentityKeyPair
+        } as unknown as UserRecord);
+
+        const { user } = await UserService.restoreOrCreateUser();
+
+        expect(user.name).toBe('');
+        expect(user.avatar).toBe('');
+        expect(user.connections).toEqual({
+            server: { mode: 'default' },
+            proxy: { mode: 'default' }
+        });
+        expect(appUser.saveUser).not.toHaveBeenCalled();
+    });
+
+    it('fills a missing nested connection without replacing stored siblings', async () => {
+        vi.mocked(appUser.getUser).mockResolvedValue({
+            id: 'user-1',
+            name: 'Legacy',
+            avatar: '',
+            createdAt: 1,
+            updatedAt: 1,
+            masterKey: mockMasterKey,
+            identityKeyPair: mockIdentityKeyPair,
+            connections: {
+                proxy: { mode: 'custom', customUrl: 'https://proxy.example.test' }
+            }
+        } as unknown as UserRecord);
+
+        const user = await UserService.getUser('user-1');
+        expect(user).toMatchObject({
+            connections: {
+                server: { mode: 'default' },
+                proxy: { mode: 'custom', customUrl: 'https://proxy.example.test' }
+            }
+        });
+        expect(user).not.toHaveProperty('masterKey');
+        expect(user).not.toHaveProperty('identityKeyPair');
     });
 
     it('creates a new local identity when no active user exists', async () => {

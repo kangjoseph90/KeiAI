@@ -38,18 +38,6 @@ export async function getModule(moduleId: string): Promise<Module | null> {
     return fetched;
 }
 
-export async function getModuleLorebooks(moduleId: string): Promise<Lorebook[]> {
-    const mod = await getModule(moduleId);
-    if (!mod) return [];
-    return sortByRefs(Object.values(mod.lorebooks.refs), mod.lorebooks.refs);
-}
-
-export async function getModuleScripts(moduleId: string): Promise<Script[]> {
-    const mod = await getModule(moduleId);
-    if (!mod) return [];
-    return sortByRefs(Object.values(mod.scripts.refs), mod.scripts.refs);
-}
-
 export async function loadModules(): Promise<void> {
     const settings = await getAppSettings();
     const mods = await ModuleService.list();

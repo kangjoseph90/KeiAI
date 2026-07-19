@@ -30,7 +30,7 @@
                     class="font-mono text-sm"
                 />
                 <p class="text-xs text-muted-foreground">
-                    Rendered behind the chat surface for this character and its active modules.
+                    Rendered behind the chat surface with enabled global modules.
                 </p>
             </div>
 

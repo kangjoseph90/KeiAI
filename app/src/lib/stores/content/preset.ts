@@ -29,12 +29,6 @@ export function getActivePreset(): Preset | null {
     return get(activePreset);
 }
 
-export async function getPresetScripts(presetId: string): Promise<Script[]> {
-    const preset = await getPreset(presetId);
-    if (!preset) return [];
-    return sortByRefs(Object.values(preset.scripts.refs), preset.scripts.refs);
-}
-
 /**
  * Service errors propagate to the caller — this function does not catch them.
  * Callers (e.g. route load functions) are responsible for error boundaries.

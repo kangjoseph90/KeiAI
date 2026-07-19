@@ -47,7 +47,7 @@
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
     import { appDialog } from '$lib/adapters/dialog';
     import { getErrorMessage } from '$lib/types/errors';
-    import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateSortOrder, listItems } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
 
     interface Props {
@@ -56,8 +56,6 @@
     }
 
     let { chatId, onSelectInlay }: Props = $props();
-
-    const lorebooks = $derived($activeChat ? Object.values($activeChat.lorebooks.refs) : []);
 
     let variables = $state<Record<string, string>>({});
     let panelAction = $state<string | null>(null);
@@ -395,7 +393,7 @@
                         </Label>
                         <div class="flex items-center gap-2">
                             <Badge variant="outline" class="text-[10px] font-mono"
-                                >{lorebooks.length}</Badge
+                                >{listItems($activeChat.lorebooks).length}</Badge
                             >
                             <Button
                                 variant="secondary"
@@ -411,7 +409,7 @@
                     </div>
 
                     <EntityList
-                        entities={lorebooks}
+                        entities={listItems($activeChat.lorebooks)}
                         config={$activeChat.lorebooks}
                         layout="list"
                         onCreateFolder={(name, parentId, sortOrder) =>
@@ -485,7 +483,7 @@
                         </div>
                     </div>
                     <EntityList
-                        entities={Object.values($activeChat?.inlays?.refs ?? {})}
+                        entities={listItems($activeChat.inlays)}
                         config={$activeChat?.inlays ?? { refs: {}, folders: {} }}
                         layout="grid"
                         gridClass="grid grid-cols-3 gap-2 w-full"

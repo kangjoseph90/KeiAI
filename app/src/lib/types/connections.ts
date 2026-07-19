@@ -15,10 +15,3 @@ export interface UserConnectionSettings {
     server: ServerConnectionSettings;
     proxy: ProxyConnectionSettings;
 }
-
-export function createDefaultUserConnections(): UserConnectionSettings {
-    return {
-        server: { mode: 'default' },
-        proxy: { mode: 'default' }
-    };
-}

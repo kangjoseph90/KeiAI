@@ -98,11 +98,10 @@ export async function executeTemplateNode({
 export async function executeGetToggleNode({
     inputs,
     output,
-    ctx,
     signal
 }: WorkflowNodeExecutionContext<GetToggleNode>): Promise<void> {
     const name = await requireStringInput(inputs.name, 'Variable name input is required', signal);
-    const value = await getToggleMacroValue(name, ctx?.characterId);
+    const value = await getToggleMacroValue(name);
     output.emit(0, createWorkflowValueEvent(value));
 }
 

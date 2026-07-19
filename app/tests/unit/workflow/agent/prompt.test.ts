@@ -57,7 +57,6 @@ const character: Character = {
     greetings: {},
     defaultVariables: {},
     allowLowLevel: false,
-    modules: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },
     charjs: { refs: {}, folders: {} },

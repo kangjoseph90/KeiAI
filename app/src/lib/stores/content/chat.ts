@@ -8,7 +8,7 @@ import {
     type FileItem
 } from '$lib/services';
 import type { AssetRef, FolderDef } from '$lib/types/refs';
-import { compareSortOrder, generateSortOrder, sortByRefs } from '$lib/utils/ordering';
+import { generateSortOrder, listItems, sortByRefs } from '$lib/utils/ordering';
 import {
     roomChats,
     activeChat,
@@ -52,12 +52,6 @@ export async function getChat(chatId: string): Promise<Chat | null> {
     return ChatService.get(chatId);
 }
 
-export async function getChatLorebooks(chatId: string): Promise<Lorebook[]> {
-    const chat = await getChat(chatId);
-    if (!chat) return [];
-    return sortByRefs(Object.values(chat.lorebooks.refs), chat.lorebooks.refs);
-}
-
 /**
  * Resolves the active chat's selections (default character and persona).
  * Ensures that the default and selected characters/personas are valid
@@ -70,15 +64,9 @@ export async function resolveChatSelections(chatId: string): Promise<void> {
     if (!room) return;
 
     // 1. Get the first attached character/persona IDs
-    const charRefs = Object.values(room.characters.refs);
-    const sortedChars = [...charRefs].sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder));
-    const firstCharacterId = sortedChars[0]?.id;
+    const firstCharacterId = listItems(room.characters)[0]?.id;
 
-    const personaRefs = Object.values(chat.personas.refs);
-    const sortedPersonas = [...personaRefs].sort((a, b) =>
-        compareSortOrder(a.sortOrder, b.sortOrder)
-    );
-    const firstPersonaId = sortedPersonas[0]?.id;
+    const firstPersonaId = listItems(chat.personas)[0]?.id;
 
     // 2. Validate/Update Defaults
     const patch: DeepPartial<ChatFields> = {};

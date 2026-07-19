@@ -1,10 +1,11 @@
 import { clock } from '$lib/utils/clock';
 import { canAccessScope, getSessionScope } from '../session';
 import { localDB, type CharacterRecord, type DataScopeType } from '$lib/adapters/db';
-import type { ResourceRef, EntityListConfig, AssetRef } from '$lib/types/refs';
+import type { EntityListConfig, AssetRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import { listItems } from '$lib/utils/ordering';
 import { buffer } from './record_buffer';
 import {
     cascadeDeleteChildren,
@@ -18,6 +19,7 @@ import {
     defaultLorebookFields,
     defaultScriptFields,
     defaultCharJSFields,
+    hydrateOwnedItems,
     type Lorebook,
     type Script,
     type CharJS
@@ -47,7 +49,6 @@ export interface CharacterContent {
 
 export interface CharacterRefs {
     avatar?: AssetFields;
-    modules: EntityListConfig<ResourceRef>;
     assets: EntityListConfig<AssetRef>;
 }
 
@@ -70,7 +71,6 @@ const defaultFields: CharacterFields = {
     greetings: {},
     defaultVariables: {},
     allowLowLevel: false,
-    modules: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },
     charjs: { refs: {}, folders: {} },
@@ -81,19 +81,9 @@ const defaultFields: CharacterFields = {
 
 function parseFields(record: CharacterRecord): CharacterFields {
     const fields = deepMerge(defaultFields, record.data as DeepPartial<CharacterFields>);
-
-    for (const [id, ref] of Object.entries(fields.lorebooks.refs)) {
-        fields.lorebooks.refs[id] = deepMerge(defaultLorebookFields, ref) as Lorebook;
-    }
-
-    for (const [id, ref] of Object.entries(fields.scripts.refs)) {
-        fields.scripts.refs[id] = deepMerge(defaultScriptFields, ref) as Script;
-    }
-
-    for (const [id, ref] of Object.entries(fields.charjs.refs)) {
-        fields.charjs.refs[id] = deepMerge(defaultCharJSFields, ref) as CharJS;
-    }
-
+    fields.lorebooks.refs = hydrateOwnedItems(fields.lorebooks.refs, defaultLorebookFields);
+    fields.scripts.refs = hydrateOwnedItems(fields.scripts.refs, defaultScriptFields);
+    fields.charjs.refs = hydrateOwnedItems(fields.charjs.refs, defaultCharJSFields);
     return fields;
 }
 
@@ -107,8 +97,8 @@ function assetOwner(record: CharacterRecord): AssetOwner {
 }
 
 function collectAssetFields(fields: CharacterFields): AssetFields[] {
-    return [fields.avatar, ...Object.values(fields.assets.refs)].filter(
-        (asset): asset is AssetFields => Boolean(asset?.hash)
+    return [fields.avatar, ...listItems(fields.assets)].filter((asset): asset is AssetFields =>
+        Boolean(asset?.hash)
     );
 }
 

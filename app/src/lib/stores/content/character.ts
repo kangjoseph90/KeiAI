@@ -1,7 +1,6 @@
 import { get } from 'svelte/store';
 import {
     CharacterService,
-    ModuleService,
     type CharacterFields,
     type CharacterContent,
     type Character,
@@ -61,18 +60,6 @@ export async function getCharacter(characterId: string): Promise<Character | nul
     return fetched;
 }
 
-export async function getCharacterLorebooks(characterId: string): Promise<Lorebook[]> {
-    const char = await getCharacter(characterId);
-    if (!char) return [];
-    return sortByRefs(Object.values(char.lorebooks.refs), char.lorebooks.refs);
-}
-
-export async function getCharacterScripts(characterId: string): Promise<Script[]> {
-    const char = await getCharacter(characterId);
-    if (!char) return [];
-    return sortByRefs(Object.values(char.scripts.refs), char.scripts.refs);
-}
-
 export async function loadCharacters(): Promise<void> {
     const settings = await getAppSettings();
     const list = await CharacterService.list();
@@ -98,25 +85,6 @@ export async function selectCharacter(
         multiRoomCharacters.set(character.id, character);
     }
     activeCharacterId.set(character.id);
-
-    const moduleIds = Object.keys(character.modules.refs);
-    const moduleEntries = await Promise.all(
-        moduleIds.map(async (id) => [id, await ModuleService.get(id)] as const)
-    );
-    if (!isCurrent()) return;
-
-    const staleModuleRefs: Record<string, undefined> = {};
-    for (const [id, mod] of moduleEntries) {
-        if (!mod) {
-            staleModuleRefs[id] = undefined;
-        }
-    }
-
-    if (Object.keys(staleModuleRefs).length > 0) {
-        await updateCharacter(characterId, {
-            modules: { refs: staleModuleRefs }
-        });
-    }
 }
 
 export function clearActiveCharacter(): void {
@@ -348,7 +316,7 @@ export async function deleteCharacterCharJS(characterId: string, charjsId: strin
 
 // ─── Character-owned Folder & Item Management ──────────────────────
 
-export type CharacterFolderType = 'lorebooks' | 'scripts' | 'modules' | 'charjs' | 'assets';
+export type CharacterFolderType = 'lorebooks' | 'scripts' | 'charjs' | 'assets';
 
 export async function createCharacterFolder(
     characterId: string,

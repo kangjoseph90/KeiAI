@@ -1,6 +1,6 @@
 import type { ToggleControlItem, ToggleItem, TogglePanel } from '$lib/types/toggle';
 import { generateId } from '$lib/utils/id';
-import { compareSortOrder } from '$lib/utils/ordering';
+import { compareSortOrder, listItems } from '$lib/utils/ordering';
 import { sortOrder } from '../utils';
 
 export function readRisuTogglePanel(value: string): TogglePanel {
@@ -56,7 +56,7 @@ function appendLevel(panel: TogglePanel, parentId: string | undefined, lines: st
         ...Object.values(panel.folders)
             .filter((folder) => folder.parentId === parentId)
             .map((folder) => ({ kind: 'folder' as const, value: folder })),
-        ...Object.values(panel.refs)
+        ...listItems(panel)
             .filter((item) => item.folderId === parentId)
             .map((item) => ({ kind: 'item' as const, value: item }))
     ].sort((a, b) => compareSortOrder(a.value.sortOrder, b.value.sortOrder));

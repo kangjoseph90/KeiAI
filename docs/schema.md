@@ -150,7 +150,7 @@ Lorebook, regex script, CharJS는 독립 소유 관계가 아니다. Character/C
 |---|---|
 | `Room -> Character` | 방에 참여한 캐릭터 목록 |
 | `Chat -> Persona` | 채팅별 유저 페르소나 목록 |
-| `Character/Preset/Room/Chat -> Module` | 실행 컨텍스트별 모듈 활성화 |
+| `Settings -> Module` | 전역 모듈 목록, 순서 및 활성화 |
 | `MessageSwipe -> speakerId/speakerName` | 당시 화자 히스토리 |
 
 `MessageSwipe.speakerId`는 정리하지 않는다. 대상 캐릭터/페르소나가 삭제되어도 메시지는 `speakerName`으로 표시하고 아바타만 기본값으로 degrade한다.

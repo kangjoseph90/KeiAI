@@ -6,7 +6,7 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
-import { defaultFileFields, type FileItem } from './resource';
+import { defaultFileFields, hydrateOwnedItems, type FileItem } from './resource';
 import {
     cascadeDeleteChildren,
     getCascadeTables,
@@ -48,11 +48,7 @@ const defaultFields: RoomFields = {
 
 export function parseFields(record: RoomRecord): RoomFields {
     const fields = deepMerge(defaultFields, record.data as DeepPartial<RoomFields>);
-
-    for (const [id, ref] of Object.entries(fields.files.refs)) {
-        fields.files.refs[id] = deepMerge(defaultFileFields, ref) as FileItem;
-    }
-
+    fields.files.refs = hydrateOwnedItems(fields.files.refs, defaultFileFields);
     return fields;
 }
 

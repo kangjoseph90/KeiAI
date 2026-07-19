@@ -9,7 +9,7 @@ export interface KeiCharacterPackageV1 {
     avatar?: KeiAssetPayload;
 }
 
-export type KeiCharacterPayload = Omit<CharacterFields, 'modules'>;
+export type KeiCharacterPayload = CharacterFields;
 
 export interface SerializedKeiCharacterPackageV1 extends Omit<
     KeiCharacterPackageV1,

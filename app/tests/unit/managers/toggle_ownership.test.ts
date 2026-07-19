@@ -10,7 +10,7 @@ const { mockGetActivePreset, mockGetModule, mockSaveModuleToggleItem, mockSavePr
         mockSavePresetToggleItem: vi.fn()
     }));
 
-vi.mock('$lib/stores/content/merged', () => ({ getActiveModuleIds: vi.fn() }));
+vi.mock('$lib/stores/content/merged', () => ({ getActiveModules: vi.fn() }));
 vi.mock('$lib/stores/content/preset', () => ({
     getActivePreset: mockGetActivePreset,
     savePresetToggleItem: mockSavePresetToggleItem

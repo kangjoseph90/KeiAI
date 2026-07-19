@@ -124,8 +124,7 @@ L0 (Global):     appSettings, activeUser, pbConnected
 L1 (Workspace):  characters, personas, presets, modules, plugins
 L2 (Room):       activeRoom, roomCharacters, chats
 L3 (Chat):       activeChat, messages, chatPersonas
-Studio:          activeCharacter, characterModules
-Studio:          activeModule
+Studio:          activeCharacter, activeModule
 Task:            chatTasks (Map<chatId, ChatTask>) — execution state (status, error) in stores/tasks/
 ```
 

@@ -5,6 +5,7 @@
     import { getErrorMessage } from '$lib/types/errors';
     import type { ToggleItem, ToggleOwner, TogglePanel } from '$lib/types/toggle';
     import { toast } from '$lib/ui';
+    import { listItems } from '$lib/utils/ordering';
 
     interface Props {
         panel: TogglePanel;
@@ -31,7 +32,7 @@
 </script>
 
 <EntityList
-    entities={Object.values(panel.refs)}
+    entities={listItems(panel)}
     config={panel}
     mode="browse"
     layout="list"

@@ -69,7 +69,7 @@
         loadLocalUsers,
         switchLocalUser,
         createAndSwitchLocalUser,
-        getActiveModulesForCharacter
+        selectActiveModules
     } from '$lib/stores';
     import { appConfirm, characterPickerOpen, toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
@@ -106,14 +106,8 @@
     let syncIconState = $state<SyncIndicatorState>('idle');
     let syncIconStartedAt = 0;
 
-    const toggleCharacter = $derived(
-        $roomCharacters.find((character) => character.id === $chatSelections?.characterId) ?? null
-    );
     const toggleSources = $derived(
-        resolveToggleSources(
-            $activePreset,
-            getActiveModulesForCharacter(toggleCharacter, $appSettings, $modules)
-        ).filter(
+        resolveToggleSources($activePreset, selectActiveModules($appSettings, $modules)).filter(
             (source) =>
                 Object.keys(source.panel.refs).length > 0 ||
                 Object.keys(source.panel.folders).length > 0

@@ -55,10 +55,6 @@
 
     let { moduleId, moduleTab }: Props = $props();
 
-    const lorebooks = $derived($activeModule ? Object.values($activeModule.lorebooks.refs) : []);
-    const scripts = $derived($activeModule ? Object.values($activeModule.scripts.refs) : []);
-    const charJS = $derived($activeModule ? Object.values($activeModule.charjs.refs) : []);
-
     type ExportButton = 'risu-charx' | 'risu-legacy' | 'keimodule-light' | 'keimodule-baked';
     let activeTab = $state<ModuleStudioTab>('profile');
     let exporting = $state<ExportButton | null>(null);
@@ -177,7 +173,6 @@
                     />
                 {:else if activeTab === 'lorebooks'}
                     <LorebooksTab
-                        {lorebooks}
                         config={$activeModule.lorebooks}
                         onSave={async (item) => {
                             await saveModuleLorebook($activeModule!.id, item);
@@ -208,8 +203,6 @@
                     />
                 {:else if activeTab === 'scripts'}
                     <ScriptsTab
-                        {scripts}
-                        {charJS}
                         scriptsConfig={$activeModule.scripts}
                         charjsConfig={$activeModule.charjs}
                         onSaveScript={async (item) => {

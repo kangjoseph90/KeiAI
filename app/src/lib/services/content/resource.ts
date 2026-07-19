@@ -1,5 +1,6 @@
 import type { LLMRole } from '$lib/types/models/llm';
 import type { OrderedRef } from '$lib/types/refs';
+import { deepMerge } from '$lib/utils/defaults';
 
 export interface LorebookFields {
     name: string;
@@ -89,3 +90,24 @@ export const defaultFileFields: FileFields = {
     path: '',
     content: ''
 };
+
+/**
+ * Applies current defaults to parent-owned items loaded from storage.
+ */
+export function hydrateOwnedItems<F extends object>(
+    refs: Record<string, OrderedRef & F>,
+    defaults: F
+): Record<string, OrderedRef & F> {
+    const hydrated: Record<string, OrderedRef & F> = {};
+
+    for (const [id, item] of Object.entries(refs)) {
+        hydrated[id] = {
+            ...deepMerge(defaults, item),
+            id,
+            sortOrder: item.sortOrder,
+            ...(item.folderId === undefined ? {} : { folderId: item.folderId })
+        };
+    }
+
+    return hydrated;
+}

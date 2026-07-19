@@ -5,6 +5,7 @@ import type { AssetRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import { listItems } from '$lib/utils/ordering';
 import { buffer } from './record_buffer';
 import {
     cascadeDeleteChildren,
@@ -19,6 +20,7 @@ import {
     defaultLorebookFields,
     defaultScriptFields,
     defaultCharJSFields,
+    hydrateOwnedItems,
     type Lorebook,
     type Script,
     type CharJS
@@ -69,19 +71,9 @@ const defaultModuleFields: ModuleFields = {
 
 function parseFields(record: ModuleRecord): ModuleFields {
     const fields = deepMerge(defaultModuleFields, record.data as DeepPartial<ModuleFields>);
-
-    for (const [id, ref] of Object.entries(fields.lorebooks.refs)) {
-        fields.lorebooks.refs[id] = deepMerge(defaultLorebookFields, ref) as Lorebook;
-    }
-
-    for (const [id, ref] of Object.entries(fields.scripts.refs)) {
-        fields.scripts.refs[id] = deepMerge(defaultScriptFields, ref) as Script;
-    }
-
-    for (const [id, ref] of Object.entries(fields.charjs.refs)) {
-        fields.charjs.refs[id] = deepMerge(defaultCharJSFields, ref) as CharJS;
-    }
-
+    fields.lorebooks.refs = hydrateOwnedItems(fields.lorebooks.refs, defaultLorebookFields);
+    fields.scripts.refs = hydrateOwnedItems(fields.scripts.refs, defaultScriptFields);
+    fields.charjs.refs = hydrateOwnedItems(fields.charjs.refs, defaultCharJSFields);
     return fields;
 }
 
@@ -95,9 +87,7 @@ function assetOwner(record: ModuleRecord): AssetOwner {
 }
 
 function collectAssetFields(fields: ModuleFields): AssetFields[] {
-    return Object.values(fields.assets.refs).filter((asset): asset is AssetRef =>
-        Boolean(asset?.hash)
-    );
+    return listItems(fields.assets).filter((asset): asset is AssetRef => Boolean(asset?.hash));
 }
 
 // ─── Service ──────────────────────────────────────────────────────────

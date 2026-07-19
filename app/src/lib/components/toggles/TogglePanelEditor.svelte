@@ -26,7 +26,7 @@
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
     import { generateId } from '$lib/utils/id';
-    import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateSortOrder, listItems } from '$lib/utils/ordering';
 
     type ToggleItemType = 'checkbox' | 'select' | 'text' | 'textarea' | 'caption' | 'divider';
 
@@ -238,7 +238,7 @@
     </ListActionBar>
 
     <EntityList
-        entities={Object.values(panel.refs)}
+        entities={listItems(panel)}
         config={panel}
         mode="manage"
         layout="list"

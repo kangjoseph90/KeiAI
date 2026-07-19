@@ -1,11 +1,11 @@
-import { ChatService } from '$lib/services/content/chat';
-import { RoomService } from '$lib/services/content/room';
-import { SettingsService } from '$lib/services/content/settings';
 import { defaultFileFields, type FileItem } from '$lib/services/content/resource';
+import { getChat, saveChatFile } from '$lib/stores/content/chat';
+import { getRoom, saveRoomFile } from '$lib/stores/content/room';
+import { getAppSettings, saveGlobalFile } from '$lib/stores/content/settings';
 import { AppError } from '$lib/types/errors';
 import type { EntityListConfig } from '$lib/types/refs';
 import { generateId } from '$lib/utils/id';
-import { generateSortOrder } from '$lib/utils/ordering';
+import { generateSortOrder, listItems } from '$lib/utils/ordering';
 import type { FileNamespace, WorkflowInput, WorkflowNodeEvent } from '../types';
 import type { FileReadNode, FileWriteNode, WorkflowNodeExecutionContext } from '../types';
 import {
@@ -40,7 +40,7 @@ export async function executeFileReadNode({
     }
 
     const path = normalizePath(workflowValueToString(pathResult.value));
-    const file = Object.values(target.files.refs).find((item) => item.path === path);
+    const file = listItems(target.files).find((item) => item.path === path);
     if (!file) throw new AppError('NOT_FOUND', `File not found: ${node.namespace}:${path}`);
 
     output.emit(0, createWorkflowValueEvent(file.content));
@@ -65,7 +65,7 @@ export async function executeFileWriteNode({
 
     const path = normalizePath(workflowValueToString(pathResult.value));
     const content = workflowValueToString(contentResult.value);
-    const existing = Object.values(target.files.refs).find((item) => item.path === path);
+    const existing = listItems(target.files).find((item) => item.path === path);
     const file: FileItem = existing
         ? { ...existing, content, id: existing.id }
         : {
@@ -98,38 +98,32 @@ async function resolveNamespace(
 ): Promise<ResolvedFileOwner> {
     switch (namespace) {
         case 'global': {
-            const settings = await SettingsService.get();
+            const settings = await getAppSettings();
             return {
                 files: settings.files,
-                save: async (file) => {
-                    await SettingsService.update({ files: { refs: { [file.id]: file } } });
-                }
+                save: saveGlobalFile
             };
         }
         case 'room': {
             if (!ctx?.roomId) {
                 throw new AppError('INVALID_INPUT', 'Room file namespace requires ctx.roomId');
             }
-            const room = await RoomService.get(ctx.roomId);
+            const room = await getRoom(ctx.roomId);
             if (!room) throw new AppError('NOT_FOUND', `Room not found: ${ctx.roomId}`);
             return {
                 files: room.files,
-                save: async (file) => {
-                    await RoomService.update(room.id, { files: { refs: { [file.id]: file } } });
-                }
+                save: (file) => saveRoomFile(room.id, file)
             };
         }
         case 'chat': {
             if (!ctx?.chatId) {
                 throw new AppError('INVALID_INPUT', 'Chat file namespace requires ctx.chatId');
             }
-            const chat = await ChatService.get(ctx.chatId);
+            const chat = await getChat(ctx.chatId);
             if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${ctx.chatId}`);
             return {
                 files: chat.files,
-                save: async (file) => {
-                    await ChatService.update(chat.id, { files: { refs: { [file.id]: file } } });
-                }
+                save: (file) => saveChatFile(chat.id, file)
             };
         }
     }

@@ -15,7 +15,7 @@
     import CharJSItem from '../../modules/CharJSItem.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
-    import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateSortOrder, listItems } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
 
     interface FolderCallbacks {
@@ -29,10 +29,8 @@
     }
 
     interface Props {
-        scripts: Script[];
-        charJS: CharJS[];
-        scriptsConfig: EntityListConfig;
-        charjsConfig: EntityListConfig;
+        scriptsConfig: EntityListConfig<Script>;
+        charjsConfig: EntityListConfig<CharJS>;
         onSaveScript: (item: Script) => void | Promise<void>;
         onDeleteScript: (id: string) => void | Promise<void>;
         onSaveCharJS: (item: CharJS) => void | Promise<void>;
@@ -42,8 +40,6 @@
     }
 
     let {
-        scripts,
-        charJS,
         scriptsConfig,
         charjsConfig,
         onSaveScript,
@@ -80,12 +76,12 @@
     }
 
     async function handleUpdateScript(id: string, changes: DeepPartial<Script>) {
-        const item = scripts.find((script) => script.id === id);
+        const item = scriptsConfig.refs[id];
         if (item) await onSaveScript({ ...item, ...changes, id });
     }
 
     async function handleUpdateCharJS(id: string, changes: DeepPartial<CharJS>) {
-        const item = charJS.find((script) => script.id === id);
+        const item = charjsConfig.refs[id];
         if (item) await onSaveCharJS({ ...item, ...changes, id });
     }
 </script>
@@ -104,7 +100,7 @@
                 </ListActionBar>
             </div>
             <EntityList
-                entities={scripts}
+                entities={listItems(scriptsConfig)}
                 config={scriptsConfig}
                 layout="list"
                 onCreateFolder={scriptFolders.onCreateFolder}
@@ -140,7 +136,7 @@
                 </ListActionBar>
             </div>
             <EntityList
-                entities={charJS}
+                entities={listItems(charjsConfig)}
                 config={charjsConfig}
                 layout="list"
                 onCreateFolder={charjsFolders.onCreateFolder}

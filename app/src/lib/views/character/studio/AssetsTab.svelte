@@ -20,6 +20,7 @@
     import { getErrorMessage } from '$lib/types/errors';
     import { appDialog } from '$lib/adapters/dialog';
     import { appConfirm, toast } from '$lib/ui';
+    import { listItems } from '$lib/utils/ordering';
 
     interface Props {
         character: Character;
@@ -30,8 +31,6 @@
     let editingId = $state<string | null>(null);
     let editName = $state('');
     let busyAction = $state<string | null>(null);
-
-    const assetRefs = $derived(Object.values(character.assets.refs));
 
     function startRename(ref: AssetRef) {
         editingId = ref.id;
@@ -116,7 +115,7 @@
         </Button>
     </ListActionBar>
     <EntityList
-        entities={assetRefs}
+        entities={listItems(character.assets)}
         config={character.assets}
         layout="list"
         onCreateFolder={(name, parentId, sortOrder) =>

@@ -5,6 +5,7 @@ import type { AssetRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import { listItems } from '$lib/utils/ordering';
 import { buffer } from './record_buffer';
 import {
     cascadeDeleteChildren,
@@ -14,7 +15,13 @@ import {
 } from './cascade';
 import { AssetService, type AssetOwner } from '../asset';
 import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
-import { defaultFileFields, defaultLorebookFields, type FileItem, type Lorebook } from './resource';
+import {
+    defaultFileFields,
+    defaultLorebookFields,
+    hydrateOwnedItems,
+    type FileItem,
+    type Lorebook
+} from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -60,15 +67,8 @@ const defaultFields: ChatFields = {
 
 function parseFields(record: ChatRecord): ChatFields {
     const fields = deepMerge(defaultFields, record.data as DeepPartial<ChatFields>);
-
-    for (const [id, ref] of Object.entries(fields.lorebooks.refs)) {
-        fields.lorebooks.refs[id] = deepMerge(defaultLorebookFields, ref) as Lorebook;
-    }
-
-    for (const [id, ref] of Object.entries(fields.files.refs)) {
-        fields.files.refs[id] = deepMerge(defaultFileFields, ref) as FileItem;
-    }
-
+    fields.lorebooks.refs = hydrateOwnedItems(fields.lorebooks.refs, defaultLorebookFields);
+    fields.files.refs = hydrateOwnedItems(fields.files.refs, defaultFileFields);
     return fields;
 }
 
@@ -82,9 +82,7 @@ function assetOwner(record: ChatRecord): AssetOwner {
 }
 
 function collectAssetFields(fields: ChatFields): AssetFields[] {
-    return Object.values(fields.inlays.refs).filter((asset): asset is AssetRef =>
-        Boolean(asset?.hash)
-    );
+    return listItems(fields.inlays).filter((asset): asset is AssetRef => Boolean(asset?.hash));
 }
 
 // ─── Service ──────────────────────────────────────────────────────────

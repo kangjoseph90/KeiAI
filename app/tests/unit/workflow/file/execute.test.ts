@@ -11,16 +11,24 @@ const mocks = vi.hoisted(() => ({
     updateChat: vi.fn()
 }));
 
-vi.mock('$lib/services/content/settings', () => ({
-    SettingsService: { get: mocks.getSettings, update: mocks.updateSettings }
+vi.mock('$lib/stores/content/settings', () => ({
+    getAppSettings: mocks.getSettings,
+    saveGlobalFile: (file: unknown) =>
+        mocks.updateSettings({
+            files: { refs: { [(file as { id: string }).id]: file } }
+        })
 }));
 
-vi.mock('$lib/services/content/room', () => ({
-    RoomService: { get: mocks.getRoom, update: mocks.updateRoom }
+vi.mock('$lib/stores/content/room', () => ({
+    getRoom: mocks.getRoom,
+    saveRoomFile: (roomId: string, file: unknown) =>
+        mocks.updateRoom(roomId, { files: { refs: { [(file as { id: string }).id]: file } } })
 }));
 
-vi.mock('$lib/services/content/chat', () => ({
-    ChatService: { get: mocks.getChat, update: mocks.updateChat }
+vi.mock('$lib/stores/content/chat', () => ({
+    getChat: mocks.getChat,
+    saveChatFile: (chatId: string, file: unknown) =>
+        mocks.updateChat(chatId, { files: { refs: { [(file as { id: string }).id]: file } } })
 }));
 
 vi.mock('$lib/utils/id', () => ({
@@ -28,7 +36,8 @@ vi.mock('$lib/utils/id', () => ({
 }));
 
 vi.mock('$lib/utils/ordering', () => ({
-    generateSortOrder: () => 'a0'
+    generateSortOrder: () => 'a0',
+    listItems: <T>(config: { refs: Record<string, T> }) => Object.values(config.refs)
 }));
 
 describe('workflow file executors', () => {

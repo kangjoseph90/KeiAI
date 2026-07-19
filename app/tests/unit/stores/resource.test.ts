@@ -35,7 +35,6 @@ const character: Character = {
     greetings: {},
     defaultVariables: {},
     allowLowLevel: false,
-    modules: emptyList(),
     lorebooks: emptyList(),
     scripts: emptyList(),
     charjs: emptyList(),

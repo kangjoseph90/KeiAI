@@ -190,9 +190,9 @@ function collectBuiltInMacros(): Map<string, Macro[]> {
         if (!ctx.chatId || !key) return '';
         return (await getChatVariable(ctx.chatId, key)) ?? '';
     });
-    add('gettoggle', async ([key], ctx) => {
+    add('gettoggle', async ([key]) => {
         if (!key) return '';
-        return getToggleMacroValue(key, ctx.characterId);
+        return getToggleMacroValue(key);
     });
     add('setvar', async ([key, value], ctx) => {
         if (!ctx.chatId || !key) return '';

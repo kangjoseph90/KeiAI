@@ -15,7 +15,7 @@ import type { LLMModelConfig, LLMParameters, LLMType } from '$lib/types/models/l
 import type { EntityListConfig } from '$lib/types/refs';
 import type { WorkflowDefinition } from '$lib/workflow/types';
 import type { TogglePanel } from '$lib/types/toggle';
-import { defaultScriptFields, type Script } from './resource';
+import { defaultScriptFields, hydrateOwnedItems, type Script } from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -59,11 +59,7 @@ export const defaultPresetFields: PresetFields = {
 
 function parseFields(record: PresetRecord): PresetFields {
     const fields = deepMerge(defaultPresetFields, record.data as DeepPartial<PresetFields>);
-
-    for (const [id, ref] of Object.entries(fields.scripts.refs)) {
-        fields.scripts.refs[id] = deepMerge(defaultScriptFields, ref) as Script;
-    }
-
+    fields.scripts.refs = hydrateOwnedItems(fields.scripts.refs, defaultScriptFields);
     return fields;
 }
 

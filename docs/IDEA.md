@@ -147,8 +147,9 @@
 - 참조 관계 (N:M, Shared Reference):
   - 소비자의 암호화 Blob에 `EntityListConfig<ResourceRef>`로 참조만 보유. 삭제 영향 없음.
   - enabled 플래그: 동일 자원이라도 컨텍스트마다 개별 ON/OFF.
-  - 대상: 룸의 캐릭터, 채팅의 페르소나, 각 컨텍스트의 모듈.
-  - 예: `room.characters` (참조, ResourceRef), `chat.personas` (참조, ResourceRef), `characters.modules` (참조, ResourceRef), `characters.lorebooks` (인라인 Lorebook).
+  - 대상: 룸의 캐릭터, 채팅의 페르소나.
+  - 예: `room.characters` (참조, ResourceRef), `chat.personas` (참조, ResourceRef), `characters.lorebooks` (인라인 Lorebook).
+  - 모듈 활성화와 순서는 전역 `settings.modules`에서만 관리한다.
   - 메시지의 `speakerId/speakerName`은 히스토리 보존용 약한 참조. 삭제된 캐릭터/페르소나라도 메시지 표시는 `speakerName`으로 유지한다.
 - 폴더 관리:
   - 자식의 소속 폴더: refs[id].folderId로 표현.

@@ -53,7 +53,6 @@ export const isMultiRoom = readonly(StoreState.isMultiRoom);
 export const roomCharacters = readonly(StoreState.roomCharacters);
 export const multiRoomCharacters = readonly(StoreState.multiRoomCharacters);
 export const multiRoomPersonas = readonly(StoreState.multiRoomPersonas);
-export const characterModules = readonly(StoreState.characterModules);
 export const roomChats = readonly(StoreState.roomChats);
 export const activeChat = readonly(StoreState.activeChat);
 export const activeChatId = readonly(StoreState.activeChatId);

@@ -14,11 +14,10 @@ import {
     deleteMessage,
     getActivePreset,
     getCharacter,
-    getActiveModuleIds,
+    getActiveModules,
     getChat,
     getLastMessage,
     getMessage,
-    getModule,
     getRoom,
     updateChat,
     updateMessage
@@ -32,12 +31,11 @@ vi.mock('$lib/stores', () => ({
     createMessage: vi.fn(),
     deleteMessage: vi.fn(),
     getActivePreset: vi.fn(),
-    getActiveModuleIds: vi.fn(),
+    getActiveModules: vi.fn(),
     getCharacter: vi.fn(),
     getChat: vi.fn(),
     getLastMessage: vi.fn(),
     getMessage: vi.fn(),
-    getModule: vi.fn(),
     getRoom: vi.fn(),
     updateChat: vi.fn(),
     updateMessage: vi.fn()
@@ -91,7 +89,6 @@ describe('ChatManager', () => {
         greetings: { greet1: { id: 'greet1', content: 'Hello', sortOrder: 'a' } },
         defaultVariables: { mood: 'calm', shared: 'alpha' },
         allowLowLevel: false,
-        modules: { refs: {}, folders: {} },
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },
         charjs: { refs: {}, folders: {} },
@@ -118,12 +115,6 @@ describe('ChatManager', () => {
         charjs: { refs: {}, folders: {} },
         assets: { refs: {}, folders: {} }
     };
-    const characterModule: Module = {
-        ...globalModule,
-        id: 'mod-character',
-        name: 'Character Module',
-        defaultVariables: { shared: 'character-module', characterModuleOnly: 'yes' }
-    };
     const mockPreset: Preset = {
         id: 'preset-1',
         name: 'Preset',
@@ -146,8 +137,7 @@ describe('ChatManager', () => {
             if (id === 'char-2') return charTwo;
             return null;
         });
-        vi.mocked(getActiveModuleIds).mockResolvedValue(new Set());
-        vi.mocked(getModule).mockResolvedValue(null);
+        vi.mocked(getActiveModules).mockResolvedValue([]);
     });
 
     describe('syncChatGreetings', () => {
@@ -317,16 +307,7 @@ describe('ChatManager', () => {
 
         it('merges preset, active module, and character defaults in specificity order', async () => {
             vi.mocked(getActivePreset).mockReturnValue(mockPreset);
-            vi.mocked(getActiveModuleIds).mockImplementation(async (characterId?: string) => {
-                if (characterId === 'char-1') return new Set(['mod-global', 'mod-character']);
-                if (characterId === 'char-2') return new Set(['mod-global']);
-                return new Set();
-            });
-            vi.mocked(getModule).mockImplementation(async (id: string) => {
-                if (id === 'mod-global') return globalModule;
-                if (id === 'mod-character') return characterModule;
-                return null;
-            });
+            vi.mocked(getActiveModules).mockResolvedValue([globalModule]);
 
             const variables = await getChatDefaultVariables('chat-1');
 
@@ -335,7 +316,6 @@ describe('ChatManager', () => {
                 shared: 'beta',
                 presetOnly: 'yes',
                 moduleOnly: 'yes',
-                characterModuleOnly: 'yes',
                 energy: 'high'
             });
         });

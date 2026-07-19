@@ -5,6 +5,7 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import type { AssetRef, EntityListConfig } from '$lib/types/refs';
 import { generateId } from '$lib/utils/id';
+import { listItems } from '$lib/utils/ordering';
 import { buffer } from './record_buffer';
 import { AssetService, type AssetOwner } from '../asset';
 import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
@@ -53,8 +54,8 @@ function assetOwner(record: PersonaRecord): AssetOwner {
 }
 
 function collectAssetFields(fields: PersonaFields): AssetFields[] {
-    return [fields.avatar, ...Object.values(fields.assets.refs)].filter(
-        (asset): asset is AssetFields => Boolean(asset?.hash)
+    return [fields.avatar, ...listItems(fields.assets)].filter((asset): asset is AssetFields =>
+        Boolean(asset?.hash)
     );
 }
 
