@@ -27,6 +27,7 @@ const mockBatch = {
 
 vi.mock('$lib/adapters/pb', () => ({
     pb: {
+        baseUrl: 'https://sync.example.test',
         authStore: { isValid: true },
         collection: vi.fn(() => mockCollection),
         filter: vi.fn((value: string) => value),
@@ -146,7 +147,18 @@ describe('MultiRecordSyncEngine', () => {
             expect.objectContaining({ id: 'member-1', roomId: 'room-1' }),
             { origin: 'sync' }
         );
-        expect(appKV.set).toHaveBeenCalledWith('lastSync_multi_meta_user-1', '2500');
+        expect(appKV.set).toHaveBeenCalledWith(
+            'lastSync_multi_meta_user-1_server_https%3A%2F%2Fsync.example.test',
+            '2500'
+        );
+    });
+
+    it('resets the current user and server metadata cursor', async () => {
+        await service.resetCursor(userId);
+
+        expect(appKV.remove).toHaveBeenCalledWith(
+            'lastSync_multi_meta_user-1_server_https%3A%2F%2Fsync.example.test'
+        );
     });
 
     it('pushes owned room indexes and writable members', async () => {
@@ -169,7 +181,10 @@ describe('MultiRecordSyncEngine', () => {
         expect(mockBatchCollection.upsert).toHaveBeenCalledWith(
             expect.objectContaining({ id: 'member-2', userId: 'user-2' })
         );
-        expect(appKV.set).toHaveBeenCalledWith('lastSync_multi_meta_user-1', '2200');
+        expect(appKV.set).toHaveBeenCalledWith(
+            'lastSync_multi_meta_user-1_server_https%3A%2F%2Fsync.example.test',
+            '2200'
+        );
     });
 
     it('does not push local member write events for non-owned rooms', async () => {

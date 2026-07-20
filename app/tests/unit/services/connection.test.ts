@@ -8,6 +8,7 @@ const appHttpMock = vi.hoisted(() => ({
 }));
 const pbMock = vi.hoisted(() => ({
     baseUrl: 'https://default.example.test',
+    cancelRequest: vi.fn(),
     authStore: { clear: vi.fn() }
 }));
 const userServiceMock = vi.hoisted(() => ({

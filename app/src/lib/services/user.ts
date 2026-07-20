@@ -9,7 +9,7 @@
 
 import { appUser, type UserRecord } from '$lib/adapters/user';
 export type { UserRecord };
-import { clearSession, getActiveSession, setUserSession } from './session';
+import { clearSession, getActiveSession, hasActiveSession, setUserSession } from './session';
 export type { MultiRoomSession, Session, UserSession } from './session';
 import { localDB, TABLES } from '$lib/adapters/db';
 import { appMulti } from '$lib/adapters/multi';
@@ -20,9 +20,9 @@ import { clock } from '$lib/utils/clock';
 import { minidenticon } from 'minidenticons';
 import { AppError } from '$lib/types/errors';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
-import { pb } from '$lib/adapters/pb';
 import { buffer } from './content/record_buffer';
 import { AssetService } from './asset';
+import { purgeOrphanScopes } from './purge';
 import type { UserConnectionSettings } from '$lib/types/connections';
 import {
     applyUserConnectionRuntime,
@@ -79,10 +79,7 @@ export class UserService {
      * Persist the active user ID and activate the in-memory session.
      * Pass an empty string to clear the KV (e.g. before page reload for new user creation).
      */
-    static async setActiveUser(
-        userId: string,
-        options: { preserveAuth?: boolean } = {}
-    ): Promise<void> {
+    static async setActiveUser(userId: string): Promise<void> {
         if (!userId) return this.clearActiveUser();
         const stored = await appUser.getUser(userId);
         if (!stored) {
@@ -96,16 +93,12 @@ export class UserService {
         });
         await appKV.set('activeUserId', userId);
         applyUserConnectionRuntime(fields.connections);
-        if (!options.preserveAuth) {
-            pb.authStore.clear();
-        }
     }
 
     static async clearActiveUser(): Promise<void> {
         clearSession();
         await appKV.set('activeUserId', '');
         resetConnectionRuntime();
-        pb.authStore.clear();
     }
 
     /** Get a user view by local user ID. */
@@ -291,27 +284,25 @@ export class UserService {
         await Promise.all(TABLES.map((table) => buffer.flushTable(table)));
 
         const dbPromises = TABLES.map((table) =>
-            localDB.deleteByIndex(table, 'scopeId', userId, { origin: 'sync' })
+            localDB.deleteByScope(table, userScope, { origin: 'sync' })
         );
-        const kvPromises = [
-            appKV.remove(`lastSync_records_user_${userId}`),
-            appKV.remove(`lastSync_assets_user_${userId}`),
-            appKV.remove(`lastSync_multi_meta_${userId}`)
-        ];
+
+        const cursorKeys = await appKV.keys('lastSync_');
+        const userCursorKeys = cursorKeys.filter((key) => key.includes(`_${userId}_`));
+        const cursorDeletes = userCursorKeys.map((key) => appKV.remove(key));
 
         await Promise.all([
             ...dbPromises,
-            ...kvPromises,
+            ...cursorDeletes,
             appMulti.purgeUserLocal(userId, { origin: 'sync' })
         ]);
+        await purgeOrphanScopes();
 
-        try {
+        if (hasActiveSession()) {
             const { userId: currentUserId } = getActiveSession();
             if (currentUserId === userId) {
                 await this.clearActiveUser();
             }
-        } catch (error) {
-            // Ignore
         }
     }
 }

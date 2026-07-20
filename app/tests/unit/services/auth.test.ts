@@ -1,23 +1,62 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthService } from '$lib/services/auth';
 
+const sessionMocks = vi.hoisted(() => {
+    const values = new Map<string, string>();
+    const authStore = {
+        token: '',
+        record: null as Record<string, unknown> | null,
+        isValid: false,
+        onChange: vi.fn(),
+        save: vi.fn((token: string, record: Record<string, unknown>) => {
+            authStore.token = token;
+            authStore.record = record;
+            authStore.isValid = Boolean(token);
+        }),
+        clear: vi.fn(() => {
+            authStore.token = '';
+            authStore.record = null;
+            authStore.isValid = false;
+        })
+    };
+
+    return { values, authStore };
+});
+
 const mockCollection = {
     create: vi.fn(),
     update: vi.fn(),
-    authWithPassword: vi.fn()
+    authWithPassword: vi.fn(),
+    authRefresh: vi.fn()
 };
 
 vi.mock('$lib/adapters/pb', () => ({
     pb: {
-        authStore: {
-            isValid: false,
-            record: null,
-            onChange: vi.fn(),
-            clear: vi.fn()
-        },
+        baseUrl: 'https://sync.example.test',
+        authStore: sessionMocks.authStore,
+        cancelRequest: vi.fn(),
         send: vi.fn(),
         collection: vi.fn(() => mockCollection),
         files: { getURL: vi.fn() }
+    }
+}));
+
+vi.mock('$lib/adapters/kv', () => ({
+    appKV: {
+        get: vi.fn((key: string) => Promise.resolve(sessionMocks.values.get(key) ?? null)),
+        set: vi.fn((key: string, value: string) => {
+            sessionMocks.values.set(key, value);
+            return Promise.resolve();
+        }),
+        remove: vi.fn((key: string) => {
+            sessionMocks.values.delete(key);
+            return Promise.resolve();
+        }),
+        keys: vi.fn((prefix?: string) =>
+            Promise.resolve(
+                [...sessionMocks.values.keys()].filter((key) => !prefix || key.startsWith(prefix))
+            )
+        )
     }
 }));
 
@@ -125,20 +164,26 @@ vi.mock('$lib/services/session', () => ({
 }));
 
 vi.mock('$lib/services/sync', () => ({
-    DataRecordSyncEngine: { resetCursor: vi.fn(() => Promise.resolve()) },
     AssetRecordSyncEngine: { resetCursor: vi.fn(() => Promise.resolve()) },
-    MultiRecordSyncEngine: { resetCursor: vi.fn(() => Promise.resolve()) },
     SyncManager: { stopAutoSync: vi.fn() }
 }));
 
 import { pb } from '$lib/adapters/pb';
+import { appKV } from '$lib/adapters/kv';
 import { UserService } from '$lib/services/user';
+
+function authKey(userId: string, serverUrl: string): string {
+    return `pbAuth_${userId}_${encodeURIComponent(serverUrl.replace(/\/+$/, ''))}`;
+}
 
 describe('AuthService', () => {
     beforeEach(() => {
+        sessionMocks.values.clear();
+        sessionMocks.authStore.clear();
         vi.clearAllMocks();
         mockCollection.create.mockResolvedValue({ id: 'user-123' });
         mockCollection.update.mockResolvedValue({ id: 'user-123' });
+        mockCollection.authRefresh.mockResolvedValue({});
         mockCollection.authWithPassword.mockResolvedValue({
             record: {
                 id: 'user-123',
@@ -184,6 +229,14 @@ describe('AuthService', () => {
 
         expect(mockCollection.create).not.toHaveBeenCalled();
         expect(mockCollection.authWithPassword).toHaveBeenCalledWith('kei', expect.any(String));
+    });
+
+    it('preserves network errors from password authentication', async () => {
+        const networkError = { status: 0 };
+        vi.mocked(pb.send).mockResolvedValueOnce({ salt: 'salt' });
+        mockCollection.authWithPassword.mockRejectedValueOnce(networkError);
+
+        await expect(AuthService.signIn('kei', 'password')).rejects.toBe(networkError);
     });
 
     it('recovers a device with a recovery code and resets the password', async () => {
@@ -239,10 +292,72 @@ describe('AuthService', () => {
         );
     });
 
-    it('disconnects sync without deleting local identity', async () => {
-        await AuthService.unlinkSync();
+    it('returns the local identity to local-only mode after remote account deletion', async () => {
+        await AuthService.deleteAccountWithRecoveryCode('ABCDEFGHIJKLMNOPQRSTUVWX');
 
         expect(UserService.updateUser).toHaveBeenCalledWith('user-123', { username: undefined });
         expect(pb.authStore.clear).toHaveBeenCalled();
+    });
+
+    it('cancels token refresh and removes only the current server session on logout', async () => {
+        const currentKey = authKey('user-123', 'https://sync.example.test');
+        const otherServerKey = authKey('user-123', 'https://other.example.test');
+        sessionMocks.values.set(currentKey, 'current');
+        sessionMocks.values.set(otherServerKey, 'other');
+
+        await AuthService.logout();
+
+        expect(pb.cancelRequest).toHaveBeenCalledWith('keiai-auth-refresh');
+        expect(sessionMocks.values.has(currentKey)).toBe(false);
+        expect(sessionMocks.values.get(otherServerKey)).toBe('other');
+    });
+
+    it('ignores a token refresh that finishes after logout', async () => {
+        let finishRefresh: (() => void) | undefined;
+        sessionMocks.authStore.save('current-token', { id: 'user-123' });
+        mockCollection.authRefresh.mockImplementationOnce(
+            () => new Promise<void>((resolve) => (finishRefresh = resolve))
+        );
+
+        const refresh = AuthService.refreshPbAuth({ force: true });
+        await AuthService.logout();
+        finishRefresh?.();
+
+        await expect(refresh).resolves.toBe(false);
+        expect(pb.authStore.token).toBe('');
+    });
+
+    it('stores and restores auth independently by user and server', async () => {
+        sessionMocks.authStore.save('token-one', { id: 'user-1' });
+        await AuthService.persistPbAuth('user-1', 'https://one.example.test/');
+        sessionMocks.authStore.save('token-two', { id: 'user-1' });
+        await AuthService.persistPbAuth('user-1', 'https://two.example.test');
+
+        await AuthService.restorePbAuth('user-1', 'https://one.example.test');
+
+        expect(pb.authStore.token).toBe('token-one');
+        expect(await appKV.get(authKey('user-1', 'https://two.example.test'))).toContain(
+            'token-two'
+        );
+    });
+
+    it('clears in-memory auth when the user and server have no stored session', async () => {
+        sessionMocks.authStore.save('stale-token', { id: 'user-1' });
+
+        const restored = await AuthService.restorePbAuth('user-1');
+
+        expect(restored).toBe(false);
+        expect(pb.authStore.token).toBe('');
+    });
+
+    it('removes every server session for a deleted user only', async () => {
+        sessionMocks.values.set(authKey('user-1', 'https://one.example.test'), 'one');
+        sessionMocks.values.set(authKey('user-1', 'https://two.example.test'), 'two');
+        sessionMocks.values.set(authKey('user-2', 'https://one.example.test'), 'other');
+
+        await AuthService.clearAllPbAuthForUser('user-1');
+
+        expect(sessionMocks.values.size).toBe(1);
+        expect(sessionMocks.values.has(authKey('user-2', 'https://one.example.test'))).toBe(true);
     });
 });

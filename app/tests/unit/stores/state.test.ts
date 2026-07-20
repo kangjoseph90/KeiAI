@@ -46,6 +46,7 @@ describe('Global Stores', () => {
                 id: 'u1',
                 name: 'Local',
                 avatar: '',
+                username: 'kei',
                 connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
             } as User);
             pbConnected.set(true);
@@ -57,20 +58,21 @@ describe('Global Stores', () => {
                 id: 'u1',
                 name: 'Local',
                 avatar: '',
+                username: 'kei',
                 connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
             } as User);
             pbConnected.set(false);
             expect(get(isLoggedIn)).toBe(false);
         });
 
-        it('should not be logged in if user is sync linked but pb is disconnected', () => {
+        it('should not be logged in when the local user has no linked account', () => {
             activeUser.set({
                 id: 'u1',
                 name: 'Local',
                 avatar: '',
                 connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
             } as User);
-            pbConnected.set(false);
+            pbConnected.set(true);
             expect(get(isLoggedIn)).toBe(false);
         });
     });

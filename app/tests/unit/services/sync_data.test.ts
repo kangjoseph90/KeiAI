@@ -29,6 +29,7 @@ const mockBatch = {
 // Mock Dependencies
 vi.mock('$lib/adapters/pb', () => ({
     pb: {
+        baseUrl: 'https://sync.example.test',
         authStore: { isValid: true },
         collection: vi.fn(() => mockCollection),
         filter: vi.fn((s) => s),
@@ -53,7 +54,8 @@ vi.mock('$lib/adapters/kv', () => ({
     appKV: {
         get: vi.fn(),
         set: vi.fn(),
-        remove: vi.fn()
+        remove: vi.fn(),
+        keys: vi.fn()
     }
 }));
 
@@ -94,11 +96,27 @@ describe('DataRecordSyncEngine', () => {
             identityKeyPair: {} as CryptoKeyPair
         });
         vi.mocked(hasActiveSession).mockReturnValue(true);
+        vi.mocked(appKV.keys).mockResolvedValue([]);
         (pb.authStore as unknown as { isValid: boolean }).isValid = true;
 
         vi.mocked(mockCollection.subscribe).mockResolvedValue(() => {});
         vi.mocked(mockCollection.unsubscribe).mockResolvedValue(() => {});
         vi.mocked(localDB.getUnsyncedChanges).mockResolvedValue([]);
+    });
+
+    it('resets only record cursors for the active server and user', async () => {
+        vi.mocked(appKV.keys).mockResolvedValue([
+            'lastSync_records_user-123_user_user-123_server_https%3A%2F%2Fsync.example.test',
+            'lastSync_records_user-123_user_user-123_server_https%3A%2F%2Fother.example.test',
+            'lastSync_records_user-456_user_user-456_server_https%3A%2F%2Fsync.example.test'
+        ]);
+
+        await DataRecordSyncEngine.resetCursor(mockUserId);
+
+        expect(appKV.remove).toHaveBeenCalledTimes(1);
+        expect(appKV.remove).toHaveBeenCalledWith(
+            'lastSync_records_user-123_user_user-123_server_https%3A%2F%2Fsync.example.test'
+        );
     });
 
     afterEach(() => {

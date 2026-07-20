@@ -25,6 +25,7 @@ import { BaseRecordSyncEngine, type BufferedRecordWrite } from './base';
 import { createLogger } from '$lib/adapters/logger';
 import { clock } from '$lib/utils/clock';
 import { AssetService } from '$lib/services/asset';
+import { normalizeUrl } from '$lib/utils/url';
 import {
     normalizeTimestamp,
     PAGE_SIZE,
@@ -122,13 +123,16 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
         this.subscribed = false;
     }
 
-    /**
-     * Wipe the user-scope data cursor.
-     * Call this when there is no existing local user record so the next syncAll()
-     * fetches everything from scratch.
-     */
+    /** Wipe the user's record cursors for the active server. */
     async resetCursor(userId: string): Promise<void> {
-        await appKV.remove(getSyncKey('records', 'user', userId));
+        const prefix = `lastSync_records_${userId}_`;
+        const serverSuffix = `_server_${encodeURIComponent(normalizeUrl(pb.baseUrl))}`;
+        const keys = await appKV.keys(prefix);
+        await Promise.all(
+            keys
+                .filter((key) => key.startsWith(prefix) && key.endsWith(serverSuffix))
+                .map((key) => appKV.remove(key))
+        );
     }
 
     protected override async syncRecords(): Promise<void> {
@@ -164,7 +168,13 @@ export class DataRecordSyncEngineImpl extends BaseRecordSyncEngine<DatabaseWrite
     }
 
     private async syncScope(syncScope: SyncScope): Promise<void> {
-        const syncKey = getSyncKey('records', syncScope.scope.scopeType, syncScope.scope.scopeId);
+        const { userId } = getActiveSession();
+        const syncKey = getSyncKey(
+            'records',
+            userId,
+            syncScope.scope.scopeType,
+            syncScope.scope.scopeId
+        );
         const lastSyncTime = Number.parseInt((await appKV.get(syncKey)) || '0', 10) || 0;
         let nextCursor = lastSyncTime;
         let cursorSafeToAdvance = true;

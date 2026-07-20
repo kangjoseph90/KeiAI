@@ -28,7 +28,7 @@
         dataSyncStatus,
         deleteGlobalFolder,
         isMultiRoom,
-        isSyncLinked,
+        isLoggedIn,
         loadLocalUsers,
         localUsers,
         moveGlobalItem,
@@ -308,7 +308,7 @@
         </div>
 
         <div class="flex flex-col items-center gap-2 border-t border-sidebar-border p-2">
-            {#if $isSyncLinked || $serverTransitionLocked}
+            {#if $isLoggedIn || $serverTransitionLocked}
                 <DropdownMenu.Root>
                     <DropdownMenu.Trigger>
                         <Button

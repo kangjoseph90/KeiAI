@@ -8,7 +8,9 @@
         Puzzle,
         MessageSquare,
         Languages,
-        Network
+        Network,
+        DatabaseZap,
+        Trash2
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { WorkspaceShell } from '$lib/components/layout';
@@ -21,7 +23,17 @@
         CardTitle,
         CardDescription
     } from '$lib/components/ui/card';
-    import { appSettings, updateSettings, activeRoom, activeChat } from '$lib/stores';
+    import {
+        appSettings,
+        updateSettings,
+        activeRoom,
+        activeChat,
+        deleteActiveLocalUser,
+        isLoggedIn,
+        performPurgeOrphans,
+        performResetSyncCursors,
+        serverTransitionLocked
+    } from '$lib/stores';
     import { navigate } from '$lib/router';
     import type { SettingsTab } from '$lib/router';
     import AccountSettings from './AccountSettings.svelte';
@@ -31,12 +43,13 @@
     import ChatSettings from './ChatSettings.svelte';
     import LanguageSettings from './LanguageSettings.svelte';
     import PluginsView from './PluginsView.svelte';
-    import { toast } from '$lib/ui';
+    import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
 
     let activeTab = $state<SettingsTab>('models');
     let { settingsTab }: { settingsTab?: SettingsTab } = $props();
     let settingsBusy = $state(false);
+    let maintenanceBusy = $state(false);
 
     const tabs = [
         { id: 'models', label: 'Models', icon: Cpu },
@@ -91,6 +104,61 @@
 
     function returnToTabs() {
         navigate({ view: 'settings' });
+    }
+
+    async function runMaintenance(
+        action: () => Promise<void>,
+        confirmation: Parameters<typeof appConfirm>[0],
+        successTitle?: string
+    ): Promise<void> {
+        if (maintenanceBusy) return;
+        maintenanceBusy = true;
+        try {
+            if (!(await appConfirm(confirmation))) return;
+            await action();
+            if (successTitle) toast.success({ title: successTitle });
+        } catch (error) {
+            toast.error({ title: 'Maintenance failed', description: getErrorMessage(error) });
+        } finally {
+            maintenanceBusy = false;
+        }
+    }
+
+    function handleResetSyncCursors(): void {
+        void runMaintenance(
+            performResetSyncCursors,
+            {
+                title: 'Reset sync cursors?',
+                description:
+                    'The current user will fetch all data again from this sync server. Local data is not deleted.',
+                confirmText: 'Reset'
+            },
+            'Sync cursors reset. A full sync has completed.'
+        );
+    }
+
+    function handlePurgeOrphans(): void {
+        void runMaintenance(
+            performPurgeOrphans,
+            {
+                title: 'Purge orphaned data?',
+                description:
+                    'This permanently removes local records and assets that no longer belong to an existing user or accessible multi-room.',
+                confirmText: 'Purge',
+                variant: 'destructive'
+            },
+            'Orphaned local data was purged.'
+        );
+    }
+
+    function handleDeleteLocalUser(): void {
+        void runMaintenance(deleteActiveLocalUser, {
+            title: 'Delete local user?',
+            description:
+                'This permanently deletes this user and all of their local data from this device. The remote account is not deleted.',
+            confirmText: 'Delete user',
+            variant: 'destructive'
+        });
     }
 </script>
 
@@ -215,6 +283,43 @@
                                             })}
                                     />
                                 </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Local Data Maintenance</CardTitle>
+                                <CardDescription>
+                                    Repair local sync state or permanently remove local data.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent class="space-y-3" aria-busy={maintenanceBusy}>
+                                <Button
+                                    variant="outline"
+                                    class="w-full"
+                                    disabled={maintenanceBusy ||
+                                        !$isLoggedIn ||
+                                        $serverTransitionLocked}
+                                    onclick={handleResetSyncCursors}
+                                >
+                                    <DatabaseZap class="mr-2 size-4" /> Reset Sync Cursors
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    class="w-full"
+                                    disabled={maintenanceBusy || $serverTransitionLocked}
+                                    onclick={handlePurgeOrphans}
+                                >
+                                    <Trash2 class="mr-2 size-4" /> Purge Orphaned Data
+                                </Button>
+                                <Button
+                                    variant="destructive"
+                                    class="w-full"
+                                    disabled={maintenanceBusy || $serverTransitionLocked}
+                                    onclick={handleDeleteLocalUser}
+                                >
+                                    <Trash2 class="mr-2 size-4" /> Delete Local User
+                                </Button>
                             </CardContent>
                         </Card>
                     </div>

@@ -76,9 +76,7 @@ export {
     userEmail,
     userId,
     username,
-    isCustomServer,
-    isLocalOnly,
-    isSyncLinked
+    isCustomServer
 } from './state';
 
 export type { DisplayMessage, DisplayMessageStatus, TaskStatus, TranslationTask } from './types';

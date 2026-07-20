@@ -27,6 +27,7 @@
         meta: MultiRoom | null;
         members: MultiRoomMember[];
         currentUserId: string | null;
+        error?: string;
         busyMemberId?: string | null;
         busyAction?: string | null;
         onVisibilityChange: (visibility: MultiRoom['visibility']) => Promise<void>;
@@ -43,6 +44,7 @@
         meta,
         members,
         currentUserId,
+        error = '',
         busyMemberId = null,
         busyAction = null,
         onVisibilityChange,
@@ -73,6 +75,13 @@
 
         {#if room && meta}
             <div class="divide-y" aria-busy={busyAction !== null || busyMemberId !== null}>
+                {#if error}
+                    <div
+                        class="border-b border-destructive/20 bg-destructive/10 px-5 py-3 text-sm text-destructive"
+                    >
+                        {error}
+                    </div>
+                {/if}
                 <section class="space-y-3 px-5 py-3">
                     <div
                         class="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center sm:gap-4"

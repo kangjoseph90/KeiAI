@@ -195,6 +195,10 @@ let activeMasterKey: CryptoKey | null = null;
 let activeIdentityKeyPair: CryptoKeyPair | null = null;
 ```
 
+PocketBase SDK의 auth store는 메모리 전용으로 사용한다. 토큰 영속화는 `AuthService`가
+`userId × serverUrl` 키로 관리하며, 앱 시작·유저 전환·서버 전환 시 해당 세션만 복원한다.
+PocketBase 기본 `LocalAuthStore`는 전역 슬롯 하나만 제공하므로 사용하지 않는다.
+
 ### 제거된 것
 
 | 제거 항목                | 이전 역할           | 대체                                          |

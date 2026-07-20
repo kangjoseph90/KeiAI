@@ -274,7 +274,7 @@ export const handlers = [
         return HttpResponse.json(user);
     }),
 
-    // DELETE /api/collections/users/{id} - Delete user (unlink account)
+    // DELETE /api/collections/users/{id} - Delete account
     http.delete(`${PB_URL}/api/collections/users/:id`, async ({ params, request }) => {
         const id = params.id as string;
         const user = mockUsers.get(id);

@@ -19,6 +19,7 @@ import type {
     ProxyCapabilities,
     ServerCapabilities
 } from './types';
+import { AuthService } from '../auth';
 
 const LOCALIZATION_CONCURRENCY = 4;
 const REQUIRED_PROXY_CAPABILITIES = ['generic-fetch', 'streaming'] as const;
@@ -138,6 +139,7 @@ export class ConnectionService {
         let assetCommitStarted = false;
         let settingsCommitted = false;
         try {
+            await AuthService.persistPbAuth(userId, previousUrl);
             remoteAssets = await this.localizeAssets(userId, options);
             this.emitProgress(options, {
                 phase: 'committing',
@@ -150,7 +152,7 @@ export class ConnectionService {
             const updated = await UserService.updateConnections(userId, nextConnections);
             settingsCommitted = true;
             applyUserConnectionRuntime(updated.connections);
-            pb.authStore.clear();
+            await AuthService.restorePbAuth(userId, nextUrl);
 
             this.emitProgress(options, {
                 phase: 'done',
@@ -168,6 +170,7 @@ export class ConnectionService {
                 }
                 try {
                     applyUserConnectionRuntime(previousUser.connections);
+                    await AuthService.restorePbAuth(userId, previousUrl);
                 } catch (rollbackError) {
                     rollbackErrors.push(rollbackError);
                 }

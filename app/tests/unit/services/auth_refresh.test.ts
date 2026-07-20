@@ -18,21 +18,25 @@ vi.mock('$lib/adapters/pb', () => ({
             clear: mocks.clear,
             onChange: vi.fn()
         },
+        cancelRequest: vi.fn(),
         collection: () => ({ authRefresh: mocks.authRefresh })
     }
 }));
-vi.mock('./user', () => ({ UserService: {} }));
-vi.mock('./sync', () => ({
+vi.mock('$lib/services/user', () => ({ UserService: {} }));
+vi.mock('$lib/services/sync', () => ({
     DataRecordSyncEngine: {},
     MultiRecordSyncEngine: {},
     SyncManager: {}
 }));
-vi.mock('./sync/user', () => ({ decryptUserProfile: vi.fn(), encryptUserProfile: vi.fn() }));
+vi.mock('$lib/services/sync/user', () => ({
+    decryptUserProfile: vi.fn(),
+    encryptUserProfile: vi.fn()
+}));
 vi.mock('$lib/adapters/logger', () => ({
     createLogger: () => ({ warn: vi.fn() })
 }));
 
-import { AuthService } from './auth';
+import { AuthService } from '$lib/services/auth';
 
 describe('AuthService.refreshPbAuth', () => {
     beforeEach(() => {
@@ -50,7 +54,7 @@ describe('AuthService.refreshPbAuth', () => {
         mocks.authRefresh.mockResolvedValue({});
 
         await expect(AuthService.refreshPbAuth({ force: true })).resolves.toBe(true);
-        expect(mocks.authRefresh).toHaveBeenCalledOnce();
+        expect(mocks.authRefresh).toHaveBeenCalledWith({ requestKey: 'keiai-auth-refresh' });
         expect(mocks.clear).not.toHaveBeenCalled();
     });
 

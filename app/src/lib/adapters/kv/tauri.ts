@@ -46,4 +46,10 @@ export class TauriKeyValueAdapter implements IKeyValueAdapter {
         await store.delete(key);
         await store.save(); // Persist to disk
     }
+
+    async keys(prefix?: string): Promise<string[]> {
+        const store = await this.getStore();
+        const keys = await store.keys();
+        return prefix ? keys.filter((key) => key.startsWith(prefix)) : keys;
+    }
 }

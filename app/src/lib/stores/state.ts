@@ -50,7 +50,7 @@ export const serverTransitionProgress = writable<ConnectionChangeProgress | null
 // ─── Derived Auth State ──────────────────────────────────────────────
 export const isLoggedIn = derived(
     [activeUser, pbConnected],
-    ([user, connected]) => user !== null && connected
+    ([user, connected]) => Boolean(user?.username) && connected
 );
 export const userEmail = derived(activeUser, (u) => u?.email ?? null);
 export const username = derived(activeUser, (u) => u?.username ?? null);
@@ -58,14 +58,6 @@ export const userId = derived(activeUser, (u) => u?.id ?? null);
 export const isCustomServer = derived(
     activeUser,
     (user) => user?.connections.server.mode === 'custom'
-);
-export const isLocalOnly = derived(
-    [activeUser, pbConnected],
-    ([user, connected]) => user !== null && !connected
-);
-export const isSyncLinked = derived(
-    [activeUser, pbConnected],
-    ([user, connected]) => user !== null && connected
 );
 
 // ─── Level 1 (Global Lists) ─────────────────────────────────────────

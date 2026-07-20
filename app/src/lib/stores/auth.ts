@@ -1,9 +1,9 @@
 /**
  * Auth Store — Derived auth state + auth action functions.
  *
- * Derived stores: isLoggedIn, isLocalOnly, userEmail, userId, pbConnected.
+ * Auth state is defined in state.ts; this module exposes auth action functions.
  * Action functions: performCreateAccount, performSignIn, performRecoverAndReset,
- *   performChangePassword, performUnlinkSync, performLogout,
+ *   performChangePassword, performLogout,
  *   performDeleteWithRecoveryCode.
  *
  * Action functions wrap AuthService calls and handle post-auth store refresh.
@@ -15,13 +15,12 @@
  */
 
 import { pbConnected } from './state';
-import { AuthService, UserService } from '$lib/services';
+import { AuthService } from '$lib/services';
 import { SyncManager } from '$lib/services/sync';
 import { loadUser } from './user';
 import { clearActiveCharacter } from './content/character';
 import { clearActivePersona } from './content/persona';
 import { loadGlobalState } from './init';
-import { appWindow } from '$lib/adapters/window';
 
 // ─── PB Connection State ─────────────────────────────────────────────
 
@@ -75,7 +74,7 @@ export async function performRecoverAndReset(
 
 export async function performDeleteWithRecoveryCode(recoveryCode: string): Promise<void> {
     await AuthService.deleteAccountWithRecoveryCode(recoveryCode);
-    await performUnlinkSync();
+    await loadUser();
 }
 
 export async function performPairWithCode(pairingCode: string): Promise<void> {
@@ -92,23 +91,6 @@ export async function performChangePassword(
     return newCode;
 }
 
-export async function performUnlinkSync(): Promise<void> {
-    await AuthService.unlinkSync();
-    void loadUser();
-}
-
 export async function performLogout(): Promise<void> {
     await AuthService.logout();
-    void loadUser();
-}
-
-/**
- * Create a new local account: stop sync, clear PB auth, clear activeUserId, reload.
- * After reload, restoreOrCreateUser() will create a fresh local identity and initDefaultContents()
- * will be called with clean store state.
- */
-export async function performCreateNewUser(): Promise<void> {
-    SyncManager.stopAutoSync();
-    await UserService.setActiveUser(''); // Clear activeUserId KV and reload
-    await appWindow.reload();
 }

@@ -19,6 +19,13 @@ export class WebKeyValueAdapter implements IKeyValueAdapter {
         localStorage.removeItem(key);
     }
 
+    async keys(prefix?: string): Promise<string[]> {
+        const keys = Array.from({ length: localStorage.length }, (_, index) =>
+            localStorage.key(index)
+        ).filter((key): key is string => key !== null);
+        return prefix ? keys.filter((key) => key.startsWith(prefix)) : keys;
+    }
+
     async init(): Promise<void> {
         // No initialization needed for localStorage
         return Promise.resolve();

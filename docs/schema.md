@@ -299,9 +299,9 @@ Greeting은 채팅당 하나의 assistant message로 동기화한다.
 | `id` | membership id |
 | `roomId` | room id |
 | `userId` | member user id |
-| `status` | `pending`, `accepted`, `revoked` |
+| `status` | `pending`, `accepted`, `revoked`, `left` |
 | `encryptedRoomKey` | member identity public key로 감싼 room key |
-| `createdAt`, `updatedAt`, `isDeleted` | metadata |
+| `createdAt`, `updatedAt` | metadata |
 
 `multi_room_index`와 `multi_room_members`는 컨텐츠가 아니라 디렉터리/권한/키 교환 메타다. room payload는 들어가지 않는다.
 
@@ -326,11 +326,9 @@ Asset sync도 같은 routing을 사용한다.
 Cursor는 scope별로 둔다.
 
 ```
-lastSync_records_user_${userId}
-lastSync_records_room_${roomId}
-lastSync_assets_user_${userId}
-lastSync_assets_room_${roomId}
-lastSync_multi_meta_${userId}
+lastSync_records_${userId}_user_${userId}_server_${encodedServerUrl}
+lastSync_records_${userId}_room_${roomId}_server_${encodedServerUrl}
+lastSync_multi_meta_${userId}_server_${encodedServerUrl}
 ```
 
 active user session이 있으면 user scope를 동기화한다. active room session이 있으면 room scope도 추가로 동기화한다.

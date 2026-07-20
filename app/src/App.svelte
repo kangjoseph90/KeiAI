@@ -201,7 +201,8 @@
             startSyncStatusTracking();
             await clock.init(appKV);
             const { user, restored } = await UserService.restoreOrCreateUser();
-            await UserService.setActiveUser(user.id, { preserveAuth: restored });
+            await UserService.setActiveUser(user.id);
+            await AuthService.restorePbAuth(user.id);
             await AuthService.refreshPbAuth();
             AuthService.startAutoRefresh();
             if (!restored) {

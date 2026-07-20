@@ -1,7 +1,6 @@
 <script lang="ts">
     import {
         isLoggedIn,
-        userEmail,
         username as activeUsername,
         performCreateAccount,
         performSignIn,
@@ -40,7 +39,7 @@
     type AccountView = 'security' | 'devices';
 
     let email = $state('');
-    let username = $state('');
+    let username = $state($activeUsername ?? '');
     let password = $state('');
     let confirmPassword = $state('');
     let recoveryCode = $state('');
@@ -156,7 +155,7 @@
 
 <Card>
     <CardHeader>
-        <CardTitle>Account & Sync</CardTitle>
+        <CardTitle>Account</CardTitle>
         <CardDescription>
             {#if $isLoggedIn}
                 Signed in{#if $activeUsername}: <strong>@{$activeUsername}</strong>{/if}
@@ -414,15 +413,6 @@
             </section>
         {:else}
             <section class="space-y-4">
-                <div class="rounded-md border p-3 text-sm">
-                    <div class="font-medium">
-                        {$activeUsername ? `@${$activeUsername}` : 'Connected account'}
-                    </div>
-                    {#if $userEmail}
-                        <div class="text-muted-foreground">{$userEmail}</div>
-                    {/if}
-                </div>
-
                 <div class="flex flex-wrap gap-2">
                     <Button
                         variant={accountView === 'security' ? 'secondary' : 'outline'}

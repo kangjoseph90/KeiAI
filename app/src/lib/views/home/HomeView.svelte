@@ -218,11 +218,12 @@
             const fingerprint = await MultiRoomService.fingerprintUserPublicKey(user);
             const trusted = await MultiRoomService.getUserKeyTrust(user.userId);
             const formatted = formatPublicKeyFingerprint(fingerprint);
+            const userLabel = user.username ? `@${user.username}` : user.userId;
 
             if (!trusted) {
                 const ok = await appConfirm({
                     title: 'Trust member key?',
-                    description: `First time seeing ${user.username || user.userId}.\nFingerprint: ${formatted}`,
+                    description: `First time seeing ${userLabel}.\n\nFingerprint\n${formatted}`,
                     confirmText: 'Trust',
                     variant: 'destructive'
                 });
@@ -231,7 +232,7 @@
             } else if (trusted.publicKeyFingerprint !== fingerprint) {
                 await appAlert({
                     title: 'Public key changed',
-                    description: `Public key fingerprint changed for ${user.username || user.userId}.\nPrevious: ${formatPublicKeyFingerprint(trusted.publicKeyFingerprint)}\nCurrent: ${formatted}`
+                    description: `Public key fingerprint changed for ${userLabel}.\n\nPrevious\n${formatPublicKeyFingerprint(trusted.publicKeyFingerprint)}\n\nCurrent\n${formatted}`
                 });
                 return;
             } else {
@@ -1210,6 +1211,7 @@
     meta={managedRoomMeta}
     members={managedRoomMembers}
     currentUserId={$userId}
+    error={multiRoomActionError}
     busyMemberId={busyManagedMemberId}
     busyAction={homeAction}
     onVisibilityChange={handleManagedVisibility}

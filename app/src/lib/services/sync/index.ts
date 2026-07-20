@@ -25,6 +25,7 @@ import { MultiRecordSyncEngine } from './multi';
 import { appUser } from '$lib/adapters/user';
 import { appMulti } from '$lib/adapters/multi';
 import { localDB, SYNC_TABLES } from '$lib/adapters/db';
+import { getActiveSession } from '../session';
 
 /**
  * Unified lifecycle controller for all sync services.
@@ -130,6 +131,16 @@ export class SyncManager {
             UserRecordSyncEngine.trigger()
         ]);
         void AssetSyncEngine.start();
+    }
+
+    /** Reset the active user's cursors for the current server and perform a full pull. */
+    static async resetCurrentCursors(): Promise<void> {
+        const { userId } = getActiveSession();
+        await Promise.all([
+            DataRecordSyncEngine.resetCursor(userId),
+            MultiRecordSyncEngine.resetCursor(userId)
+        ]);
+        await this.syncAll();
     }
 
     static async refreshRoomSync(): Promise<void> {

@@ -35,13 +35,17 @@ import {
 import { UserService } from './user';
 import type { UserConnectionSettings } from '$lib/types/connections';
 import { getActiveSession } from './session';
-import { DataRecordSyncEngine, MultiRecordSyncEngine, SyncManager } from './sync';
+import { SyncManager } from './sync';
 import { decryptUserProfile, encryptUserProfile } from './sync/user';
 import { AppError } from '$lib/types/errors';
 import { createLogger } from '$lib/adapters/logger';
+import { appKV } from '$lib/adapters/kv';
+import { normalizeUrl } from '$lib/utils/url';
+import type { RecordModel } from 'pocketbase';
 
 const logger = createLogger('service:auth');
 const AUTH_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const AUTH_REFRESH_REQUEST_KEY = 'keiai-auth-refresh';
 
 interface SaltResponse {
     salt: string;
@@ -58,6 +62,11 @@ interface RecoverResponse {
     email?: string;
 }
 
+interface StoredPocketBaseAuth {
+    token: string;
+    record: RecordModel;
+}
+
 function normalizeUsername(username: string): string {
     const normalized = username.trim().toLowerCase();
     if (!normalized) throw new AppError('INVALID_INPUT', 'Username is required.');
@@ -66,8 +75,73 @@ function normalizeUsername(username: string): string {
 
 export class AuthService {
     private static refreshPromise: Promise<boolean> | null = null;
+    private static authRevision = 0;
     private static lastSuccessfulRefreshAt = 0;
     private static refreshCleanups: Array<() => void> = [];
+
+    // ─── Local Auth Sessions ─────────────────────────────────────────
+
+    private static getStoredAuthKey(userId: string, serverUrl: string): string {
+        return `pbAuth_${userId}_${encodeURIComponent(normalizeUrl(serverUrl))}`;
+    }
+
+    private static clearActivePbAuth(): void {
+        this.authRevision++;
+        this.refreshPromise = null;
+        pb.cancelRequest(AUTH_REFRESH_REQUEST_KEY);
+        pb.authStore.clear();
+    }
+
+    static async persistPbAuth(userId: string, serverUrl: string = pb.baseUrl): Promise<void> {
+        const key = this.getStoredAuthKey(userId, serverUrl);
+        const record = pb.authStore.record;
+
+        if (!pb.authStore.isValid || !record || record.id !== userId) {
+            await appKV.remove(key);
+            return;
+        }
+
+        await appKV.set(
+            key,
+            JSON.stringify({ token: pb.authStore.token, record } satisfies StoredPocketBaseAuth)
+        );
+    }
+
+    static async restorePbAuth(userId: string, serverUrl: string = pb.baseUrl): Promise<boolean> {
+        this.clearActivePbAuth();
+        const key = this.getStoredAuthKey(userId, serverUrl);
+        const raw = await appKV.get(key);
+        if (!raw) return false;
+
+        try {
+            const stored = JSON.parse(raw) as Partial<StoredPocketBaseAuth>;
+            if (!stored.token || !stored.record || stored.record.id !== userId) {
+                await appKV.remove(key);
+                return false;
+            }
+            pb.authStore.save(stored.token, stored.record);
+            if (!pb.authStore.isValid) {
+                pb.authStore.clear();
+                await appKV.remove(key);
+                return false;
+            }
+            return true;
+        } catch {
+            await appKV.remove(key);
+            return false;
+        }
+    }
+
+    static async clearPbAuth(userId: string, serverUrl: string = pb.baseUrl): Promise<void> {
+        this.clearActivePbAuth();
+        await appKV.remove(this.getStoredAuthKey(userId, serverUrl));
+    }
+
+    static async clearAllPbAuthForUser(userId: string): Promise<void> {
+        if (pb.authStore.record?.id === userId) this.clearActivePbAuth();
+        const keys = await appKV.keys(`pbAuth_${userId}_`);
+        await Promise.all(keys.map((key) => appKV.remove(key)));
+    }
 
     // ─── PB Connection Helpers ────────────────────────────────────────
 
@@ -89,6 +163,11 @@ export class AuthService {
         if (!pb.authStore.token) return false;
         if (!pb.authStore.isValid) {
             pb.authStore.clear();
+            try {
+                await this.persistPbAuth(getActiveSession().userId);
+            } catch {
+                // No active local session yet.
+            }
             return false;
         }
 
@@ -100,15 +179,28 @@ export class AuthService {
         }
         if (this.refreshPromise) return this.refreshPromise;
 
+        const authRevision = this.authRevision;
         const refresh = (async () => {
             try {
-                await pb.collection('users').authRefresh();
+                await pb.collection('users').authRefresh({ requestKey: AUTH_REFRESH_REQUEST_KEY });
+                if (authRevision !== this.authRevision) return false;
                 this.lastSuccessfulRefreshAt = Date.now();
+                try {
+                    await this.persistPbAuth(getActiveSession().userId);
+                } catch {
+                    // Startup may refresh before an active local session exists.
+                }
                 return true;
             } catch (error) {
+                if (authRevision !== this.authRevision) return false;
                 const status = (error as { status?: unknown })?.status;
                 if (status === 401 || status === 403 || !pb.authStore.isValid) {
                     pb.authStore.clear();
+                    try {
+                        await this.persistPbAuth(getActiveSession().userId);
+                    } catch {
+                        // No active local session yet.
+                    }
                     return false;
                 }
                 logger.warn('PocketBase auth refresh failed; keeping the valid token.', error);
@@ -296,9 +388,10 @@ export class AuthService {
 
     /**
      * Delete the remote sync account using a recovery code.
-     * Keeps local data intact; the store layer unlinks the local profile after success.
+     * Keeps local data intact and returns the local identity to local-only mode.
      */
     static async deleteAccountWithRecoveryCode(recoveryCode: string): Promise<void> {
+        const { userId } = getActiveSession();
         const { backHalf } = splitRecoveryCode(recoveryCode);
         const authTokenHash = await hashRecoveryAuthToken(backHalf);
 
@@ -306,6 +399,8 @@ export class AuthService {
             method: 'POST',
             body: JSON.stringify({ authTokenHash: toBase64(authTokenHash) })
         });
+        await this.logout();
+        await UserService.updateUser(userId, { username: undefined });
     }
 
     /**
@@ -440,28 +535,19 @@ export class AuthService {
                 username,
                 email: serverRecord?.email
             });
-            await UserService.setActiveUser(userId, { preserveAuth: !!serverRecord });
-
-            await DataRecordSyncEngine.resetCursor(userId);
-            await MultiRecordSyncEngine.resetCursor(userId);
+            await UserService.setActiveUser(userId);
+            if (serverRecord) await this.persistPbAuth(userId);
         } catch (e) {
             pb.authStore.clear();
             throw e;
         }
     }
 
-    /** Disconnect local identity from server sync without deleting local data. */
-    static async unlinkSync(): Promise<void> {
-        const { userId } = getActiveSession();
-        SyncManager.stopAutoSync();
-        pb.authStore.clear();
-        await UserService.updateUser(userId, { username: undefined });
-    }
-
     /** Clear only the remote auth token; local profile/link metadata remains. */
     static async logout(): Promise<void> {
+        const { userId } = getActiveSession();
         SyncManager.stopAutoSync();
-        pb.authStore.clear();
+        await this.clearPbAuth(userId);
     }
 
     // ─── Internals ───────────────────────────────────────────────────
@@ -490,8 +576,12 @@ export class AuthService {
                     .authWithPassword(username, toHex(keys.loginKey))) as {
                     record: Record<string, string>;
                 };
-            } catch {
-                throw new AppError('INVALID_CREDENTIALS', 'Invalid username or password.');
+            } catch (error) {
+                const status = (error as { status?: unknown })?.status;
+                if (status === 400 || status === 401) {
+                    throw new AppError('INVALID_CREDENTIALS', 'Invalid username or password.');
+                }
+                throw error;
             }
 
             rawM = await unwrapMasterKeyRaw(
@@ -523,10 +613,8 @@ export class AuthService {
                     username: authData.record.username,
                     email: authData.record.email || undefined
                 });
-                await UserService.setActiveUser(authData.record.id, { preserveAuth: true });
-
-                await DataRecordSyncEngine.resetCursor(authData.record.id);
-                await MultiRecordSyncEngine.resetCursor(authData.record.id);
+                await UserService.setActiveUser(authData.record.id);
+                await this.persistPbAuth(authData.record.id);
             } catch (err) {
                 // authWithPassword succeeded but local save failed (e.g. ISLAND_MISMATCH).
                 // Clear PB token so a stale cross-island token is never left in memory.

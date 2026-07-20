@@ -28,7 +28,9 @@
             <Dialog.Header>
                 <Dialog.Title>{current.title}</Dialog.Title>
                 {#if current.description}
-                    <Dialog.Description>{current.description}</Dialog.Description>
+                    <Dialog.Description class="whitespace-pre-line"
+                        >{current.description}</Dialog.Description
+                    >
                 {/if}
             </Dialog.Header>
 
