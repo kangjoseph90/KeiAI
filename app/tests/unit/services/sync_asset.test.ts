@@ -154,6 +154,17 @@ describe('Asset sync', () => {
         expect(appAsset.markAssetRemote).not.toHaveBeenCalled();
     });
 
+    it('keeps asset local and enters network_error when an upload fails', async () => {
+        vi.mocked(uploadAsset).mockRejectedValue(
+            new AppError('NETWORK_ERROR', 'Asset upload failed.')
+        );
+
+        await engine.start();
+
+        expect(engine.getState().state).toBe('network_error');
+        expect(appAsset.markAssetRemote).not.toHaveBeenCalled();
+    });
+
     it('drops stale local registry entries when the cached blob is missing', async () => {
         vi.mocked(appAsset.readAssetBytes).mockResolvedValue(null);
 

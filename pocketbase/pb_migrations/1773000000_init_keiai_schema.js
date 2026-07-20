@@ -336,7 +336,6 @@ migrate(
         type: "file",
         maxSelect: 1,
         maxSize: 10 * 1024 * 1024,
-        mimeTypes: ["application/octet-stream"],
       }),
     );
     catalog.fields.add(
