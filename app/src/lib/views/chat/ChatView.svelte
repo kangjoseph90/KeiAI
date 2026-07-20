@@ -72,6 +72,7 @@
     let newMessageText = $state('');
     let pendingAttachments = $state<string[]>([]);
     let editModeId = $state<string | null>(null);
+    let isEditingTranslation = $state(false);
     let editMessageText = $state('');
     let inspectorOpen = $state(false);
     let scrollContainerEl: HTMLElement | undefined = $state();
@@ -429,6 +430,32 @@
         });
     }
 
+    async function handleUpdateTranslation(id: string) {
+        if (!editMessageText.trim()) return;
+        const msg = $displayMessages.find((m) => m.id === id);
+        if (!msg) return;
+
+        const activeSwipe = msg.swipes[msg.activeSwipeId];
+        if (!activeSwipe || !activeSwipe.translation) return;
+
+        const updatedTranslation = {
+            ...activeSwipe.translation,
+            text: editMessageText
+        };
+
+        await runMessageAction(id, 'save', 'Could not save translation', async (targetChatId) => {
+            await updateMessage(id, {
+                swipes: {
+                    [msg.activeSwipeId]: { ...activeSwipe, translation: updatedTranslation }
+                }
+            });
+            if ($activeChat?.id === targetChatId) {
+                editModeId = null;
+                isEditingTranslation = false;
+            }
+        });
+    }
+
     async function handleRegenerate() {
         // Instead of deleting and re-creating, target the existing message for reroll.
         // The task layer appends a new swipe (or replaces, based on saveMessagesOnSwipe).
@@ -571,14 +598,30 @@
                                 personaId={defaultPersona?.id}
                                 onEdit={() => {
                                     editModeId = msg.id;
+                                    isEditingTranslation = false;
                                     const activeSwipe = msg.swipes[msg.activeSwipeId];
                                     editMessageText = activeSwipe
                                         ? getLastContentText(activeSwipe.parts)
                                         : '';
                                 }}
-                                onSave={() => handleUpdateMessage(msg.id)}
+                                onEditTranslation={() => {
+                                    editModeId = msg.id;
+                                    isEditingTranslation = true;
+                                    const activeSwipe = msg.swipes[msg.activeSwipeId];
+                                    editMessageText = activeSwipe?.translation?.text ?? '';
+                                }}
+                                onSave={() => {
+                                    if (isEditingTranslation) {
+                                        void handleUpdateTranslation(msg.id);
+                                    } else {
+                                        void handleUpdateMessage(msg.id);
+                                    }
+                                }}
                                 onDelete={() => handleDeleteMessage(msg.id)}
-                                onCancelEdit={() => (editModeId = null)}
+                                onCancelEdit={() => {
+                                    editModeId = null;
+                                    isEditingTranslation = false;
+                                }}
                                 onDismissError={() => dismissChat($activeChat!.id)}
                                 onRegenerate={() => handleRegenerate()}
                                 onSwipe={(newSwipeId) => handleSwipe(msg.id, newSwipeId)}
@@ -738,7 +781,7 @@
                     <Button
                         variant="outline"
                         size="icon-lg"
-                        class="absolute right-full top-1.5 z-30 size-11 rounded-none rounded-l-md border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-lg:hidden"
+                        class="absolute right-full top-1.5 z-30 size-11 rounded-none rounded-l-md border-r-0 border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-lg:hidden"
                         title="Hide chat context"
                         aria-label="Hide chat context"
                         onclick={() => (inspectorOpen = false)}

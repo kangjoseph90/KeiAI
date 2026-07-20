@@ -186,8 +186,8 @@
             <div
                 class="rounded-md bg-amber-500/15 p-4 text-sm text-amber-700 dark:text-amber-400 border border-amber-500/20"
             >
-                <div class="flex items-center gap-2 font-bold mb-2">
-                    <ShieldAlert class="size-5" />
+                <div class="mb-2 flex items-center gap-2 font-bold">
+                    <ShieldAlert class="size-5 shrink-0" />
                     SAVE YOUR RECOVERY CODE NOW
                 </div>
                 <p class="mb-2">
@@ -195,7 +195,7 @@
                     data.
                 </p>
                 <div
-                    class="bg-amber-100 dark:bg-amber-950/50 p-3 rounded font-mono text-center tracking-widest text-xl font-bold border border-amber-200 dark:border-amber-900 select-all"
+                    class="min-w-0 break-all rounded border border-amber-200 bg-amber-100 p-3 text-center font-mono text-base font-bold leading-relaxed tracking-[0.15em] select-all sm:text-xl sm:tracking-widest dark:border-amber-900 dark:bg-amber-950/50"
                 >
                     {displayRecovery}
                 </div>

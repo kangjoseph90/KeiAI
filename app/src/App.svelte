@@ -7,6 +7,7 @@
     import { clock } from '$lib/utils/clock';
     import { appKV } from '$lib/adapters/kv';
     import { AppSidebar } from '$lib/components/layout';
+    import RoomPanel from '$lib/views/room/RoomPanel.svelte';
     import { Button } from '$lib/components/ui/button';
     import {
         loadGlobalState,
@@ -342,7 +343,16 @@
                 route={$route}
                 onToggle={() => (sidebarCollapsed = !sidebarCollapsed)}
                 onNavigate={navigateFromSidebar}
-            />
+                hasPanel={$route.view === 'room' && Boolean($activeRoom)}
+            >
+                {#snippet panel()}
+                    <RoomPanel
+                        route={$route}
+                        onClose={() => (sidebarCollapsed = true)}
+                        onNavigate={navigateFromSidebar}
+                    />
+                {/snippet}
+            </AppSidebar>
         {/if}
 
         <!-- Main Content -->

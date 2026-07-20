@@ -1,6 +1,5 @@
 <script lang="ts">
     import {
-        Check,
         DoorOpen,
         Globe2,
         KeyRound,
@@ -14,7 +13,6 @@
         Upload,
         UserRound,
         Users,
-        X,
         Zap
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
@@ -44,7 +42,6 @@
         multiRooms,
         personas,
         rejectJoinMultiRoom,
-        requestJoinMultiRoom,
         revokeMultiRoomMember,
         setModuleEnabled,
         createModule,
@@ -62,11 +59,12 @@
     import { importPersonaFile } from '$lib/managers/persona';
     import { isKeiServer } from '$lib/services';
     import type { RouteState } from '$lib/router';
-    import { MultiRoomService, type PublicMultiRoom } from '$lib/services';
+    import { MultiRoomService } from '$lib/services';
     import { formatPublicKeyFingerprint } from '$lib/crypto';
     import { getErrorMessage } from '$lib/types/errors';
     import { approveMultiRoomJoinRequest } from '$lib/stores';
     import MultiRoomManageDialog from './MultiRoomManageDialog.svelte';
+    import JoinMultiRoomDialog from './JoinMultiRoomDialog.svelte';
     import { onDestroy } from 'svelte';
 
     interface Props {
@@ -83,12 +81,8 @@
     let homeAction = $state<string | null>(null);
     let multiRoomName = $state('');
     let multiRoomVisibility = $state<'private' | 'public'>('private');
-    let joinRoomId = $state('');
-    let publicRoomQuery = $state('');
-    let publicRoomResults = $state<PublicMultiRoom[]>([]);
     let multiRoomActionError = $state('');
-    let searchingPublicRooms = $state(false);
-    let joiningRoom = $state(false);
+    let joinDialogOpen = $state(false);
     let approvingMemberId = $state('');
     let managedRoomId = $state<string | null>(null);
     let manageDialogOpen = $state(false);
@@ -126,22 +120,6 @@
         return $modules.filter((mod) => mod.name.toLowerCase().includes(normalized));
     });
 
-    const pendingRequests = $derived(() => {
-        const ownedRoomIds = new Set(
-            $multiRoomMetas.filter((meta) => meta.ownerUserId === $userId).map((meta) => meta.id)
-        );
-        return Array.from($multiRoomMembers.entries()).flatMap(([roomId, members]) =>
-            ownedRoomIds.has(roomId)
-                ? members
-                      .filter((member) => member.status === 'pending')
-                      .map((member) => ({
-                          roomId,
-                          roomName: $multiRooms.find((room) => room.id === roomId)?.name ?? roomId,
-                          member
-                      }))
-                : []
-        );
-    });
     const managedRoom = $derived(
         managedRoomId ? ($multiRooms.find((room) => room.id === managedRoomId) ?? null) : null
     );
@@ -230,33 +208,6 @@
         multiRoomVisibility = 'private';
         creatingMultiRoom = false;
         await openMultiRoom(room.id);
-    }
-
-    async function handleSearchPublicRooms() {
-        searchingPublicRooms = true;
-        multiRoomActionError = '';
-        try {
-            publicRoomResults = await MultiRoomService.searchPublicRooms(publicRoomQuery);
-        } catch (e) {
-            multiRoomActionError = getErrorMessage(e);
-        } finally {
-            searchingPublicRooms = false;
-        }
-    }
-
-    async function handleRequestJoin(roomId: string) {
-        const trimmed = roomId.trim();
-        if (!trimmed) return;
-        joiningRoom = true;
-        multiRoomActionError = '';
-        try {
-            await requestJoinMultiRoom(trimmed);
-            joinRoomId = '';
-        } catch (e) {
-            multiRoomActionError = getErrorMessage(e);
-        } finally {
-            joiningRoom = false;
-        }
     }
 
     async function handleApprovePending(roomId: string, memberUserId: string) {
@@ -563,13 +514,20 @@
                         <Button type="submit">Create</Button>
                     </form>
                 {:else}
-                    <Button
-                        class="w-full gap-2 sm:w-auto"
-                        onclick={() => (creatingMultiRoom = true)}
-                    >
-                        <Plus class="size-4" />
-                        New Multi Room
-                    </Button>
+                    <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
+                        <Button
+                            variant="outline"
+                            class="gap-2"
+                            onclick={() => (joinDialogOpen = true)}
+                        >
+                            <KeyRound class="size-4" />
+                            Join Room
+                        </Button>
+                        <Button class="gap-2" onclick={() => (creatingMultiRoom = true)}>
+                            <Plus class="size-4" />
+                            New Multi Room
+                        </Button>
+                    </div>
                 {/if}
             {:else if tab === 'characters'}
                 <div class="flex w-full gap-2 sm:w-auto max-sm:[&>*]:flex-1">
@@ -682,7 +640,12 @@
                 {:else}
                     <div class="flex items-center gap-2 text-sm text-muted-foreground">
                         <Users class="size-4" />
-                        Your encrypted shared spaces
+                        <span>Your encrypted shared spaces</span>
+                        <span
+                            class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground"
+                        >
+                            {$multiRooms.length}
+                        </span>
                     </div>
                 {/if}
 
@@ -780,125 +743,6 @@
                         {/snippet}
                     </EntityList>
                 {:else if tab === 'multiRooms'}
-                    <div class="grid gap-3 lg:grid-cols-3">
-                        <form
-                            class="rounded-lg border bg-card p-3"
-                            onsubmit={(event) => {
-                                event.preventDefault();
-                                handleRequestJoin(joinRoomId);
-                            }}
-                        >
-                            <div class="flex gap-2">
-                                <Input bind:value={joinRoomId} placeholder="Room id" />
-                                <Button
-                                    type="submit"
-                                    aria-label="Request to join room"
-                                    disabled={joiningRoom || !joinRoomId.trim()}
-                                >
-                                    <KeyRound class="size-4" />
-                                </Button>
-                            </div>
-                        </form>
-
-                        <form
-                            class="rounded-lg border bg-card p-3 lg:col-span-2"
-                            onsubmit={(event) => {
-                                event.preventDefault();
-                                handleSearchPublicRooms();
-                            }}
-                        >
-                            <div class="flex gap-2">
-                                <Input bind:value={publicRoomQuery} placeholder="Public room" />
-                                <Button
-                                    type="submit"
-                                    aria-label="Search public rooms"
-                                    disabled={searchingPublicRooms}
-                                >
-                                    <Search class="size-4" />
-                                </Button>
-                            </div>
-                            {#if publicRoomResults.length > 0}
-                                <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                                    {#each publicRoomResults as result (result.id)}
-                                        <div
-                                            class="flex min-w-0 items-center justify-between gap-2 rounded-md border bg-background px-3 py-2"
-                                        >
-                                            <div class="min-w-0">
-                                                <div class="truncate text-sm font-medium">
-                                                    {result.publicName || result.id}
-                                                </div>
-                                                <div class="truncate text-xs text-muted-foreground">
-                                                    {result.id}
-                                                </div>
-                                            </div>
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                disabled={joiningRoom}
-                                                onclick={() => handleRequestJoin(result.id)}
-                                            >
-                                                <KeyRound class="size-4" />
-                                            </Button>
-                                        </div>
-                                    {/each}
-                                </div>
-                            {/if}
-                        </form>
-                    </div>
-
-                    {#if pendingRequests().length > 0}
-                        <div class="rounded-lg border bg-card p-3">
-                            <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                                {#each pendingRequests() as request (request.member.id)}
-                                    <div
-                                        class="flex min-w-0 items-center justify-between gap-2 rounded-md border bg-background px-3 py-2"
-                                    >
-                                        <div class="min-w-0">
-                                            <div class="truncate text-sm font-medium">
-                                                {request.roomName}
-                                            </div>
-                                            <div class="truncate text-xs text-muted-foreground">
-                                                {request.member.userId}
-                                            </div>
-                                        </div>
-                                        <div class="flex shrink-0 gap-1">
-                                            <Button
-                                                size="icon-sm"
-                                                variant="outline"
-                                                title="Approve"
-                                                aria-label={`Approve ${request.member.userId}`}
-                                                disabled={approvingMemberId ===
-                                                    `${request.roomId}:${request.member.userId}`}
-                                                onclick={() =>
-                                                    handleApprovePending(
-                                                        request.roomId,
-                                                        request.member.userId
-                                                    )}
-                                            >
-                                                <Check class="size-4" />
-                                            </Button>
-                                            <Button
-                                                size="icon-sm"
-                                                variant="ghost"
-                                                title="Reject"
-                                                aria-label={`Reject ${request.member.userId}`}
-                                                disabled={approvingMemberId ===
-                                                    `${request.roomId}:${request.member.userId}`}
-                                                onclick={() =>
-                                                    handleRejectPending(
-                                                        request.roomId,
-                                                        request.member.userId
-                                                    )}
-                                            >
-                                                <X class="size-4" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                {/each}
-                            </div>
-                        </div>
-                    {/if}
-
                     {#if multiRoomActionError}
                         <div
                             class="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
@@ -935,13 +779,23 @@
                                     <p class="mt-2 text-sm text-muted-foreground">
                                         Multi rooms are shared spaces with room-scoped content.
                                     </p>
-                                    <Button
-                                        class="mt-5 gap-2"
-                                        onclick={() => (creatingMultiRoom = true)}
+                                    <div
+                                        class="mt-5 flex flex-col justify-center gap-2 sm:flex-row"
                                     >
-                                        <Plus class="size-4" />
-                                        New Multi Room
-                                    </Button>
+                                        <Button
+                                            variant="outline"
+                                            class="gap-2"
+                                            onclick={() => (joinDialogOpen = true)}
+                                        >
+                                            <KeyRound class="size-4" /> Join Room
+                                        </Button>
+                                        <Button
+                                            class="gap-2"
+                                            onclick={() => (creatingMultiRoom = true)}
+                                        >
+                                            <Plus class="size-4" /> New Multi Room
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         {/snippet}
@@ -952,15 +806,32 @@
                             {@const memberCount = ($multiRoomMembers.get(room.id) ?? []).filter(
                                 (member) => member.status === 'accepted'
                             ).length}
+                            {@const pendingCount =
+                                meta?.ownerUserId === $userId
+                                    ? ($multiRoomMembers.get(room.id) ?? []).filter(
+                                          (member) => member.status === 'pending'
+                                      ).length
+                                    : 0}
                             <div
-                                class="flex w-full min-h-32 flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+                                class="flex min-h-40 w-full flex-col items-start rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50"
                             >
                                 <div class="flex w-full items-center gap-3">
                                     <div class="flex min-w-0 flex-1 items-center gap-3 text-left">
                                         <div
-                                            class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-semibold"
+                                            role="img"
+                                            class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"
+                                            title={meta?.visibility === 'public'
+                                                ? 'Public multi room'
+                                                : 'Private multi room'}
+                                            aria-label={meta?.visibility === 'public'
+                                                ? 'Public multi room'
+                                                : 'Private multi room'}
                                         >
-                                            {initial(room.name)}
+                                            {#if meta?.visibility === 'public'}
+                                                <Globe2 class="size-5" />
+                                            {:else}
+                                                <Lock class="size-5" />
+                                            {/if}
                                         </div>
                                         <div class="min-w-0">
                                             <h2 class="truncate text-sm font-semibold">
@@ -984,21 +855,25 @@
                                         <Settings2 class="size-4" />
                                     </Button>
                                 </div>
-                                <div
-                                    class="mt-auto flex w-full items-center justify-between gap-3 pt-5 text-xs text-muted-foreground"
-                                >
-                                    <span class="flex items-center gap-1">
-                                        <DoorOpen class="size-3.5" /> Open multi room
-                                    </span>
-                                    <span class="flex items-center gap-2">
-                                        <span class="flex items-center gap-1">
-                                            {#if meta?.visibility === 'public'}
-                                                <Globe2 class="size-3.5" /> Public
-                                            {:else}
-                                                <Lock class="size-3.5" /> Private
+                                <div class="mt-auto w-full space-y-3 pt-4 text-xs">
+                                    <div
+                                        class="flex w-full items-center gap-1.5 text-muted-foreground"
+                                    >
+                                        <span class="flex min-w-0 items-center gap-1.5">
+                                            <span class="whitespace-nowrap">
+                                                {memberCount} members
+                                            </span>
+                                            {#if pendingCount > 0}
+                                                <span
+                                                    class="whitespace-nowrap rounded-full bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-700 dark:text-amber-300"
+                                                >
+                                                    {pendingCount} pending
+                                                </span>
                                             {/if}
                                         </span>
-                                        <span>{memberCount} members</span>
+                                    </div>
+                                    <span class="flex items-center gap-1 text-muted-foreground">
+                                        <DoorOpen class="size-3.5" /> Open multi room
                                     </span>
                                 </div>
                             </div>
@@ -1326,6 +1201,8 @@
         </div>
     </main>
 </div>
+
+<JoinMultiRoomDialog bind:open={joinDialogOpen} />
 
 <MultiRoomManageDialog
     bind:open={manageDialogOpen}

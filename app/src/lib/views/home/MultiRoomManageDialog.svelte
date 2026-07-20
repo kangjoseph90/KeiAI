@@ -73,7 +73,7 @@
 
         {#if room && meta}
             <div class="divide-y" aria-busy={busyAction !== null || busyMemberId !== null}>
-                <section class="space-y-3 px-4 py-4 sm:px-6">
+                <section class="space-y-3 px-5 py-3">
                     <div
                         class="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center sm:gap-4"
                     >
@@ -114,7 +114,7 @@
                 </section>
 
                 {#if isOwner && pendingMembers.length > 0}
-                    <section class="px-4 py-4 sm:px-6">
+                    <section class="px-5 py-3">
                         <h3 class="text-sm font-medium">Join requests</h3>
                         <div class="mt-3 divide-y rounded-md border">
                             {#each pendingMembers as member (member.id)}
@@ -148,7 +148,7 @@
                     </section>
                 {/if}
 
-                <section class="px-4 py-4 sm:px-6">
+                <section class="px-5 py-3">
                     <div class="flex items-center justify-between">
                         <h3 class="text-sm font-medium">Members</h3>
                         <span class="text-xs text-muted-foreground">{acceptedMembers.length}</span>
@@ -194,11 +194,12 @@
                 </section>
             </div>
 
-            <DialogFooter class="border-t px-4 py-4 sm:px-6">
+            <DialogFooter class="flex-row items-center justify-end gap-2 border-t px-5 py-3">
                 {#if isOwner}
                     <Button
+                        size="sm"
                         variant="destructive"
-                        class="gap-2"
+                        class="h-8 gap-1.5 px-3"
                         disabled={busyAction !== null || busyMemberId !== null}
                         aria-busy={busyAction === `delete-multi-room:${room.id}`}
                         onclick={onDelete}
@@ -207,8 +208,9 @@
                     </Button>
                 {:else}
                     <Button
+                        size="sm"
                         variant="outline"
-                        class="gap-2 text-destructive"
+                        class="h-8 gap-1.5 px-3 text-destructive"
                         disabled={busyAction !== null || busyMemberId !== null}
                         aria-busy={busyAction === `leave-multi-room:${room.id}`}
                         onclick={onLeave}
