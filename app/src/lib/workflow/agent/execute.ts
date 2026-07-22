@@ -1,7 +1,7 @@
 import { getAppSettings } from '$lib/stores/content/settings';
 import { getMergedLorebooks } from '$lib/stores/content/merged';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
-import type { LLMStreamContent } from '$lib/llm/types';
+import type { LLMContentPart, LLMStreamContent } from '$lib/llm/types';
 import { ToolCallService, type ToolCallRequest } from '$lib/services/content/tool';
 import type { RuntimeContext } from '$lib/types/context';
 import { AppError } from '$lib/types/errors';
@@ -73,12 +73,13 @@ export async function executeAgentNode({
         throw new AppError('INVALID_INPUT', `No model configured for LLM type: ${node.llmType}`);
     }
 
-    const handler = selectLLMHandler(modelConfig, settings);
-    if (!handler) {
+    const selected = selectLLMHandler(modelConfig, settings);
+    if (!selected) {
         throw new AppError('INVALID_INPUT', 'Failed to create LLM handler');
     }
+    const { handler, unsupported = [] } = selected;
 
-    const basePrompt = await buildPrompt({
+    let basePrompt = await buildPrompt({
         agent: node,
         chat,
         lorebooks,
@@ -88,7 +89,19 @@ export async function executeAgentNode({
         localMacros: agentMacros
     });
 
-    const shouldStream = await resolveStreamInput(inputs.stream, true);
+    // TODO: Share capability adaptation with CharJS and plugin LLM calls when more capabilities are added.
+    if (unsupported.includes('image_input')) {
+        basePrompt = basePrompt.map((message) => ({
+            ...message,
+            content: message.content.map(
+                (part): LLMContentPart =>
+                    part.type === 'image' ? { type: 'text', text: '[Image omitted]' } : part
+            )
+        }));
+    }
+
+    const shouldStream =
+        (await resolveStreamInput(inputs.stream, true)) && !unsupported.includes('streaming');
     const completedParts: AgentPart[] = [];
     let latest = serializeAgentParts(completedParts);
     let lastEmitted: string | null = null;

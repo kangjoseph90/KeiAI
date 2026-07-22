@@ -5,6 +5,7 @@ import type { AssetRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import { listItems } from '$lib/utils/ordering';
 import { buffer } from './record_buffer';
 import {
     cascadeDeleteChildren,
@@ -14,13 +15,20 @@ import {
 } from './cascade';
 import { AssetService, type AssetOwner } from '../asset';
 import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
+import type { TogglePanel } from '$lib/types/toggle';
+import {
+    defaultLorebookFields,
+    defaultScriptFields,
+    defaultCharJSFields,
+    hydrateOwnedItems,
+    type Lorebook,
+    type Script,
+    type CharJS
+} from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ModuleRefs {
-    lorebooks: EntityListConfig;
-    scripts: EntityListConfig;
-    charjs: EntityListConfig;
     assets: EntityListConfig<AssetRef>;
 }
 
@@ -30,6 +38,10 @@ export interface ModuleContent {
     backgroundHTML: string;
     messageCSS: string;
     defaultVariables: Record<string, string>;
+    toggles: TogglePanel;
+    lorebooks: EntityListConfig<Lorebook>;
+    scripts: EntityListConfig<Script>;
+    charjs: EntityListConfig<CharJS>;
     allowLowLevel: boolean;
 }
 
@@ -47,6 +59,7 @@ const defaultModuleFields: ModuleFields = {
     backgroundHTML: '',
     messageCSS: '',
     defaultVariables: {},
+    toggles: { refs: {}, folders: {} },
     allowLowLevel: false,
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },
@@ -57,7 +70,11 @@ const defaultModuleFields: ModuleFields = {
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function parseFields(record: ModuleRecord): ModuleFields {
-    return deepMerge(defaultModuleFields, record.data as DeepPartial<ModuleFields>);
+    const fields = deepMerge(defaultModuleFields, record.data as DeepPartial<ModuleFields>);
+    fields.lorebooks.refs = hydrateOwnedItems(fields.lorebooks.refs, defaultLorebookFields);
+    fields.scripts.refs = hydrateOwnedItems(fields.scripts.refs, defaultScriptFields);
+    fields.charjs.refs = hydrateOwnedItems(fields.charjs.refs, defaultCharJSFields);
+    return fields;
 }
 
 function assetOwner(record: ModuleRecord): AssetOwner {
@@ -70,9 +87,7 @@ function assetOwner(record: ModuleRecord): AssetOwner {
 }
 
 function collectAssetFields(fields: ModuleFields): AssetFields[] {
-    return Object.values(fields.assets.refs).filter((asset): asset is AssetRef =>
-        Boolean(asset?.hash)
-    );
+    return listItems(fields.assets).filter((asset): asset is AssetRef => Boolean(asset?.hash));
 }
 
 // ─── Service ──────────────────────────────────────────────────────────

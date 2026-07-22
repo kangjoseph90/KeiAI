@@ -21,25 +21,22 @@ import type { RuntimeContext } from '$lib/types/context';
 const logger = createLogger('pipeline');
 
 export async function runPipeline<K extends keyof PipelinePhaseType>(
-    chatId: string,
     phase: K,
-    data: PipelinePhaseType[K],
-    ctx: RuntimeContext
+    ctx: RuntimeContext,
+    data: PipelinePhaseType[K]
 ): Promise<PipelinePhaseType[K]>;
 export async function runPipeline<P extends string, T>(
-    chatId: string,
     phase: PipelinePhase<P>,
-    data: T,
-    ctx: RuntimeContext
+    ctx: RuntimeContext,
+    data: T
 ): Promise<T>;
 export async function runPipeline(
-    chatId: string,
     phase: string,
-    data: unknown,
-    ctx: RuntimeContext
+    ctx: RuntimeContext,
+    data: unknown
 ): Promise<unknown> {
     if (isSafeMode()) return data;
-    const handlers = await collectPipelineHandlers(chatId, phase, ctx.characterId);
+    const handlers = await collectPipelineHandlers(phase, ctx);
     return runPipelineHandlers(handlers, data, ctx);
 }
 

@@ -10,22 +10,11 @@
  */
 
 import { get } from 'svelte/store';
-import {
-    MessageService,
-    type MessageFields,
-    type Message,
-    type MessageSwipe,
-    type MessageSwipeFields
-} from '$lib/services';
+import { MessageService, type MessageFields, type Message, type MessageSwipe } from '$lib/services';
 import { messages, activeChatId, messageIndexes, activeChat } from '../state';
 import { AppError } from '$lib/types/errors';
 import type { DeepPartial } from '$lib/utils/defaults';
 import { getChat, updateChat } from './chat';
-import {
-    addTranslationsForMessages,
-    dropTranslationsForMessages,
-    loadTranslationsForMessages
-} from './translation';
 
 // ─── Getter ────────────────────────────────────────────────────────────
 
@@ -113,12 +102,6 @@ export async function loadInitialMessages(
     const initialMsgs = await MessageService.getMessagesBefore(chatId, '\uffff', limit);
     if (get(activeChatId) === chatId && isContextCurrent()) {
         messages.setAll(initialMsgs);
-        await loadTranslationsForMessages(
-            chatId,
-            initialMsgs.map((msg) => msg.id),
-            isContextCurrent
-        );
-        if (get(activeChatId) !== chatId || !isContextCurrent()) return;
         await refreshMessageIndexes(chatId, isContextCurrent);
     }
 }
@@ -139,12 +122,6 @@ export async function loadOlderMessages(
         messages.batch(() => {
             for (const msg of olderMsgs) messages.set(msg.id, msg);
         });
-        await addTranslationsForMessages(
-            chatId,
-            olderMsgs.map((msg) => msg.id),
-            isContextCurrent
-        );
-        if (get(activeChatId) !== chatId || !isContextCurrent()) return 0;
         await refreshMessageIndexes(chatId, isContextCurrent);
         return olderMsgs.length;
     }
@@ -168,12 +145,6 @@ export async function loadNewerMessages(
         messages.batch(() => {
             for (const msg of newerMsgs) messages.set(msg.id, msg);
         });
-        await addTranslationsForMessages(
-            chatId,
-            newerMsgs.map((msg) => msg.id),
-            isContextCurrent
-        );
-        if (get(activeChatId) !== chatId || !isContextCurrent()) return 0;
         await refreshMessageIndexes(chatId, isContextCurrent);
         return newerMsgs.length;
     }
@@ -192,7 +163,6 @@ export async function dropOlderMessages(chatId: string, count: number): Promise<
     messages.batch(() => {
         for (const id of ids) messages.delete(id);
     });
-    dropTranslationsForMessages(ids);
     await refreshMessageIndexes(chatId);
 }
 
@@ -207,7 +177,6 @@ export async function dropNewerMessages(chatId: string, count: number): Promise<
     messages.batch(() => {
         for (const id of ids) messages.delete(id);
     });
-    dropTranslationsForMessages(ids);
     await refreshMessageIndexes(chatId);
 }
 
@@ -306,45 +275,15 @@ export async function deleteMessage(chatId: string, msgId: string): Promise<void
     if (get(activeChatId) !== chatId) return;
 
     messages.delete(msgId);
-    dropTranslationsForMessages([msgId]);
     await refreshMessageIndexes(chatId);
-}
-
-export async function createMessageSwipe(
-    messageId: string,
-    fields: MessageSwipeFields
-): Promise<{ swipeId: string; message: Message }> {
-    const { swipeId, message: updated } = await MessageService.createSwipe(messageId, fields);
-
-    if (shouldSyncMessage(updated.chatId, updated)) {
-        messages.set(messageId, updated);
-    }
-
-    return { swipeId, message: updated };
 }
 
 export async function updateMessageSwipe(
     messageId: string,
     swipeId: string,
     changes: DeepPartial<MessageSwipe>
-): Promise<Message> {
-    const updated = await MessageService.updateSwipe(messageId, swipeId, changes);
-
-    if (shouldSyncMessage(updated.chatId, updated)) {
-        messages.set(messageId, updated);
-    }
-
-    return updated;
-}
-
-export async function deleteMessageSwipe(messageId: string, swipeId: string): Promise<Message> {
-    const updated = await MessageService.deleteSwipe(messageId, swipeId);
-
-    if (shouldSyncMessage(updated.chatId, updated)) {
-        messages.set(messageId, updated);
-    }
-
-    return updated;
+): Promise<void> {
+    await updateMessage(messageId, { swipes: { [swipeId]: changes } });
 }
 
 // ─── Internal Helpers ──────────────────────────────────────────────────

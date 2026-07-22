@@ -9,14 +9,8 @@ import {
     deleteMessage,
     getMessage
 } from '$lib/stores/content/message';
-import { messages, roomChats, activeChatId, translations } from '$lib/stores/state';
-import {
-    MessageService,
-    ChatService,
-    TranslationService,
-    type Message,
-    type Chat
-} from '$lib/services';
+import { messages, roomChats, activeChatId } from '$lib/stores/state';
+import { MessageService, ChatService, type Message, type Chat } from '$lib/services';
 import { getLastContentText } from '$lib/workflow/agent/llm';
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
@@ -42,9 +36,6 @@ vi.mock('$lib/services', () => ({
     ChatService: {
         get: vi.fn(),
         update: vi.fn()
-    },
-    TranslationService: {
-        listByMessages: vi.fn()
     }
 }));
 
@@ -65,7 +56,6 @@ describe('Message Store', () => {
         vi.clearAllMocks();
         // Reset via messages (the EntityStore)
         messages.clear();
-        translations.clear();
         roomChats.clear();
         roomChats.set(mockChatId, {
             id: mockChatId,
@@ -86,7 +76,6 @@ describe('Message Store', () => {
             lastMessageId: mockMessage.id,
             messageCount: 1
         } as Chat);
-        vi.mocked(TranslationService.listByMessages).mockResolvedValue([]);
     });
 
     describe('loadInitialMessages', () => {

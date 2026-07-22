@@ -6,6 +6,7 @@
         Monitor,
         Package,
         Settings2,
+        SlidersHorizontal,
         UserRound
     } from 'lucide-svelte';
     import { WorkspaceShell } from '$lib/components/layout';
@@ -15,20 +16,14 @@
         activeModule,
         activeRoom,
         appSettings,
-        moduleLorebooks,
-        moduleScripts,
-        moduleCharJS,
         setModuleEnabled,
         updateModule,
         deleteModule,
-        createModuleLorebook,
-        updateModuleLorebook,
+        saveModuleLorebook,
         deleteModuleLorebook,
-        createModuleScript,
-        updateModuleScript,
+        saveModuleScript,
         deleteModuleScript,
-        createModuleCharJS,
-        updateModuleCharJS,
+        saveModuleCharJS,
         deleteModuleCharJS,
         createModuleFolder,
         updateModuleFolder,
@@ -36,10 +31,10 @@
         moveModuleItem
     } from '$lib/stores';
     import { navigate, type ModuleStudioTab } from '$lib/router';
-    import { isKeiServer } from '$lib/adapters/pb';
+    import { isKeiServer } from '$lib/services';
     import { exportModuleFile } from '$lib/managers/module';
     import type { DeepPartial } from '$lib/utils/defaults';
-    import type { ModuleContent, Lorebook, Script, CharJS } from '$lib/services';
+    import type { ModuleContent } from '$lib/services';
     import type { ModuleFileExport } from '$lib/porters/module';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
@@ -51,6 +46,7 @@
     import DisplayTab from './studio/DisplayTab.svelte';
     import AssetsTab from './studio/AssetsTab.svelte';
     import AdvancedTab from './studio/AdvancedTab.svelte';
+    import TogglesTab from './studio/TogglesTab.svelte';
 
     interface Props {
         moduleId: string;
@@ -59,7 +55,7 @@
 
     let { moduleId, moduleTab }: Props = $props();
 
-    type ExportButton = 'risu' | 'keimodule-light' | 'keimodule-baked';
+    type ExportButton = 'risu-charx' | 'risu-legacy' | 'keimodule-light' | 'keimodule-baked';
     let activeTab = $state<ModuleStudioTab>('profile');
     let exporting = $state<ExportButton | null>(null);
     let deleting = $state(false);
@@ -84,6 +80,7 @@
         { id: 'profile', label: 'Profile', icon: UserRound },
         { id: 'lorebooks', label: 'Lorebooks', icon: Book },
         { id: 'scripts', label: 'Scripts', icon: Code },
+        { id: 'toggles', label: 'Toggles', icon: SlidersHorizontal },
         { id: 'display', label: 'Display', icon: Monitor },
         { id: 'assets', label: 'Assets', icon: ImageIcon },
         { id: 'advanced', label: 'Advanced', icon: Settings2 }
@@ -176,13 +173,9 @@
                     />
                 {:else if activeTab === 'lorebooks'}
                     <LorebooksTab
-                        lorebooks={$moduleLorebooks}
                         config={$activeModule.lorebooks}
-                        onCreate={async (data) => {
-                            return createModuleLorebook($activeModule!.id, data as Lorebook);
-                        }}
-                        onUpdate={async (id, changes) => {
-                            await updateModuleLorebook($activeModule!.id, id, changes);
+                        onSave={async (item) => {
+                            await saveModuleLorebook($activeModule!.id, item);
                         }}
                         onDelete={async (id) => {
                             await deleteModuleLorebook($activeModule!.id, id);
@@ -210,24 +203,16 @@
                     />
                 {:else if activeTab === 'scripts'}
                     <ScriptsTab
-                        scripts={$moduleScripts}
-                        charJS={$moduleCharJS}
                         scriptsConfig={$activeModule.scripts}
                         charjsConfig={$activeModule.charjs}
-                        onCreateScript={async (data) => {
-                            return createModuleScript($activeModule!.id, data as Script);
-                        }}
-                        onUpdateScript={async (id, changes) => {
-                            await updateModuleScript($activeModule!.id, id, changes);
+                        onSaveScript={async (item) => {
+                            await saveModuleScript($activeModule!.id, item);
                         }}
                         onDeleteScript={async (id) => {
                             await deleteModuleScript($activeModule!.id, id);
                         }}
-                        onCreateCharJS={async (data) => {
-                            return createModuleCharJS($activeModule!.id, data as CharJS);
-                        }}
-                        onUpdateCharJS={async (id, changes) => {
-                            await updateModuleCharJS($activeModule!.id, id, changes);
+                        onSaveCharJS={async (item) => {
+                            await saveModuleCharJS($activeModule!.id, item);
                         }}
                         onDeleteCharJS={async (id) => {
                             await deleteModuleCharJS($activeModule!.id, id);
@@ -277,6 +262,8 @@
                                 )
                         }}
                     />
+                {:else if activeTab === 'toggles'}
+                    <TogglesTab module={$activeModule} />
                 {:else if activeTab === 'display'}
                     <DisplayTab
                         module={$activeModule}

@@ -3,6 +3,8 @@ import { get } from 'svelte/store';
 import {
     loadSettings,
     updateSettings,
+    saveCustomLLMModel,
+    deleteCustomLLMModel,
     createGlobalFolder,
     updateGlobalFolder,
     deleteGlobalFolder,
@@ -60,6 +62,42 @@ describe('Settings Store', () => {
 
             expect(get(appSettings)!.theme).toBe('light');
             expect(SettingsService.update).toHaveBeenCalledWith({ theme: 'light' });
+        });
+    });
+
+    describe('Custom LLM Models', () => {
+        it('upserts a model with canonical identity metadata', async () => {
+            vi.mocked(SettingsService.update).mockResolvedValue(mockSettings);
+
+            await saveCustomLLMModel('custom::model-1', {
+                name: 'Model',
+                sortOrder: 'a'
+            });
+
+            expect(SettingsService.update).toHaveBeenCalledWith({
+                custom: {
+                    llm: {
+                        models: {
+                            'custom::model-1': {
+                                name: 'Model',
+                                sortOrder: 'a',
+                                id: 'custom::model-1',
+                                provider: 'custom'
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+        it('deletes a model through the generic settings update', async () => {
+            vi.mocked(SettingsService.update).mockResolvedValue(mockSettings);
+
+            await deleteCustomLLMModel('custom::model-1');
+
+            expect(SettingsService.update).toHaveBeenCalledWith({
+                custom: { llm: { models: { 'custom::model-1': undefined } } }
+            });
         });
     });
 

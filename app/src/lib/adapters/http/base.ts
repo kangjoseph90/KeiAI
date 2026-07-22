@@ -1,4 +1,4 @@
-import { type IHttpAdapter, type HttpOptions, HttpError } from './types';
+import { type IHttpAdapter, type HttpOptions, type ProxyRuntimeConfig, HttpError } from './types';
 
 /**
  * Abstract Base Class for HTTP Adapters
@@ -7,6 +7,8 @@ import { type IHttpAdapter, type HttpOptions, HttpError } from './types';
  * to follow DRY principles across Web and Tauri platforms.
  */
 export abstract class BaseHttpAdapter implements IHttpAdapter {
+    abstract configureProxy(config: ProxyRuntimeConfig): void;
+    abstract getProxyConfig(): ProxyRuntimeConfig;
     abstract fetch(url: string, init?: RequestInit, options?: HttpOptions): Promise<Response>;
 
     async get<T>(url: string, headers?: Record<string, string>, options?: HttpOptions): Promise<T> {

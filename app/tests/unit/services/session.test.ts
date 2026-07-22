@@ -38,7 +38,8 @@ describe('UserService Session Management', () => {
             createdAt: 1,
             updatedAt: 1,
             masterKey,
-            identityKeyPair
+            identityKeyPair,
+            connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
         });
     });
 

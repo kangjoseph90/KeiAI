@@ -19,11 +19,10 @@ import type {
     QuickJSHandle
 } from 'quickjs-emscripten';
 import type { CharJSInstance, ModeKind } from './types';
-import type { CharJS } from '$lib/services/content/charjs';
+import type { CharJS } from '$lib/services';
 import { injectKeiAPI } from './sandbox';
 import { Mutex } from '$lib/utils/mutex';
 import { createLogger } from '$lib/adapters/logger';
-import { CharJSService } from '$lib/services/content/charjs';
 
 // ─── Safe Marshaling ───────────────────────────────────────────────
 
@@ -63,6 +62,7 @@ const pendingInstances = new Map<string, Promise<CharJSInstance | null>>();
  * `null` value means "probe pending" (another call is building the manifest).
  */
 const handlerManifest = new Map<string, Set<string>>();
+const sourceById = new Map<string, string>();
 
 const logger = createLogger('charjs:engine');
 
@@ -128,6 +128,7 @@ export function destroyAllInstances(): void {
         destroyInstance(key, instance);
     }
     handlerManifest.clear();
+    sourceById.clear();
     if (cleanupTimer) {
         clearInterval(cleanupTimer);
         cleanupTimer = null;
@@ -215,11 +216,19 @@ async function createInstance(
  */
 export async function getOrCreateInstance(
     chatId: string,
-    charjsId: string,
+    charjs: CharJS,
     kind: ModeKind,
     mode: string,
     allowLowLevel: boolean
 ): Promise<CharJSInstance | null> {
+    const charjsId = charjs.id;
+    const previousSource = sourceById.get(charjsId);
+    if (previousSource !== undefined && previousSource !== charjs.code) {
+        invalidateCharJS(charjsId);
+    }
+    sourceById.set(charjsId, charjs.code);
+    if (!charjs.enabled || !charjs.code.trim()) return null;
+
     // ── Manifest fast-path: skip modes this script never registers ───
     const manifest = handlerManifest.get(charjsId);
     if (manifest && !manifest.has(`${kind}:${mode}`)) {
@@ -244,10 +253,6 @@ export async function getOrCreateInstance(
     // Cache miss — fetch data and create
     const promise = (async () => {
         try {
-            const charjs = await CharJSService.get(charjsId);
-            if (!charjs || !charjs.enabled || !charjs.code.trim()) {
-                return null;
-            }
             const instance = await createInstance(chatId, charjs, kind, mode, allowLowLevel);
 
             // Post-creation check: if the manifest now shows no handler
@@ -335,7 +340,7 @@ export async function invokeHandler(
 
 // ─── Auto Invalidation ───────────────────────────────────────────────
 
-CharJSService.onChange((id) => {
+export function invalidateCharJS(id: string): void {
     // Invalidate manifest so next access re-probes registered handlers
     handlerManifest.delete(id);
 
@@ -345,4 +350,4 @@ CharJSService.onChange((id) => {
             destroyInstance(key, instance);
         }
     }
-});
+}

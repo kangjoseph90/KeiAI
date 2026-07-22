@@ -7,7 +7,7 @@ import { getPersona } from '$lib/stores/content/persona';
 import { getChat } from '$lib/stores/content/chat';
 import { getMessage } from '$lib/stores/content/message';
 import { getChatVariable, setChatVariable } from '$lib/managers/chat';
-import { getGlobalVariable } from '$lib/managers/preset';
+import { getToggleMacroValue } from '$lib/managers/toggle';
 import { getLastContentText } from '$lib/workflow/agent/llm';
 import { createLogger } from '$lib/adapters/logger';
 import type { RuntimeContext } from '$lib/types/context';
@@ -154,6 +154,8 @@ function collectBuiltInMacros(): Map<string, Macro[]> {
     addAliases(['date', 'datetimeformat'], (args) =>
         formatLocalDate(new Date(), args.join(':') || 'YYYY-MM-DD')
     );
+    addAliases(['screen_width', 'screenwidth'], () => viewportSize('width'));
+    addAliases(['screen_height', 'screenheight'], () => viewportSize('height'));
     add('round', ([value]) => String(Math.round(toNumber(value))));
     add('floor', ([value]) => String(Math.floor(toNumber(value))));
     add('ceil', ([value]) => String(Math.ceil(toNumber(value))));
@@ -188,13 +190,9 @@ function collectBuiltInMacros(): Map<string, Macro[]> {
         if (!ctx.chatId || !key) return '';
         return (await getChatVariable(ctx.chatId, key)) ?? '';
     });
-    add('getglobalvar', async ([key]) => {
-        if (!key) return '';
-        return (await getGlobalVariable(key)) ?? 'null';
-    });
     add('gettoggle', async ([key]) => {
         if (!key) return '';
-        return (await getGlobalVariable(`toggle_${key}`)) ?? 'null';
+        return getToggleMacroValue(key);
     });
     add('setvar', async ([key, value], ctx) => {
         if (!ctx.chatId || !key) return '';
@@ -340,6 +338,11 @@ function formatLocalDate(date: Date, format: string): string {
         (result, [token, value]) => result.replaceAll(token, value),
         format
     );
+}
+
+function viewportSize(axis: 'width' | 'height'): string {
+    if (typeof window === 'undefined') return '0';
+    return String(axis === 'width' ? window.innerWidth : window.innerHeight);
 }
 
 export function createDryRunMacros(): Map<string, Macro> {

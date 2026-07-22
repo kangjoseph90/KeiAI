@@ -1,4 +1,4 @@
-import type { OrderedRef } from '../types/refs';
+import type { EntityListConfig, OrderedRef } from '../types/refs';
 import { generateKeyBetween } from 'fractional-indexing';
 
 export function compareSortOrder(a: string | null, b: string | null): number {
@@ -26,6 +26,11 @@ export function generateSortOrder(
     if (orders.length === 0) return generateKeyBetween(null, null);
     orders.sort(compareSortOrder);
     return generateKeyBetween(orders[orders.length - 1], null);
+}
+
+/** Returns parent-owned items in their canonical order. */
+export function listItems<T extends OrderedRef>(list: EntityListConfig<T>): T[] {
+    return Object.values(list.refs).sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder));
 }
 
 /**

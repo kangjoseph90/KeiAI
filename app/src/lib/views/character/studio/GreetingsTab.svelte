@@ -4,8 +4,9 @@
     import { Textarea } from '$lib/components/ui/textarea';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateId } from '$lib/utils/id';
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
-    import type { Character } from '$lib/services';
+    import type { Character, Greeting } from '$lib/services';
     import { SvelteSet } from 'svelte/reactivity';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import { appConfirm, toast } from '$lib/ui';
@@ -13,15 +14,11 @@
 
     interface Props {
         character: Character;
-        onCreate: (fields: { content: string; sortOrder: string }) => string | Promise<string>;
-        onUpdate: (
-            id: string,
-            changes: { content?: string; sortOrder?: string }
-        ) => void | Promise<void>;
+        onSave: (item: Greeting) => string | void | Promise<string | void>;
         onDelete: (id: string) => void | Promise<void>;
     }
 
-    let { character, onCreate, onUpdate, onDelete }: Props = $props();
+    let { character, onSave, onDelete }: Props = $props();
     let expanded = new SvelteSet<string>();
     let busyAction = $state<string | null>(null);
 
@@ -48,10 +45,11 @@
                 ])
             )
         );
+        const greeting: Greeting = { id: generateId(), content: '', sortOrder };
         busyAction = 'create';
         try {
-            const greetingId = await onCreate({ content: '', sortOrder });
-            if (character.id === characterId) expanded.add(greetingId);
+            await onSave(greeting);
+            if (character.id === characterId) expanded.add(greeting.id);
         } catch (error) {
             toast.error({ title: 'Could not add greeting', description: getErrorMessage(error) });
         } finally {
@@ -61,9 +59,11 @@
 
     async function handleReorder(id: string, newSortOrder: string) {
         if (busyAction) return;
+        const greeting = character.greetings[id];
+        if (!greeting) return;
         busyAction = `reorder:${id}`;
         try {
-            await onUpdate(id, { sortOrder: newSortOrder });
+            await onSave({ ...greeting, sortOrder: newSortOrder, id });
         } catch (error) {
             toast.error({
                 title: 'Could not reorder greeting',
@@ -76,9 +76,11 @@
 
     async function handleUpdate(id: string, content: string) {
         if (busyAction) return;
+        const greeting = character.greetings[id];
+        if (!greeting) return;
         busyAction = `update:${id}`;
         try {
-            await onUpdate(id, { content });
+            await onSave({ ...greeting, content, id });
         } catch (error) {
             toast.error({
                 title: 'Could not update greeting',

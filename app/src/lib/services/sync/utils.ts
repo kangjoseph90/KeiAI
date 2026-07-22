@@ -3,6 +3,7 @@ import type { DataScope } from '$lib/adapters/db';
 import type { SyncState } from './base';
 import { hasActiveSession, getActiveSession } from '../session';
 import { pb } from '$lib/adapters/pb';
+import { normalizeUrl } from '$lib/utils/url';
 
 export const PAGE_SIZE = 200;
 export const CHUNK_SIZE = 100;
@@ -16,9 +17,10 @@ export function isReadyToSync(): boolean {
     return pb.authStore.isValid && hasActiveSession();
 }
 
-export function getSyncKey(entity: string, ...segments: string[]): string {
-    if (segments.length === 0) return `lastSync_${entity}`;
-    return `lastSync_${entity}_${segments.join('_')}`;
+export function getSyncKey(entity: string, userId: string, ...segments: string[]): string {
+    const server = encodeURIComponent(normalizeUrl(pb.baseUrl));
+    const scope = segments.length > 0 ? `_${segments.join('_')}` : '';
+    return `lastSync_${entity}_${userId}${scope}_server_${server}`;
 }
 
 export function belongsToScope(

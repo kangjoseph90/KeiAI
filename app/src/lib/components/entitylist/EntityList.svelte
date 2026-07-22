@@ -17,6 +17,7 @@
     import EntityList from './EntityList.svelte';
     import { appPrompt, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
+    import { cn } from '$lib/utils';
     import { isInteractiveDragTarget, pointerDrag } from './pointer-drag';
 
     interface FolderSnippetPayload {
@@ -71,7 +72,7 @@
         parentId = undefined,
         gridClass = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 w-full',
         listClass = 'flex flex-col w-full',
-        childContainerClass = 'relative ml-4 my-1 pl-3 pr-2 py-2',
+        childContainerClass = 'relative ml-4 my-1 px-3 py-2',
         folderWrapperClass = undefined,
         itemWrapperClass = undefined,
         onCreateFolder = async () => {
@@ -760,12 +761,13 @@
                 {#if !isCollapsed}
                     <!-- Nested recursive call for children -->
                     <div class={layout === 'grid' ? 'col-span-full' : ''}>
+                        <!-- Nested content uses symmetric horizontal padding; indentation comes from margin. -->
                         <div
                             role="none"
                             data-entity-dnd-id={f.id}
                             data-entity-dnd-type="folder"
                             data-entity-dnd-zone="folder-contents"
-                            class="{childContainerClass} {getFolderGroupClass(f.color)}"
+                            class={cn('min-w-0', childContainerClass, getFolderGroupClass(f.color))}
                         >
                             <EntityList
                                 {entities}

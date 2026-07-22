@@ -23,6 +23,12 @@ export interface MessageSwipeFields {
     speakerId?: string; // personaId if role is 'user', characterId if role is 'assistant'
     speakerName?: string;
     attachments?: string[]; // reference ids of chat.inlays
+    translation?: MessageTranslation;
+}
+
+export interface MessageTranslation {
+    sourceHash: string;
+    text: string;
 }
 
 /**
@@ -62,6 +68,18 @@ const defaultMessageFields: MessageFields = {
 
 function parseFields(record: MessageRecord): MessageFields {
     return deepMerge(defaultMessageFields, record.data as DeepPartial<MessageFields>);
+}
+
+function normalizeChanges(changes: DeepPartial<MessageFields>): DeepPartial<MessageFields> {
+    if (!changes.swipes) return changes;
+
+    const swipes = Object.fromEntries(
+        Object.entries(changes.swipes).map(([id, swipe]) => [
+            id,
+            swipe && swipe.parts !== undefined ? { ...swipe, translation: undefined } : swipe
+        ])
+    );
+    return { ...changes, swipes };
 }
 
 // ─── Service ──────────────────────────────────────────────────────────
@@ -200,12 +218,13 @@ export class MessageService {
 
         try {
             const current = parseFields(record);
-            const updated: MessageFields = deepMerge(current, changes);
+            const normalized = normalizeChanges(changes);
+            const updated: MessageFields = deepMerge(current, normalized);
 
             buffer.update<MessageRecord>({
                 tableName: 'messages',
                 record: { ...record, data: updated as unknown as Record<string, unknown> },
-                patch: changes as unknown as Record<string, unknown>
+                patch: normalized as unknown as Record<string, unknown>
             });
 
             return {
@@ -250,50 +269,6 @@ export class MessageService {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete message', error);
         }
-    }
-
-    static async createSwipe(
-        messageId: string,
-        fields: MessageSwipeFields
-    ): Promise<{ swipeId: string; message: Message }> {
-        const swipeId = generateId();
-        const updatedMessage = await this.update(messageId, {
-            swipes: {
-                [swipeId]: {
-                    ...fields,
-                    id: swipeId,
-                    createdAt: clock.now()
-                }
-            }
-        });
-
-        return { swipeId, message: updatedMessage };
-    }
-
-    static async updateSwipe(
-        messageId: string,
-        swipeId: string,
-        changes: DeepPartial<MessageSwipe>
-    ): Promise<Message> {
-        return this.update(messageId, {
-            swipes: {
-                [swipeId]: changes
-            }
-        });
-    }
-
-    static async deleteSwipe(messageId: string, swipeId: string): Promise<Message> {
-        const message = await this.get(messageId);
-        if (!message) throw new AppError('NOT_FOUND', `Message not found: ${messageId}`);
-
-        const remainingIds = Object.keys(message.swipes).filter((id) => id !== swipeId);
-        const nextActiveId =
-            message.activeSwipeId === swipeId ? (remainingIds[0] ?? '') : message.activeSwipeId;
-
-        return this.update(messageId, {
-            swipes: { [swipeId]: undefined },
-            activeSwipeId: nextActiveId
-        });
     }
 
     static async countByChat(chatId: string): Promise<number> {

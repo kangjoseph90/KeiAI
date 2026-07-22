@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getActiveSession } from '$lib/services/session';
-import { UserService } from '$lib/services/user';
+import { UserService, type UserRecord } from '$lib/services/user';
 
 const mockMasterKey = {} as CryptoKey;
 const mockIdentityKeyPair = {} as CryptoKeyPair;
@@ -30,7 +30,12 @@ vi.mock('$lib/crypto', () => ({
 vi.mock('$lib/utils/id', () => ({ generateId: vi.fn(() => 'local-id') }));
 vi.mock('$lib/utils/clock', () => ({ clock: { now: vi.fn(() => 1000) } }));
 vi.mock('minidenticons', () => ({ minidenticon: vi.fn((seed: string) => `<svg>${seed}</svg>`) }));
-vi.mock('$lib/config', () => ({ PB_URL: 'https://sync.example.test' }));
+vi.mock('$lib/config', () => ({
+    PB_URL: 'https://sync.example.test',
+    PROXY_URL: 'https://proxy.example.test',
+    KEI_PB_URL: 'https://api.keiai.xyz',
+    KEI_PROXY_URL: 'https://proxy.keiai.xyz'
+}));
 
 vi.mock('$lib/adapters/asset', () => ({
     appAsset: {
@@ -77,7 +82,8 @@ describe('UserService', () => {
             createdAt: 1,
             updatedAt: 1,
             masterKey: mockMasterKey,
-            identityKeyPair: mockIdentityKeyPair
+            identityKeyPair: mockIdentityKeyPair,
+            connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
         });
 
         const restored = await UserService.restoreOrCreateUser();
@@ -86,6 +92,52 @@ describe('UserService', () => {
             user: expect.objectContaining({ id: 'user-1' }),
             restored: true
         });
+    });
+
+    it('normalizes connection settings on legacy user records', async () => {
+        vi.mocked(appKV.get).mockResolvedValue('user-1');
+        vi.mocked(appUser.getUser).mockResolvedValue({
+            id: 'user-1',
+            createdAt: 1,
+            updatedAt: 1,
+            masterKey: mockMasterKey,
+            identityKeyPair: mockIdentityKeyPair
+        } as unknown as UserRecord);
+
+        const { user } = await UserService.restoreOrCreateUser();
+
+        expect(user.name).toBe('');
+        expect(user.avatar).toBe('');
+        expect(user.connections).toEqual({
+            server: { mode: 'default' },
+            proxy: { mode: 'default' }
+        });
+        expect(appUser.saveUser).not.toHaveBeenCalled();
+    });
+
+    it('fills a missing nested connection without replacing stored siblings', async () => {
+        vi.mocked(appUser.getUser).mockResolvedValue({
+            id: 'user-1',
+            name: 'Legacy',
+            avatar: '',
+            createdAt: 1,
+            updatedAt: 1,
+            masterKey: mockMasterKey,
+            identityKeyPair: mockIdentityKeyPair,
+            connections: {
+                proxy: { mode: 'custom', customUrl: 'https://proxy.example.test' }
+            }
+        } as unknown as UserRecord);
+
+        const user = await UserService.getUser('user-1');
+        expect(user).toMatchObject({
+            connections: {
+                server: { mode: 'default' },
+                proxy: { mode: 'custom', customUrl: 'https://proxy.example.test' }
+            }
+        });
+        expect(user).not.toHaveProperty('masterKey');
+        expect(user).not.toHaveProperty('identityKeyPair');
     });
 
     it('creates a new local identity when no active user exists', async () => {
@@ -117,7 +169,7 @@ describe('UserService', () => {
             email: 'notice@example.test',
             masterKey: mockMasterKey,
             identityKeyPair: mockIdentityKeyPair,
-            selfHostUrl: 'https://sync.example.test',
+            connections: { server: { mode: 'default' }, proxy: { mode: 'default' } },
             name: 'Synced'
         });
 
@@ -126,7 +178,7 @@ describe('UserService', () => {
                 id: 'user-1',
                 email: 'notice@example.test',
                 name: 'Synced',
-                selfHostUrl: 'https://sync.example.test'
+                connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
             }),
             { origin: 'sync' }
         );
@@ -140,7 +192,7 @@ describe('UserService', () => {
             avatar: '',
             createdAt: 1,
             updatedAt: 1,
-            selfHostUrl: 'https://sync.example.test',
+            connections: { server: { mode: 'default' }, proxy: { mode: 'default' } },
             username: 'kei',
             masterKey: mockMasterKey,
             identityKeyPair: mockIdentityKeyPair
@@ -151,7 +203,7 @@ describe('UserService', () => {
         expect(appUser.saveUser).toHaveBeenCalledWith(
             expect.objectContaining({
                 id: 'user-1',
-                selfHostUrl: 'https://sync.example.test'
+                connections: { server: { mode: 'default' }, proxy: { mode: 'default' } }
             })
         );
         const savedUser = vi.mocked(appUser.saveUser).mock.calls[0][0];

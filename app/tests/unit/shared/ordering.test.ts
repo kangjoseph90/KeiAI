@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
+import { generateSortOrder, listItems, sortByRefs } from '$lib/utils/ordering';
 import type { OrderedRef } from '$lib/types/refs';
 
 describe('Ordering Utilities', () => {
@@ -64,6 +64,21 @@ describe('Ordering Utilities', () => {
         it('should return original list if refs empty', () => {
             const entities = [{ id: '1' }];
             expect(sortByRefs(entities, {})).toEqual(entities);
+        });
+    });
+
+    describe('listItems', () => {
+        it('returns owned items by sort order without mutating the config', () => {
+            const refs = {
+                second: { id: 'second', sortOrder: 'b', name: 'Second' },
+                first: { id: 'first', sortOrder: 'a', name: 'First' }
+            };
+
+            expect(listItems({ refs, folders: {} }).map((item) => item.id)).toEqual([
+                'first',
+                'second'
+            ]);
+            expect(Object.keys(refs)).toEqual(['second', 'first']);
         });
     });
 });

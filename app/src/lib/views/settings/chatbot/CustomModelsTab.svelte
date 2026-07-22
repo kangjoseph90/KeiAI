@@ -6,6 +6,7 @@
         Key,
         ChevronDown,
         ChevronRight,
+        ChevronUp,
         GripVertical,
         Settings2
     } from 'lucide-svelte';
@@ -14,19 +15,17 @@
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { Badge } from '$lib/components/ui/badge';
-    import {
-        appSettings,
-        createCustomLLMModel,
-        updateCustomLLMModel,
-        deleteCustomLLMModel
-    } from '$lib/stores';
+    import { appSettings, saveCustomLLMModel, deleteCustomLLMModel } from '$lib/stores';
     import {
         type LLMHandler,
         type LLMTokenizer,
+        type LLMCapability,
         getLLMHandlerName,
-        getLLMTokenizerName
+        getLLMTokenizerName,
+        getLLMCapabilityName
     } from '$lib/types/models/llm';
     import { generateSortOrder } from '$lib/utils/ordering';
+    import { generateId } from '$lib/utils/id';
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
@@ -34,9 +33,11 @@
     import { getErrorMessage } from '$lib/types/errors';
 
     const expandedModels = new SvelteSet<string>();
+    const advancedModels = new SvelteSet<string>();
     let busyAction = $state<string | null>(null);
 
     const handlers: LLMHandler[] = ['openai_compatible', 'anthropic', 'google'];
+    const capabilities: LLMCapability[] = ['image_input', 'streaming'];
 
     const tokenizers: LLMTokenizer[] = [
         'o200k_base',
@@ -52,7 +53,8 @@
         busyAction = 'create';
         try {
             const models = Object.values($appSettings?.custom?.llm?.models ?? {});
-            const modelId = await createCustomLLMModel({
+            const modelId = `custom::${generateId()}`;
+            await saveCustomLLMModel(modelId, {
                 name: 'New Custom Model',
                 modelId: '',
                 baseUrl: '',
@@ -90,6 +92,7 @@
             if (!confirmed) return;
             await deleteCustomLLMModel(id);
             expandedModels.delete(id);
+            advancedModels.delete(id);
         } catch (error) {
             toast.error({ title: 'Could not delete model', description: getErrorMessage(error) });
         } finally {
@@ -100,7 +103,7 @@
     async function handleReorder(id: string, newSortOrder: string) {
         if (busyAction) return;
         try {
-            await updateCustomLLMModel(id, { sortOrder: newSortOrder });
+            await saveCustomLLMModel(id, { sortOrder: newSortOrder });
         } catch (error) {
             toast.error({ title: 'Could not reorder model', description: getErrorMessage(error) });
         }
@@ -108,10 +111,10 @@
 
     async function updateModelSafely(
         id: string,
-        changes: Parameters<typeof updateCustomLLMModel>[1]
+        changes: Parameters<typeof saveCustomLLMModel>[1]
     ): Promise<void> {
         try {
-            await updateCustomLLMModel(id, changes);
+            await saveCustomLLMModel(id, changes);
         } catch (error) {
             toast.error({ title: 'Could not update model', description: getErrorMessage(error) });
         }
@@ -123,6 +126,26 @@
         } else {
             expandedModels.add(id);
         }
+    }
+
+    function toggleAdvanced(id: string) {
+        if (advancedModels.has(id)) {
+            advancedModels.delete(id);
+        } else {
+            advancedModels.add(id);
+        }
+    }
+
+    function setCapability(
+        id: string,
+        unsupported: LLMCapability[] | undefined,
+        capability: LLMCapability,
+        enabled: boolean
+    ): void {
+        const next = enabled
+            ? (unsupported ?? []).filter((item) => item !== capability)
+            : [...new Set([...(unsupported ?? []), capability])];
+        void updateModelSafely(id, { unsupported: next.length > 0 ? next : undefined });
     }
 </script>
 
@@ -285,6 +308,52 @@
                                     {/each}
                                 </select>
                             </div>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                class="w-full justify-between h-8 text-xs text-muted-foreground hover:bg-muted/50"
+                                onclick={() => toggleAdvanced(model.id)}
+                            >
+                                Advanced Settings
+                                {#if advancedModels.has(model.id)}
+                                    <ChevronUp class="size-3" />
+                                {:else}
+                                    <ChevronDown class="size-3" />
+                                {/if}
+                            </Button>
+
+                            {#if advancedModels.has(model.id)}
+                                <div class="grid gap-4 p-4 rounded-lg bg-muted/30 border">
+                                    <div class="flex flex-col gap-2">
+                                        <Label class="text-xs">Capabilities</Label>
+                                        <div class="flex flex-wrap gap-x-5 gap-y-2">
+                                            {#each capabilities as capability (capability)}
+                                                <label class="flex items-center gap-2 text-xs">
+                                                    <input
+                                                        type="checkbox"
+                                                        class="size-4 accent-primary"
+                                                        checked={!model.unsupported?.includes(
+                                                            capability
+                                                        )}
+                                                        disabled={busyAction !== null}
+                                                        onchange={(event) =>
+                                                            setCapability(
+                                                                model.id,
+                                                                model.unsupported,
+                                                                capability,
+                                                                event.currentTarget.checked
+                                                            )}
+                                                    />
+                                                    {getLLMCapabilityName(capability)}
+                                                </label>
+                                            {/each}
+                                        </div>
+                                    </div>
+                                </div>
+                            {/if}
                         </div>
                     </div>
                 {/if}

@@ -2,11 +2,12 @@
     import './app.css';
     import { onMount, onDestroy } from 'svelte';
     import { get } from 'svelte/store';
-    import { UserService } from '$lib/services';
+    import { AuthService, UserService } from '$lib/services';
     import { SyncManager } from '$lib/services/sync';
     import { clock } from '$lib/utils/clock';
     import { appKV } from '$lib/adapters/kv';
     import { AppSidebar } from '$lib/components/layout';
+    import RoomPanel from '$lib/views/room/RoomPanel.svelte';
     import { Button } from '$lib/components/ui/button';
     import {
         loadGlobalState,
@@ -200,7 +201,10 @@
             startSyncStatusTracking();
             await clock.init(appKV);
             const { user, restored } = await UserService.restoreOrCreateUser();
-            await UserService.setActiveUser(user.id, { preserveAuth: restored });
+            await UserService.setActiveUser(user.id);
+            await AuthService.restorePbAuth(user.id);
+            await AuthService.refreshPbAuth();
+            AuthService.startAutoRefresh();
             if (!restored) {
                 await initDefaultContents();
             }
@@ -223,6 +227,7 @@
     }
 
     onDestroy(() => {
+        AuthService.stopAutoRefresh();
         SyncManager.stopAutoSync();
         stopSyncStatusTracking();
         compactShellMedia?.removeEventListener('change', handleCompactShellChange);
@@ -339,7 +344,16 @@
                 route={$route}
                 onToggle={() => (sidebarCollapsed = !sidebarCollapsed)}
                 onNavigate={navigateFromSidebar}
-            />
+                hasPanel={$route.view === 'room' && Boolean($activeRoom)}
+            >
+                {#snippet panel()}
+                    <RoomPanel
+                        route={$route}
+                        onClose={() => (sidebarCollapsed = true)}
+                        onNavigate={navigateFromSidebar}
+                    />
+                {/snippet}
+            </AppSidebar>
         {/if}
 
         <!-- Main Content -->

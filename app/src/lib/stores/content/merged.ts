@@ -1,64 +1,33 @@
-import type { AppSettings, Character, Lorebook, Module, Script } from '$lib/services';
+import type { AppSettings, CharJS, Lorebook, Module, Script } from '$lib/services';
 import { getChat } from './chat';
 import { getCharacter } from './character';
 import { getAppSettings } from './settings';
-import { getChatLorebooks } from './chat';
-import { getCharacterLorebooks, getCharacterScripts } from './character';
-import { getModuleLorebooks, getModuleScripts } from './module';
-import { getActivePreset, getPresetScripts } from './preset';
+import { getModule } from './module';
+import { getActivePreset } from './preset';
+import { listItems } from '$lib/utils/ordering';
 
-/**
- * Returns loaded active modules for a character.
- * Combines globally enabled modules and character-specific enabled modules.
- */
-export function getActiveModulesForCharacter(
-    character: Character | null | undefined,
+/** Returns loaded active modules in global settings order. */
+export function selectActiveModules(
     settings: AppSettings | null | undefined,
     moduleList: readonly Module[]
 ): Module[] {
+    if (!settings) return [];
     const byId = new Map(moduleList.map((module) => [module.id, module]));
-    const result: Module[] = [];
-    const seen = new Set<string>();
-
-    for (const [id, ref] of Object.entries(settings?.modules.refs ?? {})) {
-        if (!ref?.enabled || seen.has(id)) continue;
-        const module = byId.get(id);
-        if (!module) continue;
-        result.push(module);
-        seen.add(id);
-    }
-
-    for (const [id, ref] of Object.entries(character?.modules.refs ?? {})) {
-        if (!ref?.enabled || seen.has(id)) continue;
-        const module = byId.get(id);
-        if (!module) continue;
-        result.push(module);
-        seen.add(id);
-    }
-
-    return result;
+    return listItems(settings.modules)
+        .filter((ref) => ref.enabled)
+        .map((ref) => byId.get(ref.id))
+        .filter((module): module is Module => module !== undefined);
 }
 
-/**
- * Returns active module IDs for a character.
- * Combines globally enabled modules and character-specific enabled modules.
- */
-export async function getActiveModuleIds(characterId?: string): Promise<Set<string>> {
-    const [settings, char] = await Promise.all([
-        getAppSettings(),
-        characterId ? getCharacter(characterId) : Promise.resolve(null)
-    ]);
-
-    const ids = new Set<string>();
-    for (const [id, r] of Object.entries(settings.modules.refs)) {
-        if (r.enabled) ids.add(id);
-    }
-    if (char) {
-        for (const [id, r] of Object.entries(char.modules.refs)) {
-            if (r.enabled) ids.add(id);
-        }
-    }
-    return ids;
+/** Returns active modules from storage in global settings order. */
+export async function getActiveModules(): Promise<Module[]> {
+    const settings = await getAppSettings();
+    const modules = await Promise.all(
+        listItems(settings.modules)
+            .filter((ref) => ref.enabled)
+            .map((ref) => getModule(ref.id))
+    );
+    return modules.filter((module): module is Module => module !== null);
 }
 
 /**
@@ -69,38 +38,82 @@ export async function getMergedLorebooks(
     chatId: string,
     characterId?: string
 ): Promise<Lorebook[]> {
-    const chat = await getChat(chatId);
-    if (!chat) return [];
-    const activeModuleIds = await getActiveModuleIds(characterId);
-
-    const [chatLB, charLB, ...modLBResults] = await Promise.all([
-        getChatLorebooks(chatId),
-        characterId ? getCharacterLorebooks(characterId) : Promise.resolve([]),
-        ...[...activeModuleIds].map((id) => getModuleLorebooks(id))
+    const [chat, character, modules] = await Promise.all([
+        getChat(chatId),
+        characterId ? getCharacter(characterId) : Promise.resolve(null),
+        getActiveModules()
     ]);
+    if (!chat) return [];
 
-    const modLB = modLBResults.flat();
-
-    return [...modLB, ...charLB, ...chatLB];
+    const result: Lorebook[] = [];
+    for (const module of modules) {
+        for (const lorebook of listItems(module.lorebooks)) {
+            result.push(lorebook);
+        }
+    }
+    if (character) {
+        for (const lorebook of listItems(character.lorebooks)) {
+            result.push(lorebook);
+        }
+    }
+    for (const lorebook of listItems(chat.lorebooks)) {
+        result.push(lorebook);
+    }
+    return result;
 }
 
 /**
  * Returns merged scripts from character and active modules.
  * Uses store-cached getters that fall back to refs-based individual gets.
  */
-export async function getMergedScripts(chatId: string, characterId?: string): Promise<Script[]> {
-    const chat = await getChat(chatId);
-    if (!chat) return [];
-    const activeModuleIds = await getActiveModuleIds(characterId);
-    const activePresetId = getActivePreset()?.id;
+export async function getMergedScripts(characterId?: string): Promise<Script[]> {
+    const [character, modules] = await Promise.all([
+        characterId ? getCharacter(characterId) : Promise.resolve(null),
+        getActiveModules()
+    ]);
+    const preset = getActivePreset();
 
-    const [charSC, presetSC, ...modSCResults] = await Promise.all([
-        characterId ? getCharacterScripts(characterId) : Promise.resolve([]),
-        activePresetId ? getPresetScripts(activePresetId) : Promise.resolve([]),
-        ...[...activeModuleIds].map((id) => getModuleScripts(id))
+    const result: Script[] = [];
+    for (const module of modules) {
+        for (const script of listItems(module.scripts)) {
+            result.push(script);
+        }
+    }
+    if (character) {
+        for (const script of listItems(character.scripts)) {
+            result.push(script);
+        }
+    }
+    if (preset) {
+        for (const script of listItems(preset.scripts)) {
+            result.push(script);
+        }
+    }
+    return result;
+}
+
+export interface MergedCharJS {
+    charjs: CharJS;
+    allowLowLevel: boolean;
+}
+
+/** Returns character and active module CharJS with their owning permission. */
+export async function getMergedCharJS(characterId?: string): Promise<MergedCharJS[]> {
+    const [character, modules] = await Promise.all([
+        characterId ? getCharacter(characterId) : Promise.resolve(null),
+        getActiveModules()
     ]);
 
-    const modSC = modSCResults.flat();
-
-    return [...modSC, ...charSC, ...presetSC];
+    const result: MergedCharJS[] = [];
+    if (character) {
+        for (const charjs of listItems(character.charjs)) {
+            result.push({ charjs, allowLowLevel: character.allowLowLevel });
+        }
+    }
+    for (const module of modules) {
+        for (const charjs of listItems(module.charjs)) {
+            result.push({ charjs, allowLowLevel: module.allowLowLevel });
+        }
+    }
+    return result;
 }

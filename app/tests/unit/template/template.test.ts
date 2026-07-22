@@ -26,7 +26,7 @@ const {
     mockGetChat,
     mockGetMessage,
     mockGetChatVariable,
-    mockGetGlobalVariable,
+    mockGetToggleMacroValue,
     mockSetChatVariable
 } = vi.hoisted(() => ({
     mockCollectCharJSInstances: vi.fn(),
@@ -37,7 +37,7 @@ const {
     mockGetChat: vi.fn(),
     mockGetMessage: vi.fn(),
     mockGetChatVariable: vi.fn(),
-    mockGetGlobalVariable: vi.fn(),
+    mockGetToggleMacroValue: vi.fn(),
     mockSetChatVariable: vi.fn()
 }));
 
@@ -78,8 +78,8 @@ vi.mock('$lib/managers/chat', () => ({
     setChatVariable: mockSetChatVariable
 }));
 
-vi.mock('$lib/managers/preset', () => ({
-    getGlobalVariable: mockGetGlobalVariable
+vi.mock('$lib/managers/toggle', () => ({
+    getToggleMacroValue: mockGetToggleMacroValue
 }));
 
 function createPluginInstance(): PluginInstance {
@@ -164,9 +164,9 @@ describe('template', () => {
             if (key === 'mood') return 'very happy';
             return null;
         });
-        mockGetGlobalVariable.mockImplementation(async (key: string) => {
-            if (key === 'toggle_romance') return '1';
-            return null;
+        mockGetToggleMacroValue.mockImplementation(async (key: string) => {
+            if (key === 'romance') return '1';
+            return 'null';
         });
         mockSetChatVariable.mockResolvedValue(undefined);
         mockInvokeHandler.mockResolvedValue('Plugin Kei');
@@ -228,6 +228,23 @@ describe('template', () => {
         await expect(interpretTemplate(parseTemplate('{{? 2 = 2}}'), {}, macros)).resolves.toBe(
             '1'
         );
+    });
+
+    it('exposes Risu-compatible viewport macros', async () => {
+        const originalWidth = window.innerWidth;
+        const originalHeight = window.innerHeight;
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 640 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
+
+        await expect(
+            runTemplate(
+                '{{screen_width}}x{{screen_height}}:{{#if {{? {{screen_width}} <= 768 }} }}mobile{{/if}}',
+                {}
+            )
+        ).resolves.toBe('640x900:mobile');
+
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalHeight });
     });
 
     it('collects charjs macros only when chatId is present', async () => {

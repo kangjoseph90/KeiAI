@@ -12,15 +12,12 @@ pnpm test tests/unit/services/character.test.ts  # Run specific file
 
 ## Stack
 
-| Tool                        | Role                                 |
-| --------------------------- | ------------------------------------ |
-| Vitest                      | Test runner, assertions, mocking     |
-| happy-dom                   | DOM simulation (test environment)    |
-| fake-indexeddb              | In-memory IndexedDB for Dexie tests  |
-| @testing-library/svelte     | Component rendering + queries        |
-| @testing-library/user-event | User interaction simulation          |
-| @testing-library/jest-dom   | Extended DOM matchers                |
-| MSW                         | PocketBase API mocking (handlers.ts) |
+| Tool           | Role                                 |
+| -------------- | ------------------------------------ |
+| Vitest         | Test runner, assertions, mocking     |
+| happy-dom      | DOM simulation (test environment)    |
+| fake-indexeddb | In-memory IndexedDB for Dexie tests  |
+| MSW            | PocketBase API mocking (handlers.ts) |
 
 ---
 
@@ -28,7 +25,7 @@ pnpm test tests/unit/services/character.test.ts  # Run specific file
 
 ```
 tests/
-├── setup.ts                  # Global: fake-indexeddb, PB mock, Tauri mock, jest-dom matchers
+├── setup.ts                  # Global: fake-indexeddb, PB mock, Tauri mock
 ├── mocks/
 │   └── handlers.ts           # MSW handlers for all PocketBase endpoints + MockPocketBase
 ├── unit/
@@ -204,26 +201,6 @@ This validates service → adapter → DB flows with real IndexedDB but without 
 
 **Tip**: Use a unique `userId` per test for isolation (no cross-test bleed in shared DB).
 
-### Component Tests — @testing-library/svelte
-
-```typescript
-import { render, screen } from '@testing-library/svelte';
-import { userEvent } from '@testing-library/user-event';
-
-it('should handle user click', async () => {
-    const handler = vi.fn();
-    render(Button, { onClick: handler, children: 'Save' });
-
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    expect(handler).toHaveBeenCalledOnce();
-});
-```
-
-- Query by **role** or **text** — never CSS selectors or test IDs as first choice
-- Test **user behavior**, not implementation details
-- Don't assert on CSS classes or internal state
-
 - Skip crypto edge cases | Always test tamper detection + wrong key |
 - Use hard-coded partial objects for complex types | Use `makeSettings()` / `makeCharacter()` helpers |
 
@@ -262,11 +239,9 @@ appSettings.set(
 
 The setup file configures the test environment before any tests run:
 
-1. **jest-dom matchers** — extends `expect` with `.toBeInTheDocument()`, etc.
-2. **fake-indexeddb** — replaces global `indexedDB` with in-memory implementation
-3. **PocketBase mock** — `vi.mock('$lib/adapters/pb')` returns a mock client with auth, collection CRUD, realtime
-4. **Tauri API mocks** — stubs `@tauri-apps/api/core`, `@tauri-apps/plugin-fs` (tests always run in Web mode)
-5. **Cleanup** — `@testing-library/svelte` cleanup runs after each test automatically
+1. **fake-indexeddb** — replaces global `indexedDB` with in-memory implementation
+2. **PocketBase mock** — `vi.mock('$lib/adapters/pb')` returns a mock client with auth, collection CRUD, realtime
+3. **Tauri API mocks** — stubs `@tauri-apps/api/core`, `@tauri-apps/plugin-fs` (tests always run in Web mode)
 
 ---
 

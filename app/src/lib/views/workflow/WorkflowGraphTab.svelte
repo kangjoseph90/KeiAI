@@ -10,7 +10,7 @@
         type NodeTypes
     } from '@xyflow/svelte';
     import '@xyflow/svelte/dist/style.css';
-    import { ChevronDown, ChevronRight, Plus, Trash2, TriangleAlert, X } from 'lucide-svelte';
+    import { ChevronDown, ChevronRight, Plus, Trash2, TriangleAlert } from 'lucide-svelte';
     import { SvelteSet } from 'svelte/reactivity';
     import { Button } from '$lib/components/ui/button';
     import { appConfirm } from '$lib/ui';
@@ -46,11 +46,9 @@
         onEdit: (result: WorkflowEditResult) => void | Promise<void>;
         onEditPrompt?: (nodeId: string) => void;
         title?: string;
-        onClose?: () => void;
     }
 
-    let { workflow, selectedNodeId, onSelectNode, onEdit, onEditPrompt, title, onClose }: Props =
-        $props();
+    let { workflow, selectedNodeId, onSelectNode, onEdit, onEditPrompt, title }: Props = $props();
     let nodes = $state.raw<WorkflowCanvasNode[]>([]);
     let edges = $state.raw<Edge[]>([]);
 
@@ -326,17 +324,6 @@
             <span class="truncate">{title}</span>
         </div>
     {/if}
-    {#if onClose}
-        <button
-            type="button"
-            class="absolute right-3 top-3 z-20 flex size-8 items-center justify-center rounded-full border bg-background/95 shadow-sm backdrop-blur hover:bg-muted md:hidden"
-            onclick={onClose}
-            aria-label="Close workflow editor"
-        >
-            <X class="size-4" />
-        </button>
-    {/if}
-
     <!-- Desktop: left-top panel -->
     <div
         class="absolute left-3 top-3 z-10 hidden max-h-[calc(100%-6rem)] w-44 flex-col gap-1 overflow-y-auto rounded-xl border bg-background/95 p-2 shadow-sm backdrop-blur md:flex"

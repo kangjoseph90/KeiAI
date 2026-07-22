@@ -72,6 +72,7 @@ describe('ModuleService', () => {
         backgroundHTML: '',
         messageCSS: '',
         defaultVariables: {},
+        toggles: { refs: {}, folders: {} },
         allowLowLevel: false,
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },
@@ -218,28 +219,11 @@ describe('ModuleService', () => {
             await ModuleService.delete('mod-1');
 
             expect(localDB.transaction).toHaveBeenCalledWith(
-                expect.arrayContaining(['modules', 'lorebooks', 'scripts', 'charjs']),
+                ['modules'],
                 'rw',
                 expect.any(Function)
             );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'lorebooks',
-                'ownerId',
-                'mod-1',
-                undefined
-            );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'scripts',
-                'ownerId',
-                'mod-1',
-                undefined
-            );
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'charjs',
-                'ownerId',
-                'mod-1',
-                undefined
-            );
+            expect(localDB.softDeleteByIndex).not.toHaveBeenCalled();
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('modules', 'mod-1');
         });
     });

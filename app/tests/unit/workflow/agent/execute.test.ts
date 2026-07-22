@@ -30,7 +30,8 @@ const stubChat: Chat = {
     messageCount: 0,
     personas: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} },
-    inlays: { refs: {}, folders: {} }
+    inlays: { refs: {}, folders: {} },
+    files: { refs: {}, folders: {} }
 };
 
 vi.mock('$lib/stores', async (importOriginal) => {
@@ -75,13 +76,16 @@ describe('executeAgentNode', () => {
     it('builds a prompt from slots and streams serialized LLM output', async () => {
         let receivedPrompt: LLMMessage[] = [];
         mockSelectLLMHandler.mockReturnValue({
-            stream: vi.fn(async function* (prompt: LLMMessage[]) {
-                receivedPrompt = prompt;
-                yield {
-                    thought: 'thinking',
-                    content: `result: ${prompt[0] ? getTextContent(prompt[0].content) : ''}`
-                };
-            })
+            handler: {
+                stream: vi.fn(async function* (prompt: LLMMessage[]) {
+                    receivedPrompt = prompt;
+                    yield {
+                        thought: 'thinking',
+                        content: `result: ${prompt[0] ? getTextContent(prompt[0].content) : ''}`
+                    };
+                })
+            },
+            unsupported: []
         });
 
         const workflow: WorkflowDefinition = {
@@ -160,12 +164,15 @@ describe('executeAgentNode', () => {
     it('requires named slot macros for agent inputs', async () => {
         let receivedPrompt: LLMMessage[] = [];
         mockSelectLLMHandler.mockReturnValue({
-            stream: vi.fn(async function* (prompt: LLMMessage[]) {
-                receivedPrompt = prompt;
-                yield {
-                    content: `result: ${prompt[0] ? getTextContent(prompt[0].content) : ''}`
-                };
-            })
+            handler: {
+                stream: vi.fn(async function* (prompt: LLMMessage[]) {
+                    receivedPrompt = prompt;
+                    yield {
+                        content: `result: ${prompt[0] ? getTextContent(prompt[0].content) : ''}`
+                    };
+                })
+            },
+            unsupported: []
         });
 
         const workflow: WorkflowDefinition = {
@@ -245,10 +252,13 @@ describe('executeAgentNode', () => {
             releaseAgent = resolve;
         });
         mockSelectLLMHandler.mockReturnValue({
-            stream: vi.fn(async function* () {
-                await agentGate;
-                yield { content: 'memory saved' };
-            })
+            handler: {
+                stream: vi.fn(async function* () {
+                    await agentGate;
+                    yield { content: 'memory saved' };
+                })
+            },
+            unsupported: []
         });
 
         const workflow: WorkflowDefinition = {
@@ -326,11 +336,14 @@ describe('executeAgentNode', () => {
         // Multi-token: mock LLM yields cumulative content ('He', 'Hello', 'Hello!').
         // Each chunk must reach run() as a separate value event, in order.
         mockSelectLLMHandler.mockReturnValue({
-            stream: vi.fn(async function* () {
-                yield { content: 'He' };
-                yield { content: 'Hello' };
-                yield { content: 'Hello!' };
-            })
+            handler: {
+                stream: vi.fn(async function* () {
+                    yield { content: 'He' };
+                    yield { content: 'Hello' };
+                    yield { content: 'Hello!' };
+                })
+            },
+            unsupported: []
         });
 
         const workflow: WorkflowDefinition = {

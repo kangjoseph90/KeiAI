@@ -1,5 +1,4 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { svelteTesting } from '@testing-library/svelte/vite';
 import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
@@ -7,7 +6,7 @@ import { resolve } from 'path';
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
-    plugins: [tailwindcss(), svelte(), svelteTesting({ autoCleanup: false })],
+    plugins: [tailwindcss(), svelte()],
     envDir: '../',
 
     resolve: {
@@ -33,8 +32,7 @@ export default defineConfig({
             include: ['src/**/*.{js,ts,svelte}'],
             exclude: ['src/**/*.test.{js,ts}', 'src/**/*.spec.{js,ts}', 'src/**/*.d.ts']
         },
-        setupFiles: ['./tests/setup.ts'],
-        ui: true
+        setupFiles: ['./tests/setup.ts']
     },
 
     // Tauri: don't open a browser window automatically

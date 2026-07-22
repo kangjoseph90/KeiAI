@@ -29,9 +29,6 @@ export type WorkflowNode =
     | FileWriteNode
     | TemplateNode
     | GetToggleNode
-    | SetToggleNode
-    | GetGlobalVarNode
-    | SetGlobalVarNode
     | GetChatVarNode
     | SetChatVarNode
     | ToBooleanNode
@@ -140,18 +137,6 @@ export interface TemplateNode extends BaseNode {
 
 export interface GetToggleNode extends BaseNode {
     class: 'GetToggle';
-}
-
-export interface SetToggleNode extends BaseNode {
-    class: 'SetToggle';
-}
-
-export interface GetGlobalVarNode extends BaseNode {
-    class: 'GetGlobalVar';
-}
-
-export interface SetGlobalVarNode extends BaseNode {
-    class: 'SetGlobalVar';
 }
 
 export interface GetChatVarNode extends BaseNode {

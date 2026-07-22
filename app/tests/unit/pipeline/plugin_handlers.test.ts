@@ -68,7 +68,7 @@ describe('pipeline plugin handler integration', () => {
             role: 'assistant' as const
         };
 
-        const handlers = await collectPipelineHandlers('chat-1', 'output');
+        const handlers = await collectPipelineHandlers('output', context);
         const result = await handlers[0].run('draft', context);
 
         expect(handlers).toHaveLength(1);
@@ -90,9 +90,20 @@ describe('pipeline plugin handler integration', () => {
             role: 'assistant' as const
         };
 
-        const handlers = await collectPipelineHandlers('chat-1', 'output');
+        const handlers = await collectPipelineHandlers('output', context);
         const result = await handlers[0].run('draft', context);
 
         expect(result).toBe('draft');
+    });
+
+    it('collects only plugin handlers when chatId is absent', async () => {
+        const instance = createPluginInstance();
+        mockPluginManager.getInstances.mockReturnValue([instance]);
+
+        const handlers = await collectPipelineHandlers('output', {});
+
+        expect(handlers).toHaveLength(1);
+        expect(mockGetMergedScripts).not.toHaveBeenCalled();
+        expect(mockCollectCharJSInstances).not.toHaveBeenCalled();
     });
 });

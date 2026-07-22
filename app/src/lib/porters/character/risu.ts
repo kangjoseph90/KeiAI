@@ -1,4 +1,4 @@
-import type { LorebookFields } from '$lib/services';
+import type { Lorebook, LorebookFields, Script } from '$lib/services';
 import { generateId } from '$lib/utils/id';
 import { generateKeyBetween } from 'fractional-indexing';
 import type { CharacterBookEntry, CharacterCardV3 } from './ccv3';
@@ -8,12 +8,7 @@ import { risuScriptToKei } from '../risu/script';
 import { normalizeRisuTemplate } from '../risu/template';
 import { extractStyleCSS } from '../risu/background';
 import { readDefaultVariables, sortOrder } from '../utils';
-import type {
-    KeiCharacterPackageV1,
-    KeiCharacterPayload,
-    KeiLorebookPayload,
-    KeiScriptPayload
-} from './types';
+import type { KeiCharacterPackageV1, KeiCharacterPayload } from './types';
 
 interface ImportedRisuCharacter {
     name: string;
@@ -29,7 +24,7 @@ interface ImportedRisuCharacter {
     defaultVariables: Record<string, string>;
     allowLowLevel: boolean;
     lorebooks: LorebookFields[];
-    scripts: KeiScriptPayload[];
+    scripts: Script[];
     assets: ImportedRisuAsset[];
 }
 
@@ -89,19 +84,23 @@ function readRisuCharacter(
         lorebooks: (data.character_book?.entries ?? []).map((entry, index) =>
             cardLorebookToFields(entry, index)
         ),
-        scripts: (risuai.customScripts ?? []).map((script, index) =>
-            risuScriptToKei(script, index)
-        ),
+        scripts: (risuai.customScripts ?? []).map((script, index) => ({
+            ...risuScriptToKei(script, index),
+            sortOrder: sortOrder(index)
+        })),
         assets
     };
 }
 
 function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPackageV1 {
-    const avatarAsset = risu.assets.find((asset) => asset.role === 'avatar');
+    const avatarAsset =
+        risu.assets.find((asset) => asset.role === 'avatar' && asset.name === 'main') ??
+        risu.assets.find((asset) => asset.role === 'avatar');
     const resources = risu.assets.filter((asset) => asset !== avatarAsset);
     const lorebooks = risu.lorebooks.map(
-        (lorebook, index): KeiLorebookPayload => ({
+        (lorebook, index): Lorebook => ({
             id: portableId('lorebook', index),
+            sortOrder: sortOrder(index),
             ...lorebook
         })
     );
@@ -134,7 +133,7 @@ function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPac
             refs: Object.fromEntries(
                 lorebooks.map((item, index) => [
                     item.id,
-                    { id: item.id, sortOrder: sortOrder(index) }
+                    { ...item, id: item.id, sortOrder: sortOrder(index) }
                 ])
             ),
             folders: {}
@@ -143,7 +142,7 @@ function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPac
             refs: Object.fromEntries(
                 scripts.map((item, index) => [
                     item.id,
-                    { id: item.id, sortOrder: sortOrder(index) }
+                    { ...item, id: item.id, sortOrder: sortOrder(index) }
                 ])
             ),
             folders: {}
@@ -174,9 +173,6 @@ function risuCharacterToKeiPackage(risu: ImportedRisuCharacter): KeiCharacterPac
         version: 1,
         kind: 'keiai.character',
         character,
-        lorebooks,
-        scripts,
-        charjs: [],
         assets: Object.fromEntries(assetEntries),
         ...(avatarAsset ? { avatar: { data: avatarAsset.data } } : {})
     };

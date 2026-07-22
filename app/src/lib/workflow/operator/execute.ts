@@ -1,5 +1,5 @@
 import { getChatVariable, setChatVariable } from '$lib/managers/chat';
-import { getGlobalVariable, setGlobalVariable } from '$lib/managers/preset';
+import { getToggleMacroValue } from '$lib/managers/toggle';
 import { runTemplate, createDryRunMacros, mergeLocalMacros } from '$lib/template';
 import { AppError } from '$lib/types/errors';
 import type {
@@ -9,14 +9,11 @@ import type {
     CatchNode,
     GateNode,
     GetChatVarNode,
-    GetGlobalVarNode,
     GetToggleNode,
     NumberCompareNode,
     NumberMathNode,
     NumberNode,
     SetChatVarNode,
-    SetGlobalVarNode,
-    SetToggleNode,
     StringConcatNode,
     StringIncludesNode,
     StringLengthNode,
@@ -104,34 +101,8 @@ export async function executeGetToggleNode({
     signal
 }: WorkflowNodeExecutionContext<GetToggleNode>): Promise<void> {
     const name = await requireStringInput(inputs.name, 'Variable name input is required', signal);
-    const value = await getGlobalVariable(`toggle_${name}`);
-    output.emit(0, createWorkflowValueEvent(value ?? 'null'));
-}
-
-export async function executeSetToggleNode({
-    inputs,
-    signal
-}: WorkflowNodeExecutionContext<SetToggleNode>): Promise<void> {
-    const { name, content } = await requireNameAndContent(inputs, signal);
-    await setGlobalVariable(`toggle_${name}`, content);
-}
-
-export async function executeGetGlobalVarNode({
-    inputs,
-    output,
-    signal
-}: WorkflowNodeExecutionContext<GetGlobalVarNode>): Promise<void> {
-    const name = await requireStringInput(inputs.name, 'Variable name input is required', signal);
-    const value = await getGlobalVariable(name);
-    output.emit(0, createWorkflowValueEvent(value ?? 'null'));
-}
-
-export async function executeSetGlobalVarNode({
-    inputs,
-    signal
-}: WorkflowNodeExecutionContext<SetGlobalVarNode>): Promise<void> {
-    const { name, content } = await requireNameAndContent(inputs, signal);
-    await setGlobalVariable(name, content);
+    const value = await getToggleMacroValue(name);
+    output.emit(0, createWorkflowValueEvent(value));
 }
 
 export async function executeGetChatVarNode({

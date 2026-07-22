@@ -104,6 +104,7 @@ Each entity type uses one table with one local plaintext `data` payload. The sam
 
 ### Relationship Model
 
+- **Parent-owned items** — Small resources that never detach from a parent use `EntityListConfig<Item>`; lorebooks, regex scripts, CharJS, greetings, and toggles follow this pattern.
 - **1:N** — Parent blob holds `EntityListConfig` (`Record<string, OrderedRef>`) of child IDs (parent owns ordering + folders)
 - **N:M** — Consumer blob holds `EntityListConfig<OrderedRef>` for binary membership, or `EntityListConfig<ResourceRef>` when the relationship needs per-context state
 - **Exception**: Messages use `chatId` FK + `sortOrder` compound index (O(1) writes vs O(n) parent blob rewrites)
@@ -122,14 +123,14 @@ All writable stores are declared in `stores/state.ts`. Action functions live in 
 L0 (Global):     appSettings, activeUser, pbConnected
 L1 (Workspace):  characters, personas, presets, modules, plugins
 L2 (Room):       activeRoom, roomCharacters, chats
-L3 (Chat):       activeChat, messages, chatLorebooks, chatPersonas
-Studio:          activeCharacter, characterLorebooks, characterScripts, characterCharJS, characterModules
-Studio:          activeModule, moduleLorebooks, moduleScripts, moduleCharJS
+L3 (Chat):       activeChat, messages, chatPersonas
+Studio:          activeCharacter, activeModule
 Task:            chatTasks (Map<chatId, ChatTask>) — execution state (status, error) in stores/tasks/
 ```
 
 - Leaving a level clears child stores and drops plaintext UI state from memory.
-- Character/Module studio state is independent of the active room/chat route. Opening a studio loads only that resource and its owned resources.
+- Lorebooks, regex scripts, and CharJS are `EntityListConfig<Item>` fields on their parent records. UI list stores for them are derived views, not independent writable state.
+- Character/Module studio state is independent of the active room/chat route. Opening a studio loads only the parent record.
 - `stores/index.ts` re-exports all writables as `readonly()` — UI can subscribe but never `.set()`/`.update()`
 - Action functions import writables directly from `state.ts`
 
@@ -428,7 +429,7 @@ Follow the existing single-table pattern:
 1. **Schema**: Add the local table name to the sync `kind` allowlist if needed. PocketBase usually does not need a new domain collection because synced domain records route through `records` / `multi_room_records`.
 2. **Adapter**: Add record types in `adapters/db/types.ts`, add table to Dexie/SQLite schemas with scope indexes.
 3. **Service**: Create `services/content/<entity>.ts` — domain types, defaults, parse helpers, static CRUD class
-4. **Refs**: Add `EntityListConfig<OrderedRef>` for owned child lists and binary membership, or `EntityListConfig<ResourceRef>` when weak/shared refs need per-context state
+4. **Owned items / refs**: Use `EntityListConfig<Item>` for small parent-owned resources. Use `EntityListConfig<OrderedRef>` or `EntityListConfig<ResourceRef>` only for relationships to independent records.
 5. **Store**: Add writable in `stores/state.ts`, create `stores/content/<entity>.ts` with action functions
 6. **Sync**: Add the table to `SYNC_TABLES` only if it should sync through the generic records engine.
 7. **Export**: Add to relevant barrel files

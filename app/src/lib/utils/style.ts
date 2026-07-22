@@ -1,30 +1,71 @@
 import DOMPurify from 'dompurify';
+import postcss, { type AtRule, type Node as PostcssNode, type Rule } from 'postcss';
+import selectorParser, { type Selector } from 'postcss-selector-parser';
+
+type SelectorNode = Selector['nodes'][number];
 
 export function stripStyleTags(css: string): string {
     return css.replace(/<\/?style\b[^>]*>/gi, '');
 }
 
 export function scopeCss(css: string, scope: string): string {
-    const keyframes: string[] = [];
-    const protectedCss = css.replace(
-        /@(?:-[a-z]+-)?keyframes\b[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/gi,
-        (block) => `__KEI_KEYFRAMES_${keyframes.push(block) - 1}__`
+    try {
+        const root = postcss.parse(css);
+        const scopeSelector = selectorParser().astSync(scope).first;
+        if (!scopeSelector) return '';
+
+        root.walkRules((rule) => {
+            if (hasRuleAncestor(rule) || isInsideKeyframes(rule)) return;
+
+            rule.selector = selectorParser((selectors) => {
+                selectors.each((selector) => scopeSelectorNode(selector, scopeSelector));
+            }).processSync(rule.selector);
+        });
+
+        return root.toString();
+    } catch {
+        return '';
+    }
+}
+
+function hasRuleAncestor(rule: Rule): boolean {
+    return findAncestor(rule.parent, (node) => node.type === 'rule');
+}
+
+function isInsideKeyframes(rule: Rule): boolean {
+    return findAncestor(
+        rule.parent,
+        (node) => node.type === 'atrule' && /(?:^|-)keyframes$/i.test((node as AtRule).name)
     );
-    const scoped = protectedCss.replace(
-        /(^|[{}])\s*([^@{}][^{}]*)\{/g,
-        (_match: string, prefix: string, selectors: string) => {
-            const next = selectors
-                .split(',')
-                .map((selector: string) => selector.trim())
-                .filter(Boolean)
-                .map((selector: string) => `${scope} ${selector}`)
-                .join(', ');
-            return `${prefix}${next} {`;
-        }
-    );
-    return scoped.replace(/__KEI_KEYFRAMES_(\d+)__/g, (_, index: string) => {
-        return keyframes[Number(index)] ?? '';
-    });
+}
+
+function findAncestor(
+    node: PostcssNode | undefined,
+    predicate: (node: PostcssNode) => boolean
+): boolean {
+    let current = node;
+    while (current) {
+        if (predicate(current)) return true;
+        current = current.parent;
+    }
+    return false;
+}
+
+function scopeSelectorNode(selector: Selector, scopeSelector: Selector): void {
+    const first = selector.first;
+    if (!first) return;
+    first.spaces.before = '';
+
+    selector.prepend(selectorParser.combinator({ value: ' ' }));
+    prependNodes(selector, cloneNodes(scopeSelector.nodes));
+}
+
+function cloneNodes(nodes: SelectorNode[]): SelectorNode[] {
+    return nodes.map((node) => node.clone());
+}
+
+function prependNodes(selector: Selector, nodes: SelectorNode[]): void {
+    for (const node of nodes.toReversed()) selector.prepend(node);
 }
 
 export function scopeStyleBlocks(html: string, scope: string): string {

@@ -62,6 +62,7 @@ function transformSimpleMacros(content: string, direction: Direction): string {
             /\{\{\s*getglobalvar\s*::\s*toggle_([^{}]*?)\s*\}\}/gi,
             (_raw, key: string) => renderMacro('gettoggle', [key.trim()])
         );
+        next = next.replace(/\{\{\s*getglobalvar\s*::\s*[^{}]*?\s*\}\}/gi, 'null');
     } else {
         next = next.replace(/\{\{\s*gettoggle\s*::\s*([^{}]*?)\s*\}\}/gi, (_raw, key: string) =>
             renderMacro('getglobalvar', [`toggle_${key.trim()}`])

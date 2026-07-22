@@ -147,8 +147,9 @@
 - 참조 관계 (N:M, Shared Reference):
   - 소비자의 암호화 Blob에 `EntityListConfig<ResourceRef>`로 참조만 보유. 삭제 영향 없음.
   - enabled 플래그: 동일 자원이라도 컨텍스트마다 개별 ON/OFF.
-  - 대상: 룸의 캐릭터, 채팅의 페르소나, 각 컨텍스트의 모듈.
-  - 예: `room.characters` (참조, ResourceRef), `chat.personas` (참조, ResourceRef), `characters.modules` (참조, ResourceRef), `characters.lorebooks` (소유, OrderedRef).
+  - 대상: 룸의 캐릭터, 채팅의 페르소나.
+  - 예: `room.characters` (참조, ResourceRef), `chat.personas` (참조, ResourceRef), `characters.lorebooks` (인라인 Lorebook).
+  - 모듈 활성화와 순서는 전역 `settings.modules`에서만 관리한다.
   - 메시지의 `speakerId/speakerName`은 히스토리 보존용 약한 참조. 삭제된 캐릭터/페르소나라도 메시지 표시는 `speakerName`으로 유지한다.
 - 폴더 관리:
   - 자식의 소속 폴더: refs[id].folderId로 표현.
@@ -166,9 +167,9 @@
 - DB 스키마: 단일 EncryptedRecord (modules 테이블).
 - ModuleFields 내부 구조:
   - name, description.
-  - lorebooks: EntityListConfig (소유).
-  - scripts: EntityListConfig (소유).
-  - charjs: EntityListConfig (소유).
+  - lorebooks: EntityListConfig<Lorebook> (인라인).
+  - scripts: EntityListConfig<Script> (인라인).
+  - charjs: EntityListConfig<CharJS> (인라인).
 - 참조 방식: 모듈 자체는 N:M 공유 자원. 소비자의 Data Blob에 `modules: EntityListConfig<ResourceRef>` (참조).
 - 삭제 캐스케이드: 모듈 삭제 → 소유 로어북/스크립트 일괄 삭제.
 - 이중 토글 (Two-Layer Toggle):
@@ -281,7 +282,7 @@
   - `multi_room_members`: membership status, encrypted room key.
   - 두 테이블은 컨텐츠가 아니라 권한/키 교환 메타이며 평문이다.
 - 컨텐츠 모델:
-  - 멀티룸 room/chat/message/character/persona/lorebook/script/charjs는 기존 로컬 도메인 테이블에 `scopeType='room'`, `scopeId=roomId`로 저장된다.
+  - 멀티룸 room/chat/message/character/persona는 기존 로컬 도메인 테이블에 `scopeType='room'`, `scopeId=roomId`로 저장된다. lorebook/script/CharJS는 해당 부모 레코드에 인라인된다.
   - 서버에는 `multi_room_records`로 동기화된다.
   - 개인 자원을 방에 올리는 행위는 snapshot import다. 원본은 그대로 보존되고, 방 안에는 독립 사본이 생긴다.
 - 삭제 모델:
@@ -291,7 +292,7 @@
 16. 전체 테이블 목록 (Table Registry)
 
 - 로컬 도메인 테이블:
-  - `settings`, `rooms`, `characters`, `personas`, `chats`, `messages`, `lorebooks`, `scripts`, `charjs`, `modules`, `presets`, `plugins`, `translations`, `tool_calls`.
+  - `settings`, `rooms`, `characters`, `personas`, `chats`, `messages`, `modules`, `presets`, `plugins`, `tool_calls`.
   - `tool_calls`는 local only.
   - 나머지 sync 대상 테이블은 `scopeType/scopeId`를 가진다.
 - 서버 동기화 테이블:

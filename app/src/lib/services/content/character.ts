@@ -1,10 +1,11 @@
 import { clock } from '$lib/utils/clock';
 import { canAccessScope, getSessionScope } from '../session';
 import { localDB, type CharacterRecord, type DataScopeType } from '$lib/adapters/db';
-import type { ResourceRef, EntityListConfig, AssetRef } from '$lib/types/refs';
+import type { EntityListConfig, AssetRef } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import { listItems } from '$lib/utils/ordering';
 import { buffer } from './record_buffer';
 import {
     cascadeDeleteChildren,
@@ -14,6 +15,15 @@ import {
 } from './cascade';
 import { AssetService, type AssetOwner } from '../asset';
 import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
+import {
+    defaultLorebookFields,
+    defaultScriptFields,
+    defaultCharJSFields,
+    hydrateOwnedItems,
+    type Lorebook,
+    type Script,
+    type CharJS
+} from './resource';
 
 // ─── Domain Types ────────────────────────────────────────────────────
 
@@ -31,15 +41,14 @@ export interface CharacterContent {
     messageCSS: string;
     greetings: Record<string, Greeting>;
     defaultVariables: Record<string, string>;
+    lorebooks: EntityListConfig<Lorebook>;
+    scripts: EntityListConfig<Script>;
+    charjs: EntityListConfig<CharJS>;
     allowLowLevel: boolean;
 }
 
 export interface CharacterRefs {
     avatar?: AssetFields;
-    modules: EntityListConfig<ResourceRef>;
-    lorebooks: EntityListConfig;
-    scripts: EntityListConfig;
-    charjs: EntityListConfig;
     assets: EntityListConfig<AssetRef>;
 }
 
@@ -62,7 +71,6 @@ const defaultFields: CharacterFields = {
     greetings: {},
     defaultVariables: {},
     allowLowLevel: false,
-    modules: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },
     charjs: { refs: {}, folders: {} },
@@ -72,7 +80,11 @@ const defaultFields: CharacterFields = {
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function parseFields(record: CharacterRecord): CharacterFields {
-    return deepMerge(defaultFields, record.data as DeepPartial<CharacterFields>);
+    const fields = deepMerge(defaultFields, record.data as DeepPartial<CharacterFields>);
+    fields.lorebooks.refs = hydrateOwnedItems(fields.lorebooks.refs, defaultLorebookFields);
+    fields.scripts.refs = hydrateOwnedItems(fields.scripts.refs, defaultScriptFields);
+    fields.charjs.refs = hydrateOwnedItems(fields.charjs.refs, defaultCharJSFields);
+    return fields;
 }
 
 function assetOwner(record: CharacterRecord): AssetOwner {
@@ -85,8 +97,8 @@ function assetOwner(record: CharacterRecord): AssetOwner {
 }
 
 function collectAssetFields(fields: CharacterFields): AssetFields[] {
-    return [fields.avatar, ...Object.values(fields.assets.refs)].filter(
-        (asset): asset is AssetFields => Boolean(asset?.hash)
+    return [fields.avatar, ...listItems(fields.assets)].filter((asset): asset is AssetFields =>
+        Boolean(asset?.hash)
     );
 }
 
@@ -441,42 +453,5 @@ export class CharacterService {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete character', error);
         }
-    }
-
-    // ─── Greeting CRUD ───────────────────────────────────────────────
-
-    static async createGreeting(
-        characterId: string,
-        fields: { content: string; sortOrder: string }
-    ): Promise<{ greetingId: string; character: Character }> {
-        const greetingId = generateId();
-        const updatedCharacter = await this.update(characterId, {
-            greetings: {
-                [greetingId]: {
-                    ...fields,
-                    id: greetingId
-                }
-            }
-        });
-
-        return { greetingId, character: updatedCharacter };
-    }
-
-    static async updateGreeting(
-        characterId: string,
-        greetingId: string,
-        changes: DeepPartial<Greeting>
-    ): Promise<Character> {
-        return this.update(characterId, {
-            greetings: {
-                [greetingId]: changes
-            }
-        });
-    }
-
-    static async deleteGreeting(characterId: string, greetingId: string): Promise<Character> {
-        return this.update(characterId, {
-            greetings: { [greetingId]: undefined }
-        });
     }
 }

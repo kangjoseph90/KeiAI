@@ -1,18 +1,16 @@
-import { MessageService, LorebookService } from '$lib/services';
-import { compareSortOrder } from '$lib/utils/ordering';
+import { MessageService } from '$lib/services';
+import { compareSortOrder, listItems } from '$lib/utils/ordering';
 import type { AgentPart } from '$lib/workflow/agent/llm';
 import {
     createChat,
-    createChatLorebook,
     createMessage,
     deleteMessage,
     getActivePreset,
-    getActiveModuleIds,
+    getActiveModules,
     getCharacter,
     getChat,
     getMessage,
     getLastMessage,
-    getModule,
     getRoom,
     updateChat,
     updateMessage
@@ -32,9 +30,7 @@ export async function syncChatGreetings(chatId: string): Promise<void> {
     const room = await getRoom(chat.roomId);
     if (!room) return;
 
-    const refs = Object.values(room.characters.refs).sort((a, b) =>
-        compareSortOrder(a.sortOrder, b.sortOrder)
-    );
+    const refs = listItems(room.characters);
 
     const characters = await Promise.all(refs.map((ref) => getCharacter(ref.id)));
     const variables = await getChatDefaultVariables(chat.id);
@@ -171,26 +167,14 @@ export async function getChatDefaultVariables(chatId: string): Promise<Record<st
     const room = await getRoom(chat.roomId);
     if (!room) return {};
 
-    const refs = Object.values(room.characters.refs).sort((a, b) =>
-        compareSortOrder(a.sortOrder, b.sortOrder)
-    );
+    const refs = listItems(room.characters);
 
     const entries = await Promise.all(
         refs.map(async (ref) => [ref.id, await getCharacter(ref.id)] as const)
     );
 
     const variables: Record<string, string> = { ...(getActivePreset()?.defaultVariables ?? {}) };
-    const activeModuleIds = new Set<string>();
-    for (const [, character] of entries) {
-        if (!character) continue;
-        for (const id of await getActiveModuleIds(character.id)) {
-            activeModuleIds.add(id);
-        }
-    }
-
-    for (const id of activeModuleIds) {
-        const mod = await getModule(id);
-        if (!mod) continue;
+    for (const mod of await getActiveModules()) {
         Object.assign(variables, mod.defaultVariables);
     }
 
@@ -234,7 +218,6 @@ export async function forkChat(messageId: string): Promise<string> {
     const {
         id: _id,
         roomId: _roomId,
-        lorebooks: _,
         personas: _personas,
         lastMessageId: __,
         greetingMessageId: ___,
@@ -283,13 +266,6 @@ export async function forkChat(messageId: string): Promise<string> {
         lastMessageId,
         messageCount: allMessages.length
     });
-
-    // Copy chat-specific lorebooks
-    const lorebooks = await LorebookService.listByOwner(originalChat.id);
-    for (const lb of lorebooks) {
-        const { id: _lbId, ownerId: _ownerId, ...lbFields } = lb;
-        await createChatLorebook(newChat.id, lbFields);
-    }
 
     return newChat.id;
 }

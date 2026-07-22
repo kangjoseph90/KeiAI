@@ -10,45 +10,38 @@ import {
 } from '$lib/managers/chat';
 import {
     createChat,
-    createChatLorebook,
     createMessage,
     deleteMessage,
     getActivePreset,
     getCharacter,
-    getActiveModuleIds,
+    getActiveModules,
     getChat,
     getLastMessage,
     getMessage,
-    getModule,
     getRoom,
     updateChat,
     updateMessage
 } from '$lib/stores';
-import { LorebookService, MessageService } from '$lib/services';
+import { MessageService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
-import type { Character, Chat, Lorebook, Message, Module, Preset, Room } from '$lib/services';
+import type { Character, Chat, Message, Module, Preset, Room } from '$lib/services';
 
 vi.mock('$lib/stores', () => ({
     createChat: vi.fn(),
-    createChatLorebook: vi.fn(),
     createMessage: vi.fn(),
     deleteMessage: vi.fn(),
     getActivePreset: vi.fn(),
-    getActiveModuleIds: vi.fn(),
+    getActiveModules: vi.fn(),
     getCharacter: vi.fn(),
     getChat: vi.fn(),
     getLastMessage: vi.fn(),
     getMessage: vi.fn(),
-    getModule: vi.fn(),
     getRoom: vi.fn(),
     updateChat: vi.fn(),
     updateMessage: vi.fn()
 }));
 
 vi.mock('$lib/services', () => ({
-    LorebookService: {
-        listByOwner: vi.fn()
-    },
     MessageService: {
         getMessagesBefore: vi.fn(),
         create: vi.fn()
@@ -68,7 +61,8 @@ describe('ChatManager', () => {
                 'char-2': { id: 'char-2', sortOrder: 'b' }
             },
             folders: {}
-        }
+        },
+        files: { refs: {}, folders: {} }
     };
     const mockChat: Chat = {
         id: 'chat-1',
@@ -80,7 +74,8 @@ describe('ChatManager', () => {
         messageCount: 0,
         lorebooks: { refs: {}, folders: {} },
         personas: { refs: {}, folders: {} },
-        inlays: { refs: {}, folders: {} }
+        inlays: { refs: {}, folders: {} },
+        files: { refs: {}, folders: {} }
     };
     const charOne: Character = {
         id: 'char-1',
@@ -94,7 +89,6 @@ describe('ChatManager', () => {
         greetings: { greet1: { id: 'greet1', content: 'Hello', sortOrder: 'a' } },
         defaultVariables: { mood: 'calm', shared: 'alpha' },
         allowLowLevel: false,
-        modules: { refs: {}, folders: {} },
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },
         charjs: { refs: {}, folders: {} },
@@ -114,17 +108,12 @@ describe('ChatManager', () => {
         backgroundHTML: '',
         messageCSS: '',
         defaultVariables: { mood: 'module-calm', shared: 'global-module', moduleOnly: 'yes' },
+        toggles: { refs: {}, folders: {} },
         allowLowLevel: false,
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },
         charjs: { refs: {}, folders: {} },
         assets: { refs: {}, folders: {} }
-    };
-    const characterModule: Module = {
-        ...globalModule,
-        id: 'mod-character',
-        name: 'Character Module',
-        defaultVariables: { shared: 'character-module', characterModuleOnly: 'yes' }
     };
     const mockPreset: Preset = {
         id: 'preset-1',
@@ -134,8 +123,7 @@ describe('ChatManager', () => {
         parameters: {},
         chatWorkflow: { nodes: {} },
         defaultVariables: { mood: 'preset-calm', shared: 'preset', presetOnly: 'yes' },
-        globalVariables: {},
-        customToggles: {},
+        toggles: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} }
     };
 
@@ -149,8 +137,7 @@ describe('ChatManager', () => {
             if (id === 'char-2') return charTwo;
             return null;
         });
-        vi.mocked(getActiveModuleIds).mockResolvedValue(new Set());
-        vi.mocked(getModule).mockResolvedValue(null);
+        vi.mocked(getActiveModules).mockResolvedValue([]);
     });
 
     describe('syncChatGreetings', () => {
@@ -320,16 +307,7 @@ describe('ChatManager', () => {
 
         it('merges preset, active module, and character defaults in specificity order', async () => {
             vi.mocked(getActivePreset).mockReturnValue(mockPreset);
-            vi.mocked(getActiveModuleIds).mockImplementation(async (characterId?: string) => {
-                if (characterId === 'char-1') return new Set(['mod-global', 'mod-character']);
-                if (characterId === 'char-2') return new Set(['mod-global']);
-                return new Set();
-            });
-            vi.mocked(getModule).mockImplementation(async (id: string) => {
-                if (id === 'mod-global') return globalModule;
-                if (id === 'mod-character') return characterModule;
-                return null;
-            });
+            vi.mocked(getActiveModules).mockResolvedValue([globalModule]);
 
             const variables = await getChatDefaultVariables('chat-1');
 
@@ -338,7 +316,6 @@ describe('ChatManager', () => {
                 shared: 'beta',
                 presetOnly: 'yes',
                 moduleOnly: 'yes',
-                characterModuleOnly: 'yes',
                 energy: 'high'
             });
         });
@@ -414,12 +391,6 @@ describe('ChatManager', () => {
             },
             activeSwipeId: 's1'
         };
-        const mockLorebook = {
-            id: 'lb-1',
-            ownerId: 'chat-1',
-            content: 'some content'
-        } as unknown as Lorebook;
-
         beforeEach(() => {
             vi.mocked(getMessage).mockResolvedValue(mockMessage as unknown as Message);
             vi.mocked(MessageService.getMessagesBefore).mockResolvedValue([
@@ -427,9 +398,7 @@ describe('ChatManager', () => {
             ] as unknown as Message[]);
             vi.mocked(getChat).mockResolvedValue(mockChat);
             vi.mocked(createChat).mockResolvedValue({ ...mockChat, id: 'new-chat-id' });
-            vi.mocked(LorebookService.listByOwner).mockResolvedValue([mockLorebook]);
             vi.mocked(MessageService.create).mockResolvedValue({} as unknown as Message);
-            vi.mocked(createChatLorebook).mockResolvedValue({} as unknown as Lorebook);
         });
 
         it('forks chat using room ownership', async () => {
@@ -447,10 +416,6 @@ describe('ChatManager', () => {
                     messageCount: 2,
                     lastMessageId: undefined
                 })
-            );
-            expect(createChatLorebook).toHaveBeenCalledWith(
-                'new-chat-id',
-                expect.objectContaining({ content: 'some content' })
             );
         });
 

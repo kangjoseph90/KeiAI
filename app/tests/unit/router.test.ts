@@ -63,6 +63,10 @@ describe('router', () => {
         navigate({ view: 'settings', settingsTab: 'models' });
         expect(window.location.hash).toBe('#/settings/models');
         expect(getCurrentHashRoute()).toEqual({ view: 'settings', settingsTab: 'models' });
+
+        navigate({ view: 'settings', settingsTab: 'connections' });
+        expect(window.location.hash).toBe('#/settings/connections');
+        expect(getCurrentHashRoute()).toEqual({ view: 'settings', settingsTab: 'connections' });
     });
 
     it('updates the route store from browser history changes', () => {

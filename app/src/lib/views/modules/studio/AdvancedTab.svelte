@@ -9,7 +9,7 @@
     import ExportTab from './ExportTab.svelte';
     import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
 
-    type ExportButton = 'risu' | 'keimodule-light' | 'keimodule-baked';
+    type ExportButton = 'risu-charx' | 'risu-legacy' | 'keimodule-light' | 'keimodule-baked';
 
     let {
         module,

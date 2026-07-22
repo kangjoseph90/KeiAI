@@ -20,18 +20,18 @@ import type {
     Lorebook,
     Script,
     CharJS,
-    Translation,
     MultiRoom,
     MultiRoomMember
 } from '$lib/services';
 import type { SyncStatus } from '$lib/services';
 import type { DisplayMessage, ChatTask, TranslationTask } from './types';
 import { EntityStore } from './entity_store';
-import { compareSortOrder, sortByRefs } from '$lib/utils/ordering';
+import { compareSortOrder, listItems, sortByRefs } from '$lib/utils/ordering';
 import type { EntityListConfig, AssetRef } from '$lib/types/refs';
 import { normalizeAssetName, type AssetNameIndex } from '$lib/template/display';
 import type { AssetReadLocator } from '$lib/services/asset';
 import type { DataScopeType, TableName } from '$lib/adapters/db';
+import type { ConnectionChangeProgress } from '$lib/services';
 
 // ─── Level 0 (Global Settings & User Profile) ──────────────────────
 export const appSettings = writable<AppSettings | null>(null);
@@ -44,24 +44,20 @@ export const dataSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const userSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const multiSyncStatus = writable<SyncStatus>({ state: 'idle' });
 export const assetSyncStatus = writable<SyncStatus>({ state: 'idle' });
-export const migrationLocked = writable(false);
+export const serverTransitionLocked = writable(false);
+export const serverTransitionProgress = writable<ConnectionChangeProgress | null>(null);
 
 // ─── Derived Auth State ──────────────────────────────────────────────
 export const isLoggedIn = derived(
     [activeUser, pbConnected],
-    ([user, connected]) => user !== null && connected
+    ([user, connected]) => Boolean(user?.username) && connected
 );
 export const userEmail = derived(activeUser, (u) => u?.email ?? null);
 export const username = derived(activeUser, (u) => u?.username ?? null);
 export const userId = derived(activeUser, (u) => u?.id ?? null);
-export const isSyncServerConfigured = derived(activeUser, (u) => u?.selfHostUrl !== undefined);
-export const isLocalOnly = derived(
-    [activeUser, pbConnected],
-    ([user, connected]) => user !== null && !connected
-);
-export const isSyncLinked = derived(
-    [activeUser, pbConnected],
-    ([user, connected]) => user !== null && connected
+export const isCustomServer = derived(
+    activeUser,
+    (user) => user?.connections.server.mode === 'custom'
 );
 
 // ─── Level 1 (Global Lists) ─────────────────────────────────────────
@@ -125,8 +121,6 @@ export const chatSelections = writable<{
     personaId?: string;
 } | null>(null);
 
-export const chatLorebooks = new EntityStore<Lorebook>();
-export const chatScripts = new EntityStore<Script>();
 export const chatPersonas = derived(
     [activeChat, personas, multiRoomPersonas, isMultiRoom],
     ([chat, list, multiList, multi]) => {
@@ -148,16 +142,6 @@ export const messages = new EntityStore<Message>({
     sortFn: (a, b) => compareSortOrder(a.sortOrder, b.sortOrder)
 });
 export const messageIndexes = writable(new Map<string, number>());
-export const translations = new EntityStore<Translation>();
-export const translationsByMessage = derived(translations, ($translations) => {
-    const byMessage = new Map<string, Translation[]>();
-    for (const translation of $translations) {
-        const existing = byMessage.get(translation.messageId);
-        if (existing) existing.push(translation);
-        else byMessage.set(translation.messageId, [translation]);
-    }
-    return byMessage;
-});
 
 // ─── Character Studio Context───────────────────────────────────────
 export const activeCharacterId = writable<string | null>(null);
@@ -166,22 +150,6 @@ export const activeCharacter = derived(
     ([id]) => (id ? (characters.get(id) ?? multiRoomCharacters.get(id) ?? null) : null)
 );
 export const hasActiveCharacter = derived(activeCharacterId, (id) => !!id);
-
-export const characterLorebooks = new EntityStore<Lorebook>();
-export const characterScripts = new EntityStore<Script>();
-export const characterCharJS = new EntityStore<CharJS>();
-export const characterModules = derived([activeCharacter, modules], ([character, list]) => {
-    if (!character) return [];
-    const ids = new Set(
-        Object.entries(character.modules.refs)
-            .filter(([, ref]) => ref !== undefined)
-            .map(([id]) => id)
-    );
-    return sortByRefs(
-        list.filter((module) => ids.has(module.id)),
-        character.modules.refs
-    );
-});
 
 // ─── Persona Studio Context─────────────────────────────────────────
 export const activePersonaId = writable<string | null>(null);
@@ -196,13 +164,6 @@ export const activeModule = derived([activeModuleId, modules], ([id]) =>
     id ? (modules.get(id) ?? null) : null
 );
 export const hasActiveModule = derived(activeModuleId, (id) => !!id);
-
-export const moduleLorebooks = new EntityStore<Lorebook>();
-export const moduleScripts = new EntityStore<Script>();
-export const moduleCharJS = new EntityStore<CharJS>();
-
-// ─── Selected Preset Context ──────────────────────────────────────────
-export const presetScripts = new EntityStore<Script>();
 
 // ─── Runtime States (Ephemeral — not persisted to DB) ─────────────────
 /**
@@ -262,7 +223,7 @@ export const chatAssetsMap = derived(
         ) => {
             if (!assetsConfig?.refs) return;
             const ownerMap = new Map<string, AssetReadLocator[]>();
-            for (const ref of Object.values(assetsConfig.refs)) {
+            for (const ref of listItems(assetsConfig)) {
                 if (ref?.name && ref?.hash && ref?.encKey) {
                     const normalized = normalizeAssetName(ref.name);
                     if (normalized) {

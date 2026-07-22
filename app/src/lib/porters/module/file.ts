@@ -9,25 +9,27 @@ import {
     writeRisuModulePackage
 } from './risu';
 import { detectFileKind } from '$lib/utils/file';
+import { readModuleCharX, writeModuleCharX } from './charx';
 
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 
 export type ModuleFileExport =
     | { kind: 'keimodule'; assetMode: KeiPackageExportMode }
-    | { kind: 'risu'; format: 'risum' };
+    | { kind: 'risu'; format: 'charx' | 'risum' };
 
 export async function readModuleFile(file: File): Promise<KeiModulePackageV1> {
     const name = file.name.toLowerCase();
     const bytes = new Uint8Array(await file.arrayBuffer());
 
     if (name.endsWith('.risum')) return readRisuModulePackage(bytes);
+    if (name.endsWith('.charx')) return readModuleCharX(bytes);
     if (name.endsWith('.keimodule')) return readKeiModule(bytes);
     if (name.endsWith('.json')) return readModuleJson(bytes);
 
     const kind = detectFileKind(bytes);
     if (kind === 'json') return readModuleJson(bytes);
-    if (kind === 'zip') return readKeiModule(bytes);
+    if (kind === 'zip') return readModuleZip(bytes);
     try {
         return readRisuModulePackage(bytes);
     } catch {
@@ -39,6 +41,7 @@ export async function readModuleFile(file: File): Promise<KeiModulePackageV1> {
 
 export function writeModuleFile(pkg: KeiModulePackageV1, request: ModuleFileExport): Uint8Array {
     if (request.kind === 'risu' && request.format === 'risum') return writeRisuModulePackage(pkg);
+    if (request.kind === 'risu' && request.format === 'charx') return writeModuleCharX(pkg);
     return writeKeiModule(pkg);
 }
 
@@ -49,6 +52,17 @@ export function moduleFileExtension(request: ModuleFileExport): string {
 
 async function readKeiModule(bytes: Uint8Array): Promise<KeiModulePackageV1> {
     const entries = await unzip(bytes);
+    return readKeiModuleEntries(entries);
+}
+
+async function readModuleZip(bytes: Uint8Array): Promise<KeiModulePackageV1> {
+    const entries = await unzip(bytes);
+    if (entries['package.json']) return readKeiModuleEntries(entries);
+    if (entries['card.json']) return readModuleCharX(bytes);
+    throw new AppError('INVALID_INPUT', 'Module archive is missing package.json or card.json');
+}
+
+function readKeiModuleEntries(entries: Record<string, Uint8Array>): KeiModulePackageV1 {
     const packageBytes = entries['package.json'];
     if (!packageBytes) throw new AppError('INVALID_INPUT', 'Kei module is missing package.json');
     return readModuleJson(packageBytes, entries);

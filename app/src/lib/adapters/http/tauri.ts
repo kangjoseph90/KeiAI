@@ -1,5 +1,5 @@
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
-import type { IHttpAdapter, HttpOptions } from './types';
+import type { HttpOptions, ProxyRuntimeConfig } from './types';
 import { fetchWithRetry } from './retry';
 
 import { BaseHttpAdapter } from './base';
@@ -11,6 +11,14 @@ import { BaseHttpAdapter } from './base';
  * This bypasses WebView CORS restrictions entirely, as requests are made by the Rust backend.
  */
 export class TauriHttpAdapter extends BaseHttpAdapter {
+    configureProxy(_config: ProxyRuntimeConfig): void {
+        // Native HTTP always connects directly.
+    }
+
+    getProxyConfig(): ProxyRuntimeConfig {
+        return { mode: 'direct' };
+    }
+
     async fetch(url: string, init?: RequestInit, options?: HttpOptions): Promise<Response> {
         const baseInit = { ...init };
 

@@ -2,6 +2,7 @@ import {
     AssetSyncEngine,
     DataRecordSyncEngine,
     MultiRecordSyncEngine,
+    SyncManager,
     UserRecordSyncEngine
 } from '$lib/services/sync';
 import type { SyncStatus } from '$lib/services/sync/base';
@@ -53,4 +54,8 @@ export function startSyncStatusTracking(): void {
 
 export function stopSyncStatusTracking(): void {
     stopTracking?.();
+}
+
+export async function performResetSyncCursors(): Promise<void> {
+    await SyncManager.resetCurrentCursors();
 }

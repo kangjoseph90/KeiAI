@@ -24,10 +24,9 @@
     import {
         activeChat,
         chatPersonas,
-        chatLorebooks,
         chatSelections,
         createChatFolder,
-        createChatLorebook,
+        saveChatLorebook,
         createChatInlay,
         deleteChatLorebook,
         deleteChatFolder,
@@ -38,17 +37,18 @@
         setChatSelectedPersona,
         moveChatItem,
         updateChatContent,
-        updateChatFolder,
-        updateChatLorebook
+        updateChatFolder
     } from '$lib/stores';
     import { appConfirm, personaPickerOpen, toast } from '$lib/ui';
     import { navigate } from '$lib/router';
     import { getChatVariables, setChatVariables } from '$lib/managers';
-    import type { ChatContent } from '$lib/services';
+    import { defaultLorebookFields, type ChatContent, type Lorebook } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
     import { appDialog } from '$lib/adapters/dialog';
     import { getErrorMessage } from '$lib/types/errors';
+    import { generateSortOrder, listItems } from '$lib/utils/ordering';
+    import { generateId } from '$lib/utils/id';
 
     interface Props {
         chatId: string;
@@ -128,14 +128,16 @@
     async function handleChatLorebookAdd() {
         if ($activeChat?.id !== chatId) return;
         await runPanelAction('add-lorebook', 'Could not add lorebook', async () => {
-            await createChatLorebook(chatId, {
-                name: 'New Lorebook',
-                key: '',
-                secondKey: '',
-                content: '',
+            const item: Lorebook = {
+                ...defaultLorebookFields,
                 depth: 0,
-                disabled: false
-            });
+                id: generateId(),
+                sortOrder: generateSortOrder(
+                    $activeChat!.lorebooks.refs,
+                    $activeChat!.lorebooks.folders
+                )
+            };
+            await saveChatLorebook(chatId, item);
         });
     }
 
@@ -258,7 +260,7 @@
                         layout="grid"
                         gridClass="grid grid-cols-3 gap-2"
                         listClass="grid grid-cols-3 gap-2"
-                        childContainerClass="relative my-1 py-1.5 pl-2"
+                        childContainerClass="relative my-1 px-2 py-1.5"
                         onItemClick={(persona) => {
                             void handlePersonaSelect(persona.id);
                         }}
@@ -391,7 +393,7 @@
                         </Label>
                         <div class="flex items-center gap-2">
                             <Badge variant="outline" class="text-[10px] font-mono"
-                                >{$chatLorebooks.length}</Badge
+                                >{listItems($activeChat.lorebooks).length}</Badge
                             >
                             <Button
                                 variant="secondary"
@@ -407,7 +409,7 @@
                     </div>
 
                     <EntityList
-                        entities={$chatLorebooks}
+                        entities={listItems($activeChat.lorebooks)}
                         config={$activeChat.lorebooks}
                         layout="list"
                         onCreateFolder={(name, parentId, sortOrder) =>
@@ -424,7 +426,8 @@
                         {#snippet item({ entity: lb })}
                             <LorebookItem
                                 item={lb}
-                                onUpdate={(id, changes) => updateChatLorebook(chatId, id, changes)}
+                                onUpdate={(id, changes) =>
+                                    saveChatLorebook(chatId, { ...lb, ...changes, id })}
                                 onDelete={(id) => deleteChatLorebook(chatId, id)}
                             />
                         {/snippet}
@@ -480,7 +483,7 @@
                         </div>
                     </div>
                     <EntityList
-                        entities={Object.values($activeChat?.inlays?.refs ?? {})}
+                        entities={listItems($activeChat.inlays)}
                         config={$activeChat?.inlays ?? { refs: {}, folders: {} }}
                         layout="grid"
                         gridClass="grid grid-cols-3 gap-2 w-full"

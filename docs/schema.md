@@ -23,20 +23,23 @@ Service -> Local Adapter (plaintext domain tables)
 
 ### Workflow File namespaces
 
-Workflow files are synchronized string resources stored in the `files` table. A file address and
-its encryption/sync ownership are separate concepts.
+Workflow files are parent-owned string resources stored as `EntityListConfig<FileItem>`.
 
 ```text
-address:    namespace + namespaceId + path
-data scope: scopeType + scopeId
+address: namespace + path
+owner:   settings | room | chat
 ```
 
-- `global`: `namespaceId=userId`, always user-scoped.
-- `room`: `namespaceId=roomId`, inheriting the room record's user/room data scope.
-- `chat`: `namespaceId=chatId`, inheriting the chat record's user/room data scope.
+- `global`: owned by the user settings record.
+- `room`: owned by the room record.
+- `chat`: owned by the chat record.
 
-`FileRecord.ownerId` stores `namespaceId`; `namespace`, `path`, and string `content` live in the
-encrypted domain payload. Room/chat file records cascade when their namespace owner is deleted.
+Each item stores `path` and string `content`; its parent supplies encryption, synchronization, and
+deletion ownership. There is no separate workflow file table.
+
+Each message swipe may store one translation value containing `sourceHash` and `text`. A new
+translation replaces the previous value, and changing the swipe source removes it. There is no
+separate translation table.
 
 ---
 
@@ -83,17 +86,12 @@ export interface DataRecord extends DataScope {
 | `personas` | 페르소나 | scope |
 | `chats` | room에 속한 채팅 | scope, `roomId` |
 | `messages` | chat에 속한 메시지 | scope, `chatId`, `[chatId+sortOrder]` |
-| `lorebooks` | owner가 소유하는 로어북 | scope, `ownerId` |
-| `scripts` | owner가 소유하는 스크립트 | scope, `ownerId` |
-| `charjs` | owner가 소유하는 CharJS | scope, `ownerId` |
 | `modules` | 개인 모듈 | user scope |
 | `presets` | 개인 프리셋 | user scope |
 | `plugins` | 개인 플러그인 | user scope |
-| `translations` | 메시지/스와이프 번역 | scope, `chatId`, `messageId`, `swipeId` |
-| `files` | Workflow string 파일 | scope, `ownerId` |
 | `tool_calls` | 로컬 tool call 상태 | local only |
 
-멀티룸에서도 모듈/프리셋/플러그인은 기본적으로 개인 설정을 사용한다. 멀티룸에 공유되는 컨텐츠는 room scope의 room/chat/message/character/persona/lorebook/script/charjs/asset 계열이다.
+멀티룸에서도 모듈/프리셋/플러그인은 기본적으로 개인 설정을 사용한다. 멀티룸에 공유되는 컨텐츠는 room scope의 room/chat/message/character/persona/asset 계열이며, lorebook/script/CharJS는 해당 부모 암호문에 함께 저장된다.
 
 ---
 
@@ -122,7 +120,7 @@ User Session
    ├─ Room key
    ├─ Room scoped Character / Persona
    ├─ Room scoped Chat / Message
-   ├─ Room scoped Lorebook / Script / CharJS
+   ├─ Character/Chat 안에 인라인된 Lorebook / Script / CharJS
    └─ Room scoped Asset
 ```
 
@@ -140,9 +138,7 @@ User Session
 |---|---|
 | Room => Chat | `ChatRecord.roomId`, `RoomFields.chats` |
 | Chat => Message | `MessageRecord.chatId`, `[chatId+sortOrder]` |
-| Character => Lorebook/Script/CharJS | child `ownerId=characterId` |
-| Chat => Lorebook | child `ownerId=chatId` |
-| Module => Lorebook/Script/CharJS | child `ownerId=moduleId` |
+Lorebook, regex script, CharJS는 독립 소유 관계가 아니다. Character/Chat/Module/Preset의 `EntityListConfig<Item>` 안에 내용, 정렬, 폴더 정보가 함께 저장되며 부모와 동일한 생명주기와 동기화 단위를 가진다.
 
 고볼륨 자식은 인덱스로 찾고, UI 순서/폴더는 부모 JSON의 `EntityListConfig`가 가진다.
 
@@ -154,7 +150,7 @@ User Session
 |---|---|
 | `Room -> Character` | 방에 참여한 캐릭터 목록 |
 | `Chat -> Persona` | 채팅별 유저 페르소나 목록 |
-| `Character/Preset/Room/Chat -> Module` | 실행 컨텍스트별 모듈 활성화 |
+| `Settings -> Module` | 전역 모듈 목록, 순서 및 활성화 |
 | `MessageSwipe -> speakerId/speakerName` | 당시 화자 히스토리 |
 
 `MessageSwipe.speakerId`는 정리하지 않는다. 대상 캐릭터/페르소나가 삭제되어도 메시지는 `speakerName`으로 표시하고 아바타만 기본값으로 degrade한다.
@@ -179,7 +175,7 @@ User Session
 ```typescript
 {
     personas: EntityListConfig<ResourceRef>;
-    lorebooks: EntityListConfig<OrderedRef>;
+    lorebooks: EntityListConfig<Lorebook>;
     defaultCharacterId?: string;
     selectedCharacterId?: string;
     defaultPersonaId?: string;
@@ -303,9 +299,9 @@ Greeting은 채팅당 하나의 assistant message로 동기화한다.
 | `id` | membership id |
 | `roomId` | room id |
 | `userId` | member user id |
-| `status` | `pending`, `accepted`, `revoked` |
+| `status` | `pending`, `accepted`, `revoked`, `left` |
 | `encryptedRoomKey` | member identity public key로 감싼 room key |
-| `createdAt`, `updatedAt`, `isDeleted` | metadata |
+| `createdAt`, `updatedAt` | metadata |
 
 `multi_room_index`와 `multi_room_members`는 컨텐츠가 아니라 디렉터리/권한/키 교환 메타다. room payload는 들어가지 않는다.
 
@@ -330,11 +326,9 @@ Asset sync도 같은 routing을 사용한다.
 Cursor는 scope별로 둔다.
 
 ```
-lastSync_records_user_${userId}
-lastSync_records_room_${roomId}
-lastSync_assets_user_${userId}
-lastSync_assets_room_${roomId}
-lastSync_multi_meta_${userId}
+lastSync_records_${userId}_user_${userId}_server_${encodedServerUrl}
+lastSync_records_${userId}_room_${roomId}_server_${encodedServerUrl}
+lastSync_multi_meta_${userId}_server_${encodedServerUrl}
 ```
 
 active user session이 있으면 user scope를 동기화한다. active room session이 있으면 room scope도 추가로 동기화한다.

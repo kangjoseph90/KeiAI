@@ -61,6 +61,32 @@ describe('HTTP Adapters', () => {
                 'HTTP Error: 404'
             );
         });
+
+        it('uses the configured proxy only for proxy requests', async () => {
+            adapter.configureProxy({ mode: 'proxy', baseUrl: 'https://proxy.example.com' });
+            vi.mocked(global.fetch).mockResolvedValue(mockResponse({ ok: true }));
+
+            await adapter.fetch(
+                'https://api.example.com/data',
+                { method: 'GET', headers: { Authorization: 'Bearer secret' } },
+                { proxy: true }
+            );
+
+            expect(global.fetch).toHaveBeenCalledWith(
+                'https://proxy.example.com/proxy',
+                expect.objectContaining({ method: 'POST' })
+            );
+        });
+
+        it('starts with direct requests before proxy configuration is applied', async () => {
+            vi.mocked(global.fetch).mockResolvedValue(mockResponse({ ok: true }));
+
+            await adapter.fetch('https://api.example.com/data', undefined, { proxy: true });
+
+            expect(global.fetch).toHaveBeenCalledWith('https://api.example.com/data', {
+                signal: undefined
+            });
+        });
     });
 
     describe('TauriHttpAdapter', () => {

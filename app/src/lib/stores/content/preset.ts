@@ -1,15 +1,5 @@
 import { get } from 'svelte/store';
-import {
-    PresetService,
-    ScriptService,
-    type PresetFields,
-    type Preset,
-    type PresetCustomToggle,
-    type PresetCustomToggleFields,
-    type ScriptFields,
-    type Script,
-    type PresetContent
-} from '$lib/services';
+import { PresetService, type PresetFields, type Preset, type Script } from '$lib/services';
 import {
     importPresetPackage as importPresetPackagePorter,
     type KeiPresetPackageV1
@@ -17,10 +7,11 @@ import {
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
 import type { DeepPartial } from '$lib/utils/defaults';
 import type { FolderDef } from '$lib/types/refs';
-import { presets, activePreset, presetScripts } from '../state';
+import { presets, activePreset } from '../state';
 import { getAppSettings, updateSettings } from './settings';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import type { ToggleItem } from '$lib/types/toggle';
 
 /**
  * Returns preset from store cache first, then from DB if needed.
@@ -38,18 +29,6 @@ export function getActivePreset(): Preset | null {
     return get(activePreset);
 }
 
-export async function getPresetScripts(presetId: string): Promise<Script[]> {
-    if (get(activePreset)?.id === presetId) {
-        return get(presetScripts);
-    }
-    const preset = await getPreset(presetId);
-    if (!preset) return [];
-    const results = await Promise.all(
-        Object.keys(preset.scripts.refs).map((id) => ScriptService.get(id))
-    );
-    return results.filter((sc): sc is Script => sc !== null);
-}
-
 /**
  * Service errors propagate to the caller — this function does not catch them.
  * Callers (e.g. route load functions) are responsible for error boundaries.
@@ -62,37 +41,18 @@ export async function loadPresets(): Promise<void> {
     const active = settings.presetId
         ? list.find((preset) => preset.id === settings.presetId)
         : null;
-    if (active) {
-        const scripts = await ScriptService.listByOwner(active.id);
-        presetScripts.setAll(sortByRefs(scripts, active.scripts.refs));
-    } else {
-        presetScripts.clear();
-    }
 }
 
 export async function selectPreset(presetId: string): Promise<void> {
     const preset = await getPreset(presetId);
     if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
-    const resolved = await resolveGlobalVariables(preset.id, preset);
     await updateSettings({ presetId: presetId });
-
-    const scripts = await ScriptService.listByOwner(presetId);
-    presetScripts.setAll(sortByRefs(scripts, resolved.scripts.refs));
 }
 
 export async function createPreset(fields: DeepPartial<PresetFields> = {}): Promise<Preset> {
     const settings = await getAppSettings();
-    const baseGlobals = getActivePreset()?.globalVariables ?? {};
-
     // Create Record in DB
-    const preset = await PresetService.create({
-        ...fields,
-        globalVariables: {
-            ...baseGlobals,
-            ...(fields.globalVariables ?? {})
-        }
-    });
-    const resolvedPreset = await resolveGlobalVariables(preset.id, preset);
+    const preset = await PresetService.create(fields);
 
     // Add to parent's refs
     const sortOrder = generateSortOrder(settings.presets.refs, settings.presets.folders);
@@ -107,9 +67,9 @@ export async function createPreset(fields: DeepPartial<PresetFields> = {}): Prom
     }
 
     // Update Store
-    presets.set(resolvedPreset.id, resolvedPreset);
+    presets.set(preset.id, preset);
 
-    return resolvedPreset;
+    return preset;
 }
 
 export async function importPresetPackage(
@@ -118,17 +78,7 @@ export async function importPresetPackage(
         select?: boolean;
     } = {}
 ): Promise<Preset> {
-    const baseGlobals = getActivePreset()?.globalVariables ?? {};
-    const presetId = await importPresetPackagePorter({
-        ...pkg,
-        preset: {
-            ...pkg.preset,
-            globalVariables: {
-                ...baseGlobals,
-                ...pkg.preset.globalVariables
-            }
-        }
-    });
+    const presetId = await importPresetPackagePorter(pkg);
 
     const preset = await PresetService.get(presetId);
     if (!preset) {
@@ -146,14 +96,13 @@ export async function importPresetPackage(
         throw error;
     }
 
-    const resolvedPreset = await resolveGlobalVariables(preset.id, preset);
-    presets.set(resolvedPreset.id, resolvedPreset);
+    presets.set(preset.id, preset);
 
     if (options.select) {
-        await selectPreset(resolvedPreset.id);
+        await selectPreset(preset.id);
     }
 
-    return resolvedPreset;
+    return preset;
 }
 
 export async function updatePreset(
@@ -162,38 +111,6 @@ export async function updatePreset(
 ): Promise<void> {
     const updated = await PresetService.update(presetId, changes);
     presets.set(presetId, updated);
-    if (get(activePreset)?.id === presetId) {
-        presetScripts.setAll(sortByRefs(get(presetScripts), updated.scripts.refs));
-    }
-}
-
-export async function updatePresetContent(
-    presetId: string,
-    changes: DeepPartial<PresetContent>
-): Promise<void> {
-    const updated = await PresetService.update(presetId, changes);
-    presets.set(presetId, updated);
-}
-
-export async function resolveGlobalVariables(
-    presetId: string,
-    preset: Preset | null = null
-): Promise<Preset> {
-    const current = preset ?? (await getPreset(presetId));
-    if (!current) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
-
-    const globalVariables = { ...current.globalVariables };
-    for (const toggle of Object.values(current.customToggles)) {
-        if (!('key' in toggle) || !toggle.key) continue;
-        const key = `toggle_${toggle.key}`;
-        if (globalVariables[key] !== undefined) continue;
-        globalVariables[key] =
-            toggle.type === 'select' ? '0' : toggle.type === 'checkbox' ? '0' : '';
-    }
-
-    const updated = await PresetService.update(presetId, { globalVariables });
-    presets.set(presetId, updated);
-    return updated;
 }
 
 export async function deletePreset(presetId: string): Promise<void> {
@@ -229,107 +146,35 @@ export async function deletePreset(presetId: string): Promise<void> {
             await selectPreset(fallback.id);
         } else {
             await updateSettings({ presetId: undefined });
-            presetScripts.clear();
         }
     }
 }
 
-// ─── Block Actions ───────────────────────────────────────────────────
+// ─── Preset-owned resources ────────────────────────────────────────────
 
-export async function createPresetCustomToggle(
-    presetId: string,
-    fields: DeepPartial<PresetCustomToggleFields> & { sortOrder: string }
-): Promise<string> {
-    const { toggleId, preset } = await PresetService.createCustomToggle(presetId, fields);
-    const updated = await resolveGlobalVariables(presetId, preset);
-    presets.set(presetId, updated);
-    return toggleId;
+export async function savePresetToggleItem(presetId: string, item: ToggleItem): Promise<void> {
+    await updatePreset(presetId, { toggles: { refs: { [item.id]: item } } });
 }
 
-export async function updatePresetCustomToggle(
-    presetId: string,
-    toggleId: string,
-    changes: DeepPartial<PresetCustomToggle>
-): Promise<void> {
-    const preset = await PresetService.updateCustomToggle(presetId, toggleId, changes);
-    const updated = await resolveGlobalVariables(presetId, preset);
-    presets.set(presetId, updated);
+export async function deletePresetToggleItem(presetId: string, itemId: string): Promise<void> {
+    await updatePreset(presetId, { toggles: { refs: { [itemId]: undefined } } });
 }
 
-export async function deletePresetCustomToggle(presetId: string, toggleId: string): Promise<void> {
-    const updated = await PresetService.deleteCustomToggle(presetId, toggleId);
-    presets.set(presetId, updated);
-}
-
-// ─── Preset-owned Script CRUD ───────────────────────────────────────
-
-export async function createPresetScript(
-    presetId: string,
-    fields: DeepPartial<ScriptFields>
-): Promise<Script> {
-    const preset = await getPreset(presetId);
-    if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
-
-    // Create Record in DB
-    const sc = await ScriptService.create(presetId, fields);
-
-    // Update parent's refs
-    const sortOrder = generateSortOrder(preset.scripts.refs, preset.scripts.folders);
-    try {
-        await updatePreset(presetId, {
-            scripts: { refs: { [sc.id]: { id: sc.id, sortOrder } } }
-        });
-    } catch (error) {
-        // If parent's refs update fails, roll back DB
-        await ScriptService.delete(sc.id);
-        throw error;
-    }
-
-    if (get(activePreset)?.id === presetId) {
-        presetScripts.set(sc.id, sc);
-    }
-
-    return sc;
-}
-
-export async function updatePresetScript(
-    presetId: string,
-    scriptId: string,
-    changes: DeepPartial<ScriptFields>
-): Promise<void> {
-    const updated = await ScriptService.update(scriptId, changes);
-    if (get(activePreset)?.id === presetId) {
-        presetScripts.set(scriptId, updated);
-    }
+export async function savePresetScript(presetId: string, item: Script): Promise<void> {
+    await updatePreset(presetId, { scripts: { refs: { [item.id]: item } } });
 }
 
 export async function deletePresetScript(presetId: string, scriptId: string): Promise<void> {
-    const preset = await getPreset(presetId);
-    if (!preset) throw new AppError('NOT_FOUND', `Preset not found: ${presetId}`);
-
-    // Capture ref for potential rollback
-    const existingRef = preset.scripts.refs[scriptId];
-
-    // Remove from parent's refs
     await updatePreset(presetId, { scripts: { refs: { [scriptId]: undefined } } });
-
-    try {
-        await ScriptService.delete(scriptId);
-    } catch (error) {
-        // If DB delete fails, roll back parent's refs
-        await updatePreset(presetId, { scripts: { refs: { [scriptId]: existingRef } } });
-        throw error;
-    }
-
-    if (get(activePreset)?.id === presetId) {
-        presetScripts.delete(scriptId);
-    }
 }
 
 // ─── Preset-owned Folder & Item Management ──────────────────────
 
+export type PresetFolderType = 'scripts' | 'toggles';
+
 export async function createPresetFolder(
     presetId: string,
+    folderType: PresetFolderType,
     name: string,
     parentId?: string,
     sortOrder?: string
@@ -340,12 +185,13 @@ export async function createPresetFolder(
     const newFolder: FolderDef = {
         id: generateId(),
         name,
-        sortOrder: sortOrder ?? generateSortOrder(preset.scripts.refs, preset.scripts.folders),
+        sortOrder:
+            sortOrder ?? generateSortOrder(preset[folderType].refs, preset[folderType].folders),
         parentId
     };
 
     await updatePreset(presetId, {
-        scripts: { folders: { [newFolder.id]: newFolder } }
+        [folderType]: { folders: { [newFolder.id]: newFolder } }
     });
 
     return newFolder;
@@ -353,30 +199,36 @@ export async function createPresetFolder(
 
 export async function updatePresetFolder(
     presetId: string,
+    folderType: PresetFolderType,
     folderId: string,
     changes: DeepPartial<{ name: string; color: string; parentId: string; sortOrder: string }>
 ): Promise<void> {
     const preset = await getPreset(presetId);
     if (!preset) return;
 
-    const existing = preset.scripts.folders[folderId];
+    const existing = preset[folderType].folders[folderId];
     if (!existing) return;
 
     const updated: FolderDef = { ...existing, ...changes, id: existing.id };
 
     await updatePreset(presetId, {
-        scripts: { folders: { [folderId]: updated } }
+        [folderType]: { folders: { [folderId]: updated } }
     });
 }
 
-export async function deletePresetFolder(presetId: string, folderId: string): Promise<void> {
+export async function deletePresetFolder(
+    presetId: string,
+    folderType: PresetFolderType,
+    folderId: string
+): Promise<void> {
     await updatePreset(presetId, {
-        scripts: { folders: { [folderId]: undefined } }
+        [folderType]: { folders: { [folderId]: undefined } }
     });
 }
 
 export async function movePresetItem(
     presetId: string,
+    folderType: PresetFolderType,
     itemId: string,
     newFolderId?: string,
     newSortOrder?: string
@@ -384,11 +236,11 @@ export async function movePresetItem(
     const preset = await getPreset(presetId);
     if (!preset) return;
 
-    const existing = preset.scripts.refs[itemId];
+    const existing = preset[folderType].refs[itemId];
     if (!existing) return;
 
     await updatePreset(presetId, {
-        scripts: {
+        [folderType]: {
             refs: {
                 [itemId]: {
                     ...existing,

@@ -6,7 +6,7 @@
  * - A user was deleted on another device but content wasn't fully purged locally
  * - A room was deleted server-side but local content wasn't cleaned up
  *
- * Intended to be called from a settings/admin UI, not automatically.
+ * Used by manual maintenance and after local user deletion.
  */
 
 import { appUser } from '$lib/adapters/user';
@@ -14,7 +14,6 @@ import { appMulti } from '$lib/adapters/multi';
 import { localDB, TABLES, type DataScope, type DataScopeType } from '$lib/adapters/db';
 import { buffer } from './content/record_buffer';
 import { AssetService } from './asset';
-import { getActiveSession } from './session';
 
 export interface PurgeResult {
     users: number;
@@ -42,10 +41,14 @@ async function purgeOrphanUserScopes(): Promise<number> {
 }
 
 async function purgeOrphanRoomScopes(): Promise<number> {
-    // Get all room IDs the user is a member of
-    const { userId } = getActiveSession();
-    const memberships = await appMulti.getMembersByUser(userId);
-    const memberRoomIds = new Set(memberships.map((m) => m.roomId));
+    // Keep rooms accessible to any local identity, not only the active user.
+    const users = await appUser.getAllUsers();
+    const memberships = (
+        await Promise.all(users.map((user) => appMulti.getMembersByUser(user.id)))
+    ).flat();
+    const memberRoomIds = new Set(
+        memberships.filter((membership) => membership.status === 'accepted').map((m) => m.roomId)
+    );
 
     // Only keep rooms that have a local index (hard-delete removed them)
     const indexes = await appMulti.getRoomIndexes([...memberRoomIds]);

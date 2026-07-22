@@ -402,12 +402,7 @@ async function renderHistoryMessage(
         templateMacros
     );
 
-    const processed = await runPipeline(
-        ctx.chatId ?? message.chatId,
-        'request',
-        templated,
-        messageCtx
-    );
+    const processed = await runPipeline('request', messageCtx, templated);
 
     const content = await runTemplate(processed, messageCtx, templateMacros);
 

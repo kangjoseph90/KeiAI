@@ -57,7 +57,6 @@ const character: Character = {
     greetings: {},
     defaultVariables: {},
     allowLowLevel: false,
-    modules: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} },
     charjs: { refs: {}, folders: {} },
@@ -74,7 +73,8 @@ const chat: Chat = {
     messageCount: 0,
     personas: { refs: {}, folders: {} },
     lorebooks: { refs: {}, folders: {} },
-    inlays: { refs: {}, folders: {} }
+    inlays: { refs: {}, folders: {} },
+    files: { refs: {}, folders: {} }
 };
 
 const persona: Persona = {
@@ -165,7 +165,7 @@ describe('buildPrompt', () => {
             }
         );
         mockRunPipeline.mockImplementation(
-            async (_chatId: string, _phase: string, data: string) => data
+            async (_phase: string, _ctx: RuntimeContext, data: string) => data
         );
         mockTokenCount.mockImplementation(async (text: string) => text.length);
         mockReadBytes.mockResolvedValue(null);
@@ -308,7 +308,7 @@ describe('buildPrompt', () => {
             }
         );
         mockRunPipeline.mockImplementation(
-            async (_chatId: string, _phase: string, data: string) => `request(${data})`
+            async (_phase: string, _ctx: RuntimeContext, data: string) => `request(${data})`
         );
 
         const prompt = await buildTestPrompt({
@@ -319,9 +319,7 @@ describe('buildPrompt', () => {
         });
 
         expect(mockRunPipeline).toHaveBeenCalledWith(
-            'chat-1',
             'request',
-            'template({{char}} says hi)',
             {
                 chatId: 'chat-1',
                 characterId: 'char-1',
@@ -330,7 +328,8 @@ describe('buildPrompt', () => {
                 role: 'user',
                 speakerId: undefined,
                 speakerName: undefined
-            }
+            },
+            'template({{char}} says hi)'
         );
         expect(toTextMessages(prompt)).toEqual([
             {
@@ -508,9 +507,7 @@ describe('buildPrompt', () => {
         });
 
         expect(mockRunPipeline).toHaveBeenCalledWith(
-            'chat-1',
             'request',
-            '{{char}} says hi',
             expect.objectContaining({
                 characterId: 'char-2',
                 speakerId: 'char-2',
@@ -518,7 +515,8 @@ describe('buildPrompt', () => {
                 messageId: 'msg-1',
                 messageIndex: 7,
                 role: 'assistant'
-            })
+            }),
+            '{{char}} says hi'
         );
     });
 

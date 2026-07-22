@@ -13,6 +13,7 @@ import type {
     UserWriteEventListener,
     UserWriteOperation
 } from './types';
+import type { UserConnectionSettings } from '$lib/types/connections';
 
 const logger = createLogger('adapter:user:tauri');
 
@@ -54,7 +55,7 @@ class UserDexie extends Dexie {
     constructor() {
         super('KeiUsers'); // Same dedicated auth IndexedDB as the web adapter
         this.version(1).stores({
-            users: 'id, username, selfHostUrl, updatedAt'
+            users: 'id, username, updatedAt'
         });
     }
 }
@@ -70,7 +71,7 @@ interface SQLiteUserRow {
     avatar: string;
     createdAt: number;
     updatedAt: number;
-    selfHostUrl: string | null;
+    connections: string;
 }
 
 interface SecureKeySnapshot {
@@ -126,7 +127,7 @@ export class TauriUserAdapter implements IUserAdapter {
 					avatar    TEXT    NOT NULL,
 					createdAt INTEGER NOT NULL,
 					updatedAt INTEGER NOT NULL,
-					selfHostUrl TEXT
+					connections TEXT NOT NULL
 				)
 			`);
             await db.execute(`CREATE INDEX IF NOT EXISTS idx_users_updatedAt ON users (updatedAt)`);
@@ -146,14 +147,14 @@ export class TauriUserAdapter implements IUserAdapter {
             avatar: user.avatar,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt,
-            selfHostUrl: user.selfHostUrl ?? null
+            connections: JSON.stringify(user.connections)
         });
     }
 
     private async sqliteSaveRow(row: SQLiteUserRow): Promise<void> {
         const db = await this.getSQLite();
         await db.execute(
-            `INSERT OR REPLACE INTO users (id, userId, name, username, email, avatar, createdAt, updatedAt, selfHostUrl)
+            `INSERT OR REPLACE INTO users (id, userId, name, username, email, avatar, createdAt, updatedAt, connections)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
                 row.id,
@@ -164,7 +165,7 @@ export class TauriUserAdapter implements IUserAdapter {
                 row.avatar,
                 row.createdAt,
                 row.updatedAt,
-                row.selfHostUrl
+                row.connections
             ]
         );
     }
@@ -543,7 +544,7 @@ export class TauriUserAdapter implements IUserAdapter {
                 avatar: row.avatar,
                 createdAt: row.createdAt,
                 updatedAt: row.updatedAt,
-                selfHostUrl: row.selfHostUrl ?? undefined,
+                connections: JSON.parse(row.connections) as UserConnectionSettings,
                 masterKey,
                 identityKeyPair: { publicKey, privateKey }
             };

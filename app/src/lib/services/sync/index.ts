@@ -25,6 +25,7 @@ import { MultiRecordSyncEngine } from './multi';
 import { appUser } from '$lib/adapters/user';
 import { appMulti } from '$lib/adapters/multi';
 import { localDB, SYNC_TABLES } from '$lib/adapters/db';
+import { getActiveSession } from '../session';
 
 /**
  * Unified lifecycle controller for all sync services.
@@ -33,6 +34,7 @@ import { localDB, SYNC_TABLES } from '$lib/adapters/db';
 export class SyncManager {
     private static started = false;
     private static cleanups: Array<() => void> = [];
+    private static realtimeSetup: Promise<void> | null = null;
 
     private static readonly FALLBACK_POLL_INTERVAL_MS = 300_000;
 
@@ -43,10 +45,8 @@ export class SyncManager {
         if (typeof window === 'undefined' || this.started) return;
         this.started = true;
 
-        void DataRecordSyncEngine.subscribeRealtime();
+        void this.ensureRealtimeSubscriptions().catch(() => undefined);
         void AssetSyncEngine.start();
-        void MultiRecordSyncEngine.subscribeRealtime();
-        void UserRecordSyncEngine.subscribeRealtime();
 
         const pollTimer = setInterval(() => {
             void DataRecordSyncEngine.trigger();
@@ -124,12 +124,23 @@ export class SyncManager {
      * Full data sync. Called on boot and after login.
      */
     static async syncAll(): Promise<void> {
+        await this.ensureRealtimeSubscriptions();
         await Promise.all([
             DataRecordSyncEngine.trigger(),
             MultiRecordSyncEngine.trigger(),
             UserRecordSyncEngine.trigger()
         ]);
         void AssetSyncEngine.start();
+    }
+
+    /** Reset the active user's cursors for the current server and perform a full pull. */
+    static async resetCurrentCursors(): Promise<void> {
+        const { userId } = getActiveSession();
+        await Promise.all([
+            DataRecordSyncEngine.resetCursor(userId),
+            MultiRecordSyncEngine.resetCursor(userId)
+        ]);
+        await this.syncAll();
     }
 
     static async refreshRoomSync(): Promise<void> {
@@ -143,22 +154,33 @@ export class SyncManager {
 
     /** On come-back-online / tab-focus: re-subscribe if needed, then catch-up pull. */
     private static async resubscribeAndPull(): Promise<void> {
-        if (!DataRecordSyncEngine.isSubscribed) {
-            await DataRecordSyncEngine.subscribeRealtime();
-        }
-        if (!MultiRecordSyncEngine.isSubscribed) {
-            await MultiRecordSyncEngine.subscribeRealtime();
-        }
-        if (!UserRecordSyncEngine.isSubscribed) {
-            await UserRecordSyncEngine.subscribeRealtime();
+        await this.syncAll();
+    }
+
+    private static async ensureRealtimeSubscriptions(): Promise<void> {
+        if (this.realtimeSetup) {
+            await this.realtimeSetup;
         }
 
-        await Promise.all([
-            DataRecordSyncEngine.trigger(),
-            MultiRecordSyncEngine.trigger(),
-            UserRecordSyncEngine.trigger()
-        ]);
-        void AssetSyncEngine.start();
+        const subscriptions: Promise<void>[] = [];
+        if (!DataRecordSyncEngine.isSubscribed) {
+            subscriptions.push(DataRecordSyncEngine.subscribeRealtime());
+        }
+        if (!MultiRecordSyncEngine.isSubscribed) {
+            subscriptions.push(MultiRecordSyncEngine.subscribeRealtime());
+        }
+        if (!UserRecordSyncEngine.isSubscribed) {
+            subscriptions.push(UserRecordSyncEngine.subscribeRealtime());
+        }
+        if (subscriptions.length === 0) return;
+
+        const setup = Promise.all(subscriptions).then(() => undefined);
+        this.realtimeSetup = setup;
+        try {
+            await setup;
+        } finally {
+            if (this.realtimeSetup === setup) this.realtimeSetup = null;
+        }
     }
 
     private static hasDisconnectedRecordSync(): boolean {

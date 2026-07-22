@@ -14,6 +14,9 @@ export interface IKeyValueAdapter {
     /** Remove a value by key. */
     remove(key: string): Promise<void>;
 
+    /** List stored keys, optionally restricted to a prefix. */
+    keys(prefix?: string): Promise<string[]>;
+
     /** Ensure the storage is initialized (especially required for Tauri plugin_store) */
     init(): Promise<void>;
 }

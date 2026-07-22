@@ -1,81 +1,48 @@
 <script lang="ts">
     import {
-        Check,
         ChevronDown,
-        ChevronLeft,
         ChevronRight,
         Cloud,
         CloudOff,
-        Edit3,
         Folder,
         FolderOpen,
         Home,
         LoaderCircle,
         LockKeyhole,
-        MessageSquare,
-        Pin,
-        Plus,
-        Search,
-        Settings,
         RefreshCw,
-        Trash2,
-        User,
+        Settings,
         UserCircle,
         UserPlus,
-        UsersRound,
-        X
+        UsersRound
     } from 'lucide-svelte';
-    import AssetView from '$lib/components/AssetView.svelte';
-    import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
-    import ParticipantCardMenu from '$lib/components/ParticipantCardMenu.svelte';
+    import type { Snippet } from 'svelte';
     import RoomAvatar from '$lib/components/RoomAvatar.svelte';
     import { Button } from '$lib/components/ui/button';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-    import { Input } from '$lib/components/ui/input';
     import {
-        activeChat,
         activeUser,
-        activePreset,
-        activeRoom,
         assetSyncStatus,
         appSettings,
-        chatSelections,
-        createChat,
+        createAndSwitchLocalUser,
         createGlobalFolder,
-        createRoomFolder,
-        deleteChat,
-        deleteGlobalFolder,
-        deleteRoomFolder,
         dataSyncStatus,
+        deleteGlobalFolder,
         isMultiRoom,
-        isSyncLinked,
-        localUsers,
-        migrationLocked,
-        multiSyncStatus,
-        moveGlobalItem,
-        moveRoomItem,
-        removeRoomCharacter,
-        roomChats,
-        roomCharacters,
-        rooms,
-        setChatDefaultCharacter,
-        setChatSelectedCharacter,
-        updateChat,
-        updateGlobalFolder,
-        updateRoom,
-        updateRoomFolder,
-        userSyncStatus,
+        isLoggedIn,
         loadLocalUsers,
+        localUsers,
+        moveGlobalItem,
+        multiSyncStatus,
+        rooms,
+        serverTransitionLocked,
         switchLocalUser,
-        createAndSwitchLocalUser
+        updateGlobalFolder,
+        userSyncStatus
     } from '$lib/stores';
-    import { appConfirm, characterPickerOpen, toast } from '$lib/ui';
+    import { toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { getFolderColorClass } from '$lib/components/entitylist/folders';
-    import { setGlobalVariable } from '$lib/managers';
     import type { RouteState } from '$lib/router';
-    import { syncChatGreetings } from '$lib/managers';
-    import { compareSortOrder } from '$lib/utils/ordering';
     import { getErrorMessage } from '$lib/types/errors';
     import { SyncManager, type SyncStatus } from '$lib/services/sync';
 
@@ -84,29 +51,32 @@
         route: RouteState;
         onToggle: () => void;
         onNavigate: (route: RouteState) => void;
+        panel?: Snippet;
+        hasPanel?: boolean;
     }
 
-    type SyncIndicatorState = SyncStatus['state'] | 'migration';
+    type SyncIndicatorState = SyncStatus['state'] | 'server-transition';
 
     const SYNC_ICON_DELAY_MS = 400;
     const SYNC_ICON_MIN_VISIBLE_MS = 500;
 
-    let { collapsed = false, route, onToggle, onNavigate }: Props = $props();
+    let {
+        collapsed = false,
+        route,
+        onToggle,
+        onNavigate,
+        panel,
+        hasPanel = false
+    }: Props = $props();
 
-    let chatSearch = $state('');
-    let editingChatId = $state<string | null>(null);
-    let editingChatTitle = $state('');
-    let editingRoomName = $state(false);
-    let roomNameDraft = $state('');
     let switchingUserId = $state<string | null>(null);
     let creatingUser = $state(false);
     let retryingSync = $state(false);
-    let sidebarAction = $state<string | null>(null);
     let syncIconState = $state<SyncIndicatorState>('idle');
     let syncIconStartedAt = 0;
 
     const syncState = $derived.by(() => {
-        if ($migrationLocked) return 'migration';
+        if ($serverTransitionLocked) return 'server-transition';
         const states = [
             $dataSyncStatus.state,
             $userSyncStatus.state,
@@ -120,8 +90,8 @@
         return 'idle';
     });
     const syncLabel = $derived(
-        syncState === 'migration'
-            ? 'Migration in progress'
+        syncState === 'server-transition'
+            ? 'Server change in progress'
             : syncState === 'syncing'
               ? 'Syncing encrypted data'
               : syncState === 'network_error'
@@ -178,12 +148,6 @@
         return null;
     }
 
-    const filteredChats = $derived(() => {
-        const query = chatSearch.trim().toLowerCase();
-        if (!query) return $roomChats;
-        return $roomChats.filter((chat) => chat.title.toLowerCase().includes(query));
-    });
-
     const otherUsers = $derived(() =>
         $localUsers.filter((user) => user.id !== $activeUser?.id).reverse()
     );
@@ -204,156 +168,12 @@
         }
     }
 
-    async function runSidebarAction(
-        key: string,
-        errorTitle: string,
-        action: () => void | Promise<void>
-    ): Promise<void> {
-        if (sidebarAction) return;
-        sidebarAction = key;
-        try {
-            await action();
-        } catch (error) {
-            toast.error({ title: errorTitle, description: getErrorMessage(error) });
-        } finally {
-            sidebarAction = null;
-        }
-    }
-
-    async function handleCreateChat() {
-        if (!$activeRoom) return;
-        const roomId = $activeRoom.id;
-        await runSidebarAction('create-chat', 'Could not create chat', async () => {
-            const chat = await createChat(roomId, {
-                title: `New Chat ${$roomChats.length + 1}`
-            });
-            await syncChatGreetings(chat.id);
-            if ($activeRoom?.id === roomId) {
-                onNavigate({ view: 'room', roomId, chatId: chat.id });
-            }
-        });
-    }
-
-    function handleSelectRoom(roomId: string) {
+    function handleSelectRoom(roomId: string): void {
         onNavigate({ view: 'room', roomId });
     }
 
-    function handleOpenCharacter(characterId: string) {
-        onNavigate({ view: 'characterStudio', charId: characterId });
-    }
-
-    async function handleSelectCharacter(characterId: string) {
-        if (!$activeChat) return;
-        const chatId = $activeChat.id;
-        await runSidebarAction(
-            `select-character:${characterId}`,
-            'Could not select character',
-            () => setChatSelectedCharacter(chatId, characterId)
-        );
-    }
-
-    async function handleSetDefaultCharacter(characterId: string) {
-        if (!$activeChat) return;
-        const chatId = $activeChat.id;
-        await runSidebarAction(
-            `default-character:${characterId}`,
-            'Could not set default character',
-            () => setChatDefaultCharacter(chatId, characterId)
-        );
-    }
-
-    async function handleRemoveCharacter(characterId: string) {
-        if (!$activeRoom) return;
-        const roomId = $activeRoom.id;
-        const chatId = $activeChat?.id;
-        const character = $roomCharacters.find((item) => item.id === characterId);
-        await runSidebarAction(
-            `remove-character:${characterId}`,
-            'Could not remove character',
-            async () => {
-                const confirmed = await appConfirm({
-                    title: 'Remove character from room?',
-                    description: `Remove "${character?.name ?? 'this character'}" from this room?`,
-                    confirmText: 'Remove',
-                    variant: 'destructive'
-                });
-                if (!confirmed || $activeRoom?.id !== roomId) return;
-                await removeRoomCharacter(roomId, characterId);
-                if (chatId) await syncChatGreetings(chatId);
-            }
-        );
-    }
-
-    async function handleSelectChat(chatId: string) {
-        if (!$activeRoom) return;
-        const roomId = $activeRoom.id;
-        await runSidebarAction(`select-chat:${chatId}`, 'Could not open chat', async () => {
-            await syncChatGreetings(chatId);
-            if ($activeRoom?.id === roomId) onNavigate({ view: 'room', roomId, chatId });
-        });
-    }
-
-    async function handleRenameChat(chatId: string) {
-        const title = editingChatTitle.trim();
-        if (!title) return;
-
-        await runSidebarAction(`rename-chat:${chatId}`, 'Could not rename chat', async () => {
-            await updateChat(chatId, { title });
-            editingChatId = null;
-            editingChatTitle = '';
-        });
-    }
-
-    async function handleRenameRoom() {
-        if (!$activeRoom || $isMultiRoom) return;
-        const name = roomNameDraft.trim();
-        if (!name) return;
-        const roomId = $activeRoom.id;
-        await runSidebarAction('rename-room', 'Could not rename room', async () => {
-            await updateRoom(roomId, { name });
-            editingRoomName = false;
-            roomNameDraft = '';
-        });
-    }
-
-    function startRenameRoom() {
-        if (!$activeRoom || $isMultiRoom) return;
-        roomNameDraft = $activeRoom.name;
-        editingRoomName = true;
-    }
-
-    async function handleDeleteChat(chatId: string) {
-        if (!$activeRoom) return;
-        const roomId = $activeRoom.id;
-        const chat = $roomChats.find((item) => item.id === chatId);
-        await runSidebarAction(`delete-chat:${chatId}`, 'Could not delete chat', async () => {
-            const confirmed = await appConfirm({
-                title: 'Delete chat?',
-                description: `Delete "${chat?.title || 'Untitled Chat'}" and its messages?`,
-                confirmText: 'Delete',
-                variant: 'destructive'
-            });
-            if (!confirmed || $activeRoom?.id !== roomId) return;
-            await deleteChat(chatId, roomId);
-            if ($activeRoom?.id === roomId && $activeChat?.id === chatId) {
-                onNavigate({ view: 'room', roomId });
-            }
-        });
-    }
-
-    async function handleToggleChange(key: string, value: string) {
-        try {
-            await setGlobalVariable(`toggle_${key}`, value);
-        } catch (error) {
-            toast.error({
-                title: 'Could not update variable',
-                description: getErrorMessage(error)
-            });
-        }
-    }
-
     async function handleSwitchUser(userId: string) {
-        if ($migrationLocked || switchingUserId || creatingUser) return;
+        if ($serverTransitionLocked || switchingUserId || creatingUser) return;
         switchingUserId = userId;
         try {
             await switchLocalUser(userId);
@@ -365,7 +185,7 @@
     }
 
     async function handleCreateUser() {
-        if ($migrationLocked || switchingUserId || creatingUser) return;
+        if ($serverTransitionLocked || switchingUserId || creatingUser) return;
         creatingUser = true;
         try {
             await createAndSwitchLocalUser();
@@ -374,15 +194,6 @@
         } finally {
             creatingUser = false;
         }
-    }
-
-    function startRenameChat(chatId: string, title: string) {
-        editingChatId = chatId;
-        editingChatTitle = title;
-    }
-
-    function initial(name: string): string {
-        return (name.trim().charAt(0) || '?').toUpperCase();
     }
 </script>
 
@@ -402,7 +213,7 @@
     <button
         type="button"
         class="fixed inset-0 z-30 bg-black/35 lg:hidden"
-        aria-label="Close room panel"
+        aria-label="Close navigation"
         onclick={onToggle}
     ></button>
 {/if}
@@ -431,19 +242,21 @@
             </Button>
         </div>
 
+        <div class="flex items-center justify-center border-b border-sidebar-border px-2 py-2">
+            <Button
+                variant={route.view === 'multiRoom' || $isMultiRoom ? 'secondary' : 'ghost'}
+                size="icon"
+                class="size-10"
+                title="Multi Rooms"
+                aria-label="Multi Rooms"
+                onclick={() => onNavigate({ view: 'multiRoom' })}
+            >
+                <UsersRound class="size-4" />
+            </Button>
+        </div>
+
         <div class="flex-1 overflow-y-auto px-2 py-2">
-            <div class="flex flex-col items-center gap-2 w-full">
-                <Button
-                    variant={route.view === 'multiRoom' || $isMultiRoom ? 'secondary' : 'ghost'}
-                    size="icon"
-                    class="size-10"
-                    title="Multi Rooms"
-                    aria-label="Multi Rooms"
-                    onclick={() => onNavigate({ view: 'multiRoom' })}
-                >
-                    <UsersRound class="size-4" />
-                </Button>
-                <div class="h-px w-8 bg-sidebar-border"></div>
+            <div class="flex w-full flex-col items-center gap-2">
                 {#if $appSettings}
                     <EntityList
                         entities={$rooms}
@@ -451,7 +264,7 @@
                         layout="list"
                         gridClass="flex flex-col gap-2 items-center w-full"
                         listClass="flex flex-col gap-2 items-center w-full"
-                        childContainerClass="relative my-1 py-1.5 flex flex-col gap-2 items-center w-full"
+                        childContainerClass="relative my-1 px-0 py-1.5 flex flex-col gap-2 items-center w-full"
                         onItemClick={(room) => handleSelectRoom(room.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('rooms', name, parentId, sortOrder)}
@@ -495,7 +308,7 @@
         </div>
 
         <div class="flex flex-col items-center gap-2 border-t border-sidebar-border p-2">
-            {#if $isSyncLinked || $migrationLocked}
+            {#if $isLoggedIn || $serverTransitionLocked}
                 <DropdownMenu.Root>
                     <DropdownMenu.Trigger>
                         <Button
@@ -506,7 +319,7 @@
                             aria-label={`View sync status: ${syncLabel}`}
                             aria-busy={retryingSync || syncState === 'syncing'}
                         >
-                            {#if syncIconState === 'migration'}
+                            {#if syncIconState === 'server-transition'}
                                 <LockKeyhole
                                     class="size-4 text-amber-600 dark:text-amber-400"
                                     aria-hidden="true"
@@ -527,13 +340,13 @@
                         <DropdownMenu.Label class="px-2 py-1.5 text-xs"
                             >Sync status</DropdownMenu.Label
                         >
-                        {#if $migrationLocked}
+                        {#if $serverTransitionLocked}
                             <div class="mx-1 mb-1 rounded-md bg-amber-500/10 px-2.5 py-2 text-xs">
                                 <p class="font-medium text-amber-700 dark:text-amber-300">
-                                    Migration in progress
+                                    Server change in progress
                                 </p>
                                 <p class="mt-1 leading-4 text-muted-foreground">
-                                    Sync is paused until migration finishes.
+                                    Sync is paused until the server change finishes.
                                 </p>
                             </div>
                             <DropdownMenu.Separator />
@@ -545,7 +358,9 @@
                         <DropdownMenu.Separator />
                         <DropdownMenu.Item
                             class="cursor-pointer gap-2"
-                            disabled={$migrationLocked || retryingSync || syncState === 'syncing'}
+                            disabled={$serverTransitionLocked ||
+                                retryingSync ||
+                                syncState === 'syncing'}
                             onclick={() => void handleSync()}
                         >
                             <RefreshCw class="size-4" />
@@ -593,7 +408,9 @@
                     {#if $activeUser}
                         <DropdownMenu.Item
                             class="flex cursor-pointer items-center gap-2.5 rounded-none px-2.5 py-1.5 my-1 text-sm"
-                            disabled={$migrationLocked || creatingUser || switchingUserId !== null}
+                            disabled={$serverTransitionLocked ||
+                                creatingUser ||
+                                switchingUserId !== null}
                             onclick={() => onNavigate({ view: 'settings', settingsTab: 'profile' })}
                         >
                             <img
@@ -613,7 +430,7 @@
                         {#each otherUsers() as user (user.id)}
                             <DropdownMenu.Item
                                 class="flex cursor-pointer items-center gap-2.5 rounded-none px-2.5 py-1.5 my-1 text-sm"
-                                disabled={$migrationLocked ||
+                                disabled={$serverTransitionLocked ||
                                     creatingUser ||
                                     switchingUserId !== null}
                                 onclick={() => handleSwitchUser(user.id)}
@@ -633,7 +450,9 @@
                     <DropdownMenu.Separator class="my-1" />
                     <DropdownMenu.Item
                         class="flex cursor-pointer items-center gap-2.5 rounded-none px-2.5 py-1.5 my-1 text-sm"
-                        disabled={$migrationLocked || creatingUser || switchingUserId !== null}
+                        disabled={$serverTransitionLocked ||
+                            creatingUser ||
+                            switchingUserId !== null}
                         onclick={handleCreateUser}
                     >
                         <div
@@ -650,518 +469,9 @@
         </div>
     </div>
 
-    {#if $activeRoom}
+    {#if hasPanel}
         {#if !collapsed}
-            <div class="relative flex">
-                <div class="app-sidebar-room-panel flex w-[360px] flex-col bg-sidebar">
-                    <div class="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
-                        {#if editingRoomName}
-                            <form
-                                class="flex min-w-0 flex-1 items-center gap-1"
-                                onsubmit={(event) => {
-                                    event.preventDefault();
-                                    handleRenameRoom();
-                                }}
-                            >
-                                <Input
-                                    bind:value={roomNameDraft}
-                                    class="h-8 min-w-0 flex-1 text-sm"
-                                    autofocus
-                                    onkeydown={(event) => {
-                                        if (event.key === 'Escape') {
-                                            editingRoomName = false;
-                                            roomNameDraft = '';
-                                        }
-                                    }}
-                                />
-                                <Button
-                                    type="submit"
-                                    size="icon"
-                                    class="size-8"
-                                    aria-label="Save room name"
-                                    disabled={sidebarAction !== null}
-                                    aria-busy={sidebarAction === 'rename-room'}
-                                >
-                                    <Check class="size-3.5" />
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    class="size-8"
-                                    disabled={sidebarAction !== null}
-                                    onclick={() => {
-                                        editingRoomName = false;
-                                        roomNameDraft = '';
-                                    }}
-                                >
-                                    <X class="size-3.5" />
-                                </Button>
-                            </form>
-                        {:else}
-                            <p class="min-w-0 flex-1 truncate text-sm font-semibold">
-                                {$activeRoom.name}
-                            </p>
-                            {#if !$isMultiRoom}
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    class="size-8 shrink-0 text-muted-foreground"
-                                    title="Rename room"
-                                    aria-label="Rename room"
-                                    disabled={sidebarAction !== null}
-                                    onclick={startRenameRoom}
-                                >
-                                    <Edit3 class="size-3.5" />
-                                </Button>
-                            {/if}
-                        {/if}
-                    </div>
-
-                    <div class="border-b border-sidebar-border p-3">
-                        <div class="mb-2 flex items-center justify-between">
-                            <p
-                                class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
-                            >
-                                <User class="size-3" /> Characters
-                            </p>
-                            <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                class="size-6 text-muted-foreground hover:text-foreground"
-                                title="Add characters"
-                                aria-label="Add characters"
-                                disabled={sidebarAction !== null}
-                                onclick={() => ($characterPickerOpen = true)}
-                            >
-                                <Plus class="size-3.5" />
-                            </Button>
-                        </div>
-                        <EntityList
-                            entities={$roomCharacters}
-                            config={$activeRoom.characters}
-                            layout="grid"
-                            gridClass="grid grid-cols-3 gap-2"
-                            listClass="grid grid-cols-3 gap-2"
-                            childContainerClass="relative my-1 py-1.5 pl-2"
-                            onItemClick={(character) => {
-                                if ($activeChat) {
-                                    void handleSelectCharacter(character.id);
-                                }
-                            }}
-                            onCreateFolder={(name, parentId, sortOrder) =>
-                                createRoomFolder(
-                                    $activeRoom.id,
-                                    'characters',
-                                    name,
-                                    parentId,
-                                    sortOrder
-                                )}
-                            onUpdateFolder={(id, changes) =>
-                                updateRoomFolder($activeRoom.id, 'characters', id, changes)}
-                            onDeleteFolder={(id) =>
-                                deleteRoomFolder($activeRoom.id, 'characters', id)}
-                            onMoveItem={(itemId, newFolderId, newSortOrder) =>
-                                moveRoomItem(
-                                    $activeRoom.id,
-                                    'characters',
-                                    itemId,
-                                    newFolderId,
-                                    newSortOrder
-                                )}
-                        >
-                            {#snippet empty()}
-                                <div class="col-span-3">
-                                    <EmptyListPlaceholder message="No characters." />
-                                </div>
-                            {/snippet}
-                            {#snippet item({ entity: character })}
-                                {@const selected = $chatSelections?.characterId === character.id}
-                                {@const isDefault =
-                                    $activeChat?.defaultCharacterId === character.id}
-                                <div class="group relative">
-                                    <div
-                                        class="flex w-full min-w-0 flex-col items-center gap-1 rounded-md border bg-background p-2 text-center transition-colors {selected
-                                            ? 'border-primary ring-2 ring-primary/20'
-                                            : 'hover:bg-sidebar-accent'}"
-                                        title={character.name}
-                                    >
-                                        <div
-                                            class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold"
-                                        >
-                                            {#if character.avatar}
-                                                <AssetView
-                                                    asset={{
-                                                        scopeType: character.scopeType,
-                                                        scopeId: character.scopeId,
-                                                        ownerTable: 'characters',
-                                                        ownerId: character.id,
-                                                        hash: character.avatar.hash,
-                                                        encKey: character.avatar.encKey
-                                                    }}
-                                                    alt={character.name}
-                                                    class="size-full object-cover"
-                                                />
-                                            {:else}
-                                                {initial(character.name)}
-                                            {/if}
-                                        </div>
-                                        <span class="w-full truncate text-[11px]"
-                                            >{character.name}</span
-                                        >
-                                    </div>
-                                    <ParticipantCardMenu
-                                        kind="character"
-                                        name={character.name}
-                                        {isDefault}
-                                        disabled={sidebarAction !== null}
-                                        defaultDisabled={!$activeChat}
-                                        defaultBusy={sidebarAction ===
-                                            `default-character:${character.id}`}
-                                        removeBusy={sidebarAction ===
-                                            `remove-character:${character.id}`}
-                                        onOpen={() => handleOpenCharacter(character.id)}
-                                        onSetDefault={() => handleSetDefaultCharacter(character.id)}
-                                        onRemove={() => handleRemoveCharacter(character.id)}
-                                    />
-                                    <button
-                                        class="absolute -left-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-background text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition-opacity hover:text-foreground group-hover:opacity-100 lg:flex"
-                                        title="Open character studio"
-                                        aria-label={`Open ${character.name} studio`}
-                                        onclick={() => handleOpenCharacter(character.id)}
-                                    >
-                                        <Settings class="size-3" />
-                                    </button>
-                                    <button
-                                        class="absolute left-5 -top-1 hidden size-5 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border transition-opacity lg:flex {isDefault
-                                            ? 'text-primary opacity-100'
-                                            : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'}"
-                                        title="Set default character"
-                                        aria-label={`Set ${character.name} as default character`}
-                                        disabled={!$activeChat || sidebarAction !== null}
-                                        aria-busy={sidebarAction ===
-                                            `default-character:${character.id}`}
-                                        onclick={() => handleSetDefaultCharacter(character.id)}
-                                    >
-                                        <Pin class="size-3" />
-                                    </button>
-                                    <button
-                                        class="absolute -right-1 -top-1 hidden size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100 lg:flex"
-                                        title="Remove from room"
-                                        aria-label={`Remove ${character.name} from room`}
-                                        disabled={sidebarAction !== null}
-                                        aria-busy={sidebarAction ===
-                                            `remove-character:${character.id}`}
-                                        onclick={() => handleRemoveCharacter(character.id)}
-                                    >
-                                        <X class="size-3" />
-                                    </button>
-                                </div>
-                            {/snippet}
-                        </EntityList>
-                    </div>
-
-                    <div class="flex items-center gap-2 border-b border-sidebar-border p-3">
-                        <div class="relative flex-1">
-                            <Search
-                                class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-                            />
-                            <Input
-                                bind:value={chatSearch}
-                                placeholder="Search chats..."
-                                class="h-8 pl-8 text-xs"
-                            />
-                        </div>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            class="size-8 shrink-0"
-                            title="New chat"
-                            aria-label="New chat"
-                            disabled={sidebarAction !== null}
-                            aria-busy={sidebarAction === 'create-chat'}
-                            onclick={handleCreateChat}
-                        >
-                            <Plus class="size-4" />
-                        </Button>
-                    </div>
-
-                    <div class="flex-1 overflow-y-auto p-2">
-                        <div class="flex flex-col gap-1">
-                            <EntityList
-                                entities={filteredChats()}
-                                config={$activeRoom.chats}
-                                layout="list"
-                                onItemClick={(chat) => handleSelectChat(chat.id)}
-                                onCreateFolder={(name, parentId, sortOrder) =>
-                                    createRoomFolder(
-                                        $activeRoom.id,
-                                        'chats',
-                                        name,
-                                        parentId,
-                                        sortOrder
-                                    )}
-                                onUpdateFolder={(id, changes) =>
-                                    updateRoomFolder($activeRoom.id, 'chats', id, changes)}
-                                onDeleteFolder={(id) =>
-                                    deleteRoomFolder($activeRoom.id, 'chats', id)}
-                                onMoveItem={(itemId, newFolderId, newSortOrder) =>
-                                    moveRoomItem(
-                                        $activeRoom.id,
-                                        'chats',
-                                        itemId,
-                                        newFolderId,
-                                        newSortOrder
-                                    )}
-                            >
-                                {#snippet empty()}
-                                    <EmptyListPlaceholder message="No chats yet." />
-                                {/snippet}
-                                {#snippet folder({ folder: f, collapsed, toggle, parts })}
-                                    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-                                    <div
-                                        class="relative group/folder flex items-center justify-between rounded-md px-2 py-2 text-sm select-none cursor-pointer transition-colors hover:bg-sidebar-accent/50 w-full"
-                                        onclick={toggle}
-                                    >
-                                        <div class="flex items-center gap-2 min-w-0 flex-1">
-                                            {#if collapsed}
-                                                <Folder
-                                                    strokeWidth={2.5}
-                                                    class="size-4 shrink-0 {f.color
-                                                        ? getFolderColorClass(f.color)
-                                                        : ''}"
-                                                />
-                                            {:else}
-                                                <FolderOpen
-                                                    strokeWidth={2.5}
-                                                    class="size-4 shrink-0 {f.color
-                                                        ? getFolderColorClass(f.color)
-                                                        : ''}"
-                                                />
-                                            {/if}
-                                            <div class="flex-1 min-w-0 text-foreground">
-                                                {@render parts.name({ folder: f })}
-                                            </div>
-                                        </div>
-                                        <div class="ml-2">
-                                            {@render parts.actions({ folder: f })}
-                                        </div>
-                                    </div>
-                                {/snippet}
-                                {#snippet item({ entity: chat })}
-                                    {@const selected = route.chatId === chat.id}
-                                    <div
-                                        class="group rounded-md px-2 py-2 text-sm transition-colors {selected
-                                            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                                            : 'hover:bg-sidebar-accent/50'}"
-                                    >
-                                        {#if editingChatId === chat.id}
-                                            <form
-                                                class="flex gap-1"
-                                                onsubmit={(event) => {
-                                                    event.preventDefault();
-                                                    handleRenameChat(chat.id);
-                                                }}
-                                            >
-                                                <Input
-                                                    bind:value={editingChatTitle}
-                                                    class="h-7 flex-1 text-xs text-foreground bg-background"
-                                                    autofocus
-                                                    onkeydown={(event) => {
-                                                        if (event.key === 'Escape') {
-                                                            editingChatId = null;
-                                                            editingChatTitle = '';
-                                                        }
-                                                    }}
-                                                />
-                                                <Button
-                                                    type="submit"
-                                                    size="icon"
-                                                    class="size-7"
-                                                    aria-label="Save chat name"
-                                                    disabled={sidebarAction !== null}
-                                                    aria-busy={sidebarAction ===
-                                                        `rename-chat:${chat.id}`}
-                                                >
-                                                    <Check class="size-3" />
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    class="size-7"
-                                                    disabled={sidebarAction !== null}
-                                                    onclick={() => {
-                                                        editingChatId = null;
-                                                        editingChatTitle = '';
-                                                    }}
-                                                >
-                                                    <X class="size-3" />
-                                                </Button>
-                                            </form>
-                                        {:else}
-                                            <div class="flex items-center gap-2">
-                                                <div
-                                                    class="flex min-w-0 flex-1 items-center gap-2 text-left"
-                                                >
-                                                    <MessageSquare class="size-3.5 shrink-0" />
-                                                    <span
-                                                        class="min-w-0 flex-1 truncate text-foreground"
-                                                    >
-                                                        {chat.title || 'Untitled Chat'}
-                                                    </span>
-                                                </div>
-                                                <button
-                                                    class="touch-visible flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
-                                                    title="Rename chat"
-                                                    aria-label={`Rename ${chat.title || 'Untitled Chat'}`}
-                                                    disabled={sidebarAction !== null}
-                                                    onclick={() =>
-                                                        startRenameChat(
-                                                            chat.id,
-                                                            chat.title || 'Untitled Chat'
-                                                        )}
-                                                >
-                                                    <Edit3 class="size-3" />
-                                                </button>
-                                                <button
-                                                    class="touch-visible flex size-6 shrink-0 items-center justify-center rounded text-destructive opacity-0 transition-opacity hover:bg-destructive/10 group-hover:opacity-100"
-                                                    title="Delete chat"
-                                                    aria-label={`Delete ${chat.title || 'Untitled Chat'}`}
-                                                    disabled={sidebarAction !== null}
-                                                    aria-busy={sidebarAction ===
-                                                        `delete-chat:${chat.id}`}
-                                                    onclick={() => handleDeleteChat(chat.id)}
-                                                >
-                                                    <Trash2 class="size-3" />
-                                                </button>
-                                            </div>
-                                        {/if}
-                                    </div>
-                                {/snippet}
-                            </EntityList>
-                        </div>
-                    </div>
-
-                    {#if $activePreset && Object.keys($activePreset.customToggles).length > 0}
-                        <div
-                            class="max-h-[40%] min-h-0 overflow-y-auto border-t border-sidebar-border p-3"
-                        >
-                            <p
-                                class="mb-2 text-[11px] font-semibold uppercase text-muted-foreground"
-                            >
-                                Toggles
-                            </p>
-                            <div class="flex flex-col gap-2">
-                                {#each Object.values($activePreset.customToggles).sort( (a, b) => compareSortOrder(a.sortOrder, b.sortOrder) ) as toggle (toggle.id)}
-                                    {#if toggle.type === 'caption'}
-                                        <p class="text-[11px] text-muted-foreground">
-                                            {toggle.label}
-                                        </p>
-                                    {:else if toggle.type === 'divider'}
-                                        <div class="flex items-center gap-2 py-1">
-                                            {#if toggle.label}
-                                                <span class="text-[10px] text-muted-foreground"
-                                                    >{toggle.label}</span
-                                                >
-                                            {/if}
-                                            <div class="h-px flex-1 bg-sidebar-border"></div>
-                                        </div>
-                                    {:else if toggle.type === 'group' || toggle.type === 'groupEnd'}
-                                        {#if toggle.type === 'group' && toggle.label}
-                                            <p class="pt-1 text-[11px] font-medium">
-                                                {toggle.label}
-                                            </p>
-                                        {/if}
-                                    {:else if toggle.type === 'select'}
-                                        <label
-                                            class="flex items-center justify-between gap-2 text-xs"
-                                        >
-                                            <span class="truncate">{toggle.label}</span>
-                                            <select
-                                                class="h-7 w-32 rounded-md border bg-background px-2 text-xs"
-                                                value={$activePreset.globalVariables[
-                                                    `toggle_${toggle.key}`
-                                                ] ?? '0'}
-                                                onchange={(event) =>
-                                                    handleToggleChange(
-                                                        toggle.key,
-                                                        event.currentTarget.value
-                                                    )}
-                                            >
-                                                {#each toggle.options as option, optionIndex (optionIndex)}
-                                                    <option value={String(optionIndex)}
-                                                        >{option}</option
-                                                    >
-                                                {/each}
-                                            </select>
-                                        </label>
-                                    {:else if toggle.type === 'text'}
-                                        <label
-                                            class="flex items-center justify-between gap-2 text-xs"
-                                        >
-                                            <span class="truncate">{toggle.label}</span>
-                                            <Input
-                                                class="h-7 w-32 text-xs"
-                                                value={$activePreset.globalVariables[
-                                                    `toggle_${toggle.key}`
-                                                ] ?? ''}
-                                                oninput={(event) =>
-                                                    handleToggleChange(
-                                                        toggle.key,
-                                                        event.currentTarget.value
-                                                    )}
-                                            />
-                                        </label>
-                                    {:else if toggle.type === 'textarea'}
-                                        <label class="flex flex-col gap-1 text-xs">
-                                            <span class="truncate">{toggle.label}</span>
-                                            <textarea
-                                                class="min-h-16 rounded-md border bg-background px-2 py-1 text-xs"
-                                                value={$activePreset.globalVariables[
-                                                    `toggle_${toggle.key}`
-                                                ] ?? ''}
-                                                oninput={(event) =>
-                                                    handleToggleChange(
-                                                        toggle.key,
-                                                        event.currentTarget.value
-                                                    )}
-                                            ></textarea>
-                                        </label>
-                                    {:else if toggle.key}
-                                        {@const toggleKey = toggle.key}
-                                        <label class="flex items-center gap-2 text-xs">
-                                            <input
-                                                type="checkbox"
-                                                class="size-3.5 rounded border-gray-300 text-primary focus:ring-primary"
-                                                checked={$activePreset.globalVariables[
-                                                    `toggle_${toggleKey}`
-                                                ] === '1'}
-                                                onchange={(event) =>
-                                                    handleToggleChange(
-                                                        toggleKey,
-                                                        event.currentTarget.checked ? '1' : '0'
-                                                    )}
-                                            />
-                                            <span class="truncate">{toggle.label}</span>
-                                        </label>
-                                    {/if}
-                                {/each}
-                            </div>
-                        </div>
-                    {/if}
-                </div>
-                <Button
-                    variant="outline"
-                    size="icon-lg"
-                    class="absolute left-full top-1.5 z-30 size-11 rounded-none rounded-r-md border-sidebar-border bg-sidebar text-muted-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:bg-sidebar dark:hover:bg-sidebar-accent max-lg:hidden"
-                    title="Hide room panel"
-                    aria-label="Hide room panel"
-                    onclick={onToggle}
-                >
-                    <ChevronLeft class="size-4" />
-                </Button>
-            </div>
+            {@render panel?.()}
         {:else}
             <Button
                 variant="outline"
@@ -1176,7 +486,7 @@
         {/if}
     {/if}
 
-    {#if !$activeRoom && collapsed}
+    {#if !hasPanel && collapsed}
         <Button
             variant="outline"
             size="icon-lg"

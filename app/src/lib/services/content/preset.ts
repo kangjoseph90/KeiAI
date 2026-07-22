@@ -14,36 +14,21 @@ import {
 import type { LLMModelConfig, LLMParameters, LLMType } from '$lib/types/models/llm';
 import type { EntityListConfig } from '$lib/types/refs';
 import type { WorkflowDefinition } from '$lib/workflow/types';
+import type { TogglePanel } from '$lib/types/toggle';
+import { defaultScriptFields, hydrateOwnedItems, type Script } from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
-export type PresetCustomToggleFields =
-    | { key?: string; label?: string; type: 'group' | 'groupEnd' | 'caption' | 'divider' }
-    | { key: string; label: string; type: 'checkbox' }
-    | { key: string; label: string; type: 'select'; options: string[] }
-    | { key: string; label: string; type: 'text' | 'textarea' };
-
-export type PresetCustomToggle = PresetCustomToggleFields & {
-    id: string;
-    sortOrder: string;
-};
-
-export interface PresetContent {
+export interface PresetFields {
     name: string;
     description: string;
     models: Partial<Record<LLMType, LLMModelConfig>>;
     parameters: Partial<Record<LLMType, LLMParameters>>;
     chatWorkflow: WorkflowDefinition;
     defaultVariables: Record<string, string>;
-    globalVariables: Record<string, string>;
-    customToggles: Record<string, PresetCustomToggle>;
+    toggles: TogglePanel;
+    scripts: EntityListConfig<Script>;
 }
-
-export interface PresetRefs {
-    scripts: EntityListConfig;
-}
-
-export interface PresetFields extends PresetContent, PresetRefs {}
 
 export interface Preset extends PresetFields {
     id: string;
@@ -66,15 +51,16 @@ export const defaultPresetFields: PresetFields = {
     },
     chatWorkflow: { nodes: {} },
     defaultVariables: {},
-    globalVariables: {},
-    customToggles: {},
+    toggles: { refs: {}, folders: {} },
     scripts: { refs: {}, folders: {} }
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
 function parseFields(record: PresetRecord): PresetFields {
-    return deepMerge(defaultPresetFields, record.data as DeepPartial<PresetFields>);
+    const fields = deepMerge(defaultPresetFields, record.data as DeepPartial<PresetFields>);
+    fields.scripts.refs = hydrateOwnedItems(fields.scripts.refs, defaultScriptFields);
+    return fields;
 }
 
 // ─── Service ───────────────────────────────────────────────────────────
@@ -171,44 +157,5 @@ export class PresetService {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to delete preset', error);
         }
-    }
-
-    // ─── Custom Toggle CRUD ───────────────────────────────────────────
-
-    static async createCustomToggle(
-        presetId: string,
-        fields: DeepPartial<PresetCustomToggleFields> & { sortOrder: string }
-    ): Promise<{ toggleId: string; preset: Preset }> {
-        const toggleId = generateId();
-        const preset = await this.update(presetId, {
-            customToggles: {
-                [toggleId]: {
-                    ...fields,
-                    id: toggleId
-                }
-            }
-        });
-
-        return { toggleId, preset };
-    }
-
-    static async updateCustomToggle(
-        presetId: string,
-        toggleId: string,
-        changes: DeepPartial<PresetCustomToggle>
-    ): Promise<Preset> {
-        return this.update(presetId, {
-            customToggles: {
-                [toggleId]: changes
-            }
-        });
-    }
-
-    static async deleteCustomToggle(presetId: string, toggleId: string): Promise<Preset> {
-        return this.update(presetId, {
-            customToggles: {
-                [toggleId]: undefined
-            }
-        });
     }
 }

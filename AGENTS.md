@@ -70,14 +70,14 @@ PocketBase → Sync (pull blob + decrypt) → Adapter (plaintext IndexedDB/SQLit
 
 ## Documentation
 
-| Document                      | Path                                                 | When to Update                                       |
-| ----------------------------- | ---------------------------------------------------- | ---------------------------------------------------- |
-| Architecture design           | [docs/IDEA.md](docs/IDEA.md)                         | When a major system concept changes                  |
-| Architecture Decision Records | [docs/ADR.md](docs/ADR.md)                           | When a structural design decision is made or changed |
-| Data schema philosophy        | [docs/schema.md](docs/schema.md)                     | When relationship or storage patterns change         |
-| Asset system spec             | [docs/asset-system-v3.md](docs/asset-system-v3.md)   | When asset pipeline changes                          |
-| Migration system spec         | [docs/migration-system.md](docs/migration-system.md) | When server/island migration rules change            |
-| Roadmap                       | [docs/TODO.md](docs/TODO.md)                         | When milestones shift                                |
+| Document                      | Path                                                   | When to Update                                       |
+| ----------------------------- | ------------------------------------------------------ | ---------------------------------------------------- |
+| Architecture design           | [docs/IDEA.md](docs/IDEA.md)                           | When a major system concept changes                  |
+| Architecture Decision Records | [docs/ADR.md](docs/ADR.md)                             | When a structural design decision is made or changed |
+| Data schema philosophy        | [docs/schema.md](docs/schema.md)                       | When relationship or storage patterns change         |
+| Asset system spec             | [docs/asset-system-v3.md](docs/asset-system-v3.md)     | When asset pipeline changes                          |
+| Connection system spec        | [docs/connection-system.md](docs/connection-system.md) | When server/proxy connection rules change            |
+| Roadmap                       | [docs/TODO.md](docs/TODO.md)                           | When milestones shift                                |
 
 ---
 
@@ -91,5 +91,5 @@ PocketBase → Sync (pull blob + decrypt) → Adapter (plaintext IndexedDB/SQLit
 - [docs/ADR.md](docs/ADR.md) — Architecture decision records
 - [docs/schema.md](docs/schema.md) — Data schema philosophy
 - [docs/asset-system-v3.md](docs/asset-system-v3.md) — Asset system specification
-- [docs/migration-system.md](docs/migration-system.md) — Server/island migration system specification
+- [docs/connection-system.md](docs/connection-system.md) — Server/proxy connection system specification
 - [docs/TODO.md](docs/TODO.md) — Development roadmap

@@ -1,9 +1,11 @@
-import { FileService } from '$lib/services/content/file';
-import { ChatService } from '$lib/services/content/chat';
-import { RoomService } from '$lib/services/content/room';
-import { getActiveSession } from '$lib/services/session';
+import { defaultFileFields, type FileItem } from '$lib/services/content/resource';
+import { getChat, saveChatFile } from '$lib/stores/content/chat';
+import { getRoom, saveRoomFile } from '$lib/stores/content/room';
+import { getAppSettings, saveGlobalFile } from '$lib/stores/content/settings';
 import { AppError } from '$lib/types/errors';
-import type { DataScopeType } from '$lib/adapters/db';
+import type { EntityListConfig } from '$lib/types/refs';
+import { generateId } from '$lib/utils/id';
+import { generateSortOrder, listItems } from '$lib/utils/ordering';
 import type { FileNamespace, WorkflowInput, WorkflowNodeEvent } from '../types';
 import type { FileReadNode, FileWriteNode, WorkflowNodeExecutionContext } from '../types';
 import {
@@ -13,9 +15,9 @@ import {
     workflowValueToString
 } from '../util';
 
-interface ResolvedFileNamespace {
-    namespaceId: string;
-    scopeType: DataScopeType;
+interface ResolvedFileOwner {
+    files: EntityListConfig<FileItem>;
+    save: (file: FileItem) => Promise<void>;
 }
 
 export async function executeFileReadNode({
@@ -37,8 +39,8 @@ export async function executeFileReadNode({
         return;
     }
 
-    const path = workflowValueToString(pathResult.value);
-    const file = await FileService.getByPath(node.namespace, target.namespaceId, path);
+    const path = normalizePath(workflowValueToString(pathResult.value));
+    const file = listItems(target.files).find((item) => item.path === path);
     if (!file) throw new AppError('NOT_FOUND', `File not found: ${node.namespace}:${path}`);
 
     output.emit(0, createWorkflowValueEvent(file.content));
@@ -61,42 +63,68 @@ export async function executeFileWriteNode({
     if (pathResult.status !== 'value') return;
     if (contentResult.status !== 'value') return;
 
-    const path = workflowValueToString(pathResult.value);
+    const path = normalizePath(workflowValueToString(pathResult.value));
     const content = workflowValueToString(contentResult.value);
-    await FileService.upsert(node.namespace, target.namespaceId, path, content, target.scopeType);
+    const existing = listItems(target.files).find((item) => item.path === path);
+    const file: FileItem = existing
+        ? { ...existing, content, id: existing.id }
+        : {
+              ...defaultFileFields,
+              path,
+              content,
+              id: generateId(),
+              sortOrder: generateSortOrder(target.files.refs, target.files.folders)
+          };
+    await target.save(file);
     throwIfAborted(signal);
 }
 
 async function resolvePathResult(input: WorkflowInput | undefined): Promise<WorkflowNodeEvent> {
     const result = await requireInput(input, 'File path is required');
     if (result.status !== 'value') return result;
-    const path = workflowValueToString(result.value);
-    if (!path.trim()) throw new AppError('INVALID_INPUT', 'File path is required');
+    normalizePath(workflowValueToString(result.value));
     return result;
+}
+
+function normalizePath(path: string): string {
+    const normalized = path.trim();
+    if (!normalized) throw new AppError('INVALID_INPUT', 'File path is required');
+    return normalized;
 }
 
 async function resolveNamespace(
     namespace: FileNamespace,
     ctx: WorkflowNodeExecutionContext['ctx']
-): Promise<ResolvedFileNamespace> {
+): Promise<ResolvedFileOwner> {
     switch (namespace) {
-        case 'global':
-            return { namespaceId: getActiveSession().userId, scopeType: 'user' };
+        case 'global': {
+            const settings = await getAppSettings();
+            return {
+                files: settings.files,
+                save: saveGlobalFile
+            };
+        }
         case 'room': {
             if (!ctx?.roomId) {
                 throw new AppError('INVALID_INPUT', 'Room file namespace requires ctx.roomId');
             }
-            const room = await RoomService.get(ctx.roomId);
+            const room = await getRoom(ctx.roomId);
             if (!room) throw new AppError('NOT_FOUND', `Room not found: ${ctx.roomId}`);
-            return { namespaceId: room.id, scopeType: room.scopeType };
+            return {
+                files: room.files,
+                save: (file) => saveRoomFile(room.id, file)
+            };
         }
         case 'chat': {
             if (!ctx?.chatId) {
                 throw new AppError('INVALID_INPUT', 'Chat file namespace requires ctx.chatId');
             }
-            const chat = await ChatService.get(ctx.chatId);
+            const chat = await getChat(ctx.chatId);
             if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${ctx.chatId}`);
-            return { namespaceId: chat.id, scopeType: chat.scopeType };
+            return {
+                files: chat.files,
+                save: (file) => saveChatFile(chat.id, file)
+            };
         }
     }
 }

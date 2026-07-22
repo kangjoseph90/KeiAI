@@ -9,7 +9,7 @@
 
 import { appUser, type UserRecord } from '$lib/adapters/user';
 export type { UserRecord };
-import { clearSession, getActiveSession, setUserSession } from './session';
+import { clearSession, getActiveSession, hasActiveSession, setUserSession } from './session';
 export type { MultiRoomSession, Session, UserSession } from './session';
 import { localDB, TABLES } from '$lib/adapters/db';
 import { appMulti } from '$lib/adapters/multi';
@@ -20,22 +20,36 @@ import { clock } from '$lib/utils/clock';
 import { minidenticon } from 'minidenticons';
 import { AppError } from '$lib/types/errors';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
-import { pb } from '$lib/adapters/pb';
-import { PB_URL } from '$lib/config';
 import { buffer } from './content/record_buffer';
 import { AssetService } from './asset';
+import { purgeOrphanScopes } from './purge';
+import type { UserConnectionSettings } from '$lib/types/connections';
+import {
+    applyUserConnectionRuntime,
+    resetConnectionRuntime,
+    resolveServerUrl
+} from './connection/runtime';
 
 export interface UserFields {
     name: string;
     avatar: string;
+    connections: UserConnectionSettings;
     username?: string;
     email?: string;
 }
 
 export interface User extends UserFields {
     id: string;
-    selfHostUrl?: string;
 }
+
+const defaultFields: UserFields = {
+    name: '',
+    avatar: '',
+    connections: {
+        server: { mode: 'default' },
+        proxy: { mode: 'default' }
+    }
+};
 
 function getDefaultAvatarUrl(seed: string): string {
     const svg = minidenticon(seed);
@@ -44,12 +58,19 @@ function getDefaultAvatarUrl(seed: string): string {
 
 export function toUser(user: UserRecord): User {
     return {
-        id: user.id,
-        name: user.name,
-        avatar: user.avatar,
-        selfHostUrl: user.selfHostUrl,
-        username: user.username,
-        email: user.email
+        ...parseFields(user),
+        id: user.id
+    };
+}
+
+function parseFields(record: UserRecord): UserFields {
+    const fields = deepMerge(defaultFields, record as DeepPartial<UserFields>);
+    return {
+        name: fields.name,
+        avatar: fields.avatar,
+        connections: fields.connections,
+        ...(fields.username === undefined ? {} : { username: fields.username }),
+        ...(fields.email === undefined ? {} : { email: fields.email })
     };
 }
 
@@ -58,48 +79,43 @@ export class UserService {
      * Persist the active user ID and activate the in-memory session.
      * Pass an empty string to clear the KV (e.g. before page reload for new user creation).
      */
-    static async setActiveUser(
-        userId: string,
-        options: { preserveAuth?: boolean } = {}
-    ): Promise<void> {
+    static async setActiveUser(userId: string): Promise<void> {
         if (!userId) return this.clearActiveUser();
-        const user = await appUser.getUser(userId);
-        if (!user) {
+        const stored = await appUser.getUser(userId);
+        if (!stored) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
+        const fields = parseFields(stored);
         setUserSession({
             userId,
-            masterKey: user.masterKey,
-            identityKeyPair: user.identityKeyPair
+            masterKey: stored.masterKey,
+            identityKeyPair: stored.identityKeyPair
         });
         await appKV.set('activeUserId', userId);
-        pb.baseUrl = user.selfHostUrl || PB_URL;
-        if (!options.preserveAuth) {
-            pb.authStore.clear();
-        }
+        applyUserConnectionRuntime(fields.connections);
     }
 
     static async clearActiveUser(): Promise<void> {
         clearSession();
         await appKV.set('activeUserId', '');
-        pb.baseUrl = PB_URL;
-        pb.authStore.clear();
+        resetConnectionRuntime();
     }
 
     /** Get a user view by local user ID. */
     static async getUser(userId: string): Promise<User> {
-        const user = await appUser.getUser(userId);
-        if (!user) {
+        const stored = await appUser.getUser(userId);
+        if (!stored) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
-        return toUser(user);
+        return toUser(stored);
     }
 
     /**
      * Returns all local user records.
      */
-    static async getAllUsers() {
-        return appUser.getAllUsers();
+    static async getAllUsers(): Promise<User[]> {
+        const users = await appUser.getAllUsers();
+        return users.map(toUser);
     }
 
     /**
@@ -112,12 +128,20 @@ export class UserService {
         const savedUserId = await appKV.get('activeUserId');
 
         if (savedUserId) {
-            const user = await appUser.getUser(savedUserId);
-            if (user) {
+            const stored = await appUser.getUser(savedUserId);
+            if (stored) {
+                const user: UserRecord = {
+                    ...parseFields(stored),
+                    id: stored.id,
+                    createdAt: stored.createdAt,
+                    updatedAt: stored.updatedAt,
+                    masterKey: stored.masterKey,
+                    identityKeyPair: stored.identityKeyPair
+                };
+
                 // Backfill identity key pair if the record predates this feature
                 if (!user.identityKeyPair) {
-                    const identityKeyPair = await generateIdentityKeyPair();
-                    user.identityKeyPair = identityKeyPair;
+                    user.identityKeyPair = await generateIdentityKeyPair();
                     user.updatedAt = clock.now();
                     await appUser.saveUser(user);
                 }
@@ -147,7 +171,8 @@ export class UserService {
             createdAt: now,
             updatedAt: now,
             masterKey,
-            identityKeyPair
+            identityKeyPair,
+            connections: structuredClone(defaultFields.connections)
         };
 
         await appUser.saveUser(user);
@@ -158,29 +183,36 @@ export class UserService {
         id: string;
         name?: string;
         avatar?: string;
-        selfHostUrl?: string;
+        connections: UserConnectionSettings;
         username?: string;
         email?: string;
         masterKey: CryptoKey;
         identityKeyPair: CryptoKeyPair;
     }): Promise<UserRecord> {
-        const existing = await appUser.getUser(params.id);
+        const stored = await appUser.getUser(params.id);
+        const existing = stored ? parseFields(stored) : null;
         const now = clock.now();
 
-        // selfHostUrl MUST be updated through migration stage, not through auth flow
-        if (existing && existing.selfHostUrl !== params.selfHostUrl) {
-            throw new AppError('INVALID_INPUT', 'selfHostUrl cannot be changed through login');
+        if (
+            existing &&
+            resolveServerUrl(existing.connections.server) !==
+                resolveServerUrl(params.connections.server)
+        ) {
+            throw new AppError(
+                'INVALID_INPUT',
+                'This account belongs to a different server connection.'
+            );
         }
 
         const record: UserRecord = {
             id: params.id,
             name: params.name ?? existing?.name ?? `User ${params.id}`,
             avatar: params.avatar ?? existing?.avatar ?? getDefaultAvatarUrl(params.id),
-            createdAt: existing?.createdAt ?? now,
+            createdAt: stored?.createdAt ?? now,
             updatedAt: now,
             masterKey: params.masterKey,
             identityKeyPair: params.identityKeyPair,
-            selfHostUrl: params.selfHostUrl, // server specific fields, need to overwrite
+            connections: existing?.connections ?? params.connections,
             username: params.username,
             email: params.email
         };
@@ -191,45 +223,52 @@ export class UserService {
 
     /** Update a user view by local user ID. */
     static async updateUser(userId: string, changes: DeepPartial<UserFields>): Promise<User> {
-        const user = await appUser.getUser(userId);
-        if (!user) {
+        const stored = await appUser.getUser(userId);
+        if (!stored) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
-
-        const updated = deepMerge(user, changes);
-        updated.updatedAt = clock.now();
+        const fields = deepMerge(parseFields(stored), changes);
+        const updated: UserRecord = {
+            ...fields,
+            id: stored.id,
+            createdAt: stored.createdAt,
+            masterKey: stored.masterKey,
+            identityKeyPair: stored.identityKeyPair,
+            updatedAt: clock.now()
+        };
 
         await appUser.saveUser(updated);
         return toUser(updated);
     }
 
-    static async getActiveSelfHostUrl(): Promise<string | undefined> {
+    static async getActiveConnections(): Promise<UserConnectionSettings> {
         const { userId } = getActiveSession();
-        const user = await appUser.getUser(userId);
-        if (!user) {
+        const stored = await appUser.getUser(userId);
+        if (!stored) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
-        return user.selfHostUrl;
+        return parseFields(stored).connections;
     }
 
-    static async updateSelfHostUrl(userId: string, hostUrl?: string): Promise<void> {
-        const user = await appUser.getUser(userId);
-        if (!user) {
+    static async updateConnections(
+        userId: string,
+        connections: UserConnectionSettings
+    ): Promise<User> {
+        const stored = await appUser.getUser(userId);
+        if (!stored) {
             throw new AppError('NOT_FOUND', `User not found: ${userId}`);
         }
-        user.selfHostUrl = hostUrl;
-        user.updatedAt = clock.now();
-        await appUser.saveUser(user, { origin: 'sync' });
-
-        try {
-            const { userId: currentUserId } = getActiveSession();
-            if (currentUserId === userId) {
-                pb.baseUrl = hostUrl || PB_URL;
-                pb.authStore.clear();
-            }
-        } catch (error) {
-            // Ignore
-        }
+        const updated: UserRecord = {
+            ...parseFields(stored),
+            connections,
+            id: stored.id,
+            createdAt: stored.createdAt,
+            masterKey: stored.masterKey,
+            identityKeyPair: stored.identityKeyPair,
+            updatedAt: clock.now()
+        };
+        await appUser.saveUser(updated, { origin: 'sync' });
+        return toUser(updated);
     }
 
     /**
@@ -245,27 +284,25 @@ export class UserService {
         await Promise.all(TABLES.map((table) => buffer.flushTable(table)));
 
         const dbPromises = TABLES.map((table) =>
-            localDB.deleteByIndex(table, 'scopeId', userId, { origin: 'sync' })
+            localDB.deleteByScope(table, userScope, { origin: 'sync' })
         );
-        const kvPromises = [
-            appKV.remove(`lastSync_records_user_${userId}`),
-            appKV.remove(`lastSync_assets_user_${userId}`),
-            appKV.remove(`lastSync_multi_meta_${userId}`)
-        ];
+
+        const cursorKeys = await appKV.keys('lastSync_');
+        const userCursorKeys = cursorKeys.filter((key) => key.includes(`_${userId}_`));
+        const cursorDeletes = userCursorKeys.map((key) => appKV.remove(key));
 
         await Promise.all([
             ...dbPromises,
-            ...kvPromises,
+            ...cursorDeletes,
             appMulti.purgeUserLocal(userId, { origin: 'sync' })
         ]);
+        await purgeOrphanScopes();
 
-        try {
+        if (hasActiveSession()) {
             const { userId: currentUserId } = getActiveSession();
             if (currentUserId === userId) {
                 await this.clearActiveUser();
             }
-        } catch (error) {
-            // Ignore
         }
     }
 }

@@ -10,15 +10,15 @@
     import {
         AlertCircle,
         Check,
+        GitBranch,
         Loader2,
         Pencil,
+        RefreshCw,
         Trash2,
         X,
         ChevronLeft,
         ChevronRight,
-        GitBranch,
         Copy,
-        RefreshCw,
         Languages,
         ImageOff
     } from 'lucide-svelte';
@@ -38,17 +38,17 @@
     import ContentPart from './ContentPart.svelte';
     import ThoughtPart from './ThoughtPart.svelte';
     import ToolCallPart from './ToolCallPart.svelte';
+    import MessageMoreMenu from './MessageMoreMenu.svelte';
     import {
         activeRoom,
         activeChat,
         appSettings,
         chatAssetsMap,
-        getActiveModulesForCharacter,
+        selectActiveModules,
         roomCharacters,
         chatPersonas,
         modules,
-        translationTasks,
-        translationsByMessage
+        translationTasks
     } from '$lib/stores';
     import {
         createTranslationSourceHash,
@@ -80,7 +80,8 @@
         onRegenerate = () => {},
         onSwipe = (_id: string) => {},
         onFork = () => {},
-        onCopy = () => {}
+        onCopy = () => {},
+        onEditTranslation = () => {}
     }: {
         message: DisplayMessage;
         isEditing?: boolean;
@@ -100,11 +101,26 @@
         onSwipe?: (id: string) => void;
         onFork?: () => void;
         onCopy?: () => void;
+        onEditTranslation?: () => void;
     } = $props();
 
     // ── State ─────────────────────────────────────────────────────────────────
 
+    let textareaEl = $state<HTMLTextAreaElement | null>(null);
     let copied = $state(false);
+
+    $effect(() => {
+        if (isEditing && textareaEl) {
+            const frame = requestAnimationFrame(() => {
+                textareaEl?.focus();
+                if (textareaEl) {
+                    const len = textareaEl.value.length;
+                    textareaEl.setSelectionRange(len, len);
+                }
+            });
+            return () => cancelAnimationFrame(frame);
+        }
+    });
     let translationSourceHash = $state('');
     let translationActionError = $state('');
     let showTranslation = $state(false);
@@ -126,9 +142,9 @@
         translationTask?.sourceHash === translationSourceHash ? translationTask : undefined
     );
     let cachedTranslation = $derived(
-        $translationsByMessage
-            .get(message.id)
-            ?.find((translation) => translation.sourceHash === translationSourceHash) ?? null
+        activeSwipe?.translation?.sourceHash === translationSourceHash
+            ? activeSwipe.translation
+            : null
     );
     let translatedContent = $derived(cachedTranslation?.text ?? '');
     let visibleContent = $derived(
@@ -243,6 +259,7 @@
 
     async function handleTranslate() {
         translationActionError = '';
+        showTranslation = true;
         try {
             await runTranslation(message.id, {
                 force: cachedTranslation !== null
@@ -258,7 +275,7 @@
     let renderContext = $derived.by(() => {
         const ownerId = message.role === 'assistant' ? displayCharacterId : characterId;
         const character = ownerId ? $roomCharacters.find((item) => item.id === ownerId) : undefined;
-        const activeModules = getActiveModulesForCharacter(character, $appSettings, $modules);
+        const activeModules = selectActiveModules($appSettings, $modules);
         const cssSource = [character?.messageCSS ?? '', ...activeModules.map((m) => m.messageCSS)]
             .filter((part) => part.trim())
             .join('\n');
@@ -327,7 +344,7 @@
 
         const displayMacros = createDisplayMacros(chatAssetsMap, ownerIds, cssRawAssetUrlCache);
         const templated = await runTemplate(cssSource, ctx);
-        const processed = await runPipeline(chatId, 'display', templated, ctx);
+        const processed = await runPipeline('display', ctx, templated);
         const withAssets = await runTemplate(processed, ctx, displayMacros);
         const scopeSelector = `[data-keiai-message-scope="${messageScope.replace(/"/g, '\\"')}"]`;
         const css = scopeCss(stripStyleTags(withAssets), scopeSelector);
@@ -395,7 +412,6 @@
         ? 'grid-cols-[minmax(0,1fr)_2rem] md:flex-row-reverse'
         : 'grid-cols-[2rem_minmax(0,1fr)]'}"
     role="group"
-    tabindex="-1"
 >
     <div
         class="row-start-1 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-bold text-muted-foreground {isUser
@@ -421,9 +437,9 @@
 
     <!-- Content Column -->
     <div
-        class="col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-none flex-1 flex-col gap-1 md:mx-0 md:mt-0 md:max-w-[75%] md:flex-none {isUser
-            ? 'items-end'
-            : 'items-start'}"
+        class="col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-none flex-none flex-col gap-1 md:mx-0 md:mt-0 md:max-w-[75%] {isUser
+            ? 'justify-self-end items-end'
+            : 'justify-self-start items-start'}"
     >
         <span class="hidden text-xs font-medium text-muted-foreground md:block">{speakerName}</span>
 
@@ -431,6 +447,7 @@
         {#if isEditing && message.displayStatus === 'completed'}
             <div class="flex w-full flex-col gap-2">
                 <Textarea
+                    bind:ref={textareaEl}
                     bind:value={editText}
                     class="min-h-16 w-full"
                     disabled={actionsDisabled}
@@ -609,37 +626,36 @@
                 </div>
             {/if}
 
-            <!-- Single Action Row (hover) -->
+            <!-- Desktop: hover/focus. Mobile: always visible. -->
             <div
-                class="touch-action-row -my-1 hidden items-center gap-2 transition-opacity group-focus-within:flex md:my-0 md:flex md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 {isUser
-                    ? 'flex-row-reverse'
-                    : 'flex-row'} {message.displayStatus !== 'completed'
+                class="touch-action-row flex max-w-full flex-row flex-nowrap items-center gap-0.5 transition-opacity md:gap-1 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 {message.displayStatus !==
+                'completed'
                     ? 'pointer-events-none invisible select-none'
                     : ''}"
             >
                 <!-- Swipe Navigator (Character only, multiple swipes) -->
                 {#if !isUser && sortedSwipes.length > 1}
-                    <div class="flex items-center gap-0.5 text-xs text-muted-foreground mr-1">
+                    <div class="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
                         <button
-                            class="touch-target rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
+                            class="relative flex size-6 items-center justify-center rounded hover:bg-muted after:absolute after:-inset-1 after:content-[''] disabled:opacity-30"
                             disabled={actionsDisabled || swipePos <= 0}
                             aria-busy={busyAction === 'swipe'}
                             aria-label="Previous swipe"
                             onclick={() => onSwipe(sortedSwipes[swipePos - 1].id)}
                         >
-                            <ChevronLeft class="size-4 md:size-3.5" />
+                            <ChevronLeft class="size-3.5" />
                         </button>
                         <span class="tabular-nums font-medium"
                             >{swipePos + 1} / {sortedSwipes.length}</span
                         >
                         <button
-                            class="touch-target rounded flex items-center justify-center h-8 w-8 md:h-6 md:w-6 hover:bg-muted disabled:opacity-30"
+                            class="relative flex size-6 items-center justify-center rounded hover:bg-muted after:absolute after:-inset-1 after:content-[''] disabled:opacity-30"
                             disabled={actionsDisabled || swipePos >= sortedSwipes.length - 1}
                             aria-busy={busyAction === 'swipe'}
                             aria-label="Next swipe"
                             onclick={() => onSwipe(sortedSwipes[swipePos + 1].id)}
                         >
-                            <ChevronRight class="size-4 md:size-3.5" />
+                            <ChevronRight class="size-3.5" />
                         </button>
                     </div>
                 {/if}
@@ -648,14 +664,14 @@
                 <Button
                     variant="ghost"
                     size="sm"
-                    class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                    class="relative size-8 px-0 text-xs text-muted-foreground after:absolute after:-inset-1 after:content-['']"
                     onclick={handleCopy}
                     aria-label={copied ? 'Copied message' : 'Copy message'}
                 >
                     {#if copied}
-                        <Check class="size-3.5 md:size-3" />
+                        <Check class="size-3.5" />
                     {:else}
-                        <Copy class="size-3.5 md:size-3" />
+                        <Copy class="size-3.5" />
                     {/if}
                 </Button>
 
@@ -663,18 +679,18 @@
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                        class="relative size-8 px-0 text-xs text-muted-foreground after:absolute after:-inset-1 after:content-['']"
                         onclick={() => stopTranslation(message.id)}
                         title="Stop translation"
                         aria-label="Stop translation"
                     >
-                        <Loader2 class="size-3.5 md:size-3 animate-spin" />
+                        <Loader2 class="size-3.5 animate-spin" />
                     </Button>
                 {:else}
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs {showTranslation &&
+                        class="relative size-8 px-0 text-xs after:absolute after:-inset-1 after:content-[''] {showTranslation &&
                         cachedTranslation
                             ? 'bg-primary/15 text-primary hover:bg-primary/25'
                             : 'text-muted-foreground'}"
@@ -685,13 +701,9 @@
                                 handleTranslate();
                             }
                         }}
-                        ondblclick={(e) => {
-                            e.stopPropagation();
-                            handleTranslate();
-                        }}
                         title={cachedTranslation
                             ? showTranslation
-                                ? 'Show original (double click to retranslate)'
+                                ? 'Show original'
                                 : 'Show translation'
                             : 'Translate'}
                         aria-label={cachedTranslation
@@ -700,62 +712,43 @@
                                 : 'Show translated message'
                             : 'Translate message'}
                     >
-                        <Languages class="size-3.5 md:size-3" />
+                        <Languages class="size-3.5" />
                     </Button>
                 {/if}
 
-                {#if !isUser}
-                    <!-- Regenerate: last char message only -->
-                    {#if isLastMessage}
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
-                            onclick={onRegenerate}
-                            aria-label="Regenerate response"
-                        >
-                            <RefreshCw class="size-3.5 md:size-3" />
-                        </Button>
-                    {/if}
-
-                    <!-- Fork: always available for char messages -->
+                {#if !isUser && isLastMessage}
                     <Button
                         variant="ghost"
                         size="sm"
-                        class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                        class="relative size-8 px-0 text-muted-foreground after:absolute after:-inset-1 after:content-['']"
                         disabled={actionsDisabled}
-                        aria-busy={busyAction === 'fork'}
-                        aria-label="Fork chat from message"
-                        onclick={onFork}
+                        onclick={onRegenerate}
+                        aria-label="Regenerate response"
                     >
-                        <GitBranch class="size-3.5 md:size-3" />
+                        <RefreshCw class="size-3.5" />
                     </Button>
                 {/if}
 
-                <!-- Edit -->
                 <Button
                     variant="ghost"
                     size="sm"
-                    class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground"
+                    class="relative size-8 px-0 text-muted-foreground after:absolute after:-inset-1 after:content-['']"
                     disabled={actionsDisabled}
                     onclick={onEdit}
                     aria-label="Edit message"
                 >
-                    <Pencil class="size-3.5 md:size-3" />
+                    <Pencil class="size-3.5" />
                 </Button>
 
-                <!-- Delete -->
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    class="touch-target h-8 md:h-6 gap-1 px-2.5 md:px-1.5 text-xs text-muted-foreground hover:text-destructive"
+                <MessageMoreMenu
                     disabled={actionsDisabled}
-                    aria-busy={busyAction === 'delete'}
-                    aria-label="Delete message"
-                    onclick={onDelete}
-                >
-                    <Trash2 class="size-3.5 md:size-3" />
-                </Button>
+                    {busyAction}
+                    hasTranslation={cachedTranslation !== null}
+                    onRetranslate={handleTranslate}
+                    {onEditTranslation}
+                    {onFork}
+                    {onDelete}
+                />
             </div>
         {/if}
     </div>

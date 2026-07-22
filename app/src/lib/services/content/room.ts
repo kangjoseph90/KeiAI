@@ -6,6 +6,7 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
+import { defaultFileFields, hydrateOwnedItems, type FileItem } from './resource';
 import {
     cascadeDeleteChildren,
     getCascadeTables,
@@ -17,6 +18,7 @@ import {
 
 export interface RoomContent {
     name: string;
+    files: EntityListConfig<FileItem>;
 }
 
 export interface RoomRefs {
@@ -38,13 +40,16 @@ export interface Room extends RoomFields {
 const defaultFields: RoomFields = {
     name: 'New Room',
     chats: { refs: {}, folders: {} },
-    characters: { refs: {}, folders: {} }
+    characters: { refs: {}, folders: {} },
+    files: { refs: {}, folders: {} }
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 export function parseFields(record: RoomRecord): RoomFields {
-    return deepMerge(defaultFields, record.data as DeepPartial<RoomFields>);
+    const fields = deepMerge(defaultFields, record.data as DeepPartial<RoomFields>);
+    fields.files.refs = hydrateOwnedItems(fields.files.refs, defaultFileFields);
+    return fields;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────

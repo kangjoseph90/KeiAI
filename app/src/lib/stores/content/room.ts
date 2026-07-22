@@ -5,7 +5,8 @@ import {
     MultiRoomService,
     type Room,
     type RoomFields,
-    type RoomContent
+    type RoomContent,
+    type FileItem
 } from '$lib/services';
 import type { FolderDef } from '$lib/types/refs';
 import { generateSortOrder, sortByRefs } from '$lib/utils/ordering';
@@ -249,7 +250,15 @@ export async function removeRoomCharacter(roomId: string, characterId: string): 
     }
 }
 
-export type RoomFolderType = 'chats' | 'characters';
+export async function saveRoomFile(roomId: string, item: FileItem): Promise<void> {
+    await updateRoom(roomId, { files: { refs: { [item.id]: item } } });
+}
+
+export async function deleteRoomFile(roomId: string, fileId: string): Promise<void> {
+    await updateRoom(roomId, { files: { refs: { [fileId]: undefined } } });
+}
+
+export type RoomFolderType = 'chats' | 'characters' | 'files';
 
 export async function createRoomFolder(
     roomId: string,

@@ -1,8 +1,6 @@
 <script lang="ts">
     import {
-        activeUser,
         isLoggedIn,
-        userEmail,
         username as activeUsername,
         performCreateAccount,
         performSignIn,
@@ -10,11 +8,9 @@
         performDeleteWithRecoveryCode,
         performChangePassword,
         performLogout,
-        performPairWithCode,
-        performSetSelfHostUrl
+        performPairWithCode
     } from '$lib/stores';
     import { AuthService } from '$lib/services/auth';
-    import type { MigrationProgress } from '$lib/services';
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import {
@@ -27,18 +23,15 @@
     import { Label } from '$lib/components/ui/label';
     import {
         AlertTriangle,
-        Cloud,
         Key,
         Link,
         LogIn,
         LogOut,
         QrCode,
-        Server,
         ShieldAlert,
         UserPlus
     } from 'lucide-svelte';
     import { getErrorMessage } from '$lib/types/errors';
-    import { PB_URL } from '$lib/config';
     import { appConfirm } from '$lib/ui';
 
     type AuthView = 'signup' | 'login';
@@ -46,28 +39,21 @@
     type AccountView = 'security' | 'devices';
 
     let email = $state('');
-    let username = $state('');
+    let username = $state($activeUsername ?? '');
     let password = $state('');
     let confirmPassword = $state('');
     let recoveryCode = $state('');
     let newPassword = $state('');
     let pairingCodeInput = $state('');
     let generatedPairingCode = $state('');
-    let selfHostUrl = $derived($activeUser?.selfHostUrl ?? '');
-
     let loading = $state(false);
     let errorMsg = $state('');
     let successMsg = $state('');
     let displayRecovery = $state('');
-    let migrationProgress = $state<MigrationProgress | null>(null);
 
     let authView = $state<AuthView>('signup');
     let loginMethod = $state<LoginMethod>('password');
     let accountView = $state<AccountView>('security');
-
-    const isSelfHosted = $derived($activeUser?.selfHostUrl !== undefined);
-    const currentServerUrl = $derived($activeUser?.selfHostUrl ?? PB_URL);
-    const currentServerLabel = $derived(isSelfHosted ? 'Self-host' : 'Kei Cloud');
 
     async function runAction(
         action: () => Promise<void | string | null>,
@@ -79,7 +65,6 @@
         errorMsg = '';
         successMsg = '';
         displayRecovery = '';
-        migrationProgress = null;
         try {
             if (confirm && !(await confirm())) return;
             const result = await action();
@@ -166,34 +151,16 @@
             loading = false;
         }
     }
-
-    function handleServerChange() {
-        const nextUrl = isSelfHosted ? undefined : selfHostUrl.trim();
-        if (!isSelfHosted && !nextUrl) {
-            errorMsg = 'Self-host URL is required.';
-            return;
-        }
-
-        void runAction(
-            () =>
-                performSetSelfHostUrl(nextUrl, {
-                    onProgress: (progress) => {
-                        migrationProgress = progress;
-                    }
-                }),
-            isSelfHosted ? 'Returned to Kei Cloud.' : 'Self-host server selected.'
-        );
-    }
 </script>
 
 <Card>
     <CardHeader>
-        <CardTitle>Account & Sync</CardTitle>
+        <CardTitle>Account</CardTitle>
         <CardDescription>
             {#if $isLoggedIn}
                 Signed in{#if $activeUsername}: <strong>@{$activeUsername}</strong>{/if}
             {:else}
-                {currentServerLabel}: not signed in
+                Not signed in
             {/if}
         </CardDescription>
     </CardHeader>
@@ -218,8 +185,8 @@
             <div
                 class="rounded-md bg-amber-500/15 p-4 text-sm text-amber-700 dark:text-amber-400 border border-amber-500/20"
             >
-                <div class="flex items-center gap-2 font-bold mb-2">
-                    <ShieldAlert class="size-5" />
+                <div class="mb-2 flex items-center gap-2 font-bold">
+                    <ShieldAlert class="size-5 shrink-0" />
                     SAVE YOUR RECOVERY CODE NOW
                 </div>
                 <p class="mb-2">
@@ -227,69 +194,12 @@
                     data.
                 </p>
                 <div
-                    class="bg-amber-100 dark:bg-amber-950/50 p-3 rounded font-mono text-center tracking-widest text-xl font-bold border border-amber-200 dark:border-amber-900 select-all"
+                    class="min-w-0 break-all rounded border border-amber-200 bg-amber-100 p-3 text-center font-mono text-base font-bold leading-relaxed tracking-[0.15em] select-all sm:text-xl sm:tracking-widest dark:border-amber-900 dark:bg-amber-950/50"
                 >
                     {displayRecovery}
                 </div>
             </div>
         {/if}
-
-        <section class="rounded-md border p-3">
-            <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                    <div class="flex items-center gap-2 text-sm font-medium">
-                        {#if isSelfHosted}
-                            <Server class="size-4" />
-                        {:else}
-                            <Cloud class="size-4" />
-                        {/if}
-                        {currentServerLabel}
-                    </div>
-                    <div class="mt-1 truncate text-xs text-muted-foreground">
-                        {currentServerUrl}
-                    </div>
-                </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={loading || $isLoggedIn}
-                    onclick={handleServerChange}
-                >
-                    {isSelfHosted ? 'Use Kei Cloud' : 'Use Self-host'}
-                </Button>
-            </div>
-
-            {#if !isSelfHosted && !$isLoggedIn}
-                <div class="mt-3 space-y-1">
-                    <Label>Self-host URL</Label>
-                    <Input
-                        bind:value={selfHostUrl}
-                        type="url"
-                        placeholder="https://sync.example.com"
-                        disabled={loading}
-                    />
-                </div>
-            {/if}
-
-            {#if migrationProgress}
-                <div class="mt-3 space-y-2 text-xs text-muted-foreground">
-                    <div class="flex justify-between">
-                        <span>{migrationProgress.phase}</span>
-                        <span>{migrationProgress.completed} / {migrationProgress.total}</span>
-                    </div>
-                    <div class="h-1.5 overflow-hidden rounded-full bg-muted">
-                        <div
-                            class="h-full bg-primary transition-all"
-                            style={`width: ${
-                                migrationProgress.total
-                                    ? (migrationProgress.completed / migrationProgress.total) * 100
-                                    : 0
-                            }%`}
-                        ></div>
-                    </div>
-                </div>
-            {/if}
-        </section>
 
         {#if !$isLoggedIn}
             <section class="space-y-4">
@@ -503,15 +413,6 @@
             </section>
         {:else}
             <section class="space-y-4">
-                <div class="rounded-md border p-3 text-sm">
-                    <div class="font-medium">
-                        {$activeUsername ? `@${$activeUsername}` : 'Connected account'}
-                    </div>
-                    {#if $userEmail}
-                        <div class="text-muted-foreground">{$userEmail}</div>
-                    {/if}
-                </div>
-
                 <div class="flex flex-wrap gap-2">
                     <Button
                         variant={accountView === 'security' ? 'secondary' : 'outline'}

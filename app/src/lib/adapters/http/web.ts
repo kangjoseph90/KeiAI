@@ -1,11 +1,7 @@
-import type { IHttpAdapter, HttpOptions } from './types';
+import type { HttpOptions, ProxyRuntimeConfig } from './types';
 import { fetchWithRetry } from './retry';
-import { createLogger } from '$lib/adapters/logger';
 import { BaseHttpAdapter } from './base';
-import { PROXY_URL } from '$lib/config';
 import { buildUrl } from '$lib/utils/url';
-
-const logger = createLogger('adapter:http:web');
 
 /**
  * Web HTTP Adapter
@@ -14,16 +10,23 @@ const logger = createLogger('adapter:http:web');
  * Subject to CORS restrictions.
  */
 export class WebHttpAdapter extends BaseHttpAdapter {
+    private proxyConfig: ProxyRuntimeConfig = { mode: 'direct' };
+
+    configureProxy(config: ProxyRuntimeConfig): void {
+        this.proxyConfig = config;
+    }
+
+    getProxyConfig(): ProxyRuntimeConfig {
+        return this.proxyConfig;
+    }
+
     async fetch(url: string, init?: RequestInit, options?: HttpOptions): Promise<Response> {
         let finalUrl = url;
         let baseInit = { ...init };
 
         if (options?.proxy) {
-            const proxyUrl = buildUrl(PROXY_URL, '/proxy');
-
-            if (!proxyUrl) {
-                logger.warn('VITE_PROXY_URL is not set. Falling back to direct fetch.');
-            } else {
+            if (this.proxyConfig.mode === 'proxy') {
+                const proxyUrl = buildUrl(this.proxyConfig.baseUrl, '/proxy');
                 const targetHeaders: Record<string, string> = {};
                 const headers = new Headers(baseInit.headers);
                 headers.forEach((value, key) => {

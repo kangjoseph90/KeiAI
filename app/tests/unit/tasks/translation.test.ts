@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTranslationSourceHash, runTranslation } from '$lib/tasks/translation';
+import type { Message } from '$lib/services';
 
 const mocks = vi.hoisted(() => ({
     getSettings: vi.fn(),
     getMessage: vi.fn(),
     getChat: vi.fn(),
-    findLoaded: vi.fn(),
-    createTranslation: vi.fn(),
-    updateTranslation: vi.fn(),
+    updateMessageSwipe: vi.fn(),
     createTask: vi.fn(),
     clearTask: vi.fn(),
     setTaskError: vi.fn(),
@@ -33,13 +32,8 @@ vi.mock('$lib/stores/content/chat', () => ({
 }));
 
 vi.mock('$lib/stores/content/message', () => ({
-    getMessage: mocks.getMessage
-}));
-
-vi.mock('$lib/stores/content/translation', () => ({
-    findLoadedTranslation: mocks.findLoaded,
-    createTranslation: mocks.createTranslation,
-    updateTranslation: mocks.updateTranslation
+    getMessage: mocks.getMessage,
+    updateMessageSwipe: mocks.updateMessageSwipe
 }));
 
 vi.mock('$lib/stores/tasks/translation', () => ({
@@ -81,9 +75,11 @@ describe('translation task', () => {
                 workflow: { nodes: {} }
             }
         });
-        mocks.getMessage.mockResolvedValue({
+        const message: Message = {
             id: 'message-1',
             chatId: 'chat-1',
+            scopeType: 'user',
+            scopeId: 'user-1',
             sortOrder: 'b0',
             role: 'assistant',
             activeSwipeId: 'swipe-1',
@@ -96,17 +92,15 @@ describe('translation task', () => {
                     speakerName: 'Character'
                 }
             }
-        });
+        };
+        mocks.getMessage.mockImplementation(async () => message);
+        mocks.updateMessageSwipe.mockImplementation(
+            async (_messageId: string, swipeId: string, changes: { translation?: unknown }) => {
+                Object.assign(message.swipes[swipeId as 'swipe-1'], changes);
+            }
+        );
         mocks.getChat.mockResolvedValue({ id: 'chat-1', roomId: 'room-1' });
         mocks.createPagedMessages.mockResolvedValue({ length: 3 });
-        mocks.findLoaded.mockReturnValue(null);
-        mocks.createTranslation.mockResolvedValue({
-            id: 'translation-1',
-            chatId: 'chat-1',
-            messageId: 'message-1',
-            sourceHash: 'hash:Korean\0Hello',
-            text: '안녕하세요'
-        });
         mocks.runtimeStream.mockImplementation(async function* () {
             yield '안녕';
             yield '안녕하세요';
@@ -132,15 +126,23 @@ describe('translation task', () => {
             'hash:Korean\0Hello',
             expect.any(AbortController)
         );
-        expect(mocks.createTranslation).toHaveBeenCalledWith('chat-1', 'message-1', {
-            sourceHash: 'hash:Korean\0Hello',
-            text: ''
+        expect(mocks.updateMessageSwipe).toHaveBeenNthCalledWith(1, 'message-1', 'swipe-1', {
+            translation: {
+                sourceHash: 'hash:Korean\0Hello',
+                text: ''
+            }
         });
-        expect(mocks.updateTranslation).toHaveBeenNthCalledWith(1, 'translation-1', {
-            text: '안녕'
+        expect(mocks.updateMessageSwipe).toHaveBeenNthCalledWith(2, 'message-1', 'swipe-1', {
+            translation: {
+                sourceHash: 'hash:Korean\0Hello',
+                text: '안녕'
+            }
         });
-        expect(mocks.updateTranslation).toHaveBeenNthCalledWith(2, 'translation-1', {
-            text: '안녕하세요'
+        expect(mocks.updateMessageSwipe).toHaveBeenNthCalledWith(3, 'message-1', 'swipe-1', {
+            translation: {
+                sourceHash: 'hash:Korean\0Hello',
+                text: '안녕하세요'
+            }
         });
         const options = mocks.runtimeOptions.mock.calls[0]?.[0] as {
             ctx: { messageId: string; messageIndex: number; characterId: string };
@@ -159,14 +161,11 @@ describe('translation task', () => {
     });
 
     it('returns a cached translation without running the workflow', async () => {
-        const cached = {
-            id: 'translation-1',
-            chatId: 'chat-1',
-            messageId: 'message-1',
+        const message = await mocks.getMessage();
+        message.swipes['swipe-1'].translation = {
             sourceHash: 'hash:Korean\0Hello',
             text: '안녕하세요'
         };
-        mocks.findLoaded.mockReturnValue(cached);
 
         await expect(runTranslation('message-1')).resolves.toBeUndefined();
         expect(mocks.createPagedMessages).not.toHaveBeenCalled();

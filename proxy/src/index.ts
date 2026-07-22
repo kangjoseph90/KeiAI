@@ -17,6 +17,12 @@ interface Env {
 	ALLOWED_ORIGINS?: string;
 }
 
+const PROXY_SPEC = {
+	service: 'keiai-proxy',
+	protocolVersion: 1,
+	capabilities: ['generic-fetch', 'streaming'],
+} as const;
+
 // ─── CORS ────────────────────────────────────────────────────────────────────
 
 function resolveOrigin(request: Request, env: Env): string {
@@ -50,12 +56,13 @@ function addCorsHeaders(response: Response, request: Request, env: Env): Respons
 	});
 }
 
+function corsResponse(body: BodyInit | null, init: ResponseInit, request: Request, env: Env): Response {
+	return addCorsHeaders(new Response(body, init), request, env);
+}
+
 // ─── SSRF Guard ──────────────────────────────────────────────────────────────
 
-const BLOCKED_HOSTNAMES = new Set([
-	'localhost',
-	'metadata.google.internal',
-]);
+const BLOCKED_HOSTNAMES = new Set(['localhost', 'metadata.google.internal']);
 
 const BLOCKED_IP_PREFIXES = [
 	'127.', // loopback
@@ -105,31 +112,45 @@ export default {
 	async fetch(request, env, ctx): Promise<Response> {
 		const url = new URL(request.url);
 
-		// Health check
-		if (url.pathname === '/health') {
-			return new Response('OK', { status: 200 });
-		}
-
 		// Handle CORS preflight
 		if (request.method === 'OPTIONS') {
 			return handleCORS(request, env);
 		}
 
+		// Health and protocol discovery
+		if (url.pathname === '/health') {
+			return corsResponse('OK', { status: 200 }, request, env);
+		}
+		if (url.pathname === '/spec') {
+			if (request.method !== 'GET') {
+				return corsResponse('Method not allowed. Use GET.', { status: 405 }, request, env);
+			}
+			return corsResponse(
+				JSON.stringify(PROXY_SPEC),
+				{
+					status: 200,
+					headers: { 'Content-Type': 'application/json; charset=utf-8' },
+				},
+				request,
+				env,
+			);
+		}
+
 		// Proxy endpoint
 		if (url.pathname === '/proxy') {
 			if (request.method !== 'POST') {
-				return new Response('Method not allowed. Use POST.', { status: 405 });
+				return corsResponse('Method not allowed. Use POST.', { status: 405 }, request, env);
 			}
 
 			const targetUrl = request.headers.get('x-target-url');
 			if (!targetUrl) {
-				return new Response('Missing x-target-url header', { status: 400 });
+				return corsResponse('Missing x-target-url header', { status: 400 }, request, env);
 			}
 
 			// 1. SSRF Guard — block internal/private targets
 			const blocked = isBlockedTarget(targetUrl);
 			if (blocked) {
-				return new Response(`Forbidden: ${blocked}`, { status: 403 });
+				return corsResponse(`Forbidden: ${blocked}`, { status: 403 }, request, env);
 			}
 
 			// Parse target headers
@@ -139,7 +160,7 @@ export default {
 				try {
 					targetHeaders = JSON.parse(decodeURIComponent(targetHeadersStr));
 				} catch (e) {
-					return new Response('Invalid x-target-headers header', { status: 400 });
+					return corsResponse('Invalid x-target-headers header', { status: 400 }, request, env);
 				}
 			}
 
@@ -158,10 +179,10 @@ export default {
 
 				return addCorsHeaders(proxyResponse, request, env);
 			} catch (error) {
-				return new Response(`Proxy error: ${error instanceof Error ? error.message : String(error)}`, { status: 502 });
+				return corsResponse(`Proxy error: ${error instanceof Error ? error.message : String(error)}`, { status: 502 }, request, env);
 			}
 		}
 
-		return new Response('Not found', { status: 404 });
+		return corsResponse('Not found', { status: 404 }, request, env);
 	},
 } satisfies ExportedHandler<Env>;

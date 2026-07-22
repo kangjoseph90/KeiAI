@@ -1,7 +1,9 @@
 import { AppError } from '$lib/types/errors';
-import { createMessageSwipe, deleteMessageSwipe, getMessage, updateMessage } from '$lib/stores';
+import { getMessage, updateMessage } from '$lib/stores';
 import type { Message, MessageSwipeFields } from '$lib/services';
 import type { AgentPart } from '$lib/workflow/agent/llm';
+import { clock } from '$lib/utils/clock';
+import { generateId } from '$lib/utils/id';
 
 export interface PrepareNextSwipeInput {
     parts: AgentPart[];
@@ -29,27 +31,31 @@ export async function prepareNextSwipe(
     message: Message,
     input: PrepareNextSwipeInput
 ): Promise<{ swipeId: string; message: Message }> {
-    let current = message;
+    const swipeId = generateId();
+    const removedSwipeId =
+        input.replaceActiveSwipe && message.swipes[message.activeSwipeId]
+            ? message.activeSwipeId
+            : undefined;
 
-    if (
-        input.replaceActiveSwipe &&
-        current.activeSwipeId &&
-        current.swipes[current.activeSwipeId]
-    ) {
-        current = await deleteMessageSwipe(current.id, current.activeSwipeId);
-    }
+    await updateMessage(message.id, {
+        swipes: {
+            ...(removedSwipeId ? { [removedSwipeId]: undefined } : {}),
+            [swipeId]: {
+                ...buildSwipeFields(input),
+                id: swipeId,
+                createdAt: clock.now()
+            }
+        },
+        activeSwipeId: swipeId
+    });
 
-    const created = await createMessageSwipe(current.id, buildSwipeFields(input));
-
-    await updateMessage(current.id, { activeSwipeId: created.swipeId });
-
-    const updated = await getMessage(current.id);
+    const updated = await getMessage(message.id);
     if (!updated) {
-        throw new AppError('NOT_FOUND', `Message not found: ${current.id}`);
+        throw new AppError('NOT_FOUND', `Message not found: ${message.id}`);
     }
 
     return {
-        swipeId: created.swipeId,
+        swipeId,
         message: updated
     };
 }

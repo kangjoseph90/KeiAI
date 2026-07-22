@@ -116,6 +116,7 @@ export class AssetSyncEngineImpl {
         const semaphore = new Semaphore(UPLOAD_CONCURRENCY);
         let completed = 0;
         let fatalError: unknown = null;
+        let firstUploadError: unknown = null;
 
         await Promise.all(
             pending.map((item) =>
@@ -138,6 +139,7 @@ export class AssetSyncEngineImpl {
                             this.stopped = true;
                             return;
                         }
+                        firstUploadError ??= error;
                         logger.error(`Failed to sync asset ${item.entry.id}:`, error);
                     } finally {
                         completed++;
@@ -154,6 +156,7 @@ export class AssetSyncEngineImpl {
         );
 
         if (fatalError) throw fatalError;
+        if (firstUploadError) throw firstUploadError;
     }
 
     private async uploadOne(entry: AssetRegistryRecord, syncScope: SyncScope): Promise<void> {

@@ -16,7 +16,6 @@ import {
     activeChatId,
     activeRoom,
     activeRoomId,
-    chatLorebooks,
     chatPersonas,
     characters,
     messages,
@@ -110,7 +109,8 @@ describe('Room Store', () => {
                 staleChar: { id: 'staleChar', sortOrder: 'b' }
             },
             folders: {}
-        }
+        },
+        files: { refs: {}, folders: {} }
     };
     const mockChat: Chat = {
         id: 'chat-1',
@@ -122,7 +122,8 @@ describe('Room Store', () => {
         messageCount: 0,
         lorebooks: { refs: {}, folders: {} },
         personas: { refs: {}, folders: {} },
-        inlays: { refs: {}, folders: {} }
+        inlays: { refs: {}, folders: {} },
+        files: { refs: {}, folders: {} }
     };
     const mockCharacter: Character = {
         id: 'char-1',
@@ -136,7 +137,6 @@ describe('Room Store', () => {
         greetings: {},
         defaultVariables: {},
         allowLowLevel: false,
-        modules: { refs: {}, folders: {} },
         lorebooks: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} },
         charjs: { refs: {}, folders: {} },
@@ -152,7 +152,6 @@ describe('Room Store', () => {
         roomChats.clear();
         activeRoomId.set(null);
         activeChatId.set(null);
-        chatLorebooks.clear();
         messages.clear();
         characters.set(mockCharacter.id, mockCharacter);
         vi.mocked(RoomService.get).mockResolvedValue(mockRoom);
@@ -198,7 +197,6 @@ describe('Room Store', () => {
         vi.mocked(clearActiveChat).mockImplementation(() => {
             activeChatId.set(null);
             messages.clear();
-            chatLorebooks.clear();
         });
     });
 
@@ -271,7 +269,6 @@ describe('Room Store', () => {
         roomChats.setAll([mockChat]);
         activeChatId.set(mockChat.id);
         messages.setAll([{ id: 'msg-1', chatId: 'chat-1' } as never]);
-        chatLorebooks.setAll([{ id: 'lb-1' } as never]);
 
         clearActiveRoom();
 
@@ -280,7 +277,6 @@ describe('Room Store', () => {
         expect(get(roomCharacters)).toEqual([]);
         expect(get(roomChats)).toEqual([]);
         expect(get(messages)).toEqual([]);
-        expect(get(chatLorebooks)).toEqual([]);
         expect(get(chatPersonas)).toEqual([]);
         expect(clearActiveChat).toHaveBeenCalled();
     });

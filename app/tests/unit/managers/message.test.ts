@@ -1,15 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { prepareNextSwipe } from '$lib/managers/message';
-import { createMessageSwipe, deleteMessageSwipe, getMessage, updateMessage } from '$lib/stores';
+import { getMessage, updateMessage } from '$lib/stores';
 import type { Message } from '$lib/services';
 import { AppError } from '$lib/types/errors';
 
 vi.mock('$lib/stores', () => ({
-    createMessageSwipe: vi.fn(),
-    deleteMessageSwipe: vi.fn(),
     getMessage: vi.fn(),
     updateMessage: vi.fn()
 }));
+
+vi.mock('$lib/utils/id', () => ({ generateId: vi.fn(() => 'new-swipe') }));
+vi.mock('$lib/utils/clock', () => ({ clock: { now: vi.fn(() => 2) } }));
 
 describe('MessageManager', () => {
     const baseMessage: Message = {
@@ -34,23 +35,6 @@ describe('MessageManager', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        vi.mocked(createMessageSwipe).mockResolvedValue({
-            swipeId: 'new-swipe',
-            message: {
-                ...baseMessage,
-                swipes: {
-                    ...baseMessage.swipes,
-                    'new-swipe': {
-                        id: 'new-swipe',
-                        parts: [{ type: 'content', text: 'New' }],
-                        createdAt: 2,
-                        variables: { mood: 'calm' },
-                        speakerId: 'char-1',
-                        speakerName: 'Alpha'
-                    }
-                }
-            }
-        });
         vi.mocked(updateMessage).mockResolvedValue(undefined);
         vi.mocked(getMessage).mockResolvedValue({
             ...baseMessage,
@@ -77,37 +61,42 @@ describe('MessageManager', () => {
             speakerName: 'Alpha'
         });
 
-        expect(deleteMessageSwipe).not.toHaveBeenCalled();
-        expect(createMessageSwipe).toHaveBeenCalledWith('msg-1', {
-            parts: [{ type: 'content', text: 'New' }],
-            variables: { mood: 'calm' },
-            speakerId: 'char-1',
-            speakerName: 'Alpha'
+        expect(updateMessage).toHaveBeenCalledWith('msg-1', {
+            swipes: {
+                'new-swipe': {
+                    id: 'new-swipe',
+                    parts: [{ type: 'content', text: 'New' }],
+                    variables: { mood: 'calm' },
+                    speakerId: 'char-1',
+                    speakerName: 'Alpha',
+                    createdAt: 2
+                }
+            },
+            activeSwipeId: 'new-swipe'
         });
-        expect(updateMessage).toHaveBeenCalledWith('msg-1', { activeSwipeId: 'new-swipe' });
         expect(result).toMatchObject({ swipeId: 'new-swipe' });
         expect(result.message.activeSwipeId).toBe('new-swipe');
     });
 
-    it('deletes the active swipe first when replaceActiveSwipe is enabled', async () => {
-        const withoutOldSwipe: Message = {
-            ...baseMessage,
-            activeSwipeId: '',
-            swipes: {}
-        };
-        vi.mocked(deleteMessageSwipe).mockResolvedValue(withoutOldSwipe);
-
+    it('replaces the active swipe in the same update when requested', async () => {
         await prepareNextSwipe(baseMessage, {
             parts: [{ type: 'content', text: 'Replacement' }],
             variables: {},
             replaceActiveSwipe: true
         });
 
-        expect(deleteMessageSwipe).toHaveBeenCalledWith('msg-1', 'old-swipe');
-        expect(createMessageSwipe).toHaveBeenCalledWith('msg-1', {
-            parts: [{ type: 'content', text: 'Replacement' }],
-            variables: {}
-        });
+        expect(updateMessage).toHaveBeenCalledWith(
+            'msg-1',
+            expect.objectContaining({
+                swipes: expect.objectContaining({
+                    'old-swipe': undefined,
+                    'new-swipe': expect.objectContaining({
+                        parts: [{ type: 'content', text: 'Replacement' }]
+                    })
+                }),
+                activeSwipeId: 'new-swipe'
+            })
+        );
     });
 
     it('persists attachment references on the new swipe', async () => {
@@ -117,9 +106,13 @@ describe('MessageManager', () => {
             attachments: ['inlay-1', 'inlay-2']
         });
 
-        expect(createMessageSwipe).toHaveBeenCalledWith(
+        expect(updateMessage).toHaveBeenCalledWith(
             'msg-1',
-            expect.objectContaining({ attachments: ['inlay-1', 'inlay-2'] })
+            expect.objectContaining({
+                swipes: {
+                    'new-swipe': expect.objectContaining({ attachments: ['inlay-1', 'inlay-2'] })
+                }
+            })
         );
     });
 
@@ -130,9 +123,13 @@ describe('MessageManager', () => {
             attachments: []
         });
 
-        expect(createMessageSwipe).toHaveBeenCalledWith(
+        expect(updateMessage).toHaveBeenCalledWith(
             'msg-1',
-            expect.not.objectContaining({ attachments: expect.anything() })
+            expect.objectContaining({
+                swipes: {
+                    'new-swipe': expect.not.objectContaining({ attachments: expect.anything() })
+                }
+            })
         );
     });
 
@@ -149,8 +146,12 @@ describe('MessageManager', () => {
             }
         );
 
-        expect(deleteMessageSwipe).not.toHaveBeenCalled();
-        expect(createMessageSwipe).toHaveBeenCalled();
+        expect(updateMessage).toHaveBeenCalledWith(
+            'msg-1',
+            expect.objectContaining({
+                swipes: expect.not.objectContaining({ missing: expect.anything() })
+            })
+        );
     });
 
     it('throws when the message cannot be reloaded after activating the swipe', async () => {

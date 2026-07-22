@@ -6,25 +6,24 @@ import type { PipelinePhase, PipelinePhaseType, PipelineHandler } from './types'
 import type { RuntimeContext } from '$lib/types/context';
 
 export async function collectPipelineHandlers<K extends keyof PipelinePhaseType>(
-    chatId: string,
     phase: K,
-    characterId?: string
+    ctx: RuntimeContext
 ): Promise<PipelineHandler<PipelinePhaseType[K], K>[]>;
 export async function collectPipelineHandlers<P extends string, T>(
-    chatId: string,
     phase: PipelinePhase<P>,
-    characterId?: string
+    ctx: RuntimeContext
 ): Promise<PipelineHandler<T, P>[]>;
 export async function collectPipelineHandlers(
-    chatId: string,
     phase: string,
-    characterId?: string
+    ctx: RuntimeContext
 ): Promise<PipelineHandler<unknown>[]> {
     // ── 1. Regex script handlers ────────────────────────────────
-    const regexHandlers = await collectRegexHandlers(chatId, phase, characterId);
+    const regexHandlers = ctx.chatId ? await collectRegexHandlers(phase, ctx.characterId) : [];
 
     // ── 2. CharJS handlers (character + modules) ────────────────
-    const charjsHandlers = await collectCharJSHandlers(chatId, phase, characterId);
+    const charjsHandlers = ctx.chatId
+        ? await collectCharJSHandlers(ctx.chatId, phase, ctx.characterId)
+        : [];
 
     // ── 3. Plugin handlers ─────────────────────────────────────────
     const pluginHandlers = await collectPluginHandlers(phase);
@@ -36,11 +35,10 @@ export async function collectPipelineHandlers(
 }
 
 async function collectRegexHandlers(
-    chatId: string,
     phase: string,
     characterId?: string
 ): Promise<PipelineHandler<unknown>[]> {
-    const scripts = await getMergedScripts(chatId, characterId);
+    const scripts = await getMergedScripts(characterId);
     return scripts
         .filter((s) => s.phase === phase)
         .map((s) => ({

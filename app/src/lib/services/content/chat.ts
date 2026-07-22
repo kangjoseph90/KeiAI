@@ -5,6 +5,7 @@ import type { AssetRef, EntityListConfig } from '$lib/types/refs';
 import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
+import { listItems } from '$lib/utils/ordering';
 import { buffer } from './record_buffer';
 import {
     cascadeDeleteChildren,
@@ -14,12 +15,21 @@ import {
 } from './cascade';
 import { AssetService, type AssetOwner } from '../asset';
 import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
+import {
+    defaultFileFields,
+    defaultLorebookFields,
+    hydrateOwnedItems,
+    type FileItem,
+    type Lorebook
+} from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
 export interface ChatContent {
     title: string;
     chatNote: string;
+    lorebooks: EntityListConfig<Lorebook>;
+    files: EntityListConfig<FileItem>;
 }
 
 export interface ChatRefs {
@@ -28,7 +38,6 @@ export interface ChatRefs {
     greetingMessageId?: string;
     defaultPersonaId?: string;
     defaultCharacterId?: string;
-    lorebooks: EntityListConfig;
     personas: EntityListConfig;
     inlays: EntityListConfig<AssetRef>;
 }
@@ -50,13 +59,17 @@ const defaultFields: ChatFields = {
     messageCount: 0,
     lorebooks: { refs: {}, folders: {} },
     personas: { refs: {}, folders: {} },
-    inlays: { refs: {}, folders: {} }
+    inlays: { refs: {}, folders: {} },
+    files: { refs: {}, folders: {} }
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function parseFields(record: ChatRecord): ChatFields {
-    return deepMerge(defaultFields, record.data as DeepPartial<ChatFields>);
+    const fields = deepMerge(defaultFields, record.data as DeepPartial<ChatFields>);
+    fields.lorebooks.refs = hydrateOwnedItems(fields.lorebooks.refs, defaultLorebookFields);
+    fields.files.refs = hydrateOwnedItems(fields.files.refs, defaultFileFields);
+    return fields;
 }
 
 function assetOwner(record: ChatRecord): AssetOwner {
@@ -69,9 +82,7 @@ function assetOwner(record: ChatRecord): AssetOwner {
 }
 
 function collectAssetFields(fields: ChatFields): AssetFields[] {
-    return Object.values(fields.inlays.refs).filter((asset): asset is AssetRef =>
-        Boolean(asset?.hash)
-    );
+    return listItems(fields.inlays).filter((asset): asset is AssetRef => Boolean(asset?.hash));
 }
 
 // ─── Service ──────────────────────────────────────────────────────────

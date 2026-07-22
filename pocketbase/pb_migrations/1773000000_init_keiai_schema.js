@@ -59,6 +59,7 @@ migrate(
     );
     freshUsers.passwordAuth.enabled = true;
     freshUsers.passwordAuth.identityFields = ["username"];
+    freshUsers.authToken.duration = 90 * 24 * 60 * 60;
     app.save(freshUsers);
 
     // ─── 2. Enable batch API ─────────────────────────────────────────
@@ -335,7 +336,6 @@ migrate(
         type: "file",
         maxSelect: 1,
         maxSize: 10 * 1024 * 1024,
-        mimeTypes: ["application/octet-stream"],
       }),
     );
     catalog.fields.add(
@@ -437,19 +437,6 @@ migrate(
       "multi_room_members",
       "multi_room_index",
       "records",
-      "translations",
-      "messages",
-      "chats",
-      "charjs",
-      "scripts",
-      "lorebooks",
-      "presets",
-      "plugins",
-      "modules",
-      "personas",
-      "settings",
-      "characters",
-      "rooms",
       "asset_accounts",
       "asset_usage",
       "asset_catalog",

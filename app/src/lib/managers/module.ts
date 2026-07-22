@@ -15,7 +15,7 @@ export async function importModuleFile(
 ): Promise<Module | null> {
     const file = await appDialog.openFile({
         title: 'Import Module',
-        filters: [{ name: 'Module files', extensions: ['risum', 'keimodule', 'json'] }]
+        filters: [{ name: 'Module files', extensions: ['charx', 'risum', 'keimodule', 'json'] }]
     });
     if (!file) return null;
     const pkg = await readModuleFile(file);

@@ -5,8 +5,6 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { buffer } from './record_buffer';
 import { clock } from '$lib/utils/clock';
-import type { CustomLLMModel } from '$lib/types/models/llm';
-import { generateId } from '$lib/utils/id';
 import type {
     AnthropicProviderConfig,
     CustomProviderConfig,
@@ -32,6 +30,7 @@ import type { ImageGenProvider } from '$lib/types/models/imagegen';
 import type { STTProvider } from '$lib/types/models/stt';
 import type { RerankerProvider } from '$lib/types/models/reranker';
 import type { WorkflowDefinition } from '$lib/workflow/types';
+import { defaultFileFields, hydrateOwnedItems, type FileItem } from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
 
@@ -68,6 +67,7 @@ export interface AppSettingsContent {
     imagegenProvider: ImageGenProvider;
     sttProvider: STTProvider;
     rerankerProvider: RerankerProvider;
+    files: EntityListConfig<FileItem>;
 }
 
 export interface AppSettingsRefs {
@@ -228,13 +228,16 @@ export const defaultSettings: AppSettings = {
     personas: { refs: {}, folders: {} },
     presets: { refs: {}, folders: {} },
     modules: { refs: {}, folders: {} },
-    plugins: { refs: {}, folders: {} }
+    plugins: { refs: {}, folders: {} },
+    files: { refs: {}, folders: {} }
 };
 
 // ─── Service ──────────────────────────────────────────────────────────
 
 function parseFields(data: Record<string, unknown>): AppSettings {
-    return deepMerge(defaultSettings, data as DeepPartial<AppSettings>);
+    const fields = deepMerge(defaultSettings, data as DeepPartial<AppSettings>);
+    fields.files.refs = hydrateOwnedItems(fields.files.refs, defaultFileFields);
+    return fields;
 }
 
 export class SettingsService {
@@ -281,57 +284,5 @@ export class SettingsService {
             if (error instanceof AppError) throw error;
             throw new AppError('DB_WRITE_FAILED', 'Failed to update settings', error);
         }
-    }
-
-    static async createCustomLLMModel(
-        fields: DeepPartial<CustomLLMModel> & { sortOrder: string }
-    ): Promise<{ modelId: string; settings: AppSettings }> {
-        const modelId = `custom::${generateId()}`;
-        const settings = await this.update({
-            custom: {
-                llm: {
-                    models: {
-                        [modelId]: {
-                            ...fields,
-                            id: modelId,
-                            provider: 'custom'
-                        }
-                    }
-                }
-            }
-        });
-
-        return { modelId, settings };
-    }
-
-    static async updateCustomLLMModel(
-        modelId: string,
-        changes: DeepPartial<CustomLLMModel & { sortOrder: string }>
-    ): Promise<AppSettings> {
-        return this.update({
-            custom: {
-                llm: {
-                    models: {
-                        [modelId]: {
-                            ...changes,
-                            id: modelId,
-                            provider: 'custom'
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    static async deleteCustomLLMModel(modelId: string): Promise<AppSettings> {
-        return this.update({
-            custom: {
-                llm: {
-                    models: {
-                        [modelId]: undefined
-                    }
-                }
-            }
-        });
     }
 }

@@ -1,15 +1,10 @@
-import { CharJSService, LorebookService, ModuleService, ScriptService } from '$lib/services';
+import { ModuleService } from '$lib/services';
 import type { AssetOwner } from '$lib/adapters/asset';
 import type { AssetRef } from '$lib/types/refs';
 import { AppError } from '$lib/types/errors';
 import { getSessionScope } from '$lib/services/session';
 import type { KeiModulePackageV1 } from './types';
-import {
-    createPortableIdMap,
-    exportAssetPayload,
-    exportEntityList,
-    type KeiPackageExportMode
-} from '../utils';
+import { exportAssetPayload, exportEntityList, type KeiPackageExportMode } from '../utils';
 
 export async function exportModulePackage(
     moduleId: string,
@@ -20,12 +15,6 @@ export async function exportModulePackage(
         throw new AppError('NOT_FOUND', `Module not found: ${moduleId}`);
     }
 
-    const [lorebooks, scripts, charjs] = await Promise.all([
-        LorebookService.listByOwner(moduleId),
-        ScriptService.listByOwner(moduleId),
-        CharJSService.listByOwner(moduleId)
-    ]);
-
     const scope = getSessionScope('user');
     const owner: AssetOwner = {
         scopeType: scope.scopeType,
@@ -34,21 +23,8 @@ export async function exportModulePackage(
         ownerId: module.id
     };
 
-    const lorebookMap = createPortableIdMap(
-        lorebooks.map((item) => item.id),
-        'lorebook'
-    );
-    const scriptMap = createPortableIdMap(
-        scripts.map((item) => item.id),
-        'script'
-    );
-    const charjsMap = createPortableIdMap(
-        charjs.map((item) => item.id),
-        'charjs'
-    );
-
     const layoutIds = Object.keys(module.assets.refs);
-    const assetMap = createPortableIdMap(layoutIds, 'asset');
+    const assetMap = Object.fromEntries(layoutIds.map((id, index) => [id, `asset_${index}`]));
 
     const portableModule = {
         name: module.name,
@@ -56,10 +32,11 @@ export async function exportModulePackage(
         backgroundHTML: module.backgroundHTML,
         messageCSS: module.messageCSS,
         defaultVariables: { ...module.defaultVariables },
+        toggles: structuredClone(module.toggles),
         allowLowLevel: module.allowLowLevel,
-        lorebooks: exportEntityList(module.lorebooks, lorebookMap, 'lorebook_folder'),
-        scripts: exportEntityList(module.scripts, scriptMap, 'script_folder'),
-        charjs: exportEntityList(module.charjs, charjsMap, 'charjs_folder'),
+        lorebooks: structuredClone(module.lorebooks),
+        scripts: structuredClone(module.scripts),
+        charjs: structuredClone(module.charjs),
         assets: exportEntityList<AssetRef>(module.assets, assetMap, 'asset_folder')
     };
 
@@ -75,24 +52,6 @@ export async function exportModulePackage(
         version: 1,
         kind: 'keiai.module',
         module: portableModule,
-        lorebooks: lorebooks.map(
-            ({ id, ownerId: _ownerId, scopeType: _scopeType, scopeId: _scopeId, ...fields }) => ({
-                ...fields,
-                id: lorebookMap[id]
-            })
-        ),
-        scripts: scripts.map(
-            ({ id, ownerId: _ownerId, scopeType: _scopeType, scopeId: _scopeId, ...fields }) => ({
-                ...fields,
-                id: scriptMap[id]
-            })
-        ),
-        charjs: charjs.map(
-            ({ id, ownerId: _ownerId, scopeType: _scopeType, scopeId: _scopeId, ...fields }) => ({
-                ...fields,
-                id: charjsMap[id]
-            })
-        ),
         assets
     };
 }

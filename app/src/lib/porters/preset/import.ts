@@ -1,7 +1,7 @@
-import { PresetService, ScriptService } from '$lib/services';
+import { PresetService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
 import type { KeiPresetPackageV1 } from './types';
-import { remapEntityList } from '../utils';
+import { importEntityList } from '../utils';
 
 function assertPackage(pkg: KeiPresetPackageV1): void {
     if (pkg.version !== 1 || pkg.kind !== 'keiai.preset') {
@@ -19,19 +19,8 @@ export async function importPresetPackage(pkg: KeiPresetPackageV1): Promise<stri
         parameters: structuredClone(pkg.preset.parameters),
         chatWorkflow: structuredClone(pkg.preset.chatWorkflow),
         defaultVariables: { ...pkg.preset.defaultVariables },
-        globalVariables: { ...pkg.preset.globalVariables },
-        customToggles: structuredClone(pkg.preset.customToggles),
-        scripts: { refs: {}, folders: {} }
-    });
-
-    const scriptMap: Record<string, string> = {};
-    for (const { id, ...fields } of pkg.scripts) {
-        const script = await ScriptService.create(preset.id, fields);
-        scriptMap[id] = script.id;
-    }
-
-    await PresetService.update(preset.id, {
-        scripts: remapEntityList(pkg.preset.scripts, scriptMap)
+        toggles: structuredClone(pkg.preset.toggles),
+        scripts: importEntityList(pkg.preset.scripts)
     });
 
     return preset.id;

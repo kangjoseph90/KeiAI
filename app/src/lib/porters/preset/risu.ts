@@ -2,8 +2,6 @@ import { decompressSync } from 'fflate';
 import { decode } from 'msgpackr';
 import type { LLMRole } from '$lib/types/models/llm';
 import { AppError } from '$lib/types/errors';
-import type { PresetCustomToggle } from '$lib/services';
-import { generateId } from '$lib/utils/id';
 import type { RisuRegexScript } from '../risu/script';
 import { decodeRPack } from '../risu/rpack';
 import { risuScriptToKei } from '../risu/script';
@@ -12,6 +10,7 @@ import type { KeiPresetPackageV1 } from './types';
 import { isRecord, readDefaultVariables, refs, sortOrder } from '../utils';
 import { createDefaultChatWorkflow } from '$lib/workflow/defaults';
 import type { PromptBlockFields } from '$lib/workflow/types';
+import { readRisuTogglePanel } from '../risu/toggle';
 
 const TEXT_ENCODER = new TextEncoder();
 const RISU_PRESET_KEY = 'risupreset';
@@ -98,8 +97,7 @@ function risuPresetToKeiPreset(risu: RisuPreset): KeiPresetPackageV1 {
     const presencePenalty = readRisuPercent(risu.PresensePenalty);
     const topP = readRisuDisabledNumber(risu.top_p);
     const scripts = (risu.regex ?? []).map(risuScriptToKei);
-    const customToggles = readRisuCustomToggles(risu.customPromptTemplateToggle ?? '');
-    const globalVariables = initializeRisuToggleVariables(customToggles);
+    const toggles = readRisuTogglePanel(risu.customPromptTemplateToggle ?? '');
     const promptBlocks = Object.fromEntries(
         promptItems
             .map((item, index) => risuPromptToKeiBlock(item, index, hasPostEverything))
@@ -148,59 +146,10 @@ function risuPresetToKeiPreset(risu: RisuPreset): KeiPresetPackageV1 {
                 lorebookScanDepth: 5
             }),
             defaultVariables: readDefaultVariables(risu.templateDefaultVariables),
-            globalVariables,
-            customToggles,
+            toggles,
             scripts: refs(scripts)
-        },
-        scripts
+        }
     };
-}
-
-function readRisuCustomToggles(value: string): Record<string, PresetCustomToggle> {
-    const lines = value.split(/\r?\n/);
-    return Object.fromEntries(
-        lines
-            .map((line, index): PresetCustomToggle | null => {
-                const id = generateId();
-                const [key, label, type, optionText] = line.split('=');
-                if (
-                    type === 'group' ||
-                    type === 'groupEnd' ||
-                    type === 'caption' ||
-                    type === 'divider'
-                ) {
-                    return { id, sortOrder: sortOrder(index), key, label, type };
-                }
-                if (!key || !label) return null;
-                if (type === 'select') {
-                    return {
-                        id,
-                        sortOrder: sortOrder(index),
-                        key,
-                        label,
-                        type,
-                        options: optionText?.split(',').map((item) => item.trim()) ?? []
-                    };
-                }
-                if (type === 'text' || type === 'textarea')
-                    return { id, sortOrder: sortOrder(index), key, label, type };
-                return { id, sortOrder: sortOrder(index), key, label, type: 'checkbox' };
-            })
-            .filter((toggle): toggle is PresetCustomToggle => toggle !== null)
-            .map((toggle) => [toggle.id, toggle])
-    );
-}
-
-function initializeRisuToggleVariables(
-    toggles: Record<string, PresetCustomToggle>
-): Record<string, string> {
-    const variables: Record<string, string> = {};
-    for (const toggle of Object.values(toggles)) {
-        if (!('key' in toggle) || !toggle.key) continue;
-        variables[`toggle_${toggle.key}`] =
-            toggle.type === 'select' ? '0' : toggle.type === 'checkbox' ? '0' : '';
-    }
-    return variables;
 }
 
 function readPromptItems(risu: RisuPreset): RisuPromptItem[] {

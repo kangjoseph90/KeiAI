@@ -381,6 +381,7 @@ export class MultiRoomService {
                     name: meta.publicName ?? meta.id,
                     chats: { refs: {}, folders: {} },
                     characters: { refs: {}, folders: {} },
+                    files: { refs: {}, folders: {} },
                     id: meta.id,
                     scopeType: 'room' as const,
                     scopeId: meta.id

@@ -3,13 +3,20 @@
     import { Button } from '$lib/components/ui/button';
     import ListActionBar from '$lib/components/ListActionBar.svelte';
     import { Separator } from '$lib/components/ui/separator';
-    import type { Script, CharJS } from '$lib/services';
+    import {
+        defaultCharJSFields,
+        defaultScriptFields,
+        type Script,
+        type CharJS
+    } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import type { FolderDef, EntityListConfig } from '$lib/types/refs';
     import ScriptItem from '../ScriptItem.svelte';
     import CharJSItem from '../CharJSItem.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
+    import { generateSortOrder, listItems } from '$lib/utils/ordering';
+    import { generateId } from '$lib/utils/id';
 
     interface FolderCallbacks {
         onCreateFolder: (name: string, parentId?: string, sortOrder?: string) => Promise<FolderDef>;
@@ -22,30 +29,22 @@
     }
 
     interface Props {
-        scripts: Script[];
-        charJS: CharJS[];
-        scriptsConfig: EntityListConfig;
-        charjsConfig: EntityListConfig;
-        onCreateScript: (data: DeepPartial<Script>) => Script | Promise<Script>;
-        onUpdateScript: (id: string, changes: DeepPartial<Script>) => void | Promise<void>;
+        scriptsConfig: EntityListConfig<Script>;
+        charjsConfig: EntityListConfig<CharJS>;
+        onSaveScript: (item: Script) => void | Promise<void>;
         onDeleteScript: (id: string) => void | Promise<void>;
-        onCreateCharJS: (data: DeepPartial<CharJS>) => CharJS | Promise<CharJS>;
-        onUpdateCharJS: (id: string, changes: DeepPartial<CharJS>) => void | Promise<void>;
+        onSaveCharJS: (item: CharJS) => void | Promise<void>;
         onDeleteCharJS: (id: string) => void | Promise<void>;
         scriptFolders: FolderCallbacks;
         charjsFolders: FolderCallbacks;
     }
 
     let {
-        scripts,
-        charJS,
         scriptsConfig,
         charjsConfig,
-        onCreateScript,
-        onUpdateScript,
+        onSaveScript,
         onDeleteScript,
-        onCreateCharJS,
-        onUpdateCharJS,
+        onSaveCharJS,
         onDeleteCharJS,
         scriptFolders,
         charjsFolders
@@ -54,26 +53,36 @@
     let editingCharJSId = $state<string | null>(null);
 
     async function handleAddScript() {
-        const script = await onCreateScript({
-            name: 'New Script',
-            regex: '',
-            replacement: '',
+        const script: Script = {
+            ...defaultScriptFields,
             phase: 'input',
-            enabled: true,
-            flag: 'g',
             order: 0,
-            repeat: 0
-        });
+            repeat: 0,
+            id: generateId(),
+            sortOrder: generateSortOrder(scriptsConfig.refs, scriptsConfig.folders)
+        };
+        await onSaveScript(script);
         editingScriptId = script.id;
     }
 
     async function handleAddCharJS() {
-        const charJS = await onCreateCharJS({
-            name: 'New Script',
-            code: '',
-            enabled: true
-        });
+        const charJS: CharJS = {
+            ...defaultCharJSFields,
+            id: generateId(),
+            sortOrder: generateSortOrder(charjsConfig.refs, charjsConfig.folders)
+        };
+        await onSaveCharJS(charJS);
         editingCharJSId = charJS.id;
+    }
+
+    async function handleUpdateScript(id: string, changes: DeepPartial<Script>) {
+        const item = scriptsConfig.refs[id];
+        if (item) await onSaveScript({ ...item, ...changes, id });
+    }
+
+    async function handleUpdateCharJS(id: string, changes: DeepPartial<CharJS>) {
+        const item = charjsConfig.refs[id];
+        if (item) await onSaveCharJS({ ...item, ...changes, id });
     }
 </script>
 
@@ -91,7 +100,7 @@
                 </ListActionBar>
             </div>
             <EntityList
-                entities={scripts}
+                entities={listItems(scriptsConfig)}
                 config={scriptsConfig}
                 layout="list"
                 onCreateFolder={scriptFolders.onCreateFolder}
@@ -106,7 +115,7 @@
                     <ScriptItem
                         item={s}
                         initiallyEditing={editingScriptId === s.id}
-                        onUpdate={onUpdateScript}
+                        onUpdate={handleUpdateScript}
                         onDelete={onDeleteScript}
                     />
                 {/snippet}
@@ -127,7 +136,7 @@
                 </ListActionBar>
             </div>
             <EntityList
-                entities={charJS}
+                entities={listItems(charjsConfig)}
                 config={charjsConfig}
                 layout="list"
                 onCreateFolder={charjsFolders.onCreateFolder}
@@ -142,7 +151,7 @@
                     <CharJSItem
                         item={js}
                         initiallyEditing={editingCharJSId === js.id}
-                        onUpdate={onUpdateCharJS}
+                        onUpdate={handleUpdateCharJS}
                         onDelete={onDeleteCharJS}
                     />
                 {/snippet}

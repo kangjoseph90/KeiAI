@@ -7,7 +7,7 @@ import { sanitizeFileName } from '$lib/utils/file';
 import { writeDefaultVariables } from '../utils';
 import { denormalizeRisuTemplate } from '../risu/template';
 import { backgroundWithMessageCSS } from '../risu/background';
-import { compareSortOrder } from '$lib/utils/ordering';
+import { compareSortOrder, listItems } from '$lib/utils/ordering';
 
 export type CardAssetUriMode = 'data' | 'png' | 'charx';
 
@@ -51,7 +51,7 @@ export function keiPackageToCard(
             character_book: {
                 extensions: {},
                 recursive_scanning: false,
-                entries: pkg.lorebooks.map(keiLorebookToRisuCardEntry)
+                entries: listItems(pkg.character.lorebooks).map(keiLorebookToRisuCardEntry)
             },
             assets: cardAssets,
             tags: [],
@@ -59,7 +59,7 @@ export function keiPackageToCard(
             character_version: '',
             extensions: {
                 risuai: {
-                    customScripts: pkg.scripts.map(keiScriptToRisu),
+                    customScripts: listItems(pkg.character.scripts).map(keiScriptToRisu),
                     triggerscript: [],
                     defaultVariables: writeDefaultVariables(pkg.character.defaultVariables),
                     backgroundHTML: denormalizeRisuTemplate(
@@ -85,8 +85,8 @@ export function keiPackageToRisuModule(pkg: KeiCharacterPackageV1) {
         description: `Module for ${pkg.character.name || 'Imported Character'}`,
         id: 'keiai_export_module',
         trigger: [],
-        regex: pkg.scripts.map(keiScriptToRisu),
-        lorebook: pkg.lorebooks.map(keiLorebookToRisuInternal)
+        regex: listItems(pkg.character.scripts).map(keiScriptToRisu),
+        lorebook: listItems(pkg.character.lorebooks).map(keiLorebookToRisuInternal)
     };
 }
 

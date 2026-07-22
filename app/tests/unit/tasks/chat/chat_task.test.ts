@@ -21,11 +21,9 @@ vi.mock('$lib/stores/tasks/chat', () => ({
 
 vi.mock('$lib/stores/content/message', () => ({
     createMessage: vi.fn().mockResolvedValue(undefined),
-    createMessageSwipe: vi.fn(),
     updateMessage: vi.fn().mockResolvedValue(undefined),
     updateMessageSwipe: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
-    deleteMessageSwipe: vi.fn(),
     getLastMessage: vi.fn(),
     getMessage: vi.fn()
 }));
@@ -33,6 +31,10 @@ vi.mock('$lib/stores/content/message', () => ({
 vi.mock('$lib/managers', () => ({
     getChatVariablesBefore: vi.fn().mockResolvedValue({}),
     prepareNextSwipe: vi.fn()
+}));
+
+vi.mock('$lib/events', () => ({
+    emitEvent: vi.fn()
 }));
 
 vi.mock('$lib/services/content/tool', () => ({
@@ -168,7 +170,7 @@ vi.mock('$lib/stores/content/character', () => ({
 }));
 
 vi.mock('$lib/stores/content/merged', () => ({
-    getActiveModuleIds: vi.fn().mockResolvedValue(new Set()),
+    getActiveModules: vi.fn().mockResolvedValue([]),
     getMergedLorebooks: vi.fn().mockResolvedValue([])
 }));
 
@@ -201,7 +203,7 @@ vi.mock('$lib/llm/handler', () => ({
 }));
 
 vi.mock('$lib/pipeline', () => ({
-    runPipeline: vi.fn((_chatId: string, _phase: string, data: unknown) => Promise.resolve(data))
+    runPipeline: vi.fn((_phase: string, _ctx: unknown, data: unknown) => Promise.resolve(data))
 }));
 
 // Only runTemplate needs faking; pure helpers flow through from the real module.
@@ -234,6 +236,7 @@ import { getChat, getRoom } from '$lib/stores';
 import { buildPrompt } from '$lib/workflow/agent/prompt';
 import { selectLLMHandler } from '$lib/llm/handler';
 import { runPipeline } from '$lib/pipeline';
+import { emitEvent } from '$lib/events';
 import type { Chat, Message, Preset } from '$lib/services';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -271,9 +274,12 @@ describe('Chat Pipeline', () => {
             { role: 'user', content: [{ type: 'text', text: 'test' }] }
         ]);
         vi.mocked(selectLLMHandler).mockReturnValue({
-            stream: vi.fn(async function* () {
-                yield { content: 'Response' };
-            })
+            handler: {
+                stream: vi.fn(async function* () {
+                    yield { content: 'Response' };
+                })
+            },
+            unsupported: []
         });
         // Default: createMessage returns a new message
         vi.mocked(createMessage).mockResolvedValue(
@@ -345,7 +351,7 @@ describe('Chat Pipeline', () => {
                     activeSwipeId: 'swipe-new'
                 }) as Message
         );
-        vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
+        vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
@@ -381,15 +387,14 @@ describe('Chat Pipeline', () => {
         expect(promptInput?.ctx).not.toHaveProperty('speakerId');
         expect(promptInput?.ctx).not.toHaveProperty('speakerName');
         expect(runPipeline).toHaveBeenCalledWith(
-            mockChatId,
             'output',
-            'Hello world',
             expect.objectContaining({
                 characterId: 'char-1',
                 speakerId: 'char-1',
                 speakerName: 'Char 1',
                 role: 'assistant'
-            })
+            }),
+            'Hello world'
         );
         // Should NOT have an error
         expect(setChatTaskError).not.toHaveBeenCalled();
@@ -397,6 +402,52 @@ describe('Chat Pipeline', () => {
         expect(clearChatTask).toHaveBeenCalledWith(mockChatId);
         expect(notifyChatTaskComplete).toHaveBeenCalledWith(mockChatId);
         expect(notifyChatTaskError).not.toHaveBeenCalled();
+        expect(emitEvent).toHaveBeenCalledWith(
+            'message:received',
+            expect.objectContaining({
+                chatId: 'chat-1',
+                characterId: 'char-1',
+                role: 'assistant'
+            }),
+            { content: 'Hello world' }
+        );
+    });
+
+    it('adapts unsupported image input and streaming before the handler call', async () => {
+        vi.mocked(buildPrompt).mockResolvedValueOnce([
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: 'Describe this' },
+                    { type: 'image', mimeType: 'image/png', data: 'image-data' }
+                ]
+            }
+        ]);
+        const mockHandler: LLMStreamHandler = {
+            stream: vi.fn(async function* () {
+                yield { content: 'Fallback response' };
+            })
+        };
+        vi.mocked(selectLLMHandler).mockReturnValue({
+            handler: mockHandler,
+            unsupported: ['image_input', 'streaming']
+        });
+
+        await runChat(mockChatId, 'char-1', 'persona-1');
+
+        expect(mockHandler.stream).toHaveBeenCalledWith(
+            [
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: 'Describe this' },
+                        { type: 'text', text: '[Image omitted]' }
+                    ]
+                }
+            ],
+            expect.any(AbortSignal),
+            expect.objectContaining({ stream: false })
+        );
     });
 
     it('should prevent duplicate runs for the same chat', async () => {
@@ -438,7 +489,8 @@ describe('Chat Pipeline', () => {
             scopeId: 'user-1',
             name: 'Room 1',
             chats: { refs: {}, folders: {} },
-            characters: { refs: {}, folders: {} }
+            characters: { refs: {}, folders: {} },
+            files: { refs: {}, folders: {} }
         });
 
         await runChat(mockChatId, 'char-missing', 'persona-1');
@@ -488,7 +540,7 @@ describe('Chat Pipeline', () => {
             swipes: { 'swipe-new': { id: 'swipe-new', parts: [], createdAt: Date.now() } },
             activeSwipeId: 'swipe-new'
         } as unknown as import('$lib/services').Message);
-        vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
+        vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
@@ -504,7 +556,7 @@ describe('Chat Pipeline', () => {
                 throw new DOMException('Aborted', 'AbortError');
             })
         };
-        vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
+        vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
@@ -520,7 +572,7 @@ describe('Chat Pipeline', () => {
                 throw new Error('Network fail');
             })
         };
-        vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
+        vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
@@ -536,7 +588,7 @@ describe('Chat Pipeline', () => {
             })
         };
 
-        vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
+        vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
 
         await runChat(mockChatId, 'char-1', 'persona-1');
 
@@ -579,7 +631,8 @@ describe('Chat Pipeline', () => {
                     refs: { 'persona-1': { id: 'persona-1', sortOrder: 'a0' } },
                     folders: {}
                 },
-                inlays: { refs: {}, folders: {} }
+                inlays: { refs: {}, folders: {} },
+                files: { refs: {}, folders: {} }
             } as Chat);
             vi.mocked(MessageService.get).mockResolvedValue(mockExistingMessage as Message);
             vi.mocked(getLastMessage).mockResolvedValue(mockExistingMessage as Message);
@@ -609,7 +662,7 @@ describe('Chat Pipeline', () => {
                     },
                     activeSwipeId: 'swipe-new'
                 } as unknown as import('$lib/services').Message);
-            vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
+            vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
 
             await runChat(mockChatId, 'char-1', 'persona-1', { reroll: true });
 
@@ -654,7 +707,7 @@ describe('Chat Pipeline', () => {
                 },
                 activeSwipeId: 'swipe-new'
             } as unknown as import('$lib/services').Message);
-            vi.mocked(selectLLMHandler).mockReturnValue(mockHandler);
+            vi.mocked(selectLLMHandler).mockReturnValue({ handler: mockHandler, unsupported: [] });
 
             await runChat(mockChatId, 'char-1', 'persona-1', { reroll: true });
 

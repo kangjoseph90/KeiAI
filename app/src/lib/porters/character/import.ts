@@ -1,12 +1,12 @@
 import type { DataScopeType } from '$lib/adapters/db';
-import { CharacterService, CharJSService, LorebookService, ScriptService } from '$lib/services';
+import { CharacterService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
 import type { KeiCharacterPackageV1 } from './types';
 import {
     importAssetPayload,
     importAssetPayloads,
+    importEntityList,
     materializeImportedAsset,
-    remapEntityList,
     remapImportedAssetFolders
 } from '../utils';
 
@@ -40,9 +40,9 @@ export async function importCharacterPackage(
                 greetings: pkg.character.greetings,
                 defaultVariables: pkg.character.defaultVariables,
                 allowLowLevel: pkg.character.allowLowLevel,
-                lorebooks: { refs: {}, folders: {} },
-                scripts: { refs: {}, folders: {} },
-                charjs: { refs: {}, folders: {} },
+                lorebooks: importEntityList(pkg.character.lorebooks),
+                scripts: importEntityList(pkg.character.scripts),
+                charjs: importEntityList(pkg.character.charjs),
                 assets: { refs: {}, folders: {} }
             },
             scopeType
@@ -60,24 +60,6 @@ export async function importCharacterPackage(
                 }
             );
             await CharacterService.updateAvatar(character.id, avatarInput);
-        }
-
-        const lorebookMap: Record<string, string> = {};
-        for (const { id, ...fields } of pkg.lorebooks) {
-            const lorebook = await LorebookService.create(character.id, fields, scopeType);
-            lorebookMap[id] = lorebook.id;
-        }
-
-        const scriptMap: Record<string, string> = {};
-        for (const { id, ...fields } of pkg.scripts) {
-            const script = await ScriptService.create(character.id, fields, scopeType);
-            scriptMap[id] = script.id;
-        }
-
-        const charjsMap: Record<string, string> = {};
-        for (const { id, ...fields } of pkg.charjs) {
-            const charjs = await CharJSService.create(character.id, fields, scopeType);
-            charjsMap[id] = charjs.id;
         }
 
         const layoutIdMap: Record<string, string> = {};
@@ -114,12 +96,6 @@ export async function importCharacterPackage(
                 await CharacterService.update(character.id, { assets: fixed });
             }
         }
-
-        await CharacterService.update(character.id, {
-            lorebooks: remapEntityList(pkg.character.lorebooks, lorebookMap),
-            scripts: remapEntityList(pkg.character.scripts, scriptMap),
-            charjs: remapEntityList(pkg.character.charjs, charjsMap)
-        });
 
         return character.id;
     } catch (error) {

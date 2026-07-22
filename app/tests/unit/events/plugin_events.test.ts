@@ -54,7 +54,13 @@ describe('event plugin integration', () => {
         const instance = createPluginInstance();
         mockPluginManager.getInstances.mockReturnValue([instance]);
 
-        await emitEvent('chat-1', 'message:sent', { content: 'hello' });
+        await emitEvent(
+            'message:sent',
+            { chatId: 'chat-1', characterId: 'char-1' },
+            {
+                content: 'hello'
+            }
+        );
 
         expect(instance.broker.fireEvent).toHaveBeenCalledTimes(2);
         expect(instance.broker.fireEvent).toHaveBeenNthCalledWith(1, 'listener-1', [
@@ -63,6 +69,12 @@ describe('event plugin integration', () => {
         expect(instance.broker.fireEvent).toHaveBeenNthCalledWith(2, 'listener-2', [
             { content: 'hello' }
         ]);
+        expect(mockCollectCharJSInstances).toHaveBeenCalledWith(
+            'chat-1',
+            'event',
+            'message:sent',
+            'char-1'
+        );
     });
 
     it('does not fire plugin listeners in safe mode', async () => {
@@ -70,8 +82,18 @@ describe('event plugin integration', () => {
         mockIsSafeMode.mockReturnValue(true);
         mockPluginManager.getInstances.mockReturnValue([instance]);
 
-        await emitEvent('chat-1', 'message:sent', { content: 'hello' });
+        await emitEvent('message:sent', { chatId: 'chat-1' }, { content: 'hello' });
 
         expect(instance.broker.fireEvent).not.toHaveBeenCalled();
+    });
+
+    it('fires plugin listeners without collecting CharJS when chatId is absent', async () => {
+        const instance = createPluginInstance();
+        mockPluginManager.getInstances.mockReturnValue([instance]);
+
+        await emitEvent('message:sent', {}, { content: 'preview' });
+
+        expect(instance.broker.fireEvent).toHaveBeenCalled();
+        expect(mockCollectCharJSInstances).not.toHaveBeenCalled();
     });
 });

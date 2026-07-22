@@ -89,8 +89,7 @@ describe('PresetService', () => {
             memoryRatio: 0.2
         }),
         defaultVariables: {},
-        globalVariables: {},
-        customToggles: {},
+        toggles: { refs: {}, folders: {} },
         scripts: { refs: {}, folders: {} }
     };
 
@@ -225,18 +224,8 @@ describe('PresetService', () => {
             ] as unknown as DataRecord[]);
             await PresetService.delete('preset-123');
             expect(localDB.softDeleteRecord).toHaveBeenCalledWith('presets', 'preset-123');
-            expect(localDB.softDeleteByIndex).toHaveBeenCalledWith(
-                'scripts',
-                'ownerId',
-                'preset-123',
-                undefined
-            );
-            expect(AssetService.deleteOwnerAssets).toHaveBeenCalledWith({
-                scopeType: 'user',
-                scopeId: 'user-123',
-                ownerTable: 'scripts',
-                ownerId: 'script-1'
-            });
+            expect(localDB.softDeleteByIndex).not.toHaveBeenCalled();
+            expect(AssetService.deleteOwnerAssets).not.toHaveBeenCalled();
         });
     });
 });
