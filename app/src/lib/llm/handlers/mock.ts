@@ -23,6 +23,7 @@ import {
 } from '../types';
 import { debounceStream } from '$lib/utils/stream';
 import { abortableSleep } from '$lib/utils/async';
+import type { ToolCallRequest } from '$lib/types/tools';
 
 export type MockBehavior = 'default' | 'echo' | 'markdown';
 
@@ -90,7 +91,9 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
         options: LLMStreamOptions = {}
     ): AsyncIterable<LLMStreamContent> {
         const rawStream =
-            (options.stream ?? true) ? this.rawStream(messages, signal) : this.complete(messages);
+            (options.stream ?? true)
+                ? this.rawStream(messages, signal, options)
+                : this.complete(messages, options);
         yield* debounceStream(rawStream);
     }
 
@@ -126,7 +129,8 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
 
     private async *rawStream(
         messages: LLMMessage[],
-        signal: AbortSignal
+        signal: AbortSignal,
+        options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
         const state: LLMStreamContent = {
             content: '',
@@ -150,45 +154,92 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
             await abortableSleep(this.chunkDelayMs, signal);
         }
 
-        // 3. Simulate "Tool Call" phase if messages mention 'tool' or '날씨'
-        const lastMessage = messages[messages.length - 1];
-        const isUserTurn = lastMessage && lastMessage.role === 'user';
-        const lastMessageText = lastMessage ? getTextContent(lastMessage.content) : '';
-        const hasKeyword =
-            lastMessage && (lastMessageText.includes('tool') || lastMessageText.includes('날씨'));
-
-        if (isUserTurn && hasKeyword) {
-            state.toolCalls = [
-                {
-                    callId: 'mock_call_' + Math.random().toString(36).slice(2, 9),
-                    name: 'get_weather',
-                    args: { location: 'Seoul', unit: 'celsius' }
-                }
-            ];
+        // 3. Simulate a file tool call when the latest user message asks for one.
+        const toolCall = getMockToolCall(messages, options);
+        if (toolCall) {
+            state.toolCalls = [toolCall];
             yield { ...state };
         }
     }
 
-    private async *complete(messages: LLMMessage[]): AsyncIterable<LLMStreamContent> {
+    private async *complete(
+        messages: LLMMessage[],
+        options: LLMStreamOptions
+    ): AsyncIterable<LLMStreamContent> {
         const state: LLMStreamContent = {
             content: this.getResponse(messages),
             thought: '질문을 분석하고 적절한 답변을 생성했습니다.'
         };
-        const lastMessage = messages[messages.length - 1];
-        const isUserTurn = lastMessage && lastMessage.role === 'user';
-        const lastMessageText = lastMessage ? getTextContent(lastMessage.content) : '';
-        const hasKeyword =
-            lastMessage && (lastMessageText.includes('tool') || lastMessageText.includes('날씨'));
-
-        if (isUserTurn && hasKeyword) {
-            state.toolCalls = [
-                {
-                    callId: 'mock_call_' + Math.random().toString(36).slice(2, 9),
-                    name: 'get_weather',
-                    args: { location: 'Seoul', unit: 'celsius' }
-                }
-            ];
+        const toolCall = getMockToolCall(messages, options);
+        if (toolCall) {
+            state.toolCalls = [toolCall];
         }
         yield state;
     }
+}
+
+function getMockToolCall(
+    messages: LLMMessage[],
+    options: LLMStreamOptions
+): ToolCallRequest | null {
+    const lastMessage = messages.at(-1);
+    if (lastMessage?.role !== 'user') return null;
+
+    const prompt = getTextContent(lastMessage.content).trim();
+    const toolName = getRequestedFileTool(prompt);
+    if (!toolName) return null;
+
+    const tool = options.tools?.find((candidate) => candidate.name === toolName);
+    if (!tool) return null;
+    const args = Object.fromEntries(
+        Object.entries(tool.inputSchema.properties).map(([name, schema]) => {
+            if (name === 'namespace') return [name, getMockFileNamespace(prompt)];
+            if (name === 'path') return [name, getMockFilePath(prompt)];
+            if (name === 'content') return [name, getMockFileContent(prompt)];
+            if (schema.enum?.length) return [name, schema.enum[0]];
+            if (schema.type === 'number') return [name, 0];
+            if (schema.type === 'boolean') return [name, false];
+            return [name, 'mock'];
+        })
+    );
+    return {
+        callId: `mock_call_${Math.random().toString(36).slice(2, 9)}`,
+        name: tool.name,
+        args
+    };
+}
+
+function getRequestedFileTool(prompt: string): 'file_read' | 'file_write' | null {
+    if (!prompt) return null;
+    if (
+        /\b(?:write|save|create|update|overwrite)\b|(?:저장|작성|생성|수정|덮어쓰|써\s*줘)/iu.test(
+            prompt
+        )
+    ) {
+        return 'file_write';
+    }
+    if (/\b(?:read|open|load|show)\b|(?:읽어|열어|불러|보여\s*줘)/iu.test(prompt)) {
+        return 'file_read';
+    }
+    return null;
+}
+
+function getMockFileNamespace(prompt: string): 'global' | 'room' | 'chat' {
+    if (/\bglobal\b|전역/iu.test(prompt)) return 'global';
+    if (/\broom\b|(?:채팅)?방/iu.test(prompt)) return 'room';
+    return 'chat';
+}
+
+function getMockFilePath(prompt: string): string {
+    return (
+        prompt.match(/[\p{L}\p{N}_.-]+(?:[\\/][\p{L}\p{N}_.-]+)*\.[a-z0-9]+/iu)?.[0] ?? 'mock.txt'
+    );
+}
+
+function getMockFileContent(prompt: string): string {
+    const path = getMockFilePath(prompt);
+    const quoted = [...prompt.matchAll(/["'`](.+?)["'`]/g)]
+        .map((match) => match[1].trim())
+        .find((value) => value && value !== path);
+    return quoted ?? 'Mock tool content';
 }

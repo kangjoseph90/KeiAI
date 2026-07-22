@@ -5,28 +5,12 @@ import { deepMerge, type DeepPartial } from '$lib/utils/defaults';
 import { AppError } from '$lib/types/errors';
 import { generateId } from '$lib/utils/id';
 import { buffer } from './record_buffer';
-
-export type ToolCallStatus = 'pending' | 'success' | 'rejected' | 'error';
-
-export type ToolCallRequest = {
-    callId: string; // Call Id given by LLM provider
-    name: string;
-    args: Record<string, unknown>;
-};
-
-export type ToolCallResponse =
-    | { type: 'text'; text: string }
-    | { type: 'image'; data: string; mimeType: string }
-    | { type: 'audio'; data: string; mimeType: string }
-    | { type: 'resource'; resource: { uri: string; mimeType: string; text: string } };
+import type { ToolCallRequest, ToolCallResponsePart, ToolCallStatus } from '$lib/types/tools';
 
 export interface ToolCallFields {
     status: ToolCallStatus;
     call: ToolCallRequest;
-    response?: {
-        content: ToolCallResponse[];
-        isError?: boolean;
-    };
+    response?: ToolCallResponsePart[];
 }
 
 export interface ToolCall extends ToolCallFields {

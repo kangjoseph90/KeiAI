@@ -5,7 +5,7 @@
  * All handlers (Mock, OpenAI, Claude, …) implement LLMStreamHandler.
  */
 
-import type { ToolCallRequest } from '$lib/services/content/tool';
+import type { ToolCallRequest, ToolCallResponsePart, ToolDefinition } from '$lib/types/tools';
 import type { RetryOptions } from '$lib/adapters/http/types';
 import type { LLMParameters, LLMRole } from '$lib/types/models/llm';
 
@@ -36,7 +36,15 @@ export interface LLMStreamHandler {
 
 export type LLMContentPart =
     | { type: 'text'; text: string }
-    | { type: 'image'; mimeType: string; data: string };
+    | { type: 'image'; mimeType: string; data: string }
+    | { type: 'tool_request'; callId: string; name: string; args: Record<string, unknown> }
+    | {
+          type: 'tool_response';
+          callId: string;
+          name: string;
+          content: ToolCallResponsePart[];
+          isError?: boolean;
+      };
 
 /** Returns only the text portions of a multimodal message. */
 export function getTextContent(content: LLMContentPart[]): string {
@@ -82,4 +90,5 @@ export interface LLMStreamOptions {
     parameters?: LLMParameters;
     maxResponse?: number;
     stream?: boolean;
+    tools?: ToolDefinition[];
 }

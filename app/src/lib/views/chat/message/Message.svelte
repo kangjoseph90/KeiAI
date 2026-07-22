@@ -560,6 +560,7 @@
                                             />
                                         {:else if entry.part.type === 'tool_call'}
                                             <ToolCallPart
+                                                id={entry.part.id}
                                                 name={entry.part.name}
                                                 status={entry.part.status}
                                             />

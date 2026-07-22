@@ -33,11 +33,11 @@
     import { getErrorMessage } from '$lib/types/errors';
 
     const expandedModels = new SvelteSet<string>();
-    const advancedModels = new SvelteSet<string>();
+    const expandedCapabilities = new SvelteSet<string>();
     let busyAction = $state<string | null>(null);
 
     const handlers: LLMHandler[] = ['openai_compatible', 'anthropic', 'google'];
-    const capabilities: LLMCapability[] = ['image_input', 'streaming'];
+    const capabilities: LLMCapability[] = ['image_input', 'streaming', 'tool_call'];
 
     const tokenizers: LLMTokenizer[] = [
         'o200k_base',
@@ -92,7 +92,7 @@
             if (!confirmed) return;
             await deleteCustomLLMModel(id);
             expandedModels.delete(id);
-            advancedModels.delete(id);
+            expandedCapabilities.delete(id);
         } catch (error) {
             toast.error({ title: 'Could not delete model', description: getErrorMessage(error) });
         } finally {
@@ -128,11 +128,11 @@
         }
     }
 
-    function toggleAdvanced(id: string) {
-        if (advancedModels.has(id)) {
-            advancedModels.delete(id);
+    function toggleCapabilities(id: string) {
+        if (expandedCapabilities.has(id)) {
+            expandedCapabilities.delete(id);
         } else {
-            advancedModels.add(id);
+            expandedCapabilities.add(id);
         }
     }
 
@@ -315,20 +315,19 @@
                                 variant="ghost"
                                 size="sm"
                                 class="w-full justify-between h-8 text-xs text-muted-foreground hover:bg-muted/50"
-                                onclick={() => toggleAdvanced(model.id)}
+                                onclick={() => toggleCapabilities(model.id)}
                             >
-                                Advanced Settings
-                                {#if advancedModels.has(model.id)}
+                                Capabilities
+                                {#if expandedCapabilities.has(model.id)}
                                     <ChevronUp class="size-3" />
                                 {:else}
                                     <ChevronDown class="size-3" />
                                 {/if}
                             </Button>
 
-                            {#if advancedModels.has(model.id)}
+                            {#if expandedCapabilities.has(model.id)}
                                 <div class="grid gap-4 p-4 rounded-lg bg-muted/30 border">
                                     <div class="flex flex-col gap-2">
-                                        <Label class="text-xs">Capabilities</Label>
                                         <div class="flex flex-wrap gap-x-5 gap-y-2">
                                             {#each capabilities as capability (capability)}
                                                 <label class="flex items-center gap-2 text-xs">

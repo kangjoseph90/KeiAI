@@ -17,6 +17,8 @@ import { AppError } from '$lib/types/errors';
 import type { Message } from '$lib/services/content/message';
 import { resolveLorebookEntries } from './lorebook';
 import { getLastContentText } from './llm';
+import { ToolCallService } from '$lib/services/content/tool';
+import { resolveAgentTools } from './tool';
 import { toMessageContext, toRoleContext } from './context';
 import { compareSortOrder } from '$lib/utils/ordering';
 import type { RuntimeContext } from '$lib/types/context';
@@ -37,6 +39,7 @@ export interface PromptInput {
 }
 
 export interface AgentPromptConfig {
+    toolIds: string[];
     promptBlocks: Record<string, PromptBlock>;
     maxContext: number;
     maxResponse: number;
@@ -69,6 +72,10 @@ export async function buildPrompt(input: PromptInput): Promise<LLMMessage[]> {
     const blocks = getEnabledPromptBlocks(input.agent.promptBlocks);
 
     const budget = createPromptBudget(input.agent);
+    budget.used += await countToolDefinitions(input.agent.toolIds, input.tokenizer);
+    if (budget.used > budget.input) {
+        throw new AppError('INVALID_INPUT', 'Tool definitions exceed the prompt input budget');
+    }
     const result = new Map<string, PromptBlockResult>();
     const unboundedHistoryBlocks = blocks.filter(isUnboundedHistoryBlock);
 
@@ -147,10 +154,11 @@ async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<
                     index,
                     input.ctx,
                     input.chat,
+                    block.historyMode,
                     block.format,
                     input.localMacros
                 );
-                if (rendered) messages.push(rendered);
+                messages.push(...rendered);
             }
             break;
         }
@@ -246,13 +254,14 @@ async function buildUnboundedHistoryBlock(
             indexed.index,
             input.ctx,
             input.chat,
+            block.historyMode,
             block.format,
             input.localMacros
         );
-        if (!rendered) continue;
+        if (rendered.length === 0) continue;
 
         sawRenderableMessage = true;
-        const tokens = await countMessages([rendered], input.tokenizer);
+        const tokens = await countMessages(rendered, input.tokenizer);
         if (tokens > remaining) {
             if (messages.length === 0) {
                 throw new AppError(
@@ -263,7 +272,7 @@ async function buildUnboundedHistoryBlock(
             break;
         }
 
-        messages.unshift(rendered);
+        messages.unshift(...rendered);
         remaining -= tokens;
     }
 
@@ -383,33 +392,112 @@ async function renderHistoryMessage(
     messageIndex: number,
     ctx: RuntimeContext,
     chat: Chat,
+    historyMode: 'last_content' | 'full_trace',
     format?: string,
     localMacros?: ReadonlyMap<string, Macro>
-): Promise<LLMMessage | null> {
+): Promise<LLMMessage[]> {
     const activeSwipe = message.swipes[message.activeSwipeId];
-    if (!activeSwipe) return null;
+    if (!activeSwipe) return [];
 
     const messageCtx = toMessageContext(message, messageIndex, ctx);
     const templateMacros = mergeLocalMacros(localMacros, createDryRunMacros());
 
-    // TODO: Plumb tool_call/thought parts into history reconstruction once history
-    // blocks expose options (include tool results, all content vs last content only).
-    const templated = await renderWithFormat(
-        getLastContentText(activeSwipe.parts),
-        format,
-        messageCtx,
-        activeSwipe.speakerName,
-        templateMacros
+    if (historyMode === 'last_content') {
+        const content = await renderHistoryText(
+            getLastContentText(activeSwipe.parts),
+            format,
+            messageCtx,
+            activeSwipe.speakerName,
+            templateMacros
+        );
+        return [
+            {
+                role: message.role,
+                content: await addAttachmentContent(content, activeSwipe.attachments, chat)
+            }
+        ];
+    }
+
+    const toolCallIds = activeSwipe.parts
+        .filter((part) => part.type === 'tool_call')
+        .map((part) => part.id);
+    const loadedToolCalls = await Promise.all(toolCallIds.map((id) => ToolCallService.get(id)));
+    const toolCalls = new Map(
+        toolCallIds.map((id, index) => [id, loadedToolCalls[index]] as const)
     );
-
-    const processed = await runPipeline('request', messageCtx, templated);
-
-    const content = await runTemplate(processed, messageCtx, templateMacros);
-
-    return {
-        role: message.role,
-        content: await addAttachmentContent(content, activeSwipe.attachments, chat)
+    const messages: LLMMessage[] = [];
+    let content: LLMContentPart[] = [];
+    const flush = (): void => {
+        if (content.length === 0) return;
+        messages.push({ role: message.role, content });
+        content = [];
     };
+
+    for (const part of activeSwipe.parts) {
+        if (part.type === 'thought') continue;
+        if (part.type === 'content') {
+            const rendered = await renderHistoryText(
+                part.text,
+                format,
+                messageCtx,
+                activeSwipe.speakerName,
+                templateMacros
+            );
+            if (rendered) content.push({ type: 'text', text: rendered });
+            continue;
+        }
+
+        const toolCall = toolCalls.get(part.id);
+        if (!toolCall) {
+            content.push({
+                type: 'text',
+                text: `[Tool call: ${part.name} — ${part.status}; details unavailable]`
+            });
+            continue;
+        }
+
+        content.push({
+            type: 'tool_request',
+            callId: toolCall.call.callId,
+            name: toolCall.call.name,
+            args: toolCall.call.args
+        });
+        flush();
+        const response: LLMContentPart = {
+            type: 'tool_response',
+            callId: toolCall.call.callId,
+            name: toolCall.call.name,
+            content: toolCall.response ?? [{ type: 'text', text: 'Tool call did not complete.' }]
+        };
+        if (!toolCall.response || toolCall.status === 'error' || toolCall.status === 'rejected') {
+            response.isError = true;
+        }
+        messages.push({
+            role: 'user',
+            content: [response]
+        });
+    }
+    flush();
+
+    const attachmentParts = await loadAttachmentContent(activeSwipe.attachments, chat);
+    if (attachmentParts.length > 0) {
+        const target = messages.find((entry) => entry.role === message.role);
+        if (target) target.content.push(...attachmentParts);
+        else messages.unshift({ role: message.role, content: attachmentParts });
+    }
+    return messages;
+}
+
+async function renderHistoryText(
+    text: string,
+    format: string | undefined,
+    messageCtx: RuntimeContext,
+    speakerName: string | undefined,
+    templateMacros: ReadonlyMap<string, Macro>
+): Promise<string> {
+    const templated = await renderWithFormat(text, format, messageCtx, speakerName, templateMacros);
+    const processed = await runPipeline('request', messageCtx, templated);
+    return runTemplate(processed, messageCtx, templateMacros);
 }
 
 async function addAttachmentContent(
@@ -417,8 +505,15 @@ async function addAttachmentContent(
     attachments: string[] | undefined,
     chat: Chat
 ): Promise<LLMContentPart[]> {
-    if (!attachments?.length || !chat) return [{ type: 'text', text: content }];
-    const parts: LLMContentPart[] = [{ type: 'text', text: content }];
+    return [{ type: 'text', text: content }, ...(await loadAttachmentContent(attachments, chat))];
+}
+
+async function loadAttachmentContent(
+    attachments: string[] | undefined,
+    chat: Chat
+): Promise<LLMContentPart[]> {
+    if (!attachments?.length) return [];
+    const parts: LLMContentPart[] = [];
     for (const attachmentId of attachments) {
         const ref = chat.inlays.refs[attachmentId];
         if (!ref) continue;
@@ -476,7 +571,31 @@ async function renderWithFormat(
 async function countMessages(messages: LLMMessage[], tokenizer: LLMTokenizer): Promise<number> {
     if (messages.length === 0) return 0;
     return TokenCounter.count(
-        messages.map((message) => getTextContent(message.content)).join('\n'),
+        messages
+            .map((message) => message.content.map(contentPartForTokenCount).join('\n'))
+            .join('\n'),
         tokenizer
     );
+}
+
+async function countToolDefinitions(toolIds: string[], tokenizer: LLMTokenizer): Promise<number> {
+    if (toolIds.length === 0) return 0;
+    return TokenCounter.count(JSON.stringify(resolveAgentTools(toolIds)), tokenizer);
+}
+
+function contentPartForTokenCount(part: LLMContentPart): string {
+    switch (part.type) {
+        case 'text':
+            return part.text;
+        case 'image':
+            return `[image:${part.mimeType}]`;
+        case 'tool_request':
+            return JSON.stringify({ name: part.name, arguments: part.args });
+        case 'tool_response':
+            return JSON.stringify({
+                name: part.name,
+                content: part.content,
+                isError: part.isError ?? false
+            });
+    }
 }

@@ -30,6 +30,7 @@ import type { ImageGenProvider } from '$lib/types/models/imagegen';
 import type { STTProvider } from '$lib/types/models/stt';
 import type { RerankerProvider } from '$lib/types/models/reranker';
 import type { WorkflowDefinition } from '$lib/workflow/types';
+import { normalizeWorkflow } from '$lib/workflow/normalization';
 import { defaultFileFields, hydrateOwnedItems, type FileItem } from './resource';
 
 // ─── Domain Types ──────────────────────────────────────────────────────
@@ -236,6 +237,7 @@ export const defaultSettings: AppSettings = {
 
 function parseFields(data: Record<string, unknown>): AppSettings {
     const fields = deepMerge(defaultSettings, data as DeepPartial<AppSettings>);
+    fields.translation.workflow = normalizeWorkflow(fields.translation.workflow);
     fields.files.refs = hydrateOwnedItems(fields.files.refs, defaultFileFields);
     return fields;
 }

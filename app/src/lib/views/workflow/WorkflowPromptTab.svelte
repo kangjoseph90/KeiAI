@@ -96,7 +96,14 @@
     }
 
     function changeBlockType(blockId: string, type: PromptBlock['type']) {
-        return applyBlockEdit(blockId, { type } as DeepPartial<PromptBlock>);
+        switch (type) {
+            case 'text':
+                return applyBlockEdit(blockId, { type, role: 'system', content: '' });
+            case 'history':
+                return applyBlockEdit(blockId, { type, historyMode: 'last_content' });
+            case 'lorebook':
+                return applyBlockEdit(blockId, { type });
+        }
     }
 
     function toggleBlock(blockId: string) {
@@ -348,6 +355,19 @@
                                                     applyBlockEdit(block.id, { end: value })}
                                             />
                                         </div>
+                                        <label
+                                            class="flex w-fit cursor-pointer items-center gap-2 text-xs select-none"
+                                            ><input
+                                                type="checkbox"
+                                                checked={block.historyMode === 'last_content'}
+                                                onchange={(event) =>
+                                                    applyBlockEdit(block.id, {
+                                                        historyMode: event.currentTarget.checked
+                                                            ? 'last_content'
+                                                            : 'full_trace'
+                                                    })}
+                                            />Last response only</label
+                                        >
                                         <div class="space-y-1.5">
                                             <Label class="text-xs">Message format</Label>
                                             <Textarea

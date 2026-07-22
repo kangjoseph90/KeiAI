@@ -10,15 +10,29 @@ const {
     mockResolveParameters,
     mockGetSettings,
     mockTokenCount,
-    mockGetChat
+    mockGetChat,
+    mockToolCreate,
+    mockToolUpdate,
+    mockToolGet,
+    mockReadWorkflowFile,
+    mockWriteWorkflowFile,
+    mockAppConfirm
 } = vi.hoisted(() => ({
     mockSelectLLMHandler: vi.fn(),
     mockResolveModelConfig: vi.fn(),
     mockResolveParameters: vi.fn(),
     mockGetSettings: vi.fn(),
     mockTokenCount: vi.fn(),
-    mockGetChat: vi.fn()
+    mockGetChat: vi.fn(),
+    mockToolCreate: vi.fn(),
+    mockToolUpdate: vi.fn(),
+    mockToolGet: vi.fn(),
+    mockReadWorkflowFile: vi.fn(),
+    mockWriteWorkflowFile: vi.fn(),
+    mockAppConfirm: vi.fn()
 }));
+
+let toolRecord: Record<string, unknown> | null = null;
 
 const stubChat: Chat = {
     id: 'chat-1',
@@ -59,6 +73,22 @@ vi.mock('$lib/llm/tokenizer', () => ({
     }
 }));
 
+vi.mock('$lib/services/content/tool', () => ({
+    ToolCallService: {
+        create: mockToolCreate,
+        update: mockToolUpdate,
+        get: mockToolGet
+    }
+}));
+
+vi.mock('$lib/workflow/file/operations', () => ({
+    readWorkflowFile: mockReadWorkflowFile,
+    writeWorkflowFile: mockWriteWorkflowFile,
+    normalizeWorkflowFilePath: (path: string) => path.trim()
+}));
+
+vi.mock('$lib/ui', () => ({ appConfirm: mockAppConfirm }));
+
 describe('executeAgentNode', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -71,6 +101,23 @@ describe('executeAgentNode', () => {
         mockResolveParameters.mockResolvedValue({ temperature: 0.5 });
         mockGetChat.mockResolvedValue(stubChat);
         mockTokenCount.mockImplementation(async (text: string) => text.length);
+        toolRecord = null;
+        mockToolCreate.mockImplementation(async (chatId, fields) => {
+            toolRecord = { ...fields, id: 'tool-record-1', chatId };
+            return toolRecord;
+        });
+        mockToolUpdate.mockImplementation(async (_id, changes) => {
+            toolRecord = { ...toolRecord, ...changes };
+            return toolRecord;
+        });
+        mockToolGet.mockImplementation(async () => toolRecord);
+        mockReadWorkflowFile.mockResolvedValue({
+            id: 'file-1',
+            path: 'notes.txt',
+            content: 'hello from file',
+            sortOrder: 'a'
+        });
+        mockAppConfirm.mockResolvedValue(true);
     });
 
     it('builds a prompt from slots and streams serialized LLM output', async () => {
@@ -105,6 +152,7 @@ describe('executeAgentNode', () => {
                     class: 'Agent',
                     position: { x: 0, y: 0 },
                     llmType: 'chat',
+                    toolIds: [],
                     maxContext: 1000,
                     maxResponse: 100,
                     lorebookRatio: 0.2,
@@ -192,6 +240,7 @@ describe('executeAgentNode', () => {
                     class: 'Agent',
                     position: { x: 0, y: 0 },
                     llmType: 'chat',
+                    toolIds: [],
                     maxContext: 1000,
                     maxResponse: 100,
                     lorebookRatio: 0.2,
@@ -278,6 +327,7 @@ describe('executeAgentNode', () => {
                     class: 'Agent',
                     position: { x: 0, y: 0 },
                     llmType: 'chat',
+                    toolIds: [],
                     maxContext: 1000,
                     maxResponse: 100,
                     lorebookRatio: 0.2,
@@ -354,6 +404,7 @@ describe('executeAgentNode', () => {
                     class: 'Agent',
                     position: { x: 0, y: 0 },
                     llmType: 'chat',
+                    toolIds: [],
                     maxContext: 1000,
                     maxResponse: 100,
                     lorebookRatio: 0.2,
@@ -394,7 +445,160 @@ describe('executeAgentNode', () => {
         }
         expect(values).toEqual(['He', 'Hello', 'Hello!']);
     });
+
+    it('emits pending, running, and success states while executing a read tool', async () => {
+        let requestCount = 0;
+        const stream = vi.fn(async function* (
+            _prompt: LLMMessage[],
+            _signal: AbortSignal,
+            options: { tools?: Array<{ name: string }> }
+        ) {
+            requestCount += 1;
+            if (requestCount === 1) {
+                expect(options.tools?.map((tool) => tool.name)).toEqual(['file_read']);
+                yield {
+                    content: '',
+                    toolCalls: [
+                        {
+                            callId: 'provider-call-1',
+                            name: 'file_read',
+                            args: { namespace: 'chat', path: 'notes.txt' }
+                        }
+                    ]
+                };
+                return;
+            }
+            yield { content: 'Finished.' };
+        });
+        mockSelectLLMHandler.mockReturnValue({ handler: { stream }, unsupported: [] });
+
+        const workflow = createToolWorkflow('file_read');
+        const values: string[] = [];
+        for await (const value of new WorkflowRuntime(workflow, {
+            ctx: { presetId: 'preset-1', chatId: 'chat-1' },
+            messages: {} as PagedMessages
+        }).run()) {
+            values.push(value);
+        }
+
+        expect(values).toContain(
+            '<|tool_call id="tool-record-1" name="file_read" status="pending"|>'
+        );
+        expect(values).toContain(
+            '<|tool_call id="tool-record-1" name="file_read" status="running"|>'
+        );
+        expect(values).toContain(
+            '<|tool_call id="tool-record-1" name="file_read" status="success"|>'
+        );
+        expect(values.at(-1)).toBe(
+            '<|tool_call id="tool-record-1" name="file_read" status="success"|>Finished.'
+        );
+        expect(mockReadWorkflowFile).toHaveBeenCalledWith(
+            'chat',
+            'notes.txt',
+            expect.objectContaining({ chatId: 'chat-1' })
+        );
+    });
+
+    it('emits rejected for a denied write tool without executing it', async () => {
+        let requestCount = 0;
+        mockAppConfirm.mockResolvedValue(false);
+        mockSelectLLMHandler.mockReturnValue({
+            handler: {
+                stream: vi.fn(async function* () {
+                    requestCount += 1;
+                    if (requestCount === 1) {
+                        yield {
+                            content: '',
+                            toolCalls: [
+                                {
+                                    callId: 'provider-call-1',
+                                    name: 'file_write',
+                                    args: {
+                                        namespace: 'chat',
+                                        path: 'notes.txt',
+                                        content: 'new text'
+                                    }
+                                }
+                            ]
+                        };
+                        return;
+                    }
+                    yield { content: 'Write cancelled.' };
+                })
+            },
+            unsupported: []
+        });
+
+        const values: string[] = [];
+        for await (const value of new WorkflowRuntime(createToolWorkflow('file_write'), {
+            ctx: { presetId: 'preset-1', chatId: 'chat-1' },
+            messages: {} as PagedMessages
+        }).run()) {
+            values.push(value);
+        }
+
+        expect(values).toContain(
+            '<|tool_call id="tool-record-1" name="file_write" status="pending"|>'
+        );
+        expect(values).toContain(
+            '<|tool_call id="tool-record-1" name="file_write" status="rejected"|>'
+        );
+        expect(mockAppConfirm).toHaveBeenCalledWith(
+            {
+                title: 'Allow File Write?',
+                description:
+                    'Agent wants to write a file\n\nTarget\nchat:notes.txt\n\nContent preview\nnew text',
+                confirmText: 'Allow',
+                cancelText: "Don't allow"
+            },
+            expect.any(AbortSignal)
+        );
+        expect(mockWriteWorkflowFile).not.toHaveBeenCalled();
+    });
 });
+
+function createToolWorkflow(toolId: 'file_read' | 'file_write'): WorkflowDefinition {
+    return {
+        nodes: {
+            agent: {
+                id: 'agent',
+                name: 'Agent',
+                class: 'Agent',
+                position: { x: 0, y: 0 },
+                llmType: 'chat',
+                toolIds: [toolId],
+                maxContext: 1000,
+                maxResponse: 100,
+                lorebookRatio: 0.2,
+                memoryRatio: 0.2,
+                lorebookScanDepth: 0,
+                promptBlocks: {
+                    instruction: {
+                        id: 'instruction',
+                        name: 'Instruction',
+                        type: 'text',
+                        role: 'user',
+                        content: 'Use a tool',
+                        sortOrder: 'a',
+                        enabled: true
+                    }
+                },
+                slotNames: {},
+                inputs: {},
+                inputValues: {}
+            },
+            output: {
+                id: 'output',
+                name: 'Output',
+                class: 'Output',
+                position: { x: 0, y: 0 },
+                inputs: { content: { sourceNode: 'agent', sourcePort: 0 } },
+                inputValues: {}
+            }
+        }
+    };
+}
 
 async function collectFinal(stream: AsyncIterable<string>): Promise<string> {
     let final = '';

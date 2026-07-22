@@ -2,9 +2,11 @@ import { getAppSettings } from '$lib/stores/content/settings';
 import { getMergedLorebooks } from '$lib/stores/content/merged';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
 import type { LLMContentPart, LLMStreamContent } from '$lib/llm/types';
-import { ToolCallService, type ToolCallRequest } from '$lib/services/content/tool';
+import { ToolCallService } from '$lib/services/content/tool';
 import type { RuntimeContext } from '$lib/types/context';
 import { AppError } from '$lib/types/errors';
+import type { ToolCallRequest, ToolDefinition } from '$lib/types/tools';
+import { appConfirm } from '$lib/ui';
 import type { Macro } from '$lib/template';
 import type {
     AgentNode,
@@ -21,6 +23,12 @@ import {
 import { agentPartsToLLMMessages, serializeAgentParts, type AgentPart } from './llm';
 import { buildPrompt } from './prompt';
 import { getChat } from '$lib/stores';
+import {
+    getToolRuntimeContext,
+    resolveAgentTools,
+    validateToolArguments,
+    type AgentToolDefinition
+} from './tool';
 
 type AgentMacroResult =
     | { status: 'value'; macros: Map<string, Macro> }
@@ -78,6 +86,7 @@ export async function executeAgentNode({
         throw new AppError('INVALID_INPUT', 'Failed to create LLM handler');
     }
     const { handler, unsupported = [] } = selected;
+    let tools = resolveAgentTools(node.toolIds);
 
     let basePrompt = await buildPrompt({
         agent: node,
@@ -99,6 +108,17 @@ export async function executeAgentNode({
             )
         }));
     }
+    if (unsupported.includes('tool_call')) {
+        tools = [];
+        basePrompt = basePrompt
+            .map((message) => ({
+                ...message,
+                content: message.content.filter(
+                    (part) => part.type !== 'tool_request' && part.type !== 'tool_response'
+                )
+            }))
+            .filter((message) => message.content.length > 0);
+    }
 
     const shouldStream =
         (await resolveStreamInput(inputs.stream, true)) && !unsupported.includes('streaming');
@@ -114,13 +134,14 @@ export async function executeAgentNode({
 
     for (let loop = 0; loop < MAX_AGENT_TOOL_CALL_LOOPS; loop += 1) {
         throwIfAborted(signal);
-        const followupPrompt = [...basePrompt, ...agentPartsToLLMMessages(completedParts)];
+        const followupPrompt = [...basePrompt, ...(await agentPartsToLLMMessages(completedParts))];
         let latestRequestState: LLMStreamContent | null = null;
 
         for await (const state of handler.stream(followupPrompt, signal, {
             parameters: parameters ?? {},
             maxResponse: node.maxResponse,
-            stream: shouldStream
+            stream: shouldStream,
+            tools: toLLMToolDefinitions(tools)
         })) {
             throwIfAborted(signal);
             latestRequestState = state;
@@ -131,14 +152,29 @@ export async function executeAgentNode({
 
         if (!latestRequestState) break;
 
-        const committedParts = await toCommittedParts(latestRequestState, ctx);
-        throwIfAborted(signal);
-
+        const committedParts = toPreviewParts(latestRequestState);
         completedParts.push(...committedParts);
         latest = serializeAgentParts(completedParts);
         if (shouldStream) emitIfChanged(latest);
 
-        const hasToolCall = committedParts.some((part) => part.type === 'tool_call');
+        for (const toolCall of latestRequestState.toolCalls ?? []) {
+            await executeToolCall({
+                toolCall,
+                tools,
+                requestApproval: (tool, request) =>
+                    confirmToolCall(tool, request, node.name, signal),
+                ctx,
+                scopeType: chat.scopeType,
+                signal,
+                completedParts,
+                emit: () => {
+                    latest = serializeAgentParts(completedParts);
+                    emitIfChanged(latest);
+                }
+            });
+        }
+
+        const hasToolCall = Boolean(latestRequestState.toolCalls?.length);
         if (!hasToolCall) break;
     }
 
@@ -208,47 +244,124 @@ function toPreviewParts(state: LLMStreamContent): AgentPart[] {
     return parts;
 }
 
-async function toCommittedParts(
-    state: LLMStreamContent,
-    ctx: RuntimeContext
-): Promise<AgentPart[]> {
-    const parts = toPreviewParts(state);
-    for (const toolCall of state.toolCalls ?? []) {
-        parts.push(await createToolCallPart(toolCall, ctx));
-    }
-    return parts;
+interface ExecuteToolCallInput {
+    toolCall: ToolCallRequest;
+    tools: AgentToolDefinition[];
+    requestApproval: (tool: AgentToolDefinition, toolCall: ToolCallRequest) => Promise<boolean>;
+    ctx: RuntimeContext;
+    scopeType: 'user' | 'room';
+    signal: AbortSignal;
+    completedParts: AgentPart[];
+    emit: () => void;
 }
 
-async function createToolCallPart(
-    toolCall: ToolCallRequest,
-    ctx: RuntimeContext
-): Promise<AgentPart> {
-    if (!ctx.chatId) {
-        throw new Error('Tool call creation requires chatId');
+async function executeToolCall(input: ExecuteToolCallInput): Promise<void> {
+    const { toolCall, tools, requestApproval, ctx, scopeType, signal, completedParts, emit } =
+        input;
+    if (!ctx.chatId) throw new AppError('INVALID_INPUT', 'Tool call creation requires chatId');
+
+    const created = await ToolCallService.create(
+        ctx.chatId,
+        { status: 'pending', call: toolCall },
+        scopeType
+    );
+    const partIndex =
+        completedParts.push({
+            type: 'tool_call',
+            id: created.id,
+            name: toolCall.name,
+            status: 'pending'
+        }) - 1;
+    emit();
+
+    const setStatus = (status: Extract<AgentPart, { type: 'tool_call' }>['status']): void => {
+        completedParts[partIndex] = {
+            type: 'tool_call',
+            id: created.id,
+            name: toolCall.name,
+            status
+        };
+        emit();
+    };
+
+    const tool = tools.find((candidate) => candidate.name === toolCall.name);
+    if (!tool) {
+        await completeToolError(created.id, `Tool is not enabled for this agent: ${toolCall.name}`);
+        setStatus('error');
+        return;
     }
 
-    const created = await ToolCallService.create(ctx.chatId, {
-        status: 'pending',
-        call: toolCall
-    });
-
-    // TODO: Replace this mock response with real tool execution/approval handling.
-    const completed = await ToolCallService.update(created.id, {
-        status: 'success',
-        response: {
-            content: [
-                {
-                    type: 'text',
-                    text: `Mock tool response for ${toolCall.name}`
-                }
-            ]
+    try {
+        validateToolArguments(tool, toolCall.args);
+        if (tool.permission === 'write') {
+            const approved = await requestApproval(tool, toolCall);
+            throwIfAborted(signal);
+            if (!approved) {
+                await ToolCallService.update(created.id, {
+                    status: 'rejected',
+                    response: [{ type: 'text', text: 'User rejected the tool request.' }]
+                });
+                setStatus('rejected');
+                return;
+            }
         }
-    });
 
-    return {
-        type: 'tool_call',
-        id: completed.id,
-        name: completed.call.name,
-        status: completed.status
-    };
+        await ToolCallService.update(created.id, { status: 'running' });
+        setStatus('running');
+        const response = await tool.execute(toolCall.args, getToolRuntimeContext(ctx, signal));
+        throwIfAborted(signal);
+        await ToolCallService.update(created.id, { status: 'success', response });
+        setStatus('success');
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Tool execution failed';
+        await completeToolError(created.id, message);
+        setStatus('error');
+        if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    }
+}
+
+function confirmToolCall(
+    tool: AgentToolDefinition,
+    toolCall: ToolCallRequest,
+    agentName: string,
+    signal: AbortSignal
+): Promise<boolean> {
+    return appConfirm(
+        {
+            title: `Allow ${tool.label}?`,
+            description: formatToolApproval(toolCall, agentName),
+            confirmText: 'Allow',
+            cancelText: "Don't allow"
+        },
+        signal
+    );
+}
+
+async function completeToolError(id: string, message: string): Promise<void> {
+    await ToolCallService.update(id, {
+        status: 'error',
+        response: [{ type: 'text', text: message }]
+    });
+}
+
+function formatToolApproval(toolCall: ToolCallRequest, agentName: string): string {
+    const namespace = typeof toolCall.args.namespace === 'string' ? toolCall.args.namespace : '';
+    const path = typeof toolCall.args.path === 'string' ? toolCall.args.path : '';
+    const content = typeof toolCall.args.content === 'string' ? toolCall.args.content : '';
+    const target = namespace && path ? `${namespace}:${path}` : toolCall.name;
+    const action = toolCall.name === 'file_write' ? 'write a file' : 'run this tool';
+    const preview = content.length > 500 ? `${content.slice(0, 500)}…` : content;
+    const lines = [`${agentName} wants to ${action}`, '', 'Target', target];
+    if (preview) lines.push('', 'Content preview', preview);
+    return lines.join('\n');
+}
+
+function toLLMToolDefinitions(tools: AgentToolDefinition[]): ToolDefinition[] {
+    return tools.map((tool) => ({
+        id: tool.id,
+        name: tool.name,
+        description: tool.description,
+        permission: tool.permission,
+        inputSchema: tool.inputSchema
+    }));
 }

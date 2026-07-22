@@ -569,6 +569,7 @@ export const AGENT_NODE_DEFINITION: WorkflowNodeDefinition<AgentNode> = {
         class: 'Agent',
         position: { x: 0, y: 0 },
         llmType: 'chat',
+        toolIds: [],
         promptBlocks: {},
         maxContext: 60000,
         maxResponse: 6000,
