@@ -188,6 +188,7 @@ describe('workflow edits', () => {
 
         const updated = updateBlock(created.workflow, 'chat_agent', created.blockId, {
             type: 'history',
+            historyMode: 'last_content',
             start: -5,
             format: '{{slot}}'
         });
@@ -198,6 +199,7 @@ describe('workflow edits', () => {
             id: created.blockId,
             name: 'Instruction',
             type: 'history',
+            historyMode: 'last_content',
             start: -5,
             format: '{{slot}}',
             sortOrder: 'a0',
@@ -224,7 +226,8 @@ describe('workflow edits', () => {
                 chat_agent: {
                     promptBlocks: {
                         [created.blockId]: undefined
-                    }
+                    },
+                    toolIds: []
                 }
             }
         });

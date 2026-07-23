@@ -6,14 +6,33 @@ import {
     getWorkflowOutputPortDefinition
 } from './registry';
 import type { WorkflowDefinition } from './types';
+import { requireAgentTool } from './agent/tool';
 
 type VisitState = 'visiting' | 'visited';
 
 export function validateWorkflow(workflow: WorkflowDefinition): void {
     validateAgentSlots(workflow);
+    validateAgentTools(workflow);
     validateInputValues(workflow);
     validateConnectionTypes(workflow);
     validateNoCycles(workflow);
+}
+
+function validateAgentTools(workflow: WorkflowDefinition): void {
+    for (const node of Object.values(workflow.nodes)) {
+        if (node.class !== 'Agent') continue;
+        const seen = new Set<string>();
+        for (const toolId of node.toolIds) {
+            if (seen.has(toolId)) {
+                throw new AppError(
+                    'INVALID_INPUT',
+                    `Agent tool is duplicated: ${node.id}.${toolId}`
+                );
+            }
+            requireAgentTool(toolId);
+            seen.add(toolId);
+        }
+    }
 }
 
 export function validateWorkflowConnection(

@@ -14,6 +14,7 @@ import {
 import type { LLMModelConfig, LLMParameters, LLMType } from '$lib/types/models/llm';
 import type { EntityListConfig } from '$lib/types/refs';
 import type { WorkflowDefinition } from '$lib/workflow/types';
+import { normalizeWorkflow } from '$lib/workflow/normalization';
 import type { TogglePanel } from '$lib/types/toggle';
 import { defaultScriptFields, hydrateOwnedItems, type Script } from './resource';
 
@@ -59,6 +60,7 @@ export const defaultPresetFields: PresetFields = {
 
 function parseFields(record: PresetRecord): PresetFields {
     const fields = deepMerge(defaultPresetFields, record.data as DeepPartial<PresetFields>);
+    fields.chatWorkflow = normalizeWorkflow(fields.chatWorkflow);
     fields.scripts.refs = hydrateOwnedItems(fields.scripts.refs, defaultScriptFields);
     return fields;
 }

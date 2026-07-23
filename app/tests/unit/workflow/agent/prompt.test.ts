@@ -12,13 +12,15 @@ const {
     mockRunTemplate,
     mockRunPipeline,
     mockTokenCount,
-    mockReadBytes
+    mockReadBytes,
+    mockGetToolCall
 } = vi.hoisted(() => ({
     mockCollectTemplateMacros: vi.fn(),
     mockRunTemplate: vi.fn(),
     mockRunPipeline: vi.fn(),
     mockTokenCount: vi.fn(),
-    mockReadBytes: vi.fn()
+    mockReadBytes: vi.fn(),
+    mockGetToolCall: vi.fn()
 }));
 
 // collectTemplateMacros / runTemplate are impure; the rest of $lib/template is pure.
@@ -43,6 +45,10 @@ vi.mock('$lib/llm/tokenizer', () => ({
 
 vi.mock('$lib/services/asset', () => ({
     AssetService: { readBytes: mockReadBytes }
+}));
+
+vi.mock('$lib/services/content/tool', () => ({
+    ToolCallService: { get: mockGetToolCall }
 }));
 
 const character: Character = {
@@ -88,6 +94,7 @@ const persona: Persona = {
 
 function makePreset(promptBlocks: Record<string, PromptBlock>): AgentPromptConfig {
     return {
+        toolIds: [],
         promptBlocks,
         maxResponse: 6000,
         maxContext: 60000,
@@ -168,6 +175,7 @@ describe('buildPrompt', () => {
             async (_phase: string, _ctx: RuntimeContext, data: string) => data
         );
         mockTokenCount.mockImplementation(async (text: string) => text.length);
+        mockGetToolCall.mockResolvedValue(null);
         mockReadBytes.mockResolvedValue(null);
     });
 
@@ -191,6 +199,7 @@ describe('buildPrompt', () => {
                 id: 'history',
                 name: 'History',
                 type: 'history',
+                historyMode: 'last_content',
                 start: -10,
                 end: -1,
                 sortOrder: 'b',
@@ -228,6 +237,7 @@ describe('buildPrompt', () => {
                 id: 'history',
                 name: 'History',
                 type: 'history',
+                historyMode: 'last_content',
                 start: -10,
                 sortOrder: 'a',
                 enabled: true
@@ -294,6 +304,7 @@ describe('buildPrompt', () => {
                 id: 'history',
                 name: 'History',
                 type: 'history',
+                historyMode: 'last_content',
                 start: -10,
                 sortOrder: 'a',
                 enabled: true
@@ -339,6 +350,85 @@ describe('buildPrompt', () => {
         ]);
     });
 
+    it('reconstructs full history trace without thoughts and falls back when details are missing', async () => {
+        const message = makeMessage('msg-1', 'assistant', 'unused');
+        message.swipes[message.activeSwipeId].parts = [
+            { type: 'thought', text: 'private reasoning' },
+            { type: 'content', text: 'Checking. ' },
+            { type: 'tool_call', id: 'tool-1', name: 'file_read', status: 'success' },
+            { type: 'tool_call', id: 'tool-missing', name: 'file_write', status: 'error' },
+            { type: 'content', text: 'Done.' }
+        ];
+        mockGetToolCall.mockImplementation(async (id: string) =>
+            id === 'tool-1'
+                ? {
+                      id: 'tool-1',
+                      chatId: 'chat-1',
+                      status: 'success',
+                      call: {
+                          callId: 'provider-1',
+                          name: 'file_read',
+                          args: { namespace: 'chat', path: 'notes.txt' }
+                      },
+                      response: [{ type: 'text', text: 'saved text' }]
+                  }
+                : null
+        );
+        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([{ message, index: 0 }]);
+        const prompt = await buildTestPrompt({
+            chat,
+            preset: makePreset({
+                history: {
+                    id: 'history',
+                    name: 'History',
+                    type: 'history',
+                    historyMode: 'full_trace',
+                    start: -10,
+                    sortOrder: 'a',
+                    enabled: true
+                }
+            }),
+            lorebooks: [],
+            messages: { slice } as unknown as PagedMessages
+        });
+
+        expect(prompt).toEqual([
+            {
+                role: 'assistant',
+                content: [
+                    { type: 'text', text: 'Checking. ' },
+                    {
+                        type: 'tool_request',
+                        callId: 'provider-1',
+                        name: 'file_read',
+                        args: { namespace: 'chat', path: 'notes.txt' }
+                    }
+                ]
+            },
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'tool_response',
+                        callId: 'provider-1',
+                        name: 'file_read',
+                        content: [{ type: 'text', text: 'saved text' }]
+                    }
+                ]
+            },
+            {
+                role: 'assistant',
+                content: [
+                    {
+                        type: 'text',
+                        text: '[Tool call: file_write — error; details unavailable]'
+                    },
+                    { type: 'text', text: 'Done.' }
+                ]
+            }
+        ]);
+    });
+
     it('adds attached chat inlays as image content parts in history', async () => {
         const message = makeMessage('msg-1', 'user', 'Describe this image.');
         message.swipes[message.activeSwipeId].attachments = ['inlay-1'];
@@ -369,6 +459,7 @@ describe('buildPrompt', () => {
                     id: 'history',
                     name: 'History',
                     type: 'history',
+                    historyMode: 'last_content',
                     start: -1,
                     sortOrder: 'a',
                     enabled: true
@@ -416,6 +507,7 @@ describe('buildPrompt', () => {
                 id: 'history',
                 name: 'History',
                 type: 'history',
+                historyMode: 'last_content',
                 start: -10,
                 end: -1,
                 format: '원본: {{slot}}\n입력: {{slot::source}}\n이름: {{name}}',
@@ -493,6 +585,7 @@ describe('buildPrompt', () => {
                 id: 'history',
                 name: 'History',
                 type: 'history',
+                historyMode: 'last_content',
                 start: -10,
                 sortOrder: 'a',
                 enabled: true
@@ -559,6 +652,7 @@ describe('buildPrompt', () => {
                     id: 'history',
                     name: 'History',
                     type: 'history',
+                    historyMode: 'last_content',
                     start: -1,
                     sortOrder: 'a',
                     enabled: true
@@ -593,6 +687,7 @@ describe('buildPrompt', () => {
                     id: 'history',
                     name: 'History',
                     type: 'history',
+                    historyMode: 'last_content',
                     sortOrder: 'a',
                     enabled: true
                 }
@@ -625,6 +720,7 @@ describe('buildPrompt', () => {
                     id: 'history',
                     name: 'History',
                     type: 'history',
+                    historyMode: 'last_content',
                     sortOrder: 'a',
                     enabled: true
                 }
@@ -653,6 +749,7 @@ describe('buildPrompt', () => {
                 id: 'firstHistory',
                 name: 'First History',
                 type: 'history',
+                historyMode: 'last_content',
                 sortOrder: 'a',
                 enabled: true
             },
@@ -660,6 +757,7 @@ describe('buildPrompt', () => {
                 id: 'secondHistory',
                 name: 'Second History',
                 type: 'history',
+                historyMode: 'last_content',
                 sortOrder: 'b',
                 enabled: true
             }

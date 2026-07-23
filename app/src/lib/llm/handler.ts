@@ -224,13 +224,17 @@ function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel |
 
     // Dynamic models
     if (config.provider === 'openrouter' || config.provider === 'transformers') {
-        return {
+        const model: BuiltInLLMModel = {
             id: `${config.provider}::${config.id}`,
             name: config.id,
             modelId: config.id,
             provider: config.provider,
             tokenizer: config.tokenizer ?? 'o200k_base'
-        } as BuiltInLLMModel;
+        };
+        if (config.provider === 'transformers') {
+            model.unsupported = ['image_input', 'tool_call'];
+        }
+        return model;
     }
 
     // Static models

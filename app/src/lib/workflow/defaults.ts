@@ -24,6 +24,7 @@ export function createDefaultChatWorkflow(
         class: 'Agent',
         position: { x: 0, y: 0 },
         llmType: 'chat',
+        toolIds: [],
         promptBlocks: options.promptBlocks ?? {},
         maxContext: options.maxContext ?? 60000,
         maxResponse: options.maxResponse ?? 6000,
@@ -63,6 +64,7 @@ export function createDefaultTranslationWorkflow(): WorkflowDefinition {
         class: 'Agent',
         position: { x: 0, y: 0 },
         llmType: 'translation',
+        toolIds: [],
         promptBlocks: {
             [instructionId]: {
                 id: instructionId,

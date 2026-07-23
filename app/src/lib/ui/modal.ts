@@ -67,17 +67,34 @@ export function appAlert(options: AlertOptions): Promise<void> {
     });
 }
 
-export function appConfirm(options: ConfirmOptions): Promise<boolean> {
+export function appConfirm(options: ConfirmOptions, signal?: AbortSignal): Promise<boolean> {
     return new Promise((resolve) => {
+        const id = generateId();
+        let settled = false;
+        const finish = (value: boolean): void => {
+            if (settled) return;
+            settled = true;
+            signal?.removeEventListener('abort', onAbort);
+            resolve(value);
+        };
+        const onAbort = (): void => {
+            removeModal(id);
+            finish(false);
+        };
+        if (signal?.aborted) {
+            finish(false);
+            return;
+        }
+        signal?.addEventListener('abort', onAbort, { once: true });
         pushModal({
-            id: generateId(),
+            id,
             type: 'confirm',
             title: options.title,
             description: options.description,
             confirmText: options.confirmText ?? 'Confirm',
             cancelText: options.cancelText ?? 'Cancel',
             variant: options.variant ?? 'default',
-            resolve
+            resolve: finish
         });
     });
 }

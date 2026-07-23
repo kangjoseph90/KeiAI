@@ -21,6 +21,8 @@
         Bot,
         Braces,
         CheckCircle2,
+        ChevronDown,
+        ChevronUp,
         CircleDot,
         FileInput,
         FileOutput,
@@ -34,6 +36,7 @@
     import { WORKFLOW_NODE_DEFINITIONS, getWorkflowInputPortDefinition } from '$lib/workflow';
     import type { LLMType } from '$lib/types/models/llm';
     import type { WorkflowNodeCategory } from '$lib/workflow';
+    import { listAgentTools } from '$lib/workflow/agent/tool';
     import WorkflowInputRow from './WorkflowInputRow.svelte';
 
     type AgentNumberField =
@@ -85,6 +88,8 @@
     const inputEntries = $derived(Object.entries(data.node.inputs));
     const outputEntries = $derived(Object.entries(definition.outputs));
     const categoryStyle = $derived(CATEGORY_STYLES[definition.category]);
+    const agentTools = listAgentTools();
+    let toolsExpanded = $state(false);
 
     $effect(() => {
         Object.keys(data.node.inputs);
@@ -100,6 +105,17 @@
         if (Number.isFinite(parsed)) {
             data.onUpdateNode(data.node.id, { [field]: parsed } as WorkflowNodeChanges);
         }
+    }
+
+    function updateAgentTool(toolId: string, enabled: boolean) {
+        if (data.node.class !== 'Agent') return;
+        const current = data.node.toolIds;
+        const toolIds = enabled
+            ? current.includes(toolId)
+                ? current
+                : [...current, toolId]
+            : current.filter((id) => id !== toolId);
+        data.onUpdateNode(data.node.id, { toolIds });
     }
 </script>
 
@@ -141,6 +157,17 @@
             onchange={(event) =>
                 data.onUpdateNode(data.node.id, { name: event.currentTarget.value })}
         />
+        {#if data.node.class === 'Agent' && data.onEditPrompt}
+            <button
+                type="button"
+                class="nodrag flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-background/70"
+                title="Edit prompt"
+                aria-label="Edit prompt"
+                onclick={() => data.onEditPrompt?.(data.node.id)}
+            >
+                <FileText class="size-4" />
+            </button>
+        {/if}
         {#if data.hasIssue}<TriangleAlert class="size-4 shrink-0 text-destructive" />{/if}
     </div>
 
@@ -207,16 +234,42 @@
                             updateNumber('lorebookScanDepth', event.currentTarget.value)}
                     />
                 </label>
+                <div class="col-span-2 space-y-1.5">
+                    <button
+                        type="button"
+                        class="nodrag flex h-8 w-full items-center justify-between rounded-md px-2 text-xs text-muted-foreground hover:bg-muted/50"
+                        onclick={() => (toolsExpanded = !toolsExpanded)}
+                    >
+                        <span>Tools</span>
+                        {#if toolsExpanded}
+                            <ChevronUp class="size-3" />
+                        {:else}
+                            <ChevronDown class="size-3" />
+                        {/if}
+                    </button>
+                    {#if toolsExpanded}
+                        <div class="grid gap-4 rounded-lg border bg-muted/30 p-4">
+                            <div class="flex flex-wrap gap-x-5 gap-y-2">
+                                {#each agentTools as tool (tool.id)}
+                                    <label class="nodrag flex items-center gap-2 text-xs">
+                                        <input
+                                            type="checkbox"
+                                            class="size-4 accent-primary"
+                                            checked={data.node.toolIds.includes(tool.id)}
+                                            onchange={(event) =>
+                                                updateAgentTool(
+                                                    tool.id,
+                                                    event.currentTarget.checked
+                                                )}
+                                        />
+                                        {tool.label}
+                                    </label>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+                </div>
             </div>
-            {#if data.onEditPrompt}
-                <button
-                    class="nodrag flex h-7 w-full items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-                    onclick={() => data.onEditPrompt?.(data.node.id)}
-                >
-                    <FileText class="size-3" />
-                    Edit prompt
-                </button>
-            {/if}
         {:else if data.node.class === 'String'}
             <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
                 Content

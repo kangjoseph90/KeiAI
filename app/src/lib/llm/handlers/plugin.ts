@@ -36,7 +36,8 @@ export class PluginLLMStreamHandler implements LLMStreamHandler {
             stream: options.stream ?? true,
             useProxy: this.config.useProxy,
             retry: this.config.retry,
-            timeout: this.config.timeout
+            timeout: this.config.timeout,
+            tools: options.tools
         };
 
         const rpcStream = this.instance.broker.invokeStream<LLMStreamContent>(

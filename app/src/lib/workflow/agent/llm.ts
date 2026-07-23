@@ -1,5 +1,6 @@
-import type { LLMMessage, LLMStreamContent } from '$lib/llm/types';
-import type { ToolCallStatus } from '$lib/services/content/tool';
+import type { LLMContentPart, LLMMessage, LLMStreamContent } from '$lib/llm/types';
+import { ToolCallService } from '$lib/services/content/tool';
+import type { ToolCallStatus } from '$lib/types/tools';
 import type { LLMTypeDefinition } from '$lib/types/models/llm';
 import type { WorkflowDefinition } from '$lib/workflow/types';
 
@@ -66,27 +67,60 @@ export function deserializeAgentParts(serialized: string): AgentPart[] {
     return parts;
 }
 
-export function agentPartsToLLMMessages(parts: AgentPart[]): LLMMessage[] {
+export async function agentPartsToLLMMessages(parts: AgentPart[]): Promise<LLMMessage[]> {
     const messages: LLMMessage[] = [];
-    let content = '';
+    let assistantContent: LLMContentPart[] = [];
+
+    const flushAssistant = (): void => {
+        if (assistantContent.length === 0) return;
+        messages.push({ role: 'assistant', content: assistantContent });
+        assistantContent = [];
+    };
 
     for (const part of parts) {
         switch (part.type) {
             case 'content':
-                content += part.text;
+                assistantContent.push({ type: 'text', text: part.text });
                 break;
             case 'thought':
                 break;
-            case 'tool_call':
-                // TODO: Convert tool call records and mock tool responses into provider tool messages
-                // once LLM handlers expose tool-call request/response semantics.
+            case 'tool_call': {
+                const toolCall = await ToolCallService.get(part.id);
+                if (!toolCall) {
+                    assistantContent.push({
+                        type: 'text',
+                        text: `[Tool call: ${part.name} — ${part.status}; details unavailable]`
+                    });
+                    break;
+                }
+                assistantContent.push({
+                    type: 'tool_request',
+                    callId: toolCall.call.callId,
+                    name: toolCall.call.name,
+                    args: toolCall.call.args
+                });
+                flushAssistant();
+                if (toolCall.response) {
+                    const response: LLMContentPart = {
+                        type: 'tool_response',
+                        callId: toolCall.call.callId,
+                        name: toolCall.call.name,
+                        content: toolCall.response
+                    };
+                    if (toolCall.status === 'error' || toolCall.status === 'rejected') {
+                        response.isError = true;
+                    }
+                    messages.push({
+                        role: 'user',
+                        content: [response]
+                    });
+                }
                 break;
+            }
         }
     }
 
-    if (content) {
-        messages.push({ role: 'assistant', content: [{ type: 'text', text: content }] });
-    }
+    flushAssistant();
     return messages;
 }
 

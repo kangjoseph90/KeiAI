@@ -14,7 +14,14 @@ export type PromptBlockFields =
           reverseOrder?: boolean;
           format?: string;
       }
-    | { name: string; type: 'history'; start?: number; end?: number; format?: string };
+    | {
+          name: string;
+          type: 'history';
+          start?: number;
+          end?: number;
+          format?: string;
+          historyMode: 'last_content' | 'full_trace';
+      };
 
 export type PromptBlock = PromptBlockFields & {
     id: string;
@@ -242,6 +249,7 @@ export interface UngateNode extends BaseNode {
 export interface AgentNode extends BaseNode {
     class: 'Agent';
     llmType: LLMType;
+    toolIds: string[];
     promptBlocks: Record<string, PromptBlock>;
     maxContext: number;
     maxResponse: number;

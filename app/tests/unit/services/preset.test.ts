@@ -145,6 +145,46 @@ describe('PresetService', () => {
             expect(result?.models?.chat?.id).toBe(mockFields.models?.chat?.id);
         });
 
+        it('normalizes legacy workflow nodes and prompt blocks while parsing', async () => {
+            vi.mocked(buffer.get).mockResolvedValue({
+                ...mockRecord,
+                data: {
+                    ...mockFields,
+                    chatWorkflow: {
+                        nodes: {
+                            agent: {
+                                id: 'agent',
+                                name: 'Legacy Agent',
+                                class: 'Agent',
+                                position: { x: 0, y: 0 },
+                                llmType: 'chat',
+                                promptBlocks: {
+                                    history: {
+                                        id: 'history',
+                                        name: 'History',
+                                        type: 'history',
+                                        sortOrder: 'a',
+                                        enabled: true
+                                    }
+                                },
+                                inputs: { stream: null },
+                                inputValues: { stream: true }
+                            }
+                        }
+                    }
+                } as unknown as Record<string, unknown>
+            });
+
+            const result = await PresetService.get('preset-123');
+            const agent = result?.chatWorkflow.nodes.agent;
+            expect(agent).toMatchObject({ toolIds: [], maxContext: 60000 });
+            expect(agent?.class).toBe('Agent');
+            if (!agent || agent.class !== 'Agent') throw new Error('Expected Agent node');
+            expect(agent.promptBlocks.history).toMatchObject({
+                historyMode: 'last_content'
+            });
+        });
+
         it('should return null if record is missing', async () => {
             vi.mocked(buffer.get).mockResolvedValue(null);
             expect(await PresetService.get('none')).toBeNull();

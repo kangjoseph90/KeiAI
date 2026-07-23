@@ -87,8 +87,8 @@ async function buildScanHistory(input: ResolveLorebookInput): Promise<string[]> 
         messages.map(({ message, index }) => {
             const activeSwipe = message.swipes[message.activeSwipeId];
             if (!activeSwipe) return '';
-            // TODO: Consider tool_call/thought parts for lorebook key matching
-            // once scan-source options are exposed.
+            // Lorebook keys match only the final user-facing content. Thoughts and tool traces
+            // are execution metadata and must not activate entries.
             return runTemplate(
                 getLastContentText(activeSwipe.parts),
                 toMessageContext(message, index, input.ctx),

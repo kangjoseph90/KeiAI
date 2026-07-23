@@ -68,7 +68,7 @@ export type LLMParameter =
 
 export type LLMParameters = Partial<Record<LLMParameter, number | string | boolean>>;
 
-export type LLMCapability = 'image_input' | 'streaming';
+export type LLMCapability = 'image_input' | 'streaming' | 'tool_call';
 export type LLMCapabilities = LLMCapability[];
 
 // Display names for UI
@@ -118,7 +118,8 @@ const parameterNames: Record<LLMParameter, string> = {
 
 const capabilityNames: Record<LLMCapability, string> = {
     image_input: 'Image input',
-    streaming: 'Streaming'
+    streaming: 'Streaming',
+    tool_call: 'Tool calling'
 };
 
 export function getLLMTokenizerName(encoding: LLMTokenizer): string {

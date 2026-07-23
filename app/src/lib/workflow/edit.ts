@@ -186,11 +186,11 @@ export function createBlock(
     const node = requireAgentNode(next, nodeId);
     const blockId = createUnusedId(node.promptBlocks);
 
-    node.promptBlocks[blockId] = normalizePromptBlock({
+    node.promptBlocks[blockId] = {
         ...fields,
         enabled: fields.enabled ?? true,
         id: blockId
-    } as PromptBlock);
+    } as PromptBlock;
 
     return { ...createEditResult(workflow, next), blockId };
 }
@@ -209,8 +209,17 @@ export function updateBlock(
         throw new AppError('INVALID_INPUT', 'Prompt block id cannot be changed');
     }
 
-    const updated = deepMerge(block, changes) as PromptBlock;
-    node.promptBlocks[blockId] = normalizePromptBlock({ ...updated, id: block.id });
+    const updated =
+        changes.type && changes.type !== block.type
+            ? ({
+                  name: block.name,
+                  sortOrder: block.sortOrder,
+                  enabled: block.enabled,
+                  ...changes,
+                  id: block.id
+              } as PromptBlock)
+            : ({ ...block, ...changes, id: block.id } as PromptBlock);
+    node.promptBlocks[blockId] = updated;
 
     return createEditResult(workflow, next);
 }
@@ -288,40 +297,4 @@ function createUnusedId(records: Readonly<Record<string, unknown>>): string {
     let id = generateId();
     while (records[id]) id = generateId();
     return id;
-}
-
-function normalizePromptBlock(block: PromptBlock): PromptBlock {
-    const common = {
-        name: block.name,
-        sortOrder: block.sortOrder,
-        enabled: block.enabled,
-        id: block.id
-    };
-
-    switch (block.type) {
-        case 'text':
-            return {
-                ...common,
-                type: 'text',
-                role: block.role ?? 'system',
-                content: block.content ?? ''
-            };
-        case 'history':
-            return {
-                ...common,
-                type: 'history',
-                ...(block.start === undefined ? {} : { start: block.start }),
-                ...(block.end === undefined ? {} : { end: block.end }),
-                ...(block.format === undefined ? {} : { format: block.format })
-            };
-        case 'lorebook':
-            return {
-                ...common,
-                type: 'lorebook',
-                ...(block.minDepth === undefined ? {} : { minDepth: block.minDepth }),
-                ...(block.maxDepth === undefined ? {} : { maxDepth: block.maxDepth }),
-                ...(block.reverseOrder === undefined ? {} : { reverseOrder: block.reverseOrder }),
-                ...(block.format === undefined ? {} : { format: block.format })
-            };
-    }
 }

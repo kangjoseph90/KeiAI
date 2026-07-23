@@ -1,11 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     getWorkflowLLMTypes,
     serializeAgentParts,
     deserializeAgentParts,
+    agentPartsToLLMMessages,
     type AgentPart
 } from '$lib/workflow/agent/llm';
 import { createDefaultChatWorkflow, createDefaultTranslationWorkflow } from '$lib/workflow';
+
+const { mockGetToolCall } = vi.hoisted(() => ({ mockGetToolCall: vi.fn() }));
+
+vi.mock('$lib/services/content/tool', () => ({
+    ToolCallService: { get: mockGetToolCall }
+}));
 
 describe('serializeAgentParts', () => {
     it('serializes thought, content, and tool_call parts correctly with leading/trailing spaces preserved', () => {
@@ -102,5 +109,67 @@ describe('getWorkflowLLMTypes', () => {
         const definitions = getWorkflowLLMTypes(undefined);
 
         expect(definitions).toEqual([]);
+    });
+});
+
+describe('agentPartsToLLMMessages', () => {
+    it('loads structured tool request and response details', async () => {
+        mockGetToolCall.mockResolvedValue({
+            id: 'tool-1',
+            chatId: 'chat-1',
+            status: 'success',
+            call: { callId: 'provider-1', name: 'file_read', args: { path: 'notes.txt' } },
+            response: [{ type: 'text', text: 'hello' }]
+        });
+
+        await expect(
+            agentPartsToLLMMessages([
+                { type: 'content', text: 'Reading.' },
+                { type: 'tool_call', id: 'tool-1', name: 'file_read', status: 'success' }
+            ])
+        ).resolves.toEqual([
+            {
+                role: 'assistant',
+                content: [
+                    { type: 'text', text: 'Reading.' },
+                    {
+                        type: 'tool_request',
+                        callId: 'provider-1',
+                        name: 'file_read',
+                        args: { path: 'notes.txt' }
+                    }
+                ]
+            },
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'tool_response',
+                        callId: 'provider-1',
+                        name: 'file_read',
+                        content: [{ type: 'text', text: 'hello' }]
+                    }
+                ]
+            }
+        ]);
+    });
+
+    it('uses a compact text fallback when details are unavailable', async () => {
+        mockGetToolCall.mockResolvedValue(null);
+        await expect(
+            agentPartsToLLMMessages([
+                { type: 'tool_call', id: 'missing', name: 'file_read', status: 'error' }
+            ])
+        ).resolves.toEqual([
+            {
+                role: 'assistant',
+                content: [
+                    {
+                        type: 'text',
+                        text: '[Tool call: file_read — error; details unavailable]'
+                    }
+                ]
+            }
+        ]);
     });
 });
