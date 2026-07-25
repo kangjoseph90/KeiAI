@@ -63,6 +63,7 @@ const pendingInstances = new Map<string, Promise<CharJSInstance | null>>();
  */
 const handlerManifest = new Map<string, Set<string>>();
 const sourceById = new Map<string, string>();
+const allowLowLevelById = new Map<string, boolean>();
 
 const logger = createLogger('charjs:engine');
 
@@ -72,6 +73,61 @@ let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 // ─── Cache Key ──────────────────────────────────────────────────────
 function cacheKey(charjsId: string, chatId: string, kind: ModeKind, mode: string): string {
     return `${charjsId}:${chatId}:${kind}:${mode}`;
+}
+
+function logHandlerError(instance: CharJSInstance, error: unknown): void {
+    logger.error(`Handler error for ${instance.charjs.name}:`, error);
+}
+
+async function dumpSettledResult(
+    instance: CharJSInstance,
+    resultHandle: QuickJSHandle,
+    deadline: number
+): Promise<unknown | undefined> {
+    const ctx = instance.ctx;
+
+    while (true) {
+        const state = ctx.getPromiseState(resultHandle);
+
+        if (state.type === 'fulfilled') {
+            try {
+                return ctx.dump(state.value);
+            } finally {
+                if (state.value !== resultHandle && state.value.alive) {
+                    state.value.dispose();
+                }
+            }
+        }
+
+        if (state.type === 'rejected') {
+            try {
+                logHandlerError(instance, ctx.dump(state.error));
+            } finally {
+                if (state.error.alive) state.error.dispose();
+            }
+            return undefined;
+        }
+
+        if (Date.now() > deadline) {
+            logHandlerError(instance, new Error(`Handler timed out after ${HANDLER_TIMEOUT_MS}ms`));
+            return undefined;
+        }
+
+        const jobs = ctx.runtime.executePendingJobs();
+        if (jobs.error) {
+            try {
+                logHandlerError(instance, jobs.error.context.dump(jobs.error));
+            } finally {
+                if (jobs.error.alive) jobs.error.dispose();
+            }
+            return undefined;
+        }
+        jobs.dispose();
+
+        // Host-backed promises (for example callLLM) settle outside QuickJS.
+        // Yield before pumping the next batch of VM promise jobs.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
 }
 
 // ─── WASM Module Loading (lazy, one-time) ──────────────────────────
@@ -129,6 +185,7 @@ export function destroyAllInstances(): void {
     }
     handlerManifest.clear();
     sourceById.clear();
+    allowLowLevelById.clear();
     if (cleanupTimer) {
         clearInterval(cleanupTimer);
         cleanupTimer = null;
@@ -223,10 +280,15 @@ export async function getOrCreateInstance(
 ): Promise<CharJSInstance | null> {
     const charjsId = charjs.id;
     const previousSource = sourceById.get(charjsId);
-    if (previousSource !== undefined && previousSource !== charjs.code) {
+    const previousAllowLowLevel = allowLowLevelById.get(charjsId);
+    if (
+        (previousSource !== undefined && previousSource !== charjs.code) ||
+        (previousAllowLowLevel !== undefined && previousAllowLowLevel !== allowLowLevel)
+    ) {
         invalidateCharJS(charjsId);
     }
     sourceById.set(charjsId, charjs.code);
+    allowLowLevelById.set(charjsId, allowLowLevel);
     if (!charjs.enabled || !charjs.code.trim()) return null;
 
     // ── Manifest fast-path: skip modes this script never registers ───
@@ -295,7 +357,8 @@ export async function invokeHandler(
 
         // Safety: per-invocation timeout
         const invokeStart = Date.now();
-        ctx.runtime.setInterruptHandler(() => Date.now() - invokeStart > HANDLER_TIMEOUT_MS);
+        const deadline = invokeStart + HANDLER_TIMEOUT_MS;
+        ctx.runtime.setInterruptHandler(() => Date.now() > deadline);
 
         // Marshal host data → QuickJS via safe JSON.parse (not evalCode!)
         const argHandle = jsonToHandle(ctx, data);
@@ -314,27 +377,28 @@ export async function invokeHandler(
             }
         }
 
-        // Call the handler
-        const result = await ctx.callFunction(fnHandle, ctx.global, ...args);
+        try {
+            const result = await ctx.callFunction(fnHandle, ctx.global, ...args);
+            if (result.error) {
+                try {
+                    logHandlerError(instance, ctx.dump(result.error));
+                } finally {
+                    if (result.error.alive) result.error.dispose();
+                }
+                return undefined;
+            }
 
-        // Dispose handles
-        for (const h of args) {
-            h.dispose();
+            try {
+                return await dumpSettledResult(instance, result.value, deadline);
+            } finally {
+                if (result.value.alive) result.value.dispose();
+            }
+        } finally {
+            for (const handle of args) {
+                if (handle.alive) handle.dispose();
+            }
+            ctx.runtime.setInterruptHandler(() => false);
         }
-
-        // Reset interrupt handler
-        ctx.runtime.setInterruptHandler(() => false);
-
-        if (result.error) {
-            const error = ctx.dump(result.error);
-            result.error.dispose();
-            logger.error(`Handler error for ${instance.charjs.name}:`, error);
-            return undefined;
-        }
-
-        const output = ctx.dump(result.value);
-        result.value.dispose();
-        return output;
     });
 }
 
@@ -343,6 +407,8 @@ export async function invokeHandler(
 export function invalidateCharJS(id: string): void {
     // Invalidate manifest so next access re-probes registered handlers
     handlerManifest.delete(id);
+    sourceById.delete(id);
+    allowLowLevelById.delete(id);
 
     const prefix = `${id}:`;
     for (const [key, instance] of instances.entries()) {
