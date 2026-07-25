@@ -17,8 +17,8 @@ export type PromptBlockFields =
     | {
           name: string;
           type: 'history';
-          start?: number;
-          end?: number;
+          start?: string;
+          end?: string;
           format?: string;
           historyMode: 'last_content' | 'full_trace';
       };

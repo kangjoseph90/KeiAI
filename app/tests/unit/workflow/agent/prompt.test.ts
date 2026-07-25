@@ -200,8 +200,8 @@ describe('buildPrompt', () => {
                 name: 'History',
                 type: 'history',
                 historyMode: 'last_content',
-                start: -10,
-                end: -1,
+                start: '-10',
+                end: '-1',
                 sortOrder: 'b',
                 enabled: true
             }
@@ -238,7 +238,7 @@ describe('buildPrompt', () => {
                 name: 'History',
                 type: 'history',
                 historyMode: 'last_content',
-                start: -10,
+                start: '-10',
                 sortOrder: 'a',
                 enabled: true
             }
@@ -305,7 +305,7 @@ describe('buildPrompt', () => {
                 name: 'History',
                 type: 'history',
                 historyMode: 'last_content',
-                start: -10,
+                start: '-10',
                 sortOrder: 'a',
                 enabled: true
             }
@@ -383,7 +383,7 @@ describe('buildPrompt', () => {
                     name: 'History',
                     type: 'history',
                     historyMode: 'full_trace',
-                    start: -10,
+                    start: '-10',
                     sortOrder: 'a',
                     enabled: true
                 }
@@ -460,7 +460,7 @@ describe('buildPrompt', () => {
                     name: 'History',
                     type: 'history',
                     historyMode: 'last_content',
-                    start: -1,
+                    start: '-1',
                     sortOrder: 'a',
                     enabled: true
                 }
@@ -508,8 +508,8 @@ describe('buildPrompt', () => {
                 name: 'History',
                 type: 'history',
                 historyMode: 'last_content',
-                start: -10,
-                end: -1,
+                start: '-10',
+                end: '-1',
                 format: '원본: {{slot}}\n입력: {{slot::source}}\n이름: {{name}}',
                 sortOrder: 'a',
                 enabled: true
@@ -586,7 +586,7 @@ describe('buildPrompt', () => {
                 name: 'History',
                 type: 'history',
                 historyMode: 'last_content',
-                start: -10,
+                start: '-10',
                 sortOrder: 'a',
                 enabled: true
             }
@@ -653,7 +653,7 @@ describe('buildPrompt', () => {
                     name: 'History',
                     type: 'history',
                     historyMode: 'last_content',
-                    start: -1,
+                    start: '-1',
                     sortOrder: 'a',
                     enabled: true
                 }

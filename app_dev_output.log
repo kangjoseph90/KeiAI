@@ -1,0 +1,9 @@
+
+> app@0.0.1 dev /app/app
+> vite dev
+
+
+  VITE v8.0.8  ready in 769 ms
+
+  ➜  Local:   http://localhost:5173/
+ ELIFECYCLE  Command failed with exit code 143.

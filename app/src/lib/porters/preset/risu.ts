@@ -218,8 +218,8 @@ function risuPromptToKeiBlock(
             name,
             type: 'history',
             historyMode: 'full_trace',
-            ...(item.rangeStart === -1000 ? {} : { start: item.rangeStart }),
-            ...(item.rangeEnd === 'end' ? {} : { end: item.rangeEnd })
+            ...(item.rangeStart === -1000 ? {} : { start: String(item.rangeStart) }),
+            ...(item.rangeEnd === 'end' ? {} : { end: String(item.rangeEnd) })
         };
     }
     return {

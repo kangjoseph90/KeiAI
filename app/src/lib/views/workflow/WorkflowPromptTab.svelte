@@ -22,6 +22,7 @@
     import SortableList from '$lib/components/entitylist/SortableList.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import WorkflowNumberField from './WorkflowNumberField.svelte';
+    import WorkflowTextField from './WorkflowTextField.svelte';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { generateSortOrder } from '$lib/utils/ordering';
     import type { LLMRole } from '$lib/types/models/llm';
@@ -342,17 +343,17 @@
                                         </div>
                                     {:else if block.type === 'history'}
                                         <div class="grid grid-cols-2 gap-3">
-                                            <WorkflowNumberField
+                                            <WorkflowTextField
                                                 label="Start"
                                                 value={block.start}
                                                 onchange={(value) =>
-                                                    applyBlockEdit(block.id, { start: value })}
+                                                    applyBlockEdit(block.id, { start: value as string })}
                                             />
-                                            <WorkflowNumberField
+                                            <WorkflowTextField
                                                 label="End"
                                                 value={block.end}
                                                 onchange={(value) =>
-                                                    applyBlockEdit(block.id, { end: value })}
+                                                    applyBlockEdit(block.id, { end: value as string })}
                                             />
                                         </div>
                                         <label
