@@ -2,7 +2,7 @@
  * Kei API injection into QuickJS sandbox.
  * All APIs are always injected. Low Level APIs check permission at runtime:
  * - If allowLowLevel=true → execute immediately
- * - If allowLowLevel=false → TODO: request permission from user, for now auto-grant
+ * - If allowLowLevel=false → notify the user and reject the call
  */
 
 import type { QuickJSAsyncContext } from 'quickjs-emscripten';
@@ -16,6 +16,7 @@ import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$
 import type { LLMMessage } from '$lib/llm/types';
 import { getTextContent } from '$lib/workflow/agent/llm';
 import { adaptMediaForCapabilities } from '$lib/llm/capabilities';
+import { toast } from '$lib/ui';
 
 const DEFAULT_AUX_LLM_TYPE = 'aux';
 const DEFAULT_AUX_MAX_RESPONSE = 4096;
@@ -180,28 +181,14 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
     getChatIdFn.dispose();
 
     // ── Low Level APIs (runtime permission check) ─────────────
-    injectLowLevelAPIs(ctx, keiObj, instance);
-
-    // ── Mount to global ────────────────────────────────────────
-    ctx.setProp(ctx.global, 'KeiAPI', keiObj);
-    keiObj.dispose();
-}
-
-// ─── Low Level APIs ────────────────────────────────────────────────
-
-function injectLowLevelAPIs(
-    ctx: QuickJSAsyncContext,
-    keiObj: ReturnType<QuickJSAsyncContext['newObject']>,
-    instance: CharJSInstance
-): void {
-    // TODO: Wire image handlers
-    // TODO: When allowLowLevel=false, show permission request UI to user instead of auto-granting
-
     async function requirePermission(): Promise<void> {
         if (instance.allowLowLevel) return;
-        // TODO: notify user and throw
-        // do not edit permission on runtime - edit on explicit user interactions
-        // allow low level permission is included in character import - warning ui when importing
+
+        toast.error({
+            title: 'Low-level access blocked',
+            description: `CharJS "${instance.charjs.name}" tried to use a low-level API.`
+        });
+        throw new Error(`Low-level access is not allowed for CharJS "${instance.charjs.name}"`);
     }
 
     const callLLMFn = ctx.newFunction('callLLM', (typeHandle, messagesHandle, optionsHandle) => {
@@ -257,6 +244,12 @@ function injectLowLevelAPIs(
     });
     ctx.setProp(keiObj, 'callLLM', callLLMFn);
     callLLMFn.dispose();
+
+    // TODO: Wire image handlers
+
+    // ── Mount to global ────────────────────────────────────────
+    ctx.setProp(ctx.global, 'KeiAPI', keiObj);
+    keiObj.dispose();
 }
 
 function readLLMCallOptions(value: unknown): { type?: string; maxResponse?: number } {
