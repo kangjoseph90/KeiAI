@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { WorkflowRuntime, type WorkflowDefinition } from '$lib/workflow';
+
+const mockSetChatVariable = vi.hoisted(() => vi.fn());
+vi.mock('$lib/managers/chat', () => ({
+    getChatVariable: vi.fn(),
+    setChatVariable: mockSetChatVariable
+}));
 
 describe('WorkflowRuntime', () => {
     it('uses literal input values and lets connected edges take precedence', async () => {
@@ -365,6 +371,134 @@ describe('WorkflowRuntime', () => {
         };
 
         await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('ok');
+    });
+
+    it('does not execute nodes that are not reachable from a sink', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                ok: {
+                    id: 'ok',
+                    name: 'Ok',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    content: 'ok',
+                    inputs: {},
+                    inputValues: {}
+                },
+                // Disconnected: would reject the run if executed, but no sink depends on it,
+                // so the lazy runtime must never start it.
+                orphan: {
+                    id: 'orphan',
+                    name: 'Orphan',
+                    class: 'ThrowIf',
+                    position: { x: 0, y: 0 },
+                    inputs: { condition: null, value: null },
+                    inputValues: { condition: true, value: 'never' }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'ok', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('ok');
+    });
+
+    it('drives execution of a dependency chain via a Sink node', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                source: {
+                    id: 'source',
+                    name: 'Source',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    content: 'sink-driven',
+                    inputs: {},
+                    inputValues: {}
+                },
+                // Sink is the only sink here; no Output. It must pull `source` lazily.
+                sink: {
+                    id: 'sink',
+                    name: 'Sink',
+                    class: 'Sink',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'source', sourcePort: 0 } },
+                    inputValues: { content: '' }
+                }
+            }
+        };
+
+        // No Output means no values are yielded; the run just settles once the sink finishes.
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('');
+    });
+
+    it('does not throw when a sink receives a skip event', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                ok: {
+                    id: 'ok',
+                    name: 'Ok',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    content: 'ok',
+                    inputs: {},
+                    inputValues: {}
+                },
+                condition: {
+                    id: 'condition',
+                    name: 'Condition',
+                    class: 'Boolean',
+                    position: { x: 0, y: 0 },
+                    value: false,
+                    inputs: {},
+                    inputValues: {}
+                },
+                gate: {
+                    id: 'gate',
+                    name: 'Gate',
+                    class: 'Gate',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        condition: { sourceNode: 'condition', sourcePort: 0 },
+                        value: null
+                    },
+                    inputValues: { condition: false, value: 'gated' }
+                },
+                // SetChatVar is a side-effect root. Its input is a Gate that skipped,
+                // so it must early-return rather than throw and reject the whole run.
+                setChatVar: {
+                    id: 'setChatVar',
+                    name: 'Set Chat Var',
+                    class: 'SetChatVar',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        name: null,
+                        content: { sourceNode: 'gate', sourcePort: 0 }
+                    },
+                    inputValues: { name: 'mood', content: '' }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'ok', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        mockSetChatVariable.mockClear();
+        await expect(
+            collectFinal(new WorkflowRuntime(workflow, { ctx: { chatId: 'chat-1' } }).run())
+        ).resolves.toBe('ok');
+        // The Gate skipped, so SetChatVar must early-return without writing.
+        expect(mockSetChatVariable).not.toHaveBeenCalled();
     });
 
     it('fails when an error reaches Output', async () => {

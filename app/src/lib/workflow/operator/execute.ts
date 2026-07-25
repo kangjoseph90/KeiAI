@@ -14,6 +14,7 @@ import type {
     NumberMathNode,
     NumberNode,
     SetChatVarNode,
+    SinkNode,
     StringConcatNode,
     StringIncludesNode,
     StringLengthNode,
@@ -44,7 +45,6 @@ import {
     executeStreamNode,
     parseBoolean,
     parseNumber,
-    requireNameAndContent,
     requireStringInput,
     requireWorkflowInput
 } from './utils';
@@ -117,13 +117,35 @@ export async function executeGetChatVarNode({
 }
 
 export async function executeSetChatVarNode({
+    node,
     inputs,
     ctx,
     signal
 }: WorkflowNodeExecutionContext<SetChatVarNode>): Promise<void> {
     if (!ctx?.chatId) throw new AppError('INVALID_INPUT', 'SetChatVar requires ctx.chatId');
-    const { name, content } = await requireNameAndContent(inputs, signal);
-    await setChatVariable(ctx.chatId, name, content);
+    const [nameResult, contentResult] = await Promise.all([
+        requireInput(inputs.name, `SetChatVar name input is required: ${node.id}`),
+        requireInput(inputs.content, `SetChatVar content input is required: ${node.id}`)
+    ]);
+    throwIfAborted(signal);
+    if (nameResult.status !== 'value') return;
+    if (contentResult.status !== 'value') return;
+    await setChatVariable(
+        ctx.chatId,
+        workflowValueToString(nameResult.value),
+        workflowValueToString(contentResult.value)
+    );
+}
+
+export async function executeSinkNode({
+    inputs,
+    signal
+}: WorkflowNodeExecutionContext<SinkNode>): Promise<void> {
+    // Sink has no output and no side effect; its sole purpose is to drive execution
+    // of its dependency chain by awaiting the terminal event of its input.
+    const input = requireWorkflowInput(inputs.content, 'Sink content input is required');
+    await input.done;
+    throwIfAborted(signal);
 }
 
 export async function executeToBooleanNode({

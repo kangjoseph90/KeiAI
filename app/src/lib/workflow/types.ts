@@ -50,6 +50,7 @@ export type WorkflowNode =
     | NumberCompareNode
     | NumberMathNode
     | OutputNode
+    | SinkNode
     | StringConcatNode
     | StringIncludesNode
     | StringLengthNode
@@ -136,6 +137,10 @@ export interface FileWriteNode extends BaseNode {
 
 export interface OutputNode extends BaseNode {
     class: 'Output';
+}
+
+export interface SinkNode extends BaseNode {
+    class: 'Sink';
 }
 
 export interface TemplateNode extends BaseNode {

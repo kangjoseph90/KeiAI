@@ -14,6 +14,7 @@ import type {
     NumberNode,
     OutputNode,
     SetChatVarNode,
+    SinkNode,
     StringConcatNode,
     StringIncludesNode,
     StringLengthNode,
@@ -74,6 +75,7 @@ export interface WorkflowNodeDefinition<TNode extends WorkflowNode> {
     category: WorkflowNodeCategory;
     inputs: Record<string, WorkflowPortDefinition>;
     outputs: Record<number, WorkflowPortDefinition>;
+    isSink?: boolean;
     createDefault: (id: string) => TNode;
 }
 
@@ -188,6 +190,7 @@ export const SET_CHAT_VAR_NODE_DEFINITION: WorkflowNodeDefinition<SetChatVarNode
     class: 'SetChatVar',
     label: 'Set Chat Var',
     category: 'variable',
+    isSink: true,
     inputs: {
         content: { name: 'Content', type: 'string', required: true },
         name: { name: 'Name', type: 'string', required: true }
@@ -514,6 +517,7 @@ export const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
     class: 'Output',
     label: 'Output',
     category: 'result',
+    isSink: true,
     inputs: { content: { name: 'Content', type: 'string', required: true } },
     outputs: {},
     createDefault: (id) => ({
@@ -523,6 +527,23 @@ export const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
         position: { x: 0, y: 0 },
         inputs: { content: null },
         inputValues: {}
+    })
+};
+
+export const SINK_NODE_DEFINITION: WorkflowNodeDefinition<SinkNode> = {
+    class: 'Sink',
+    label: 'Sink',
+    category: 'result',
+    isSink: true,
+    inputs: { content: { name: 'Content', type: 'string', required: true } },
+    outputs: {},
+    createDefault: (id) => ({
+        id,
+        name: 'Sink',
+        class: 'Sink',
+        position: { x: 0, y: 0 },
+        inputs: { content: null },
+        inputValues: { content: '' }
     })
 };
 
@@ -547,6 +568,7 @@ export const FILE_WRITE_NODE_DEFINITION: WorkflowNodeDefinition<FileWriteNode> =
     class: 'FileWrite',
     label: 'File Write',
     category: 'file',
+    isSink: true,
     inputs: {
         path: { name: 'Path', type: 'string', required: true },
         content: { name: 'Content', type: 'string', required: true }
@@ -612,6 +634,7 @@ export const WORKFLOW_NODE_DEFINITIONS = {
     Gate: GATE_NODE_DEFINITION,
     Ungate: UNGATE_NODE_DEFINITION,
     Output: OUTPUT_NODE_DEFINITION,
+    Sink: SINK_NODE_DEFINITION,
     FileRead: FILE_READ_NODE_DEFINITION,
     FileWrite: FILE_WRITE_NODE_DEFINITION,
     Agent: AGENT_NODE_DEFINITION
@@ -643,4 +666,8 @@ export function canConnectWorkflowPortTypes(
     targetType: WorkflowPortType
 ): boolean {
     return sourceType === targetType || targetType === 'string';
+}
+
+export function isSinkWorkflowNode(node: WorkflowNode): boolean {
+    return WORKFLOW_NODE_DEFINITIONS[node.class].isSink === true;
 }
