@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { WorkflowRuntime, type WorkflowDefinition } from '$lib/workflow';
+
+const mockSetChatVariable = vi.hoisted(() => vi.fn());
+vi.mock('$lib/managers/chat', () => ({
+    getChatVariable: vi.fn(),
+    setChatVariable: mockSetChatVariable
+}));
 
 describe('WorkflowRuntime', () => {
     it('uses literal input values and lets connected edges take precedence', async () => {
@@ -266,7 +272,7 @@ describe('WorkflowRuntime', () => {
         await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('false');
     });
 
-    it('gates false into skip and ungates skip into false', async () => {
+    it('gates false into skip and ungates skip into fallback', async () => {
         const workflow: WorkflowDefinition = {
             nodes: {
                 condition: {
@@ -284,10 +290,12 @@ describe('WorkflowRuntime', () => {
                     class: 'Gate',
                     position: { x: 0, y: 0 },
                     inputs: {
-                        condition: { sourceNode: 'condition', sourcePort: 0 }
+                        condition: { sourceNode: 'condition', sourcePort: 0 },
+                        value: null
                     },
                     inputValues: {
-                        condition: false
+                        condition: false,
+                        value: 'gated-value'
                     }
                 },
                 ungate: {
@@ -296,12 +304,12 @@ describe('WorkflowRuntime', () => {
                     class: 'Ungate',
                     position: { x: 0, y: 0 },
                     inputs: {
-                        gate: { sourceNode: 'gate', sourcePort: 0 },
+                        value: { sourceNode: 'gate', sourcePort: 0 },
                         fallback: null
                     },
                     inputValues: {
-                        gate: '',
-                        fallback: 'false'
+                        value: '',
+                        fallback: 'fallback-value'
                     }
                 },
                 output: {
@@ -317,7 +325,9 @@ describe('WorkflowRuntime', () => {
             }
         };
 
-        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('false');
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe(
+            'fallback-value'
+        );
     });
 
     it('keeps side-path errors on their edge without failing a successful output', async () => {
@@ -361,6 +371,134 @@ describe('WorkflowRuntime', () => {
         };
 
         await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('ok');
+    });
+
+    it('does not execute nodes that are not reachable from a sink', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                ok: {
+                    id: 'ok',
+                    name: 'Ok',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    content: 'ok',
+                    inputs: {},
+                    inputValues: {}
+                },
+                // Disconnected: would reject the run if executed, but no sink depends on it,
+                // so the lazy runtime must never start it.
+                orphan: {
+                    id: 'orphan',
+                    name: 'Orphan',
+                    class: 'ThrowIf',
+                    position: { x: 0, y: 0 },
+                    inputs: { condition: null, value: null },
+                    inputValues: { condition: true, value: 'never' }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'ok', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('ok');
+    });
+
+    it('drives execution of a dependency chain via a Sink node', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                source: {
+                    id: 'source',
+                    name: 'Source',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    content: 'sink-driven',
+                    inputs: {},
+                    inputValues: {}
+                },
+                // Sink is the only sink here; no Output. It must pull `source` lazily.
+                sink: {
+                    id: 'sink',
+                    name: 'Sink',
+                    class: 'Sink',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'source', sourcePort: 0 } },
+                    inputValues: { content: '' }
+                }
+            }
+        };
+
+        // No Output means no values are yielded; the run just settles once the sink finishes.
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('');
+    });
+
+    it('does not throw when a sink receives a skip event', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                ok: {
+                    id: 'ok',
+                    name: 'Ok',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    content: 'ok',
+                    inputs: {},
+                    inputValues: {}
+                },
+                condition: {
+                    id: 'condition',
+                    name: 'Condition',
+                    class: 'Boolean',
+                    position: { x: 0, y: 0 },
+                    value: false,
+                    inputs: {},
+                    inputValues: {}
+                },
+                gate: {
+                    id: 'gate',
+                    name: 'Gate',
+                    class: 'Gate',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        condition: { sourceNode: 'condition', sourcePort: 0 },
+                        value: null
+                    },
+                    inputValues: { condition: false, value: 'gated' }
+                },
+                // SetChatVar is a side-effect root. Its input is a Gate that skipped,
+                // so it must early-return rather than throw and reject the whole run.
+                setChatVar: {
+                    id: 'setChatVar',
+                    name: 'Set Chat Var',
+                    class: 'SetChatVar',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        name: null,
+                        content: { sourceNode: 'gate', sourcePort: 0 }
+                    },
+                    inputValues: { name: 'mood', content: '' }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'ok', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        mockSetChatVariable.mockClear();
+        await expect(
+            collectFinal(new WorkflowRuntime(workflow, { ctx: { chatId: 'chat-1' } }).run())
+        ).resolves.toBe('ok');
+        // The Gate skipped, so SetChatVar must early-return without writing.
+        expect(mockSetChatVariable).not.toHaveBeenCalled();
     });
 
     it('fails when an error reaches Output', async () => {
@@ -742,7 +880,7 @@ describe('WorkflowRuntime', () => {
         expect(events[events.length - 1]).toBe('abcX');
     });
 
-    it('propagates a Gate skip to a downstream Ungate as false', async () => {
+    it('propagates a Gate skip to a downstream Ungate as fallback', async () => {
         const workflow: WorkflowDefinition = {
             nodes: {
                 condition: {
@@ -759,8 +897,8 @@ describe('WorkflowRuntime', () => {
                     name: 'Gate',
                     class: 'Gate',
                     position: { x: 0, y: 0 },
-                    inputs: { condition: { sourceNode: 'condition', sourcePort: 0 } },
-                    inputValues: { condition: false }
+                    inputs: { condition: { sourceNode: 'condition', sourcePort: 0 }, value: null },
+                    inputValues: { condition: false, value: 'gated-value' }
                 },
                 ungate: {
                     id: 'ungate',
@@ -768,10 +906,10 @@ describe('WorkflowRuntime', () => {
                     class: 'Ungate',
                     position: { x: 0, y: 0 },
                     inputs: {
-                        gate: { sourceNode: 'gate', sourcePort: 0 },
+                        value: { sourceNode: 'gate', sourcePort: 0 },
                         fallback: null
                     },
-                    inputValues: { gate: '', fallback: 'false' }
+                    inputValues: { value: '', fallback: 'fallback-value' }
                 },
                 output: {
                     id: 'output',
@@ -785,7 +923,167 @@ describe('WorkflowRuntime', () => {
         };
 
         const events = await collectEvents(new WorkflowRuntime(workflow).run());
-        expect(events[events.length - 1]).toBe('false');
+        expect(events[events.length - 1]).toBe('fallback-value');
+    });
+
+    it('passes value through Gate when condition is true', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                condition: {
+                    id: 'condition',
+                    name: 'Condition',
+                    class: 'Boolean',
+                    position: { x: 0, y: 0 },
+                    value: true,
+                    inputs: {},
+                    inputValues: {}
+                },
+                gate: {
+                    id: 'gate',
+                    name: 'Gate',
+                    class: 'Gate',
+                    position: { x: 0, y: 0 },
+                    inputs: { condition: { sourceNode: 'condition', sourcePort: 0 }, value: null },
+                    inputValues: { condition: false, value: 'gated-value' }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'gate', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe(
+            'gated-value'
+        );
+    });
+
+    it('passes value through ThrowIf when condition is false', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                throwIf: {
+                    id: 'throwIf',
+                    name: 'ThrowIf',
+                    class: 'ThrowIf',
+                    position: { x: 0, y: 0 },
+                    inputs: { condition: null, value: null },
+                    inputValues: { condition: false, value: 'safe-value' }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'throwIf', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('safe-value');
+    });
+
+    it('rejects run() when ThrowIf condition is true and reaches Output', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                throwIf: {
+                    id: 'throwIf',
+                    name: 'Guard',
+                    class: 'ThrowIf',
+                    position: { x: 0, y: 0 },
+                    inputs: { condition: null, value: null },
+                    inputValues: { condition: true, value: 'safe-value' }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'throwIf', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).rejects.toThrow(
+            'Guard failed: ThrowIf condition was true: throwIf'
+        );
+    });
+
+    it('recovers a ThrowIf error via Catch and reports isError', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                throwIf: {
+                    id: 'throwIf',
+                    name: 'Guard',
+                    class: 'ThrowIf',
+                    position: { x: 0, y: 0 },
+                    inputs: { condition: null, value: null },
+                    inputValues: { condition: true, value: 'safe-value' }
+                },
+                catch: {
+                    id: 'catch',
+                    name: 'Catch',
+                    class: 'Catch',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        value: { sourceNode: 'throwIf', sourcePort: 0 },
+                        fallback: null
+                    },
+                    inputValues: { value: '', fallback: 'recovered' }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'catch', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('recovered');
+    });
+
+    it('passes ThrowIf value through Catch unchanged when no error', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                throwIf: {
+                    id: 'throwIf',
+                    name: 'ThrowIf',
+                    class: 'ThrowIf',
+                    position: { x: 0, y: 0 },
+                    inputs: { condition: null, value: null },
+                    inputValues: { condition: false, value: 'safe-value' }
+                },
+                catch: {
+                    id: 'catch',
+                    name: 'Catch',
+                    class: 'Catch',
+                    position: { x: 0, y: 0 },
+                    inputs: {
+                        value: { sourceNode: 'throwIf', sourcePort: 0 },
+                        fallback: null
+                    },
+                    inputValues: { value: '', fallback: 'recovered' }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'catch', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe('safe-value');
     });
 
     it('rejects run() and surfaces the failing node in the error message when Output errors', async () => {

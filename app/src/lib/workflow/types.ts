@@ -17,8 +17,8 @@ export type PromptBlockFields =
     | {
           name: string;
           type: 'history';
-          start?: number;
-          end?: number;
+          start?: string;
+          end?: string;
           format?: string;
           historyMode: 'last_content' | 'full_trace';
       };
@@ -41,7 +41,7 @@ export type WorkflowNode =
     | ToBooleanNode
     | ToNumberNode
     | CatchNode
-    | ThrowNode
+    | ThrowIfNode
     | BooleanNode
     | BooleanNotNode
     | GateNode
@@ -50,6 +50,7 @@ export type WorkflowNode =
     | NumberCompareNode
     | NumberMathNode
     | OutputNode
+    | SinkNode
     | StringConcatNode
     | StringIncludesNode
     | StringLengthNode
@@ -138,6 +139,10 @@ export interface OutputNode extends BaseNode {
     class: 'Output';
 }
 
+export interface SinkNode extends BaseNode {
+    class: 'Sink';
+}
+
 export interface TemplateNode extends BaseNode {
     class: 'Template';
 }
@@ -166,8 +171,8 @@ export interface CatchNode extends BaseNode {
     class: 'Catch';
 }
 
-export interface ThrowNode extends BaseNode {
-    class: 'Throw';
+export interface ThrowIfNode extends BaseNode {
+    class: 'ThrowIf';
 }
 
 export interface StringConcatNode extends BaseNode {

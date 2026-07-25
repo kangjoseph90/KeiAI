@@ -1,6 +1,7 @@
 import { get } from 'svelte/store';
 import {
     ChatService,
+    MessageService,
     type ChatFields,
     type ChatContent,
     type Lorebook,
@@ -20,7 +21,7 @@ import {
     roomCharacters,
     chatPersonas
 } from '../state';
-import { loadInitialMessages, repairChatMessageRefs } from './message';
+import { repairChatMessageRefs } from './message';
 import { getRoom, updateRoom } from './room';
 import { getPersona } from './persona';
 import { AppError } from '$lib/types/errors';
@@ -121,23 +122,24 @@ export async function resolveChatSelections(chatId: string): Promise<void> {
 
 export async function selectChat(
     chatId: string,
-    isContextCurrent: () => boolean = () => true
+    isContextCurrent: () => boolean = () => true,
+    beforeCommit?: () => void
 ): Promise<void> {
     if (!isContextCurrent() || get(activeChatId) === chatId) return;
 
     const version = ++chatSelectionVersion;
-    clearChatViewState();
     const isCurrent = () => version === chatSelectionVersion && isContextCurrent();
 
     const chat = await getChat(chatId);
     if (!isCurrent()) return;
     if (!chat) throw new AppError('NOT_FOUND', `Chat not found: ${chatId}`);
 
-    roomChats.set(chat.id, chat);
-    activeChatId.set(chat.id);
-    await loadInitialMessages(chatId, 30, isCurrent);
+    const initialMessages = await MessageService.getMessagesBefore(chatId, '\uffff', 30);
     if (!isCurrent()) return;
-    await repairChatMessageRefs(chatId);
+    const messageOffset =
+        initialMessages.length > 0
+            ? await MessageService.countByChatBefore(chatId, initialMessages[0].sortOrder)
+            : 0;
     if (!isCurrent()) return;
 
     const personaIds = Object.keys(chat.personas.refs);
@@ -153,6 +155,17 @@ export async function selectChat(
         }
     }
 
+    const indexes = new Map<string, number>();
+    initialMessages.forEach((message, index) => {
+        indexes.set(message.id, messageOffset + index);
+    });
+    beforeCommit?.();
+    roomChats.set(chat.id, chat);
+    messages.setAll(initialMessages);
+    messageIndexes.set(indexes);
+    chatSelections.set(chatSelectionCache.get(chatId) ?? get(chatSelections));
+    activeChatId.set(chat.id);
+
     if (Object.keys(stalePersonaRefs).length > 0) {
         await updateChat(chatId, {
             personas: { refs: stalePersonaRefs }
@@ -160,6 +173,8 @@ export async function selectChat(
         if (!isCurrent()) return;
     }
 
+    await repairChatMessageRefs(chatId);
+    if (!isCurrent()) return;
     await resolveChatSelections(chatId);
     if (!isCurrent()) return;
 
@@ -275,7 +290,7 @@ export async function updateChatContent(
     roomChats.set(chatId, updated);
 }
 
-export async function deleteChat(chatId: string, roomId: string): Promise<void> {
+export async function deleteChat(chatId: string, roomId: string): Promise<string | null> {
     const room = await getRoom(roomId);
     if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
 
@@ -298,11 +313,17 @@ export async function deleteChat(chatId: string, roomId: string): Promise<void> 
 
     chatSelectionCache.delete(chatId);
 
+    const remainingIds = Object.keys(room.chats.refs).filter((id) => id !== chatId);
+    const nextChatId = remainingIds[0] ?? null;
+
     if (room.lastActiveChatId === chatId) {
-        const remainingIds = Object.keys(room.chats.refs).filter((id) => id !== chatId);
         await updateRoom(roomId, {
-            lastActiveChatId: remainingIds.length > 0 ? remainingIds[0] : undefined
+            lastActiveChatId: nextChatId ?? undefined
         });
+    }
+
+    if (chatId === get(activeChatId) && nextChatId) {
+        await selectChat(nextChatId);
     }
 
     if (roomId === get(activeRoomId)) {
@@ -312,6 +333,8 @@ export async function deleteChat(chatId: string, roomId: string): Promise<void> 
     if (chatId === get(activeChatId)) {
         clearActiveChat();
     }
+
+    return nextChatId;
 }
 
 // ─── Chat-owned resources ────────────────────────────────────────────

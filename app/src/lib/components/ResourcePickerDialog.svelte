@@ -88,6 +88,7 @@
             query = '';
             selectedIds = [];
             source = 'room';
+            adding = false;
         }
         wasOpen = open;
     });
@@ -121,7 +122,9 @@
             }
             if (completed !== false) open = false;
         } finally {
-            adding = false;
+            // Keep the progress label stable while a successful dialog close animates out.
+            // Failed submissions stay open and must become interactive again immediately.
+            if (open) adding = false;
         }
     }
 </script>

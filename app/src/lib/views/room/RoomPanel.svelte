@@ -42,12 +42,16 @@
         updateRoom,
         updateRoomFolder
     } from '$lib/stores';
-    import { appConfirm, characterPickerOpen, toast } from '$lib/ui';
+    import { appAlert, appConfirm, characterPickerOpen, toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import { getFolderColorClass } from '$lib/components/entitylist/folders';
     import TogglePanelRuntime from '$lib/components/toggles/TogglePanelRuntime.svelte';
     import type { RouteState } from '$lib/router';
-    import { resolveToggleSources, syncChatGreetings } from '$lib/managers';
+    import {
+        navigateToCharacterStudio,
+        resolveToggleSources,
+        syncChatGreetings
+    } from '$lib/managers';
     import { getErrorMessage } from '$lib/types/errors';
 
     interface Props {
@@ -110,7 +114,9 @@
     }
 
     function handleOpenCharacter(characterId: string): void {
-        onNavigate({ view: 'characterStudio', charId: characterId });
+        void runPanelAction(`open-character:${characterId}`, 'Could not open character', () =>
+            navigateToCharacterStudio(characterId)
+        );
     }
 
     async function handleSelectCharacter(characterId: string): Promise<void> {
@@ -196,6 +202,13 @@
         const roomId = $activeRoom.id;
         const chat = $roomChats.find((item) => item.id === chatId);
         await runPanelAction(`delete-chat:${chatId}`, 'Could not delete chat', async () => {
+            if ($roomChats.length <= 1) {
+                await appAlert({
+                    title: 'Cannot delete chat',
+                    description: 'A room must contain at least one chat.'
+                });
+                return;
+            }
             const confirmed = await appConfirm({
                 title: 'Delete chat?',
                 description: `Delete "${chat?.title || 'Untitled Chat'}" and its messages?`,
@@ -203,9 +216,10 @@
                 variant: 'destructive'
             });
             if (!confirmed || $activeRoom?.id !== roomId) return;
-            await deleteChat(chatId, roomId);
-            if ($activeRoom?.id === roomId && $activeChat?.id === chatId) {
-                onNavigate({ view: 'room', roomId });
+            const wasActive = $activeChat?.id === chatId;
+            const nextChatId = await deleteChat(chatId, roomId);
+            if ($activeRoom?.id === roomId && wasActive && nextChatId) {
+                onNavigate({ view: 'room', roomId, chatId: nextChatId });
             }
         });
     }

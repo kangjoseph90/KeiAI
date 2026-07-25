@@ -45,8 +45,12 @@
         appSettings,
         chatAssetsMap,
         selectActiveModules,
+        characters,
+        personas,
         roomCharacters,
         chatPersonas,
+        multiRoomCharacters,
+        multiRoomPersonas,
         modules,
         translationTasks
     } from '$lib/stores';
@@ -163,16 +167,26 @@
 
     /** The position of the active swipe in the sorted list. */
     let swipePos = $derived(sortedSwipes.findIndex((s) => s.id === message.activeSwipeId));
-    let speakerName = $derived(
-        activeSwipe?.speakerName ?? (isUser ? 'User' : characterName || 'Assistant')
-    );
-    let speakerInitial = $derived((speakerName.trim().charAt(0) || '?').toUpperCase());
     let displayCharacterId = $derived(
         message.role === 'assistant' && activeSwipe?.speakerId ? activeSwipe.speakerId : characterId
     );
     let displayPersonaId = $derived(
         message.role === 'user' && activeSwipe?.speakerId ? activeSwipe.speakerId : personaId
     );
+    let currentCharacter = $derived(
+        [...$characters, ...$multiRoomCharacters].find(
+            (character) => character.id === displayCharacterId
+        )
+    );
+    let currentPersona = $derived(
+        [...$personas, ...$multiRoomPersonas].find((persona) => persona.id === displayPersonaId)
+    );
+    let speakerName = $derived(
+        (isUser ? currentPersona?.name : currentCharacter?.name) ??
+            activeSwipe?.speakerName ??
+            (isUser ? 'User' : characterName || 'Assistant')
+    );
+    let speakerInitial = $derived((speakerName.trim().charAt(0) || '?').toUpperCase());
     let messageScope = $derived(`kei-${message.id}-${message.activeSwipeId}`);
 
     // ── Parts timeline ────────────────────────────────────────────────────────

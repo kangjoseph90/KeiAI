@@ -14,6 +14,7 @@ import type {
     NumberNode,
     OutputNode,
     SetChatVarNode,
+    SinkNode,
     StringConcatNode,
     StringIncludesNode,
     StringLengthNode,
@@ -21,7 +22,7 @@ import type {
     StringRegexReplaceNode,
     StringReplaceNode,
     TemplateNode,
-    ThrowNode,
+    ThrowIfNode,
     ToBooleanNode,
     ToNumberNode,
     UngateNode,
@@ -74,6 +75,7 @@ export interface WorkflowNodeDefinition<TNode extends WorkflowNode> {
     category: WorkflowNodeCategory;
     inputs: Record<string, WorkflowPortDefinition>;
     outputs: Record<number, WorkflowPortDefinition>;
+    isSink?: boolean;
     createDefault: (id: string) => TNode;
 }
 
@@ -188,6 +190,7 @@ export const SET_CHAT_VAR_NODE_DEFINITION: WorkflowNodeDefinition<SetChatVarNode
     class: 'SetChatVar',
     label: 'Set Chat Var',
     category: 'variable',
+    isSink: true,
     inputs: {
         content: { name: 'Content', type: 'string', required: true },
         name: { name: 'Name', type: 'string', required: true }
@@ -246,7 +249,7 @@ export const CATCH_NODE_DEFINITION: WorkflowNodeDefinition<CatchNode> = {
     label: 'Catch',
     category: 'flow',
     inputs: {
-        try: { name: 'Try', type: 'string', required: true },
+        value: { name: 'Value', type: 'string', required: true },
         fallback: { name: 'Fallback', type: 'string', required: true }
     },
     outputs: {
@@ -258,24 +261,27 @@ export const CATCH_NODE_DEFINITION: WorkflowNodeDefinition<CatchNode> = {
         name: 'Catch',
         class: 'Catch',
         position: { x: 0, y: 0 },
-        inputs: { try: null, fallback: null },
-        inputValues: { try: '', fallback: '' }
+        inputs: { value: null, fallback: null },
+        inputValues: { value: '', fallback: '' }
     })
 };
 
-export const THROW_NODE_DEFINITION: WorkflowNodeDefinition<ThrowNode> = {
-    class: 'Throw',
-    label: 'Throw',
+export const THROWIF_NODE_DEFINITION: WorkflowNodeDefinition<ThrowIfNode> = {
+    class: 'ThrowIf',
+    label: 'Throw If',
     category: 'flow',
-    inputs: { condition: { name: 'Condition', type: 'boolean', required: true } },
-    outputs: { 0: { name: 'try', type: 'boolean' } },
+    inputs: {
+        condition: { name: 'Condition', type: 'boolean', required: true },
+        value: { name: 'Value', type: 'string', required: true }
+    },
+    outputs: { 0: { name: 'value', type: 'string' } },
     createDefault: (id) => ({
         id,
-        name: 'Throw',
-        class: 'Throw',
+        name: 'Throw If',
+        class: 'ThrowIf',
         position: { x: 0, y: 0 },
-        inputs: { condition: null },
-        inputValues: { condition: false }
+        inputs: { condition: null, value: null },
+        inputValues: { condition: false, value: '' }
     })
 };
 
@@ -470,15 +476,18 @@ export const GATE_NODE_DEFINITION: WorkflowNodeDefinition<GateNode> = {
     class: 'Gate',
     label: 'Gate',
     category: 'flow',
-    inputs: { condition: { name: 'Condition', type: 'boolean', required: false } },
-    outputs: { 0: { name: 'gate', type: 'boolean' } },
+    inputs: {
+        condition: { name: 'Condition', type: 'boolean', required: false },
+        value: { name: 'Value', type: 'string', required: true }
+    },
+    outputs: { 0: { name: 'value', type: 'string' } },
     createDefault: (id) => ({
         id,
         name: 'Gate',
         class: 'Gate',
         position: { x: 0, y: 0 },
-        inputs: { condition: null },
-        inputValues: { condition: false }
+        inputs: { condition: null, value: null },
+        inputValues: { condition: false, value: '' }
     })
 };
 
@@ -487,7 +496,7 @@ export const UNGATE_NODE_DEFINITION: WorkflowNodeDefinition<UngateNode> = {
     label: 'Ungate',
     category: 'flow',
     inputs: {
-        gate: { name: 'Gate', type: 'string', required: true },
+        value: { name: 'Value', type: 'string', required: true },
         fallback: { name: 'Fallback', type: 'string', required: true }
     },
     outputs: {
@@ -499,8 +508,8 @@ export const UNGATE_NODE_DEFINITION: WorkflowNodeDefinition<UngateNode> = {
         name: 'Ungate',
         class: 'Ungate',
         position: { x: 0, y: 0 },
-        inputs: { gate: null, fallback: null },
-        inputValues: { gate: '', fallback: '' }
+        inputs: { value: null, fallback: null },
+        inputValues: { value: '', fallback: '' }
     })
 };
 
@@ -508,6 +517,7 @@ export const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
     class: 'Output',
     label: 'Output',
     category: 'result',
+    isSink: true,
     inputs: { content: { name: 'Content', type: 'string', required: true } },
     outputs: {},
     createDefault: (id) => ({
@@ -517,6 +527,23 @@ export const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
         position: { x: 0, y: 0 },
         inputs: { content: null },
         inputValues: {}
+    })
+};
+
+export const SINK_NODE_DEFINITION: WorkflowNodeDefinition<SinkNode> = {
+    class: 'Sink',
+    label: 'Sink',
+    category: 'result',
+    isSink: true,
+    inputs: { content: { name: 'Content', type: 'string', required: true } },
+    outputs: {},
+    createDefault: (id) => ({
+        id,
+        name: 'Sink',
+        class: 'Sink',
+        position: { x: 0, y: 0 },
+        inputs: { content: null },
+        inputValues: { content: '' }
     })
 };
 
@@ -541,6 +568,7 @@ export const FILE_WRITE_NODE_DEFINITION: WorkflowNodeDefinition<FileWriteNode> =
     class: 'FileWrite',
     label: 'File Write',
     category: 'file',
+    isSink: true,
     inputs: {
         path: { name: 'Path', type: 'string', required: true },
         content: { name: 'Content', type: 'string', required: true }
@@ -593,7 +621,7 @@ export const WORKFLOW_NODE_DEFINITIONS = {
     ToBoolean: TO_BOOLEAN_NODE_DEFINITION,
     ToNumber: TO_NUMBER_NODE_DEFINITION,
     Catch: CATCH_NODE_DEFINITION,
-    Throw: THROW_NODE_DEFINITION,
+    ThrowIf: THROWIF_NODE_DEFINITION,
     Concat: CONCAT_NODE_DEFINITION,
     StringLength: STRING_LENGTH_NODE_DEFINITION,
     StringIncludes: STRING_INCLUDES_NODE_DEFINITION,
@@ -606,6 +634,7 @@ export const WORKFLOW_NODE_DEFINITIONS = {
     Gate: GATE_NODE_DEFINITION,
     Ungate: UNGATE_NODE_DEFINITION,
     Output: OUTPUT_NODE_DEFINITION,
+    Sink: SINK_NODE_DEFINITION,
     FileRead: FILE_READ_NODE_DEFINITION,
     FileWrite: FILE_WRITE_NODE_DEFINITION,
     Agent: AGENT_NODE_DEFINITION
@@ -637,4 +666,8 @@ export function canConnectWorkflowPortTypes(
     targetType: WorkflowPortType
 ): boolean {
     return sourceType === targetType || targetType === 'string';
+}
+
+export function isSinkWorkflowNode(node: WorkflowNode): boolean {
+    return WORKFLOW_NODE_DEFINITIONS[node.class].isSink === true;
 }

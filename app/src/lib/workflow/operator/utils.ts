@@ -17,17 +17,6 @@ import {
     workflowValueToString
 } from '../util';
 
-export async function requireNameAndContent(
-    inputs: Record<string, WorkflowInput>,
-    signal: AbortSignal
-): Promise<{ name: string; content: string }> {
-    const [name, content] = await Promise.all([
-        requireStringInput(inputs.name, 'Variable name input is required', signal),
-        requireStringInput(inputs.content, 'Variable content input is required', signal)
-    ]);
-    return { name, content };
-}
-
 export async function requireStringInput(
     input: WorkflowInput | undefined,
     message: string,

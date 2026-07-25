@@ -21,7 +21,8 @@ import {
 import {
     canConnectWorkflowPortTypes,
     getWorkflowInputPortDefinition,
-    getWorkflowOutputPortDefinition
+    getWorkflowOutputPortDefinition,
+    isSinkWorkflowNode
 } from './registry';
 import type { Macro } from '$lib/template';
 import type { RuntimeContext } from '$lib/types/context';
@@ -70,7 +71,11 @@ export class WorkflowRuntime {
     /** Runs every node and yields Output's string stream, settling after every path completes. */
     async *run(): AsyncGenerator<string> {
         const nodeIds = Object.keys(this.#workflow.nodes);
-        const outputNodeIds = nodeIds.filter(
+
+        // Start only sink nodes (Output, Sink, SetChatVar, FileWrite). Dependencies are
+        // pulled lazily as each root resolves its inputs via #resolveConnection.
+        const rootNodeIds = nodeIds.filter((id) => isSinkWorkflowNode(this.#workflow.nodes[id]));
+        const outputNodeIds = rootNodeIds.filter(
             (nodeId) => this.#workflow.nodes[nodeId]?.class === 'Output'
         );
 
@@ -91,14 +96,10 @@ export class WorkflowRuntime {
             activeOutputsCount -= 1;
             resolveNext?.();
         };
-        // Eagerly start every node - disconnected side-effects run too.
-        const runs = nodeIds.map((nodeId) => ({
-            nodeId,
-            done: this.#getOrCreateRuntime(nodeId).done
-        }));
-        const outputRuns = runs
-            .filter(({ nodeId }) => this.#workflow.nodes[nodeId]?.class === 'Output')
-            .map(({ done }) => done);
+        const rootRuns = rootNodeIds.map((nodeId) => this.#getOrCreateRuntime(nodeId).done);
+        const outputRuns = rootNodeIds
+            .filter((nodeId) => this.#workflow.nodes[nodeId]?.class === 'Output')
+            .map((nodeId) => this.#getOrCreateRuntime(nodeId).done);
         for (const done of outputRuns) {
             void done.then(onOutputSettled, onOutputSettled);
         }
@@ -118,7 +119,7 @@ export class WorkflowRuntime {
             this.#runtimeOutputSubscribers.delete(outputSubscriber);
         }
 
-        await Promise.all(runs.map(({ done }) => done));
+        await Promise.all(rootRuns);
         if (this.#latestRuntimeOutput.status === 'error') throw this.#latestRuntimeOutput.error;
     }
 

@@ -200,8 +200,8 @@ describe('buildPrompt', () => {
                 name: 'History',
                 type: 'history',
                 historyMode: 'last_content',
-                start: -10,
-                end: -1,
+                start: '-10',
+                end: '-1',
                 sortOrder: 'b',
                 enabled: true
             }
@@ -238,7 +238,7 @@ describe('buildPrompt', () => {
                 name: 'History',
                 type: 'history',
                 historyMode: 'last_content',
-                start: -10,
+                start: '-10',
                 sortOrder: 'a',
                 enabled: true
             }
@@ -305,7 +305,7 @@ describe('buildPrompt', () => {
                 name: 'History',
                 type: 'history',
                 historyMode: 'last_content',
-                start: -10,
+                start: '-10',
                 sortOrder: 'a',
                 enabled: true
             }
@@ -313,6 +313,9 @@ describe('buildPrompt', () => {
 
         mockRunTemplate.mockImplementation(
             async (text: string, ctx?: RuntimeContext, macros?: ReadonlyMap<string, Macro>) => {
+                // History index fields resolve through runTemplate too; pass literal
+                // numbers through untouched so they can be parsed back to a number.
+                if (text === '-10') return text;
                 const slot = macros?.get('slot');
                 const resolved = text === '{{slot}}' && slot ? await slot.run([], ctx ?? {}) : text;
                 return `template(${resolved})`;
@@ -383,7 +386,7 @@ describe('buildPrompt', () => {
                     name: 'History',
                     type: 'history',
                     historyMode: 'full_trace',
-                    start: -10,
+                    start: '-10',
                     sortOrder: 'a',
                     enabled: true
                 }
@@ -460,7 +463,7 @@ describe('buildPrompt', () => {
                     name: 'History',
                     type: 'history',
                     historyMode: 'last_content',
-                    start: -1,
+                    start: '-1',
                     sortOrder: 'a',
                     enabled: true
                 }
@@ -508,8 +511,8 @@ describe('buildPrompt', () => {
                 name: 'History',
                 type: 'history',
                 historyMode: 'last_content',
-                start: -10,
-                end: -1,
+                start: '-10',
+                end: '-1',
                 format: '원본: {{slot}}\n입력: {{slot::source}}\n이름: {{name}}',
                 sortOrder: 'a',
                 enabled: true
@@ -586,7 +589,7 @@ describe('buildPrompt', () => {
                 name: 'History',
                 type: 'history',
                 historyMode: 'last_content',
-                start: -10,
+                start: '-10',
                 sortOrder: 'a',
                 enabled: true
             }
@@ -653,7 +656,7 @@ describe('buildPrompt', () => {
                     name: 'History',
                     type: 'history',
                     historyMode: 'last_content',
-                    start: -1,
+                    start: '-1',
                     sortOrder: 'a',
                     enabled: true
                 }
@@ -771,5 +774,90 @@ describe('buildPrompt', () => {
                 messages
             })
         ).rejects.toThrow('Prompt can only have one unbounded history block');
+    });
+
+    it('resolves start/end as template expressions into numeric slice bounds', async () => {
+        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([]);
+        const messages = { slice } as unknown as PagedMessages;
+        mockRunTemplate.mockImplementation(async (text: string) => {
+            if (text === '{{getvar::startIdx}}') return '2';
+            if (text === '{{getvar::endIdx}}') return '5';
+            return text;
+        });
+
+        await buildTestPrompt({
+            chat,
+            preset: makePreset({
+                history: {
+                    id: 'history',
+                    name: 'History',
+                    type: 'history',
+                    historyMode: 'last_content',
+                    start: '{{getvar::startIdx}}',
+                    end: '{{getvar::endIdx}}',
+                    sortOrder: 'a',
+                    enabled: true
+                }
+            }),
+            lorebooks: [],
+            messages
+        });
+
+        expect(slice).toHaveBeenCalledWith(2, 5);
+    });
+
+    it('treats a blank template result as "to the end" (undefined)', async () => {
+        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([]);
+        const messages = { slice } as unknown as PagedMessages;
+        mockRunTemplate.mockImplementation(async (text: string) => {
+            if (text === '{{getvar::empty}}') return '';
+            if (text === '{{getvar::startIdx}}') return '3';
+            return text;
+        });
+
+        await buildTestPrompt({
+            chat,
+            preset: makePreset({
+                history: {
+                    id: 'history',
+                    name: 'History',
+                    type: 'history',
+                    historyMode: 'last_content',
+                    start: '{{getvar::startIdx}}',
+                    end: '{{getvar::empty}}',
+                    sortOrder: 'a',
+                    enabled: true
+                }
+            }),
+            lorebooks: [],
+            messages
+        });
+
+        expect(slice).toHaveBeenCalledWith(3, undefined);
+    });
+
+    it('throws when a history index template does not resolve to a number', async () => {
+        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([]);
+        const messages = { slice } as unknown as PagedMessages;
+        mockRunTemplate.mockImplementation(async () => 'not-a-number');
+
+        await expect(
+            buildTestPrompt({
+                chat,
+                preset: makePreset({
+                    history: {
+                        id: 'history',
+                        name: 'History',
+                        type: 'history',
+                        historyMode: 'last_content',
+                        start: '{{getvar::bad}}',
+                        sortOrder: 'a',
+                        enabled: true
+                    }
+                }),
+                lorebooks: [],
+                messages
+            })
+        ).rejects.toThrow('must resolve to a number');
     });
 });

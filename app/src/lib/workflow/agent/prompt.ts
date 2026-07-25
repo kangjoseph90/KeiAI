@@ -146,8 +146,21 @@ async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<
             break;
 
         case 'history': {
-            // Only bounded history gets processed here
-            const slice = await input.messages.slice(block.start, block.end);
+            const start = await resolveHistoryIndex(
+                block.start,
+                input.ctx,
+                templateMacros,
+                'start',
+                block.name
+            );
+            const end = await resolveHistoryIndex(
+                block.end,
+                input.ctx,
+                templateMacros,
+                'end',
+                block.name
+            );
+            const slice = await input.messages.slice(start, end);
             for (const { message, index } of slice) {
                 const rendered = await renderHistoryMessage(
                     message,
@@ -498,6 +511,26 @@ async function renderHistoryText(
     const templated = await renderWithFormat(text, format, messageCtx, speakerName, templateMacros);
     const processed = await runPipeline('request', messageCtx, templated);
     return runTemplate(processed, messageCtx, templateMacros);
+}
+
+async function resolveHistoryIndex(
+    value: string | undefined,
+    ctx: RuntimeContext,
+    templateMacros: ReadonlyMap<string, Macro>,
+    label: string,
+    blockName: string
+): Promise<number | undefined> {
+    if (value === undefined) return undefined;
+    const resolved = (await runTemplate(value, ctx, templateMacros)).trim();
+    if (resolved === '') return undefined;
+    const parsed = Number(resolved);
+    if (!Number.isFinite(parsed)) {
+        throw new AppError(
+            'INVALID_INPUT',
+            `History block "${blockName}" ${label} must resolve to a number: "${value}"`
+        );
+    }
+    return parsed;
 }
 
 async function addAttachmentContent(

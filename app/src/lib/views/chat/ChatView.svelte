@@ -119,15 +119,6 @@
         });
     });
 
-    $effect(() => {
-        if ($activeChat) {
-            const personaIds = Object.keys($activeChat.personas.refs);
-            if (personaIds.length === 0) {
-                inspectorOpen = true;
-            }
-        }
-    });
-
     async function handleScroll() {
         if (!scrollContainerEl || !$activeChat) return;
 

@@ -307,6 +307,44 @@ describe('template', () => {
         ).resolves.toBe('chat-1|char-1|persona-1|msg-1|12|char-1|Kei|Kei|assistant|0|1');
     });
 
+    it('prefers current entity names and uses stored speaker names only as fallback', async () => {
+        mockGetCharacter.mockResolvedValueOnce({
+            id: 'char-1',
+            name: 'Renamed Kei'
+        });
+        await expect(
+            runTemplate('{{char}}', {
+                characterId: 'char-1',
+                speakerId: 'char-1',
+                speakerName: 'Old Kei',
+                role: 'assistant'
+            })
+        ).resolves.toBe('Renamed Kei');
+
+        mockGetPersona.mockResolvedValueOnce({
+            id: 'persona-1',
+            name: 'Renamed Mina'
+        });
+        await expect(
+            runTemplate('{{speakername}}', {
+                personaId: 'persona-1',
+                speakerId: 'persona-1',
+                speakerName: 'Old Mina',
+                role: 'user'
+            })
+        ).resolves.toBe('Renamed Mina');
+
+        mockGetCharacter.mockResolvedValueOnce(null);
+        await expect(
+            runTemplate('{{speaker}}', {
+                characterId: 'deleted-char',
+                speakerId: 'deleted-char',
+                speakerName: 'Archived Name',
+                role: 'assistant'
+            })
+        ).resolves.toBe('Archived Name');
+    });
+
     it('treats dryRun setvar as read-only', async () => {
         const dryRunMacros = createDryRunMacros();
         await expect(

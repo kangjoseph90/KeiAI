@@ -20,6 +20,8 @@
     import { Button } from '$lib/components/ui/button';
     import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
     import {
+        activeChat,
+        activeRoom,
         activeUser,
         assetSyncStatus,
         appSettings,
@@ -35,6 +37,7 @@
         multiSyncStatus,
         rooms,
         serverTransitionLocked,
+        selectRoom,
         switchLocalUser,
         updateGlobalFolder,
         userSyncStatus
@@ -72,6 +75,7 @@
     let switchingUserId = $state<string | null>(null);
     let creatingUser = $state(false);
     let retryingSync = $state(false);
+    let selectingRoomId = $state<string | null>(null);
     let syncIconState = $state<SyncIndicatorState>('idle');
     let syncIconStartedAt = 0;
 
@@ -168,8 +172,23 @@
         }
     }
 
-    function handleSelectRoom(roomId: string): void {
-        onNavigate({ view: 'room', roomId });
+    async function handleSelectRoom(roomId: string): Promise<void> {
+        if (route.view === 'room') {
+            onNavigate({ view: 'room', roomId });
+            return;
+        }
+        if (selectingRoomId) return;
+        selectingRoomId = roomId;
+        try {
+            await selectRoom(roomId);
+            if ($activeRoom?.id === roomId) {
+                onNavigate({ view: 'room', roomId, chatId: $activeChat?.id });
+            }
+        } catch (error) {
+            toast.error({ title: 'Could not open room', description: getErrorMessage(error) });
+        } finally {
+            selectingRoomId = null;
+        }
     }
 
     async function handleSwitchUser(userId: string) {

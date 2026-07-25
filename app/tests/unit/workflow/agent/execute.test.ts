@@ -348,6 +348,15 @@ describe('executeAgentNode', () => {
                     inputs: {},
                     inputValues: {}
                 },
+                // Sink drives the detached Agent's execution without emitting runtime output.
+                memorySink: {
+                    id: 'memorySink',
+                    name: 'Memory Sink',
+                    class: 'Sink',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'memory', sourcePort: 0 } },
+                    inputValues: { content: '' }
+                },
                 output: {
                     id: 'output',
                     name: 'Output',

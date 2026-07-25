@@ -49,10 +49,13 @@ function collectBuiltInMacros(): Map<string, Macro[]> {
     addAliases(['br', 'newline'], () => '\n');
     addAliases(['blank', 'none'], () => '');
     addAliases(['char', 'bot', 'character'], async (_args, ctx) => {
-        if (ctx.role === 'assistant' && ctx.speakerName) return ctx.speakerName;
-        if (!ctx.characterId) return '';
-        const character = await getCharacter(ctx.characterId);
-        return character?.name ?? '';
+        const characterId =
+            ctx.role === 'assistant' ? (ctx.speakerId ?? ctx.characterId) : ctx.characterId;
+        if (characterId) {
+            const character = await getCharacter(characterId);
+            if (character) return character.name;
+        }
+        return ctx.role === 'assistant' ? (ctx.speakerName ?? '') : '';
     });
     addAliases(['description', 'chardesc'], {
         recursive: true,
@@ -71,10 +74,12 @@ function collectBuiltInMacros(): Map<string, Macro[]> {
         }
     });
     add('user', async (_args, ctx) => {
-        if (ctx.role === 'user' && ctx.speakerName) return ctx.speakerName;
-        if (!ctx.personaId) return 'User';
-        const persona = await getPersona(ctx.personaId);
-        return persona?.name ?? 'User';
+        const personaId = ctx.role === 'user' ? (ctx.speakerId ?? ctx.personaId) : ctx.personaId;
+        if (personaId) {
+            const persona = await getPersona(personaId);
+            if (persona) return persona.name;
+        }
+        return ctx.role === 'user' ? (ctx.speakerName ?? 'User') : 'User';
     });
     addAliases(['persona', 'userpersona'], {
         recursive: true,
@@ -103,7 +108,22 @@ function collectBuiltInMacros(): Map<string, Macro[]> {
     addAliases(['characterid', 'charid'], (_args, ctx) => ctx.characterId ?? '');
     addAliases(['personaid', 'userid'], (_args, ctx) => ctx.personaId ?? '');
     addAliases(['speakerid'], (_args, ctx) => ctx.speakerId ?? '');
-    addAliases(['speaker', 'speakername'], (_args, ctx) => ctx.speakerName ?? '');
+    addAliases(['speaker', 'speakername'], async (_args, ctx) => {
+        if (ctx.role === 'assistant') {
+            const characterId = ctx.speakerId ?? ctx.characterId;
+            if (characterId) {
+                const character = await getCharacter(characterId);
+                if (character) return character.name;
+            }
+        } else if (ctx.role === 'user') {
+            const personaId = ctx.speakerId ?? ctx.personaId;
+            if (personaId) {
+                const persona = await getPersona(personaId);
+                if (persona) return persona.name;
+            }
+        }
+        return ctx.speakerName ?? '';
+    });
     addAliases(['messageid', 'msgid'], (_args, ctx) => ctx.messageId ?? '');
     addAliases(['messageindex', 'msgindex'], (_args, ctx) =>
         ctx.messageIndex === undefined ? '' : String(ctx.messageIndex)
