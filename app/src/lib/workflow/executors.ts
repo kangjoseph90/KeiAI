@@ -19,7 +19,7 @@ import {
     executeStringReplaceNode,
     executeStringNode,
     executeTemplateNode,
-    executeThrowNode,
+    executeThrowIfNode,
     executeToBooleanNode,
     executeToNumberNode,
     executeUngateNode
@@ -49,7 +49,7 @@ const WORKFLOW_NODE_EXECUTORS = {
     ToBoolean: executeToBooleanNode,
     ToNumber: executeToNumberNode,
     Catch: executeCatchNode,
-    Throw: executeThrowNode,
+    ThrowIf: executeThrowIfNode,
     Concat: executeConcatNode,
     StringLength: executeStringLengthNode,
     StringIncludes: executeStringIncludesNode,

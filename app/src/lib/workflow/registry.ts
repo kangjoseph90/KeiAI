@@ -21,7 +21,7 @@ import type {
     StringRegexReplaceNode,
     StringReplaceNode,
     TemplateNode,
-    ThrowNode,
+    ThrowIfNode,
     ToBooleanNode,
     ToNumberNode,
     UngateNode,
@@ -246,7 +246,7 @@ export const CATCH_NODE_DEFINITION: WorkflowNodeDefinition<CatchNode> = {
     label: 'Catch',
     category: 'flow',
     inputs: {
-        try: { name: 'Try', type: 'string', required: true },
+        value: { name: 'Value', type: 'string', required: true },
         fallback: { name: 'Fallback', type: 'string', required: true }
     },
     outputs: {
@@ -258,24 +258,27 @@ export const CATCH_NODE_DEFINITION: WorkflowNodeDefinition<CatchNode> = {
         name: 'Catch',
         class: 'Catch',
         position: { x: 0, y: 0 },
-        inputs: { try: null, fallback: null },
-        inputValues: { try: '', fallback: '' }
+        inputs: { value: null, fallback: null },
+        inputValues: { value: '', fallback: '' }
     })
 };
 
-export const THROW_NODE_DEFINITION: WorkflowNodeDefinition<ThrowNode> = {
-    class: 'Throw',
-    label: 'Throw',
+export const THROWIF_NODE_DEFINITION: WorkflowNodeDefinition<ThrowIfNode> = {
+    class: 'ThrowIf',
+    label: 'Throw If',
     category: 'flow',
-    inputs: { condition: { name: 'Condition', type: 'boolean', required: true } },
-    outputs: { 0: { name: 'try', type: 'boolean' } },
+    inputs: {
+        condition: { name: 'Condition', type: 'boolean', required: true },
+        value: { name: 'Value', type: 'string', required: true }
+    },
+    outputs: { 0: { name: 'value', type: 'string' } },
     createDefault: (id) => ({
         id,
-        name: 'Throw',
-        class: 'Throw',
+        name: 'Throw If',
+        class: 'ThrowIf',
         position: { x: 0, y: 0 },
-        inputs: { condition: null },
-        inputValues: { condition: false }
+        inputs: { condition: null, value: null },
+        inputValues: { condition: false, value: '' }
     })
 };
 
@@ -470,15 +473,18 @@ export const GATE_NODE_DEFINITION: WorkflowNodeDefinition<GateNode> = {
     class: 'Gate',
     label: 'Gate',
     category: 'flow',
-    inputs: { condition: { name: 'Condition', type: 'boolean', required: false } },
-    outputs: { 0: { name: 'gate', type: 'boolean' } },
+    inputs: {
+        condition: { name: 'Condition', type: 'boolean', required: false },
+        value: { name: 'Value', type: 'string', required: true }
+    },
+    outputs: { 0: { name: 'value', type: 'string' } },
     createDefault: (id) => ({
         id,
         name: 'Gate',
         class: 'Gate',
         position: { x: 0, y: 0 },
-        inputs: { condition: null },
-        inputValues: { condition: false }
+        inputs: { condition: null, value: null },
+        inputValues: { condition: false, value: '' }
     })
 };
 
@@ -487,7 +493,7 @@ export const UNGATE_NODE_DEFINITION: WorkflowNodeDefinition<UngateNode> = {
     label: 'Ungate',
     category: 'flow',
     inputs: {
-        gate: { name: 'Gate', type: 'string', required: true },
+        value: { name: 'Value', type: 'string', required: true },
         fallback: { name: 'Fallback', type: 'string', required: true }
     },
     outputs: {
@@ -499,8 +505,8 @@ export const UNGATE_NODE_DEFINITION: WorkflowNodeDefinition<UngateNode> = {
         name: 'Ungate',
         class: 'Ungate',
         position: { x: 0, y: 0 },
-        inputs: { gate: null, fallback: null },
-        inputValues: { gate: '', fallback: '' }
+        inputs: { value: null, fallback: null },
+        inputValues: { value: '', fallback: '' }
     })
 };
 
@@ -593,7 +599,7 @@ export const WORKFLOW_NODE_DEFINITIONS = {
     ToBoolean: TO_BOOLEAN_NODE_DEFINITION,
     ToNumber: TO_NUMBER_NODE_DEFINITION,
     Catch: CATCH_NODE_DEFINITION,
-    Throw: THROW_NODE_DEFINITION,
+    ThrowIf: THROWIF_NODE_DEFINITION,
     Concat: CONCAT_NODE_DEFINITION,
     StringLength: STRING_LENGTH_NODE_DEFINITION,
     StringIncludes: STRING_INCLUDES_NODE_DEFINITION,

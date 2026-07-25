@@ -41,7 +41,7 @@ export type WorkflowNode =
     | ToBooleanNode
     | ToNumberNode
     | CatchNode
-    | ThrowNode
+    | ThrowIfNode
     | BooleanNode
     | BooleanNotNode
     | GateNode
@@ -166,8 +166,8 @@ export interface CatchNode extends BaseNode {
     class: 'Catch';
 }
 
-export interface ThrowNode extends BaseNode {
-    class: 'Throw';
+export interface ThrowIfNode extends BaseNode {
+    class: 'ThrowIf';
 }
 
 export interface StringConcatNode extends BaseNode {

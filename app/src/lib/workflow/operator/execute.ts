@@ -21,7 +21,7 @@ import type {
     StringRegexReplaceNode,
     StringReplaceNode,
     TemplateNode,
-    ThrowNode,
+    ThrowIfNode,
     ToBooleanNode,
     ToNumberNode,
     UngateNode,
@@ -163,11 +163,11 @@ export async function executeCatchNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<CatchNode>): Promise<void> {
-    const tryInput = requireWorkflowInput(inputs.try, 'Catch try input is required');
-    const tryResult = await tryInput.done;
+    const valueInput = requireWorkflowInput(inputs.value, 'Catch value input is required');
+    const valueResult = await valueInput.done;
     throwIfAborted(signal);
 
-    if (tryResult.status === 'error') {
+    if (valueResult.status === 'error') {
         const fallback = await requireInput(inputs.fallback, 'Catch fallback input is required');
         throwIfAborted(signal);
         if (fallback.status !== 'value') {
@@ -179,39 +179,43 @@ export async function executeCatchNode({
         return;
     }
 
-    if (tryResult.status !== 'value') {
-        output.emit(0, tryResult);
+    if (valueResult.status !== 'value') {
+        output.emit(0, valueResult);
         return;
     }
-    output.emit(0, createWorkflowValueEvent(workflowValueToString(tryResult.value)));
+    output.emit(0, createWorkflowValueEvent(workflowValueToString(valueResult.value)));
     output.emit(1, createWorkflowValueEvent(false));
 }
 
-export async function executeThrowNode({
+export async function executeThrowIfNode({
     node,
     inputs,
     output,
     signal
-}: WorkflowNodeExecutionContext<ThrowNode>): Promise<void> {
-    const result = await requireInput(inputs.condition, 'Throw condition input is required');
+}: WorkflowNodeExecutionContext<ThrowIfNode>): Promise<void> {
+    const conditionResult = await requireInput(
+        inputs.condition,
+        'ThrowIf condition input is required'
+    );
     throwIfAborted(signal);
-    if (result.status !== 'value') {
-        output.emit(0, result);
+    if (conditionResult.status !== 'value') {
+        output.emit(0, conditionResult);
         return;
     }
-    const condition = asBoolean(result.value);
-    if (condition) {
+    if (asBoolean(conditionResult.value)) {
         // Error/skip events are terminal for the whole node; the port number is only API shape.
         output.emit(
             0,
             createWorkflowErrorEvent(
                 node,
-                new AppError('INVALID_INPUT', `Throw condition was true: ${node.id}`)
+                new AppError('INVALID_INPUT', `ThrowIf condition was true: ${node.id}`)
             )
         );
         return;
     }
-    output.emit(0, createWorkflowValueEvent(false));
+    const value = await requireInput(inputs.value, 'ThrowIf value input is required');
+    throwIfAborted(signal);
+    output.emit(0, value);
 }
 
 export async function executeConcatNode({
@@ -365,17 +369,19 @@ export async function executeGateNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<GateNode>): Promise<void> {
-    const result = await requireInput(inputs.condition, 'Gate condition input is required');
+    const condition = await requireInput(inputs.condition, 'Gate condition input is required');
     throwIfAborted(signal);
-    if (result.status !== 'value') {
-        output.emit(0, result);
+    if (condition.status !== 'value') {
+        output.emit(0, condition);
         return;
     }
-    if (!asBoolean(result.value)) {
+    if (!asBoolean(condition.value)) {
         output.emit(0, createWorkflowSkipEvent('Gate condition was false'));
         return;
     }
-    output.emit(0, createWorkflowValueEvent(true));
+    const value = await requireInput(inputs.value, 'Gate value input is required');
+    throwIfAborted(signal);
+    output.emit(0, value);
 }
 
 export async function executeUngateNode({
@@ -383,14 +389,14 @@ export async function executeUngateNode({
     output,
     signal
 }: WorkflowNodeExecutionContext<UngateNode>): Promise<void> {
-    const gate = await requireInput(inputs.gate, 'Ungate gate input is required');
+    const value = await requireInput(inputs.value, 'Ungate value input is required');
     throwIfAborted(signal);
 
-    if (gate.status === 'error') {
-        output.emit(0, gate);
+    if (value.status === 'error') {
+        output.emit(0, value);
         return;
     }
-    if (gate.status === 'skip') {
+    if (value.status === 'skip') {
         const fallback = await requireInput(inputs.fallback, 'Ungate fallback input is required');
         throwIfAborted(signal);
         if (fallback.status !== 'value') {
@@ -402,6 +408,6 @@ export async function executeUngateNode({
         return;
     }
 
-    output.emit(0, createWorkflowValueEvent(workflowValueToString(gate.value)));
+    output.emit(0, createWorkflowValueEvent(workflowValueToString(value.value)));
     output.emit(1, createWorkflowValueEvent(false));
 }
