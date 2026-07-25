@@ -40,8 +40,7 @@
         updateChatFolder
     } from '$lib/stores';
     import { appConfirm, personaPickerOpen, toast } from '$lib/ui';
-    import { navigate } from '$lib/router';
-    import { getChatVariables, setChatVariables } from '$lib/managers';
+    import { getChatVariables, navigateToPersonaStudio, setChatVariables } from '$lib/managers';
     import { defaultLorebookFields, type ChatContent, type Lorebook } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
@@ -141,8 +140,10 @@
         });
     }
 
-    function openPersonaSettings(personaId: string) {
-        navigate({ view: 'personaStudio', personaId });
+    function openPersonaSettings(personaId: string): void {
+        void runPanelAction(`open-persona:${personaId}`, 'Could not open persona', () =>
+            navigateToPersonaStudio(personaId)
+        );
     }
 
     async function handleInlayUpload() {

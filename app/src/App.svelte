@@ -8,6 +8,12 @@
     import { appKV } from '$lib/adapters/kv';
     import { AppSidebar } from '$lib/components/layout';
     import RoomPanel from '$lib/views/room/RoomPanel.svelte';
+    import ChatView from '$lib/views/chat/ChatView.svelte';
+    import CharacterStudio from '$lib/views/character/CharacterStudio.svelte';
+    import HomeView from '$lib/views/home/HomeView.svelte';
+    import ModuleStudio from '$lib/views/modules/ModuleStudio.svelte';
+    import PersonaStudio from '$lib/views/persona/PersonaStudio.svelte';
+    import SettingsView from '$lib/views/settings/SettingsView.svelte';
     import { Button } from '$lib/components/ui/button';
     import {
         loadGlobalState,
@@ -273,27 +279,6 @@
     </div>
 {/snippet}
 
-{#snippet routeLoading(label: string)}
-    <div class="flex min-h-0 flex-1 items-center justify-center p-6" role="status">
-        <p class="text-sm text-muted-foreground">Loading {label}...</p>
-    </div>
-{/snippet}
-
-{#snippet routeLoadError(loadError: unknown)}
-    <div class="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
-        <section
-            class="w-full max-w-lg rounded-xl border border-destructive/30 bg-card p-5"
-            role="alert"
-        >
-            <h1 class="text-lg font-semibold">This view could not be loaded</h1>
-            <p class="mt-2 break-words text-sm text-muted-foreground">
-                {getErrorMessage(loadError)}
-            </p>
-            <Button class="mt-4" onclick={retryStartup}>Retry</Button>
-        </section>
-    </div>
-{/snippet}
-
 <main
     class="app-shell flex min-h-0 overflow-hidden bg-background text-foreground"
     aria-busy={!ready && !environmentIssue && !cryptoIssue && !errorMsg}
@@ -359,61 +344,19 @@
         <!-- Main Content -->
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
             {#if $route.view === 'room' && $route.roomId}
-                {#await import('$lib/views/chat/ChatView.svelte')}
-                    {@render routeLoading('chat')}
-                {:then m}
-                    <m.default roomId={$route.roomId} chatId={$route.chatId} />
-                {:catch loadError}
-                    {@render routeLoadError(loadError)}
-                {/await}
+                <ChatView roomId={$route.roomId} chatId={$route.chatId} />
             {:else if $route.view === 'characterStudio' && $route.charId}
-                {#await import('$lib/views/character/CharacterStudio.svelte')}
-                    {@render routeLoading('character editor')}
-                {:then m}
-                    <m.default charId={$route.charId} characterTab={$route.characterTab} />
-                {:catch loadError}
-                    {@render routeLoadError(loadError)}
-                {/await}
+                <CharacterStudio charId={$route.charId} characterTab={$route.characterTab} />
             {:else if $route.view === 'moduleStudio' && $route.moduleId}
-                {#await import('$lib/views/modules/ModuleStudio.svelte')}
-                    {@render routeLoading('module editor')}
-                {:then m}
-                    <m.default moduleId={$route.moduleId} moduleTab={$route.moduleTab} />
-                {:catch loadError}
-                    {@render routeLoadError(loadError)}
-                {/await}
+                <ModuleStudio moduleId={$route.moduleId} moduleTab={$route.moduleTab} />
             {:else if $route.view === 'personaStudio' && $route.personaId}
-                {#await import('$lib/views/persona/PersonaStudio.svelte')}
-                    {@render routeLoading('persona editor')}
-                {:then m}
-                    <m.default personaId={$route.personaId} personaTab={$route.personaTab} />
-                {:catch loadError}
-                    {@render routeLoadError(loadError)}
-                {/await}
+                <PersonaStudio personaId={$route.personaId} personaTab={$route.personaTab} />
             {:else if $route.view === 'settings'}
-                {#await import('$lib/views/settings/SettingsView.svelte')}
-                    {@render routeLoading('settings')}
-                {:then m}
-                    <m.default settingsTab={$route.settingsTab} />
-                {:catch loadError}
-                    {@render routeLoadError(loadError)}
-                {/await}
+                <SettingsView settingsTab={$route.settingsTab} />
             {:else if $route.view === 'multiRoom'}
-                {#await import('$lib/views/home/HomeView.svelte')}
-                    {@render routeLoading('rooms')}
-                {:then m}
-                    <m.default space="multiRooms" onNavigate={navigateFromHome} />
-                {:catch loadError}
-                    {@render routeLoadError(loadError)}
-                {/await}
+                <HomeView space="multiRooms" onNavigate={navigateFromHome} />
             {:else}
-                {#await import('$lib/views/home/HomeView.svelte')}
-                    {@render routeLoading('library')}
-                {:then m}
-                    <m.default space="library" onNavigate={navigateFromHome} />
-                {:catch loadError}
-                    {@render routeLoadError(loadError)}
-                {/await}
+                <HomeView space="library" onNavigate={navigateFromHome} />
             {/if}
         </div>
     {/if}

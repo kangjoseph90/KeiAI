@@ -1,6 +1,31 @@
+import { get } from 'svelte/store';
 import { RecordScopeService } from '$lib/services';
 import { AppError } from '$lib/types/errors';
-import { selectCharacter, selectMultiRoom, selectPersona, selectRoom } from '$lib/stores';
+import {
+    selectCharacter,
+    selectModule,
+    selectMultiRoom,
+    selectPersona,
+    selectRoom
+} from '$lib/stores';
+import {
+    navigate,
+    route,
+    type CharacterStudioTab,
+    type ModuleStudioTab,
+    type PersonaStudioTab,
+    type RouteState
+} from '$lib/router';
+
+async function navigateAfterPreparation(
+    target: RouteState,
+    prepare: (isCurrent: () => boolean) => Promise<void>
+): Promise<void> {
+    const origin = get(route);
+    const isCurrent = () => get(route) === origin;
+    await prepare(isCurrent);
+    if (isCurrent()) navigate(target);
+}
 
 export async function restoreRoomContext(
     roomId: string,
@@ -49,4 +74,32 @@ export async function restorePersonaContext(
         if (!isCurrent()) return;
     }
     await selectPersona(personaId, isCurrent);
+}
+
+export function navigateToCharacterStudio(
+    characterId: string,
+    characterTab?: CharacterStudioTab
+): Promise<void> {
+    return navigateAfterPreparation(
+        { view: 'characterStudio', charId: characterId, characterTab },
+        (isCurrent) => restoreCharacterContext(characterId, isCurrent)
+    );
+}
+
+export function navigateToPersonaStudio(
+    personaId: string,
+    personaTab?: PersonaStudioTab
+): Promise<void> {
+    return navigateAfterPreparation({ view: 'personaStudio', personaId, personaTab }, (isCurrent) =>
+        restorePersonaContext(personaId, isCurrent)
+    );
+}
+
+export function navigateToModuleStudio(
+    moduleId: string,
+    moduleTab?: ModuleStudioTab
+): Promise<void> {
+    return navigateAfterPreparation({ view: 'moduleStudio', moduleId, moduleTab }, (isCurrent) =>
+        selectModule(moduleId, isCurrent)
+    );
 }

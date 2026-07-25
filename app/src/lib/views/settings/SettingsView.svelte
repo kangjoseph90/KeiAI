@@ -46,8 +46,9 @@
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
 
-    let activeTab = $state<SettingsTab>('models');
     let { settingsTab }: { settingsTab?: SettingsTab } = $props();
+    let localTab = $state<SettingsTab>('models');
+    let activeTab = $derived(settingsTab ?? localTab);
     let settingsBusy = $state(false);
     let maintenanceBusy = $state(false);
 
@@ -61,12 +62,6 @@
         { id: 'connections', label: 'Connections', icon: Network },
         { id: 'general', label: 'General', icon: Settings }
     ] as const;
-
-    $effect(() => {
-        if (settingsTab) {
-            activeTab = settingsTab;
-        }
-    });
 
     async function handleToggleTheme() {
         const currentTheme = $appSettings?.theme === 'dark' ? 'light' : 'dark';
@@ -98,7 +93,7 @@
     }
 
     function openTab(tab: SettingsTab) {
-        activeTab = tab;
+        localTab = tab;
         navigate({ view: 'settings', settingsTab: tab });
     }
 

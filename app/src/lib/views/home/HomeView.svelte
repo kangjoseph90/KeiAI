@@ -20,6 +20,8 @@
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
     import {
+        activeChat,
+        activeRoom,
         appSettings,
         characters,
         createCharacter,
@@ -48,13 +50,19 @@
         deleteModule,
         rooms,
         selectMultiRoom,
+        selectRoom,
         updateMultiRoomIndex,
         updateGlobalFolder,
         userId
     } from '$lib/stores';
-    import { appAlert, appConfirm, toast } from '$lib/ui';
+    import { appAlert, appConfirm, libraryTab, toast } from '$lib/ui';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
-    import { importCharacterFile } from '$lib/managers';
+    import {
+        importCharacterFile,
+        navigateToCharacterStudio,
+        navigateToModuleStudio,
+        navigateToPersonaStudio
+    } from '$lib/managers';
     import { importModuleFile } from '$lib/managers/module';
     import { importPersonaFile } from '$lib/managers/persona';
     import { isKeiServer } from '$lib/services';
@@ -74,8 +82,9 @@
 
     let { space = 'library', onNavigate }: Props = $props();
 
-    type Tab = 'rooms' | 'multiRooms' | 'characters' | 'personas' | 'modules';
-    let tab = $state<Tab>('rooms');
+    type LibraryTab = 'rooms' | 'characters' | 'personas' | 'modules';
+    type Tab = LibraryTab | 'multiRooms';
+    let tab = $derived<Tab>(space === 'multiRooms' ? 'multiRooms' : $libraryTab);
     let query = $state('');
     let creatingMultiRoom = $state(false);
     let homeAction = $state<string | null>(null);
@@ -135,13 +144,9 @@
         destroyed = true;
     });
 
-    $effect(() => {
-        if (space === 'multiRooms') {
-            tab = 'multiRooms';
-        } else if (tab === 'multiRooms') {
-            tab = 'rooms';
-        }
-    });
+    function selectLibraryTab(nextTab: LibraryTab): void {
+        $libraryTab = nextTab;
+    }
 
     $effect(() => {
         if (tab === 'multiRooms') {
@@ -191,7 +196,7 @@
     async function handleCreateRoom() {
         await runHomeAction('create-room', 'Could not create room', async () => {
             const room = await createRoom();
-            if (!destroyed) onNavigate({ view: 'room', roomId: room.id });
+            await prepareAndNavigateRoom(room.id);
         });
     }
 
@@ -312,17 +317,29 @@
         onNavigate({ view: 'room', roomId });
     }
 
+    async function prepareAndNavigateRoom(roomId: string): Promise<void> {
+        await selectRoom(roomId);
+        if (destroyed || $activeRoom?.id !== roomId) return;
+        onNavigate({ view: 'room', roomId, chatId: $activeChat?.id });
+    }
+
+    async function openRoom(roomId: string): Promise<void> {
+        await runHomeAction(`open-room:${roomId}`, 'Could not open room', () =>
+            prepareAndNavigateRoom(roomId)
+        );
+    }
+
     async function handleCreateCharacter() {
         await runHomeAction('create-character', 'Could not create character', async () => {
             const character = await createCharacter();
-            if (!destroyed) onNavigate({ view: 'characterStudio', charId: character.id });
+            if (!destroyed) await navigateToCharacterStudio(character.id);
         });
     }
 
     async function handleCreateModule() {
         await runHomeAction('create-module', 'Could not create module', async () => {
             const mod = await createModule();
-            if (!destroyed) onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+            if (!destroyed) await navigateToModuleStudio(mod.id);
         });
     }
 
@@ -338,7 +355,7 @@
                 allowLightAssets: isKeiServer(),
                 select: true
             });
-            if (mod && !destroyed) onNavigate({ view: 'moduleStudio', moduleId: mod.id });
+            if (mod && !destroyed) await navigateToModuleStudio(mod.id);
         });
     }
 
@@ -349,7 +366,7 @@
                 select: true
             });
             if (character && !destroyed) {
-                onNavigate({ view: 'characterStudio', charId: character.id });
+                await navigateToCharacterStudio(character.id);
             }
         });
     }
@@ -401,7 +418,7 @@
                 allowLightAssets: isKeiServer(),
                 select: true
             });
-            if (persona && !destroyed) onNavigate({ view: 'personaStudio', personaId: persona.id });
+            if (persona && !destroyed) await navigateToPersonaStudio(persona.id);
         });
     }
 
@@ -428,7 +445,7 @@
     async function handleCreatePersona() {
         await runHomeAction('create-persona', 'Could not create persona', async () => {
             const persona = await createPersona();
-            if (!destroyed) onNavigate({ view: 'personaStudio', personaId: persona.id });
+            if (!destroyed) await navigateToPersonaStudio(persona.id);
         });
     }
 
@@ -606,7 +623,7 @@
                             'rooms'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
-                            onclick={() => (tab = 'rooms')}
+                            onclick={() => selectLibraryTab('rooms')}
                         >
                             Rooms
                         </button>
@@ -615,7 +632,7 @@
                             'characters'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
-                            onclick={() => (tab = 'characters')}
+                            onclick={() => selectLibraryTab('characters')}
                         >
                             Characters
                         </button>
@@ -624,7 +641,7 @@
                             'personas'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
-                            onclick={() => (tab = 'personas')}
+                            onclick={() => selectLibraryTab('personas')}
                         >
                             Personas
                         </button>
@@ -633,7 +650,7 @@
                             'modules'
                                 ? 'bg-background shadow-sm'
                                 : 'text-muted-foreground hover:text-foreground'}"
-                            onclick={() => (tab = 'modules')}
+                            onclick={() => selectLibraryTab('modules')}
                         >
                             Modules
                         </button>
@@ -665,7 +682,7 @@
                         config={$appSettings.rooms}
                         layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
-                        onItemClick={(room) => onNavigate({ view: 'room', roomId: room.id })}
+                        onItemClick={(room) => openRoom(room.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('rooms', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) => updateGlobalFolder('rooms', id, changes)}
@@ -886,8 +903,7 @@
                         config={$appSettings.characters}
                         layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
-                        onItemClick={(character) =>
-                            onNavigate({ view: 'characterStudio', charId: character.id })}
+                        onItemClick={(character) => navigateToCharacterStudio(character.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('characters', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
@@ -989,8 +1005,7 @@
                         config={$appSettings.modules}
                         layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
-                        onItemClick={(mod) =>
-                            onNavigate({ view: 'moduleStudio', moduleId: mod.id })}
+                        onItemClick={(mod) => navigateToModuleStudio(mod.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('modules', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) => updateGlobalFolder('modules', id, changes)}
@@ -1101,8 +1116,7 @@
                         config={$appSettings.personas}
                         layout={libraryEntityLayout}
                         childContainerClass="relative ml-6 p-3 my-1"
-                        onItemClick={(persona) =>
-                            onNavigate({ view: 'personaStudio', personaId: persona.id })}
+                        onItemClick={(persona) => navigateToPersonaStudio(persona.id)}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createGlobalFolder('personas', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>

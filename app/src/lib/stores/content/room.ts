@@ -38,7 +38,6 @@ export function scheduleRoomSelection(
 ): Promise<void> {
     if (!isContextCurrent()) return Promise.resolve();
     const version = ++roomSelectionVersion;
-    clearActiveRoomState();
     const isCurrent = () => version === roomSelectionVersion && isContextCurrent();
 
     const queued = roomSelectionQueue
@@ -77,6 +76,11 @@ export function selectRoom(
 }
 
 async function selectRoomInternal(roomId: string, isCurrent: () => boolean): Promise<void> {
+    if (get(isMultiRoom)) {
+        await MultiRoomService.closeRoom();
+        if (!isCurrent()) return;
+    }
+
     const room = await getRoom(roomId);
     if (!isCurrent()) return;
     if (!room) throw new AppError('NOT_FOUND', `Room not found: ${roomId}`);
@@ -84,12 +88,8 @@ async function selectRoomInternal(roomId: string, isCurrent: () => boolean): Pro
         throw new AppError('INVALID_INPUT', `Cannot select multi room with selectRoom: ${roomId}`);
     }
 
-    isMultiRoom.set(false);
-    rooms.set(room.id, room);
-    activeRoomId.set(room.id);
-
     const characterIds = Object.keys(room.characters.refs);
-    const [chatList, characterEntries] = await Promise.all([
+    const [loadedChats, characterEntries] = await Promise.all([
         ChatService.listByRoom(roomId),
         Promise.all(characterIds.map(async (id) => [id, await getCharacter(id)] as const))
     ]);
@@ -102,8 +102,6 @@ async function selectRoomInternal(roomId: string, isCurrent: () => boolean): Pro
         }
     }
 
-    roomChats.setAll(sortByRefs(chatList, room.chats.refs));
-
     if (Object.keys(staleCharacterRefs).length > 0) {
         await updateRoom(roomId, {
             characters: { refs: staleCharacterRefs }
@@ -111,16 +109,27 @@ async function selectRoomInternal(roomId: string, isCurrent: () => boolean): Pro
         if (!isCurrent()) return;
     }
 
-    if (roomChats.size === 0) {
-        await ensureRoomHasChat(roomId);
+    let chatList = loadedChats;
+    if (chatList.length === 0) {
+        chatList = [await ensureRoomHasChat(roomId)];
         if (!isCurrent()) return;
     }
 
-    const lastActive = room.lastActiveChatId;
-    const fallbackId = get(roomChats)[0]?.id;
-    const targetId = lastActive && roomChats.get(lastActive) ? lastActive : fallbackId;
+    const currentRoom = rooms.get(roomId) ?? room;
+    const sortedChats = sortByRefs(chatList, currentRoom.chats.refs);
+    const lastActive = currentRoom.lastActiveChatId;
+    const fallbackId = sortedChats[0]?.id;
+    const targetId =
+        lastActive && sortedChats.some((chat) => chat.id === lastActive) ? lastActive : fallbackId;
     if (targetId) {
-        await selectChat(targetId, isCurrent);
+        await selectChat(targetId, isCurrent, () => {
+            isMultiRoom.set(false);
+            rooms.set(currentRoom.id, currentRoom);
+            activeRoomId.set(currentRoom.id);
+            roomChats.setAll(sortedChats);
+            multiRoomCharacters.clear();
+            multiRoomPersonas.clear();
+        });
     }
 }
 

@@ -10,6 +10,7 @@ import { writable } from 'svelte/store';
 
 export const characterPickerOpen = writable(false);
 export const personaPickerOpen = writable(false);
+export const libraryTab = writable<'rooms' | 'characters' | 'personas' | 'modules'>('rooms');
 
 export type ModalVariant = 'default' | 'destructive';
 

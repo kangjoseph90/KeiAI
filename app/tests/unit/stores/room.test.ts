@@ -193,7 +193,10 @@ describe('Room Store', () => {
         );
         vi.mocked(updateChat).mockResolvedValue(undefined);
         vi.mocked(ensureRoomHasChat).mockResolvedValue(mockChat);
-        vi.mocked(selectChat).mockResolvedValue(undefined);
+        vi.mocked(selectChat).mockImplementation(async (chatId, _isCurrent, beforeCommit) => {
+            beforeCommit?.();
+            activeChatId.set(chatId);
+        });
         vi.mocked(clearActiveChat).mockImplementation(() => {
             activeChatId.set(null);
             messages.clear();
@@ -217,7 +220,11 @@ describe('Room Store', () => {
         });
         expect(get(roomChats)).toEqual([mockChat]);
         expect(get(roomCharacters)).toEqual([mockCharacter]);
-        expect(selectChat).toHaveBeenCalledWith('chat-1', expect.any(Function));
+        expect(selectChat).toHaveBeenCalledWith(
+            'chat-1',
+            expect.any(Function),
+            expect.any(Function)
+        );
         expect(RoomService.update).toHaveBeenCalledWith(
             'room-1',
             expect.objectContaining({
@@ -260,7 +267,34 @@ describe('Room Store', () => {
         expect(get(activeRoom)?.id).toBe('room-2');
         expect(ChatService.listByRoom).toHaveBeenCalledTimes(1);
         expect(ChatService.listByRoom).toHaveBeenCalledWith('room-2');
-        expect(selectChat).toHaveBeenCalledWith('chat-2', expect.any(Function));
+        expect(selectChat).toHaveBeenCalledWith(
+            'chat-2',
+            expect.any(Function),
+            expect.any(Function)
+        );
+    });
+
+    it('keeps the current room visible until the next room is ready to commit', async () => {
+        const previousRoom: Room = { ...mockRoom, id: 'room-old', name: 'Old Room' };
+        const previousChat: Chat = { ...mockChat, id: 'chat-old', roomId: 'room-old' };
+        const loadingChats = deferred<Chat[]>();
+        rooms.set(previousRoom.id, previousRoom);
+        activeRoomId.set(previousRoom.id);
+        roomChats.setAll([previousChat]);
+        activeChatId.set(previousChat.id);
+        vi.mocked(ChatService.listByRoom).mockReturnValue(loadingChats.promise);
+
+        const selection = selectRoom('room-1');
+        await Promise.resolve();
+
+        expect(get(activeRoom)?.id).toBe('room-old');
+        expect(get(activeChat)?.id).toBe('chat-old');
+
+        loadingChats.resolve([mockChat]);
+        await selection;
+
+        expect(get(activeRoom)?.id).toBe('room-1');
+        expect(get(activeChat)?.id).toBe('chat-1');
     });
 
     it('clears room-level and nested chat stores', () => {

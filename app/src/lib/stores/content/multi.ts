@@ -126,23 +126,16 @@ async function selectMultiRoomInternal(roomId: string, isCurrent: () => boolean)
         if (!isCurrent()) return;
         if (!room) throw new AppError('NOT_FOUND', `Multi room not found: ${roomId}`);
 
-        isMultiRoom.set(true);
         multiRooms.set(room.id, room);
         multiRoomMetas.set(meta.id, meta);
-        activeRoomId.set(room.id);
 
-        const [chatList, characterList, personaList, members] = await Promise.all([
+        const [loadedChats, characterList, personaList, members] = await Promise.all([
             ChatService.listByRoom(roomId),
             CharacterService.list('room'),
             PersonaService.list('room'),
             MultiRoomService.listMembers(roomId)
         ]);
         if (!isCurrent()) return;
-
-        multiRoomCharacters.setAll(characterList);
-        multiRoomPersonas.setAll(personaList);
-        setRoomMembers(roomId, members);
-        roomChats.setAll(sortByRefs(chatList, room.chats.refs));
 
         const characterIds = new Set(characterList.map((character) => character.id));
         const staleCharacterRefs: Record<string, undefined> = {};
@@ -157,16 +150,30 @@ async function selectMultiRoomInternal(roomId: string, isCurrent: () => boolean)
             if (!isCurrent()) return;
         }
 
-        if (roomChats.size === 0) {
-            await ensureRoomHasChat(roomId);
+        let chatList = loadedChats;
+        if (chatList.length === 0) {
+            chatList = [await ensureRoomHasChat(roomId)];
             if (!isCurrent()) return;
         }
 
-        const lastActive = room.lastActiveChatId;
-        const fallbackId = get(roomChats)[0]?.id;
-        const targetId = lastActive && roomChats.get(lastActive) ? lastActive : fallbackId;
+        const currentRoom = multiRooms.get(roomId) ?? room;
+        multiRooms.set(currentRoom.id, currentRoom);
+        const sortedChats = sortByRefs(chatList, currentRoom.chats.refs);
+        const lastActive = currentRoom.lastActiveChatId;
+        const fallbackId = sortedChats[0]?.id;
+        const targetId =
+            lastActive && sortedChats.some((chat) => chat.id === lastActive)
+                ? lastActive
+                : fallbackId;
         if (targetId) {
-            await selectChat(targetId, isCurrent);
+            await selectChat(targetId, isCurrent, () => {
+                multiRoomCharacters.setAll(characterList);
+                multiRoomPersonas.setAll(personaList);
+                setRoomMembers(roomId, members);
+                roomChats.setAll(sortedChats);
+                isMultiRoom.set(true);
+                activeRoomId.set(currentRoom.id);
+            });
             if (!isCurrent()) return;
         }
         keepSession = true;

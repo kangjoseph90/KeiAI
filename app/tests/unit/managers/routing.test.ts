@@ -13,6 +13,7 @@ vi.mock('$lib/services', () => ({
 
 vi.mock('$lib/stores', () => ({
     selectCharacter: vi.fn(),
+    selectModule: vi.fn(),
     selectMultiRoom: vi.fn(),
     selectPersona: vi.fn(),
     selectRoom: vi.fn()
