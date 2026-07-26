@@ -11,6 +11,7 @@
     import { Input } from '$lib/components/ui/input';
     import { Label } from '$lib/components/ui/label';
     import { ScrollArea } from '$lib/components/ui/scroll-area';
+    import { Textarea } from '$lib/components/ui/textarea';
     import { appSettings, updateSettings } from '$lib/stores';
     import type { AppSettings } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
@@ -35,6 +36,7 @@
         | 'stability'
         | 'elevenlabs'
         | 'novelai'
+        | 'comfyui'
         | 'kokoro'
         | 'transformers'
         | 'groq'
@@ -51,6 +53,8 @@
         value: string;
         placeholder: string;
         secret?: boolean;
+        multiline?: boolean;
+        help?: string;
         number?: {
             min?: number;
             max?: number;
@@ -79,7 +83,13 @@
         }
     ];
 
-    const IMAGEGEN_PROVIDERS: ImageGenProvider[] = ['openai', 'google', 'novelai', 'stability'];
+    const IMAGEGEN_PROVIDERS: ImageGenProvider[] = [
+        'openai',
+        'google',
+        'novelai',
+        'comfyui',
+        'stability'
+    ];
     const TTS_PROVIDERS: TTSProvider[] = [
         'openai',
         'google',
@@ -358,6 +368,40 @@
                                 'Reference Fidelity',
                                 settings.novelai.imagegen.referenceFidelity,
                                 { min: 0, max: 1, step: 0.05 }
+                            )
+                        ];
+                    case 'comfyui':
+                        return [
+                            {
+                                ...configField(
+                                    'comfyui',
+                                    'imagegen',
+                                    'baseUrl',
+                                    'Server URL',
+                                    settings.comfyui.imagegen.baseUrl,
+                                    'http://127.0.0.1:8188'
+                                ),
+                                help: 'The browser build requires ComfyUI to allow CORS. The desktop build connects directly.'
+                            },
+                            {
+                                ...configField(
+                                    'comfyui',
+                                    'imagegen',
+                                    'workflow',
+                                    'API Workflow',
+                                    settings.comfyui.imagegen.workflow,
+                                    'Paste a ComfyUI workflow exported with Save (API Format)'
+                                ),
+                                multiline: true,
+                                help: 'Use {{prompt}}, {{negative_prompt}}, {{reference_image}}, {{reference_image_2}}, {{style_image}}, and {{style_image_2}} in string inputs.'
+                            },
+                            numberConfigField(
+                                'comfyui',
+                                'imagegen',
+                                'timeoutSeconds',
+                                'Timeout (seconds)',
+                                settings.comfyui.imagegen.timeoutSeconds,
+                                { min: 1, max: 3600, step: 1 }
                             )
                         ];
                 }
@@ -760,7 +804,8 @@
                         {#each fields as field (field.id)}
                             <div
                                 class="space-y-2 {field.id.endsWith('api-key') ||
-                                field.path[2] === 'baseUrl'
+                                field.path[2] === 'baseUrl' ||
+                                field.multiline
                                     ? 'sm:col-span-2'
                                     : ''}"
                             >
@@ -803,6 +848,16 @@
                                             {/if}
                                         </Button>
                                     </div>
+                                {:else if field.multiline}
+                                    <Textarea
+                                        id={field.id}
+                                        value={field.value}
+                                        placeholder={field.placeholder}
+                                        disabled={saving}
+                                        class="min-h-48 font-mono text-xs"
+                                        onchange={(event) =>
+                                            updateField(field, event.currentTarget.value)}
+                                    />
                                 {:else}
                                     <Input
                                         id={field.id}
@@ -816,6 +871,9 @@
                                         onchange={(event) =>
                                             updateField(field, event.currentTarget.value)}
                                     />
+                                {/if}
+                                {#if field.help}
+                                    <p class="text-xs text-muted-foreground">{field.help}</p>
                                 {/if}
                             </div>
                         {/each}

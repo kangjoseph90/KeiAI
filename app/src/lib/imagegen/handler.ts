@@ -12,6 +12,7 @@ import { OpenAIImageGenHandler } from './handlers/openai';
 import { StabilityImageGenHandler } from './handlers/stability';
 import { GoogleImageGenHandler } from './handlers/google';
 import { NovelAIImageGenHandler } from './handlers/novelai';
+import { ComfyUIImageGenHandler } from './handlers/comfyui';
 
 export function selectImageGenHandler(
     provider: ImageGenProvider,
@@ -48,6 +49,10 @@ export function selectImageGenHandler(
                 baseUrl: 'https://image.novelai.net',
                 ...settings.novelai.imagegen
             });
+        }
+
+        case 'comfyui': {
+            return new ComfyUIImageGenHandler(settings.comfyui.imagegen);
         }
     }
 }

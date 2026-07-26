@@ -22,7 +22,8 @@ import type {
     StabilityProviderConfig,
     GroqProviderConfig,
     CohereProviderConfig,
-    JinaProviderConfig
+    JinaProviderConfig,
+    ComfyUIProviderConfig
 } from '$lib/types/models/provider';
 import type { EmbeddingProvider } from '$lib/types/models/embedding';
 import type { TTSProvider } from '$lib/types/models/tts';
@@ -52,6 +53,7 @@ export interface AppSettingsContent {
     mistral: MistralProviderConfig;
     deepseek: DeepSeekProviderConfig;
     novelai: NovelAIProviderConfig;
+    comfyui: ComfyUIProviderConfig;
     voyageai: VoyageAIProviderConfig;
     openrouter: OpenRouterProviderConfig;
     transformers: TransformersProviderConfig;
@@ -152,6 +154,13 @@ export const defaultSettings: AppSettings = {
             vibeStrength: 0.7,
             referenceStrength: 1,
             referenceFidelity: 1
+        }
+    },
+    comfyui: {
+        imagegen: {
+            baseUrl: 'http://127.0.0.1:8188',
+            workflow: '',
+            timeoutSeconds: 120
         }
     },
     voyageai: {

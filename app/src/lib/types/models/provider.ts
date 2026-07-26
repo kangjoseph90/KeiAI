@@ -80,6 +80,14 @@ export interface NovelAIProviderConfig {
     };
 }
 
+export interface ComfyUIProviderConfig {
+    imagegen: {
+        baseUrl: string;
+        workflow: string;
+        timeoutSeconds: number;
+    };
+}
+
 // ─── VoyageAI ─────────────────────────────────────────────────────────────────
 
 export interface VoyageAIProviderConfig {
