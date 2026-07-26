@@ -11,13 +11,18 @@
 import type {
     LLMContentPart,
     LLMMessage,
+    LLMMediaPart,
+    LLMOutputPart,
     LLMStreamContent,
     LLMStreamHandler,
     LLMStreamOptions,
+    LLMTextPart,
+    LLMToolRequestPart,
+    LLMToolResponsePart,
     RemoteLLMHandlerConfig
 } from '../types';
-import { getTextContent } from '../types';
-import type { ToolCallRequest } from '$lib/types/tools';
+import { getTextContent } from '$lib/workflow/agent/llm';
+import type { ToolCallResponsePart } from '$lib/types/tools';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { debounceStream } from '$lib/utils/stream';
@@ -63,14 +68,14 @@ interface OpenAICompletion {
     }>;
 }
 
-type OpenAIRequestContent =
-    | string
-    | Array<
-          | { type: 'text'; text: string }
-          | { type: 'image_url'; image_url: { url: string } }
-          | { type: 'input_audio'; input_audio: { data: string; format: string } }
-          | { type: 'video_url'; video_url: { url: string } }
-      >;
+type OpenAIRequestContentPart =
+    | { type: 'text'; text: string }
+    | { type: 'image_url'; image_url: { url: string } }
+    | { type: 'input_audio'; input_audio: { data: string; format: string } }
+    | { type: 'video_url'; video_url: { url: string } };
+
+type OpenAIRequestContent = string | OpenAIRequestContentPart[];
+type OpenAIRegularPart = LLMTextPart | LLMMediaPart;
 
 interface OpenAIRequestMessage {
     role: LLMMessage['role'] | 'tool';
@@ -112,17 +117,21 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
         const response = await this.fetchCompletion(messages, signal, options);
         const parsed = (await response.json()) as OpenAICompletion;
         const message = parsed.choices?.[0]?.message;
-        const state: LLMStreamContent = {
-            content: message?.content ?? '',
-            thought: message?.reasoning_content ?? ''
-        };
+        const content = message?.content ?? '';
+        const thought = message?.reasoning_content ?? '';
         const toolCalls = message?.tool_calls?.map((toolCall) => ({
+            type: 'tool_request' as const,
             callId: toolCall.id ?? '',
             name: toolCall.function?.name ?? '',
             args: this.parseToolCallArgs(toolCall.function?.arguments ?? '')
         }));
-        if (toolCalls && toolCalls.length > 0) state.toolCalls = toolCalls;
-        yield state;
+        yield {
+            parts: [
+                ...(thought ? [{ type: 'thought' as const, text: thought }] : []),
+                ...(content ? [{ type: 'text' as const, text: content }] : []),
+                ...(toolCalls ?? [])
+            ]
+        };
     }
 
     private async *rawStream(
@@ -134,7 +143,9 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
         const reader = response.body?.getReader();
         if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
-        const state: LLMStreamContent = { content: '', thought: '' };
+        let content = '';
+        let thought = '';
+        const state: LLMStreamContent = { parts: [] };
         // Accumulate partial tool call arguments string by index
         const toolCallMap = new Map<number, { id: string; name: string; args: string }>();
         const decoder = new TextDecoder();
@@ -161,12 +172,12 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
                         if (!delta) continue;
 
                         if (delta.content) {
-                            state.content += delta.content;
+                            content += delta.content;
                             changed = true;
                         }
 
                         if (delta.reasoning_content) {
-                            state.thought = (state.thought ?? '') + delta.reasoning_content;
+                            thought += delta.reasoning_content;
                             changed = true;
                         }
 
@@ -190,9 +201,7 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
                     }
 
                     if (changed) {
-                        if (toolCallMap.size > 0) {
-                            state.toolCalls = this.buildToolCalls(toolCallMap);
-                        }
+                        state.parts = this.buildOutputParts(thought, content, toolCallMap);
                         yield { ...state };
                     }
                 }
@@ -203,14 +212,14 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
                 const parsed = this.parseLine(buffer);
                 if (parsed) {
                     for (const choice of parsed.choices ?? []) {
-                        if (choice.delta?.content) state.content += choice.delta.content;
+                        if (choice.delta?.content) {
+                            content += choice.delta.content;
+                        }
                         if (choice.delta?.reasoning_content) {
-                            state.thought = (state.thought ?? '') + choice.delta.reasoning_content;
+                            thought += choice.delta.reasoning_content;
                         }
                     }
-                    if (toolCallMap.size > 0) {
-                        state.toolCalls = this.buildToolCalls(toolCallMap);
-                    }
+                    state.parts = this.buildOutputParts(thought, content, toolCallMap);
                     yield { ...state };
                 }
             }
@@ -289,12 +298,29 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
 
     private buildToolCalls(
         map: Map<number, { id: string; name: string; args: string }>
-    ): ToolCallRequest[] {
-        const calls: ToolCallRequest[] = [];
+    ): LLMToolRequestPart[] {
+        const calls: LLMToolRequestPart[] = [];
         for (const [, tc] of map) {
-            calls.push({ callId: tc.id, name: tc.name, args: this.parseToolCallArgs(tc.args) });
+            calls.push({
+                type: 'tool_request',
+                callId: tc.id,
+                name: tc.name,
+                args: this.parseToolCallArgs(tc.args)
+            });
         }
         return calls;
+    }
+
+    private buildOutputParts(
+        thought: string,
+        content: string,
+        toolCalls: Map<number, { id: string; name: string; args: string }>
+    ): LLMOutputPart[] {
+        return [
+            ...(thought ? [{ type: 'thought' as const, text: thought }] : []),
+            ...(content ? [{ type: 'text' as const, text: content }] : []),
+            ...this.buildToolCalls(toolCalls)
+        ];
     }
 
     private parseToolCallArgs(args: string): Record<string, unknown> {
@@ -312,21 +338,12 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
 
 function toOpenAIRequestMessages(message: LLMMessage): OpenAIRequestMessage[] {
     const result: OpenAIRequestMessage[] = [];
-    let regularParts: Array<
-        Extract<LLMContentPart, { type: 'text' | 'image' | 'audio' | 'video' }>
-    > = [];
-
-    const flushRegularParts = (): void => {
-        if (regularParts.length === 0) return;
-        const hasMedia = regularParts.some((part) => part.type !== 'text');
-        result.push({
-            role: message.role,
-            content: hasMedia ? regularParts.map(toOpenAIContentPart) : getTextContent(regularParts)
-        });
-        regularParts = [];
-    };
+    const regularParts: OpenAIRegularPart[] = [];
+    const toolRequests: LLMToolRequestPart[] = [];
+    const toolResponses: LLMToolResponsePart[] = [];
 
     for (const part of message.content) {
+        if (part.type === 'thought') continue;
         if (
             part.type === 'text' ||
             part.type === 'image' ||
@@ -334,36 +351,58 @@ function toOpenAIRequestMessages(message: LLMMessage): OpenAIRequestMessage[] {
             part.type === 'video'
         ) {
             regularParts.push(part);
-            continue;
-        }
-        flushRegularParts();
-        if (part.type === 'tool_request') {
-            result.push({
-                role: 'assistant',
-                content: null,
-                tool_calls: [
-                    {
-                        id: part.callId,
-                        type: 'function',
-                        function: { name: part.name, arguments: JSON.stringify(part.args) }
-                    }
-                ]
-            });
+        } else if (part.type === 'tool_request') {
+            toolRequests.push(part);
         } else {
-            result.push({
-                role: 'tool',
-                tool_call_id: part.callId,
-                content: toolResponseToText(part.content, part.isError)
-            });
+            toolResponses.push(part);
         }
     }
-    flushRegularParts();
+
+    if (regularParts.length > 0 || toolRequests.length > 0) {
+        const requestMessage: OpenAIRequestMessage = {
+            role: message.role,
+            content: null
+        };
+
+        const hasMedia = regularParts.some((part) => part.type !== 'text');
+        if (hasMedia) {
+            requestMessage.content = regularParts.map(toOpenAIContentPart);
+        } else if (regularParts.length > 0) {
+            let text = '';
+            for (const part of regularParts) {
+                if (part.type === 'text') text += part.text;
+            }
+            requestMessage.content = text;
+        }
+
+        if (toolRequests.length > 0) {
+            requestMessage.tool_calls = [];
+            for (const part of toolRequests) {
+                requestMessage.tool_calls.push({
+                    id: part.callId,
+                    type: 'function',
+                    function: {
+                        name: part.name,
+                        arguments: JSON.stringify(part.args)
+                    }
+                });
+            }
+        }
+
+        result.push(requestMessage);
+    }
+
+    for (const part of toolResponses) {
+        result.push({
+            role: 'tool',
+            content: toolResponseToText(part.content, part.isError),
+            tool_call_id: part.callId
+        });
+    }
     return result;
 }
 
-function toOpenAIContentPart(
-    part: Extract<LLMContentPart, { type: 'text' | 'image' | 'audio' | 'video' }>
-): Extract<OpenAIRequestContent, ReadonlyArray<unknown>>[number] {
+function toOpenAIContentPart(part: OpenAIRegularPart): OpenAIRequestContentPart {
     if (part.type === 'text') return part;
     if (part.type === 'audio') {
         return {
@@ -390,10 +429,7 @@ function audioFormat(mimeType: string): string {
     return subtype || 'wav';
 }
 
-function toolResponseToText(
-    content: Extract<LLMContentPart, { type: 'tool_response' }>['content'],
-    isError?: boolean
-): string {
+function toolResponseToText(content: ToolCallResponsePart[], isError?: boolean): string {
     const text = content
         .map((part) => {
             if (part.type === 'text') return part.text;

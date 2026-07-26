@@ -1,15 +1,13 @@
-import type { LLMContentPart, LLMMessage } from './types';
+import type { LLMContentPart, LLMMessage, LLMMediaPart } from './types';
 import type { LLMCapabilities, LLMCapability } from '$lib/types/models/llm';
 
-export type LLMMediaContentPart = Extract<LLMContentPart, { type: 'image' | 'audio' | 'video' }>;
-
-const mediaCapabilities: Record<LLMMediaContentPart['type'], LLMCapability> = {
+const mediaCapabilities: Record<LLMMediaPart['type'], LLMCapability> = {
     image: 'image_input',
     audio: 'audio_input',
     video: 'video_input'
 };
 
-export function getMediaInputCapability(part: LLMMediaContentPart): LLMCapability {
+export function getMediaInputCapability(part: LLMMediaPart): LLMCapability {
     return mediaCapabilities[part.type];
 }
 

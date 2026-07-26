@@ -155,14 +155,14 @@ describe('ChatManager', () => {
                     swipes: {
                         greet1: expect.objectContaining({
                             id: 'greet1',
-                            parts: [{ type: 'content', text: 'Hello' }],
+                            parts: [{ type: 'text', text: 'Hello' }],
                             speakerId: 'char-1',
                             speakerName: 'Alpha',
                             variables: { mood: 'calm', shared: 'beta', energy: 'high' }
                         }),
                         greet2: expect.objectContaining({
                             id: 'greet2',
-                            parts: [{ type: 'content', text: 'Yo' }],
+                            parts: [{ type: 'text', text: 'Yo' }],
                             speakerId: 'char-2',
                             speakerName: 'Beta'
                         })
@@ -223,7 +223,7 @@ describe('ChatManager', () => {
                 swipes: {
                     greet2: {
                         id: 'greet2',
-                        parts: [{ type: 'content', text: 'Old' }],
+                        parts: [{ type: 'text', text: 'Old' }],
                         createdAt: 2
                     }
                 },
@@ -241,10 +241,10 @@ describe('ChatManager', () => {
                 expect.objectContaining({
                     swipes: expect.objectContaining({
                         greet1: expect.objectContaining({
-                            parts: [{ type: 'content', text: 'Hello' }]
+                            parts: [{ type: 'text', text: 'Hello' }]
                         }),
                         greet2: expect.objectContaining({
-                            parts: [{ type: 'content', text: 'Yo' }]
+                            parts: [{ type: 'text', text: 'Yo' }]
                         })
                     }),
                     activeSwipeId: 'greet2'
@@ -297,7 +297,7 @@ describe('ChatManager', () => {
             swipes: {
                 s1: {
                     id: 's1',
-                    parts: [{ type: 'content', text: '...' }],
+                    parts: [{ type: 'text', text: '...' }],
                     variables: { mood: 'tense' },
                     createdAt: 1
                 }
@@ -377,7 +377,7 @@ describe('ChatManager', () => {
             sortOrder: 'b',
             role: 'assistant',
             swipes: {
-                s1: { id: 's1', parts: [{ type: 'content', text: 'Fork me' }], createdAt: 2000 }
+                s1: { id: 's1', parts: [{ type: 'text', text: 'Fork me' }], createdAt: 2000 }
             },
             activeSwipeId: 's1'
         };
@@ -387,7 +387,7 @@ describe('ChatManager', () => {
             sortOrder: 'a',
             role: 'user',
             swipes: {
-                s1: { id: 's1', parts: [{ type: 'content', text: 'Hello' }], createdAt: 1000 }
+                s1: { id: 's1', parts: [{ type: 'text', text: 'Hello' }], createdAt: 1000 }
             },
             activeSwipeId: 's1'
         };

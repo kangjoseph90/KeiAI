@@ -45,7 +45,7 @@ describe('normalizeWorkflow', () => {
             id: 'history',
             name: 'History',
             type: 'history',
-            historyMode: 'last_content',
+            historyMode: 'visible',
             sortOrder: 'a',
             enabled: true
         });

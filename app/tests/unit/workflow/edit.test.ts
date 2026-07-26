@@ -188,7 +188,7 @@ describe('workflow edits', () => {
 
         const updated = updateBlock(created.workflow, 'chat_agent', created.blockId, {
             type: 'history',
-            historyMode: 'last_content',
+            historyMode: 'visible',
             start: '-5',
             format: '{{slot}}'
         });
@@ -199,7 +199,7 @@ describe('workflow edits', () => {
             id: created.blockId,
             name: 'Instruction',
             type: 'history',
-            historyMode: 'last_content',
+            historyMode: 'visible',
             start: '-5',
             format: '{{slot}}',
             sortOrder: 'a0',

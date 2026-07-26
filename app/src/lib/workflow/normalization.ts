@@ -41,7 +41,7 @@ function normalizePromptBlock(block: PromptBlock, id: string = block.id): Prompt
         }
         case 'history': {
             const normalized = deepMerge(
-                { ...common, type: 'history' as const, historyMode: 'last_content' as const },
+                { ...common, type: 'history' as const, historyMode: 'visible' as const },
                 block
             );
             return { ...normalized, id, type: 'history' };

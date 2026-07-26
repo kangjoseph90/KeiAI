@@ -39,8 +39,9 @@ describe('MockLLMStreamHandler file tools', () => {
     it('selects file_read and extracts its namespace and path', async () => {
         const result = await complete('room의 docs/notes.txt를 읽어줘');
 
-        expect(result.toolCalls).toEqual([
+        expect(result.parts.filter((part) => part.type === 'tool_request')).toEqual([
             {
+                type: 'tool_request',
                 callId: expect.stringMatching(/^mock_call_/),
                 name: 'file_read',
                 args: { namespace: 'room', path: 'docs/notes.txt' }
@@ -51,8 +52,9 @@ describe('MockLLMStreamHandler file tools', () => {
     it('selects file_write and extracts quoted content', async () => {
         const result = await complete('전역 config/settings.txt에 "dark mode"를 저장해줘');
 
-        expect(result.toolCalls).toEqual([
+        expect(result.parts.filter((part) => part.type === 'tool_request')).toEqual([
             {
+                type: 'tool_request',
                 callId: expect.stringMatching(/^mock_call_/),
                 name: 'file_write',
                 args: {
@@ -66,14 +68,14 @@ describe('MockLLMStreamHandler file tools', () => {
 
     it('does not call a file tool for unrelated prompts', async () => {
         const result = await complete('오늘 날씨가 어때?');
-        expect(result.toolCalls).toBeUndefined();
+        expect(result.parts.some((part) => part.type === 'tool_request')).toBe(false);
     });
 });
 
 async function complete(prompt: string): Promise<LLMStreamContent> {
     const messages: LLMMessage[] = [{ role: 'user', content: [{ type: 'text', text: prompt }] }];
     const handler = new MockLLMStreamHandler({ behavior: 'echo' });
-    let result: LLMStreamContent = { content: '' };
+    let result: LLMStreamContent = { parts: [] };
     for await (const chunk of handler.stream(messages, new AbortController().signal, {
         stream: false,
         tools: fileTools

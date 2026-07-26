@@ -5,11 +5,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { debounceStream } from '$lib/utils/stream';
 import type { LLMStreamContent } from '$lib/llm/types';
+import { getTextContent } from '$lib/workflow/agent/llm';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function snap(content: string): LLMStreamContent {
-    return { content };
+    return { parts: content ? [{ type: 'text', text: content }] : [] };
 }
 
 async function collect(iter: AsyncIterable<LLMStreamContent>): Promise<LLMStreamContent[]> {
@@ -76,21 +77,27 @@ describe('debounceStream', () => {
         expect(results).toEqual([]);
     });
 
-    it('should preserve thought and toolCalls through debounce', async () => {
+    it('should preserve thought and tool requests through debounce', async () => {
         const items: LLMStreamContent[] = [
-            { content: '', thought: 'thinking...' },
-            { content: 'hello', thought: 'thinking...' },
+            { parts: [{ type: 'thought', text: 'thinking...' }] },
             {
-                content: 'hello world',
-                thought: 'done',
-                toolCalls: [{ callId: 'tc1', name: 'test', args: {} }]
+                parts: [
+                    { type: 'thought', text: 'thinking...' },
+                    { type: 'text', text: 'hello' }
+                ]
+            },
+            {
+                parts: [
+                    { type: 'thought', text: 'done' },
+                    { type: 'text', text: 'hello world' },
+                    { type: 'tool_request', callId: 'tc1', name: 'test', args: {} }
+                ]
             }
         ];
         const results = await collect(debounceStream(fromArrayWithDelay(items, 1)));
 
         const last = results[results.length - 1];
-        expect(last.content).toBe('hello world');
-        expect(last.thought).toBe('done');
-        expect(last.toolCalls).toEqual([{ callId: 'tc1', name: 'test', args: {} }]);
+        expect(getTextContent(last.parts)).toBe('hello world');
+        expect(last.parts).toEqual(items.at(-1)?.parts);
     });
 });

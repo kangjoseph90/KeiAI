@@ -13,6 +13,7 @@ import type {
     PluginLLMModel
 } from '$lib/types/models/llm';
 import type { LLMMessage, LLMStreamContent } from '$lib/llm/types';
+import { getTextContent } from '$lib/workflow/agent/llm';
 import { adaptMediaForCapabilities } from '$lib/llm/capabilities';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
 
@@ -354,7 +355,7 @@ export class PluginManager {
             async (type: unknown, messages: unknown, signal: unknown, options: unknown) => {
                 let content = '';
                 for await (const chunk of streamLLM(type, messages, signal, options)) {
-                    content = chunk.content;
+                    content = getTextContent(chunk.parts);
                 }
                 return content;
             }

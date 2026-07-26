@@ -43,11 +43,7 @@
     } from '$lib/stores';
     import { appConfirm, characterPickerOpen, personaPickerOpen, toast } from '$lib/ui';
     import { runChat, stopChat, dismissChat } from '$lib/tasks';
-    import {
-        getLastContentText,
-        findLastContentIndex,
-        type AgentPart
-    } from '$lib/workflow/agent/llm';
+    import { getLastTextContent, findLastTextIndex, type AgentPart } from '$lib/workflow/agent/llm';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate } from '$lib/template';
     import { navigate } from '$lib/router';
@@ -248,7 +244,10 @@
         const templated = await runTemplate(newMessageText, ctx);
         const piped = await runPipeline('input', ctx, templated);
         const processedText = await runTemplate(piped, ctx);
-        const attachments = Array.from(pendingAttachments);
+        const inlayIds = Array.from(pendingAttachments);
+        const parts: AgentPart[] = [];
+        if (inlayIds.length > 0) parts.push({ type: 'inlay', ids: inlayIds });
+        if (processedText.trim()) parts.push({ type: 'text', text: processedText });
 
         const variables = await getChatVariables($activeChat.id);
         const message = await createMessage($activeChat.id, {
@@ -256,11 +255,10 @@
         });
 
         await prepareNextSwipe(message, {
-            parts: processedText.trim() ? [{ type: 'content', text: processedText }] : [],
+            parts,
             variables,
             speakerId: selectedPersona.id,
             speakerName: selectedPersona.name,
-            attachments,
             replaceActiveSwipe: true
         });
 
@@ -420,16 +418,16 @@
         if (!activeSwipe) return;
 
         const newParts = [...activeSwipe.parts];
-        const lastContentIdx = findLastContentIndex(newParts);
+        const lastTextIdx = findLastTextIndex(newParts);
 
-        if (lastContentIdx >= 0) {
-            newParts[lastContentIdx] = {
-                ...newParts[lastContentIdx],
-                type: 'content',
+        if (lastTextIdx >= 0) {
+            newParts[lastTextIdx] = {
+                ...newParts[lastTextIdx],
+                type: 'text',
                 text: editMessageText
             };
         } else {
-            newParts.push({ type: 'content', text: editMessageText });
+            newParts.push({ type: 'text', text: editMessageText });
         }
 
         await runMessageAction(id, 'save', 'Could not save message', async (targetChatId) => {
@@ -613,7 +611,7 @@
                                     isEditingTranslation = false;
                                     const activeSwipe = msg.swipes[msg.activeSwipeId];
                                     editMessageText = activeSwipe
-                                        ? getLastContentText(activeSwipe.parts)
+                                        ? getLastTextContent(activeSwipe.parts)
                                         : '';
                                 }}
                                 onEditTranslation={() => {

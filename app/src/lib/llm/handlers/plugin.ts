@@ -29,6 +29,12 @@ export class PluginLLMStreamHandler implements LLMStreamHandler {
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
+        const requestMessages = messages
+            .map((message) => ({
+                ...message,
+                content: message.content.filter((part) => part.type !== 'thought')
+            }))
+            .filter((message) => message.content.length > 0);
         const streamConfig = {
             modelId: this.config.modelId,
             parameters: options.parameters,
@@ -42,7 +48,7 @@ export class PluginLLMStreamHandler implements LLMStreamHandler {
 
         const rpcStream = this.instance.broker.invokeStream<LLMStreamContent>(
             this.fnId,
-            [messages, streamConfig],
+            [requestMessages, streamConfig],
             signal
         );
 

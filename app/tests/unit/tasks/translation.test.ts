@@ -86,7 +86,7 @@ describe('translation task', () => {
             swipes: {
                 'swipe-1': {
                     id: 'swipe-1',
-                    parts: [{ type: 'content', text: 'Hello' }],
+                    parts: [{ type: 'text', text: 'Hello' }],
                     createdAt: 1,
                     speakerId: 'character-1',
                     speakerName: 'Character'

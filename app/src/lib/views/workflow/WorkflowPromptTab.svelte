@@ -101,7 +101,7 @@
             case 'text':
                 return applyBlockEdit(blockId, { type, role: 'system', content: '' });
             case 'history':
-                return applyBlockEdit(blockId, { type, historyMode: 'last_content' });
+                return applyBlockEdit(blockId, { type, historyMode: 'visible' });
             case 'lorebook':
                 return applyBlockEdit(blockId, { type });
         }
@@ -358,19 +358,24 @@
                                                     applyBlockEdit(block.id, { end: value })}
                                             />
                                         </div>
-                                        <label
-                                            class="flex w-fit cursor-pointer items-center gap-2 text-xs select-none"
-                                            ><input
-                                                type="checkbox"
-                                                checked={block.historyMode === 'last_content'}
+                                        <div class="space-y-1.5">
+                                            <Label class="text-xs">History content</Label>
+                                            <select
+                                                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                                value={block.historyMode}
                                                 onchange={(event) =>
                                                     applyBlockEdit(block.id, {
-                                                        historyMode: event.currentTarget.checked
-                                                            ? 'last_content'
-                                                            : 'full_trace'
+                                                        historyMode: event.currentTarget.value as
+                                                            | 'last_text'
+                                                            | 'visible'
+                                                            | 'full_trace'
                                                     })}
-                                            />Last response only</label
-                                        >
+                                            >
+                                                <option value="last_text">Last text part</option>
+                                                <option value="visible">Visible parts</option>
+                                                <option value="full_trace">Full trace</option>
+                                            </select>
+                                        </div>
                                         <div class="space-y-1.5">
                                             <Label class="text-xs">Message format</Label>
                                             <Textarea

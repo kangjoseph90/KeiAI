@@ -14,6 +14,7 @@ import { generateId } from '$lib/utils/id';
 import { getAppSettings } from '$lib/stores/content/settings';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
 import type { LLMMessage } from '$lib/llm/types';
+import { getTextContent } from '$lib/workflow/agent/llm';
 import { adaptMediaForCapabilities } from '$lib/llm/capabilities';
 
 const DEFAULT_AUX_LLM_TYPE = 'aux';
@@ -239,7 +240,7 @@ function injectLowLevelAPIs(
                     stream: !unsupported.includes('streaming')
                 }
             )) {
-                content = chunk.content;
+                content = getTextContent(chunk.parts);
             }
 
             return content;

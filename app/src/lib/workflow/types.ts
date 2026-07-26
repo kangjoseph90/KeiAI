@@ -4,30 +4,46 @@ import type { RuntimeContext } from '$lib/types/context';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
 import type { DeepPartial } from '$lib/utils/defaults';
 
-export type PromptBlockFields =
-    | { name: string; type: 'text'; role: LLMRole; content: string }
-    | {
-          name: string;
-          type: 'lorebook';
-          minDepth?: number;
-          maxDepth?: number;
-          reverseOrder?: boolean;
-          format?: string;
-      }
-    | {
-          name: string;
-          type: 'history';
-          start?: string;
-          end?: string;
-          format?: string;
-          historyMode: 'last_content' | 'full_trace';
-      };
+export type TextPromptBlockFields = {
+    name: string;
+    type: 'text';
+    role: LLMRole;
+    content: string;
+};
 
-export type PromptBlock = PromptBlockFields & {
+export type LorebookPromptBlockFields = {
+    name: string;
+    type: 'lorebook';
+    minDepth?: number;
+    maxDepth?: number;
+    reverseOrder?: boolean;
+    format?: string;
+};
+
+export type HistoryPromptBlockFields = {
+    name: string;
+    type: 'history';
+    start?: string;
+    end?: string;
+    format?: string;
+    historyMode: 'last_text' | 'visible' | 'full_trace';
+};
+
+export type PromptBlockFields =
+    | TextPromptBlockFields
+    | LorebookPromptBlockFields
+    | HistoryPromptBlockFields;
+
+type PromptBlockMetadata = {
     id: string;
     sortOrder: string;
     enabled: boolean;
 };
+
+export type TextPromptBlock = TextPromptBlockFields & PromptBlockMetadata;
+export type LorebookPromptBlock = LorebookPromptBlockFields & PromptBlockMetadata;
+export type HistoryPromptBlock = HistoryPromptBlockFields & PromptBlockMetadata;
+export type PromptBlock = TextPromptBlock | LorebookPromptBlock | HistoryPromptBlock;
 
 export type WorkflowNode =
     | AgentNode

@@ -7,17 +7,18 @@
 import type {
     LLMContentPart,
     LLMMessage,
+    LLMOutputPart,
     LLMStreamContent,
     LLMStreamHandler,
     LLMStreamOptions,
     RemoteLLMHandlerConfig
 } from '../types';
-import { getTextContent } from '../types';
+import { getTextContent } from '$lib/workflow/agent/llm';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { debounceStream } from '$lib/utils/stream';
 import { buildUrl } from '$lib/utils/url';
-import type { ToolCallRequest, ToolInputSchema } from '$lib/types/tools';
+import type { ToolCallResponsePart, ToolInputSchema } from '$lib/types/tools';
 
 interface GeminiContent {
     role: string; // 'user' or 'model'
@@ -39,12 +40,16 @@ type GeminiContentPart =
 interface GeminiCompletion {
     candidates?: Array<{
         content?: {
-            parts?: Array<{
-                text?: string;
-                functionCall?: { id?: string; name?: string; args?: Record<string, unknown> };
-            }>;
+            parts?: GeminiResponsePart[];
         };
     }>;
+}
+
+interface GeminiResponsePart {
+    text?: string;
+    thought?: boolean;
+    inlineData?: { mimeType?: string; data?: string };
+    functionCall?: { id?: string; name?: string; args?: Record<string, unknown> };
 }
 
 export class GoogleLLMStreamHandler implements LLMStreamHandler {
@@ -77,11 +82,8 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
             stream: false
         });
         const parsed = (await response.json()) as GeminiCompletion;
-        const content =
-            parsed.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('') ?? '';
-        const toolCalls = extractGeminiToolCalls(parsed);
-        const result: LLMStreamContent = { content, thought: '' };
-        if (toolCalls.length) result.toolCalls = toolCalls;
+        const parts = extractGeminiOutputParts(parsed);
+        const result: LLMStreamContent = { parts };
         yield result;
     }
 
@@ -94,7 +96,7 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
         const reader = response.body?.getReader();
         if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
-        const state: LLMStreamContent = { content: '', thought: '' };
+        const state: LLMStreamContent = { parts: [] };
         const decoder = new TextDecoder();
         let buffer = '';
 
@@ -115,27 +117,17 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
                     if (data === '[DONE]') continue; // Not standard Gemini, but just in case
 
                     try {
-                        const parsed = JSON.parse(data);
+                        const parsed = JSON.parse(data) as GeminiCompletion;
                         let changed = false;
 
-                        const parts = parsed?.candidates?.[0]?.content?.parts ?? [];
-                        for (const part of parts) {
-                            if (part.text) {
-                                state.content += part.text;
-                                changed = true;
-                            }
-                        }
-                        const toolCalls = extractGeminiToolCalls(parsed);
-                        if (toolCalls.length) {
-                            state.toolCalls = mergeGeminiToolCalls(
-                                state.toolCalls ?? [],
-                                toolCalls
-                            );
+                        const incomingParts = extractGeminiOutputParts(parsed);
+                        for (const part of incomingParts) {
+                            appendOutputPart(state, part);
                             changed = true;
                         }
 
                         if (changed) {
-                            yield { ...state };
+                            yield cloneStreamState(state);
                         }
                     } catch (err) {
                         // Ignore parse errors from incomplete chunks if any
@@ -146,16 +138,11 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
             // flush buffer
             if (buffer.trim().startsWith('data: ')) {
                 try {
-                    const parsed = JSON.parse(buffer.trim().slice(6));
-                    const parts = parsed?.candidates?.[0]?.content?.parts ?? [];
-                    for (const part of parts) {
-                        if (part.text) state.content += part.text;
-                    }
-                    const toolCalls = extractGeminiToolCalls(parsed);
-                    if (toolCalls.length)
-                        state.toolCalls = mergeGeminiToolCalls(state.toolCalls ?? [], toolCalls);
+                    const parsed = JSON.parse(buffer.trim().slice(6)) as GeminiCompletion;
+                    const parts = extractGeminiOutputParts(parsed);
+                    for (const part of parts) appendOutputPart(state, part);
                     if (parts.length > 0) {
-                        yield { ...state };
+                        yield cloneStreamState(state);
                     }
                 } catch (err) {
                     // Ignore
@@ -189,10 +176,12 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
         const systemMessage = systemContent ? getTextContent(systemContent) : undefined;
         const chatMessages = messages.filter((m) => m.role !== 'system');
 
-        const geminiMessages: GeminiContent[] = chatMessages.map((m) => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: toGeminiParts(m.content)
-        }));
+        const geminiMessages: GeminiContent[] = chatMessages
+            .map((message) => ({
+                role: message.role === 'assistant' ? 'model' : 'user',
+                parts: toGeminiParts(message.content)
+            }))
+            .filter((message) => message.parts.length > 0);
 
         const body: Record<string, unknown> = {
             contents: geminiMessages,
@@ -248,10 +237,16 @@ export class GoogleLLMStreamHandler implements LLMStreamHandler {
 }
 
 function toGeminiParts(content: LLMContentPart[]): GeminiContentPart[] {
-    return content.map((part) => toGeminiPart(part));
+    const parts: GeminiContentPart[] = [];
+    for (const part of content) {
+        const converted = toGeminiPart(part);
+        if (converted) parts.push(converted);
+    }
+    return parts;
 }
 
-function toGeminiPart(part: LLMContentPart): GeminiContentPart {
+function toGeminiPart(part: LLMContentPart): GeminiContentPart | null {
+    if (part.type === 'thought') return null;
     if (part.type === 'text') return { text: part.text };
     if (part.type === 'image' || part.type === 'audio' || part.type === 'video') {
         return { inlineData: { mimeType: part.mimeType, data: part.data } };
@@ -273,28 +268,68 @@ function toGeminiPart(part: LLMContentPart): GeminiContentPart {
     };
 }
 
-function extractGeminiToolCalls(completion: GeminiCompletion): ToolCallRequest[] {
-    const result: ToolCallRequest[] = [];
-    const parts = completion.candidates?.[0]?.content?.parts ?? [];
-    for (const [index, part] of parts.entries()) {
+function extractGeminiOutputParts(completion: GeminiCompletion): LLMOutputPart[] {
+    const result: LLMOutputPart[] = [];
+    for (const [index, part] of (completion.candidates?.[0]?.content?.parts ?? []).entries()) {
+        if (part.text) {
+            result.push({ type: part.thought ? 'thought' : 'text', text: part.text });
+            continue;
+        }
         const call = part.functionCall;
-        if (!call?.name) continue;
+        if (call?.name) {
+            result.push({
+                type: 'tool_request',
+                callId: call.id ?? `${call.name}-${index}`,
+                name: call.name,
+                args: call.args ?? {}
+            });
+            continue;
+        }
+        const inlineData = part.inlineData;
+        if (!inlineData?.mimeType || !inlineData.data) continue;
+        const topLevelType = inlineData.mimeType.split('/', 1)[0];
+        if (topLevelType !== 'image' && topLevelType !== 'audio' && topLevelType !== 'video') {
+            continue;
+        }
         result.push({
-            callId: call.id ?? `${call.name}-${index}`,
-            name: call.name,
-            args: call.args ?? {}
+            type: topLevelType,
+            mimeType: inlineData.mimeType,
+            data: inlineData.data
         });
     }
     return result;
 }
 
-function mergeGeminiToolCalls(
-    existing: ToolCallRequest[],
-    incoming: ToolCallRequest[]
-): ToolCallRequest[] {
-    const merged = new Map(existing.map((call) => [call.callId, call]));
-    for (const call of incoming) merged.set(call.callId, call);
-    return [...merged.values()];
+function appendOutputPart(state: LLMStreamContent, incoming: LLMOutputPart): void {
+    const previous = state.parts.at(-1);
+    if (incoming.type === 'text' || incoming.type === 'thought') {
+        if (previous?.type === incoming.type) {
+            state.parts[state.parts.length - 1] = {
+                type: incoming.type,
+                text: previous.text + incoming.text
+            };
+            return;
+        }
+    }
+    if (incoming.type === 'tool_request') {
+        const index = state.parts.findIndex(
+            (part) => part.type === 'tool_request' && part.callId === incoming.callId
+        );
+        if (index >= 0) {
+            state.parts[index] = incoming;
+            return;
+        }
+    }
+    state.parts.push(incoming);
+}
+
+function cloneStreamState(state: LLMStreamContent): LLMStreamContent {
+    return {
+        ...state,
+        parts: state.parts.map((part) =>
+            part.type === 'tool_request' ? { ...part, args: { ...part.args } } : { ...part }
+        )
+    };
 }
 
 function toGeminiSchema(schema: ToolInputSchema): Record<string, unknown> {
@@ -314,9 +349,7 @@ function toGeminiSchema(schema: ToolInputSchema): Record<string, unknown> {
     };
 }
 
-function toolResponseToText(
-    content: Extract<LLMContentPart, { type: 'tool_response' }>['content']
-): string {
+function toolResponseToText(content: ToolCallResponsePart[]): string {
     return content
         .map((part) => {
             if (part.type === 'text') return part.text;

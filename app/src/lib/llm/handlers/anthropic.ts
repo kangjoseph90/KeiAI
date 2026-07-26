@@ -7,17 +7,19 @@
 import type {
     LLMContentPart,
     LLMMessage,
+    LLMOutputPart,
     LLMStreamContent,
     LLMStreamHandler,
     LLMStreamOptions,
+    LLMToolRequestPart,
     RemoteLLMHandlerConfig
 } from '../types';
-import { getTextContent } from '../types';
+import { getTextContent } from '$lib/workflow/agent/llm';
+import type { ToolCallResponsePart } from '$lib/types/tools';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { debounceStream } from '$lib/utils/stream';
 import { buildUrl } from '$lib/utils/url';
-import type { ToolCallRequest } from '$lib/types/tools';
 
 interface AnthropicMessage {
     role: 'user' | 'assistant';
@@ -35,14 +37,17 @@ type AnthropicContentBlock =
           is_error?: boolean;
       };
 
+interface AnthropicCompletionBlock {
+    type?: string;
+    text?: string;
+    thinking?: string;
+    id?: string;
+    name?: string;
+    input?: Record<string, unknown>;
+}
+
 interface AnthropicCompletion {
-    content?: Array<{
-        type?: string;
-        text?: string;
-        id?: string;
-        name?: string;
-        input?: Record<string, unknown>;
-    }>;
+    content?: AnthropicCompletionBlock[];
 }
 
 export class AnthropicLLMStreamHandler implements LLMStreamHandler {
@@ -74,21 +79,7 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
             stream: false
         });
         const parsed = (await response.json()) as AnthropicCompletion;
-        const content =
-            parsed.content
-                ?.filter((block) => block.type === 'text' && block.text)
-                .map((block) => block.text)
-                .join('') ?? '';
-        const toolCalls = parsed.content
-            ?.filter((block) => block.type === 'tool_use' && block.id && block.name)
-            .map((block) => ({
-                callId: block.id ?? '',
-                name: block.name ?? '',
-                args: block.input ?? {}
-            }));
-        const result: LLMStreamContent = { content, thought: '' };
-        if (toolCalls?.length) result.toolCalls = toolCalls;
-        yield result;
+        yield { parts: extractAnthropicOutputParts(parsed.content ?? []) };
     }
 
     private async *rawStream(
@@ -100,7 +91,9 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
         const reader = response.body?.getReader();
         if (!reader) throw new AppError('NETWORK_ERROR', 'Response body is not readable');
 
-        const state: LLMStreamContent = { content: '', thought: '' };
+        let content = '';
+        let thought = '';
+        const state: LLMStreamContent = { parts: [] };
         const decoder = new TextDecoder();
         let buffer = '';
         const toolCallMap = new Map<
@@ -132,7 +125,11 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
                                         name: parsed.content_block.name ?? '',
                                         input: parsed.content_block.input ?? ''
                                     });
-                                    state.toolCalls = buildAnthropicToolCalls(toolCallMap);
+                                    state.parts = buildAnthropicStreamParts(
+                                        thought,
+                                        content,
+                                        toolCallMap
+                                    );
                                     yield { ...state };
                                 }
                             } catch {
@@ -142,7 +139,20 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
                             try {
                                 const parsed = JSON.parse(data);
                                 if (parsed.delta?.type === 'text_delta') {
-                                    state.content += parsed.delta.text;
+                                    content += parsed.delta.text;
+                                    state.parts = buildAnthropicStreamParts(
+                                        thought,
+                                        content,
+                                        toolCallMap
+                                    );
+                                    yield { ...state };
+                                } else if (parsed.delta?.type === 'thinking_delta') {
+                                    thought += parsed.delta.thinking ?? '';
+                                    state.parts = buildAnthropicStreamParts(
+                                        thought,
+                                        content,
+                                        toolCallMap
+                                    );
                                     yield { ...state };
                                 } else if (parsed.delta?.type === 'input_json_delta') {
                                     const index = parsed.index ?? 0;
@@ -152,7 +162,11 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
                                             typeof current.input === 'string'
                                                 ? current.input + (parsed.delta.partial_json ?? '')
                                                 : (parsed.delta.partial_json ?? '');
-                                        state.toolCalls = buildAnthropicToolCalls(toolCallMap);
+                                        state.parts = buildAnthropicStreamParts(
+                                            thought,
+                                            content,
+                                            toolCallMap
+                                        );
                                         yield { ...state };
                                     }
                                 }
@@ -182,10 +196,14 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
         const systemMessage = systemContent ? getTextContent(systemContent) : undefined;
         const chatMessages = messages.filter((m) => m.role !== 'system');
 
-        const anthropicMessages: AnthropicMessage[] = chatMessages.map((m) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: toAnthropicContent(m.content)
-        }));
+        const anthropicMessages: AnthropicMessage[] = chatMessages
+            .map(
+                (message): AnthropicMessage => ({
+                    role: message.role === 'assistant' ? 'assistant' : 'user',
+                    content: toAnthropicContent(message.content)
+                })
+            )
+            .filter((message) => message.content.length > 0);
 
         const body: Record<string, unknown> = {
             model: config.modelId,
@@ -232,12 +250,18 @@ export class AnthropicLLMStreamHandler implements LLMStreamHandler {
 }
 
 function toAnthropicContent(content: LLMContentPart[]): string | AnthropicContentBlock[] {
-    return content.some((part) => part.type !== 'text')
-        ? content.map(toAnthropicContentBlock)
-        : getTextContent(content);
+    const blocks: AnthropicContentBlock[] = [];
+    for (const part of content) {
+        const converted = toAnthropicContentBlock(part);
+        if (converted) blocks.push(converted);
+    }
+    return blocks.every((part) => part.type === 'text')
+        ? blocks.map((part) => (part.type === 'text' ? part.text : '')).join('')
+        : blocks;
 }
 
-function toAnthropicContentBlock(part: LLMContentPart): AnthropicContentBlock {
+function toAnthropicContentBlock(part: LLMContentPart): AnthropicContentBlock | null {
+    if (part.type === 'thought') return null;
     if (part.type === 'text') return part;
     if (part.type === 'image') {
         return {
@@ -267,12 +291,47 @@ function buildAnthropicToolCalls(
         number,
         { id: string; name: string; input: string | Record<string, unknown> }
     >
-): ToolCallRequest[] {
+): LLMToolRequestPart[] {
     return [...calls.values()].map((call) => ({
+        type: 'tool_request',
         callId: call.id,
         name: call.name,
         args: typeof call.input === 'string' ? parseToolArgs(call.input) : call.input
     }));
+}
+
+function buildAnthropicStreamParts(
+    thought: string,
+    content: string,
+    calls: ReadonlyMap<
+        number,
+        { id: string; name: string; input: string | Record<string, unknown> }
+    >
+): LLMOutputPart[] {
+    return [
+        ...(thought ? [{ type: 'thought' as const, text: thought }] : []),
+        ...(content ? [{ type: 'text' as const, text: content }] : []),
+        ...buildAnthropicToolCalls(calls)
+    ];
+}
+
+function extractAnthropicOutputParts(blocks: AnthropicCompletionBlock[]): LLMOutputPart[] {
+    const parts: LLMOutputPart[] = [];
+    for (const block of blocks) {
+        if (block.type === 'thinking' && block.thinking) {
+            parts.push({ type: 'thought', text: block.thinking });
+        } else if (block.type === 'text' && block.text) {
+            parts.push({ type: 'text', text: block.text });
+        } else if (block.type === 'tool_use' && block.id && block.name) {
+            parts.push({
+                type: 'tool_request',
+                callId: block.id,
+                name: block.name,
+                args: block.input ?? {}
+            });
+        }
+    }
+    return parts;
 }
 
 function parseToolArgs(input: string): Record<string, unknown> {
@@ -287,9 +346,7 @@ function parseToolArgs(input: string): Record<string, unknown> {
     }
 }
 
-function toolResponseToText(
-    content: Extract<LLMContentPart, { type: 'tool_response' }>['content']
-): string {
+function toolResponseToText(content: ToolCallResponsePart[]): string {
     return content
         .map((part) => {
             if (part.type === 'text') return part.text;

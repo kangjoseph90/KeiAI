@@ -5,7 +5,8 @@ import type { Character, Chat, Message, Persona } from '$lib/services';
 import type { Macro } from '$lib/template';
 import type { RuntimeContext } from '$lib/types/context';
 import type { PromptBlock } from '$lib/workflow/types';
-import { getTextContent, type LLMMessage } from '$lib/llm/types';
+import type { LLMMessage } from '$lib/llm/types';
+import { getTextContent } from '$lib/workflow/agent/llm';
 
 const {
     mockCollectTemplateMacros,
@@ -122,7 +123,7 @@ function makeMessage(
         swipes: {
             [swipeId]: {
                 id: swipeId,
-                parts: [{ type: 'content', text: content }],
+                parts: [{ type: 'text', text: content }],
                 createdAt: 1,
                 speakerId: speaker?.id,
                 speakerName: speaker?.name
@@ -199,7 +200,7 @@ describe('buildPrompt', () => {
                 id: 'history',
                 name: 'History',
                 type: 'history',
-                historyMode: 'last_content',
+                historyMode: 'visible',
                 start: '-10',
                 end: '-1',
                 sortOrder: 'b',
@@ -237,7 +238,7 @@ describe('buildPrompt', () => {
                 id: 'history',
                 name: 'History',
                 type: 'history',
-                historyMode: 'last_content',
+                historyMode: 'visible',
                 start: '-10',
                 sortOrder: 'a',
                 enabled: true
@@ -304,7 +305,7 @@ describe('buildPrompt', () => {
                 id: 'history',
                 name: 'History',
                 type: 'history',
-                historyMode: 'last_content',
+                historyMode: 'visible',
                 start: '-10',
                 sortOrder: 'a',
                 enabled: true
@@ -353,14 +354,19 @@ describe('buildPrompt', () => {
         ]);
     });
 
-    it('reconstructs full history trace without thoughts and falls back when details are missing', async () => {
+    it('reconstructs the full history trace and falls back when details are missing', async () => {
         const message = makeMessage('msg-1', 'assistant', 'unused');
         message.swipes[message.activeSwipeId].parts = [
             { type: 'thought', text: 'private reasoning' },
-            { type: 'content', text: 'Checking. ' },
-            { type: 'tool_call', id: 'tool-1', name: 'file_read', status: 'success' },
-            { type: 'tool_call', id: 'tool-missing', name: 'file_write', status: 'error' },
-            { type: 'content', text: 'Done.' }
+            { type: 'text', text: 'Checking. ' },
+            {
+                type: 'tool_calls',
+                calls: [
+                    { id: 'tool-1', name: 'file_read', status: 'success' },
+                    { id: 'tool-missing', name: 'file_write', status: 'error' }
+                ]
+            },
+            { type: 'text', text: 'Done.' }
         ];
         mockGetToolCall.mockImplementation(async (id: string) =>
             id === 'tool-1'
@@ -399,12 +405,17 @@ describe('buildPrompt', () => {
             {
                 role: 'assistant',
                 content: [
+                    { type: 'thought', text: 'private reasoning' },
                     { type: 'text', text: 'Checking. ' },
                     {
                         type: 'tool_request',
                         callId: 'provider-1',
                         name: 'file_read',
                         args: { namespace: 'chat', path: 'notes.txt' }
+                    },
+                    {
+                        type: 'text',
+                        text: '[Tool call: file_write — error; details unavailable]'
                     }
                 ]
             },
@@ -421,23 +432,58 @@ describe('buildPrompt', () => {
             },
             {
                 role: 'assistant',
-                content: [
-                    {
-                        type: 'text',
-                        text: '[Tool call: file_write — error; details unavailable]'
-                    },
-                    { type: 'text', text: 'Done.' }
-                ]
+                content: [{ type: 'text', text: 'Done.' }]
             }
         ]);
     });
 
-    it('adds image, audio, and video inlays as media content parts in history', async () => {
+    it('uses only the last text part in last_text history mode', async () => {
+        const message = makeMessage('msg-1', 'assistant', 'Final answer.');
+        message.swipes[message.activeSwipeId].parts = [
+            { type: 'text', text: 'Earlier step.' },
+            { type: 'inlay', ids: ['ignored-inlay'] },
+            { type: 'text', text: 'Final answer.' },
+            { type: 'inlay', ids: ['also-ignored'] }
+        ];
+        const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([{ message, index: 0 }]);
+
+        const prompt = await buildTestPrompt({
+            chat,
+            preset: makePreset({
+                history: {
+                    id: 'history',
+                    name: 'History',
+                    type: 'history',
+                    historyMode: 'last_text',
+                    start: '-1',
+                    sortOrder: 'a',
+                    enabled: true
+                }
+            }),
+            lorebooks: [],
+            messages: { slice } as unknown as PagedMessages
+        });
+
+        expect(prompt).toEqual([
+            {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'Final answer.' }]
+            }
+        ]);
+        expect(mockReadBytes).not.toHaveBeenCalled();
+    });
+
+    it('adds image, audio, and video inlays as media content parts in visible history', async () => {
         const message = makeMessage('msg-1', 'user', 'Describe this media.');
-        message.swipes[message.activeSwipeId].attachments = [
-            'inlay-image',
-            'inlay-audio',
-            'inlay-video'
+        message.swipes[message.activeSwipeId].parts = [
+            { type: 'text', text: 'Folded intermediate text.' },
+            {
+                type: 'tool_calls',
+                calls: [{ id: 'tool-1', name: 'inspect', status: 'success' }]
+            },
+            { type: 'inlay', ids: ['inlay-image'] },
+            { type: 'text', text: 'Describe this media.' },
+            { type: 'inlay', ids: ['inlay-audio', 'inlay-video'] }
         ];
         const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([{ message, index: 0 }]);
         const messages = { slice } as unknown as PagedMessages;
@@ -482,7 +528,7 @@ describe('buildPrompt', () => {
                     id: 'history',
                     name: 'History',
                     type: 'history',
-                    historyMode: 'last_content',
+                    historyMode: 'visible',
                     start: '-1',
                     sortOrder: 'a',
                     enabled: true
@@ -497,12 +543,12 @@ describe('buildPrompt', () => {
             {
                 role: 'user',
                 content: [
-                    { type: 'text', text: 'Describe this media.' },
                     {
                         type: 'image',
                         mimeType: 'image/webp',
                         data: 'AQID'
                     },
+                    { type: 'text', text: 'Describe this media.' },
                     {
                         type: 'audio',
                         mimeType: 'audio/mpeg',
@@ -534,7 +580,7 @@ describe('buildPrompt', () => {
                 id: 'history',
                 name: 'History',
                 type: 'history',
-                historyMode: 'last_content',
+                historyMode: 'visible',
                 start: '-10',
                 end: '-1',
                 format: '원본: {{slot}}\n입력: {{slot::source}}\n이름: {{name}}',
@@ -612,7 +658,7 @@ describe('buildPrompt', () => {
                 id: 'history',
                 name: 'History',
                 type: 'history',
-                historyMode: 'last_content',
+                historyMode: 'visible',
                 start: '-10',
                 sortOrder: 'a',
                 enabled: true
@@ -679,7 +725,7 @@ describe('buildPrompt', () => {
                     id: 'history',
                     name: 'History',
                     type: 'history',
-                    historyMode: 'last_content',
+                    historyMode: 'visible',
                     start: '-1',
                     sortOrder: 'a',
                     enabled: true
@@ -714,7 +760,7 @@ describe('buildPrompt', () => {
                     id: 'history',
                     name: 'History',
                     type: 'history',
-                    historyMode: 'last_content',
+                    historyMode: 'visible',
                     sortOrder: 'a',
                     enabled: true
                 }
@@ -747,7 +793,7 @@ describe('buildPrompt', () => {
                     id: 'history',
                     name: 'History',
                     type: 'history',
-                    historyMode: 'last_content',
+                    historyMode: 'visible',
                     sortOrder: 'a',
                     enabled: true
                 }
@@ -776,7 +822,7 @@ describe('buildPrompt', () => {
                 id: 'firstHistory',
                 name: 'First History',
                 type: 'history',
-                historyMode: 'last_content',
+                historyMode: 'visible',
                 sortOrder: 'a',
                 enabled: true
             },
@@ -784,7 +830,7 @@ describe('buildPrompt', () => {
                 id: 'secondHistory',
                 name: 'Second History',
                 type: 'history',
-                historyMode: 'last_content',
+                historyMode: 'visible',
                 sortOrder: 'b',
                 enabled: true
             }
@@ -816,7 +862,7 @@ describe('buildPrompt', () => {
                     id: 'history',
                     name: 'History',
                     type: 'history',
-                    historyMode: 'last_content',
+                    historyMode: 'visible',
                     start: '{{getvar::startIdx}}',
                     end: '{{getvar::endIdx}}',
                     sortOrder: 'a',
@@ -846,7 +892,7 @@ describe('buildPrompt', () => {
                     id: 'history',
                     name: 'History',
                     type: 'history',
-                    historyMode: 'last_content',
+                    historyMode: 'visible',
                     start: '{{getvar::startIdx}}',
                     end: '{{getvar::empty}}',
                     sortOrder: 'a',
@@ -873,7 +919,7 @@ describe('buildPrompt', () => {
                         id: 'history',
                         name: 'History',
                         type: 'history',
-                        historyMode: 'last_content',
+                        historyMode: 'visible',
                         start: '{{getvar::bad}}',
                         sortOrder: 'a',
                         enabled: true

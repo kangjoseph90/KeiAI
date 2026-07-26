@@ -900,3 +900,22 @@
 - 참고: ADR 025, ADR 033, docs/schema.md
 
 ---
+
+## 042: 메시지 미디어를 AgentPart inlay로 통합
+
+- 상태: 채택
+- 맥락: 메시지의 텍스트·도구 호출은 순서가 있는 `AgentPart[]`에 저장되지만 미디어는 별도 `attachments` 배열에 저장되어, 멀티모달 모델 출력의 원래 순서를 표현할 수 없었다.
+- 결정:
+  - 메시지 미디어는 `{ type: 'inlay', ids: string[] }` AgentPart로 저장한다.
+  - `MessageSwipe.attachments`는 제거하고 사용자 첨부와 모델 생성 미디어 모두 같은 part 구조를 사용한다.
+  - LLM 스트림은 provider-neutral한 ordered multimodal `parts`만 제공한다. `LLMOutputPart`는 text, thought, image/audio/video, tool request를 포함하고, 입력용 `LLMContentPart`는 여기에 tool response를 추가한다. Agent executor는 binary media를 chat inlay로 저장한 뒤 inlay part로 변환한다.
+  - 한 LLM 응답에서 발생한 tool request들은 `{ type: 'tool_calls', calls: [...] }` AgentPart 하나로 저장한다. 같은 batch의 request는 assistant 메시지 하나로, response는 user 메시지 하나로 복원하여 병렬 호출과 다음 agent turn의 순차 호출을 구분한다.
+  - thought part는 향후 provider별 thought signature를 보존하기 위해 `LLMMessage`에 포함할 수 있지만, signature 지원 전에는 handler가 provider request에서 제외한다. 일반 text로 변환해 재전송하지 않는다.
+  - 메시지의 visible 구간은 마지막 text part부터 그 이후까지이며, 마지막 text 바로 앞의 연속된 inlay도 포함한다. 그보다 앞선 part는 접히는 step/trace로 렌더링한다.
+  - 히스토리는 `last_text`, `visible`, `full_trace` 세 모드를 제공한다. `last_text`는 마지막 text part 하나, `visible`은 펼쳐진 범위의 text/inlay, `full_trace`는 전체 실행 기록을 사용한다. inlay는 해당 위치에서 `LLMContentPart` image/audio/video로 복원한다.
+- 결과:
+  - 사용자 첨부와 생성 미디어가 하나의 순서 보존 메시지 모델을 사용한다.
+  - 이미지 전용 응답도 유효한 Agent 출력으로 취급된다.
+  - display 전용 TTS·번역 결과는 AgentPart와 별도의 기능별 display 공간에 둔다.
+
+---

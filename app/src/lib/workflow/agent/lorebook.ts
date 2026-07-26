@@ -2,7 +2,7 @@ import type { Lorebook, PagedMessages } from '$lib/services';
 import { runTemplate, createDryRunMacros, mergeLocalMacros } from '$lib/template';
 import type { Macro } from '$lib/template';
 import type { RuntimeContext } from '$lib/types/context';
-import { getLastContentText } from './llm';
+import { getLastTextContent } from './llm';
 import { toMessageContext } from './context';
 
 export interface ResolveLorebookInput {
@@ -90,7 +90,7 @@ async function buildScanHistory(input: ResolveLorebookInput): Promise<string[]> 
             // Lorebook keys match only the final user-facing content. Thoughts and tool traces
             // are execution metadata and must not activate entries.
             return runTemplate(
-                getLastContentText(activeSwipe.parts),
+                getLastTextContent(activeSwipe.parts),
                 toMessageContext(message, index, input.ctx),
                 dryRunMacros
             );

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenAILLMStreamHandler } from '$lib/llm/handlers/openai';
 import { AnthropicLLMStreamHandler } from '$lib/llm/handlers/anthropic';
 import { GoogleLLMStreamHandler } from '$lib/llm/handlers/google';
-import type { LLMMessage } from '$lib/llm/types';
+import type { LLMMessage, LLMStreamContent } from '$lib/llm/types';
 
 const { mockFetch } = vi.hoisted(() => ({ mockFetch: vi.fn() }));
 
@@ -168,5 +168,49 @@ describe('multimodal LLM handlers', () => {
             { inlineData: { mimeType: 'audio/ogg', data: 'audio' } },
             { inlineData: { mimeType: 'video/mp4', data: 'video' } }
         ]);
+    });
+
+    it('preserves ordered text and generated media in Gemini output state', async () => {
+        mockFetch.mockResolvedValue(
+            new Response(
+                JSON.stringify({
+                    candidates: [
+                        {
+                            content: {
+                                parts: [
+                                    { text: 'Planning', thought: true },
+                                    { text: 'Before' },
+                                    {
+                                        inlineData: {
+                                            mimeType: 'image/png',
+                                            data: 'AQID'
+                                        }
+                                    },
+                                    { text: 'After' }
+                                ]
+                            }
+                        }
+                    ]
+                })
+            )
+        );
+
+        let result: LLMStreamContent | undefined;
+        for await (const state of new GoogleLLMStreamHandler(config).stream(
+            messages,
+            new AbortController().signal,
+            { stream: false }
+        )) {
+            result = state;
+        }
+
+        expect(result).toEqual({
+            parts: [
+                { type: 'thought', text: 'Planning' },
+                { type: 'text', text: 'Before' },
+                { type: 'image', mimeType: 'image/png', data: 'AQID' },
+                { type: 'text', text: 'After' }
+            ]
+        });
     });
 });

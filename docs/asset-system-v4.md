@@ -47,7 +47,7 @@ interface AssetRef extends OrderedRef, AssetFields {}
 character.avatar?: AssetFields;
 character.assets: EntityListConfig<AssetRef>;
 chat.inlays: EntityListConfig<AssetRef>;
-message.attachments?: string[]; // chat.inlays ref id 목록
+message.swipes[*].parts: AgentPart[]; // inlay part가 chat.inlays ref id 목록을 소유
 ```
 
 `AssetRef.id`는 전역 asset id가 아니다. `EntityListConfig` 안에서 쓰는 레이아웃/참조 id다. 실제 바이너리 식별자는 `hash`이고, 복호화에는 `encKey`를 쓴다.
@@ -128,7 +128,7 @@ V4에서 inlay는 chat-owned asset이다. 모델 이미지 생성, 사용자 업
 
 ```ts
 chat.inlays: EntityListConfig<AssetRef>;
-message.attachments?: string[];
+message.swipes[*].parts: AgentPart[]; // { type: "inlay", ids: string[] }
 ```
 
 이 결정으로 inlay의 cascade delete 기준이 닫힌다. chat 삭제 시 `deleteOwnerAssets(chat)`로 해당 chat의 inlay registry/storage를 정리할 수 있다.

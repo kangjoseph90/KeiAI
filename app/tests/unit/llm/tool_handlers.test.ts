@@ -27,6 +27,7 @@ const messages: LLMMessage[] = [
         role: 'assistant',
         content: [
             { type: 'text', text: 'I will read it.' },
+            { type: 'thought', text: 'This must stay local until signatures are supported.' },
             {
                 type: 'tool_request',
                 callId: 'call-1',
@@ -56,7 +57,7 @@ const config = {
 };
 
 async function complete(handler: LLMStreamHandler): Promise<LLMStreamContent> {
-    let result: LLMStreamContent = { content: '' };
+    let result: LLMStreamContent = { parts: [] };
     for await (const state of handler.stream(messages, new AbortController().signal, {
         stream: false,
         tools: [tool]
@@ -77,6 +78,7 @@ describe('tool-capable LLM handlers', () => {
                         {
                             message: {
                                 content: null,
+                                reasoning_content: 'Checking the next file.',
                                 tool_calls: [
                                     {
                                         id: 'call-2',
@@ -98,10 +100,9 @@ describe('tool-capable LLM handlers', () => {
 
         expect(body.tools[0].function.name).toBe('file_read');
         expect(body.messages).toEqual([
-            { role: 'assistant', content: 'I will read it.' },
             {
                 role: 'assistant',
-                content: null,
+                content: 'I will read it.',
                 tool_calls: [
                     {
                         id: 'call-1',
@@ -112,8 +113,14 @@ describe('tool-capable LLM handlers', () => {
             },
             { role: 'tool', tool_call_id: 'call-1', content: 'hello' }
         ]);
-        expect(result.toolCalls).toEqual([
-            { callId: 'call-2', name: 'file_read', args: { path: 'next.txt' } }
+        expect(result.parts).toEqual([
+            { type: 'thought', text: 'Checking the next file.' },
+            {
+                type: 'tool_request',
+                callId: 'call-2',
+                name: 'file_read',
+                args: { path: 'next.txt' }
+            }
         ]);
     });
 
@@ -122,6 +129,10 @@ describe('tool-capable LLM handlers', () => {
             new Response(
                 JSON.stringify({
                     content: [
+                        {
+                            type: 'thinking',
+                            thinking: 'Choosing the next file.'
+                        },
                         {
                             type: 'tool_use',
                             id: 'call-2',
@@ -148,8 +159,14 @@ describe('tool-capable LLM handlers', () => {
             tool_use_id: 'call-1',
             content: 'hello'
         });
-        expect(result.toolCalls).toEqual([
-            { callId: 'call-2', name: 'file_read', args: { path: 'next.txt' } }
+        expect(result.parts).toEqual([
+            { type: 'thought', text: 'Choosing the next file.' },
+            {
+                type: 'tool_request',
+                callId: 'call-2',
+                name: 'file_read',
+                args: { path: 'next.txt' }
+            }
         ]);
     });
 
@@ -190,8 +207,13 @@ describe('tool-capable LLM handlers', () => {
                 response: { output: 'hello' }
             }
         });
-        expect(result.toolCalls).toEqual([
-            { callId: 'call-2', name: 'file_read', args: { path: 'next.txt' } }
+        expect(result.parts).toEqual([
+            {
+                type: 'tool_request',
+                callId: 'call-2',
+                name: 'file_read',
+                args: { path: 'next.txt' }
+            }
         ]);
     });
 });

@@ -181,7 +181,7 @@ describe('PresetService', () => {
             expect(agent?.class).toBe('Agent');
             if (!agent || agent.class !== 'Agent') throw new Error('Expected Agent node');
             expect(agent.promptBlocks.history).toMatchObject({
-                historyMode: 'last_content'
+                historyMode: 'visible'
             });
         });
 
