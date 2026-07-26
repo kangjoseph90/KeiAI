@@ -4,9 +4,9 @@ import type { RuntimeContext } from '$lib/types/context';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
 import type { DeepPartial } from '$lib/utils/defaults';
 
-export type TextPromptBlockFields = {
+export type MessagePromptBlockFields = {
     name: string;
-    type: 'text';
+    type: 'message';
     role: LLMRole;
     content: string;
 };
@@ -30,7 +30,7 @@ export type HistoryPromptBlockFields = {
 };
 
 export type PromptBlockFields =
-    | TextPromptBlockFields
+    | MessagePromptBlockFields
     | LorebookPromptBlockFields
     | HistoryPromptBlockFields;
 
@@ -40,13 +40,14 @@ type PromptBlockMetadata = {
     enabled: boolean;
 };
 
-export type TextPromptBlock = TextPromptBlockFields & PromptBlockMetadata;
+export type MessagePromptBlock = MessagePromptBlockFields & PromptBlockMetadata;
 export type LorebookPromptBlock = LorebookPromptBlockFields & PromptBlockMetadata;
 export type HistoryPromptBlock = HistoryPromptBlockFields & PromptBlockMetadata;
-export type PromptBlock = TextPromptBlock | LorebookPromptBlock | HistoryPromptBlock;
+export type PromptBlock = MessagePromptBlock | LorebookPromptBlock | HistoryPromptBlock;
 
 export type WorkflowNode =
     | AgentNode
+    | AgentPartFilterNode
     | BooleanLogicNode
     | FileReadNode
     | FileWriteNode
@@ -211,6 +212,14 @@ export interface StringReplaceNode extends BaseNode {
 export interface StringRegexReplaceNode extends BaseNode {
     class: 'StringRegexReplace';
     flags: string;
+}
+
+export interface AgentPartFilterNode extends BaseNode {
+    class: 'AgentPartFilter';
+    includeText: boolean;
+    includeThought: boolean;
+    includeInlay: boolean;
+    includeToolCalls: boolean;
 }
 
 export interface StringNode extends BaseNode {

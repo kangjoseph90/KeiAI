@@ -379,6 +379,57 @@
                         })}
                 />
             </label>
+        {:else if data.node.class === 'AgentPartFilter'}
+            <div class="grid grid-cols-2 gap-2 rounded-md border bg-background p-2">
+                <label class="nodrag flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                        type="checkbox"
+                        class="size-4"
+                        checked={data.node.includeText}
+                        onchange={(event) =>
+                            data.onUpdateNode(data.node.id, {
+                                includeText: event.currentTarget.checked
+                            })}
+                    />
+                    Text
+                </label>
+                <label class="nodrag flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                        type="checkbox"
+                        class="size-4"
+                        checked={data.node.includeThought}
+                        onchange={(event) =>
+                            data.onUpdateNode(data.node.id, {
+                                includeThought: event.currentTarget.checked
+                            })}
+                    />
+                    Thought
+                </label>
+                <label class="nodrag flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                        type="checkbox"
+                        class="size-4"
+                        checked={data.node.includeInlay}
+                        onchange={(event) =>
+                            data.onUpdateNode(data.node.id, {
+                                includeInlay: event.currentTarget.checked
+                            })}
+                    />
+                    Inlay
+                </label>
+                <label class="nodrag flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                        type="checkbox"
+                        class="size-4"
+                        checked={data.node.includeToolCalls}
+                        onchange={(event) =>
+                            data.onUpdateNode(data.node.id, {
+                                includeToolCalls: event.currentTarget.checked
+                            })}
+                    />
+                    Tool calls
+                </label>
+            </div>
         {:else if data.node.class === 'FileRead' || data.node.class === 'FileWrite'}
             <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
                 Namespace

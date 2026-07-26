@@ -158,7 +158,7 @@ describe('executeAgentNode', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
-                    content: 'hello',
+                    content: '<|thought|>source thought<|/thought|>hello {{slot::missing}}',
                     inputs: {},
                     inputValues: {}
                 },
@@ -178,7 +178,7 @@ describe('executeAgentNode', () => {
                         instruction: {
                             id: 'instruction',
                             name: 'Instruction',
-                            type: 'text',
+                            type: 'message',
                             role: 'user',
                             content: 'Say {{slot::source}}',
                             sortOrder: 'a',
@@ -216,10 +216,17 @@ describe('executeAgentNode', () => {
                     messages: {} as PagedMessages
                 }).run()
             )
-        ).resolves.toBe('<|thought|>thinking<|/thought|>result: Say hello');
+        ).resolves.toBe('<|thought|>thinking<|/thought|>result: Say hello {{slot::missing}}');
 
         expect(receivedPrompt).toEqual([
-            { role: 'user', content: [{ type: 'text', text: 'Say hello' }] }
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: 'Say ' },
+                    { type: 'thought', text: 'source thought' },
+                    { type: 'text', text: 'hello {{slot::missing}}' }
+                ]
+            }
         ]);
         expect(mockResolveModelConfig).toHaveBeenCalledWith('chat', 'preset-1');
         expect(mockResolveParameters).toHaveBeenCalledWith('chat', 'preset-1');
@@ -271,7 +278,7 @@ describe('executeAgentNode', () => {
                         instruction: {
                             id: 'instruction',
                             name: 'Instruction',
-                            type: 'text',
+                            type: 'message',
                             role: 'user',
                             content: 'Say {{slot}} then {{slot::source}}',
                             sortOrder: 'a',
@@ -358,7 +365,7 @@ describe('executeAgentNode', () => {
                         instruction: {
                             id: 'instruction',
                             name: 'Instruction',
-                            type: 'text',
+                            type: 'message',
                             role: 'user',
                             content: 'Update memory',
                             sortOrder: 'a',
@@ -444,7 +451,7 @@ describe('executeAgentNode', () => {
                         instruction: {
                             id: 'instruction',
                             name: 'Instruction',
-                            type: 'text',
+                            type: 'message',
                             role: 'user',
                             content: 'greet',
                             sortOrder: 'a',
@@ -738,7 +745,7 @@ function createToolWorkflow(toolId: 'file_read' | 'file_write'): WorkflowDefinit
                     instruction: {
                         id: 'instruction',
                         name: 'Instruction',
-                        type: 'text',
+                        type: 'message',
                         role: 'user',
                         content: 'Use a tool',
                         sortOrder: 'a',
@@ -780,7 +787,7 @@ function createSimpleAgentWorkflow(): WorkflowDefinition {
                     instruction: {
                         id: 'instruction',
                         name: 'Instruction',
-                        type: 'text',
+                        type: 'message',
                         role: 'user',
                         content: 'Generate media',
                         sortOrder: 'a',

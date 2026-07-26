@@ -8,6 +8,50 @@ vi.mock('$lib/managers/chat', () => ({
 }));
 
 describe('WorkflowRuntime', () => {
+    it('filters serialized AgentParts by selected part types', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                source: {
+                    id: 'source',
+                    name: 'Source',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    content:
+                        'before<|thought|>thinking<|/thought|><|inlay|>["image-1"]<|/inlay|><|tool_calls|>[{"id":"tool-1","name":"search","status":"success"}]<|/tool_calls|>after',
+                    inputs: {},
+                    inputValues: {}
+                },
+                filter: {
+                    id: 'filter',
+                    name: 'Agent Part Filter',
+                    class: 'AgentPartFilter',
+                    position: { x: 0, y: 0 },
+                    includeText: false,
+                    includeThought: true,
+                    includeInlay: true,
+                    includeToolCalls: false,
+                    inputs: {
+                        content: { sourceNode: 'source', sourcePort: 0 },
+                        stream: null
+                    },
+                    inputValues: { content: '', stream: false }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    inputs: { content: { sourceNode: 'filter', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe(
+            '<|thought|>thinking<|/thought|><|inlay|>["image-1"]<|/inlay|>'
+        );
+    });
+
     it('uses literal input values and lets connected edges take precedence', async () => {
         const workflow: WorkflowDefinition = {
             nodes: {

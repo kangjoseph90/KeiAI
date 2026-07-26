@@ -167,7 +167,7 @@ describe('workflow edits', () => {
         const workflow = createDefaultChatWorkflow();
         const created = createBlock(workflow, 'chat_agent', {
             name: 'Instruction',
-            type: 'text',
+            type: 'message',
             role: 'system',
             content: 'Translate this.',
             sortOrder: 'a0'
@@ -179,7 +179,7 @@ describe('workflow edits', () => {
                 [created.blockId]: {
                     id: created.blockId,
                     enabled: true,
-                    type: 'text',
+                    type: 'message',
                     content: 'Translate this.'
                 }
             }
@@ -240,7 +240,7 @@ describe('workflow edits', () => {
         expect(() =>
             createBlock(workflow, 'output', {
                 name: 'Invalid',
-                type: 'text',
+                type: 'message',
                 role: 'system',
                 content: '',
                 sortOrder: 'a0'

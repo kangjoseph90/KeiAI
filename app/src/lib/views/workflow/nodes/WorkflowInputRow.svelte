@@ -88,12 +88,12 @@
     {#if hasLiteral}
         {#if port?.type === 'boolean'}
             <label
-                class="nodrag flex h-7 min-w-0 flex-1 items-center justify-between rounded-md border bg-background px-2 text-[10px] text-muted-foreground has-[:disabled]:cursor-not-allowed has-[:disabled]:bg-muted"
+                class="nodrag ml-auto flex size-7 shrink-0 items-center justify-center has-[:disabled]:cursor-not-allowed"
             >
-                {connection ? 'Connected' : 'Value'}
                 <input
                     type="checkbox"
                     class="size-3.5 disabled:cursor-not-allowed"
+                    aria-label={`${port.name} value`}
                     checked={inputValueAsBoolean()}
                     disabled={connection !== null}
                     onchange={(event) => onUpdateInputValue(inputId, event.currentTarget.checked)}

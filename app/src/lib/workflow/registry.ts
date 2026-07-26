@@ -1,5 +1,6 @@
 import type {
     AgentNode,
+    AgentPartFilterNode,
     BooleanLogicNode,
     BooleanNode,
     BooleanNotNode,
@@ -390,6 +391,29 @@ export const STRING_REGEX_REPLACE_NODE_DEFINITION: WorkflowNodeDefinition<String
         })
     };
 
+export const AGENT_PART_FILTER_NODE_DEFINITION: WorkflowNodeDefinition<AgentPartFilterNode> = {
+    class: 'AgentPartFilter',
+    label: 'Agent Part Filter',
+    category: 'agent',
+    inputs: {
+        content: { name: 'Content', type: 'string', required: false },
+        stream: STREAM_INPUT
+    },
+    outputs: RESULT_STRING_OUTPUT,
+    createDefault: (id) => ({
+        id,
+        name: 'Agent Part Filter',
+        class: 'AgentPartFilter',
+        position: { x: 0, y: 0 },
+        includeText: true,
+        includeThought: true,
+        includeInlay: true,
+        includeToolCalls: true,
+        inputs: { content: null, stream: null },
+        inputValues: { content: '', stream: false }
+    })
+};
+
 export const NUMBER_MATH_NODE_DEFINITION: WorkflowNodeDefinition<NumberMathNode> = {
     class: 'NumberMath',
     label: 'Number Math',
@@ -627,6 +651,7 @@ export const WORKFLOW_NODE_DEFINITIONS = {
     StringIncludes: STRING_INCLUDES_NODE_DEFINITION,
     StringReplace: STRING_REPLACE_NODE_DEFINITION,
     StringRegexReplace: STRING_REGEX_REPLACE_NODE_DEFINITION,
+    AgentPartFilter: AGENT_PART_FILTER_NODE_DEFINITION,
     NumberMath: NUMBER_MATH_NODE_DEFINITION,
     NumberCompare: NUMBER_COMPARE_NODE_DEFINITION,
     BooleanLogic: BOOLEAN_LOGIC_NODE_DEFINITION,

@@ -32,12 +32,12 @@ function normalizePromptBlock(block: PromptBlock, id: string = block.id): Prompt
     };
 
     switch (block.type) {
-        case 'text': {
+        case 'message': {
             const normalized = deepMerge(
-                { ...common, type: 'text' as const, role: 'system' as const, content: '' },
+                { ...common, type: 'message' as const, role: 'system' as const, content: '' },
                 block
             );
-            return { ...normalized, id, type: 'text' };
+            return { ...normalized, id, type: 'message' };
         }
         case 'history': {
             const normalized = deepMerge(

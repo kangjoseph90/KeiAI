@@ -18,6 +18,7 @@ import type { Message } from '$lib/services/content/message';
 import { resolveLorebookEntries } from './lorebook';
 import {
     agentPartsToLLMMessages,
+    deserializeAgentParts,
     getLastTextPart,
     getTextContent,
     getVisibleParts,
@@ -136,16 +137,21 @@ async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<
     const templateMacros = mergeLocalMacros(input.localMacros, createDryRunMacros());
 
     switch (block.type) {
-        case 'text':
-            messages = makeMessage(
-                block.role,
+        case 'message': {
+            const content = (
                 await runTemplate(
                     block.content,
                     toRoleContext(input.ctx, block.role),
                     templateMacros
                 )
+            ).trim();
+            messages = await agentPartsToLLMMessages(
+                deserializeAgentParts(content),
+                block.role,
+                input.chat
             );
             break;
+        }
 
         case 'history': {
             const start = await resolveHistoryIndex(

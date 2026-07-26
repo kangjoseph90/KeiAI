@@ -232,7 +232,7 @@ async function buildAgentLocalMacros(
     const macros = new Map<string, Macro>(localMacros);
 
     macros.set('slot', {
-        recursive: true,
+        recursive: false,
         run: (args) => {
             if (args.length !== 1) {
                 throw new Error('Agent input slot must be called as {{slot::name}}');

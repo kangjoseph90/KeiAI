@@ -69,7 +69,7 @@ export function createDefaultTranslationWorkflow(): WorkflowDefinition {
             [instructionId]: {
                 id: instructionId,
                 name: 'Translation Instruction',
-                type: 'text',
+                type: 'message',
                 role: 'user',
                 content:
                     'Translate the following text into {{targetlang}}. Return only the translated text.\n\n{{source}}',

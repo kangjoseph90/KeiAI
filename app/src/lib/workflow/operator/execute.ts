@@ -3,6 +3,7 @@ import { getToggleMacroValue } from '$lib/managers/toggle';
 import { runTemplate, createDryRunMacros, mergeLocalMacros } from '$lib/template';
 import { AppError } from '$lib/types/errors';
 import type {
+    AgentPartFilterNode,
     BooleanLogicNode,
     BooleanNode,
     BooleanNotNode,
@@ -28,6 +29,7 @@ import type {
     UngateNode,
     WorkflowNodeExecutionContext
 } from '../types';
+import { deserializeAgentParts, serializeAgentParts } from '../agent/llm';
 import {
     createWorkflowErrorEvent,
     createWorkflowSkipEvent,
@@ -320,6 +322,36 @@ export async function executeStringRegexReplaceNode({
             if (!regex) return text;
             return text.replace(new RegExp(regex, node.flags), replace);
         }
+    });
+}
+
+export async function executeAgentPartFilterNode({
+    node,
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<AgentPartFilterNode>): Promise<void> {
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['content'],
+        read: workflowValueToString,
+        compute: ({ content }) =>
+            serializeAgentParts(
+                deserializeAgentParts(content).filter((part) => {
+                    switch (part.type) {
+                        case 'text':
+                            return node.includeText;
+                        case 'thought':
+                            return node.includeThought;
+                        case 'inlay':
+                            return node.includeInlay;
+                        case 'tool_calls':
+                            return node.includeToolCalls;
+                    }
+                })
+            )
     });
 }
 

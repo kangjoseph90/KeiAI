@@ -190,7 +190,7 @@ describe('buildPrompt', () => {
             text: {
                 id: 'text',
                 name: 'System',
-                type: 'text',
+                type: 'message',
                 role: 'system',
                 content: 'rules',
                 sortOrder: 'a',
@@ -230,6 +230,62 @@ describe('buildPrompt', () => {
         ]);
     });
 
+    it('deserializes AgentParts produced by a message block template', async () => {
+        const messages = { slice: vi.fn() } as unknown as PagedMessages;
+        const chatWithInlay: Chat = {
+            ...chat,
+            inlays: {
+                refs: {
+                    'inlay-image': {
+                        id: 'inlay-image',
+                        sortOrder: 'a',
+                        name: 'image.webp',
+                        hash: 'hash-image',
+                        encKey: 'key-image',
+                        mimeType: 'image/webp'
+                    }
+                },
+                folders: {}
+            }
+        };
+        mockRunTemplate.mockResolvedValue(
+            'Describe this.<|thought|>source thought<|/thought|><|inlay|>["inlay-image"]<|/inlay|>'
+        );
+        mockReadBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
+
+        const prompt = await buildTestPrompt({
+            chat: chatWithInlay,
+            preset: makePreset({
+                message: {
+                    id: 'message',
+                    name: 'Message',
+                    type: 'message',
+                    role: 'user',
+                    content: '{{slot::source}}',
+                    sortOrder: 'a',
+                    enabled: true
+                }
+            }),
+            lorebooks: [],
+            messages
+        });
+
+        expect(prompt).toEqual([
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: 'Describe this.' },
+                    { type: 'thought', text: 'source thought' },
+                    {
+                        type: 'image',
+                        mimeType: 'image/webp',
+                        data: 'AQID'
+                    }
+                ]
+            }
+        ]);
+    });
+
     it('defaults history end to the end of the completed history view', async () => {
         const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([]);
         const messages = { slice } as unknown as PagedMessages;
@@ -262,7 +318,7 @@ describe('buildPrompt', () => {
             text: {
                 id: 'text',
                 name: 'Text',
-                type: 'text',
+                type: 'message',
                 role: 'system',
                 content: '{{character}}\n{{characternote}}\n{{chatnote}}',
                 sortOrder: 'a',
@@ -271,7 +327,7 @@ describe('buildPrompt', () => {
             text2: {
                 id: 'text2',
                 name: 'Text 2',
-                type: 'text',
+                type: 'message',
                 role: 'system',
                 content: 'static',
                 sortOrder: 'b',
@@ -693,7 +749,7 @@ describe('buildPrompt', () => {
                 text: {
                     id: 'text',
                     name: 'System',
-                    type: 'text',
+                    type: 'message',
                     role: 'system',
                     content: 'too long',
                     sortOrder: 'a',

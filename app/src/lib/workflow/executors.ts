@@ -1,6 +1,7 @@
 import { executeAgentNode } from './agent/execute';
 import { executeFileReadNode, executeFileWriteNode } from './file/execute';
 import {
+    executeAgentPartFilterNode,
     executeBooleanLogicNode,
     executeBooleanNode,
     executeBooleanNotNode,
@@ -57,6 +58,7 @@ const WORKFLOW_NODE_EXECUTORS = {
     StringIncludes: executeStringIncludesNode,
     StringReplace: executeStringReplaceNode,
     StringRegexReplace: executeStringRegexReplaceNode,
+    AgentPartFilter: executeAgentPartFilterNode,
     NumberMath: executeNumberMathNode,
     NumberCompare: executeNumberCompareNode,
     BooleanLogic: executeBooleanLogicNode,

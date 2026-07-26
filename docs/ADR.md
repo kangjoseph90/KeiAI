@@ -911,6 +911,8 @@
   - LLM 스트림은 provider-neutral한 ordered multimodal `parts`만 제공한다. `LLMOutputPart`는 text, thought, image/audio/video, tool request를 포함하고, 입력용 `LLMContentPart`는 여기에 tool response를 추가한다. Agent executor는 binary media를 chat inlay로 저장한 뒤 inlay part로 변환한다.
   - 한 LLM 응답에서 발생한 tool request들은 `{ type: 'tool_calls', calls: [...] }` AgentPart 하나로 저장한다. 같은 batch의 request는 assistant 메시지 하나로, response는 user 메시지 하나로 복원하여 병렬 호출과 다음 agent turn의 순차 호출을 구분한다.
   - thought part는 향후 provider별 thought signature를 보존하기 위해 `LLMMessage`에 포함할 수 있지만, signature 지원 전에는 handler가 provider request에서 제외한다. 일반 text로 변환해 재전송하지 않는다.
+  - Agent 프롬프트의 `message` 블록은 템플릿 결과를 `AgentPart`로 역직렬화한 뒤 LLM 메시지로 변환한다. 입력 slot은 비재귀적으로 삽입하여 upstream의 serialized text에 포함된 매크로를 실행하지 않으며, text/inlay/thought/tool_calls를 모두 보존한다.
+  - 워크플로우의 `AgentPart Filter`는 serialized AgentPart 문자열을 받아 text/thought/inlay/tool_calls 중 선택된 종류만 순서대로 다시 직렬화한다.
   - 메시지의 visible 구간은 마지막 text part부터 그 이후까지이며, 마지막 text 바로 앞의 연속된 inlay도 포함한다. 그보다 앞선 part는 접히는 step/trace로 렌더링한다.
   - 히스토리는 `last_text`, `visible`, `full_trace` 세 모드를 제공한다. `last_text`는 마지막 text part 하나, `visible`은 펼쳐진 범위의 text/inlay, `full_trace`는 전체 실행 기록을 사용한다. inlay는 해당 위치에서 `LLMContentPart` image/audio/video로 복원한다.
 - 결과:
