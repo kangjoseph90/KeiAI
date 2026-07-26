@@ -3,6 +3,7 @@
         User,
         Shield,
         Cpu,
+        Sparkles,
         Settings,
         RefreshCw,
         Puzzle,
@@ -40,6 +41,7 @@
     import ConnectionsSettings from './ConnectionsSettings.svelte';
     import ProfileSettings from './ProfileSettings.svelte';
     import ModelsSettings from './ModelsSettings.svelte';
+    import ServicesSettings from './ServicesSettings.svelte';
     import ChatSettings from './ChatSettings.svelte';
     import LanguageSettings from './LanguageSettings.svelte';
     import PluginsView from './PluginsView.svelte';
@@ -54,6 +56,7 @@
 
     const tabs = [
         { id: 'models', label: 'Models', icon: Cpu },
+        { id: 'services', label: 'AI Services', icon: Sparkles },
         { id: 'chat', label: 'Chat', icon: MessageSquare },
         { id: 'plugins', label: 'Plugins', icon: Puzzle },
         { id: 'language', label: 'Language', icon: Languages },
@@ -170,6 +173,10 @@
     {#if activeTab === 'models'}
         <div class="min-h-0 w-full max-w-4xl flex-1 px-4 pb-4 md:px-8 md:pb-8 md:pt-4">
             <ModelsSettings />
+        </div>
+    {:else if activeTab === 'services'}
+        <div class="min-h-0 w-full max-w-4xl flex-1 px-4 pb-4 md:px-8 md:pb-8 md:pt-4">
+            <ServicesSettings />
         </div>
     {:else if activeTab === 'chat'}
         <div class="min-h-0 w-full max-w-4xl flex-1 px-4 pb-4 md:px-8 md:pb-8 md:pt-4">

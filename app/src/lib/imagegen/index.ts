@@ -1,2 +1,2 @@
-export type { ImageGenResult, ImageGenImage, ImageGenHandler } from './types';
+export type { ImageGenHandler, ImageGenImage, ImageGenInput, ImageGenRequest } from './types';
 export { selectImageGenHandler } from './handler';

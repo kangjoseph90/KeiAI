@@ -48,6 +48,7 @@ export type PromptBlock = MessagePromptBlock | LorebookPromptBlock | HistoryProm
 export type WorkflowNode =
     | AgentNode
     | AgentPartFilterNode
+    | ImageGenerationNode
     | BooleanLogicNode
     | FileReadNode
     | FileWriteNode
@@ -220,6 +221,10 @@ export interface AgentPartFilterNode extends BaseNode {
     includeThought: boolean;
     includeInlay: boolean;
     includeToolCalls: boolean;
+}
+
+export interface ImageGenerationNode extends BaseNode {
+    class: 'ImageGeneration';
 }
 
 export interface StringNode extends BaseNode {

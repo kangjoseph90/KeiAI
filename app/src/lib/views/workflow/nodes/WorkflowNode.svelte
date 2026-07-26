@@ -30,6 +30,7 @@
         GitBranch,
         GitMerge,
         Hash,
+        ImageIcon,
         Plus,
         TriangleAlert
     } from 'lucide-svelte';
@@ -130,6 +131,8 @@
         <div class="flex size-7 shrink-0 items-center justify-center rounded-md bg-background/70">
             {#if data.node.class === 'Agent'}
                 <Bot class="size-4" />
+            {:else if data.node.class === 'ImageGeneration'}
+                <ImageIcon class="size-4" />
             {:else if data.node.class === 'String'}
                 <Braces class="size-4" />
             {:else if definition.category === 'number'}

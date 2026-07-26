@@ -64,6 +64,10 @@ describe('router', () => {
         expect(window.location.hash).toBe('#/settings/models');
         expect(getCurrentHashRoute()).toEqual({ view: 'settings', settingsTab: 'models' });
 
+        navigate({ view: 'settings', settingsTab: 'services' });
+        expect(window.location.hash).toBe('#/settings/services');
+        expect(getCurrentHashRoute()).toEqual({ view: 'settings', settingsTab: 'services' });
+
         navigate({ view: 'settings', settingsTab: 'connections' });
         expect(window.location.hash).toBe('#/settings/connections');
         expect(getCurrentHashRoute()).toEqual({ view: 'settings', settingsTab: 'connections' });

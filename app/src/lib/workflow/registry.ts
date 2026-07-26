@@ -10,6 +10,7 @@ import type {
     GateNode,
     GetChatVarNode,
     GetToggleNode,
+    ImageGenerationNode,
     NumberCompareNode,
     NumberMathNode,
     NumberNode,
@@ -414,6 +415,37 @@ export const AGENT_PART_FILTER_NODE_DEFINITION: WorkflowNodeDefinition<AgentPart
     })
 };
 
+export const IMAGE_GENERATION_NODE_DEFINITION: WorkflowNodeDefinition<ImageGenerationNode> = {
+    class: 'ImageGeneration',
+    label: 'Image Generation',
+    category: 'agent',
+    inputs: {
+        prompt: { name: 'Prompt', type: 'string', required: true },
+        negativePrompt: { name: 'Negative Prompt', type: 'string', required: false },
+        referenceImages: { name: 'Reference Images', type: 'string', required: false },
+        styleImages: { name: 'Style Images', type: 'string', required: false }
+    },
+    outputs: { 0: { name: 'image', type: 'string' } },
+    createDefault: (id) => ({
+        id,
+        name: 'Image Generation',
+        class: 'ImageGeneration',
+        position: { x: 0, y: 0 },
+        inputs: {
+            prompt: null,
+            negativePrompt: null,
+            referenceImages: null,
+            styleImages: null
+        },
+        inputValues: {
+            prompt: '',
+            negativePrompt: '',
+            referenceImages: '',
+            styleImages: ''
+        }
+    })
+};
+
 export const NUMBER_MATH_NODE_DEFINITION: WorkflowNodeDefinition<NumberMathNode> = {
     class: 'NumberMath',
     label: 'Number Math',
@@ -652,6 +684,7 @@ export const WORKFLOW_NODE_DEFINITIONS = {
     StringReplace: STRING_REPLACE_NODE_DEFINITION,
     StringRegexReplace: STRING_REGEX_REPLACE_NODE_DEFINITION,
     AgentPartFilter: AGENT_PART_FILTER_NODE_DEFINITION,
+    ImageGeneration: IMAGE_GENERATION_NODE_DEFINITION,
     NumberMath: NUMBER_MATH_NODE_DEFINITION,
     NumberCompare: NUMBER_COMPARE_NODE_DEFINITION,
     BooleanLogic: BOOLEAN_LOGIC_NODE_DEFINITION,

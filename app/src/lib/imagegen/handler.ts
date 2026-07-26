@@ -36,7 +36,7 @@ export function selectImageGenHandler(
         case 'google': {
             return new GoogleImageGenHandler({
                 apiKey: settings.google.apiKey,
-                baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+                baseUrl: 'https://generativelanguage.googleapis.com/v1',
                 modelId: settings.google.imagegen.modelId
             });
         }

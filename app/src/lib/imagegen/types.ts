@@ -10,12 +10,22 @@ export interface ImageGenImage {
     base64?: string;
     /** URL to the generated image */
     url?: string;
+    /** Media type of the generated image when provided by the provider */
+    mimeType?: string;
 }
 
-export interface ImageGenResult {
-    images: ImageGenImage[];
+export interface ImageGenInput {
+    data: Uint8Array<ArrayBuffer>;
+    mimeType: string;
+}
+
+export interface ImageGenRequest {
+    prompt: string;
+    negativePrompt?: string;
+    referenceImages: ImageGenInput[];
+    styleImages: ImageGenInput[];
 }
 
 export interface ImageGenHandler {
-    generate(prompt: string, signal?: AbortSignal): Promise<ImageGenResult>;
+    generate(request: ImageGenRequest, signal?: AbortSignal): Promise<ImageGenImage>;
 }

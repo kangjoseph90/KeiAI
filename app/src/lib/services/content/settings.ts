@@ -104,7 +104,7 @@ export const defaultSettings: AppSettings = {
             modelId: 'text-embedding-3-small'
         },
         imagegen: {
-            modelId: 'gpt-image-1'
+            modelId: 'gpt-image-2'
         },
         stt: {
             modelId: 'whisper-1'
@@ -121,7 +121,7 @@ export const defaultSettings: AppSettings = {
             modelId: 'gemini-embedding-2-preview'
         },
         imagegen: {
-            modelId: 'imagen-3.0-generate-002'
+            modelId: 'gemini-3.1-flash-image'
         },
         stt: {
             modelId: 'latest_long'
