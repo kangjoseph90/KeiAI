@@ -11,8 +11,11 @@
     } from '$lib/components/ui/card';
     import { Label } from '$lib/components/ui/label';
     import * as Avatar from '$lib/components/ui/avatar';
+    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
+    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
     import { Trash2, Upload, UserRoundPen } from 'lucide-svelte';
     import { getErrorMessage } from '$lib/types/errors';
+    import { IMAGE_ASSET_EXTENSIONS } from '$lib/types/asset';
     import { blobToDataUrl, preprocessImage } from '$lib/utils/image';
     import { MultiRoomService } from '$lib/services';
     import { formatPublicKeyFingerprint } from '$lib/crypto';
@@ -28,12 +31,30 @@
 
     let loading = $state(false);
     let avatarPicking = $state(false);
+    let avatarPreviewOpen = $state(false);
     let identityFingerprint = $state('');
     let profileUserId: string | null = null;
     let actionVersion = 0;
     const displayedAvatar = $derived(
         avatarDraft === null ? ($activeUser?.avatar ?? '') : avatarDraft
     );
+    const canPreviewAvatar = $derived(displayedAvatar.length > 0);
+    const avatarPreviewItems = $derived<MediaGalleryItem[]>(
+        canPreviewAvatar
+            ? [
+                  {
+                      id: 'profile-avatar',
+                      name: `${userName || 'Profile'} avatar`,
+                      src: displayedAvatar,
+                      mimeType: getDataUrlMimeType(displayedAvatar) ?? 'image/*'
+                  }
+              ]
+            : []
+    );
+
+    function getDataUrlMimeType(src: string): string | undefined {
+        return /^data:([^;,]+)/.exec(src)?.[1];
+    }
 
     $effect(() => {
         const user = $activeUser;
@@ -74,7 +95,7 @@
         try {
             const file = await appDialog.openFile({
                 title: 'Upload Profile Avatar',
-                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+                filters: [{ name: 'Images', extensions: [...IMAGE_ASSET_EXTENSIONS] }]
             });
             if (!file || $activeUser?.id !== userId || version !== actionVersion) return;
             if (file.size > AVATAR_MAX_SIZE) {
@@ -139,24 +160,27 @@
     </CardHeader>
     <CardContent class="flex flex-col gap-4" aria-busy={loading || avatarPicking}>
         <div class="mb-2 flex items-center gap-4 sm:gap-6">
-            <div class="group relative shrink-0">
-                <Avatar.Root
-                    class="size-20 border-2 border-muted transition-colors hover:border-primary sm:size-24"
-                >
-                    <Avatar.Image src={displayedAvatar} alt={userName} class="object-cover" />
-                    <Avatar.Fallback class="text-xl font-bold"
-                        >{(userName || 'U').charAt(0).toUpperCase()}</Avatar.Fallback
-                    >
-                </Avatar.Root>
+            <div class="shrink-0">
                 <button
                     type="button"
-                    onclick={handleAvatarUpload}
-                    disabled={loading || avatarPicking}
-                    aria-busy={avatarPicking}
-                    aria-label="Upload profile avatar"
-                    class="absolute inset-0 flex cursor-pointer items-center justify-center rounded-full bg-transparent transition-opacity lg:bg-background/60 lg:opacity-0 lg:backdrop-blur-sm lg:group-hover:opacity-100"
+                    class="rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {canPreviewAvatar
+                        ? 'cursor-zoom-in hover:brightness-95'
+                        : 'cursor-default'}"
+                    disabled={!canPreviewAvatar}
+                    aria-label={canPreviewAvatar
+                        ? `View ${userName || 'profile'} avatar`
+                        : 'Default profile avatar'}
+                    title={canPreviewAvatar ? 'View avatar' : undefined}
+                    onclick={() => (avatarPreviewOpen = true)}
                 >
-                    <Upload class="hidden size-6 text-foreground lg:block" />
+                    <Avatar.Root
+                        class="size-20 border-2 border-muted transition-colors hover:border-primary sm:size-24"
+                    >
+                        <Avatar.Image src={displayedAvatar} alt={userName} class="object-cover" />
+                        <Avatar.Fallback class="text-xl font-bold"
+                            >{(userName || 'U').charAt(0).toUpperCase()}</Avatar.Fallback
+                        >
+                    </Avatar.Root>
                 </button>
             </div>
 
@@ -212,3 +236,9 @@
         </Button>
     </CardContent>
 </Card>
+
+<MediaGalleryDialog
+    bind:open={avatarPreviewOpen}
+    items={avatarPreviewItems}
+    title="Profile avatar"
+/>

@@ -68,7 +68,12 @@ export type LLMParameter =
 
 export type LLMParameters = Partial<Record<LLMParameter, number | string | boolean>>;
 
-export type LLMCapability = 'image_input' | 'streaming' | 'tool_call';
+export type LLMCapability =
+    | 'image_input'
+    | 'audio_input'
+    | 'video_input'
+    | 'streaming'
+    | 'tool_call';
 export type LLMCapabilities = LLMCapability[];
 
 // Display names for UI
@@ -118,6 +123,8 @@ const parameterNames: Record<LLMParameter, string> = {
 
 const capabilityNames: Record<LLMCapability, string> = {
     image_input: 'Image input',
+    audio_input: 'Audio input',
+    video_input: 'Video input',
     streaming: 'Streaming',
     tool_call: 'Tool calling'
 };
@@ -179,14 +186,16 @@ const OPENAI_MODELS: BuiltInLLMModel[] = [
         name: 'GPT 5.5',
         modelId: 'gpt-5.5',
         provider: 'openai',
-        tokenizer: 'o200k_base'
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
     },
     {
         id: 'openai::gpt-5.4',
         name: 'GPT 5.4',
         modelId: 'gpt-5.4',
         provider: 'openai',
-        tokenizer: 'o200k_base'
+        tokenizer: 'o200k_base',
+        unsupported: ['video_input']
     }
 ];
 
@@ -196,14 +205,16 @@ const ANTHROPIC_MODELS: BuiltInLLMModel[] = [
         name: 'Claude 4.7 Opus',
         modelId: 'claude-4.7-opus',
         provider: 'anthropic',
-        tokenizer: 'claude'
+        tokenizer: 'claude',
+        unsupported: ['audio_input', 'video_input']
     },
     {
         id: 'anthropic::claude-4-6-sonnet',
         name: 'Claude 4.6 Sonnet',
         modelId: 'claude-4-6-sonnet',
         provider: 'anthropic',
-        tokenizer: 'claude'
+        tokenizer: 'claude',
+        unsupported: ['audio_input', 'video_input']
     }
 ];
 
@@ -213,14 +224,16 @@ const DEEPSEEK_MODELS: BuiltInLLMModel[] = [
         name: 'DeepSeek V4 Pro',
         modelId: 'deepseek-v4-pro',
         provider: 'deepseek',
-        tokenizer: 'deepseek'
+        tokenizer: 'deepseek',
+        unsupported: ['image_input', 'audio_input', 'video_input']
     },
     {
         id: 'deepseek::deepseek-v4-flash',
         name: 'DeepSeek V4 Flash',
         modelId: 'deepseek-v4-flash',
         provider: 'deepseek',
-        tokenizer: 'deepseek'
+        tokenizer: 'deepseek',
+        unsupported: ['image_input', 'audio_input', 'video_input']
     }
 ];
 
@@ -254,7 +267,8 @@ const MISTRAL_MODELS: BuiltInLLMModel[] = [
         name: 'Mistral Large 3',
         modelId: 'mistral-large-2512',
         provider: 'mistral',
-        tokenizer: 'mistral'
+        tokenizer: 'mistral',
+        unsupported: ['audio_input', 'video_input']
     }
 ];
 

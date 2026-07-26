@@ -245,6 +245,12 @@ function toAnthropicContentBlock(part: LLMContentPart): AnthropicContentBlock {
             source: { type: 'base64', media_type: part.mimeType, data: part.data }
         };
     }
+    if (part.type === 'audio' || part.type === 'video') {
+        throw new AppError(
+            'INVALID_INPUT',
+            `Anthropic handler does not support ${part.type} input`
+        );
+    }
     if (part.type === 'tool_request') {
         return { type: 'tool_use', id: part.callId, name: part.name, input: part.args };
     }

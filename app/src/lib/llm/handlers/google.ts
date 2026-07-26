@@ -253,7 +253,7 @@ function toGeminiParts(content: LLMContentPart[]): GeminiContentPart[] {
 
 function toGeminiPart(part: LLMContentPart): GeminiContentPart {
     if (part.type === 'text') return { text: part.text };
-    if (part.type === 'image') {
+    if (part.type === 'image' || part.type === 'audio' || part.type === 'video') {
         return { inlineData: { mimeType: part.mimeType, data: part.data } };
     }
     if (part.type === 'tool_request') {

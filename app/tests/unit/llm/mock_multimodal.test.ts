@@ -26,7 +26,7 @@ describe('MockLLMStreamHandler multimodal input', () => {
         ]);
 
         expect(response?.content).toBe(
-            '[Mock vision] Received 2 image attachments.\n\nText prompt: Describe these images.'
+            '[Mock multimodal] Received 2 image attachments.\n\nText prompt: Describe these images.'
         );
     });
 
@@ -38,6 +38,6 @@ describe('MockLLMStreamHandler multimodal input', () => {
             }
         ]);
 
-        expect(response?.content).toBe('[Mock vision] Received 1 image attachment.');
+        expect(response?.content).toBe('[Mock multimodal] Received 1 image attachment.');
     });
 });

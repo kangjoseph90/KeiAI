@@ -178,7 +178,8 @@
                       ownerTable: 'characters',
                       ownerId: $activeCharacter.id,
                       hash: $activeCharacter.avatar.hash,
-                      encKey: $activeCharacter.avatar.encKey
+                      encKey: $activeCharacter.avatar.encKey,
+                      mimeType: $activeCharacter.avatar.mimeType
                   }
                 : null}
             alt={$activeCharacter?.name ?? 'Character'}

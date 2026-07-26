@@ -522,6 +522,40 @@ describe('template', () => {
         );
     });
 
+    it('renders audio and video assets with native media controls', async () => {
+        const audio: AssetReadLocator = {
+            scopeType: 'user',
+            scopeId: 'user-1',
+            ownerTable: 'characters',
+            ownerId: 'char-1',
+            hash: 'audio-1',
+            encKey: 'key-1',
+            mimeType: 'audio/mpeg'
+        };
+        const video: AssetReadLocator = {
+            ...audio,
+            hash: 'video-1',
+            mimeType: 'video/mp4'
+        };
+        const assetMap: AssetNameIndex = new Map([
+            [
+                'char-1',
+                new Map([
+                    ['theme', [audio]],
+                    ['intro', [video]]
+                ])
+            ]
+        ]);
+        const macros = createDisplayMacros(assetMap, ['char-1'], new Map());
+
+        await expect(runTemplate('{{audio::theme}}', {}, macros)).resolves.toContain(
+            '<audio data-keiai-asset='
+        );
+        await expect(runTemplate('{{video::intro}}', {}, macros)).resolves.toContain(
+            '<video data-keiai-asset='
+        );
+    });
+
     it('resolves asset names with Risu-compatible fuzzy matching', () => {
         expect(normalizeAssetName('Theme Song.m4p')).toBe('themesong');
         expect(normalizeAssetName('Intro Clip.m4v')).toBe('introclip');

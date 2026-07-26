@@ -25,6 +25,7 @@ import type { RuntimeContext } from '$lib/types/context';
 import type { PromptBlock } from '../types';
 import { AssetService } from '$lib/services/asset';
 import { toBase64 } from '$lib/crypto';
+import { getAssetMediaType } from '$lib/types/asset';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
@@ -560,8 +561,11 @@ async function loadAttachmentContent(
         });
         if (!bytes) continue;
 
+        const mediaType = getAssetMediaType(ref.mimeType);
+        if (mediaType === 'other') continue;
+
         parts.push({
-            type: 'image',
+            type: mediaType,
             mimeType: ref.mimeType,
             data: toBase64(new Uint8Array(bytes))
         });
@@ -622,6 +626,10 @@ function contentPartForTokenCount(part: LLMContentPart): string {
             return part.text;
         case 'image':
             return `[image:${part.mimeType}]`;
+        case 'audio':
+            return `[audio:${part.mimeType}]`;
+        case 'video':
+            return `[video:${part.mimeType}]`;
         case 'tool_request':
             return JSON.stringify({ name: part.name, arguments: part.args });
         case 'tool_response':

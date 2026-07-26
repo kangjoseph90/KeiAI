@@ -442,7 +442,7 @@ describe('Chat Pipeline', () => {
                     role: 'user',
                     content: [
                         { type: 'text', text: 'Describe this' },
-                        { type: 'text', text: '[Image omitted]' }
+                        { type: 'text', text: '[Image omitted: unsupported by model]' }
                     ]
                 }
             ],

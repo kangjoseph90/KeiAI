@@ -57,14 +57,8 @@
     import { forkChat, getChatVariables, prepareNextSwipe, syncChatGreetings } from '$lib/managers';
     import type { RuntimeContext } from '$lib/types/context';
     import { appDialog } from '$lib/adapters/dialog';
-    import {
-        MAX_ATTACHMENTS,
-        extractImageFilesFromDrop,
-        extractImageFilesFromPaste,
-        hasDroppableFiles,
-        selectImageFiles
-    } from './composer-assets';
     import { getErrorMessage } from '$lib/types/errors';
+    import { MEDIA_ASSET_EXTENSIONS } from '$lib/types/asset';
 
     let { roomId, chatId }: { roomId: string; chatId?: string } = $props();
 
@@ -83,6 +77,7 @@
     let hasMoreNewer = $state(false);
     let previousActiveChatId = $state<string | undefined>();
     let dragCounter = $state(0);
+    const MAX_ATTACHMENTS = 4;
     type MessageAction = 'save' | 'delete' | 'swipe' | 'fork';
     let messageAction = $state<{ messageId: string; type: MessageAction } | null>(null);
     let chatViewEpoch = 0;
@@ -289,62 +284,88 @@
         if (!chatId) return;
 
         const remaining = MAX_ATTACHMENTS - pendingAttachments.length;
-        const candidates = selectImageFiles(files, remaining);
+        const candidates = files.slice(0, remaining);
         if (candidates.length === 0) return;
 
+        let firstError: unknown;
         for (const file of candidates) {
             try {
                 const ref = await createChatInlay(chatId, file);
                 // Only attach if the user hasn't switched chats while we awaited.
                 if ($activeChat?.id === chatId) addAttachment(ref.id);
             } catch (err) {
-                logger.error('Failed to attach image:', err);
+                logger.error('Failed to attach media:', err);
+                firstError ??= err;
             }
+        }
+        if (firstError) {
+            toast.error({
+                title: 'Could not attach some media',
+                description: getErrorMessage(firstError)
+            });
         }
     }
 
     async function handleAttachmentUpload() {
         if (!$activeChat || pendingAttachments.length >= MAX_ATTACHMENTS) return;
 
-        const file = await appDialog.openFile({
-            title: 'Attach Image',
-            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        const files = await appDialog.openMultipleFiles({
+            title: 'Attach Media',
+            filters: [{ name: 'Images, audio, and video', extensions: [...MEDIA_ASSET_EXTENSIONS] }]
         });
-        if (!file) return;
+        if (!files?.length) return;
 
-        await attachFiles([file]);
+        await attachFiles(files);
     }
 
     function handlePaste(e: ClipboardEvent) {
-        const images = extractImageFilesFromPaste(e);
-        if (images.length === 0) return; // text-only paste: keep browser default
+        const files = filesFromPaste(e);
+        if (files.length === 0) return;
         e.preventDefault();
-        void attachFiles(images);
+        void attachFiles(files);
     }
 
     function handleDragEnter(e: DragEvent) {
-        if (!hasDroppableFiles(e)) return;
+        if (!hasDraggedFiles(e)) return;
         e.preventDefault();
         dragCounter += 1;
     }
 
     function handleDragOver(e: DragEvent) {
-        if (!hasDroppableFiles(e)) return;
+        if (!hasDraggedFiles(e)) return;
         e.preventDefault();
     }
 
     function handleDragLeave(e: DragEvent) {
-        if (!hasDroppableFiles(e)) return;
+        if (!hasDraggedFiles(e)) return;
         e.preventDefault();
         dragCounter = Math.max(0, dragCounter - 1);
     }
 
     function handleDrop(e: DragEvent) {
-        if (!hasDroppableFiles(e)) return;
+        if (!hasDraggedFiles(e)) return;
         e.preventDefault();
         dragCounter = 0;
-        const images = extractImageFilesFromDrop(e);
-        if (images.length > 0) void attachFiles(images);
+        const files = Array.from(e.dataTransfer?.files ?? []);
+        if (files.length > 0) void attachFiles(files);
+    }
+
+    function filesFromPaste(e: ClipboardEvent): File[] {
+        const data = e.clipboardData;
+        if (!data) return [];
+        const files = Array.from(data.files ?? []);
+        if (files.length > 0) return files;
+        return Array.from(data.items ?? []).flatMap((item) => {
+            if (item.kind !== 'file') return [];
+            const file = item.getAsFile();
+            return file ? [file] : [];
+        });
+    }
+
+    function hasDraggedFiles(e: DragEvent): boolean {
+        const data = e.dataTransfer;
+        if (!data) return false;
+        return data.files.length > 0 || Array.from(data.types).includes('Files');
     }
 
     function addAttachment(assetId: string) {
@@ -657,7 +678,7 @@
                         <div
                             class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-md border-2 border-dashed border-primary/50 bg-primary/5 text-sm font-medium text-primary"
                         >
-                            Drop images to attach
+                            Drop images, audio, or video to attach
                         </div>
                     {/if}
                     <div class="min-w-0 flex-1 space-y-2">
@@ -677,7 +698,8 @@
                                                     ownerTable: 'chats',
                                                     ownerId: $activeChat!.id,
                                                     hash: ref.hash,
-                                                    encKey: ref.encKey
+                                                    encKey: ref.encKey,
+                                                    mimeType: ref.mimeType
                                                 }}
                                                 alt={ref.name}
                                                 class="size-full object-cover"
@@ -704,8 +726,8 @@
                                 onclick={handleAttachmentUpload}
                                 disabled={$isChatRunning ||
                                     pendingAttachments.length >= MAX_ATTACHMENTS}
-                                title="Attach image"
-                                aria-label="Attach image"
+                                title="Attach media"
+                                aria-label="Attach media"
                             >
                                 <Paperclip class="size-4" />
                             </Button>

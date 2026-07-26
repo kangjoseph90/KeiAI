@@ -24,6 +24,8 @@
     } from 'lucide-svelte';
     import { onDestroy } from 'svelte';
     import AssetView from '$lib/components/AssetView.svelte';
+    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
+    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
     import { AssetService, type AssetReadLocator } from '$lib/services/asset';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate } from '$lib/template';
@@ -188,6 +190,8 @@
     );
     let speakerInitial = $derived((speakerName.trim().charAt(0) || '?').toUpperCase());
     let messageScope = $derived(`kei-${message.id}-${message.activeSwipeId}`);
+    let attachmentPreviewOpen = $state(false);
+    let selectedAttachmentId = $state<string | undefined>();
 
     // ── Parts timeline ────────────────────────────────────────────────────────
 
@@ -221,13 +225,37 @@
                     ownerTable: 'chats',
                     ownerId: chat.id,
                     hash: ref.hash,
-                    encKey: ref.encKey
+                    encKey: ref.encKey,
+                    mimeType: ref.mimeType
                 }
             });
         }
 
         return attachments;
     });
+    let attachmentGalleryItems = $derived<MediaGalleryItem[]>(
+        attachmentLocators.flatMap((attachment) =>
+            attachment.locator
+                ? [
+                      {
+                          id: attachment.id,
+                          name: attachment.name,
+                          asset: attachment.locator
+                      }
+                  ]
+                : []
+        )
+    );
+
+    function openAttachmentPreview(attachment: {
+        id: string;
+        name: string;
+        locator: AssetReadLocator | null;
+    }): void {
+        if (!attachment.locator) return;
+        selectedAttachmentId = attachment.id;
+        attachmentPreviewOpen = true;
+    }
 
     let lastContentIdx = $derived(findLastContentIndex(parts));
 
@@ -244,7 +272,8 @@
                       ownerTable: 'personas',
                       ownerId: persona.id,
                       hash: persona.avatar.hash,
-                      encKey: persona.avatar.encKey
+                      encKey: persona.avatar.encKey,
+                      mimeType: persona.avatar.mimeType
                   }
                 : null;
         } else {
@@ -256,7 +285,8 @@
                       ownerTable: 'characters',
                       ownerId: character.id,
                       hash: character.avatar.hash,
-                      encKey: character.avatar.encKey
+                      encKey: character.avatar.encKey,
+                      mimeType: character.avatar.mimeType
                   }
                 : null;
         }
@@ -606,12 +636,20 @@
                     {#each attachmentLocators as attachment (attachment.id)}
                         <div class="size-24 overflow-hidden rounded-md border bg-muted">
                             {#if attachment.locator}
-                                <AssetView
-                                    asset={attachment.locator}
-                                    alt={attachment.name}
-                                    class="size-full object-cover"
-                                    fallback="none"
-                                />
+                                <button
+                                    type="button"
+                                    class="size-full cursor-zoom-in text-left transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    aria-label={`Open ${attachment.name}`}
+                                    onclick={() => openAttachmentPreview(attachment)}
+                                >
+                                    <AssetView
+                                        asset={attachment.locator}
+                                        alt={attachment.name}
+                                        class="size-full"
+                                        fallback="none"
+                                        mode="thumbnail"
+                                    />
+                                </button>
                             {:else}
                                 <div
                                     class="flex size-full items-center justify-center text-muted-foreground"
@@ -768,6 +806,13 @@
         {/if}
     </div>
 </div>
+
+<MediaGalleryDialog
+    bind:open={attachmentPreviewOpen}
+    bind:selectedId={selectedAttachmentId}
+    items={attachmentGalleryItems}
+    title="Message attachments"
+/>
 
 <style>
     .trace-flat-list {

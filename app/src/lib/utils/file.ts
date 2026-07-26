@@ -80,6 +80,12 @@ export function mimeTypeFromName(name: string): string {
     if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
     if (extension === 'webp') return 'image/webp';
     if (extension === 'gif') return 'image/gif';
+    if (extension === 'mp3') return 'audio/mpeg';
+    if (extension === 'wav') return 'audio/wav';
+    if (extension === 'ogg') return 'audio/ogg';
+    if (extension === 'm4a') return 'audio/mp4';
+    if (extension === 'mp4') return 'video/mp4';
+    if (extension === 'mov') return 'video/quicktime';
     if (extension === 'json' || extension === 'keipreset') return 'application/json';
     if (
         extension === 'zip' ||

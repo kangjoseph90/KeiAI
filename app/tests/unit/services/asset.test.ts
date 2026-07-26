@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssetService, type AssetReadLocator } from '$lib/services/asset';
+import { MAX_ASSET_SIZE_BY_MEDIA_TYPE } from '$lib/services/asset/types';
 import type { AssetLocator, AssetOwner, AssetRegistryRecord } from '$lib/adapters/asset';
 
 vi.mock('$lib/services/user', () => ({
@@ -115,6 +116,10 @@ describe('AssetService', () => {
         vi.mocked(appAsset.putRemoteAsset).mockResolvedValue(mockRegistry);
         vi.mocked(appAsset.getAsset).mockResolvedValue(undefined);
         vi.mocked(appAsset.getRenderUrl).mockResolvedValue(null);
+        vi.mocked(fileToPlaintext).mockResolvedValue({
+            bytes: mockBytes,
+            mimeType: 'image/png'
+        });
 
         vi.mocked(encryptConvergentAsset).mockResolvedValue({
             ciphertext: mockCiphertext,
@@ -154,6 +159,97 @@ describe('AssetService', () => {
                 bytes: mockBytes
             })
         );
+    });
+
+    it('rejects unsupported formats in the write path before encryption', async () => {
+        vi.mocked(fileToPlaintext).mockResolvedValue({
+            bytes: mockBytes,
+            mimeType: 'application/pdf'
+        });
+
+        await expect(
+            AssetService.write(new File([], 'document.pdf'), {
+                scopeType: 'user',
+                scopeId: mockUserId,
+                ownerTable: 'characters',
+                ownerId: 'char-123'
+            })
+        ).rejects.toMatchObject({
+            code: 'ASSET_ERROR',
+            message: 'Unsupported asset format: application/pdf.'
+        });
+
+        expect(encryptConvergentAsset).not.toHaveBeenCalled();
+        expect(appAsset.putLocalAsset).not.toHaveBeenCalled();
+    });
+
+    it('enforces a media type constraint in the write path', async () => {
+        vi.mocked(fileToPlaintext).mockResolvedValue({
+            bytes: mockBytes,
+            mimeType: 'audio/mpeg'
+        });
+
+        await expect(
+            AssetService.write(
+                new File([], 'voice.mp3'),
+                {
+                    scopeType: 'user',
+                    scopeId: mockUserId,
+                    ownerTable: 'characters',
+                    ownerId: 'char-123'
+                },
+                ['image']
+            )
+        ).rejects.toMatchObject({
+            code: 'ASSET_ERROR',
+            message: 'Expected image asset, but received audio.'
+        });
+
+        expect(encryptConvergentAsset).not.toHaveBeenCalled();
+        expect(appAsset.putLocalAsset).not.toHaveBeenCalled();
+    });
+
+    it('accepts a processed asset at its media type size limit', async () => {
+        const bytes = {
+            byteLength: MAX_ASSET_SIZE_BY_MEDIA_TYPE.image
+        } as unknown as Uint8Array;
+        vi.mocked(fileToPlaintext).mockResolvedValue({ bytes, mimeType: 'image/webp' });
+
+        await expect(
+            AssetService.write(new File([], 'large.webp'), {
+                scopeType: 'user',
+                scopeId: mockUserId,
+                ownerTable: 'characters',
+                ownerId: 'char-123'
+            })
+        ).resolves.toMatchObject({ mimeType: 'image/webp' });
+
+        expect(encryptConvergentAsset).toHaveBeenCalledWith(bytes);
+    });
+
+    it('rejects a processed asset above its media type size limit before encryption', async () => {
+        const bytes = {
+            byteLength: MAX_ASSET_SIZE_BY_MEDIA_TYPE.image + 1
+        } as unknown as Uint8Array;
+        vi.mocked(fileToPlaintext).mockResolvedValue({
+            bytes,
+            mimeType: 'image/webp'
+        });
+
+        await expect(
+            AssetService.write(new File([], 'too-large.webp'), {
+                scopeType: 'user',
+                scopeId: mockUserId,
+                ownerTable: 'characters',
+                ownerId: 'char-123'
+            })
+        ).rejects.toMatchObject({
+            code: 'ASSET_ERROR',
+            message: 'too-large.webp exceeds the 10 MB image asset limit.'
+        });
+
+        expect(encryptConvergentAsset).not.toHaveBeenCalled();
+        expect(appAsset.putLocalAsset).not.toHaveBeenCalled();
     });
 
     it('deletes logical asset and local cache registry entry', async () => {

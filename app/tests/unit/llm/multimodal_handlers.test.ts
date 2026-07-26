@@ -28,14 +28,17 @@ const config = {
     useProxy: false
 };
 
-async function collectContent(handler: {
-    stream: (
-        input: LLMMessage[],
-        signal: AbortSignal,
-        options: { stream: false }
-    ) => AsyncIterable<unknown>;
-}): Promise<void> {
-    for await (const _ of handler.stream(messages, new AbortController().signal, {
+async function collectContent(
+    handler: {
+        stream: (
+            input: LLMMessage[],
+            signal: AbortSignal,
+            options: { stream: false }
+        ) => AsyncIterable<unknown>;
+    },
+    input: LLMMessage[] = messages
+): Promise<void> {
+    for await (const _ of handler.stream(input, new AbortController().signal, {
         stream: false
     })) {
         // The request body is the assertion target.
@@ -118,6 +121,52 @@ describe('multimodal LLM handlers', () => {
                     { inlineData: { mimeType: 'image/webp', data: 'AQID' } }
                 ]
             }
+        ]);
+    });
+
+    it('serializes OpenAI-compatible audio input', async () => {
+        mockFetch.mockResolvedValue(
+            new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }))
+        );
+        const input: LLMMessage[] = [
+            {
+                role: 'user',
+                content: [{ type: 'audio', mimeType: 'audio/mpeg', data: 'AQID' }]
+            }
+        ];
+
+        await collectContent(new OpenAILLMStreamHandler(config), input);
+
+        const body = JSON.parse(vi.mocked(mockFetch).mock.calls[0][1].body as string) as {
+            messages: Array<{ content: unknown }>;
+        };
+        expect(body.messages[0].content).toEqual([
+            { type: 'input_audio', input_audio: { data: 'AQID', format: 'mp3' } }
+        ]);
+    });
+
+    it('serializes Gemini audio and video as inline data', async () => {
+        mockFetch.mockResolvedValue(
+            new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }))
+        );
+        const input: LLMMessage[] = [
+            {
+                role: 'user',
+                content: [
+                    { type: 'audio', mimeType: 'audio/ogg', data: 'audio' },
+                    { type: 'video', mimeType: 'video/mp4', data: 'video' }
+                ]
+            }
+        ];
+
+        await collectContent(new GoogleLLMStreamHandler(config), input);
+
+        const body = JSON.parse(vi.mocked(mockFetch).mock.calls[0][1].body as string) as {
+            contents: Array<{ parts: unknown }>;
+        };
+        expect(body.contents[0].parts).toEqual([
+            { inlineData: { mimeType: 'audio/ogg', data: 'audio' } },
+            { inlineData: { mimeType: 'video/mp4', data: 'video' } }
         ]);
     });
 });

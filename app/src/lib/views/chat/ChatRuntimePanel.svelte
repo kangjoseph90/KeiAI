@@ -12,6 +12,8 @@
         X
     } from 'lucide-svelte';
     import AssetView from '$lib/components/AssetView.svelte';
+    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
+    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
     import KeyValueEditor from '$lib/components/KeyValueEditor.svelte';
     import ParticipantCardMenu from '$lib/components/ParticipantCardMenu.svelte';
@@ -46,6 +48,7 @@
     import LorebookItem from '$lib/views/modules/LorebookItem.svelte';
     import { appDialog } from '$lib/adapters/dialog';
     import { getErrorMessage } from '$lib/types/errors';
+    import { MEDIA_ASSET_EXTENSIONS } from '$lib/types/asset';
     import { generateSortOrder, listItems } from '$lib/utils/ordering';
     import { generateId } from '$lib/utils/id';
 
@@ -58,6 +61,25 @@
 
     let variables = $state<Record<string, string>>({});
     let panelAction = $state<string | null>(null);
+    let galleryOpen = $state(false);
+    let gallerySelectedId = $state<string | undefined>();
+    let galleryItems = $derived.by<MediaGalleryItem[]>(() => {
+        const chat = $activeChat;
+        if (!chat) return [];
+        return listItems(chat.inlays).map((ref) => ({
+            id: ref.id,
+            name: ref.name,
+            asset: {
+                scopeType: chat.scopeType,
+                scopeId: chat.scopeId,
+                ownerTable: 'chats',
+                ownerId: chat.id,
+                hash: ref.hash,
+                encKey: ref.encKey,
+                mimeType: ref.mimeType
+            }
+        }));
+    });
 
     async function runPanelAction(
         key: string,
@@ -80,6 +102,11 @@
     async function updateChat(changes: DeepPartial<ChatContent>) {
         if (!$activeChat) return;
         await updateChatContent(chatId, changes);
+    }
+
+    function openGallery(ref: { id: string }): void {
+        gallerySelectedId = ref.id;
+        galleryOpen = true;
     }
 
     $effect(() => {
@@ -149,13 +176,27 @@
     async function handleInlayUpload() {
         if ($activeChat?.id !== chatId) return;
         const targetChatId = chatId;
-        await runPanelAction('upload-inlay', 'Could not upload gallery image', async () => {
-            const file = await appDialog.openFile({
-                title: 'Upload Gallery Image',
-                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        await runPanelAction('upload-inlay', 'Could not upload gallery asset', async () => {
+            const files = await appDialog.openMultipleFiles({
+                title: 'Upload Gallery Asset',
+                filters: [
+                    {
+                        name: 'Images, audio, and video',
+                        extensions: [...MEDIA_ASSET_EXTENSIONS]
+                    }
+                ]
             });
-            if (!file || $activeChat?.id !== targetChatId) return;
-            await createChatInlay(targetChatId, file);
+            if (!files?.length || $activeChat?.id !== targetChatId) return;
+            let uploadError: unknown;
+            for (const file of files) {
+                if ($activeChat?.id !== targetChatId) return;
+                try {
+                    await createChatInlay(targetChatId, file);
+                } catch (error) {
+                    uploadError ??= error;
+                }
+            }
+            if (uploadError) throw uploadError;
         });
     }
 
@@ -301,7 +342,8 @@
                                                     ownerTable: 'personas',
                                                     ownerId: persona.id,
                                                     hash: persona.avatar.hash,
-                                                    encKey: persona.avatar.encKey
+                                                    encKey: persona.avatar.encKey,
+                                                    mimeType: persona.avatar.mimeType
                                                 }}
                                                 alt={persona.name}
                                                 class="size-full object-cover"
@@ -459,14 +501,14 @@
                 </section>
 
                 <!-- Runtime Assets (Inlays) -->
-                <section class="space-y-2 border-b border-sidebar-border p-3">
+                <section class="space-y-1.5 border-b border-sidebar-border p-3">
                     <div class="flex items-center justify-between">
                         <Label
                             class="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
                         >
                             <ImageIcon class="size-3" /> Gallery
                         </Label>
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-1.5">
                             <Badge variant="outline" class="text-[10px] font-mono"
                                 >{Object.keys($activeChat?.inlays?.refs ?? {}).length}</Badge
                             >
@@ -476,7 +518,7 @@
                                 class="size-7"
                                 disabled={panelAction !== null}
                                 aria-busy={panelAction === 'upload-inlay'}
-                                aria-label="Upload gallery image"
+                                aria-label="Upload gallery asset"
                                 onclick={handleInlayUpload}
                             >
                                 <Plus class="size-3" />
@@ -487,7 +529,9 @@
                         entities={listItems($activeChat.inlays)}
                         config={$activeChat?.inlays ?? { refs: {}, folders: {} }}
                         layout="grid"
-                        gridClass="grid grid-cols-3 gap-2 w-full"
+                        gridClass="grid grid-cols-3 gap-1 w-full"
+                        itemWrapperClass={() =>
+                            'relative w-full p-1 transition-all duration-200 drop-target'}
                         onCreateFolder={(name, parentId, sortOrder) =>
                             createChatFolder(chatId, 'inlays', name, parentId, sortOrder)}
                         onUpdateFolder={(id, changes) =>
@@ -495,15 +539,18 @@
                         onDeleteFolder={(id) => deleteChatFolder(chatId, 'inlays', id)}
                         onMoveItem={(itemId, newFolderId, newSortOrder) =>
                             moveChatItem(chatId, 'inlays', itemId, newFolderId, newSortOrder)}
+                        onItemClick={openGallery}
                     >
                         {#snippet empty()}
                             <div class="col-span-full">
-                                <EmptyListPlaceholder message="No images." />
+                                <EmptyListPlaceholder message="No media assets." />
                             </div>
                         {/snippet}
                         {#snippet item({ entity: ref })}
                             {@const chat = $activeChat!}
-                            <div class="group relative aspect-square overflow-visible rounded-lg">
+                            <div
+                                class="group relative aspect-square cursor-zoom-in overflow-visible rounded-lg"
+                            >
                                 <div class="absolute inset-0 overflow-hidden rounded-lg border">
                                     <AssetView
                                         asset={{
@@ -512,7 +559,8 @@
                                             ownerTable: 'chats',
                                             ownerId: chat.id,
                                             hash: ref.hash,
-                                            encKey: ref.encKey
+                                            encKey: ref.encKey,
+                                            mimeType: ref.mimeType
                                         }}
                                         alt={ref.name}
                                         class="size-full object-cover"
@@ -553,3 +601,10 @@
         </div>
     </ScrollArea>
 </div>
+
+<MediaGalleryDialog
+    bind:open={galleryOpen}
+    bind:selectedId={gallerySelectedId}
+    items={galleryItems}
+    title="Chat gallery"
+/>

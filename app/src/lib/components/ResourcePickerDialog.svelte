@@ -225,7 +225,8 @@
                                             ownerTable,
                                             ownerId: resource.id,
                                             hash: resource.avatar.hash,
-                                            encKey: resource.avatar.encKey
+                                            encKey: resource.avatar.encKey,
+                                            mimeType: resource.avatar.mimeType
                                         }}
                                         alt={resource.name}
                                         class="size-full"

@@ -1,7 +1,8 @@
 import { getAppSettings } from '$lib/stores/content/settings';
 import { getMergedLorebooks } from '$lib/stores/content/merged';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
-import type { LLMContentPart, LLMStreamContent } from '$lib/llm/types';
+import type { LLMStreamContent } from '$lib/llm/types';
+import { adaptMediaForCapabilities } from '$lib/llm/capabilities';
 import { ToolCallService } from '$lib/services/content/tool';
 import type { RuntimeContext } from '$lib/types/context';
 import { AppError } from '$lib/types/errors';
@@ -98,16 +99,7 @@ export async function executeAgentNode({
         localMacros: agentMacros
     });
 
-    // TODO: Share capability adaptation with CharJS and plugin LLM calls when more capabilities are added.
-    if (unsupported.includes('image_input')) {
-        basePrompt = basePrompt.map((message) => ({
-            ...message,
-            content: message.content.map(
-                (part): LLMContentPart =>
-                    part.type === 'image' ? { type: 'text', text: '[Image omitted]' } : part
-            )
-        }));
-    }
+    basePrompt = adaptMediaForCapabilities(basePrompt, unsupported);
     if (unsupported.includes('tool_call')) {
         tools = [];
         basePrompt = basePrompt

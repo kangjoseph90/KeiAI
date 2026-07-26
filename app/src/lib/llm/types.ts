@@ -37,6 +37,8 @@ export interface LLMStreamHandler {
 export type LLMContentPart =
     | { type: 'text'; text: string }
     | { type: 'image'; mimeType: string; data: string }
+    | { type: 'audio'; mimeType: string; data: string }
+    | { type: 'video'; mimeType: string; data: string }
     | { type: 'tool_request'; callId: string; name: string; args: Record<string, unknown> }
     | {
           type: 'tool_response';

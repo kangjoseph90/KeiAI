@@ -432,22 +432,42 @@ describe('buildPrompt', () => {
         ]);
     });
 
-    it('adds attached chat inlays as image content parts in history', async () => {
-        const message = makeMessage('msg-1', 'user', 'Describe this image.');
-        message.swipes[message.activeSwipeId].attachments = ['inlay-1'];
+    it('adds image, audio, and video inlays as media content parts in history', async () => {
+        const message = makeMessage('msg-1', 'user', 'Describe this media.');
+        message.swipes[message.activeSwipeId].attachments = [
+            'inlay-image',
+            'inlay-audio',
+            'inlay-video'
+        ];
         const slice = vi.fn<PagedMessages['slice']>().mockResolvedValue([{ message, index: 0 }]);
         const messages = { slice } as unknown as PagedMessages;
         const chatWithInlay: Chat = {
             ...chat,
             inlays: {
                 refs: {
-                    'inlay-1': {
-                        id: 'inlay-1',
+                    'inlay-image': {
+                        id: 'inlay-image',
                         sortOrder: 'a',
                         name: 'image.webp',
-                        hash: 'hash-1',
-                        encKey: 'key-1',
+                        hash: 'hash-image',
+                        encKey: 'key-image',
                         mimeType: 'image/webp'
+                    },
+                    'inlay-audio': {
+                        id: 'inlay-audio',
+                        sortOrder: 'b',
+                        name: 'voice.mp3',
+                        hash: 'hash-audio',
+                        encKey: 'key-audio',
+                        mimeType: 'audio/mpeg'
+                    },
+                    'inlay-video': {
+                        id: 'inlay-video',
+                        sortOrder: 'c',
+                        name: 'clip.mp4',
+                        hash: 'hash-video',
+                        encKey: 'key-video',
+                        mimeType: 'video/mp4'
                     }
                 },
                 folders: {}
@@ -472,21 +492,25 @@ describe('buildPrompt', () => {
             messages
         });
 
-        expect(mockReadBytes).toHaveBeenCalledWith({
-            scopeType: 'user',
-            scopeId: 'user-1',
-            ownerTable: 'chats',
-            ownerId: 'chat-1',
-            hash: 'hash-1'
-        });
+        expect(mockReadBytes).toHaveBeenCalledTimes(3);
         expect(prompt).toEqual([
             {
                 role: 'user',
                 content: [
-                    { type: 'text', text: 'Describe this image.' },
+                    { type: 'text', text: 'Describe this media.' },
                     {
                         type: 'image',
                         mimeType: 'image/webp',
+                        data: 'AQID'
+                    },
+                    {
+                        type: 'audio',
+                        mimeType: 'audio/mpeg',
+                        data: 'AQID'
+                    },
+                    {
+                        type: 'video',
+                        mimeType: 'video/mp4',
                         data: 'AQID'
                     }
                 ]

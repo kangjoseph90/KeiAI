@@ -234,7 +234,8 @@ export const chatAssetsMap = derived(
                             ownerTable,
                             ownerId,
                             hash: ref.hash,
-                            encKey: ref.encKey
+                            encKey: ref.encKey,
+                            mimeType: ref.mimeType
                         });
                         ownerMap.set(normalized, list);
                     }

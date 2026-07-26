@@ -99,14 +99,21 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
 
     private getResponse(messages: LLMMessage[]): string {
         const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
-        const imageCount = lastUserMessage
-            ? lastUserMessage.content.filter((part) => part.type === 'image').length
-            : 0;
-        if (imageCount > 0) {
+        const mediaParts =
+            lastUserMessage?.content.filter(
+                (part) => part.type === 'image' || part.type === 'audio' || part.type === 'video'
+            ) ?? [];
+        if (mediaParts.length > 0) {
             const text = getTextContent(lastUserMessage!.content).trim();
-            const attachmentLabel = imageCount === 1 ? 'image attachment' : 'image attachments';
+            const summary = ['image', 'audio', 'video']
+                .map((type) => {
+                    const count = mediaParts.filter((part) => part.type === type).length;
+                    return count > 0 ? `${count} ${type}` : '';
+                })
+                .filter(Boolean)
+                .join(', ');
             return [
-                `[Mock vision] Received ${imageCount} ${attachmentLabel}.`,
+                `[Mock multimodal] Received ${summary} attachment${mediaParts.length === 1 ? '' : 's'}.`,
                 text ? `Text prompt: ${text}` : ''
             ]
                 .filter(Boolean)

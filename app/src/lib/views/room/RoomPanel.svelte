@@ -372,7 +372,8 @@
                                                 ownerTable: 'characters',
                                                 ownerId: character.id,
                                                 hash: character.avatar.hash,
-                                                encKey: character.avatar.encKey
+                                                encKey: character.avatar.encKey,
+                                                mimeType: character.avatar.mimeType
                                             }}
                                             alt={character.name}
                                             class="size-full object-cover"

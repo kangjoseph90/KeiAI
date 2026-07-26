@@ -113,6 +113,31 @@ describe('hydrateAssets', () => {
         expect(AssetService.revokeUrl).toHaveBeenCalledWith('blob:asset-1');
     });
 
+    it('hydrates native audio and video elements', async () => {
+        vi.mocked(AssetService.read)
+            .mockResolvedValueOnce('blob:audio-1')
+            .mockResolvedValueOnce('blob:video-1');
+
+        const node = document.createElement('div');
+        node.innerHTML = [
+            `<audio data-keiai-asset='${JSON.stringify(testLocator)}'></audio>`,
+            `<video data-keiai-asset='${JSON.stringify(testLocator2)}'></video>`
+        ].join('');
+        document.body.appendChild(node);
+
+        hydrateAssets(node);
+        const audio = node.querySelector('audio') as HTMLAudioElement;
+        const video = node.querySelector('video') as HTMLVideoElement;
+
+        observers[0].trigger(audio);
+        observers[0].trigger(video);
+
+        await vi.waitFor(() => expect(audio.dataset.keiaiAssetState).toBe('loaded'));
+        await vi.waitFor(() => expect(video.dataset.keiaiAssetState).toBe('loaded'));
+        expect(audio.src).toContain('blob:audio-1');
+        expect(video.src).toContain('blob:video-1');
+    });
+
     it('revokes cached URLs when their images leave the hydrated DOM', async () => {
         vi.mocked(AssetService.read).mockResolvedValue('blob:removed-asset');
 

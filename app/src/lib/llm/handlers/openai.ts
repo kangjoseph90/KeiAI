@@ -65,7 +65,12 @@ interface OpenAICompletion {
 
 type OpenAIRequestContent =
     | string
-    | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
+    | Array<
+          | { type: 'text'; text: string }
+          | { type: 'image_url'; image_url: { url: string } }
+          | { type: 'input_audio'; input_audio: { data: string; format: string } }
+          | { type: 'video_url'; video_url: { url: string } }
+      >;
 
 interface OpenAIRequestMessage {
     role: LLMMessage['role'] | 'tool';
@@ -307,20 +312,27 @@ export class OpenAILLMStreamHandler implements LLMStreamHandler {
 
 function toOpenAIRequestMessages(message: LLMMessage): OpenAIRequestMessage[] {
     const result: OpenAIRequestMessage[] = [];
-    let regularParts: Array<Extract<LLMContentPart, { type: 'text' | 'image' }>> = [];
+    let regularParts: Array<
+        Extract<LLMContentPart, { type: 'text' | 'image' | 'audio' | 'video' }>
+    > = [];
 
     const flushRegularParts = (): void => {
         if (regularParts.length === 0) return;
-        const hasImage = regularParts.some((part) => part.type === 'image');
+        const hasMedia = regularParts.some((part) => part.type !== 'text');
         result.push({
             role: message.role,
-            content: hasImage ? regularParts.map(toOpenAIContentPart) : getTextContent(regularParts)
+            content: hasMedia ? regularParts.map(toOpenAIContentPart) : getTextContent(regularParts)
         });
         regularParts = [];
     };
 
     for (const part of message.content) {
-        if (part.type === 'text' || part.type === 'image') {
+        if (
+            part.type === 'text' ||
+            part.type === 'image' ||
+            part.type === 'audio' ||
+            part.type === 'video'
+        ) {
             regularParts.push(part);
             continue;
         }
@@ -350,13 +362,32 @@ function toOpenAIRequestMessages(message: LLMMessage): OpenAIRequestMessage[] {
 }
 
 function toOpenAIContentPart(
-    part: Extract<LLMContentPart, { type: 'text' | 'image' }>
+    part: Extract<LLMContentPart, { type: 'text' | 'image' | 'audio' | 'video' }>
 ): Extract<OpenAIRequestContent, ReadonlyArray<unknown>>[number] {
     if (part.type === 'text') return part;
+    if (part.type === 'audio') {
+        return {
+            type: 'input_audio',
+            input_audio: { data: part.data, format: audioFormat(part.mimeType) }
+        };
+    }
+    if (part.type === 'video') {
+        return {
+            type: 'video_url',
+            video_url: { url: `data:${part.mimeType};base64,${part.data}` }
+        };
+    }
     return {
         type: 'image_url',
         image_url: { url: `data:${part.mimeType};base64,${part.data}` }
     };
+}
+
+function audioFormat(mimeType: string): string {
+    const subtype = mimeType.toLowerCase().split('/')[1]?.split(';')[0];
+    if (subtype === 'mpeg') return 'mp3';
+    if (subtype === 'x-wav' || subtype === 'wave') return 'wav';
+    return subtype || 'wav';
 }
 
 function toolResponseToText(

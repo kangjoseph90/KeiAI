@@ -5,6 +5,7 @@
  */
 
 import { sha256, sha256Bytes, fromHex, toHex, type Bytes } from '$lib/crypto';
+import { mimeTypeFromName } from '$lib/utils/file';
 import { preprocessImage } from '$lib/utils/image';
 import { MAX_IMAGE_HEIGHT, MAX_IMAGE_WIDTH, WEBP_QUALITY } from './types';
 
@@ -51,6 +52,23 @@ function resolveFileMimeType(file: File, bytes: Uint8Array): string {
             bytes[10] === 0x42 &&
             bytes[11] === 0x50;
         if (isWebP) return 'image/webp';
+
+        const isWav =
+            bytes[0] === 0x52 &&
+            bytes[1] === 0x49 &&
+            bytes[2] === 0x46 &&
+            bytes[3] === 0x46 &&
+            bytes[8] === 0x57 &&
+            bytes[9] === 0x41 &&
+            bytes[10] === 0x56 &&
+            bytes[11] === 0x45;
+        if (isWav) return 'audio/wav';
+
+        const isMp4 =
+            bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70;
+        if (isMp4) {
+            return extensionOf(file.name) === 'm4a' ? 'audio/mp4' : 'video/mp4';
+        }
     }
 
     if (bytes.length >= 4) {
@@ -63,9 +81,55 @@ function resolveFileMimeType(file: File, bytes: Uint8Array): string {
         if (isPng) return 'image/png';
         if (isJpeg) return 'image/jpeg';
         if (isGif) return 'image/gif';
+
+        const isOgg =
+            bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53;
+        if (isOgg) {
+            return extensionOf(file.name) === 'ogg' && file.name.toLowerCase().includes('video')
+                ? 'video/ogg'
+                : 'audio/ogg';
+        }
+
+        const isWebM =
+            bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+        if (isWebM) {
+            const hasAudioCodec =
+                includesAscii(bytes, 'A_OPUS') || includesAscii(bytes, 'A_VORBIS');
+            const hasVideoCodec =
+                includesAscii(bytes, 'V_VP8') ||
+                includesAscii(bytes, 'V_VP9') ||
+                includesAscii(bytes, 'V_AV1');
+            return hasAudioCodec && !hasVideoCodec ? 'audio/webm' : 'video/webm';
+        }
+
+        const isMp3 =
+            (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) ||
+            (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0);
+        if (isMp3) return 'audio/mpeg';
     }
 
-    return file.type || 'application/octet-stream';
+    return mimeTypeFromName(file.name);
+}
+
+function extensionOf(fileName: string): string {
+    const dot = fileName.lastIndexOf('.');
+    return dot < 0 ? '' : fileName.slice(dot + 1).toLowerCase();
+}
+
+function includesAscii(bytes: Uint8Array, value: string): boolean {
+    const first = value.charCodeAt(0);
+    for (let offset = 0; offset <= bytes.length - value.length; offset += 1) {
+        if (bytes[offset] !== first) continue;
+        let matches = true;
+        for (let index = 1; index < value.length; index += 1) {
+            if (bytes[offset + index] !== value.charCodeAt(index)) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) return true;
+    }
+    return false;
 }
 
 // ─── Convergent Encryption ───────────────────────────────────────────

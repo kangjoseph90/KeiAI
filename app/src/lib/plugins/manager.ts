@@ -12,7 +12,8 @@ import type {
     LLMTypeDefinition,
     PluginLLMModel
 } from '$lib/types/models/llm';
-import type { LLMContentPart, LLMMessage, LLMStreamContent } from '$lib/llm/types';
+import type { LLMMessage, LLMStreamContent } from '$lib/llm/types';
+import { adaptMediaForCapabilities } from '$lib/llm/capabilities';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
 
 const logger = createLogger('plugins:manager');
@@ -267,7 +268,11 @@ export class PluginManager {
             const unsupported = Array.isArray(options.unsupported)
                 ? options.unsupported.filter(
                       (capability): capability is LLMCapability =>
-                          capability === 'image_input' || capability === 'streaming'
+                          capability === 'image_input' ||
+                          capability === 'audio_input' ||
+                          capability === 'video_input' ||
+                          capability === 'streaming' ||
+                          capability === 'tool_call'
                   )
                 : undefined;
 
@@ -332,17 +337,7 @@ export class PluginManager {
             }
             const { handler, unsupported = [] } = selected;
             const llmMessages = messages as LLMMessage[];
-            const preparedMessages = unsupported.includes('image_input')
-                ? llmMessages.map((message) => ({
-                      ...message,
-                      content: message.content.map(
-                          (part): LLMContentPart =>
-                              part.type === 'image'
-                                  ? { type: 'text', text: '[Image omitted]' }
-                                  : part
-                      )
-                  }))
-                : llmMessages;
+            const preparedMessages = adaptMediaForCapabilities(llmMessages, unsupported);
 
             const parameters = (await resolveLLMParameters(llmType, settings.presetId)) ?? {};
             yield* handler.stream(preparedMessages, abortSignal ?? new AbortController().signal, {

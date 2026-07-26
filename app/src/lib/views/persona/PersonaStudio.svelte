@@ -1,5 +1,6 @@
 <script lang="ts">
     import {
+        Check,
         Image as ImageIcon,
         Settings2,
         Pencil,
@@ -7,7 +8,8 @@
         Trash2,
         Upload,
         User,
-        UserRound
+        UserRound,
+        X
     } from 'lucide-svelte';
     import { Button } from '$lib/components/ui/button';
     import { WorkspaceShell } from '$lib/components/layout';
@@ -24,6 +26,8 @@
     import { ScrollArea } from '$lib/components/ui/scroll-area';
     import { Textarea } from '$lib/components/ui/textarea';
     import AssetView from '$lib/components/AssetView.svelte';
+    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
+    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
     import EntityList from '$lib/components/entitylist/EntityList.svelte';
     import AdvancedTab from './AdvancedTab.svelte';
     import EmptyListPlaceholder from '$lib/components/EmptyListPlaceholder.svelte';
@@ -46,6 +50,7 @@
     import { isKeiServer } from '$lib/services';
     import { exportPersonaFile } from '$lib/managers/persona';
     import type { AssetRef } from '$lib/types/refs';
+    import { IMAGE_ASSET_EXTENSIONS, MEDIA_ASSET_EXTENSIONS } from '$lib/types/asset';
     import { appDialog } from '$lib/adapters/dialog';
     import { appConfirm, toast } from '$lib/ui';
     import { getErrorMessage } from '$lib/types/errors';
@@ -58,6 +63,9 @@
     let editName = $state('');
     let deleting = $state(false);
     let resourceAction = $state<string | null>(null);
+    let galleryOpen = $state(false);
+    let gallerySelectedId = $state<string | undefined>();
+    let avatarGalleryOpen = $state(false);
     type ExportButton = 'risu' | 'keipersona-light' | 'keipersona-baked';
     let exporting = $state<ExportButton | null>(null);
 
@@ -81,6 +89,42 @@
     }
 
     const assetRefs = $derived($activePersona ? listItems($activePersona.assets) : []);
+    const galleryItems = $derived.by<MediaGalleryItem[]>(() => {
+        const persona = $activePersona;
+        if (!persona) return [];
+        return assetRefs.map((ref) => ({
+            id: ref.id,
+            name: ref.name,
+            asset: {
+                scopeType: persona.scopeType,
+                scopeId: persona.scopeId,
+                ownerTable: 'personas',
+                ownerId: persona.id,
+                hash: ref.hash,
+                encKey: ref.encKey,
+                mimeType: ref.mimeType
+            }
+        }));
+    });
+    const avatarGalleryItems = $derived.by<MediaGalleryItem[]>(() => {
+        const persona = $activePersona;
+        if (!persona?.avatar) return [];
+        return [
+            {
+                id: 'avatar',
+                name: persona.avatar.name,
+                asset: {
+                    scopeType: persona.scopeType,
+                    scopeId: persona.scopeId,
+                    ownerTable: 'personas',
+                    ownerId: persona.id,
+                    hash: persona.avatar.hash,
+                    encKey: persona.avatar.encKey,
+                    mimeType: persona.avatar.mimeType
+                }
+            }
+        ];
+    });
 
     function backToContext() {
         if ($activeRoom && $activeChat) {
@@ -99,7 +143,7 @@
         try {
             const file = await appDialog.openFile({
                 title: 'Upload Persona Avatar',
-                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+                filters: [{ name: 'Images', extensions: [...IMAGE_ASSET_EXTENSIONS] }]
             });
             if (!file || $activePersona?.id !== personaId) return;
             await updatePersonaAvatar(personaId, file);
@@ -108,6 +152,11 @@
         } finally {
             resourceAction = null;
         }
+    }
+
+    function openAssetGallery(ref: AssetRef): void {
+        gallerySelectedId = ref.id;
+        galleryOpen = true;
     }
 
     async function handleAvatarRemove() {
@@ -175,13 +224,16 @@
         editName = ref.name;
     }
 
+    function cancelRename() {
+        editingId = null;
+        editName = '';
+    }
+
     async function saveRename(ref: AssetRef) {
         if (!$activePersona || resourceAction) return;
         const val = editName.trim();
-        if (!val || val === ref.name) {
-            editingId = null;
-            return;
-        }
+        if (!val) return;
+        if (val === ref.name) return cancelRename();
 
         const personaId = $activePersona.id;
         resourceAction = `asset-rename:${ref.id}`;
@@ -191,7 +243,7 @@
                     refs: { [ref.id]: { ...ref, name: val } }
                 }
             });
-            if ($activePersona?.id === personaId) editingId = null;
+            if ($activePersona?.id === personaId) cancelRename();
         } catch (error) {
             toast.error({ title: 'Could not rename asset', description: getErrorMessage(error) });
         } finally {
@@ -204,12 +256,26 @@
         const personaId = $activePersona.id;
         resourceAction = 'asset-upload';
         try {
-            const file = await appDialog.openFile({
+            const files = await appDialog.openMultipleFiles({
                 title: 'Upload Persona Asset',
-                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+                filters: [
+                    {
+                        name: 'Images, audio, and video',
+                        extensions: [...MEDIA_ASSET_EXTENSIONS]
+                    }
+                ]
             });
-            if (!file || $activePersona?.id !== personaId) return;
-            await createPersonaAsset(personaId, file);
+            if (!files?.length || $activePersona?.id !== personaId) return;
+            let uploadError: unknown;
+            for (const file of files) {
+                if ($activePersona?.id !== personaId) return;
+                try {
+                    await createPersonaAsset(personaId, file);
+                } catch (error) {
+                    uploadError ??= error;
+                }
+            }
+            if (uploadError) throw uploadError;
         } catch (error) {
             toast.error({ title: 'Could not upload asset', description: getErrorMessage(error) });
         } finally {
@@ -250,7 +316,8 @@
                       ownerTable: 'personas',
                       ownerId: $activePersona.id,
                       hash: $activePersona.avatar.hash,
-                      encKey: $activePersona.avatar.encKey
+                      encKey: $activePersona.avatar.encKey,
+                      mimeType: $activePersona.avatar.mimeType
                   }
                 : null}
             alt={$activePersona?.name ?? 'Persona'}
@@ -294,26 +361,32 @@
                             </CardHeader>
                             <CardContent class="space-y-6">
                                 <div class="flex items-center gap-4 sm:gap-6">
-                                    <div class="group relative shrink-0">
-                                        <div
-                                            class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted sm:size-24"
-                                        >
-                                            <AssetView
-                                                asset={$activePersona.avatar
-                                                    ? {
-                                                          scopeType: $activePersona.scopeType,
-                                                          scopeId: $activePersona.scopeId,
-                                                          ownerTable: 'personas',
-                                                          ownerId: $activePersona.id,
-                                                          hash: $activePersona.avatar.hash,
-                                                          encKey: $activePersona.avatar.encKey
-                                                      }
-                                                    : null}
-                                                alt={$activePersona.name}
-                                                class="size-full object-cover"
-                                                fallback="none"
+                                    <div class="shrink-0">
+                                        {#if $activePersona.avatar}
+                                            <button
+                                                type="button"
+                                                class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:size-24"
+                                                aria-label={`View ${$activePersona.name} avatar`}
+                                                title="View avatar"
+                                                onclick={() => (avatarGalleryOpen = true)}
                                             >
-                                                {#if !$activePersona.avatar}
+                                                <AssetView
+                                                    asset={avatarGalleryItems[0]?.asset}
+                                                    alt={$activePersona.name}
+                                                    class="size-full object-cover"
+                                                    fallback="none"
+                                                />
+                                            </button>
+                                        {:else}
+                                            <div
+                                                class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted sm:size-24"
+                                            >
+                                                <AssetView
+                                                    asset={null}
+                                                    alt={$activePersona.name}
+                                                    class="size-full object-cover"
+                                                    fallback="none"
+                                                >
                                                     <div
                                                         class="flex size-full items-center justify-center"
                                                     >
@@ -321,19 +394,9 @@
                                                             class="size-10 text-muted-foreground/50"
                                                         />
                                                     </div>
-                                                {/if}
-                                            </AssetView>
-                                        </div>
-                                        <button
-                                            class="absolute inset-0 flex items-center justify-center rounded-full bg-transparent transition-opacity lg:bg-black/40 lg:text-white lg:opacity-0 lg:group-hover:opacity-100"
-                                            disabled={resourceAction !== null}
-                                            aria-busy={resourceAction === 'avatar-upload'}
-                                            onclick={handleAvatarUpload}
-                                            title="Upload avatar"
-                                            aria-label="Upload persona avatar"
-                                        >
-                                            <Upload class="hidden size-6 lg:block" />
-                                        </button>
+                                                </AssetView>
+                                            </div>
+                                        {/if}
                                     </div>
 
                                     <div class="min-w-0 flex-1 space-y-4">
@@ -441,15 +504,16 @@
                                     newFolderId,
                                     newSortOrder
                                 )}
+                            onItemClick={openAssetGallery}
                         >
                             {#snippet empty()}
                                 <EmptyListPlaceholder
-                                    message="No assets. Use Add to upload an image or file."
+                                    message="No assets. Upload an image, audio, or video file."
                                 />
                             {/snippet}
                             {#snippet item({ entity: ref })}
                                 <div
-                                    class="group flex items-center gap-3 rounded-md border bg-background p-2 transition-colors hover:bg-muted/50"
+                                    class="group flex cursor-zoom-in items-center gap-3 rounded-md border bg-background p-2 transition-colors hover:bg-muted/50"
                                 >
                                     <div
                                         class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted"
@@ -461,7 +525,8 @@
                                                 ownerTable: 'personas',
                                                 ownerId: $activePersona!.id,
                                                 hash: ref.hash,
-                                                encKey: ref.encKey
+                                                encKey: ref.encKey,
+                                                mimeType: ref.mimeType
                                             }}
                                             alt={ref.name}
                                             class="size-full object-cover"
@@ -482,10 +547,9 @@
                                                     disabled={resourceAction !== null}
                                                     class="h-7 text-xs bg-background w-full"
                                                     autofocus
-                                                    onblur={() => saveRename(ref)}
                                                     onkeydown={(e) => {
                                                         if (e.key === 'Escape') {
-                                                            editingId = null;
+                                                            cancelRename();
                                                         }
                                                     }}
                                                 />
@@ -499,31 +563,61 @@
                                         {/if}
                                     </div>
                                     <div
-                                        class="touch-visible flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        class={editingId === ref.id
+                                            ? 'flex items-center gap-1'
+                                            : 'touch-visible flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100'}
                                     >
-                                        <Button
-                                            variant="ghost"
-                                            size="icon-sm"
-                                            class="size-7"
-                                            title="Rename"
-                                            aria-label={`Rename ${ref.name}`}
-                                            disabled={resourceAction !== null}
-                                            onclick={() => startRename(ref)}
-                                        >
-                                            <Pencil class="size-3" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon-sm"
-                                            class="size-7 text-destructive hover:text-destructive"
-                                            title="Delete"
-                                            aria-label={`Delete ${ref.name}`}
-                                            disabled={resourceAction !== null}
-                                            aria-busy={resourceAction === `asset-delete:${ref.id}`}
-                                            onclick={() => handleDeleteAsset(ref)}
-                                        >
-                                            <Trash2 class="size-3" />
-                                        </Button>
+                                        {#if editingId === ref.id}
+                                            <Button
+                                                size="icon-sm"
+                                                class="size-7"
+                                                title="Save"
+                                                aria-label={`Save ${ref.name} name`}
+                                                disabled={resourceAction !== null ||
+                                                    !editName.trim()}
+                                                aria-busy={resourceAction ===
+                                                    `asset-rename:${ref.id}`}
+                                                onclick={() => saveRename(ref)}
+                                            >
+                                                <Check class="size-3" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                class="size-7"
+                                                title="Cancel"
+                                                aria-label={`Cancel renaming ${ref.name}`}
+                                                disabled={resourceAction !== null}
+                                                onclick={cancelRename}
+                                            >
+                                                <X class="size-3" />
+                                            </Button>
+                                        {:else}
+                                            <Button
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                class="size-7"
+                                                title="Rename"
+                                                aria-label={`Rename ${ref.name}`}
+                                                disabled={resourceAction !== null}
+                                                onclick={() => startRename(ref)}
+                                            >
+                                                <Pencil class="size-3" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                class="size-7 text-destructive hover:text-destructive"
+                                                title="Delete"
+                                                aria-label={`Delete ${ref.name}`}
+                                                disabled={resourceAction !== null}
+                                                aria-busy={resourceAction ===
+                                                    `asset-delete:${ref.id}`}
+                                                onclick={() => handleDeleteAsset(ref)}
+                                            >
+                                                <Trash2 class="size-3" />
+                                            </Button>
+                                        {/if}
                                     </div>
                                 </div>
                             {/snippet}
@@ -556,3 +650,16 @@
         </ScrollArea>
     {/if}
 </WorkspaceShell>
+
+<MediaGalleryDialog
+    bind:open={galleryOpen}
+    bind:selectedId={gallerySelectedId}
+    items={galleryItems}
+    title={`${$activePersona?.name ?? 'Persona'} assets`}
+/>
+
+<MediaGalleryDialog
+    bind:open={avatarGalleryOpen}
+    items={avatarGalleryItems}
+    title="Persona avatar"
+/>

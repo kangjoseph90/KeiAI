@@ -286,7 +286,7 @@ export class PersonaService {
         let status: AssetStatus;
 
         if (avatar instanceof File) {
-            fields = await AssetService.write(avatar, owner);
+            fields = await AssetService.write(avatar, owner, ['image']);
             status = 'local';
         } else {
             fields = avatar;

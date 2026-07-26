@@ -324,7 +324,7 @@ export class CharacterService {
         let status: AssetStatus;
 
         if (file instanceof File) {
-            written = await AssetService.write(file, owner);
+            written = await AssetService.write(file, owner, ['image']);
             status = 'local';
         } else {
             written = file;
