@@ -11,6 +11,7 @@ import type { ImageGenProvider } from '$lib/types/models/imagegen';
 import { OpenAIImageGenHandler } from './handlers/openai';
 import { StabilityImageGenHandler } from './handlers/stability';
 import { GoogleImageGenHandler } from './handlers/google';
+import { NovelAIImageGenHandler } from './handlers/novelai';
 
 export function selectImageGenHandler(
     provider: ImageGenProvider,
@@ -38,6 +39,14 @@ export function selectImageGenHandler(
                 apiKey: settings.google.apiKey,
                 baseUrl: 'https://generativelanguage.googleapis.com/v1',
                 modelId: settings.google.imagegen.modelId
+            });
+        }
+
+        case 'novelai': {
+            return new NovelAIImageGenHandler({
+                apiKey: settings.novelai.apiKey,
+                baseUrl: 'https://image.novelai.net',
+                ...settings.novelai.imagegen
             });
         }
     }

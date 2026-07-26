@@ -64,6 +64,20 @@ export interface NovelAIProviderConfig {
         voiceId: string;
         version: string;
     };
+    imagegen: {
+        modelId: string;
+        width: number;
+        height: number;
+        sampler: string;
+        noiseSchedule: string;
+        steps: number;
+        scale: number;
+        cfgRescale: number;
+        vibeInformationExtracted: number;
+        vibeStrength: number;
+        referenceStrength: number;
+        referenceFidelity: number;
+    };
 }
 
 // ─── VoyageAI ─────────────────────────────────────────────────────────────────

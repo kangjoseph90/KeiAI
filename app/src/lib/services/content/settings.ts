@@ -138,6 +138,20 @@ export const defaultSettings: AppSettings = {
         tts: {
             voiceId: 'aini',
             version: 'v2'
+        },
+        imagegen: {
+            modelId: 'nai-diffusion-4-5-full',
+            width: 832,
+            height: 1216,
+            sampler: 'k_euler_ancestral',
+            noiseSchedule: 'karras',
+            steps: 28,
+            scale: 6,
+            cfgRescale: 0,
+            vibeInformationExtracted: 1,
+            vibeStrength: 0.7,
+            referenceStrength: 1,
+            referenceFidelity: 1
         }
     },
     voyageai: {

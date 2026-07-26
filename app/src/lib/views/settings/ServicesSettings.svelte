@@ -51,6 +51,11 @@
         value: string;
         placeholder: string;
         secret?: boolean;
+        number?: {
+            min?: number;
+            max?: number;
+            step?: number;
+        };
         path: [ProviderSettingsKey, string] | [ProviderSettingsKey, string, string];
     }
 
@@ -74,7 +79,7 @@
         }
     ];
 
-    const IMAGEGEN_PROVIDERS: ImageGenProvider[] = ['openai', 'google', 'stability'];
+    const IMAGEGEN_PROVIDERS: ImageGenProvider[] = ['openai', 'google', 'novelai', 'stability'];
     const TTS_PROVIDERS: TTSProvider[] = [
         'openai',
         'google',
@@ -196,6 +201,20 @@
         };
     }
 
+    function numberConfigField(
+        provider: ProviderSettingsKey,
+        section: string,
+        key: string,
+        label: string,
+        value: number,
+        number: SettingsField['number']
+    ): SettingsField {
+        return {
+            ...configField(provider, section, key, label, String(value), ''),
+            number
+        };
+    }
+
     function getSettingsFields(
         settings: AppSettings | null,
         selectedFeature: Feature
@@ -239,6 +258,106 @@
                                 'Model',
                                 settings.stability.imagegen.modelId,
                                 'stable-diffusion-3.5-large'
+                            )
+                        ];
+                    case 'novelai':
+                        return [
+                            apiKeyField(settings, 'novelai'),
+                            configField(
+                                'novelai',
+                                'imagegen',
+                                'modelId',
+                                'Model',
+                                settings.novelai.imagegen.modelId,
+                                'nai-diffusion-4-5-full'
+                            ),
+                            numberConfigField(
+                                'novelai',
+                                'imagegen',
+                                'width',
+                                'Width',
+                                settings.novelai.imagegen.width,
+                                { min: 64, max: 4096, step: 64 }
+                            ),
+                            numberConfigField(
+                                'novelai',
+                                'imagegen',
+                                'height',
+                                'Height',
+                                settings.novelai.imagegen.height,
+                                { min: 64, max: 4096, step: 64 }
+                            ),
+                            configField(
+                                'novelai',
+                                'imagegen',
+                                'sampler',
+                                'Sampler',
+                                settings.novelai.imagegen.sampler,
+                                'k_euler_ancestral'
+                            ),
+                            configField(
+                                'novelai',
+                                'imagegen',
+                                'noiseSchedule',
+                                'Noise Schedule',
+                                settings.novelai.imagegen.noiseSchedule,
+                                'karras'
+                            ),
+                            numberConfigField(
+                                'novelai',
+                                'imagegen',
+                                'steps',
+                                'Steps',
+                                settings.novelai.imagegen.steps,
+                                { min: 1, max: 50, step: 1 }
+                            ),
+                            numberConfigField(
+                                'novelai',
+                                'imagegen',
+                                'scale',
+                                'Prompt Guidance',
+                                settings.novelai.imagegen.scale,
+                                { min: 0, max: 10, step: 0.1 }
+                            ),
+                            numberConfigField(
+                                'novelai',
+                                'imagegen',
+                                'cfgRescale',
+                                'CFG Rescale',
+                                settings.novelai.imagegen.cfgRescale,
+                                { min: 0, max: 1, step: 0.05 }
+                            ),
+                            numberConfigField(
+                                'novelai',
+                                'imagegen',
+                                'vibeInformationExtracted',
+                                'Vibe Information Extracted',
+                                settings.novelai.imagegen.vibeInformationExtracted,
+                                { min: 0, max: 1, step: 0.05 }
+                            ),
+                            numberConfigField(
+                                'novelai',
+                                'imagegen',
+                                'vibeStrength',
+                                'Vibe Strength',
+                                settings.novelai.imagegen.vibeStrength,
+                                { min: 0, max: 1, step: 0.05 }
+                            ),
+                            numberConfigField(
+                                'novelai',
+                                'imagegen',
+                                'referenceStrength',
+                                'Reference Strength',
+                                settings.novelai.imagegen.referenceStrength,
+                                { min: 0, max: 1, step: 0.05 }
+                            ),
+                            numberConfigField(
+                                'novelai',
+                                'imagegen',
+                                'referenceFidelity',
+                                'Reference Fidelity',
+                                settings.novelai.imagegen.referenceFidelity,
+                                { min: 0, max: 1, step: 0.05 }
                             )
                         ];
                 }
@@ -587,10 +706,10 @@
 
     function updateField(field: SettingsField, value: string): void {
         const [provider, section, key] = field.path;
+        const fieldValue = field.number ? Number(value) : value.trim();
+        if (field.number && !Number.isFinite(fieldValue)) return;
         const providerPatch =
-            key === undefined
-                ? { [section]: value.trim() }
-                : { [section]: { [key]: value.trim() } };
+            key === undefined ? { [section]: fieldValue } : { [section]: { [key]: fieldValue } };
         void save({ [provider]: providerPatch } as DeepPartial<AppSettings>);
     }
 </script>
@@ -687,9 +806,12 @@
                                 {:else}
                                     <Input
                                         id={field.id}
-                                        type="text"
+                                        type={field.number ? 'number' : 'text'}
                                         value={field.value}
                                         placeholder={field.placeholder}
+                                        min={field.number?.min}
+                                        max={field.number?.max}
+                                        step={field.number?.step}
                                         disabled={saving}
                                         onchange={(event) =>
                                             updateField(field, event.currentTarget.value)}

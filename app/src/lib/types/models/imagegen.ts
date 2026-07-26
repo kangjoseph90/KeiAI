@@ -5,14 +5,15 @@
  * in provider config (no model registry needed for built-ins).
  */
 
-export type ImageGenProvider = 'openai' | 'stability' | 'google';
+export type ImageGenProvider = 'openai' | 'stability' | 'google' | 'novelai';
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
 
 const providerNames: Record<ImageGenProvider, string> = {
     openai: 'OpenAI',
     stability: 'Stability AI',
-    google: 'Google'
+    google: 'Google',
+    novelai: 'NovelAI'
 };
 
 export function getImageGenProviderName(provider: ImageGenProvider): string {
