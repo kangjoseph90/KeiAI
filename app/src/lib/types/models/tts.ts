@@ -11,7 +11,8 @@ export type TTSProvider =
     | 'google'
     | 'novelai'
     | 'kokoro'
-    | 'transformers';
+    | 'transformers'
+    | 'mock';
 
 export const KOKORO_VOICE_IDS = [
     'af_heart',
@@ -56,7 +57,8 @@ const providerNames: Record<TTSProvider, string> = {
     google: 'Google',
     novelai: 'NovelAI',
     kokoro: 'Kokoro',
-    transformers: 'Transformers'
+    transformers: 'Transformers',
+    mock: 'Mock'
 };
 
 export function getTTSProviderName(provider: TTSProvider): string {

@@ -120,6 +120,18 @@ export interface KokoroProviderConfig {
 
 // ─── MiniLM ─────────────────────────────────────────────────────────────────
 
+export interface MockProviderConfig {
+    imagegen: {
+        modelId: string;
+    };
+    tts: {
+        modelId: string;
+    };
+    stt: {
+        modelId: string;
+    };
+}
+
 export interface MiniLMProviderConfig {
     embedding: {
         modelId: string;

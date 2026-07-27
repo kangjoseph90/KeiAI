@@ -45,7 +45,8 @@
         | 'minilm'
         | 'custom'
         | 'cohere'
-        | 'jina';
+        | 'jina'
+        | 'mock';
 
     interface SettingsField {
         id: string;
@@ -89,7 +90,8 @@
         'google',
         'novelai',
         'comfyui',
-        'stability'
+        'stability',
+        'mock'
     ];
     const TTS_PROVIDERS: TTSProvider[] = [
         'openai',
@@ -97,9 +99,10 @@
         'elevenlabs',
         'novelai',
         'kokoro',
-        'transformers'
+        'transformers',
+        'mock'
     ];
-    const STT_PROVIDERS: STTProvider[] = ['openai', 'google', 'groq', 'transformers'];
+    const STT_PROVIDERS: STTProvider[] = ['openai', 'google', 'groq', 'transformers', 'mock'];
     const EMBEDDING_PROVIDERS: EmbeddingProvider[] = [
         'openai',
         'google',
@@ -110,6 +113,9 @@
         'custom'
     ];
     const RERANKER_PROVIDERS: RerankerProvider[] = ['cohere', 'jina', 'voyageai', 'transformers'];
+    const MOCK_IMAGEGEN_MODELS = ['sample', 'diagnostic'] as const;
+    const MOCK_TTS_MODELS = ['sample', 'morse'] as const;
+    const MOCK_STT_MODELS = ['sample', 'diagnostic'] as const;
 
     let activeFeature = $state<Feature>('imagegen');
     let showSecrets = $state(false);
@@ -405,6 +411,20 @@
                                 { min: 1, max: 3600, step: 1 }
                             )
                         ];
+                    case 'mock':
+                        return [
+                            {
+                                ...configField(
+                                    'mock',
+                                    'imagegen',
+                                    'modelId',
+                                    'Model',
+                                    settings.mock.imagegen.modelId,
+                                    'sample'
+                                ),
+                                options: MOCK_IMAGEGEN_MODELS
+                            }
+                        ];
                 }
                 return [];
             }
@@ -515,6 +535,20 @@
                                 'Xenova/mms-tts-eng'
                             )
                         ];
+                    case 'mock':
+                        return [
+                            {
+                                ...configField(
+                                    'mock',
+                                    'tts',
+                                    'modelId',
+                                    'Model',
+                                    settings.mock.tts.modelId,
+                                    'sample'
+                                ),
+                                options: MOCK_TTS_MODELS
+                            }
+                        ];
                 }
                 return [];
             }
@@ -566,6 +600,20 @@
                                 settings.transformers.stt.modelId,
                                 'Model ID'
                             )
+                        ];
+                    case 'mock':
+                        return [
+                            {
+                                ...configField(
+                                    'mock',
+                                    'stt',
+                                    'modelId',
+                                    'Model',
+                                    settings.mock.stt.modelId,
+                                    'sample'
+                                ),
+                                options: MOCK_STT_MODELS
+                            }
                         ];
                 }
                 return [];

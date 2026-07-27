@@ -14,6 +14,7 @@ import { KokoroTTSStreamHandler } from './handlers/kokoro';
 import { GoogleTTSStreamHandler } from './handlers/google';
 import { ElevenLabsTTSStreamHandler } from './handlers/elevenlabs';
 import { NovelAITTSStreamHandler } from './handlers/novelai';
+import { MockTTSStreamHandler, type MockTTSBehavior } from './handlers/mock';
 
 export function selectTTSHandler(
     provider: TTSProvider,
@@ -65,6 +66,12 @@ export function selectTTSHandler(
         case 'transformers': {
             return new TransformersTTSStreamHandler({
                 modelId: settings.transformers.tts.modelId
+            });
+        }
+
+        case 'mock': {
+            return new MockTTSStreamHandler({
+                behavior: settings.mock.tts.modelId as MockTTSBehavior
             });
         }
     }

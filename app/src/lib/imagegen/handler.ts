@@ -13,6 +13,7 @@ import { StabilityImageGenHandler } from './handlers/stability';
 import { GoogleImageGenHandler } from './handlers/google';
 import { NovelAIImageGenHandler } from './handlers/novelai';
 import { ComfyUIImageGenHandler } from './handlers/comfyui';
+import { MockImageGenHandler, type MockImageGenBehavior } from './handlers/mock';
 
 export function selectImageGenHandler(
     provider: ImageGenProvider,
@@ -53,6 +54,12 @@ export function selectImageGenHandler(
 
         case 'comfyui': {
             return new ComfyUIImageGenHandler(settings.comfyui.imagegen);
+        }
+
+        case 'mock': {
+            return new MockImageGenHandler({
+                behavior: settings.mock.imagegen.modelId as MockImageGenBehavior
+            });
         }
     }
 }

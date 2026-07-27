@@ -11,6 +11,7 @@ import type { STTProvider } from '$lib/types/models/stt';
 import { OpenAISTTHandler } from './handlers/openai';
 import { GoogleSTTHandler } from './handlers/google';
 import { TransformersSTTHandler } from './handlers/transformers';
+import { MockSTTHandler, type MockSTTBehavior } from './handlers/mock';
 
 export function selectSTTHandler(
     provider: STTProvider,
@@ -44,6 +45,12 @@ export function selectSTTHandler(
         case 'transformers': {
             return new TransformersSTTHandler({
                 modelId: settings.transformers.stt.modelId
+            });
+        }
+
+        case 'mock': {
+            return new MockSTTHandler({
+                behavior: settings.mock.stt.modelId as MockSTTBehavior
             });
         }
     }

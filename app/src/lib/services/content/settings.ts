@@ -23,7 +23,8 @@ import type {
     GroqProviderConfig,
     CohereProviderConfig,
     JinaProviderConfig,
-    ComfyUIProviderConfig
+    ComfyUIProviderConfig,
+    MockProviderConfig
 } from '$lib/types/models/provider';
 import type { EmbeddingProvider } from '$lib/types/models/embedding';
 import type { TTSProvider } from '$lib/types/models/tts';
@@ -59,6 +60,7 @@ export interface AppSettingsContent {
     transformers: TransformersProviderConfig;
     elevenlabs: ElevenLabsProviderConfig;
     kokoro: KokoroProviderConfig;
+    mock: MockProviderConfig;
     minilm: MiniLMProviderConfig;
     stability: StabilityProviderConfig;
     groq: GroqProviderConfig;
@@ -200,6 +202,17 @@ export const defaultSettings: AppSettings = {
     kokoro: {
         tts: {
             voiceId: 'af_heart'
+        }
+    },
+    mock: {
+        imagegen: {
+            modelId: 'sample'
+        },
+        tts: {
+            modelId: 'sample'
+        },
+        stt: {
+            modelId: 'sample'
         }
     },
     minilm: {
