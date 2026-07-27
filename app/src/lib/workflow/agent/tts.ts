@@ -1,6 +1,7 @@
 import { createChatInlay, getAppSettings, getChat } from '$lib/stores';
 import { selectTTSHandler, type TTSStreamChunk } from '$lib/tts';
 import { AppError } from '$lib/types/errors';
+import { createTimestampedFileName } from '$lib/utils/file';
 import type { TTSNode, WorkflowNodeExecutionContext } from '../types';
 import { createWorkflowValueEvent, throwIfAborted } from '../util';
 import { requireStringInput } from '../operator/utils';
@@ -46,7 +47,7 @@ export async function executeTTSNode({
         throw new AppError('NETWORK_ERROR', 'Text to speech returned no audio data');
     }
 
-    const file = new File(chunks, `generated-audio.${audioExtension(mimeType)}`, {
+    const file = new File(chunks, createTimestampedFileName('Audio', audioExtension(mimeType)), {
         type: mimeType
     });
     const ref = await createChatInlay(chat.id, file);

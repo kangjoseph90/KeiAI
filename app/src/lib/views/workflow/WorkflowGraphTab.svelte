@@ -249,7 +249,8 @@
                 if (
                     port.required &&
                     !node.inputs[inputId] &&
-                    !hasRequiredInputValue(node.inputValues[inputId])
+                    (port.allowLiteral === false ||
+                        !hasRequiredInputValue(node.inputValues[inputId]))
                 ) {
                     result.push({
                         nodeId: node.id,
@@ -286,14 +287,14 @@
         <div class="flex flex-col gap-0.5">
             <button
                 type="button"
-                class="flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                class="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hover:bg-muted/60 hover:text-foreground"
                 onclick={() => toggleGroup(group.label)}
                 aria-expanded={isExpanded}
             >
                 {#if isExpanded}
-                    <ChevronDown class="size-3" />
+                    <ChevronDown class="size-3.5" />
                 {:else}
-                    <ChevronRight class="size-3" />
+                    <ChevronRight class="size-3.5" />
                 {/if}
                 {group.label}
             </button>
@@ -302,7 +303,7 @@
                     <Button
                         size="sm"
                         variant="ghost"
-                        class="h-7 justify-start pl-6 pr-2.5 text-xs"
+                        class="h-7 justify-start pl-6 pr-3 text-xs"
                         disabled={nodeClass === 'Output' &&
                             Object.values(workflow.nodes).some(isOutputNode)}
                         onclick={() => addWorkflowNode(nodeClass)}
@@ -326,7 +327,7 @@
     {/if}
     <!-- Desktop: left-top panel -->
     <div
-        class="absolute left-3 top-3 z-10 hidden max-h-[calc(100%-6rem)] w-44 flex-col gap-1 overflow-y-auto rounded-xl border bg-background/95 p-2 shadow-sm backdrop-blur md:flex"
+        class="absolute left-3 top-3 z-10 hidden max-h-[calc(100%-6rem)] w-56 flex-col gap-1 overflow-y-auto rounded-xl border bg-background/95 p-2 shadow-sm backdrop-blur md:flex"
     >
         {@render nodeAddList()}
     </div>

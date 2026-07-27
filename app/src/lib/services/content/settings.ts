@@ -48,6 +48,12 @@ export interface AppSettingsContent {
         workflow: WorkflowDefinition;
         autoShowTranslation: boolean;
     };
+    imageGeneration: {
+        workflow: WorkflowDefinition;
+    };
+    tts: {
+        workflow: WorkflowDefinition;
+    };
     openai: OpenAIProviderConfig;
     anthropic: AnthropicProviderConfig;
     google: GoogleProviderConfig;
@@ -98,6 +104,12 @@ export const defaultSettings: AppSettings = {
         targetLanguage: '',
         workflow: { nodes: {} },
         autoShowTranslation: false
+    },
+    imageGeneration: {
+        workflow: { nodes: {} }
+    },
+    tts: {
+        workflow: { nodes: {} }
     },
     openai: {
         tts: {
@@ -275,6 +287,8 @@ export const defaultSettings: AppSettings = {
 function parseFields(data: Record<string, unknown>): AppSettings {
     const fields = deepMerge(defaultSettings, data as DeepPartial<AppSettings>);
     fields.translation.workflow = normalizeWorkflow(fields.translation.workflow);
+    fields.imageGeneration.workflow = normalizeWorkflow(fields.imageGeneration.workflow);
+    fields.tts.workflow = normalizeWorkflow(fields.tts.workflow);
     fields.files.refs = hydrateOwnedItems(fields.files.refs, defaultFileFields);
     return fields;
 }

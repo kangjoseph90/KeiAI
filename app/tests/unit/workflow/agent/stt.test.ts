@@ -35,6 +35,7 @@ const node: STTNode = {
     name: 'Speech to Text',
     class: 'STT',
     position: { x: 0, y: 0 },
+    collapsed: false,
     inputs: { audio: null },
     inputValues: { audio: '' }
 };

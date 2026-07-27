@@ -5,10 +5,11 @@ import { AssetService } from '$lib/services/asset';
 import type { Chat } from '$lib/services';
 import { AppError } from '$lib/types/errors';
 import { getAssetMediaType } from '$lib/types/asset';
+import { createTimestampedFileName } from '$lib/utils/file';
 import { createChatInlay, getAppSettings, getChat } from '$lib/stores';
-import type { ImageGenerationNode, WorkflowNodeExecutionContext } from '../types';
+import type { ImageGenerationNode, WorkflowInput, WorkflowNodeExecutionContext } from '../types';
 import { createWorkflowValueEvent, throwIfAborted } from '../util';
-import { requireStringInput } from '../operator/utils';
+import { optionalStringInput, requireStringInput } from '../operator/utils';
 import { deserializeAgentParts, serializeAgentParts } from './llm';
 
 export async function executeImageGenerationNode({
@@ -23,21 +24,9 @@ export async function executeImageGenerationNode({
 
     const [prompt, negativePrompt, referenceContent, styleContent] = await Promise.all([
         requireStringInput(inputs.prompt, 'Image Generation prompt input is required', signal),
-        requireStringInput(
-            inputs.negativePrompt,
-            'Image Generation negative prompt input is required',
-            signal
-        ),
-        requireStringInput(
-            inputs.referenceImages,
-            'Image Generation reference images input is required',
-            signal
-        ),
-        requireStringInput(
-            inputs.styleImages,
-            'Image Generation style images input is required',
-            signal
-        )
+        optionalStringInput(inputs.negativePrompt, signal),
+        optionalStringInput(inputs.referenceImages, signal),
+        optionalStringInput(inputs.styleImages, signal)
     ]);
     if (!prompt.trim()) {
         throw new AppError('INVALID_INPUT', 'Image Generation prompt cannot be empty');
@@ -114,9 +103,11 @@ async function loadImageInputs(content: string, chat: Chat): Promise<ImageGenInp
 async function imageToFile(image: ImageGenImage, signal: AbortSignal): Promise<File> {
     if (image.base64) {
         const mimeType = image.mimeType ?? 'image/png';
-        return new File([fromBase64(image.base64)], `generated-image.${imageExtension(mimeType)}`, {
-            type: mimeType
-        });
+        return new File(
+            [fromBase64(image.base64)],
+            createTimestampedFileName('Image', imageExtension(mimeType)),
+            { type: mimeType }
+        );
     }
 
     if (!image.url) {
@@ -131,9 +122,11 @@ async function imageToFile(image: ImageGenImage, signal: AbortSignal): Promise<F
         );
     }
     const mimeType = response.headers.get('content-type')?.split(';', 1)[0] ?? 'image/png';
-    return new File([await response.arrayBuffer()], `generated-image.${imageExtension(mimeType)}`, {
-        type: mimeType
-    });
+    return new File(
+        [await response.arrayBuffer()],
+        createTimestampedFileName('Image', imageExtension(mimeType)),
+        { type: mimeType }
+    );
 }
 
 function imageExtension(mimeType: string): string {

@@ -68,6 +68,18 @@ export function fileNameFromPath(path: string): string {
     }
 }
 
+export function createTimestampedFileName(
+    prefix: string,
+    extension: string,
+    date = new Date()
+): string {
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const timestamp =
+        `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+        `${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+    return `${prefix} ${timestamp}.${extension}`;
+}
+
 export function withDetectedExtension(name: string, kind: DetectedFileKind): string {
     if (/\.[a-z0-9]{1,16}$/i.test(name)) return name;
     const extension = extensionForFileKind(kind);

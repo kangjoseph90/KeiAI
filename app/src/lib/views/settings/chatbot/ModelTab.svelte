@@ -25,9 +25,12 @@
         const definitions: Record<string, LLMTypeDefinition> = {};
         const allTypes = [
             ...pluginManager.getInstances().flatMap((inst) => [...inst.llmTypes.values()]),
-            ...[preset.chatWorkflow, $appSettings?.translation.workflow].flatMap(
-                getWorkflowLLMTypes
-            )
+            ...[
+                preset.chatWorkflow,
+                $appSettings?.translation.workflow,
+                $appSettings?.imageGeneration.workflow,
+                $appSettings?.tts.workflow
+            ].flatMap(getWorkflowLLMTypes)
         ].filter((d) => d.type !== 'chat' && d.type !== 'aux');
 
         for (const d of allTypes) {

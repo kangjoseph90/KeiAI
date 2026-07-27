@@ -31,6 +31,12 @@ export interface TranslationTask {
     controller: AbortController;
 }
 
+export interface MediaTask {
+    status: TaskStatus;
+    errorMessage?: string;
+    controller: AbortController;
+}
+
 // ─── Display Message Types ────────────────────────────────────────────────────
 
 export type DisplayMessageStatus = 'completed' | 'generating' | 'error';

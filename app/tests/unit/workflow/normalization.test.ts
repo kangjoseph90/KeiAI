@@ -37,7 +37,8 @@ describe('normalizeWorkflow', () => {
             toolIds: [],
             maxContext: 60000,
             maxResponse: 6000,
-            slotNames: {}
+            slotNames: {},
+            collapsed: false
         });
         expect(agent.class).toBe('Agent');
         if (agent.class !== 'Agent') throw new Error('Expected Agent node');
@@ -62,6 +63,7 @@ describe('normalizeWorkflow', () => {
                     name: 'Agent',
                     class: 'Agent',
                     position: { x: 0, y: 0 },
+                    collapsed: true,
                     llmType: 'aux',
                     toolIds: ['file_read'],
                     promptBlocks: {},
@@ -78,5 +80,36 @@ describe('normalizeWorkflow', () => {
         };
 
         expect(normalizeWorkflow(workflow).nodes.agent).toEqual(workflow.nodes.agent);
+    });
+
+    it('removes legacy literal values from connection-only inputs', () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                image: {
+                    id: 'image',
+                    name: 'Image Generation',
+                    class: 'ImageGeneration',
+                    position: { x: 0, y: 0 },
+                    collapsed: false,
+                    inputs: {
+                        prompt: null,
+                        negativePrompt: null,
+                        referenceImages: null,
+                        styleImages: null
+                    },
+                    inputValues: {
+                        prompt: 'prompt',
+                        negativePrompt: '',
+                        referenceImages: 'legacy reference',
+                        styleImages: 'legacy style'
+                    }
+                }
+            }
+        };
+
+        expect(normalizeWorkflow(workflow).nodes.image.inputValues).toEqual({
+            prompt: 'prompt',
+            negativePrompt: ''
+        });
     });
 });

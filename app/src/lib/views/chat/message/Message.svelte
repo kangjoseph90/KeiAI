@@ -52,17 +52,25 @@
         multiRoomCharacters,
         multiRoomPersonas,
         modules,
+        imageGenerationTasks,
+        ttsTasks,
         translationTasks
     } from '$lib/stores';
     import {
         createTranslationSourceHash,
+        dismissImageGeneration,
+        dismissTTS,
         dismissTranslation,
+        runImageGeneration,
+        runTTS,
         runTranslation,
+        stopImageGeneration,
+        stopTTS,
         stopTranslation
     } from '$lib/tasks';
     import { getErrorMessage } from '$lib/types/errors';
     import type { RuntimeContext } from '$lib/types/context';
-    import { copyTextToClipboard } from '$lib/ui';
+    import { copyTextToClipboard, toast } from '$lib/ui';
 
     // ── Props ─────────────────────────────────────────────────────────────────
 
@@ -142,6 +150,8 @@
     let activeSwipe = $derived(message.swipes[message.activeSwipeId]);
     let currentContent = $derived(activeSwipe ? getLastTextContent(activeSwipe.parts) : '');
     let translationTask = $derived($translationTasks.get(message.id));
+    let imageGenerationTask = $derived($imageGenerationTasks.get(message.id));
+    let ttsTask = $derived($ttsTasks.get(message.id));
     let matchingTranslationTask = $derived(
         translationTask?.sourceHash === translationSourceHash ? translationTask : undefined
     );
@@ -159,6 +169,10 @@
             ? matchingTranslationTask.errorMessage
             : translationActionError
     );
+    let imageGenerationError = $derived(
+        imageGenerationTask?.status === 'error' ? imageGenerationTask.errorMessage : ''
+    );
+    let ttsError = $derived(ttsTask?.status === 'error' ? ttsTask.errorMessage : '');
 
     /** Swipes sorted by creation time for consistent navigation. */
     let sortedSwipes = $derived(
@@ -192,6 +206,8 @@
     // ── Parts timeline ────────────────────────────────────────────────────────
 
     let parts = $derived<AgentPart[]>(activeSwipe?.parts ?? []);
+    let imageAttachments = $derived(activeSwipe?.imageAttachments ?? []);
+    let audioAttachments = $derived(activeSwipe?.audioAttachments ?? []);
     let indexedParts = $derived(parts.map((part, index) => ({ part, index })));
     let visibleStartIdx = $derived(findVisibleStartIndex(parts));
     let traceCount = $derived(visibleStartIdx);
@@ -246,6 +262,38 @@
         } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') return;
             translationActionError = getErrorMessage(error, 'Translation failed');
+        }
+    }
+
+    async function handleImageTask() {
+        if (imageGenerationTask?.status === 'generating') {
+            stopImageGeneration(message.id);
+            return;
+        }
+        try {
+            await runImageGeneration(message.id);
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Image generation failed',
+                description: getErrorMessage(error)
+            });
+        }
+    }
+
+    async function handleTTSTask() {
+        if (ttsTask?.status === 'generating') {
+            stopTTS(message.id);
+            return;
+        }
+        try {
+            await runTTS(message.id);
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Text to speech failed',
+                description: getErrorMessage(error)
+            });
         }
     }
 
@@ -416,9 +464,10 @@
 
     <!-- Content Column -->
     <div
-        class="col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-none flex-none flex-col gap-1 md:mx-0 md:mt-0 md:max-w-[75%] {isUser
-            ? 'justify-self-end items-end'
-            : 'justify-self-start items-start'}"
+        class="col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-[calc(100%_-_1rem)] flex-none flex-col gap-1 md:mx-0 md:mt-0 md:max-w-[75%] {imageAttachments.length >
+            0 || audioAttachments.length > 0
+            ? 'w-full'
+            : ''} {isUser ? 'justify-self-end items-end' : 'justify-self-start items-start'}"
     >
         <span class="hidden text-xs font-medium text-muted-foreground md:block">{speakerName}</span>
 
@@ -566,6 +615,23 @@
                 {/if}
             </div>
 
+            {#if imageAttachments.length > 0}
+                <InlayPart
+                    ids={imageAttachments}
+                    chatId={message.chatId}
+                    variant="attachment"
+                    align={isUser ? 'end' : 'start'}
+                />
+            {/if}
+            {#if audioAttachments.length > 0}
+                <InlayPart
+                    ids={audioAttachments}
+                    chatId={message.chatId}
+                    variant="attachment"
+                    align={isUser ? 'end' : 'start'}
+                />
+            {/if}
+
             {#if translationError}
                 <div class="flex items-center gap-2 text-xs text-destructive">
                     <AlertCircle class="size-3" />
@@ -577,6 +643,31 @@
                             translationActionError = '';
                             dismissTranslation(message.id);
                         }}><X class="size-3" /></button
+                    >
+                </div>
+            {/if}
+
+            {#if imageGenerationError}
+                <div class="flex items-center gap-2 text-xs text-destructive">
+                    <AlertCircle class="size-3" />
+                    <span>{imageGenerationError}</span>
+                    <button
+                        class="rounded p-0.5 hover:bg-destructive/10"
+                        aria-label="Dismiss image generation error"
+                        onclick={() => dismissImageGeneration(message.id)}
+                        ><X class="size-3" /></button
+                    >
+                </div>
+            {/if}
+
+            {#if ttsError}
+                <div class="flex items-center gap-2 text-xs text-destructive">
+                    <AlertCircle class="size-3" />
+                    <span>{ttsError}</span>
+                    <button
+                        class="rounded p-0.5 hover:bg-destructive/10"
+                        aria-label="Dismiss text to speech error"
+                        onclick={() => dismissTTS(message.id)}><X class="size-3" /></button
                     >
                 </div>
             {/if}
@@ -699,6 +790,12 @@
                     disabled={actionsDisabled}
                     {busyAction}
                     hasTranslation={cachedTranslation !== null}
+                    hasImageAttachments={imageAttachments.length > 0}
+                    hasAudioAttachments={audioAttachments.length > 0}
+                    imageTaskStatus={imageGenerationTask?.status}
+                    audioTaskStatus={ttsTask?.status}
+                    onGenerateImage={handleImageTask}
+                    onGenerateAudio={handleTTSTask}
                     onRetranslate={handleTranslate}
                     {onEditTranslation}
                     {onFork}

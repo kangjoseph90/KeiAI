@@ -158,6 +158,7 @@ describe('executeAgentNode', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: '<|thought|>source thought<|/thought|>hello {{slot::missing}}',
                     inputs: {},
                     inputValues: {}
@@ -167,6 +168,7 @@ describe('executeAgentNode', () => {
                     name: 'Agent',
                     class: 'Agent',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     llmType: 'chat',
                     toolIds: [],
                     maxContext: 1000,
@@ -201,6 +203,7 @@ describe('executeAgentNode', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'agent', sourcePort: 0 }
                     },
@@ -258,6 +261,7 @@ describe('executeAgentNode', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'hello',
                     inputs: {},
                     inputValues: {}
@@ -267,6 +271,7 @@ describe('executeAgentNode', () => {
                     name: 'Agent',
                     class: 'Agent',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     llmType: 'chat',
                     toolIds: [],
                     maxContext: 1000,
@@ -301,6 +306,7 @@ describe('executeAgentNode', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'agent', sourcePort: 0 }
                     },
@@ -345,6 +351,7 @@ describe('executeAgentNode', () => {
                     name: 'Visible',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'chat output',
                     inputs: {},
                     inputValues: {}
@@ -354,6 +361,7 @@ describe('executeAgentNode', () => {
                     name: 'Memory',
                     class: 'Agent',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     llmType: 'chat',
                     toolIds: [],
                     maxContext: 1000,
@@ -382,6 +390,7 @@ describe('executeAgentNode', () => {
                     name: 'Memory Sink',
                     class: 'Sink',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'memory', sourcePort: 0 } },
                     inputValues: { content: '' }
                 },
@@ -390,6 +399,7 @@ describe('executeAgentNode', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'visible', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -440,6 +450,7 @@ describe('executeAgentNode', () => {
                     name: 'Agent',
                     class: 'Agent',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     llmType: 'chat',
                     toolIds: [],
                     maxContext: 1000,
@@ -467,6 +478,7 @@ describe('executeAgentNode', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'agent', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -734,6 +746,7 @@ function createToolWorkflow(toolId: 'file_read' | 'file_write'): WorkflowDefinit
                 name: 'Agent',
                 class: 'Agent',
                 position: { x: 0, y: 0 },
+                collapsed: false,
                 llmType: 'chat',
                 toolIds: [toolId],
                 maxContext: 1000,
@@ -761,6 +774,7 @@ function createToolWorkflow(toolId: 'file_read' | 'file_write'): WorkflowDefinit
                 name: 'Output',
                 class: 'Output',
                 position: { x: 0, y: 0 },
+                collapsed: false,
                 inputs: { content: { sourceNode: 'agent', sourcePort: 0 } },
                 inputValues: {}
             }
@@ -776,6 +790,7 @@ function createSimpleAgentWorkflow(): WorkflowDefinition {
                 name: 'Agent',
                 class: 'Agent',
                 position: { x: 0, y: 0 },
+                collapsed: false,
                 llmType: 'chat',
                 toolIds: [],
                 maxContext: 1000,
@@ -803,6 +818,7 @@ function createSimpleAgentWorkflow(): WorkflowDefinition {
                 name: 'Output',
                 class: 'Output',
                 position: { x: 0, y: 0 },
+                collapsed: false,
                 inputs: {
                     content: { sourceNode: 'agent', sourcePort: 0 }
                 },
