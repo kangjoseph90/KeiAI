@@ -7,9 +7,7 @@ import type { Chat } from '$lib/services';
 
 const {
     mockSelectLLMHandler,
-    mockResolveModelConfig,
-    mockResolveParameters,
-    mockGetSettings,
+    mockResolveLLM,
     mockTokenCount,
     mockGetChat,
     mockCreateChatInlay,
@@ -21,9 +19,7 @@ const {
     mockAppConfirm
 } = vi.hoisted(() => ({
     mockSelectLLMHandler: vi.fn(),
-    mockResolveModelConfig: vi.fn(),
-    mockResolveParameters: vi.fn(),
-    mockGetSettings: vi.fn(),
+    mockResolveLLM: vi.fn(),
     mockTokenCount: vi.fn(),
     mockGetChat: vi.fn(),
     mockCreateChatInlay: vi.fn(),
@@ -56,18 +52,19 @@ vi.mock('$lib/stores', async (importOriginal) => {
     return { ...original, getChat: mockGetChat, createChatInlay: mockCreateChatInlay };
 });
 
-vi.mock('$lib/stores/content/settings', () => ({
-    getAppSettings: mockGetSettings
-}));
-
 vi.mock('$lib/stores/content/merged', () => ({
     getMergedLorebooks: vi.fn().mockResolvedValue([])
 }));
 
-vi.mock('$lib/llm/handler', () => ({
-    resolveLLMModelConfig: mockResolveModelConfig,
-    resolveLLMParameters: mockResolveParameters,
-    selectLLMHandler: mockSelectLLMHandler
+vi.mock('$lib/managers/llm', () => ({
+    resolveLLM: async (type: string, presetId?: string) => {
+        mockResolveLLM(type, presetId);
+        const selected = mockSelectLLMHandler();
+        return {
+            tokenizer: 'o200k_base',
+            stream: selected.handler.stream
+        };
+    }
 }));
 
 vi.mock('$lib/llm/tokenizer', () => ({
@@ -95,13 +92,6 @@ vi.mock('$lib/ui', () => ({ appConfirm: mockAppConfirm }));
 describe('executeAgentNode', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mockGetSettings.mockResolvedValue({});
-        mockResolveModelConfig.mockResolvedValue({
-            id: 'mock::agent',
-            provider: 'mock',
-            tokenizer: 'o200k_base'
-        });
-        mockResolveParameters.mockResolvedValue({ temperature: 0.5 });
         mockGetChat.mockResolvedValue(stubChat);
         mockCreateChatInlay.mockResolvedValue({
             id: 'generated-inlay-1',
@@ -231,8 +221,7 @@ describe('executeAgentNode', () => {
                 ]
             }
         ]);
-        expect(mockResolveModelConfig).toHaveBeenCalledWith('chat', 'preset-1');
-        expect(mockResolveParameters).toHaveBeenCalledWith('chat', 'preset-1');
+        expect(mockResolveLLM).toHaveBeenCalledWith('chat', 'preset-1');
     });
 
     it('requires named slot macros for agent inputs', async () => {

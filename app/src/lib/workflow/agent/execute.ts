@@ -1,8 +1,6 @@
-import { getAppSettings } from '$lib/stores/content/settings';
 import { getMergedLorebooks } from '$lib/stores/content/merged';
-import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
 import type { LLMMediaPart, LLMStreamContent, LLMToolRequestPart } from '$lib/llm/types';
-import { adaptMediaForCapabilities } from '$lib/llm/capabilities';
+import { resolveLLM } from '$lib/managers/llm';
 import { ToolCallService } from '$lib/services/content/tool';
 import type { RuntimeContext } from '$lib/types/context';
 import { AppError } from '$lib/types/errors';
@@ -70,11 +68,9 @@ export async function executeAgentNode({
     }
 
     const agentMacros = agentMacrosResult.macros;
-    const [settings, chat, modelConfig, parameters, lorebooks] = await Promise.all([
-        getAppSettings(),
+    const [chat, llm, lorebooks] = await Promise.all([
         getChat(ctx.chatId),
-        resolveLLMModelConfig(node.llmType, ctx.presetId),
-        resolveLLMParameters(node.llmType, ctx.presetId),
+        resolveLLM(node.llmType, ctx.presetId),
         shouldResolveLorebooks(node) && ctx.chatId
             ? getMergedLorebooks(ctx.chatId, ctx.characterId)
             : Promise.resolve([])
@@ -84,42 +80,19 @@ export async function executeAgentNode({
         throw new AppError('NOT_FOUND', `Chat not found: ${ctx.chatId}`);
     }
 
-    if (!modelConfig) {
-        throw new AppError('INVALID_INPUT', `No model configured for LLM type: ${node.llmType}`);
-    }
+    const tools = resolveAgentTools(node.toolIds);
 
-    const selected = selectLLMHandler(modelConfig, settings);
-    if (!selected) {
-        throw new AppError('INVALID_INPUT', 'Failed to create LLM handler');
-    }
-    const { handler, unsupported = [] } = selected;
-    let tools = resolveAgentTools(node.toolIds);
-
-    let basePrompt = await buildPrompt({
+    const basePrompt = await buildPrompt({
         agent: node,
         chat,
         lorebooks,
         messages,
-        tokenizer: modelConfig.tokenizer ?? 'o200k_base',
+        tokenizer: llm.tokenizer,
         ctx,
         localMacros: agentMacros
     });
 
-    basePrompt = adaptMediaForCapabilities(basePrompt, unsupported);
-    if (unsupported.includes('tool_call')) {
-        tools = [];
-        basePrompt = basePrompt
-            .map((message) => ({
-                ...message,
-                content: message.content.filter(
-                    (part) => part.type !== 'tool_request' && part.type !== 'tool_response'
-                )
-            }))
-            .filter((message) => message.content.length > 0);
-    }
-
-    const shouldStream =
-        (await resolveStreamInput(inputs.stream, true)) && !unsupported.includes('streaming');
+    const shouldStream = await resolveStreamInput(inputs.stream, true);
     const completedParts: AgentPart[] = [];
     let latest = serializeAgentParts(completedParts);
     let lastEmitted: string | null = null;
@@ -139,8 +112,7 @@ export async function executeAgentNode({
         ];
         let latestRequestState: LLMStreamContent | null = null;
 
-        for await (const state of handler.stream(followupPrompt, signal, {
-            parameters: parameters ?? {},
+        for await (const state of llm.stream(followupPrompt, signal, {
             maxResponse: node.maxResponse,
             stream: shouldStream,
             tools: toLLMToolDefinitions(tools)

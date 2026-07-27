@@ -22,44 +22,11 @@ import {
     type CustomLLMModel,
     type PluginLLMModel,
     BUILT_IN_LLM_MODELS,
-    type LLMType,
-    type LLMParameters,
     type LLMCapabilities
 } from '$lib/types/models/llm';
 import { pluginManager } from '$lib/plugins';
-import { getPreset } from '$lib/stores/content/preset';
 
 const logger = createLogger('llm:handler');
-
-/**
- * Resolves llm model and parameters by LLM type
- */
-export async function resolveLLMModelConfig(
-    type: LLMType,
-    presetId: string
-): Promise<LLMModelConfig | null> {
-    const preset = await getPreset(presetId);
-    if (!preset) return null;
-
-    const modelConfig = preset.models[type];
-    if (modelConfig) return modelConfig;
-    if (type === 'chat') return null;
-    if (type === 'aux') return preset.models.chat ?? null;
-    return preset.models.aux ?? preset.models.chat ?? null;
-}
-
-export async function resolveLLMParameters(
-    type: LLMType,
-    presetId: string
-): Promise<LLMParameters | null> {
-    const preset = await getPreset(presetId);
-    if (!preset) return null;
-
-    const parameters = preset.parameters[type];
-    if (parameters) return parameters;
-    if (type === 'chat') return null;
-    return preset.parameters.chat ?? null;
-}
 
 /**
  * Build a LLMStreamHandler from the given model config + app settings.

@@ -187,6 +187,19 @@ vi.mock('$lib/stores/content/settings', () => ({
     })
 }));
 
+vi.mock('$lib/stores/content/preset', () => ({
+    getPreset: vi.fn().mockResolvedValue({
+        id: 'preset-1',
+        models: {
+            chat: { id: '', provider: 'openai' },
+            aux: { id: '', provider: 'openai' }
+        },
+        parameters: {
+            chat: {}
+        }
+    })
+}));
+
 vi.mock('$lib/stores/content/module', () => ({
     getModule: vi.fn().mockResolvedValue({ id: 'mod-1', charjs: { code: '' } })
 }));
