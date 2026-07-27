@@ -7,7 +7,9 @@
 
 export * from './chat';
 export * from './character';
+export * from './llm';
 export * from './message';
+export * from './media';
 export * from './multi';
 export * from './preset';
 export * from './routing';

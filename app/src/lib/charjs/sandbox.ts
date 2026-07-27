@@ -9,17 +9,18 @@ import type { QuickJSAsyncContext } from 'quickjs-emscripten';
 import type { CharJSInstance } from './types';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
-import { getChatVariable, setChatVariable } from '$lib/managers';
+import { callLLM } from '$lib/managers/llm';
+import {
+    generateImageInlay,
+    synthesizeSpeechInlay,
+    transcribeSpeechInlay
+} from '$lib/managers/media';
+import { getChatVariable, setChatVariable } from '$lib/managers/chat';
 import { generateId } from '$lib/utils/id';
-import { getAppSettings } from '$lib/stores/content/settings';
-import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
 import type { LLMMessage } from '$lib/llm/types';
-import { getTextContent } from '$lib/workflow/agent/llm';
-import { adaptMediaForCapabilities } from '$lib/llm/capabilities';
 import { toast } from '$lib/ui';
 
 const DEFAULT_AUX_LLM_TYPE = 'aux';
-const DEFAULT_AUX_MAX_RESPONSE = 4096;
 
 export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance): void {
     const keiObj = ctx.newObject();
@@ -191,61 +192,87 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
         throw new Error(`Low-level access is not allowed for CharJS "${instance.charjs.name}"`);
     }
 
+    function createStringPromise(operation: () => Promise<string>) {
+        const promise = ctx.newPromise();
+        operation()
+            .then((value) => promise.resolve(ctx.newString(value)))
+            .catch((error: unknown) => {
+                promise.reject(ctx.newString(getErrorMessage(error)));
+            });
+        return promise.handle;
+    }
+
     const callLLMFn = ctx.newFunction('callLLM', (typeHandle, messagesHandle, optionsHandle) => {
         const options = readLLMCallOptions(optionsHandle ? ctx.dump(optionsHandle) : undefined);
         const type = options.type ?? ctx.getString(typeHandle) ?? DEFAULT_AUX_LLM_TYPE;
         const messages = ctx.dump(messagesHandle) as LLMMessage[];
-        const promise = ctx.newPromise();
 
-        (async () => {
+        return createStringPromise(async () => {
             await requirePermission();
-
-            const settings = await getAppSettings();
-            if (!settings.presetId) {
-                throw new Error('No active preset selected');
-            }
-
-            const modelConfig = await resolveLLMModelConfig(type, settings.presetId);
-            if (!modelConfig) {
-                throw new Error(`No model configured for LLM type: ${type}`);
-            }
-
-            const selected = selectLLMHandler(modelConfig, settings);
-            if (!selected) {
-                throw new Error('Failed to create LLM handler');
-            }
-            const { handler, unsupported = [] } = selected;
-            const preparedMessages = adaptMediaForCapabilities(messages, unsupported);
-
-            let content = '';
-            for await (const chunk of handler.stream(
-                preparedMessages,
-                new AbortController().signal,
-                {
-                    parameters: (await resolveLLMParameters(type, settings.presetId)) ?? {},
-                    maxResponse: options.maxResponse ?? DEFAULT_AUX_MAX_RESPONSE,
-                    stream: !unsupported.includes('streaming')
-                }
-            )) {
-                content = getTextContent(chunk.parts);
-            }
-
-            return content;
-        })()
-            .then((content) => {
-                promise.resolve(ctx.newString(content));
-            })
-            .catch((error: unknown) => {
-                const message = error instanceof Error ? error.message : String(error);
-                promise.reject(ctx.newString(message));
+            return callLLM(type, messages, new AbortController().signal, {
+                maxResponse: options.maxResponse
             });
-
-        return promise.handle;
+        });
     });
     ctx.setProp(keiObj, 'callLLM', callLLMFn);
     callLLMFn.dispose();
 
-    // TODO: Wire image handlers
+    const generateImageFn = ctx.newFunction(
+        'generateImage',
+        (promptHandle, negativePromptHandle, referenceIdsHandle, styleIdsHandle) => {
+            const prompt = ctx.getString(promptHandle);
+            const negativePrompt = negativePromptHandle
+                ? ctx.getString(negativePromptHandle)
+                : undefined;
+            const referenceImageInlayIds = readStringArray(
+                referenceIdsHandle ? ctx.dump(referenceIdsHandle) : undefined,
+                'referenceImageInlayIds'
+            );
+            const styleImageInlayIds = readStringArray(
+                styleIdsHandle ? ctx.dump(styleIdsHandle) : undefined,
+                'styleImageInlayIds'
+            );
+            return createStringPromise(async () => {
+                await requirePermission();
+                return generateImageInlay(
+                    instance.chatId,
+                    {
+                        prompt,
+                        ...(negativePrompt?.trim() ? { negativePrompt } : {}),
+                        referenceImageInlayIds,
+                        styleImageInlayIds
+                    },
+                    new AbortController().signal
+                );
+            });
+        }
+    );
+    ctx.setProp(keiObj, 'generateImage', generateImageFn);
+    generateImageFn.dispose();
+
+    const synthesizeSpeechFn = ctx.newFunction('synthesizeSpeech', (textHandle) => {
+        const text = ctx.getString(textHandle);
+        return createStringPromise(async () => {
+            await requirePermission();
+            return synthesizeSpeechInlay(instance.chatId, text, new AbortController().signal);
+        });
+    });
+    ctx.setProp(keiObj, 'synthesizeSpeech', synthesizeSpeechFn);
+    synthesizeSpeechFn.dispose();
+
+    const transcribeSpeechFn = ctx.newFunction('transcribeSpeech', (audioInlayIdHandle) => {
+        const audioInlayId = ctx.getString(audioInlayIdHandle);
+        return createStringPromise(async () => {
+            await requirePermission();
+            return transcribeSpeechInlay(
+                instance.chatId,
+                audioInlayId,
+                new AbortController().signal
+            );
+        });
+    });
+    ctx.setProp(keiObj, 'transcribeSpeech', transcribeSpeechFn);
+    transcribeSpeechFn.dispose();
 
     // ── Mount to global ────────────────────────────────────────
     ctx.setProp(ctx.global, 'KeiAPI', keiObj);
@@ -262,4 +289,16 @@ function readLLMCallOptions(value: unknown): { type?: string; maxResponse?: numb
                 ? record.maxResponse
                 : undefined
     };
+}
+
+function readStringArray(value: unknown, name: string): string[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+        throw new Error(`${name} must be an array of strings`);
+    }
+    return value;
+}
+
+function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }
