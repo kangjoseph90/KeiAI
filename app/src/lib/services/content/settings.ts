@@ -128,7 +128,8 @@ export const defaultSettings: AppSettings = {
             modelId: 'gemini-3.1-flash-image'
         },
         stt: {
-            modelId: 'latest_long'
+            modelId: 'latest_long',
+            languageCode: 'en-US'
         }
     },
     mistral: {

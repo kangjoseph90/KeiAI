@@ -23,6 +23,7 @@ import type {
     StringNode,
     StringRegexReplaceNode,
     StringReplaceNode,
+    STTNode,
     TemplateNode,
     TTSNode,
     ThrowIfNode,
@@ -465,6 +466,24 @@ export const TTS_NODE_DEFINITION: WorkflowNodeDefinition<TTSNode> = {
     })
 };
 
+export const STT_NODE_DEFINITION: WorkflowNodeDefinition<STTNode> = {
+    class: 'STT',
+    label: 'Speech to Text',
+    category: 'agent',
+    inputs: {
+        audio: { name: 'Audio', type: 'string', required: true }
+    },
+    outputs: { 0: { name: 'text', type: 'string' } },
+    createDefault: (id) => ({
+        id,
+        name: 'Speech to Text',
+        class: 'STT',
+        position: { x: 0, y: 0 },
+        inputs: { audio: null },
+        inputValues: { audio: '' }
+    })
+};
+
 export const NUMBER_MATH_NODE_DEFINITION: WorkflowNodeDefinition<NumberMathNode> = {
     class: 'NumberMath',
     label: 'Number Math',
@@ -705,6 +724,7 @@ export const WORKFLOW_NODE_DEFINITIONS = {
     AgentPartFilter: AGENT_PART_FILTER_NODE_DEFINITION,
     ImageGeneration: IMAGE_GENERATION_NODE_DEFINITION,
     TTS: TTS_NODE_DEFINITION,
+    STT: STT_NODE_DEFINITION,
     NumberMath: NUMBER_MATH_NODE_DEFINITION,
     NumberCompare: NUMBER_COMPARE_NODE_DEFINITION,
     BooleanLogic: BOOLEAN_LOGIC_NODE_DEFINITION,

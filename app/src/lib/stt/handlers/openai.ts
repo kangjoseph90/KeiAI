@@ -31,7 +31,7 @@ export class OpenAISTTHandler implements STTHandler {
 
     async transcribe(audio: Blob, signal?: AbortSignal): Promise<STTResult> {
         const formData = new FormData();
-        formData.append('file', audio, 'audio.webm');
+        formData.append('file', audio, audioFileName(audio));
         formData.append('model', this.config.modelId);
         formData.append('response_format', this.config.responseFormat ?? 'verbose_json');
 
@@ -64,5 +64,24 @@ export class OpenAISTTHandler implements STTHandler {
                 end: s.end
             }))
         };
+    }
+}
+
+function audioFileName(audio: Blob): string {
+    if (typeof File !== 'undefined' && audio instanceof File && audio.name) {
+        return audio.name;
+    }
+    switch (audio.type.trim().toLowerCase().split(';', 1)[0]) {
+        case 'audio/wav':
+        case 'audio/x-wav':
+            return 'audio.wav';
+        case 'audio/mpeg':
+            return 'audio.mp3';
+        case 'audio/ogg':
+            return 'audio.ogg';
+        case 'audio/mp4':
+            return 'audio.m4a';
+        default:
+            return 'audio.webm';
     }
 }

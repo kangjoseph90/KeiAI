@@ -38,7 +38,8 @@ export function selectSTTHandler(
             return new GoogleSTTHandler({
                 apiKey: settings.google.apiKey,
                 baseUrl: 'https://speech.googleapis.com',
-                modelId: settings.google.stt.modelId
+                modelId: settings.google.stt.modelId,
+                languageCode: settings.google.stt.languageCode
             });
         }
 

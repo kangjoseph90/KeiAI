@@ -21,6 +21,7 @@
         AudioLines,
         Bot,
         Braces,
+        Captions,
         CheckCircle2,
         ChevronDown,
         ChevronUp,
@@ -136,6 +137,8 @@
                 <ImageIcon class="size-4" />
             {:else if data.node.class === 'TTS'}
                 <AudioLines class="size-4" />
+            {:else if data.node.class === 'STT'}
+                <Captions class="size-4" />
             {:else if data.node.class === 'String'}
                 <Braces class="size-4" />
             {:else if definition.category === 'number'}

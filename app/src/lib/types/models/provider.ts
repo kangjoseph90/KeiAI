@@ -41,6 +41,7 @@ export interface GoogleProviderConfig {
     };
     stt: {
         modelId: string;
+        languageCode: string;
     };
 }
 

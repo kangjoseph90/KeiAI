@@ -576,6 +576,14 @@
                                 'Model',
                                 settings.google.stt.modelId,
                                 'latest_long'
+                            ),
+                            configField(
+                                'google',
+                                'stt',
+                                'languageCode',
+                                'Language Code',
+                                settings.google.stt.languageCode,
+                                'en-US'
                             )
                         ];
                     case 'groq':

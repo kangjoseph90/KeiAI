@@ -50,6 +50,7 @@ export type WorkflowNode =
     | AgentPartFilterNode
     | ImageGenerationNode
     | TTSNode
+    | STTNode
     | BooleanLogicNode
     | FileReadNode
     | FileWriteNode
@@ -230,6 +231,10 @@ export interface ImageGenerationNode extends BaseNode {
 
 export interface TTSNode extends BaseNode {
     class: 'TTS';
+}
+
+export interface STTNode extends BaseNode {
+    class: 'STT';
 }
 
 export interface StringNode extends BaseNode {
