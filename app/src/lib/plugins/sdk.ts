@@ -339,6 +339,49 @@ export const guestSDK = String.raw`
         },
         streamLLM: (type, messages, signal) => {
             return broker.invokeStream('core.streamLLM', [type, messages], signal);
+        },
+        generateImage: (prompt, negativePrompt, referenceImages = [], styleImages = [], signal) => {
+            return broker.invoke(
+                'core.generateImage',
+                [prompt, negativePrompt, referenceImages, styleImages],
+                signal
+            );
+        },
+        synthesizeSpeech: (text, signal) => {
+            return broker.invokeStream('core.synthesizeSpeech', [text], signal);
+        },
+        transcribeSpeech: (audio, signal) => {
+            return broker.invoke('core.transcribeSpeech', [audio], signal);
+        },
+        generateImageInlay: (
+            chatId,
+            prompt,
+            negativePrompt,
+            referenceImageInlayIds = [],
+            styleImageInlayIds = [],
+            signal
+        ) => {
+            return broker.invoke(
+                'core.generateImageInlay',
+                [
+                    chatId,
+                    prompt,
+                    negativePrompt,
+                    referenceImageInlayIds,
+                    styleImageInlayIds
+                ],
+                signal
+            );
+        },
+        synthesizeSpeechInlay: (chatId, text, signal) => {
+            return broker.invoke('core.synthesizeSpeechInlay', [chatId, text], signal);
+        },
+        transcribeSpeechInlay: (chatId, audioInlayId, signal) => {
+            return broker.invoke(
+                'core.transcribeSpeechInlay',
+                [chatId, audioInlayId],
+                signal
+            );
         }
     };
     

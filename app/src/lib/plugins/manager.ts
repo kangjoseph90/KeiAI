@@ -3,7 +3,6 @@ import { RPCBroker } from './rpc/broker';
 import { guestSDK } from './sdk';
 import type { Plugin } from '$lib/services/content/plugin';
 import { getPlugin, updatePlugin } from '$lib/stores/content/plugin';
-import { getAppSettings } from '$lib/stores/content/settings';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
 import type {
@@ -12,16 +11,22 @@ import type {
     LLMTypeDefinition,
     PluginLLMModel
 } from '$lib/types/models/llm';
-import type { LLMMessage, LLMStreamContent } from '$lib/llm/types';
-import { getTextContent } from '$lib/workflow/agent/llm';
-import { adaptMediaForCapabilities } from '$lib/llm/capabilities';
-import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
+import type { LLMMessage } from '$lib/llm/types';
+import { callLLM, streamLLM } from '$lib/managers/llm';
+import {
+    generateImage,
+    generateImageInlay,
+    synthesizeSpeech,
+    synthesizeSpeechInlay,
+    transcribeSpeech,
+    transcribeSpeechInlay,
+    type MediaData
+} from '$lib/managers/media';
 
 const logger = createLogger('plugins:manager');
 const PLUGIN_READY_TIMEOUT_MS = 5_000;
 const PLUGIN_UNLOAD_TIMEOUT_MS = 1_000;
 const DEFAULT_AUX_LLM_TYPE = 'aux';
-const DEFAULT_AUX_MAX_RESPONSE = 4096;
 
 export interface PluginInstance {
     pluginId: string;
@@ -313,52 +318,101 @@ export class PluginManager {
             instance.llmTypes.delete(String(type));
         });
 
-        async function* streamLLM(
-            type: unknown,
-            messages: unknown,
-            signal: unknown,
-            options: unknown
-        ): AsyncIterable<LLMStreamContent> {
-            const abortSignal = signal instanceof AbortSignal ? signal : undefined;
-            const callOptions = readLLMCallOptions(options);
-            const llmType = callOptions.type ?? String(type || DEFAULT_AUX_LLM_TYPE);
-            const settings = await getAppSettings();
-            if (!settings.presetId) {
-                throw new Error('No active preset selected');
+        broker.expose(
+            'core.streamLLM',
+            (type: unknown, messages: unknown, signal: unknown, options: unknown) => {
+                const callOptions = readLLMCallOptions(options);
+                return streamLLM(
+                    callOptions.type ?? String(type || DEFAULT_AUX_LLM_TYPE),
+                    messages as LLMMessage[],
+                    readAbortSignal(signal),
+                    {
+                        maxResponse: callOptions.maxResponse
+                    }
+                );
             }
-
-            const modelConfig = await resolveLLMModelConfig(llmType, settings.presetId);
-            if (!modelConfig) {
-                throw new Error(`No model configured for LLM type: ${llmType}`);
-            }
-
-            const selected = selectLLMHandler(modelConfig, settings);
-            if (!selected) {
-                throw new Error('Failed to create LLM handler');
-            }
-            const { handler, unsupported = [] } = selected;
-            const llmMessages = messages as LLMMessage[];
-            const preparedMessages = adaptMediaForCapabilities(llmMessages, unsupported);
-
-            const parameters = (await resolveLLMParameters(llmType, settings.presetId)) ?? {};
-            yield* handler.stream(preparedMessages, abortSignal ?? new AbortController().signal, {
-                parameters,
-                maxResponse: callOptions.maxResponse ?? DEFAULT_AUX_MAX_RESPONSE,
-                stream: !unsupported.includes('streaming')
-            });
-        }
-
-        broker.expose('core.streamLLM', streamLLM);
+        );
 
         broker.expose(
             'core.callLLM',
-            async (type: unknown, messages: unknown, signal: unknown, options: unknown) => {
-                let content = '';
-                for await (const chunk of streamLLM(type, messages, signal, options)) {
-                    content = getTextContent(chunk.parts);
-                }
-                return content;
+            (type: unknown, messages: unknown, signal: unknown, options: unknown) => {
+                const callOptions = readLLMCallOptions(options);
+                const llmType = callOptions.type ?? String(type || DEFAULT_AUX_LLM_TYPE);
+                return callLLM(llmType, messages as LLMMessage[], readAbortSignal(signal), {
+                    maxResponse: callOptions.maxResponse
+                });
             }
+        );
+
+        broker.expose(
+            'core.generateImage',
+            (
+                prompt: unknown,
+                negativePrompt: unknown,
+                referenceImages: unknown,
+                styleImages: unknown,
+                signal: unknown
+            ) =>
+                generateImage(
+                    {
+                        prompt: String(prompt),
+                        ...readOptionalPrompt(negativePrompt),
+                        referenceImages: readMediaArray(referenceImages, 'referenceImages'),
+                        styleImages: readMediaArray(styleImages, 'styleImages')
+                    },
+                    readAbortSignal(signal)
+                )
+        );
+
+        broker.expose('core.synthesizeSpeech', (text: unknown, signal: unknown) =>
+            synthesizeSpeech(String(text), readAbortSignal(signal))
+        );
+
+        broker.expose(
+            'core.transcribeSpeech',
+            async (audio: unknown, signal: unknown) =>
+                (await transcribeSpeech(readMediaData(audio, 'audio'), readAbortSignal(signal)))
+                    .text
+        );
+
+        broker.expose(
+            'core.generateImageInlay',
+            (
+                chatId: unknown,
+                prompt: unknown,
+                negativePrompt: unknown,
+                referenceImageInlayIds: unknown,
+                styleImageInlayIds: unknown,
+                signal: unknown
+            ) =>
+                generateImageInlay(
+                    String(chatId),
+                    {
+                        prompt: String(prompt),
+                        ...readOptionalPrompt(negativePrompt),
+                        referenceImageInlayIds: readStringArray(
+                            referenceImageInlayIds,
+                            'referenceImageInlayIds'
+                        ),
+                        styleImageInlayIds: readStringArray(
+                            styleImageInlayIds,
+                            'styleImageInlayIds'
+                        )
+                    },
+                    readAbortSignal(signal)
+                )
+        );
+
+        broker.expose(
+            'core.synthesizeSpeechInlay',
+            (chatId: unknown, text: unknown, signal: unknown) =>
+                synthesizeSpeechInlay(String(chatId), String(text), readAbortSignal(signal))
+        );
+
+        broker.expose(
+            'core.transcribeSpeechInlay',
+            (chatId: unknown, audioInlayId: unknown, signal: unknown) =>
+                transcribeSpeechInlay(String(chatId), String(audioInlayId), readAbortSignal(signal))
         );
     }
 
@@ -412,6 +466,44 @@ export class PluginManager {
 }
 
 export const pluginManager = new PluginManager();
+
+function readAbortSignal(value: unknown): AbortSignal {
+    return value instanceof AbortSignal ? value : new AbortController().signal;
+}
+
+function readOptionalPrompt(value: unknown): { negativePrompt?: string } {
+    return typeof value === 'string' && value.trim() ? { negativePrompt: value } : {};
+}
+
+function readMediaArray(value: unknown, name: string): MediaData[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value)) {
+        throw new Error(`${name} must be an array`);
+    }
+    return value.map((item, index) => readMediaData(item, `${name}[${index}]`));
+}
+
+function readMediaData(value: unknown, name: string): MediaData {
+    if (typeof value !== 'object' || value === null) {
+        throw new Error(`${name} must be media data`);
+    }
+    const record = value as Record<string, unknown>;
+    if (!(record.data instanceof Uint8Array) || typeof record.mimeType !== 'string') {
+        throw new Error(`${name} must contain Uint8Array data and a mimeType`);
+    }
+    return {
+        data: new Uint8Array(record.data),
+        mimeType: record.mimeType
+    };
+}
+
+function readStringArray(value: unknown, name: string): string[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+        throw new Error(`${name} must be an array of strings`);
+    }
+    return value;
+}
 
 function readLLMCallOptions(value: unknown): { type?: string; maxResponse?: number } {
     if (!value || typeof value !== 'object') return {};
