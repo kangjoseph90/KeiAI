@@ -8,7 +8,7 @@ import { getChat } from '$lib/stores/content/chat';
 import { getMessage } from '$lib/stores/content/message';
 import { getChatVariable, setChatVariable } from '$lib/managers/chat';
 import { getToggleMacroValue } from '$lib/managers/toggle';
-import { getLastContentText } from '$lib/workflow/agent/llm';
+import { getLastTextContent } from '$lib/workflow/agent/llm';
 import { createLogger } from '$lib/adapters/logger';
 import type { RuntimeContext } from '$lib/types/context';
 
@@ -280,7 +280,7 @@ function normalizeName(name: string): string {
 async function getMessageContent(messageId: string): Promise<string> {
     const message = await getMessage(messageId);
     const swipe = message?.swipes[message.activeSwipeId];
-    return swipe ? getLastContentText(swipe.parts) : '';
+    return swipe ? getLastTextContent(swipe.parts) : '';
 }
 
 export function pushMacro(macros: Map<string, Macro[]>, name: string, macro: Macro): void {

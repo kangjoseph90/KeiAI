@@ -1,7 +1,7 @@
 import { parseTemplate } from './parser';
 import { evaluateExpression, isTruthy, stringifyValue } from './expression';
 import { forkMacroRegistry, pushMacro } from './macro';
-import type { Macro, MacroRegistry, Template, TemplateNode } from './types';
+import type { BlockNode, Macro, MacroNode, MacroRegistry, Template, TemplateNode } from './types';
 import type { RuntimeContext } from '$lib/types/context';
 
 const MAX_DEPTH = 20;
@@ -41,7 +41,7 @@ function interpretNode(
 }
 
 async function interpretMacro(
-    node: Extract<TemplateNode, { type: 'macro' }>,
+    node: MacroNode,
     ctx: RuntimeContext,
     macros: MacroRegistry,
     depth: number
@@ -81,7 +81,7 @@ async function interpretMacro(
 }
 
 async function interpretBlock(
-    node: Extract<TemplateNode, { type: 'block' }>,
+    node: BlockNode,
     ctx: RuntimeContext,
     macros: MacroRegistry,
     depth: number
@@ -121,7 +121,7 @@ async function interpretBlock(
 }
 
 async function interpretEach(
-    node: Extract<TemplateNode, { type: 'block' }>,
+    node: BlockNode,
     ctx: RuntimeContext,
     macros: MacroRegistry,
     depth: number

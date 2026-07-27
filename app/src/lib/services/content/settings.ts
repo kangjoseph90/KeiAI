@@ -22,7 +22,9 @@ import type {
     StabilityProviderConfig,
     GroqProviderConfig,
     CohereProviderConfig,
-    JinaProviderConfig
+    JinaProviderConfig,
+    ComfyUIProviderConfig,
+    MockProviderConfig
 } from '$lib/types/models/provider';
 import type { EmbeddingProvider } from '$lib/types/models/embedding';
 import type { TTSProvider } from '$lib/types/models/tts';
@@ -46,17 +48,25 @@ export interface AppSettingsContent {
         workflow: WorkflowDefinition;
         autoShowTranslation: boolean;
     };
+    imageGeneration: {
+        workflow: WorkflowDefinition;
+    };
+    tts: {
+        workflow: WorkflowDefinition;
+    };
     openai: OpenAIProviderConfig;
     anthropic: AnthropicProviderConfig;
     google: GoogleProviderConfig;
     mistral: MistralProviderConfig;
     deepseek: DeepSeekProviderConfig;
     novelai: NovelAIProviderConfig;
+    comfyui: ComfyUIProviderConfig;
     voyageai: VoyageAIProviderConfig;
     openrouter: OpenRouterProviderConfig;
     transformers: TransformersProviderConfig;
     elevenlabs: ElevenLabsProviderConfig;
     kokoro: KokoroProviderConfig;
+    mock: MockProviderConfig;
     minilm: MiniLMProviderConfig;
     stability: StabilityProviderConfig;
     groq: GroqProviderConfig;
@@ -95,6 +105,12 @@ export const defaultSettings: AppSettings = {
         workflow: { nodes: {} },
         autoShowTranslation: false
     },
+    imageGeneration: {
+        workflow: { nodes: {} }
+    },
+    tts: {
+        workflow: { nodes: {} }
+    },
     openai: {
         tts: {
             modelId: 'tts-1',
@@ -104,7 +120,7 @@ export const defaultSettings: AppSettings = {
             modelId: 'text-embedding-3-small'
         },
         imagegen: {
-            modelId: 'gpt-image-1'
+            modelId: 'gpt-image-2'
         },
         stt: {
             modelId: 'whisper-1'
@@ -114,17 +130,18 @@ export const defaultSettings: AppSettings = {
     google: {
         apiKey: '',
         tts: {
-            modelId: 'gemini-2.5-flash-preview-tts',
-            voiceId: 'zephyr'
+            modelId: 'gemini-3.1-flash-tts-preview',
+            voiceId: 'Zephyr'
         },
         embedding: {
             modelId: 'gemini-embedding-2-preview'
         },
         imagegen: {
-            modelId: 'imagen-3.0-generate-002'
+            modelId: 'gemini-3.1-flash-image'
         },
         stt: {
-            modelId: 'latest_long'
+            modelId: 'latest_long',
+            languageCode: 'en-US'
         }
     },
     mistral: {
@@ -138,6 +155,27 @@ export const defaultSettings: AppSettings = {
         tts: {
             voiceId: 'aini',
             version: 'v2'
+        },
+        imagegen: {
+            modelId: 'nai-diffusion-4-5-full',
+            width: 832,
+            height: 1216,
+            sampler: 'k_euler_ancestral',
+            noiseSchedule: 'karras',
+            steps: 28,
+            scale: 6,
+            cfgRescale: 0,
+            vibeInformationExtracted: 1,
+            vibeStrength: 0.7,
+            referenceStrength: 1,
+            referenceFidelity: 1
+        }
+    },
+    comfyui: {
+        imagegen: {
+            baseUrl: 'http://127.0.0.1:8188',
+            workflow: '',
+            timeoutSeconds: 120
         }
     },
     voyageai: {
@@ -158,8 +196,7 @@ export const defaultSettings: AppSettings = {
             modelId: 'onnx-community/Qwen3-Embedding-0.6B-ONNX'
         },
         tts: {
-            modelId: 'onnx-community/Kokoro-82M-v1.0-ONNX',
-            voiceId: 'af_heart'
+            modelId: 'Xenova/mms-tts-eng'
         },
         stt: {
             modelId: 'onnx-community/whisper-tiny'
@@ -171,12 +208,24 @@ export const defaultSettings: AppSettings = {
     elevenlabs: {
         apiKey: '',
         tts: {
+            modelId: 'eleven_multilingual_v2',
             voiceId: ''
         }
     },
     kokoro: {
         tts: {
             voiceId: 'af_heart'
+        }
+    },
+    mock: {
+        imagegen: {
+            modelId: 'sample'
+        },
+        tts: {
+            modelId: 'sample'
+        },
+        stt: {
+            modelId: 'sample'
         }
     },
     minilm: {
@@ -238,6 +287,8 @@ export const defaultSettings: AppSettings = {
 function parseFields(data: Record<string, unknown>): AppSettings {
     const fields = deepMerge(defaultSettings, data as DeepPartial<AppSettings>);
     fields.translation.workflow = normalizeWorkflow(fields.translation.workflow);
+    fields.imageGeneration.workflow = normalizeWorkflow(fields.imageGeneration.workflow);
+    fields.tts.workflow = normalizeWorkflow(fields.tts.workflow);
     fields.files.refs = hydrateOwnedItems(fields.files.refs, defaultFileFields);
     return fields;
 }

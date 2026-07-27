@@ -52,7 +52,8 @@
                         ownerTable: 'characters',
                         ownerId: char.id,
                         hash: char.avatar.hash,
-                        encKey: char.avatar.encKey
+                        encKey: char.avatar.encKey,
+                        mimeType: char.avatar.mimeType
                     }}
                     alt={char.name}
                     class="size-full object-cover"
@@ -76,7 +77,8 @@
                         ownerTable: 'characters',
                         ownerId: char1.id,
                         hash: char1.avatar.hash,
-                        encKey: char1.avatar.encKey
+                        encKey: char1.avatar.encKey,
+                        mimeType: char1.avatar.mimeType
                     }}
                     alt={char1.name}
                     class="size-full object-cover"
@@ -96,7 +98,8 @@
                         ownerTable: 'characters',
                         ownerId: char2.id,
                         hash: char2.avatar.hash,
-                        encKey: char2.avatar.encKey
+                        encKey: char2.avatar.encKey,
+                        mimeType: char2.avatar.mimeType
                     }}
                     alt={char2.name}
                     class="size-full object-cover"
@@ -121,7 +124,8 @@
                         ownerTable: 'characters',
                         ownerId: char1.id,
                         hash: char1.avatar.hash,
-                        encKey: char1.avatar.encKey
+                        encKey: char1.avatar.encKey,
+                        mimeType: char1.avatar.mimeType
                     }}
                     alt={char1.name}
                     class="size-full object-cover"
@@ -141,7 +145,8 @@
                         ownerTable: 'characters',
                         ownerId: char2.id,
                         hash: char2.avatar.hash,
-                        encKey: char2.avatar.encKey
+                        encKey: char2.avatar.encKey,
+                        mimeType: char2.avatar.mimeType
                     }}
                     alt={char2.name}
                     class="size-full object-cover"
@@ -168,7 +173,8 @@
                             ownerTable: 'characters',
                             ownerId: char3.id,
                             hash: char3.avatar.hash,
-                            encKey: char3.avatar.encKey
+                            encKey: char3.avatar.encKey,
+                            mimeType: char3.avatar.mimeType
                         }}
                         alt={char3.name}
                         class="size-full object-cover"

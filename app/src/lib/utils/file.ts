@@ -68,6 +68,18 @@ export function fileNameFromPath(path: string): string {
     }
 }
 
+export function createTimestampedFileName(
+    prefix: string,
+    extension: string,
+    date = new Date()
+): string {
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const timestamp =
+        `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+        `${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+    return `${prefix} ${timestamp}.${extension}`;
+}
+
 export function withDetectedExtension(name: string, kind: DetectedFileKind): string {
     if (/\.[a-z0-9]{1,16}$/i.test(name)) return name;
     const extension = extensionForFileKind(kind);
@@ -80,6 +92,12 @@ export function mimeTypeFromName(name: string): string {
     if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
     if (extension === 'webp') return 'image/webp';
     if (extension === 'gif') return 'image/gif';
+    if (extension === 'mp3') return 'audio/mpeg';
+    if (extension === 'wav') return 'audio/wav';
+    if (extension === 'ogg') return 'audio/ogg';
+    if (extension === 'm4a') return 'audio/mp4';
+    if (extension === 'mp4') return 'video/mp4';
+    if (extension === 'mov') return 'video/quicktime';
     if (extension === 'json' || extension === 'keipreset') return 'application/json';
     if (
         extension === 'zip' ||

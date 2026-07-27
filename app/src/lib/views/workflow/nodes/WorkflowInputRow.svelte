@@ -80,20 +80,26 @@
             onchange={(event) => renameAgentSlot(event.currentTarget.value)}
         />
     {:else}
-        <span class="w-16 shrink-0 truncate text-muted-foreground">
+        <span
+            class="{port?.allowLiteral === false
+                ? 'shrink-0'
+                : 'min-w-16 max-w-[45%] shrink-0 truncate'} text-muted-foreground"
+        >
             {port?.name ?? inputId}{#if port?.required}<span class="text-destructive">*</span>{/if}
         </span>
     {/if}
 
-    {#if hasLiteral}
+    {#if port?.allowLiteral === false}
+        <span class="-ml-1 text-[9px] text-muted-foreground/50">{port.type}</span>
+    {:else if hasLiteral}
         {#if port?.type === 'boolean'}
             <label
-                class="nodrag flex h-7 min-w-0 flex-1 items-center justify-between rounded-md border bg-background px-2 text-[10px] text-muted-foreground has-[:disabled]:cursor-not-allowed has-[:disabled]:bg-muted"
+                class="nodrag ml-auto flex size-7 shrink-0 items-center justify-center has-[:disabled]:cursor-not-allowed"
             >
-                {connection ? 'Connected' : 'Value'}
                 <input
                     type="checkbox"
                     class="size-3.5 disabled:cursor-not-allowed"
+                    aria-label={`${port.name} value`}
                     checked={inputValueAsBoolean()}
                     disabled={connection !== null}
                     onchange={(event) => onUpdateInputValue(inputId, event.currentTarget.checked)}

@@ -258,7 +258,7 @@ export class WorkflowRuntime {
             const inputType = input?.type ?? 'string';
             if (connection) {
                 inputs[inputName] = this.#resolveConnection(connection, inputType);
-            } else if (inputName in node.inputValues) {
+            } else if (input?.allowLiteral !== false && inputName in node.inputValues) {
                 inputs[inputName] = this.#resolveLiteral(node.inputValues[inputName], inputType);
             }
         }

@@ -4,6 +4,10 @@ export const DEFAULT_CHAT_AGENT_ID = 'chat_agent';
 export const DEFAULT_CHAT_OUTPUT_ID = 'output';
 export const DEFAULT_TRANSLATION_AGENT_ID = 'translation_agent';
 export const DEFAULT_TRANSLATION_OUTPUT_ID = 'translation_output';
+export const DEFAULT_IMAGE_GENERATION_NODE_ID = 'image_generation';
+export const DEFAULT_IMAGE_GENERATION_OUTPUT_ID = 'image_generation_output';
+export const DEFAULT_TTS_NODE_ID = 'tts';
+export const DEFAULT_TTS_OUTPUT_ID = 'tts_output';
 
 export interface DefaultChatWorkflowOptions {
     agentName?: string;
@@ -23,6 +27,7 @@ export function createDefaultChatWorkflow(
         name: options.agentName ?? 'Chat Agent',
         class: 'Agent',
         position: { x: 0, y: 0 },
+        collapsed: false,
         llmType: 'chat',
         toolIds: [],
         promptBlocks: options.promptBlocks ?? {},
@@ -44,6 +49,7 @@ export function createDefaultChatWorkflow(
                 name: 'Output',
                 class: 'Output',
                 position: { x: 360, y: 0 },
+                collapsed: false,
                 inputs: {
                     content: {
                         sourceNode: agent.id,
@@ -63,13 +69,14 @@ export function createDefaultTranslationWorkflow(): WorkflowDefinition {
         name: 'Translator',
         class: 'Agent',
         position: { x: 0, y: 0 },
+        collapsed: false,
         llmType: 'translation',
         toolIds: [],
         promptBlocks: {
             [instructionId]: {
                 id: instructionId,
                 name: 'Translation Instruction',
-                type: 'text',
+                type: 'message',
                 role: 'user',
                 content:
                     'Translate the following text into {{targetlang}}. Return only the translated text.\n\n{{source}}',
@@ -95,9 +102,100 @@ export function createDefaultTranslationWorkflow(): WorkflowDefinition {
                 name: 'Output',
                 class: 'Output',
                 position: { x: 360, y: 0 },
+                collapsed: false,
                 inputs: {
                     content: {
                         sourceNode: agent.id,
+                        sourcePort: 0
+                    }
+                },
+                inputValues: {}
+            }
+        }
+    };
+}
+
+export function createDefaultImageGenerationWorkflow(): WorkflowDefinition {
+    const sourceId = 'image_generation_source';
+    return {
+        nodes: {
+            [sourceId]: {
+                id: sourceId,
+                name: 'Image Prompt',
+                class: 'Template',
+                position: { x: 0, y: 0 },
+                collapsed: false,
+                inputs: { content: null, stream: null },
+                inputValues: { content: '{{source}}', stream: false }
+            },
+            [DEFAULT_IMAGE_GENERATION_NODE_ID]: {
+                id: DEFAULT_IMAGE_GENERATION_NODE_ID,
+                name: 'Image Generation',
+                class: 'ImageGeneration',
+                position: { x: 360, y: 0 },
+                collapsed: false,
+                inputs: {
+                    prompt: { sourceNode: sourceId, sourcePort: 0 },
+                    negativePrompt: null,
+                    referenceImages: null,
+                    styleImages: null
+                },
+                inputValues: {
+                    prompt: '',
+                    negativePrompt: ''
+                }
+            },
+            [DEFAULT_IMAGE_GENERATION_OUTPUT_ID]: {
+                id: DEFAULT_IMAGE_GENERATION_OUTPUT_ID,
+                name: 'Output',
+                class: 'Output',
+                position: { x: 720, y: 0 },
+                collapsed: false,
+                inputs: {
+                    content: {
+                        sourceNode: DEFAULT_IMAGE_GENERATION_NODE_ID,
+                        sourcePort: 0
+                    }
+                },
+                inputValues: {}
+            }
+        }
+    };
+}
+
+export function createDefaultTTSWorkflow(): WorkflowDefinition {
+    const sourceId = 'tts_source';
+    return {
+        nodes: {
+            [sourceId]: {
+                id: sourceId,
+                name: 'Speech Text',
+                class: 'Template',
+                position: { x: 0, y: 0 },
+                collapsed: false,
+                inputs: { content: null, stream: null },
+                inputValues: { content: '{{source}}', stream: false }
+            },
+            [DEFAULT_TTS_NODE_ID]: {
+                id: DEFAULT_TTS_NODE_ID,
+                name: 'Text to Speech',
+                class: 'TTS',
+                position: { x: 360, y: 0 },
+                collapsed: false,
+                inputs: {
+                    text: { sourceNode: sourceId, sourcePort: 0 }
+                },
+                inputValues: { text: '' }
+            },
+            [DEFAULT_TTS_OUTPUT_ID]: {
+                id: DEFAULT_TTS_OUTPUT_ID,
+                name: 'Output',
+                class: 'Output',
+                position: { x: 720, y: 0 },
+                collapsed: false,
+                inputs: {
+                    content: {
+                        sourceNode: DEFAULT_TTS_NODE_ID,
                         sourcePort: 0
                     }
                 },

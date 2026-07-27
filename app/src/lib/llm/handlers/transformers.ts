@@ -6,7 +6,7 @@
  */
 
 import { appInference } from '$lib/adapters/inference';
-import { getTextContent } from '../types';
+import { getTextContent } from '$lib/workflow/agent/llm';
 import type {
     LLMStreamHandler,
     LLMStreamContent,
@@ -54,8 +54,8 @@ export class TransformersLLMStreamHandler implements LLMStreamHandler {
         const shouldStream = options.stream ?? true;
         for await (const chunk of stream) {
             fullContent += chunk;
-            if (shouldStream) yield { content: fullContent };
+            if (shouldStream) yield { parts: [{ type: 'text', text: fullContent }] };
         }
-        if (!shouldStream) yield { content: fullContent };
+        if (!shouldStream) yield { parts: [{ type: 'text', text: fullContent }] };
     }
 }

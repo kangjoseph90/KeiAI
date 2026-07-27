@@ -88,7 +88,7 @@
         return onEdit(
             createBlock(workflow, agent.id, {
                 name: 'New Block',
-                type: 'text',
+                type: 'message',
                 role: 'system',
                 content: '',
                 sortOrder
@@ -98,10 +98,10 @@
 
     function changeBlockType(blockId: string, type: PromptBlock['type']) {
         switch (type) {
-            case 'text':
+            case 'message':
                 return applyBlockEdit(blockId, { type, role: 'system', content: '' });
             case 'history':
-                return applyBlockEdit(blockId, { type, historyMode: 'last_content' });
+                return applyBlockEdit(blockId, { type, historyMode: 'visible' });
             case 'lorebook':
                 return applyBlockEdit(blockId, { type });
         }
@@ -234,14 +234,14 @@
                                         <button
                                             type="button"
                                             class="flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted/80 {block.type ===
-                                            'text'
+                                            'message'
                                                 ? 'bg-violet-500/10 text-violet-600 dark:text-violet-300'
                                                 : block.type === 'history'
                                                   ? 'bg-sky-500/10 text-sky-600 dark:text-sky-300'
                                                   : 'bg-amber-500/10 text-amber-600 dark:text-amber-300'}"
                                             aria-label="Change block type"
                                         >
-                                            {#if block.type === 'text'}
+                                            {#if block.type === 'message'}
                                                 <MessageSquareText class="size-4" />
                                             {:else if block.type === 'history'}
                                                 <MessagesSquare class="size-4" />
@@ -252,12 +252,12 @@
                                     </DropdownMenu.Trigger>
                                     <DropdownMenu.Content align="start">
                                         <DropdownMenu.Item
-                                            onclick={() => changeBlockType(block.id, 'text')}
+                                            onclick={() => changeBlockType(block.id, 'message')}
                                         >
                                             <MessageSquareText
                                                 class="mr-2 size-4 text-violet-500"
                                             />
-                                            <span>Text</span>
+                                            <span>Message</span>
                                         </DropdownMenu.Item>
                                         <DropdownMenu.Item
                                             onclick={() => changeBlockType(block.id, 'history')}
@@ -311,7 +311,7 @@
 
                             {#if expandedBlocks.has(block.id)}
                                 <div class="flex flex-col gap-4 border-t bg-muted/20 p-4">
-                                    {#if block.type === 'text'}
+                                    {#if block.type === 'message'}
                                         <div class="space-y-1.5">
                                             <Label class="text-xs">Role</Label>
                                             <select
@@ -358,19 +358,24 @@
                                                     applyBlockEdit(block.id, { end: value })}
                                             />
                                         </div>
-                                        <label
-                                            class="flex w-fit cursor-pointer items-center gap-2 text-xs select-none"
-                                            ><input
-                                                type="checkbox"
-                                                checked={block.historyMode === 'last_content'}
+                                        <div class="space-y-1.5">
+                                            <Label class="text-xs">History content</Label>
+                                            <select
+                                                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                                value={block.historyMode}
                                                 onchange={(event) =>
                                                     applyBlockEdit(block.id, {
-                                                        historyMode: event.currentTarget.checked
-                                                            ? 'last_content'
-                                                            : 'full_trace'
+                                                        historyMode: event.currentTarget.value as
+                                                            | 'last_text'
+                                                            | 'visible'
+                                                            | 'full_trace'
                                                     })}
-                                            />Last response only</label
-                                        >
+                                            >
+                                                <option value="last_text">Last text part</option>
+                                                <option value="visible">Visible parts</option>
+                                                <option value="full_trace">Full trace</option>
+                                            </select>
+                                        </div>
                                         <div class="space-y-1.5">
                                             <Label class="text-xs">Message format</Label>
                                             <Textarea

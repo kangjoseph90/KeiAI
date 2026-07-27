@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkflowRuntime, type WorkflowDefinition } from '$lib/workflow';
-import { getTextContent, type LLMMessage } from '$lib/llm/types';
+import type { LLMMessage } from '$lib/llm/types';
+import { getTextContent } from '$lib/workflow/agent/llm';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
 import type { Chat } from '$lib/services';
 
@@ -11,6 +12,7 @@ const {
     mockGetSettings,
     mockTokenCount,
     mockGetChat,
+    mockCreateChatInlay,
     mockToolCreate,
     mockToolUpdate,
     mockToolGet,
@@ -24,6 +26,7 @@ const {
     mockGetSettings: vi.fn(),
     mockTokenCount: vi.fn(),
     mockGetChat: vi.fn(),
+    mockCreateChatInlay: vi.fn(),
     mockToolCreate: vi.fn(),
     mockToolUpdate: vi.fn(),
     mockToolGet: vi.fn(),
@@ -50,7 +53,7 @@ const stubChat: Chat = {
 
 vi.mock('$lib/stores', async (importOriginal) => {
     const original = await importOriginal<typeof import('$lib/stores')>();
-    return { ...original, getChat: mockGetChat };
+    return { ...original, getChat: mockGetChat, createChatInlay: mockCreateChatInlay };
 });
 
 vi.mock('$lib/stores/content/settings', () => ({
@@ -100,6 +103,14 @@ describe('executeAgentNode', () => {
         });
         mockResolveParameters.mockResolvedValue({ temperature: 0.5 });
         mockGetChat.mockResolvedValue(stubChat);
+        mockCreateChatInlay.mockResolvedValue({
+            id: 'generated-inlay-1',
+            sortOrder: 'a',
+            name: 'generated-1.png',
+            hash: 'generated-hash',
+            encKey: 'generated-key',
+            mimeType: 'image/png'
+        });
         mockTokenCount.mockImplementation(async (text: string) => text.length);
         toolRecord = null;
         mockToolCreate.mockImplementation(async (chatId, fields) => {
@@ -127,8 +138,13 @@ describe('executeAgentNode', () => {
                 stream: vi.fn(async function* (prompt: LLMMessage[]) {
                     receivedPrompt = prompt;
                     yield {
-                        thought: 'thinking',
-                        content: `result: ${prompt[0] ? getTextContent(prompt[0].content) : ''}`
+                        parts: [
+                            { type: 'thought', text: 'thinking' },
+                            {
+                                type: 'text',
+                                text: `result: ${prompt[0] ? getTextContent(prompt[0].content) : ''}`
+                            }
+                        ]
                     };
                 })
             },
@@ -142,7 +158,8 @@ describe('executeAgentNode', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
-                    content: 'hello',
+                    collapsed: false,
+                    content: '<|thought|>source thought<|/thought|>hello {{slot::missing}}',
                     inputs: {},
                     inputValues: {}
                 },
@@ -151,6 +168,7 @@ describe('executeAgentNode', () => {
                     name: 'Agent',
                     class: 'Agent',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     llmType: 'chat',
                     toolIds: [],
                     maxContext: 1000,
@@ -162,7 +180,7 @@ describe('executeAgentNode', () => {
                         instruction: {
                             id: 'instruction',
                             name: 'Instruction',
-                            type: 'text',
+                            type: 'message',
                             role: 'user',
                             content: 'Say {{slot::source}}',
                             sortOrder: 'a',
@@ -185,6 +203,7 @@ describe('executeAgentNode', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'agent', sourcePort: 0 }
                     },
@@ -200,10 +219,17 @@ describe('executeAgentNode', () => {
                     messages: {} as PagedMessages
                 }).run()
             )
-        ).resolves.toBe('<|thought|>thinking<|/thought|>result: Say hello');
+        ).resolves.toBe('<|thought|>thinking<|/thought|>result: Say hello {{slot::missing}}');
 
         expect(receivedPrompt).toEqual([
-            { role: 'user', content: [{ type: 'text', text: 'Say hello' }] }
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: 'Say ' },
+                    { type: 'thought', text: 'source thought' },
+                    { type: 'text', text: 'hello {{slot::missing}}' }
+                ]
+            }
         ]);
         expect(mockResolveModelConfig).toHaveBeenCalledWith('chat', 'preset-1');
         expect(mockResolveParameters).toHaveBeenCalledWith('chat', 'preset-1');
@@ -216,7 +242,12 @@ describe('executeAgentNode', () => {
                 stream: vi.fn(async function* (prompt: LLMMessage[]) {
                     receivedPrompt = prompt;
                     yield {
-                        content: `result: ${prompt[0] ? getTextContent(prompt[0].content) : ''}`
+                        parts: [
+                            {
+                                type: 'text',
+                                text: `result: ${prompt[0] ? getTextContent(prompt[0].content) : ''}`
+                            }
+                        ]
                     };
                 })
             },
@@ -230,6 +261,7 @@ describe('executeAgentNode', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'hello',
                     inputs: {},
                     inputValues: {}
@@ -239,6 +271,7 @@ describe('executeAgentNode', () => {
                     name: 'Agent',
                     class: 'Agent',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     llmType: 'chat',
                     toolIds: [],
                     maxContext: 1000,
@@ -250,7 +283,7 @@ describe('executeAgentNode', () => {
                         instruction: {
                             id: 'instruction',
                             name: 'Instruction',
-                            type: 'text',
+                            type: 'message',
                             role: 'user',
                             content: 'Say {{slot}} then {{slot::source}}',
                             sortOrder: 'a',
@@ -273,6 +306,7 @@ describe('executeAgentNode', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'agent', sourcePort: 0 }
                     },
@@ -304,7 +338,7 @@ describe('executeAgentNode', () => {
             handler: {
                 stream: vi.fn(async function* () {
                     await agentGate;
-                    yield { content: 'memory saved' };
+                    yield { parts: [{ type: 'text', text: 'memory saved' }] };
                 })
             },
             unsupported: []
@@ -317,6 +351,7 @@ describe('executeAgentNode', () => {
                     name: 'Visible',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'chat output',
                     inputs: {},
                     inputValues: {}
@@ -326,6 +361,7 @@ describe('executeAgentNode', () => {
                     name: 'Memory',
                     class: 'Agent',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     llmType: 'chat',
                     toolIds: [],
                     maxContext: 1000,
@@ -337,7 +373,7 @@ describe('executeAgentNode', () => {
                         instruction: {
                             id: 'instruction',
                             name: 'Instruction',
-                            type: 'text',
+                            type: 'message',
                             role: 'user',
                             content: 'Update memory',
                             sortOrder: 'a',
@@ -354,6 +390,7 @@ describe('executeAgentNode', () => {
                     name: 'Memory Sink',
                     class: 'Sink',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'memory', sourcePort: 0 } },
                     inputValues: { content: '' }
                 },
@@ -362,6 +399,7 @@ describe('executeAgentNode', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'visible', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -397,9 +435,9 @@ describe('executeAgentNode', () => {
         mockSelectLLMHandler.mockReturnValue({
             handler: {
                 stream: vi.fn(async function* () {
-                    yield { content: 'He' };
-                    yield { content: 'Hello' };
-                    yield { content: 'Hello!' };
+                    yield { parts: [{ type: 'text', text: 'He' }] };
+                    yield { parts: [{ type: 'text', text: 'Hello' }] };
+                    yield { parts: [{ type: 'text', text: 'Hello!' }] };
                 })
             },
             unsupported: []
@@ -412,6 +450,7 @@ describe('executeAgentNode', () => {
                     name: 'Agent',
                     class: 'Agent',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     llmType: 'chat',
                     toolIds: [],
                     maxContext: 1000,
@@ -423,7 +462,7 @@ describe('executeAgentNode', () => {
                         instruction: {
                             id: 'instruction',
                             name: 'Instruction',
-                            type: 'text',
+                            type: 'message',
                             role: 'user',
                             content: 'greet',
                             sortOrder: 'a',
@@ -439,6 +478,7 @@ describe('executeAgentNode', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'agent', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -455,6 +495,40 @@ describe('executeAgentNode', () => {
         expect(values).toEqual(['He', 'Hello', 'Hello!']);
     });
 
+    it('stores generated media as inlays and preserves response part order', async () => {
+        mockSelectLLMHandler.mockReturnValue({
+            handler: {
+                stream: vi.fn(async function* () {
+                    yield {
+                        parts: [
+                            { type: 'text' as const, text: 'Before' },
+                            {
+                                type: 'image' as const,
+                                mimeType: 'image/png',
+                                data: 'AQID'
+                            },
+                            { type: 'text' as const, text: 'After' }
+                        ]
+                    };
+                })
+            },
+            unsupported: []
+        });
+
+        const result = await collectFinal(
+            new WorkflowRuntime(createSimpleAgentWorkflow(), {
+                ctx: { presetId: 'preset-1', chatId: 'chat-1' },
+                messages: {} as PagedMessages
+            }).run()
+        );
+
+        expect(result).toBe('Before<|inlay|>["generated-inlay-1"]<|/inlay|>After');
+        expect(mockCreateChatInlay).toHaveBeenCalledWith(
+            'chat-1',
+            expect.objectContaining({ name: 'generated-1.png', type: 'image/png' })
+        );
+    });
+
     it('emits pending, running, and success states while executing a read tool', async () => {
         let requestCount = 0;
         const stream = vi.fn(async function* (
@@ -466,9 +540,9 @@ describe('executeAgentNode', () => {
             if (requestCount === 1) {
                 expect(options.tools?.map((tool) => tool.name)).toEqual(['file_read']);
                 yield {
-                    content: '',
-                    toolCalls: [
+                    parts: [
                         {
+                            type: 'tool_request',
                             callId: 'provider-call-1',
                             name: 'file_read',
                             args: { namespace: 'chat', path: 'notes.txt' }
@@ -477,7 +551,7 @@ describe('executeAgentNode', () => {
                 };
                 return;
             }
-            yield { content: 'Finished.' };
+            yield { parts: [{ type: 'text', text: 'Finished.' }] };
         });
         mockSelectLLMHandler.mockReturnValue({ handler: { stream }, unsupported: [] });
 
@@ -491,22 +565,119 @@ describe('executeAgentNode', () => {
         }
 
         expect(values).toContain(
-            '<|tool_call id="tool-record-1" name="file_read" status="pending"|>'
+            '<|tool_calls|>[{"id":"tool-record-1","name":"file_read","status":"pending"}]<|/tool_calls|>'
         );
         expect(values).toContain(
-            '<|tool_call id="tool-record-1" name="file_read" status="running"|>'
+            '<|tool_calls|>[{"id":"tool-record-1","name":"file_read","status":"running"}]<|/tool_calls|>'
         );
         expect(values).toContain(
-            '<|tool_call id="tool-record-1" name="file_read" status="success"|>'
+            '<|tool_calls|>[{"id":"tool-record-1","name":"file_read","status":"success"}]<|/tool_calls|>'
         );
         expect(values.at(-1)).toBe(
-            '<|tool_call id="tool-record-1" name="file_read" status="success"|>Finished.'
+            '<|tool_calls|>[{"id":"tool-record-1","name":"file_read","status":"success"}]<|/tool_calls|>Finished.'
         );
         expect(mockReadWorkflowFile).toHaveBeenCalledWith(
             'chat',
             'notes.txt',
             expect.objectContaining({ chatId: 'chat-1' })
         );
+    });
+
+    it('keeps parallel tool requests and responses in one batch', async () => {
+        const records = new Map<string, Record<string, unknown>>();
+        let recordIndex = 0;
+        mockToolCreate.mockImplementation(async (chatId, fields) => {
+            const id = `tool-record-${++recordIndex}`;
+            const record = { ...fields, id, chatId };
+            records.set(id, record);
+            return record;
+        });
+        mockToolUpdate.mockImplementation(async (id: string, changes) => {
+            const record = { ...records.get(id), ...changes };
+            records.set(id, record);
+            return record;
+        });
+        mockToolGet.mockImplementation(async (id: string) => records.get(id) ?? null);
+
+        let requestCount = 0;
+        let followupPrompt: LLMMessage[] = [];
+        mockSelectLLMHandler.mockReturnValue({
+            handler: {
+                stream: vi.fn(async function* (prompt: LLMMessage[]) {
+                    requestCount += 1;
+                    if (requestCount === 1) {
+                        yield {
+                            parts: [
+                                {
+                                    type: 'tool_request',
+                                    callId: 'provider-call-1',
+                                    name: 'file_read',
+                                    args: { namespace: 'chat', path: 'one.txt' }
+                                },
+                                {
+                                    type: 'tool_request',
+                                    callId: 'provider-call-2',
+                                    name: 'file_read',
+                                    args: { namespace: 'chat', path: 'two.txt' }
+                                }
+                            ]
+                        };
+                        return;
+                    }
+                    followupPrompt = prompt;
+                    yield { parts: [{ type: 'text', text: 'Finished.' }] };
+                })
+            },
+            unsupported: []
+        });
+
+        const values: string[] = [];
+        for await (const value of new WorkflowRuntime(createToolWorkflow('file_read'), {
+            ctx: { presetId: 'preset-1', chatId: 'chat-1' },
+            messages: {} as PagedMessages
+        }).run()) {
+            values.push(value);
+        }
+
+        expect(values).toContain(
+            '<|tool_calls|>[{"id":"tool-record-1","name":"file_read","status":"pending"},{"id":"tool-record-2","name":"file_read","status":"pending"}]<|/tool_calls|>'
+        );
+        expect(followupPrompt.slice(-2)).toEqual([
+            {
+                role: 'assistant',
+                content: [
+                    {
+                        type: 'tool_request',
+                        callId: 'provider-call-1',
+                        name: 'file_read',
+                        args: { namespace: 'chat', path: 'one.txt' }
+                    },
+                    {
+                        type: 'tool_request',
+                        callId: 'provider-call-2',
+                        name: 'file_read',
+                        args: { namespace: 'chat', path: 'two.txt' }
+                    }
+                ]
+            },
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'tool_response',
+                        callId: 'provider-call-1',
+                        name: 'file_read',
+                        content: expect.any(Array)
+                    },
+                    {
+                        type: 'tool_response',
+                        callId: 'provider-call-2',
+                        name: 'file_read',
+                        content: expect.any(Array)
+                    }
+                ]
+            }
+        ]);
     });
 
     it('emits rejected for a denied write tool without executing it', async () => {
@@ -518,9 +689,9 @@ describe('executeAgentNode', () => {
                     requestCount += 1;
                     if (requestCount === 1) {
                         yield {
-                            content: '',
-                            toolCalls: [
+                            parts: [
                                 {
+                                    type: 'tool_request',
                                     callId: 'provider-call-1',
                                     name: 'file_write',
                                     args: {
@@ -533,7 +704,7 @@ describe('executeAgentNode', () => {
                         };
                         return;
                     }
-                    yield { content: 'Write cancelled.' };
+                    yield { parts: [{ type: 'text', text: 'Write cancelled.' }] };
                 })
             },
             unsupported: []
@@ -548,10 +719,10 @@ describe('executeAgentNode', () => {
         }
 
         expect(values).toContain(
-            '<|tool_call id="tool-record-1" name="file_write" status="pending"|>'
+            '<|tool_calls|>[{"id":"tool-record-1","name":"file_write","status":"pending"}]<|/tool_calls|>'
         );
         expect(values).toContain(
-            '<|tool_call id="tool-record-1" name="file_write" status="rejected"|>'
+            '<|tool_calls|>[{"id":"tool-record-1","name":"file_write","status":"rejected"}]<|/tool_calls|>'
         );
         expect(mockAppConfirm).toHaveBeenCalledWith(
             {
@@ -575,6 +746,7 @@ function createToolWorkflow(toolId: 'file_read' | 'file_write'): WorkflowDefinit
                 name: 'Agent',
                 class: 'Agent',
                 position: { x: 0, y: 0 },
+                collapsed: false,
                 llmType: 'chat',
                 toolIds: [toolId],
                 maxContext: 1000,
@@ -586,7 +758,7 @@ function createToolWorkflow(toolId: 'file_read' | 'file_write'): WorkflowDefinit
                     instruction: {
                         id: 'instruction',
                         name: 'Instruction',
-                        type: 'text',
+                        type: 'message',
                         role: 'user',
                         content: 'Use a tool',
                         sortOrder: 'a',
@@ -602,7 +774,54 @@ function createToolWorkflow(toolId: 'file_read' | 'file_write'): WorkflowDefinit
                 name: 'Output',
                 class: 'Output',
                 position: { x: 0, y: 0 },
+                collapsed: false,
                 inputs: { content: { sourceNode: 'agent', sourcePort: 0 } },
+                inputValues: {}
+            }
+        }
+    };
+}
+
+function createSimpleAgentWorkflow(): WorkflowDefinition {
+    return {
+        nodes: {
+            agent: {
+                id: 'agent',
+                name: 'Agent',
+                class: 'Agent',
+                position: { x: 0, y: 0 },
+                collapsed: false,
+                llmType: 'chat',
+                toolIds: [],
+                maxContext: 1000,
+                maxResponse: 100,
+                lorebookRatio: 0.2,
+                memoryRatio: 0.2,
+                lorebookScanDepth: 0,
+                promptBlocks: {
+                    instruction: {
+                        id: 'instruction',
+                        name: 'Instruction',
+                        type: 'message',
+                        role: 'user',
+                        content: 'Generate media',
+                        sortOrder: 'a',
+                        enabled: true
+                    }
+                },
+                slotNames: {},
+                inputs: {},
+                inputValues: {}
+            },
+            output: {
+                id: 'output',
+                name: 'Output',
+                class: 'Output',
+                position: { x: 0, y: 0 },
+                collapsed: false,
+                inputs: {
+                    content: { sourceNode: 'agent', sourcePort: 0 }
+                },
                 inputValues: {}
             }
         }

@@ -2,8 +2,9 @@ import type { Action } from 'svelte/action';
 import { AssetService, type AssetReadLocator } from '$lib/services/asset';
 import { assetRegistryId } from '$lib/adapters/asset';
 
-const ASSET_SELECTOR = 'img[data-keiai-asset]';
+const ASSET_SELECTOR = 'img[data-keiai-asset],audio[data-keiai-asset],video[data-keiai-asset]';
 const MAX_RETRIES = 2;
+type AssetElement = HTMLImageElement | HTMLAudioElement | HTMLVideoElement;
 
 function parseAssetLocator(raw: string | undefined): AssetReadLocator | null {
     if (!raw) return null;
@@ -15,124 +16,124 @@ function parseAssetLocator(raw: string | undefined): AssetReadLocator | null {
 }
 
 export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => {
-    const loaded = new WeakMap<HTMLImageElement, { key: string; url: string }>();
+    const loaded = new WeakMap<AssetElement, { key: string; url: string }>();
     const urlCache = new Map<string, string>();
-    const loading = new Set<HTMLImageElement>();
-    const retryCounts = new WeakMap<HTMLImageElement, number>();
+    const loading = new Set<AssetElement>();
+    const retryCounts = new WeakMap<AssetElement, number>();
     const ownedUrls = new Set<string>();
-    const boundRecovery = new WeakSet<HTMLImageElement>();
-    const observed = new Set<HTMLImageElement>();
+    const boundRecovery = new WeakSet<AssetElement>();
+    const observed = new Set<AssetElement>();
     let destroyed = false;
 
     const observer = new IntersectionObserver(
         (entries) => {
             for (const entry of entries) {
                 if (!entry.isIntersecting) continue;
-                const img = entry.target as HTMLImageElement;
-                stopObserving(img);
-                void hydrate(img);
+                const element = entry.target as AssetElement;
+                stopObserving(element);
+                void hydrate(element);
             }
         },
         { rootMargin: '200px' }
     );
 
-    async function hydrate(img: HTMLImageElement): Promise<void> {
-        if (destroyed || loading.has(img)) return;
+    async function hydrate(element: AssetElement): Promise<void> {
+        if (destroyed || loading.has(element)) return;
 
-        const asset = img.dataset.keiaiAsset;
+        const asset = element.dataset.keiaiAsset;
         const locator = parseAssetLocator(asset);
         if (!locator) return;
 
         const key = assetRegistryId(locator);
 
-        const cached = loaded.get(img);
+        const cached = loaded.get(element);
         if (cached && cached.key !== key) {
-            loaded.delete(img);
+            loaded.delete(element);
             if (!urlCache.has(cached.key)) {
                 releaseUrl(cached.url);
             }
-            img.removeAttribute('src');
+            element.removeAttribute('src');
         }
 
         if (cached?.key === key) {
-            if (img.getAttribute('src') !== cached.url) {
-                img.src = cached.url;
+            if (element.getAttribute('src') !== cached.url) {
+                element.src = cached.url;
             }
-            stopObserving(img);
+            stopObserving(element);
             return;
         }
 
         const cachedUrl = urlCache.get(key);
         if (cachedUrl) {
-            bindRecovery(img);
-            img.src = cachedUrl;
-            img.dataset.keiaiAssetState = 'loaded';
-            loaded.set(img, { key, url: cachedUrl });
+            bindRecovery(element);
+            element.src = cachedUrl;
+            element.dataset.keiaiAssetState = 'loaded';
+            loaded.set(element, { key, url: cachedUrl });
             ownedUrls.add(cachedUrl);
-            stopObserving(img);
+            stopObserving(element);
             return;
         }
 
-        loading.add(img);
-        img.dataset.keiaiAssetState = 'loading';
+        loading.add(element);
+        element.dataset.keiaiAssetState = 'loading';
 
         try {
             const url = await AssetService.read(locator);
-            if (destroyed || !img.isConnected || img.dataset.keiaiAsset !== asset) {
+            if (destroyed || !element.isConnected || element.dataset.keiaiAsset !== asset) {
                 if (url) void AssetService.revokeUrl(url);
                 return;
             }
 
             if (!url) {
-                img.dataset.keiaiAssetState = 'error';
+                element.dataset.keiaiAssetState = 'error';
                 return;
             }
 
-            bindRecovery(img);
-            img.src = url;
-            img.dataset.keiaiAssetState = 'loaded';
+            bindRecovery(element);
+            element.src = url;
+            element.dataset.keiaiAssetState = 'loaded';
             ownedUrls.add(url);
-            loaded.set(img, { key, url });
+            loaded.set(element, { key, url });
             urlCache.set(key, url);
-            stopObserving(img);
+            stopObserving(element);
         } catch {
-            if (!destroyed && img.isConnected && img.dataset.keiaiAsset === asset) {
-                img.dataset.keiaiAssetState = 'error';
+            if (!destroyed && element.isConnected && element.dataset.keiaiAsset === asset) {
+                element.dataset.keiaiAssetState = 'error';
             }
         } finally {
-            loading.delete(img);
+            loading.delete(element);
         }
     }
 
-    function bindRecovery(img: HTMLImageElement): void {
-        if (boundRecovery.has(img)) return;
-        boundRecovery.add(img);
+    function bindRecovery(element: AssetElement): void {
+        if (boundRecovery.has(element)) return;
+        boundRecovery.add(element);
 
-        img.addEventListener('error', () => {
-            const asset = img.dataset.keiaiAsset;
+        element.addEventListener('error', () => {
+            const asset = element.dataset.keiaiAsset;
             const locator = parseAssetLocator(asset);
-            if (destroyed || !img.isConnected || !locator) return;
+            if (destroyed || !element.isConnected || !locator) return;
 
             const key = assetRegistryId(locator);
 
-            const retryCount = retryCounts.get(img) ?? 0;
+            const retryCount = retryCounts.get(element) ?? 0;
             if (retryCount >= MAX_RETRIES) {
-                const stale = loaded.get(img);
-                loaded.delete(img);
+                const stale = loaded.get(element);
+                loaded.delete(element);
                 if (stale) {
                     urlCache.delete(stale.key);
                     releaseUrl(stale.url);
                 }
-                img.removeAttribute('src');
-                img.dataset.keiaiAssetState = 'error';
+                element.removeAttribute('src');
+                element.dataset.keiaiAssetState = 'error';
                 return;
             }
 
-            retryCounts.set(img, retryCount + 1);
-            loaded.delete(img);
-            img.removeAttribute('src');
-            img.dataset.keiaiAssetState = 'loading';
-            void hydrate(img);
+            retryCounts.set(element, retryCount + 1);
+            loaded.delete(element);
+            element.removeAttribute('src');
+            element.dataset.keiaiAssetState = 'loading';
+            void hydrate(element);
         });
     }
 
@@ -140,30 +141,30 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
         if (destroyed) return;
 
         const activeKeys = new Set<string>();
-        const activeImages = new Set<HTMLImageElement>();
-        node.querySelectorAll<HTMLImageElement>(ASSET_SELECTOR).forEach((img) => {
-            activeImages.add(img);
-            const asset = img.dataset.keiaiAsset;
+        const activeElements = new Set<AssetElement>();
+        node.querySelectorAll<AssetElement>(ASSET_SELECTOR).forEach((element) => {
+            activeElements.add(element);
+            const asset = element.dataset.keiaiAsset;
             const locator = parseAssetLocator(asset);
             if (!locator) return;
 
             const key = assetRegistryId(locator);
             activeKeys.add(key);
 
-            const cached = loaded.get(img);
+            const cached = loaded.get(element);
             if (cached?.key === key) {
-                if (img.getAttribute('src') !== cached.url) {
-                    img.src = cached.url;
+                if (element.getAttribute('src') !== cached.url) {
+                    element.src = cached.url;
                 }
                 return;
             }
-            if (loading.has(img)) return;
-            observer.observe(img);
-            observed.add(img);
+            if (loading.has(element)) return;
+            observer.observe(element);
+            observed.add(element);
         });
 
-        for (const img of observed) {
-            if (!activeImages.has(img)) stopObserving(img);
+        for (const element of observed) {
+            if (!activeElements.has(element)) stopObserving(element);
         }
 
         for (const [key, url] of urlCache) {
@@ -196,8 +197,8 @@ export const hydrateAssets: Action<HTMLElement, string | undefined> = (node) => 
         void AssetService.revokeUrl(url);
     }
 
-    function stopObserving(img: HTMLImageElement): void {
-        observer.unobserve(img);
-        observed.delete(img);
+    function stopObserving(element: AssetElement): void {
+        observer.unobserve(element);
+        observed.delete(element);
     }
 };

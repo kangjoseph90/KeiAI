@@ -2,7 +2,7 @@
  * OpenAI TTS Handler — KeiAI
  *
  * Implements TTSStreamHandler for OpenAI's /audio/speech endpoint.
- * Streams raw PCM audio chunks via AsyncIterable.
+ * Streams MP3 audio chunks via AsyncIterable.
  */
 
 import type { TTSStreamChunk, TTSStreamHandler } from '../types';
@@ -39,7 +39,7 @@ export class OpenAITTSStreamHandler implements TTSStreamHandler {
                 model: this.config.modelId,
                 input: text,
                 voice: this.config.voiceId,
-                response_format: 'pcm'
+                response_format: 'mp3'
             }),
             signal
         });
@@ -57,7 +57,7 @@ export class OpenAITTSStreamHandler implements TTSStreamHandler {
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                yield { audio: value.buffer as ArrayBuffer };
+                yield { data: Uint8Array.from(value), mimeType: 'audio/mpeg' };
             }
         } finally {
             reader.releaseLock();

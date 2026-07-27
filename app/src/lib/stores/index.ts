@@ -61,6 +61,8 @@ export const chatPersonas = readonly(StoreState.chatPersonas);
 export const messages = readonly(StoreState.messages);
 export const chatTasks = readonly(StoreState.chatTasks);
 export const translationTasks = readonly(StoreState.translationTasks);
+export const imageGenerationTasks = readonly(StoreState.imageGenerationTasks);
+export const ttsTasks = readonly(StoreState.ttsTasks);
 export const chatAssetsMap = readonly(StoreState.chatAssetsMap);
 // ─── Re-export derived stores directly (already read-only) ──────────
 export {
@@ -79,7 +81,13 @@ export {
     isCustomServer
 } from './state';
 
-export type { DisplayMessage, DisplayMessageStatus, TaskStatus, TranslationTask } from './types';
+export type {
+    DisplayMessage,
+    DisplayMessageStatus,
+    MediaTask,
+    TaskStatus,
+    TranslationTask
+} from './types';
 
 export * from './content/settings';
 export * from './content/room';
@@ -94,6 +102,8 @@ export * from './content/message';
 export * from './content/merged';
 export * from './tasks/chat';
 export * from './tasks/translation';
+export * from './tasks/image';
+export * from './tasks/tts';
 export * from './auth';
 export * from './connection';
 export * from './user';

@@ -10,6 +10,8 @@ import { createPreset } from './content/preset';
 import { loadMultiRooms } from './content/multi';
 import {
     createDefaultChatWorkflow,
+    createDefaultImageGenerationWorkflow,
+    createDefaultTTSWorkflow,
     createDefaultTranslationWorkflow
 } from '$lib/workflow/defaults';
 
@@ -41,6 +43,8 @@ export async function initDefaultContents(): Promise<void> {
     await addRoomCharacter(room.id, character.id);
     await selectPreset(preset.id);
     await updateSettings({
-        translation: { workflow: createDefaultTranslationWorkflow() }
+        translation: { workflow: createDefaultTranslationWorkflow() },
+        imageGeneration: { workflow: createDefaultImageGenerationWorkflow() },
+        tts: { workflow: createDefaultTTSWorkflow() }
     });
 }

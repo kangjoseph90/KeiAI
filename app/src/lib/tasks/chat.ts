@@ -30,8 +30,9 @@ import { runTemplate } from '$lib/template';
 import { toMessageContext } from '$lib/workflow/agent/context';
 import {
     deserializeAgentParts,
-    findLastContentIndex,
-    getLastContentText,
+    findLastTextIndex,
+    getLastTextContent,
+    hasVisibleAgentOutput,
     type AgentPart
 } from '$lib/workflow/agent/llm';
 import { WorkflowRuntime } from '$lib/workflow';
@@ -136,16 +137,16 @@ export async function runChat(
             await updateMessageSwipe(preparedMessage.id, targetSwipeId, { parts: finalParts });
         }
 
-        if (getLastContentText(finalParts).length > 0) {
+        if (getLastTextContent(finalParts).length > 0) {
             const outputCtx = toMessageContext(preparedMessage, messages.length, ctx);
-            const lastContentIdx = findLastContentIndex(finalParts);
-            if (lastContentIdx >= 0) {
-                const lastContent = finalParts[lastContentIdx];
-                if (lastContent.type === 'content') {
-                    const templated = await runTemplate(lastContent.text, outputCtx);
+            const lastTextIdx = findLastTextIndex(finalParts);
+            if (lastTextIdx >= 0) {
+                const lastText = finalParts[lastTextIdx];
+                if (lastText.type === 'text') {
+                    const templated = await runTemplate(lastText.text, outputCtx);
                     const piped = await runPipeline('output', outputCtx, templated);
                     const processed = await runTemplate(piped, outputCtx);
-                    finalParts[lastContentIdx] = { type: 'content', text: processed };
+                    finalParts[lastTextIdx] = { type: 'text', text: processed };
                     await updateMessageSwipe(preparedMessage.id, targetSwipeId, {
                         parts: finalParts
                     });
@@ -161,7 +162,7 @@ export async function runChat(
             return;
         }
         const finalSwipe = finalMsg.swipes[targetSwipeId];
-        if (!finalSwipe || getLastContentText(finalSwipe.parts).length === 0) {
+        if (!finalSwipe || !hasVisibleAgentOutput(finalSwipe.parts)) {
             const errMsg = 'Empty response from model';
             setChatTaskError(chatId, errMsg);
             notifyChatTaskError(chatId, errMsg);
@@ -169,7 +170,7 @@ export async function runChat(
         }
 
         void emitEvent('message:received', toMessageContext(finalMsg, messages.length, ctx), {
-            content: getLastContentText(finalSwipe.parts)
+            content: getLastTextContent(finalSwipe.parts)
         });
 
         clearChatTask(chatId);

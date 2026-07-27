@@ -5,7 +5,7 @@
  * in provider config (no model registry needed for built-ins).
  */
 
-export type STTProvider = 'openai' | 'google' | 'groq' | 'transformers';
+export type STTProvider = 'openai' | 'google' | 'groq' | 'transformers' | 'mock';
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
 
@@ -13,7 +13,8 @@ const providerNames: Record<STTProvider, string> = {
     openai: 'OpenAI',
     google: 'Google',
     groq: 'Groq',
-    transformers: 'Transformers'
+    transformers: 'Transformers',
+    mock: 'Mock'
 };
 
 export function getSTTProviderName(provider: STTProvider): string {

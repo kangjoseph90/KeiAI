@@ -19,8 +19,7 @@
         ChevronLeft,
         ChevronRight,
         Copy,
-        Languages,
-        ImageOff
+        Languages
     } from 'lucide-svelte';
     import { onDestroy } from 'svelte';
     import AssetView from '$lib/components/AssetView.svelte';
@@ -31,17 +30,18 @@
     import { SvelteMap } from 'svelte/reactivity';
     import { scopeCss, stripStyleTags } from '$lib/utils/style';
     import {
-        getLastContentText,
-        findLastContentIndex,
+        getLastTextContent,
+        findVisibleStartIndex,
+        findLastTextIndex,
         type AgentPart
     } from '$lib/workflow/agent/llm';
-    import ContentPart from './ContentPart.svelte';
+    import TextPart from './TextPart.svelte';
+    import InlayPart from './InlayPart.svelte';
     import ThoughtPart from './ThoughtPart.svelte';
     import ToolCallPart from './ToolCallPart.svelte';
     import MessageMoreMenu from './MessageMoreMenu.svelte';
     import {
         activeRoom,
-        activeChat,
         appSettings,
         chatAssetsMap,
         selectActiveModules,
@@ -52,17 +52,25 @@
         multiRoomCharacters,
         multiRoomPersonas,
         modules,
+        imageGenerationTasks,
+        ttsTasks,
         translationTasks
     } from '$lib/stores';
     import {
         createTranslationSourceHash,
+        dismissImageGeneration,
+        dismissTTS,
         dismissTranslation,
+        runImageGeneration,
+        runTTS,
         runTranslation,
+        stopImageGeneration,
+        stopTTS,
         stopTranslation
     } from '$lib/tasks';
     import { getErrorMessage } from '$lib/types/errors';
     import type { RuntimeContext } from '$lib/types/context';
-    import { copyTextToClipboard } from '$lib/ui';
+    import { copyTextToClipboard, toast } from '$lib/ui';
 
     // ── Props ─────────────────────────────────────────────────────────────────
 
@@ -140,8 +148,10 @@
 
     /** The swipe that is currently active for this message. */
     let activeSwipe = $derived(message.swipes[message.activeSwipeId]);
-    let currentContent = $derived(activeSwipe ? getLastContentText(activeSwipe.parts) : '');
+    let currentContent = $derived(activeSwipe ? getLastTextContent(activeSwipe.parts) : '');
     let translationTask = $derived($translationTasks.get(message.id));
+    let imageGenerationTask = $derived($imageGenerationTasks.get(message.id));
+    let ttsTask = $derived($ttsTasks.get(message.id));
     let matchingTranslationTask = $derived(
         translationTask?.sourceHash === translationSourceHash ? translationTask : undefined
     );
@@ -159,6 +169,10 @@
             ? matchingTranslationTask.errorMessage
             : translationActionError
     );
+    let imageGenerationError = $derived(
+        imageGenerationTask?.status === 'error' ? imageGenerationTask.errorMessage : ''
+    );
+    let ttsError = $derived(ttsTask?.status === 'error' ? ttsTask.errorMessage : '');
 
     /** Swipes sorted by creation time for consistent navigation. */
     let sortedSwipes = $derived(
@@ -192,47 +206,12 @@
     // ── Parts timeline ────────────────────────────────────────────────────────
 
     let parts = $derived<AgentPart[]>(activeSwipe?.parts ?? []);
+    let imageAttachments = $derived(activeSwipe?.imageAttachments ?? []);
+    let audioAttachments = $derived(activeSwipe?.audioAttachments ?? []);
     let indexedParts = $derived(parts.map((part, index) => ({ part, index })));
-    let attachmentLocators = $derived.by(() => {
-        const chat = $activeChat;
-        const attachments: {
-            id: string;
-            name: string;
-            locator: AssetReadLocator | null;
-        }[] = [];
-
-        for (const attachmentId of activeSwipe?.attachments ?? []) {
-            const ref = chat?.id === message.chatId ? chat.inlays.refs[attachmentId] : undefined;
-            if (!ref || !chat) {
-                attachments.push({
-                    id: attachmentId,
-                    name: 'Attachment unavailable',
-                    locator: null
-                });
-                continue;
-            }
-
-            attachments.push({
-                id: ref.id,
-                name: ref.name,
-                locator: {
-                    scopeType: chat.scopeType,
-                    scopeId: chat.scopeId,
-                    ownerTable: 'chats',
-                    ownerId: chat.id,
-                    hash: ref.hash,
-                    encKey: ref.encKey
-                }
-            });
-        }
-
-        return attachments;
-    });
-
-    let lastContentIdx = $derived(findLastContentIndex(parts));
-
-    let traceCount = $derived(lastContentIdx >= 0 ? lastContentIdx : indexedParts.length);
-    let answerStartIdx = $derived(lastContentIdx >= 0 ? lastContentIdx : indexedParts.length);
+    let visibleStartIdx = $derived(findVisibleStartIndex(parts));
+    let traceCount = $derived(visibleStartIdx);
+    let lastTextIdx = $derived(findLastTextIndex(parts));
 
     let speakerAvatarLocator = $derived.by<AssetReadLocator | null>(() => {
         if (isUser) {
@@ -244,7 +223,8 @@
                       ownerTable: 'personas',
                       ownerId: persona.id,
                       hash: persona.avatar.hash,
-                      encKey: persona.avatar.encKey
+                      encKey: persona.avatar.encKey,
+                      mimeType: persona.avatar.mimeType
                   }
                 : null;
         } else {
@@ -256,7 +236,8 @@
                       ownerTable: 'characters',
                       ownerId: character.id,
                       hash: character.avatar.hash,
-                      encKey: character.avatar.encKey
+                      encKey: character.avatar.encKey,
+                      mimeType: character.avatar.mimeType
                   }
                 : null;
         }
@@ -284,7 +265,39 @@
         }
     }
 
-    // ── Render context (shared across content parts) ──────────────────────────
+    async function handleImageTask() {
+        if (imageGenerationTask?.status === 'generating') {
+            stopImageGeneration(message.id);
+            return;
+        }
+        try {
+            await runImageGeneration(message.id);
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Image generation failed',
+                description: getErrorMessage(error)
+            });
+        }
+    }
+
+    async function handleTTSTask() {
+        if (ttsTask?.status === 'generating') {
+            stopTTS(message.id);
+            return;
+        }
+        try {
+            await runTTS(message.id);
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            toast.error({
+                title: 'Text to speech failed',
+                description: getErrorMessage(error)
+            });
+        }
+    }
+
+    // ── Render context (shared across text parts) ─────────────────────────────
 
     let renderContext = $derived.by(() => {
         const ownerId = message.role === 'assistant' ? displayCharacterId : characterId;
@@ -451,9 +464,10 @@
 
     <!-- Content Column -->
     <div
-        class="col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-none flex-none flex-col gap-1 md:mx-0 md:mt-0 md:max-w-[75%] {isUser
-            ? 'justify-self-end items-end'
-            : 'justify-self-start items-start'}"
+        class="col-span-2 row-start-2 mx-2 mt-2 flex min-w-0 max-w-[calc(100%_-_1rem)] flex-none flex-col gap-1 md:mx-0 md:mt-0 md:max-w-[75%] {imageAttachments.length >
+            0 || audioAttachments.length > 0
+            ? 'w-full'
+            : ''} {isUser ? 'justify-self-end items-end' : 'justify-self-start items-start'}"
     >
         <span class="hidden text-xs font-medium text-muted-foreground md:block">{speakerName}</span>
 
@@ -511,119 +525,111 @@
 
             <!-- Message Content -->
         {:else}
-            {#if parts.length > 0 || attachmentLocators.length === 0}
-                <!-- Bubble -->
-                <div
-                    class="relative flex flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-foreground'}"
-                >
-                    {#if message.displayStatus === 'generating' && parts.length === 0}
-                        <span
-                            class="flex items-center gap-1.5 {isUser
-                                ? 'text-primary-foreground/70'
-                                : 'text-muted-foreground'}"
+            <!-- Bubble -->
+            <div
+                class="relative flex flex-col gap-2 rounded-lg px-4 py-2.5 text-sm {isUser
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-foreground'}"
+            >
+                {#if message.displayStatus === 'generating' && parts.length === 0}
+                    <span
+                        class="flex items-center gap-1.5 {isUser
+                            ? 'text-primary-foreground/70'
+                            : 'text-muted-foreground'}"
+                    >
+                        <Loader2 class="size-3 animate-spin" />
+                        {isUser ? 'Sending...' : 'Thinking...'}
+                    </span>
+                {:else if parts.length === 0}
+                    <div class="min-h-5"></div>
+                {:else}
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- CSS is scoped by data-keiai-message-scope -->
+                    {@html messageStyleHtml}
+
+                    {#if traceCount > 0}
+                        <button
+                            type="button"
+                            class="trace-summary-btn"
+                            onclick={() => (detailsOpen = !detailsOpen)}
+                            aria-label="Toggle trace timeline"
                         >
-                            <Loader2 class="size-3 animate-spin" />
-                            {isUser ? 'Sending...' : 'Thinking...'}
-                        </span>
-                    {:else if parts.length === 0}
-                        <div class="min-h-5"></div>
-                    {:else}
-                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- CSS is scoped by data-keiai-message-scope -->
-                        {@html messageStyleHtml}
-
-                        {#if traceCount > 0}
-                            <button
-                                type="button"
-                                class="trace-summary-btn"
-                                onclick={() => (detailsOpen = !detailsOpen)}
-                                aria-label="Toggle trace timeline"
+                            <span class="trace-root-dot"></span>
+                            <span class="font-medium"
+                                >{traceCount} step{traceCount > 1 ? 's' : ''}</span
                             >
-                                <span class="trace-root-dot"></span>
-                                <span class="font-medium"
-                                    >{traceCount} step{traceCount > 1 ? 's' : ''}</span
-                                >
-                            </button>
-                        {/if}
-
-                        <div class="trace-flat-list">
-                            {#each indexedParts as entry (entry.index)}
-                                {@const isTrace = entry.index < traceCount}
-                                {@const isFirstTrace = entry.index === 0}
-                                {@const isLastTrace = entry.index === traceCount - 1}
-                                {@const shouldHide = isTrace && traceCount > 0 && !detailsOpen}
-
-                                <div
-                                    class="trace-flat-item {isTrace
-                                        ? 'is-trace'
-                                        : 'is-answer'} {isFirstTrace
-                                        ? 'is-first-trace'
-                                        : ''} {isLastTrace ? 'is-last-trace' : ''} {shouldHide
-                                        ? 'hidden'
-                                        : ''}"
-                                >
-                                    {#if isTrace}
-                                        <span class="trace-dot"></span>
-                                    {/if}
-                                    <div class="trace-flat-body">
-                                        {#if entry.part.type === 'thought'}
-                                            <ThoughtPart
-                                                text={entry.part.text}
-                                                collapsible={traceCount > 1}
-                                            />
-                                        {:else if entry.part.type === 'tool_call'}
-                                            <ToolCallPart
-                                                id={entry.part.id}
-                                                name={entry.part.name}
-                                                status={entry.part.status}
-                                            />
-                                        {:else if entry.part.type === 'content'}
-                                            <ContentPart
-                                                text={entry.index === answerStartIdx &&
-                                                translatedContent &&
-                                                showTranslation
-                                                    ? translatedContent
-                                                    : entry.part.text}
-                                                {renderContext}
-                                                {isUser}
-                                            />
-                                        {/if}
-                                    </div>
-                                </div>
-                            {/each}
-                        </div>
+                        </button>
                     {/if}
-                </div>
-            {/if}
 
-            {#if attachmentLocators.length > 0}
-                <div
-                    class="flex flex-wrap gap-2 {parts.length > 0 ? 'mt-1' : ''} {isUser
-                        ? 'justify-end'
-                        : 'justify-start'}"
-                >
-                    {#each attachmentLocators as attachment (attachment.id)}
-                        <div class="size-24 overflow-hidden rounded-md border bg-muted">
-                            {#if attachment.locator}
-                                <AssetView
-                                    asset={attachment.locator}
-                                    alt={attachment.name}
-                                    class="size-full object-cover"
-                                    fallback="none"
-                                />
-                            {:else}
-                                <div
-                                    class="flex size-full items-center justify-center text-muted-foreground"
-                                    title={attachment.name}
-                                    aria-label={attachment.name}
-                                >
-                                    <ImageOff class="size-5" />
+                    <div class="trace-flat-list">
+                        {#each indexedParts as entry (entry.index)}
+                            {@const isTrace = entry.index < traceCount}
+                            {@const isFirstTrace = entry.index === 0}
+                            {@const isLastTrace = entry.index === traceCount - 1}
+                            {@const shouldHide = isTrace && traceCount > 0 && !detailsOpen}
+
+                            <div
+                                class="trace-flat-item {isTrace
+                                    ? 'is-trace'
+                                    : 'is-answer'} {isFirstTrace
+                                    ? 'is-first-trace'
+                                    : ''} {isLastTrace ? 'is-last-trace' : ''} {shouldHide
+                                    ? 'hidden'
+                                    : ''}"
+                            >
+                                {#if isTrace}
+                                    <span class="trace-dot"></span>
+                                {/if}
+                                <div class="trace-flat-body">
+                                    {#if entry.part.type === 'thought'}
+                                        <ThoughtPart
+                                            text={entry.part.text}
+                                            collapsible={traceCount > 1}
+                                        />
+                                    {:else if entry.part.type === 'tool_calls'}
+                                        <div class="flex flex-col gap-1">
+                                            {#each entry.part.calls as call (call.id)}
+                                                <ToolCallPart
+                                                    id={call.id}
+                                                    name={call.name}
+                                                    status={call.status}
+                                                />
+                                            {/each}
+                                        </div>
+                                    {:else if entry.part.type === 'text'}
+                                        <TextPart
+                                            text={entry.index === lastTextIdx &&
+                                            translatedContent &&
+                                            showTranslation
+                                                ? translatedContent
+                                                : entry.part.text}
+                                            {renderContext}
+                                            {isUser}
+                                        />
+                                    {:else if entry.part.type === 'inlay'}
+                                        <InlayPart ids={entry.part.ids} chatId={message.chatId} />
+                                    {/if}
                                 </div>
-                            {/if}
-                        </div>
-                    {/each}
-                </div>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+
+            {#if imageAttachments.length > 0}
+                <InlayPart
+                    ids={imageAttachments}
+                    chatId={message.chatId}
+                    variant="attachment"
+                    align={isUser ? 'end' : 'start'}
+                />
+            {/if}
+            {#if audioAttachments.length > 0}
+                <InlayPart
+                    ids={audioAttachments}
+                    chatId={message.chatId}
+                    variant="attachment"
+                    align={isUser ? 'end' : 'start'}
+                />
             {/if}
 
             {#if translationError}
@@ -637,6 +643,31 @@
                             translationActionError = '';
                             dismissTranslation(message.id);
                         }}><X class="size-3" /></button
+                    >
+                </div>
+            {/if}
+
+            {#if imageGenerationError}
+                <div class="flex items-center gap-2 text-xs text-destructive">
+                    <AlertCircle class="size-3" />
+                    <span>{imageGenerationError}</span>
+                    <button
+                        class="rounded p-0.5 hover:bg-destructive/10"
+                        aria-label="Dismiss image generation error"
+                        onclick={() => dismissImageGeneration(message.id)}
+                        ><X class="size-3" /></button
+                    >
+                </div>
+            {/if}
+
+            {#if ttsError}
+                <div class="flex items-center gap-2 text-xs text-destructive">
+                    <AlertCircle class="size-3" />
+                    <span>{ttsError}</span>
+                    <button
+                        class="rounded p-0.5 hover:bg-destructive/10"
+                        aria-label="Dismiss text to speech error"
+                        onclick={() => dismissTTS(message.id)}><X class="size-3" /></button
                     >
                 </div>
             {/if}
@@ -759,6 +790,12 @@
                     disabled={actionsDisabled}
                     {busyAction}
                     hasTranslation={cachedTranslation !== null}
+                    hasImageAttachments={imageAttachments.length > 0}
+                    hasAudioAttachments={audioAttachments.length > 0}
+                    imageTaskStatus={imageGenerationTask?.status}
+                    audioTaskStatus={ttsTask?.status}
+                    onGenerateImage={handleImageTask}
+                    onGenerateAudio={handleTTSTask}
                     onRetranslate={handleTranslate}
                     {onEditTranslation}
                     {onFork}

@@ -1,8 +1,10 @@
 import { getChatVariable, setChatVariable } from '$lib/managers/chat';
 import { getToggleMacroValue } from '$lib/managers/toggle';
+import { createLogger } from '$lib/adapters/logger';
 import { runTemplate, createDryRunMacros, mergeLocalMacros } from '$lib/template';
 import { AppError } from '$lib/types/errors';
 import type {
+    FilterAgentPartsNode,
     BooleanLogicNode,
     BooleanNode,
     BooleanNotNode,
@@ -10,6 +12,8 @@ import type {
     GateNode,
     GetChatVarNode,
     GetToggleNode,
+    SelectLastTextPartNode,
+    LogNode,
     NumberCompareNode,
     NumberMathNode,
     NumberNode,
@@ -26,8 +30,15 @@ import type {
     ToBooleanNode,
     ToNumberNode,
     UngateNode,
+    SelectVisiblePartsNode,
     WorkflowNodeExecutionContext
 } from '../types';
+import {
+    deserializeAgentParts,
+    getLastTextPart,
+    getVisibleParts,
+    serializeAgentParts
+} from '../agent/llm';
 import {
     createWorkflowErrorEvent,
     createWorkflowSkipEvent,
@@ -48,6 +59,8 @@ import {
     requireStringInput,
     requireWorkflowInput
 } from './utils';
+
+const logger = createLogger('workflow:log');
 
 export async function executeStringNode({
     node,
@@ -144,6 +157,22 @@ export async function executeSinkNode({
     // Sink has no output and no side effect; its sole purpose is to drive execution
     // of its dependency chain by awaiting the terminal event of its input.
     const input = requireWorkflowInput(inputs.content, 'Sink content input is required');
+    await input.done;
+    throwIfAborted(signal);
+}
+
+export async function executeLogNode({
+    node,
+    inputs,
+    signal
+}: WorkflowNodeExecutionContext<LogNode>): Promise<void> {
+    const input = requireWorkflowInput(inputs.content, 'Log content input is required');
+    input.subscribe((value) => {
+        logger.info(node.name, {
+            nodeId: node.id,
+            content: workflowValueToString(value)
+        });
+    });
     await input.done;
     throwIfAborted(signal);
 }
@@ -319,6 +348,70 @@ export async function executeStringRegexReplaceNode({
         compute: ({ text, regex, replace }) => {
             if (!regex) return text;
             return text.replace(new RegExp(regex, node.flags), replace);
+        }
+    });
+}
+
+export async function executeFilterAgentPartsNode({
+    node,
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<FilterAgentPartsNode>): Promise<void> {
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['content'],
+        read: workflowValueToString,
+        compute: ({ content }) =>
+            serializeAgentParts(
+                deserializeAgentParts(content).filter((part) => {
+                    switch (part.type) {
+                        case 'text':
+                            return node.includeText;
+                        case 'thought':
+                            return node.includeThought;
+                        case 'inlay':
+                            return node.includeInlay;
+                        case 'tool_calls':
+                            return node.includeToolCalls;
+                    }
+                })
+            )
+    });
+}
+
+export async function executeSelectVisiblePartsNode({
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<SelectVisiblePartsNode>): Promise<void> {
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['content'],
+        read: workflowValueToString,
+        compute: ({ content }) =>
+            serializeAgentParts(getVisibleParts(deserializeAgentParts(content)))
+    });
+}
+
+export async function executeSelectLastTextPartNode({
+    inputs,
+    output,
+    signal
+}: WorkflowNodeExecutionContext<SelectLastTextPartNode>): Promise<void> {
+    await executeStreamNode({
+        inputs,
+        output,
+        signal,
+        inputNames: ['content'],
+        read: workflowValueToString,
+        compute: ({ content }) => {
+            const part = getLastTextPart(deserializeAgentParts(content));
+            return serializeAgentParts(part ? [part] : []);
         }
     });
 }

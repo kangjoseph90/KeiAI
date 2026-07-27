@@ -5,7 +5,7 @@
  * Uses the Stable Image /v2beta REST endpoint.
  */
 
-import type { ImageGenResult, ImageGenHandler } from '../types';
+import type { ImageGenImage, ImageGenRequest, ImageGenHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
 import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
@@ -30,7 +30,15 @@ export class StabilityImageGenHandler implements ImageGenHandler {
         this.config = config;
     }
 
-    async generate(prompt: string, signal?: AbortSignal): Promise<ImageGenResult> {
+    async generate(request: ImageGenRequest, signal?: AbortSignal): Promise<ImageGenImage> {
+        if (request.referenceImages.length > 0 || request.styleImages.length > 0) {
+            throw new AppError(
+                'NOT_IMPLEMENTED',
+                'Stability image inputs are not supported by this handler yet'
+            );
+        }
+
+        const negativePrompt = request.negativePrompt?.trim();
         const response = await appHttp.fetch(
             buildUrl(this.config.baseUrl, `/v2beta/stable-image/generate/${this.config.modelId}`),
             {
@@ -40,7 +48,8 @@ export class StabilityImageGenHandler implements ImageGenHandler {
                     Accept: 'image/*'
                 },
                 body: JSON.stringify({
-                    prompt,
+                    prompt: request.prompt,
+                    ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
                     output_format: this.config.outputFormat ?? 'png',
                     aspect_ratio: this.config.aspectRatio ?? '1:1'
                 }),
@@ -57,6 +66,6 @@ export class StabilityImageGenHandler implements ImageGenHandler {
             new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
         );
 
-        return { images: [{ base64 }] };
+        return { base64 };
     }
 }

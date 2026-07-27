@@ -11,6 +11,7 @@ import type { STTProvider } from '$lib/types/models/stt';
 import { OpenAISTTHandler } from './handlers/openai';
 import { GoogleSTTHandler } from './handlers/google';
 import { TransformersSTTHandler } from './handlers/transformers';
+import { MockSTTHandler, type MockSTTBehavior } from './handlers/mock';
 
 export function selectSTTHandler(
     provider: STTProvider,
@@ -37,13 +38,20 @@ export function selectSTTHandler(
             return new GoogleSTTHandler({
                 apiKey: settings.google.apiKey,
                 baseUrl: 'https://speech.googleapis.com',
-                modelId: settings.google.stt.modelId
+                modelId: settings.google.stt.modelId,
+                languageCode: settings.google.stt.languageCode
             });
         }
 
         case 'transformers': {
             return new TransformersSTTHandler({
                 modelId: settings.transformers.stt.modelId
+            });
+        }
+
+        case 'mock': {
+            return new MockSTTHandler({
+                behavior: settings.mock.stt.modelId as MockSTTBehavior
             });
         }
     }

@@ -24,7 +24,7 @@ function makeMessage(index: number): Message {
         swipes: {
             [swipeId]: {
                 id: swipeId,
-                parts: [{ type: 'content', text: `message ${index}` }],
+                parts: [{ type: 'text', text: `message ${index}` }],
                 createdAt: index
             }
         }
@@ -104,6 +104,19 @@ describe('PagedMessages', () => {
 
         paged.clear();
         await paged.at(5);
+        expect(MessageService.getMessagesBefore).toHaveBeenCalledTimes(2);
+    });
+
+    it('invalidates only the page containing the requested index', async () => {
+        const paged = await PagedMessages.createBefore('chat-1', 'a-target', { pageSize: 4 });
+
+        await paged.at(1);
+        await paged.at(5);
+        paged.invalidate(5);
+        await paged.at(1);
+        await paged.at(5);
+
+        expect(MessageService.getMessagesAfter).toHaveBeenCalledTimes(1);
         expect(MessageService.getMessagesBefore).toHaveBeenCalledTimes(2);
     });
 

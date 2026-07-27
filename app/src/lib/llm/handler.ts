@@ -232,7 +232,7 @@ function resolveModel(config: LLMModelConfig, settings: AppSettings): LLMModel |
             tokenizer: config.tokenizer ?? 'o200k_base'
         };
         if (config.provider === 'transformers') {
-            model.unsupported = ['image_input', 'tool_call'];
+            model.unsupported = ['image_input', 'audio_input', 'video_input', 'tool_call'];
         }
         return model;
     }

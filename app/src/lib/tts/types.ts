@@ -1,5 +1,6 @@
 export interface TTSStreamChunk {
-    audio: ArrayBuffer;
+    data: Uint8Array<ArrayBuffer>;
+    mimeType: string;
 }
 
 export interface TTSStreamHandler {

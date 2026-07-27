@@ -141,7 +141,7 @@ describe('template', () => {
                 return {
                     activeSwipeId: 'swipe-1',
                     swipes: {
-                        'swipe-1': { parts: [{ type: 'content', text: 'Hello there' }] }
+                        'swipe-1': { parts: [{ type: 'text', text: 'Hello there' }] }
                     }
                 };
             }
@@ -150,7 +150,7 @@ describe('template', () => {
                 return {
                     activeSwipeId: 'swipe-1',
                     swipes: {
-                        'swipe-1': { parts: [{ type: 'content', text: 'See you' }] }
+                        'swipe-1': { parts: [{ type: 'text', text: 'See you' }] }
                     }
                 };
             }
@@ -519,6 +519,40 @@ describe('template', () => {
         const macros = createDisplayMacros(assetMap, ['char-1'], cache);
         await expect(runTemplate('{{img::avatar}}', {}, macros)).resolves.toBe(
             '<img data-keiai-asset="{&quot;scopeType&quot;:&quot;user&quot;,&quot;scopeId&quot;:&quot;user-1&quot;,&quot;ownerTable&quot;:&quot;characters&quot;,&quot;ownerId&quot;:&quot;char-1&quot;,&quot;hash&quot;:&quot;asset-1&quot;,&quot;encKey&quot;:&quot;key-1&quot;}" data-keiai-asset-name="avatar" alt="" loading="lazy" decoding="async" style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;" />'
+        );
+    });
+
+    it('renders audio and video assets with native media controls', async () => {
+        const audio: AssetReadLocator = {
+            scopeType: 'user',
+            scopeId: 'user-1',
+            ownerTable: 'characters',
+            ownerId: 'char-1',
+            hash: 'audio-1',
+            encKey: 'key-1',
+            mimeType: 'audio/mpeg'
+        };
+        const video: AssetReadLocator = {
+            ...audio,
+            hash: 'video-1',
+            mimeType: 'video/mp4'
+        };
+        const assetMap: AssetNameIndex = new Map([
+            [
+                'char-1',
+                new Map([
+                    ['theme', [audio]],
+                    ['intro', [video]]
+                ])
+            ]
+        ]);
+        const macros = createDisplayMacros(assetMap, ['char-1'], new Map());
+
+        await expect(runTemplate('{{audio::theme}}', {}, macros)).resolves.toContain(
+            '<audio data-keiai-asset='
+        );
+        await expect(runTemplate('{{video::intro}}', {}, macros)).resolves.toContain(
+            '<video data-keiai-asset='
         );
     });
 

@@ -1,7 +1,7 @@
-import type { DataRecord, DataScope, TableName } from '$lib/adapters/db';
+import type { DataRecord, DataScope } from '$lib/adapters/db';
 import { buffer } from './record_buffer';
 
-export type RoutableTable = Extract<TableName, 'rooms' | 'characters' | 'personas'>;
+export type RoutableTable = 'rooms' | 'characters' | 'personas';
 
 export class RecordScopeService {
     static async resolve(tableName: RoutableTable, id: string): Promise<DataScope | null> {

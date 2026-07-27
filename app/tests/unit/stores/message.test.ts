@@ -11,7 +11,7 @@ import {
 } from '$lib/stores/content/message';
 import { messages, roomChats, activeChatId } from '$lib/stores/state';
 import { MessageService, ChatService, type Message, type Chat } from '$lib/services';
-import { getLastContentText } from '$lib/workflow/agent/llm';
+import { getLastTextContent } from '$lib/workflow/agent/llm';
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
     let resolve!: (value: T) => void;
@@ -47,7 +47,7 @@ describe('Message Store', () => {
         scopeType: 'user',
         scopeId: 'user-1',
         role: 'user',
-        swipes: { s1: { id: 's1', parts: [{ type: 'content', text: 'Hello' }], createdAt: 1000 } },
+        swipes: { s1: { id: 's1', parts: [{ type: 'text', text: 'Hello' }], createdAt: 1000 } },
         activeSwipeId: 's1',
         sortOrder: 'a'
     };
@@ -183,7 +183,7 @@ describe('Message Store', () => {
                 swipes: {
                     s1: {
                         id: 's1',
-                        parts: [{ type: 'content', text: 'New message content' }],
+                        parts: [{ type: 'text', text: 'New message content' }],
                         createdAt: Date.now()
                     }
                 },
@@ -210,20 +210,20 @@ describe('Message Store', () => {
             const updatedMsg: Message = {
                 ...mockMessage,
                 swipes: {
-                    s1: { id: 's1', parts: [{ type: 'content', text: 'Updated' }], createdAt: 2000 }
+                    s1: { id: 's1', parts: [{ type: 'text', text: 'Updated' }], createdAt: 2000 }
                 }
             };
             vi.mocked(MessageService.update).mockResolvedValue(updatedMsg);
 
             await updateMessage('msg-1', {
                 swipes: {
-                    s1: { id: 's1', parts: [{ type: 'content', text: 'Updated' }], createdAt: 2000 }
+                    s1: { id: 's1', parts: [{ type: 'text', text: 'Updated' }], createdAt: 2000 }
                 }
             });
 
-            expect(getLastContentText(get(messages)[0].swipes['s1'].parts)).toBe('Updated');
+            expect(getLastTextContent(get(messages)[0].swipes['s1'].parts)).toBe('Updated');
             // O(1) lookup: verify EntityStore contains updated value
-            expect(getLastContentText(messages.get('msg-1')?.swipes['s1'].parts ?? [])).toBe(
+            expect(getLastTextContent(messages.get('msg-1')?.swipes['s1'].parts ?? [])).toBe(
                 'Updated'
             );
         });

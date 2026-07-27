@@ -43,7 +43,7 @@ export async function syncChatGreetings(chatId: string): Promise<void> {
             return Object.values(character.greetings)
                 .sort((a, b) => compareSortOrder(a.sortOrder, b.sortOrder))
                 .map((greeting) => {
-                    const parts: AgentPart[] = [{ type: 'content', text: greeting.content }];
+                    const parts: AgentPart[] = [{ type: 'text', text: greeting.content }];
                     return [
                         greeting.id,
                         {

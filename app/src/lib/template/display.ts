@@ -2,6 +2,7 @@ import type { Macro } from './types';
 import { AssetService, type AssetReadLocator } from '$lib/services/asset';
 import { assetRegistryId } from '$lib/adapters/asset';
 import { ChatService } from '$lib/services';
+import { getAssetMediaType, type AssetMediaType } from '$lib/types/asset';
 
 export type AssetNameIndex = Map<string, Map<string, AssetReadLocator[]>>;
 export type RawAssetUrlCache = Map<string, string | null>;
@@ -38,28 +39,26 @@ export function createDisplayMacros(
 ): Map<string, Macro> {
     const macros = new Map<string, Macro>();
 
-    const imageMacro: Macro = {
+    const mediaMacro: Macro = {
         run: ([name]) => {
             if (!name) return '';
 
             const resolved = resolveAssetName(index, ownerIds, name);
             if (!resolved) return '';
 
-            return [
-                '<img',
-                ` data-keiai-asset="${escapeHtmlAttribute(JSON.stringify(resolved))}"`,
-                ` data-keiai-asset-name="${escapeHtmlAttribute(name)}"`,
-                ' alt=""',
-                ' loading="lazy"',
-                ' decoding="async"',
-                ' style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;"',
-                ' />'
-            ].join('');
+            return renderMediaElement(resolved, {
+                assetName: name,
+                mediaType: resolved.mimeType ? getAssetMediaType(resolved.mimeType) : 'image'
+            });
         }
     };
 
-    macros.set('img', imageMacro);
-    macros.set('image', imageMacro);
+    macros.set('asset', mediaMacro);
+    macros.set('media', mediaMacro);
+    macros.set('img', mediaMacro);
+    macros.set('image', mediaMacro);
+    macros.set('audio', mediaMacro);
+    macros.set('video', mediaMacro);
     macros.set('inlay', {
         run: async ([inlayId], ctx) => {
             if (!inlayId || !ctx.chatId) return '';
@@ -73,19 +72,14 @@ export function createDisplayMacros(
                 ownerTable: 'chats',
                 ownerId: chat.id,
                 hash: ref.hash,
-                encKey: ref.encKey
+                encKey: ref.encKey,
+                mimeType: ref.mimeType
             };
 
-            return [
-                '<img',
-                ` data-keiai-asset="${escapeHtmlAttribute(JSON.stringify(locator))}"`,
-                ` data-keiai-inlay-id="${escapeHtmlAttribute(inlayId)}"`,
-                ' alt=""',
-                ' loading="lazy"',
-                ' decoding="async"',
-                ' style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;"',
-                ' />'
-            ].join('');
+            return renderMediaElement(locator, {
+                inlayId,
+                mediaType: ref.mimeType ? getAssetMediaType(ref.mimeType) : 'image'
+            });
         }
     });
 
@@ -96,6 +90,29 @@ export function createDisplayMacros(
     macros.set('path', rawMacro);
 
     return macros;
+}
+
+function renderMediaElement(
+    locator: AssetReadLocator,
+    options: { mediaType: AssetMediaType; assetName?: string; inlayId?: string }
+): string {
+    const data = [
+        ` data-keiai-asset="${escapeHtmlAttribute(JSON.stringify(locator))}"`,
+        options.assetName
+            ? ` data-keiai-asset-name="${escapeHtmlAttribute(options.assetName)}"`
+            : '',
+        options.inlayId ? ` data-keiai-inlay-id="${escapeHtmlAttribute(options.inlayId)}"` : ''
+    ].join('');
+
+    if (options.mediaType === 'audio') {
+        return `<audio${data} controls preload="metadata" style="max-width:100%;"></audio>`;
+    }
+    if (options.mediaType === 'video') {
+        return `<video${data} controls preload="metadata" playsinline style="max-width:100%;max-height:320px;border-radius:0.375rem;"></video>`;
+    }
+    if (options.mediaType !== 'image') return '';
+
+    return `<img${data} alt="" loading="lazy" decoding="async" style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 0.375rem;" />`;
 }
 
 async function readAssetUrl(

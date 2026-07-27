@@ -24,7 +24,7 @@ import type {
     MultiRoomMember
 } from '$lib/services';
 import type { SyncStatus } from '$lib/services';
-import type { DisplayMessage, ChatTask, TranslationTask } from './types';
+import type { DisplayMessage, ChatTask, MediaTask, TranslationTask } from './types';
 import { EntityStore } from './entity_store';
 import { compareSortOrder, listItems, sortByRefs } from '$lib/utils/ordering';
 import type { EntityListConfig, AssetRef } from '$lib/types/refs';
@@ -172,6 +172,8 @@ export const hasActiveModule = derived(activeModuleId, (id) => !!id);
  */
 export const chatTasks = writable<Map<string, ChatTask>>(new Map());
 export const translationTasks = writable<Map<string, TranslationTask>>(new Map());
+export const imageGenerationTasks = writable<Map<string, MediaTask>>(new Map());
+export const ttsTasks = writable<Map<string, MediaTask>>(new Map());
 
 /** True when the currently active chat has an in-flight task. */
 export const isChatRunning = derived([chatTasks, activeChat], ([tasks, chat]) =>
@@ -234,7 +236,8 @@ export const chatAssetsMap = derived(
                             ownerTable,
                             ownerId,
                             hash: ref.hash,
-                            encKey: ref.encKey
+                            encKey: ref.encKey,
+                            mimeType: ref.mimeType
                         });
                         ownerMap.set(normalized, list);
                     }

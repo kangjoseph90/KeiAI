@@ -1,11 +1,12 @@
 import { getAppSettings } from '$lib/stores/content/settings';
 import { getMergedLorebooks } from '$lib/stores/content/merged';
 import { resolveLLMModelConfig, resolveLLMParameters, selectLLMHandler } from '$lib/llm/handler';
-import type { LLMContentPart, LLMStreamContent } from '$lib/llm/types';
+import type { LLMMediaPart, LLMStreamContent, LLMToolRequestPart } from '$lib/llm/types';
+import { adaptMediaForCapabilities } from '$lib/llm/capabilities';
 import { ToolCallService } from '$lib/services/content/tool';
 import type { RuntimeContext } from '$lib/types/context';
 import { AppError } from '$lib/types/errors';
-import type { ToolCallRequest, ToolDefinition } from '$lib/types/tools';
+import type { ToolCallRequest, ToolCallStatus, ToolDefinition } from '$lib/types/tools';
 import { appConfirm } from '$lib/ui';
 import type { Macro } from '$lib/template';
 import type {
@@ -20,9 +21,15 @@ import {
     throwIfAborted,
     workflowValueToString
 } from '../util';
-import { agentPartsToLLMMessages, serializeAgentParts, type AgentPart } from './llm';
+import {
+    agentPartsToLLMMessages,
+    serializeAgentParts,
+    type AgentPart,
+    type AgentToolCall
+} from './llm';
 import { buildPrompt } from './prompt';
-import { getChat } from '$lib/stores';
+import { createChatInlay, getChat } from '$lib/stores';
+import { fromBase64 } from '$lib/crypto';
 import {
     getToolRuntimeContext,
     resolveAgentTools,
@@ -98,16 +105,7 @@ export async function executeAgentNode({
         localMacros: agentMacros
     });
 
-    // TODO: Share capability adaptation with CharJS and plugin LLM calls when more capabilities are added.
-    if (unsupported.includes('image_input')) {
-        basePrompt = basePrompt.map((message) => ({
-            ...message,
-            content: message.content.map(
-                (part): LLMContentPart =>
-                    part.type === 'image' ? { type: 'text', text: '[Image omitted]' } : part
-            )
-        }));
-    }
+    basePrompt = adaptMediaForCapabilities(basePrompt, unsupported);
     if (unsupported.includes('tool_call')) {
         tools = [];
         basePrompt = basePrompt
@@ -134,7 +132,11 @@ export async function executeAgentNode({
 
     for (let loop = 0; loop < MAX_AGENT_TOOL_CALL_LOOPS; loop += 1) {
         throwIfAborted(signal);
-        const followupPrompt = [...basePrompt, ...(await agentPartsToLLMMessages(completedParts))];
+        const promptChat = loop === 0 ? chat : ((await getChat(chat.id)) ?? chat);
+        const followupPrompt = [
+            ...basePrompt,
+            ...(await agentPartsToLLMMessages(completedParts, 'assistant', promptChat))
+        ];
         let latestRequestState: LLMStreamContent | null = null;
 
         for await (const state of handler.stream(followupPrompt, signal, {
@@ -152,19 +154,47 @@ export async function executeAgentNode({
 
         if (!latestRequestState) break;
 
-        const committedParts = toPreviewParts(latestRequestState);
+        const committedParts = await materializeOutputParts(latestRequestState, chat.id);
         completedParts.push(...committedParts);
         latest = serializeAgentParts(completedParts);
         if (shouldStream) emitIfChanged(latest);
 
-        for (const toolCall of latestRequestState.toolCalls ?? []) {
+        const toolCalls = latestRequestState.parts.filter(
+            (part): part is LLMToolRequestPart => part.type === 'tool_request'
+        );
+        const pendingToolCalls: Array<{ request: LLMToolRequestPart; recordId: string }> = [];
+        const batchCalls: AgentToolCall[] = [];
+        for (const toolCall of toolCalls) {
+            const created = await ToolCallService.create(
+                chat.id,
+                { status: 'pending', call: toolCall },
+                chat.scopeType
+            );
+            pendingToolCalls.push({ request: toolCall, recordId: created.id });
+            batchCalls.push({
+                id: created.id,
+                name: toolCall.name,
+                status: 'pending'
+            });
+        }
+        const batchIndex =
+            batchCalls.length > 0
+                ? completedParts.push({ type: 'tool_calls', calls: batchCalls }) - 1
+                : -1;
+        if (batchIndex >= 0) {
+            latest = serializeAgentParts(completedParts);
+            emitIfChanged(latest);
+        }
+
+        for (const pending of pendingToolCalls) {
             await executeToolCall({
-                toolCall,
+                toolCall: pending.request,
+                recordId: pending.recordId,
+                batchIndex,
                 tools,
                 requestApproval: (tool, request) =>
                     confirmToolCall(tool, request, node.name, signal),
                 ctx,
-                scopeType: chat.scopeType,
                 signal,
                 completedParts,
                 emit: () => {
@@ -174,7 +204,7 @@ export async function executeAgentNode({
             });
         }
 
-        const hasToolCall = Boolean(latestRequestState.toolCalls?.length);
+        const hasToolCall = toolCalls.length > 0;
         if (!hasToolCall) break;
     }
 
@@ -202,7 +232,7 @@ async function buildAgentLocalMacros(
     const macros = new Map<string, Macro>(localMacros);
 
     macros.set('slot', {
-        recursive: true,
+        recursive: false,
         run: (args) => {
             if (args.length !== 1) {
                 throw new Error('Agent input slot must be called as {{slot::name}}');
@@ -235,58 +265,105 @@ function shouldResolveLorebooks(node: AgentNode): boolean {
 
 function toPreviewParts(state: LLMStreamContent): AgentPart[] {
     const parts: AgentPart[] = [];
-    if (state.thought?.trim()) {
-        parts.push({ type: 'thought', text: state.thought.trim() });
-    }
-    if (state.content) {
-        parts.push({ type: 'content', text: state.content });
+    for (const part of state.parts) {
+        if (part.type === 'thought' && part.text.trim()) {
+            parts.push({ type: 'thought', text: part.text.trim() });
+        } else if (part.type === 'text' && part.text) {
+            parts.push({ type: 'text', text: part.text });
+        }
     }
     return parts;
 }
 
+async function materializeOutputParts(
+    state: LLMStreamContent,
+    chatId: string
+): Promise<AgentPart[]> {
+    const parts: AgentPart[] = [];
+
+    let pendingInlayIds: string[] = [];
+    const flushInlays = (): void => {
+        if (pendingInlayIds.length === 0) return;
+        parts.push({ type: 'inlay', ids: pendingInlayIds });
+        pendingInlayIds = [];
+    };
+
+    let mediaIndex = 0;
+    for (const part of state.parts) {
+        if (part.type === 'thought') {
+            flushInlays();
+            if (part.text.trim()) parts.push({ type: 'thought', text: part.text.trim() });
+            continue;
+        }
+        if (part.type === 'text') {
+            flushInlays();
+            if (part.text) parts.push({ type: 'text', text: part.text });
+            continue;
+        }
+        if (part.type === 'tool_request') {
+            flushInlays();
+            continue;
+        }
+
+        const bytes = fromBase64(part.data);
+        const extension = getMediaExtension(part);
+        const file = new File([bytes], `generated-${++mediaIndex}.${extension}`, {
+            type: part.mimeType
+        });
+        const ref = await createChatInlay(chatId, file);
+        pendingInlayIds.push(ref.id);
+    }
+    flushInlays();
+    return parts;
+}
+
+function getMediaExtension(part: LLMMediaPart): string {
+    const subtype = part.mimeType.split('/')[1]?.split(';')[0]?.trim().toLowerCase();
+    if (subtype === 'jpeg') return 'jpg';
+    if (subtype === 'x-wav') return 'wav';
+    return subtype || part.type;
+}
+
 interface ExecuteToolCallInput {
     toolCall: ToolCallRequest;
+    recordId: string;
+    batchIndex: number;
     tools: AgentToolDefinition[];
     requestApproval: (tool: AgentToolDefinition, toolCall: ToolCallRequest) => Promise<boolean>;
     ctx: RuntimeContext;
-    scopeType: 'user' | 'room';
     signal: AbortSignal;
     completedParts: AgentPart[];
     emit: () => void;
 }
 
 async function executeToolCall(input: ExecuteToolCallInput): Promise<void> {
-    const { toolCall, tools, requestApproval, ctx, scopeType, signal, completedParts, emit } =
-        input;
-    if (!ctx.chatId) throw new AppError('INVALID_INPUT', 'Tool call creation requires chatId');
+    const {
+        toolCall,
+        recordId,
+        batchIndex,
+        tools,
+        requestApproval,
+        ctx,
+        signal,
+        completedParts,
+        emit
+    } = input;
 
-    const created = await ToolCallService.create(
-        ctx.chatId,
-        { status: 'pending', call: toolCall },
-        scopeType
-    );
-    const partIndex =
-        completedParts.push({
-            type: 'tool_call',
-            id: created.id,
-            name: toolCall.name,
-            status: 'pending'
-        }) - 1;
-    emit();
-
-    const setStatus = (status: Extract<AgentPart, { type: 'tool_call' }>['status']): void => {
-        completedParts[partIndex] = {
-            type: 'tool_call',
-            id: created.id,
-            name: toolCall.name,
-            status
+    const setStatus = (status: ToolCallStatus): void => {
+        const batch = completedParts[batchIndex];
+        if (batch?.type !== 'tool_calls') {
+            throw new AppError('INVALID_INPUT', 'Tool call batch is unavailable');
+        }
+        completedParts[batchIndex] = {
+            type: 'tool_calls',
+            calls: batch.calls.map((call) => (call.id === recordId ? { ...call, status } : call))
         };
         emit();
     };
 
     const tool = tools.find((candidate) => candidate.name === toolCall.name);
     if (!tool) {
-        await completeToolError(created.id, `Tool is not enabled for this agent: ${toolCall.name}`);
+        await completeToolError(recordId, `Tool is not enabled for this agent: ${toolCall.name}`);
         setStatus('error');
         return;
     }
@@ -297,7 +374,7 @@ async function executeToolCall(input: ExecuteToolCallInput): Promise<void> {
             const approved = await requestApproval(tool, toolCall);
             throwIfAborted(signal);
             if (!approved) {
-                await ToolCallService.update(created.id, {
+                await ToolCallService.update(recordId, {
                     status: 'rejected',
                     response: [{ type: 'text', text: 'User rejected the tool request.' }]
                 });
@@ -306,15 +383,15 @@ async function executeToolCall(input: ExecuteToolCallInput): Promise<void> {
             }
         }
 
-        await ToolCallService.update(created.id, { status: 'running' });
+        await ToolCallService.update(recordId, { status: 'running' });
         setStatus('running');
         const response = await tool.execute(toolCall.args, getToolRuntimeContext(ctx, signal));
         throwIfAborted(signal);
-        await ToolCallService.update(created.id, { status: 'success', response });
+        await ToolCallService.update(recordId, { status: 'success', response });
         setStatus('success');
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Tool execution failed';
-        await completeToolError(created.id, message);
+        await completeToolError(recordId, message);
         setStatus('error');
         if (error instanceof DOMException && error.name === 'AbortError') throw error;
     }

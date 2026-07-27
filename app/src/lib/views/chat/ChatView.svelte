@@ -43,11 +43,7 @@
     } from '$lib/stores';
     import { appConfirm, characterPickerOpen, personaPickerOpen, toast } from '$lib/ui';
     import { runChat, stopChat, dismissChat } from '$lib/tasks';
-    import {
-        getLastContentText,
-        findLastContentIndex,
-        type AgentPart
-    } from '$lib/workflow/agent/llm';
+    import { getLastTextContent, findLastTextIndex, type AgentPart } from '$lib/workflow/agent/llm';
     import { runPipeline } from '$lib/pipeline';
     import { runTemplate } from '$lib/template';
     import { navigate } from '$lib/router';
@@ -57,14 +53,8 @@
     import { forkChat, getChatVariables, prepareNextSwipe, syncChatGreetings } from '$lib/managers';
     import type { RuntimeContext } from '$lib/types/context';
     import { appDialog } from '$lib/adapters/dialog';
-    import {
-        MAX_ATTACHMENTS,
-        extractImageFilesFromDrop,
-        extractImageFilesFromPaste,
-        hasDroppableFiles,
-        selectImageFiles
-    } from './composer-assets';
     import { getErrorMessage } from '$lib/types/errors';
+    import { MEDIA_ASSET_EXTENSIONS } from '$lib/types/asset';
 
     let { roomId, chatId }: { roomId: string; chatId?: string } = $props();
 
@@ -83,6 +73,7 @@
     let hasMoreNewer = $state(false);
     let previousActiveChatId = $state<string | undefined>();
     let dragCounter = $state(0);
+    const MAX_ATTACHMENTS = 4;
     type MessageAction = 'save' | 'delete' | 'swipe' | 'fork';
     let messageAction = $state<{ messageId: string; type: MessageAction } | null>(null);
     let chatViewEpoch = 0;
@@ -253,7 +244,10 @@
         const templated = await runTemplate(newMessageText, ctx);
         const piped = await runPipeline('input', ctx, templated);
         const processedText = await runTemplate(piped, ctx);
-        const attachments = Array.from(pendingAttachments);
+        const inlayIds = Array.from(pendingAttachments);
+        const parts: AgentPart[] = [];
+        if (inlayIds.length > 0) parts.push({ type: 'inlay', ids: inlayIds });
+        if (processedText.trim()) parts.push({ type: 'text', text: processedText });
 
         const variables = await getChatVariables($activeChat.id);
         const message = await createMessage($activeChat.id, {
@@ -261,11 +255,10 @@
         });
 
         await prepareNextSwipe(message, {
-            parts: processedText.trim() ? [{ type: 'content', text: processedText }] : [],
+            parts,
             variables,
             speakerId: selectedPersona.id,
             speakerName: selectedPersona.name,
-            attachments,
             replaceActiveSwipe: true
         });
 
@@ -289,62 +282,88 @@
         if (!chatId) return;
 
         const remaining = MAX_ATTACHMENTS - pendingAttachments.length;
-        const candidates = selectImageFiles(files, remaining);
+        const candidates = files.slice(0, remaining);
         if (candidates.length === 0) return;
 
+        let firstError: unknown;
         for (const file of candidates) {
             try {
                 const ref = await createChatInlay(chatId, file);
                 // Only attach if the user hasn't switched chats while we awaited.
                 if ($activeChat?.id === chatId) addAttachment(ref.id);
             } catch (err) {
-                logger.error('Failed to attach image:', err);
+                logger.error('Failed to attach media:', err);
+                firstError ??= err;
             }
+        }
+        if (firstError) {
+            toast.error({
+                title: 'Could not attach some media',
+                description: getErrorMessage(firstError)
+            });
         }
     }
 
     async function handleAttachmentUpload() {
         if (!$activeChat || pendingAttachments.length >= MAX_ATTACHMENTS) return;
 
-        const file = await appDialog.openFile({
-            title: 'Attach Image',
-            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        const files = await appDialog.openMultipleFiles({
+            title: 'Attach Media',
+            filters: [{ name: 'Images, audio, and video', extensions: [...MEDIA_ASSET_EXTENSIONS] }]
         });
-        if (!file) return;
+        if (!files?.length) return;
 
-        await attachFiles([file]);
+        await attachFiles(files);
     }
 
     function handlePaste(e: ClipboardEvent) {
-        const images = extractImageFilesFromPaste(e);
-        if (images.length === 0) return; // text-only paste: keep browser default
+        const files = filesFromPaste(e);
+        if (files.length === 0) return;
         e.preventDefault();
-        void attachFiles(images);
+        void attachFiles(files);
     }
 
     function handleDragEnter(e: DragEvent) {
-        if (!hasDroppableFiles(e)) return;
+        if (!hasDraggedFiles(e)) return;
         e.preventDefault();
         dragCounter += 1;
     }
 
     function handleDragOver(e: DragEvent) {
-        if (!hasDroppableFiles(e)) return;
+        if (!hasDraggedFiles(e)) return;
         e.preventDefault();
     }
 
     function handleDragLeave(e: DragEvent) {
-        if (!hasDroppableFiles(e)) return;
+        if (!hasDraggedFiles(e)) return;
         e.preventDefault();
         dragCounter = Math.max(0, dragCounter - 1);
     }
 
     function handleDrop(e: DragEvent) {
-        if (!hasDroppableFiles(e)) return;
+        if (!hasDraggedFiles(e)) return;
         e.preventDefault();
         dragCounter = 0;
-        const images = extractImageFilesFromDrop(e);
-        if (images.length > 0) void attachFiles(images);
+        const files = Array.from(e.dataTransfer?.files ?? []);
+        if (files.length > 0) void attachFiles(files);
+    }
+
+    function filesFromPaste(e: ClipboardEvent): File[] {
+        const data = e.clipboardData;
+        if (!data) return [];
+        const files = Array.from(data.files ?? []);
+        if (files.length > 0) return files;
+        return Array.from(data.items ?? []).flatMap((item) => {
+            if (item.kind !== 'file') return [];
+            const file = item.getAsFile();
+            return file ? [file] : [];
+        });
+    }
+
+    function hasDraggedFiles(e: DragEvent): boolean {
+        const data = e.dataTransfer;
+        if (!data) return false;
+        return data.files.length > 0 || Array.from(data.types).includes('Files');
     }
 
     function addAttachment(assetId: string) {
@@ -399,16 +418,16 @@
         if (!activeSwipe) return;
 
         const newParts = [...activeSwipe.parts];
-        const lastContentIdx = findLastContentIndex(newParts);
+        const lastTextIdx = findLastTextIndex(newParts);
 
-        if (lastContentIdx >= 0) {
-            newParts[lastContentIdx] = {
-                ...newParts[lastContentIdx],
-                type: 'content',
+        if (lastTextIdx >= 0) {
+            newParts[lastTextIdx] = {
+                ...newParts[lastTextIdx],
+                type: 'text',
                 text: editMessageText
             };
         } else {
-            newParts.push({ type: 'content', text: editMessageText });
+            newParts.push({ type: 'text', text: editMessageText });
         }
 
         await runMessageAction(id, 'save', 'Could not save message', async (targetChatId) => {
@@ -592,7 +611,7 @@
                                     isEditingTranslation = false;
                                     const activeSwipe = msg.swipes[msg.activeSwipeId];
                                     editMessageText = activeSwipe
-                                        ? getLastContentText(activeSwipe.parts)
+                                        ? getLastTextContent(activeSwipe.parts)
                                         : '';
                                 }}
                                 onEditTranslation={() => {
@@ -657,7 +676,7 @@
                         <div
                             class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-md border-2 border-dashed border-primary/50 bg-primary/5 text-sm font-medium text-primary"
                         >
-                            Drop images to attach
+                            Drop images, audio, or video to attach
                         </div>
                     {/if}
                     <div class="min-w-0 flex-1 space-y-2">
@@ -677,7 +696,8 @@
                                                     ownerTable: 'chats',
                                                     ownerId: $activeChat!.id,
                                                     hash: ref.hash,
-                                                    encKey: ref.encKey
+                                                    encKey: ref.encKey,
+                                                    mimeType: ref.mimeType
                                                 }}
                                                 alt={ref.name}
                                                 class="size-full object-cover"
@@ -704,8 +724,8 @@
                                 onclick={handleAttachmentUpload}
                                 disabled={$isChatRunning ||
                                     pendingAttachments.length >= MAX_ATTACHMENTS}
-                                title="Attach image"
-                                aria-label="Attach image"
+                                title="Attach media"
+                                aria-label="Attach media"
                             >
                                 <Paperclip class="size-4" />
                             </Button>

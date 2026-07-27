@@ -12,6 +12,7 @@ export type ViewMode =
     | 'settings';
 export type SettingsTab =
     | 'models'
+    | 'services'
     | 'chat'
     | 'plugins'
     | 'language'
@@ -144,6 +145,7 @@ function parseHash(hash: string): RouteState {
     if (parts[0] === 'settings') {
         if (
             parts[1] === 'models' ||
+            parts[1] === 'services' ||
             parts[1] === 'chat' ||
             parts[1] === 'plugins' ||
             parts[1] === 'language' ||

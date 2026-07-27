@@ -30,6 +30,14 @@ export async function requireStringInput(
     return workflowValueToString(result.value);
 }
 
+export async function optionalStringInput(
+    input: WorkflowInput | undefined,
+    signal: AbortSignal
+): Promise<string> {
+    if (!input) return '';
+    return requireStringInput(input, 'Optional input is unavailable', signal);
+}
+
 export function requireWorkflowInput(
     input: WorkflowInput | undefined,
     message: string

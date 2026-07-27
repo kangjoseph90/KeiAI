@@ -175,21 +175,21 @@ function risuPromptToKeiBlock(
     if (item.type === 'description')
         return {
             name,
-            type: 'text',
+            type: 'message',
             role: 'system',
             content: formatMacroText(item.innerFormat, '{{description}}')
         };
     if (item.type === 'persona')
         return {
             name,
-            type: 'text',
+            type: 'message',
             role: 'system',
             content: formatMacroText(item.innerFormat, '{{persona}}')
         };
     if (item.type === 'plain' && item.type2 === 'globalNote')
         return {
             name,
-            type: 'text',
+            type: 'message',
             role: 'system',
             content: formatMacroText(item.text, '{{characternote}}')
         };
@@ -208,7 +208,7 @@ function risuPromptToKeiBlock(
     if (item.type === 'authornote')
         return {
             name,
-            type: 'text',
+            type: 'message',
             role: 'system',
             content: formatMacroText(item.innerFormat ?? item.defaultText, '{{chatnote}}')
         };
@@ -224,7 +224,7 @@ function risuPromptToKeiBlock(
     }
     return {
         name,
-        type: 'text',
+        type: 'message',
         role: risuRoleToKei('role' in item ? item.role : undefined),
         content: 'text' in item ? normalizeRisuTemplate(item.text ?? '') : ''
     };

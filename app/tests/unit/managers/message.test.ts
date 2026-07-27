@@ -24,7 +24,7 @@ describe('MessageManager', () => {
         swipes: {
             'old-swipe': {
                 id: 'old-swipe',
-                parts: [{ type: 'content', text: 'Old' }],
+                parts: [{ type: 'text', text: 'Old' }],
                 createdAt: 1,
                 variables: { old: '1' },
                 speakerId: 'char-old',
@@ -43,7 +43,7 @@ describe('MessageManager', () => {
                 ...baseMessage.swipes,
                 'new-swipe': {
                     id: 'new-swipe',
-                    parts: [{ type: 'content', text: 'New' }],
+                    parts: [{ type: 'text', text: 'New' }],
                     createdAt: 2,
                     variables: { mood: 'calm' },
                     speakerId: 'char-1',
@@ -55,7 +55,7 @@ describe('MessageManager', () => {
 
     it('creates a new active swipe with variables and speaker metadata', async () => {
         const result = await prepareNextSwipe(baseMessage, {
-            parts: [{ type: 'content', text: 'New' }],
+            parts: [{ type: 'text', text: 'New' }],
             variables: { mood: 'calm' },
             speakerId: 'char-1',
             speakerName: 'Alpha'
@@ -65,7 +65,7 @@ describe('MessageManager', () => {
             swipes: {
                 'new-swipe': {
                     id: 'new-swipe',
-                    parts: [{ type: 'content', text: 'New' }],
+                    parts: [{ type: 'text', text: 'New' }],
                     variables: { mood: 'calm' },
                     speakerId: 'char-1',
                     speakerName: 'Alpha',
@@ -80,7 +80,7 @@ describe('MessageManager', () => {
 
     it('replaces the active swipe in the same update when requested', async () => {
         await prepareNextSwipe(baseMessage, {
-            parts: [{ type: 'content', text: 'Replacement' }],
+            parts: [{ type: 'text', text: 'Replacement' }],
             variables: {},
             replaceActiveSwipe: true
         });
@@ -91,7 +91,7 @@ describe('MessageManager', () => {
                 swipes: expect.objectContaining({
                     'old-swipe': undefined,
                     'new-swipe': expect.objectContaining({
-                        parts: [{ type: 'content', text: 'Replacement' }]
+                        parts: [{ type: 'text', text: 'Replacement' }]
                     })
                 }),
                 activeSwipeId: 'new-swipe'
@@ -99,35 +99,25 @@ describe('MessageManager', () => {
         );
     });
 
-    it('persists attachment references on the new swipe', async () => {
+    it('persists inlay parts on the new swipe', async () => {
         await prepareNextSwipe(baseMessage, {
-            parts: [{ type: 'content', text: 'With image' }],
-            variables: {},
-            attachments: ['inlay-1', 'inlay-2']
+            parts: [
+                { type: 'text', text: 'With image' },
+                { type: 'inlay', ids: ['inlay-1', 'inlay-2'] }
+            ],
+            variables: {}
         });
 
         expect(updateMessage).toHaveBeenCalledWith(
             'msg-1',
             expect.objectContaining({
                 swipes: {
-                    'new-swipe': expect.objectContaining({ attachments: ['inlay-1', 'inlay-2'] })
-                }
-            })
-        );
-    });
-
-    it('omits empty attachment references', async () => {
-        await prepareNextSwipe(baseMessage, {
-            parts: [{ type: 'content', text: 'Text only' }],
-            variables: {},
-            attachments: []
-        });
-
-        expect(updateMessage).toHaveBeenCalledWith(
-            'msg-1',
-            expect.objectContaining({
-                swipes: {
-                    'new-swipe': expect.not.objectContaining({ attachments: expect.anything() })
+                    'new-swipe': expect.objectContaining({
+                        parts: [
+                            { type: 'text', text: 'With image' },
+                            { type: 'inlay', ids: ['inlay-1', 'inlay-2'] }
+                        ]
+                    })
                 }
             })
         );
@@ -140,7 +130,7 @@ describe('MessageManager', () => {
                 activeSwipeId: 'missing'
             },
             {
-                parts: [{ type: 'content', text: 'New' }],
+                parts: [{ type: 'text', text: 'New' }],
                 variables: {},
                 replaceActiveSwipe: true
             }
@@ -159,7 +149,7 @@ describe('MessageManager', () => {
 
         await expect(
             prepareNextSwipe(baseMessage, {
-                parts: [{ type: 'content', text: 'New' }],
+                parts: [{ type: 'text', text: 'New' }],
                 variables: {}
             })
         ).rejects.toThrow(AppError);

@@ -1,5 +1,6 @@
 import type {
     AgentNode,
+    FilterAgentPartsNode,
     BooleanLogicNode,
     BooleanNode,
     BooleanNotNode,
@@ -7,13 +8,24 @@ import type {
     FileReadNode,
     FileWriteNode,
     GateNode,
+    GetAudioAttachmentsNode,
     GetChatVarNode,
+    GetHistoryNode,
+    GetImageAttachmentsNode,
     GetToggleNode,
+    GetTranslationNode,
+    ImageGenerationNode,
+    LogNode,
+    SelectLastTextPartNode,
     NumberCompareNode,
     NumberMathNode,
     NumberNode,
     OutputNode,
     SetChatVarNode,
+    SetAudioAttachmentsNode,
+    SetHistoryNode,
+    SetImageAttachmentsNode,
+    SetTranslationNode,
     SinkNode,
     StringConcatNode,
     StringIncludesNode,
@@ -21,11 +33,14 @@ import type {
     StringNode,
     StringRegexReplaceNode,
     StringReplaceNode,
+    STTNode,
     TemplateNode,
+    TTSNode,
     ThrowIfNode,
     ToBooleanNode,
     ToNumberNode,
     UngateNode,
+    SelectVisiblePartsNode,
     WorkflowNode,
     WorkflowNodeClass,
     WorkflowPortType
@@ -33,6 +48,7 @@ import type {
 
 export type WorkflowNodeCategory =
     | 'agent'
+    | 'history'
     | 'string'
     | 'number'
     | 'boolean'
@@ -43,6 +59,7 @@ export type WorkflowNodeCategory =
 
 export const WORKFLOW_NODE_CATEGORY_ORDER: WorkflowNodeCategory[] = [
     'agent',
+    'history',
     'string',
     'number',
     'boolean',
@@ -54,6 +71,7 @@ export const WORKFLOW_NODE_CATEGORY_ORDER: WorkflowNodeCategory[] = [
 
 export const WORKFLOW_NODE_CATEGORY_LABELS = {
     agent: 'Agent',
+    history: 'History',
     string: 'String',
     number: 'Number',
     boolean: 'Boolean',
@@ -67,6 +85,7 @@ export interface WorkflowPortDefinition {
     name: string;
     type: WorkflowPortType;
     required?: boolean;
+    allowLiteral?: boolean;
 }
 
 export interface WorkflowNodeDefinition<TNode extends WorkflowNode> {
@@ -76,7 +95,7 @@ export interface WorkflowNodeDefinition<TNode extends WorkflowNode> {
     inputs: Record<string, WorkflowPortDefinition>;
     outputs: Record<number, WorkflowPortDefinition>;
     isSink?: boolean;
-    createDefault: (id: string) => TNode;
+    createDefault: (id: string) => Omit<TNode, 'collapsed'>;
 }
 
 const STRING_OUTPUT = { 0: { name: 'content', type: 'string' } } as const;
@@ -390,6 +409,310 @@ export const STRING_REGEX_REPLACE_NODE_DEFINITION: WorkflowNodeDefinition<String
         })
     };
 
+export const FILTER_AGENT_PARTS_NODE_DEFINITION: WorkflowNodeDefinition<FilterAgentPartsNode> = {
+    class: 'FilterAgentParts',
+    label: 'Filter Agent Parts',
+    category: 'agent',
+    inputs: {
+        content: { name: 'Content', type: 'string', required: false },
+        stream: STREAM_INPUT
+    },
+    outputs: RESULT_STRING_OUTPUT,
+    createDefault: (id) => ({
+        id,
+        name: 'Filter Agent Parts',
+        class: 'FilterAgentParts',
+        position: { x: 0, y: 0 },
+        includeText: true,
+        includeThought: true,
+        includeInlay: true,
+        includeToolCalls: true,
+        inputs: { content: null, stream: null },
+        inputValues: { content: '', stream: false }
+    })
+};
+
+export const SELECT_VISIBLE_PARTS_NODE_DEFINITION: WorkflowNodeDefinition<SelectVisiblePartsNode> =
+    {
+        class: 'SelectVisibleParts',
+        label: 'Select Visible Parts',
+        category: 'agent',
+        inputs: {
+            content: { name: 'Content', type: 'string', required: false },
+            stream: STREAM_INPUT
+        },
+        outputs: RESULT_STRING_OUTPUT,
+        createDefault: (id) => ({
+            id,
+            name: 'Select Visible Parts',
+            class: 'SelectVisibleParts',
+            position: { x: 0, y: 0 },
+            inputs: { content: null, stream: null },
+            inputValues: { content: '', stream: false }
+        })
+    };
+
+export const SELECT_LAST_TEXT_PART_NODE_DEFINITION: WorkflowNodeDefinition<SelectLastTextPartNode> =
+    {
+        class: 'SelectLastTextPart',
+        label: 'Select Last Text Part',
+        category: 'agent',
+        inputs: {
+            content: { name: 'Content', type: 'string', required: false },
+            stream: STREAM_INPUT
+        },
+        outputs: RESULT_STRING_OUTPUT,
+        createDefault: (id) => ({
+            id,
+            name: 'Select Last Text Part',
+            class: 'SelectLastTextPart',
+            position: { x: 0, y: 0 },
+            inputs: { content: null, stream: null },
+            inputValues: { content: '', stream: false }
+        })
+    };
+
+export const IMAGE_GENERATION_NODE_DEFINITION: WorkflowNodeDefinition<ImageGenerationNode> = {
+    class: 'ImageGeneration',
+    label: 'Image Generation',
+    category: 'agent',
+    inputs: {
+        prompt: { name: 'Prompt', type: 'string', required: true },
+        negativePrompt: { name: 'Negative Prompt', type: 'string', required: false },
+        referenceImages: {
+            name: 'Reference Images',
+            type: 'string',
+            required: false,
+            allowLiteral: false
+        },
+        styleImages: {
+            name: 'Style Images',
+            type: 'string',
+            required: false,
+            allowLiteral: false
+        }
+    },
+    outputs: { 0: { name: 'image', type: 'string' } },
+    createDefault: (id) => ({
+        id,
+        name: 'Image Generation',
+        class: 'ImageGeneration',
+        position: { x: 0, y: 0 },
+        inputs: {
+            prompt: null,
+            negativePrompt: null,
+            referenceImages: null,
+            styleImages: null
+        },
+        inputValues: {
+            prompt: '',
+            negativePrompt: ''
+        }
+    })
+};
+
+export const TTS_NODE_DEFINITION: WorkflowNodeDefinition<TTSNode> = {
+    class: 'TTS',
+    label: 'Text to Speech',
+    category: 'agent',
+    inputs: {
+        text: { name: 'Text', type: 'string', required: true }
+    },
+    outputs: { 0: { name: 'audio', type: 'string' } },
+    createDefault: (id) => ({
+        id,
+        name: 'Text to Speech',
+        class: 'TTS',
+        position: { x: 0, y: 0 },
+        inputs: { text: null },
+        inputValues: { text: '' }
+    })
+};
+
+export const STT_NODE_DEFINITION: WorkflowNodeDefinition<STTNode> = {
+    class: 'STT',
+    label: 'Speech to Text',
+    category: 'agent',
+    inputs: {
+        audio: { name: 'Audio', type: 'string', required: true, allowLiteral: false }
+    },
+    outputs: { 0: { name: 'text', type: 'string' } },
+    createDefault: (id) => ({
+        id,
+        name: 'Speech to Text',
+        class: 'STT',
+        position: { x: 0, y: 0 },
+        inputs: { audio: null },
+        inputValues: {}
+    })
+};
+
+export const GET_HISTORY_NODE_DEFINITION: WorkflowNodeDefinition<GetHistoryNode> = {
+    class: 'GetHistory',
+    label: 'Get History',
+    category: 'history',
+    inputs: {
+        index: { name: 'Index', type: 'number', required: true }
+    },
+    outputs: STRING_OUTPUT,
+    createDefault: (id) => ({
+        id,
+        name: 'Get History',
+        class: 'GetHistory',
+        position: { x: 0, y: 0 },
+        inputs: { index: null },
+        inputValues: { index: -1 }
+    })
+};
+
+export const SET_HISTORY_NODE_DEFINITION: WorkflowNodeDefinition<SetHistoryNode> = {
+    class: 'SetHistory',
+    label: 'Set History',
+    category: 'history',
+    isSink: true,
+    inputs: {
+        index: { name: 'Index', type: 'number', required: true },
+        content: { name: 'Content', type: 'string', required: true }
+    },
+    outputs: {},
+    createDefault: (id) => ({
+        id,
+        name: 'Set History',
+        class: 'SetHistory',
+        position: { x: 0, y: 0 },
+        inputs: { index: null, content: null },
+        inputValues: { index: -1, content: '' }
+    })
+};
+
+export const GET_IMAGE_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<GetImageAttachmentsNode> =
+    {
+        class: 'GetImageAttachments',
+        label: 'Get Image Attachments',
+        category: 'history',
+        inputs: {
+            index: { name: 'Index', type: 'number', required: true }
+        },
+        outputs: STRING_OUTPUT,
+        createDefault: (id) => ({
+            id,
+            name: 'Get Image Attachments',
+            class: 'GetImageAttachments',
+            position: { x: 0, y: 0 },
+            inputs: { index: null },
+            inputValues: { index: -1 }
+        })
+    };
+
+export const SET_IMAGE_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<SetImageAttachmentsNode> =
+    {
+        class: 'SetImageAttachments',
+        label: 'Set Image Attachments',
+        category: 'history',
+        isSink: true,
+        inputs: {
+            index: { name: 'Index', type: 'number', required: true },
+            content: {
+                name: 'Content',
+                type: 'string',
+                required: true,
+                allowLiteral: false
+            }
+        },
+        outputs: {},
+        createDefault: (id) => ({
+            id,
+            name: 'Set Image Attachments',
+            class: 'SetImageAttachments',
+            position: { x: 0, y: 0 },
+            inputs: { index: null, content: null },
+            inputValues: { index: -1 }
+        })
+    };
+
+export const GET_AUDIO_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<GetAudioAttachmentsNode> =
+    {
+        class: 'GetAudioAttachments',
+        label: 'Get Audio Attachments',
+        category: 'history',
+        inputs: {
+            index: { name: 'Index', type: 'number', required: true }
+        },
+        outputs: STRING_OUTPUT,
+        createDefault: (id) => ({
+            id,
+            name: 'Get Audio Attachments',
+            class: 'GetAudioAttachments',
+            position: { x: 0, y: 0 },
+            inputs: { index: null },
+            inputValues: { index: -1 }
+        })
+    };
+
+export const SET_AUDIO_ATTACHMENTS_NODE_DEFINITION: WorkflowNodeDefinition<SetAudioAttachmentsNode> =
+    {
+        class: 'SetAudioAttachments',
+        label: 'Set Audio Attachments',
+        category: 'history',
+        isSink: true,
+        inputs: {
+            index: { name: 'Index', type: 'number', required: true },
+            content: {
+                name: 'Content',
+                type: 'string',
+                required: true,
+                allowLiteral: false
+            }
+        },
+        outputs: {},
+        createDefault: (id) => ({
+            id,
+            name: 'Set Audio Attachments',
+            class: 'SetAudioAttachments',
+            position: { x: 0, y: 0 },
+            inputs: { index: null, content: null },
+            inputValues: { index: -1 }
+        })
+    };
+
+export const GET_TRANSLATION_NODE_DEFINITION: WorkflowNodeDefinition<GetTranslationNode> = {
+    class: 'GetTranslation',
+    label: 'Get Translation',
+    category: 'history',
+    inputs: {
+        index: { name: 'Index', type: 'number', required: true }
+    },
+    outputs: STRING_OUTPUT,
+    createDefault: (id) => ({
+        id,
+        name: 'Get Translation',
+        class: 'GetTranslation',
+        position: { x: 0, y: 0 },
+        inputs: { index: null },
+        inputValues: { index: -1 }
+    })
+};
+
+export const SET_TRANSLATION_NODE_DEFINITION: WorkflowNodeDefinition<SetTranslationNode> = {
+    class: 'SetTranslation',
+    label: 'Set Translation',
+    category: 'history',
+    isSink: true,
+    inputs: {
+        index: { name: 'Index', type: 'number', required: true },
+        content: { name: 'Content', type: 'string', required: true }
+    },
+    outputs: {},
+    createDefault: (id) => ({
+        id,
+        name: 'Set Translation',
+        class: 'SetTranslation',
+        position: { x: 0, y: 0 },
+        inputs: { index: null, content: null },
+        inputValues: { index: -1, content: '' }
+    })
+};
+
 export const NUMBER_MATH_NODE_DEFINITION: WorkflowNodeDefinition<NumberMathNode> = {
     class: 'NumberMath',
     label: 'Number Math',
@@ -530,6 +853,23 @@ export const OUTPUT_NODE_DEFINITION: WorkflowNodeDefinition<OutputNode> = {
     })
 };
 
+export const LOG_NODE_DEFINITION: WorkflowNodeDefinition<LogNode> = {
+    class: 'Log',
+    label: 'Log',
+    category: 'result',
+    isSink: true,
+    inputs: { content: { name: 'Content', type: 'string', required: true } },
+    outputs: {},
+    createDefault: (id) => ({
+        id,
+        name: 'Log',
+        class: 'Log',
+        position: { x: 0, y: 0 },
+        inputs: { content: null },
+        inputValues: { content: '' }
+    })
+};
+
 export const SINK_NODE_DEFINITION: WorkflowNodeDefinition<SinkNode> = {
     class: 'Sink',
     label: 'Sink',
@@ -611,37 +951,56 @@ export const AGENT_NODE_DEFINITION: WorkflowNodeDefinition<AgentNode> = {
 };
 
 export const WORKFLOW_NODE_DEFINITIONS = {
+    Agent: AGENT_NODE_DEFINITION,
+    ImageGeneration: IMAGE_GENERATION_NODE_DEFINITION,
+    TTS: TTS_NODE_DEFINITION,
+    STT: STT_NODE_DEFINITION,
+    FilterAgentParts: FILTER_AGENT_PARTS_NODE_DEFINITION,
+    SelectVisibleParts: SELECT_VISIBLE_PARTS_NODE_DEFINITION,
+    SelectLastTextPart: SELECT_LAST_TEXT_PART_NODE_DEFINITION,
+    GetHistory: GET_HISTORY_NODE_DEFINITION,
+    SetHistory: SET_HISTORY_NODE_DEFINITION,
+    GetImageAttachments: GET_IMAGE_ATTACHMENTS_NODE_DEFINITION,
+    SetImageAttachments: SET_IMAGE_ATTACHMENTS_NODE_DEFINITION,
+    GetAudioAttachments: GET_AUDIO_ATTACHMENTS_NODE_DEFINITION,
+    SetAudioAttachments: SET_AUDIO_ATTACHMENTS_NODE_DEFINITION,
+    GetTranslation: GET_TRANSLATION_NODE_DEFINITION,
+    SetTranslation: SET_TRANSLATION_NODE_DEFINITION,
     String: STRING_NODE_DEFINITION,
-    Number: NUMBER_NODE_DEFINITION,
-    Boolean: BOOLEAN_NODE_DEFINITION,
     Template: TEMPLATE_NODE_DEFINITION,
-    GetToggle: GET_TOGGLE_NODE_DEFINITION,
-    GetChatVar: GET_CHAT_VAR_NODE_DEFINITION,
-    SetChatVar: SET_CHAT_VAR_NODE_DEFINITION,
-    ToBoolean: TO_BOOLEAN_NODE_DEFINITION,
-    ToNumber: TO_NUMBER_NODE_DEFINITION,
-    Catch: CATCH_NODE_DEFINITION,
-    ThrowIf: THROWIF_NODE_DEFINITION,
     Concat: CONCAT_NODE_DEFINITION,
     StringLength: STRING_LENGTH_NODE_DEFINITION,
     StringIncludes: STRING_INCLUDES_NODE_DEFINITION,
     StringReplace: STRING_REPLACE_NODE_DEFINITION,
     StringRegexReplace: STRING_REGEX_REPLACE_NODE_DEFINITION,
+    Number: NUMBER_NODE_DEFINITION,
+    ToNumber: TO_NUMBER_NODE_DEFINITION,
     NumberMath: NUMBER_MATH_NODE_DEFINITION,
     NumberCompare: NUMBER_COMPARE_NODE_DEFINITION,
+    Boolean: BOOLEAN_NODE_DEFINITION,
+    ToBoolean: TO_BOOLEAN_NODE_DEFINITION,
     BooleanLogic: BOOLEAN_LOGIC_NODE_DEFINITION,
     BooleanNot: BOOLEAN_NOT_NODE_DEFINITION,
+    GetToggle: GET_TOGGLE_NODE_DEFINITION,
+    GetChatVar: GET_CHAT_VAR_NODE_DEFINITION,
+    SetChatVar: SET_CHAT_VAR_NODE_DEFINITION,
+    ThrowIf: THROWIF_NODE_DEFINITION,
+    Catch: CATCH_NODE_DEFINITION,
     Gate: GATE_NODE_DEFINITION,
     Ungate: UNGATE_NODE_DEFINITION,
-    Output: OUTPUT_NODE_DEFINITION,
-    Sink: SINK_NODE_DEFINITION,
     FileRead: FILE_READ_NODE_DEFINITION,
     FileWrite: FILE_WRITE_NODE_DEFINITION,
-    Agent: AGENT_NODE_DEFINITION
+    Output: OUTPUT_NODE_DEFINITION,
+    Log: LOG_NODE_DEFINITION,
+    Sink: SINK_NODE_DEFINITION
 } satisfies Record<WorkflowNodeClass, WorkflowNodeDefinition<WorkflowNode>>;
 
 export function createDefaultWorkflowNode(nodeClass: WorkflowNodeClass, id: string): WorkflowNode {
-    return WORKFLOW_NODE_DEFINITIONS[nodeClass].createDefault(id);
+    const node = WORKFLOW_NODE_DEFINITIONS[nodeClass].createDefault(id);
+    return {
+        ...node,
+        collapsed: false
+    } as WorkflowNode;
 }
 
 export function getWorkflowInputPortDefinition(

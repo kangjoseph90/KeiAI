@@ -38,10 +38,10 @@ export class NovelAITTSStreamHandler implements TTSStreamHandler {
                 },
                 body: JSON.stringify({
                     text,
-                    speaker: this.config.voiceId,
-                    seed: 'kei_seed', // Can be randomized or parameterized later
                     version: this.config.version,
-                    return_audio: true
+                    voice: this.config.version === 'v1' ? this.config.voiceId : -1,
+                    ...(this.config.version === 'v2' ? { seed: this.config.voiceId } : {}),
+                    opus: false
                 })
             },
             { proxy: true, signal }
@@ -55,8 +55,15 @@ export class NovelAITTSStreamHandler implements TTSStreamHandler {
             );
         }
 
-        // Response is raw audio binary array buffer (usually MPEG)
-        const arrayBuffer = await response.arrayBuffer();
-        yield { audio: arrayBuffer };
+        const responseMimeType = response.headers
+            .get('content-type')
+            ?.split(';', 1)[0]
+            ?.trim()
+            .toLowerCase();
+        const mimeType = responseMimeType?.startsWith('audio/') ? responseMimeType : 'audio/mpeg';
+        yield {
+            data: new Uint8Array(await response.arrayBuffer()),
+            mimeType
+        };
     }
 }

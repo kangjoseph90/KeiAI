@@ -16,6 +16,7 @@ import type {
     GenerateOptions,
     TranscribeOptions,
     TranscribeResult,
+    SynthesizeResult,
     RerankOptions,
     InferenceProgressCallback
 } from './types';
@@ -110,9 +111,8 @@ export class WebInferenceAdapter implements IInferenceAdapter {
     async *synthesize(
         spec: ModelSpec,
         text: string,
-        _voiceId: string,
         options?: SynthesizeOptions
-    ): AsyncIterable<ArrayBuffer> {
+    ): AsyncIterable<SynthesizeResult> {
         const device = options?.device ?? 'wasm';
         const synthesizer = await getOrLoadPipeline(
             'text-to-speech',
@@ -121,8 +121,6 @@ export class WebInferenceAdapter implements IInferenceAdapter {
             options?.onProgress
         );
 
-        // `voiceId` is passed through speakerEmbeddings for VITS models that support it.
-        // For models that don't, it's a no-op.
         const out = await synthesizer(text, {});
 
         // `out.audio` is a Float32Array of PCM samples; yield as a single chunk.
@@ -130,7 +128,10 @@ export class WebInferenceAdapter implements IInferenceAdapter {
         const audio = out.audio as Float32Array;
         const copy = new ArrayBuffer(audio.byteLength);
         new Uint8Array(copy).set(new Uint8Array(audio.buffer, audio.byteOffset, audio.byteLength));
-        yield copy;
+        yield {
+            audio: copy,
+            sampleRate: Number(out.sampling_rate) || 22050
+        };
     }
 
     async *generate(

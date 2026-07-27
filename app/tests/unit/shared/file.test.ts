@@ -3,6 +3,7 @@ import {
     detectFileKind,
     fileNameFromPath,
     mimeTypeForFileKind,
+    mimeTypeFromName,
     withDetectedExtension
 } from '$lib/utils/file';
 
@@ -27,5 +28,11 @@ describe('file utilities', () => {
         expect(withDetectedExtension('image:42', 'jpeg')).toBe('image:42.jpg');
         expect(withDetectedExtension('avatar.bin', 'png')).toBe('avatar.bin');
         expect(mimeTypeForFileKind('jpeg')).toBe('image/jpeg');
+    });
+
+    it('resolves unambiguous media extensions for native file dialogs', () => {
+        expect(mimeTypeFromName('voice.m4a')).toBe('audio/mp4');
+        expect(mimeTypeFromName('clip.mp4')).toBe('video/mp4');
+        expect(mimeTypeFromName('recording.webm')).toBe('application/octet-stream');
     });
 });

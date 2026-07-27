@@ -4,33 +4,63 @@ import type { RuntimeContext } from '$lib/types/context';
 import type { PagedMessages } from '$lib/services/content/paged_messages';
 import type { DeepPartial } from '$lib/utils/defaults';
 
-export type PromptBlockFields =
-    | { name: string; type: 'text'; role: LLMRole; content: string }
-    | {
-          name: string;
-          type: 'lorebook';
-          minDepth?: number;
-          maxDepth?: number;
-          reverseOrder?: boolean;
-          format?: string;
-      }
-    | {
-          name: string;
-          type: 'history';
-          start?: string;
-          end?: string;
-          format?: string;
-          historyMode: 'last_content' | 'full_trace';
-      };
+export type MessagePromptBlockFields = {
+    name: string;
+    type: 'message';
+    role: LLMRole;
+    content: string;
+};
 
-export type PromptBlock = PromptBlockFields & {
+export type LorebookPromptBlockFields = {
+    name: string;
+    type: 'lorebook';
+    minDepth?: number;
+    maxDepth?: number;
+    reverseOrder?: boolean;
+    format?: string;
+};
+
+export type HistoryPromptBlockFields = {
+    name: string;
+    type: 'history';
+    start?: string;
+    end?: string;
+    format?: string;
+    historyMode: 'last_text' | 'visible' | 'full_trace';
+};
+
+export type PromptBlockFields =
+    | MessagePromptBlockFields
+    | LorebookPromptBlockFields
+    | HistoryPromptBlockFields;
+
+type PromptBlockMetadata = {
     id: string;
     sortOrder: string;
     enabled: boolean;
 };
 
+export type MessagePromptBlock = MessagePromptBlockFields & PromptBlockMetadata;
+export type LorebookPromptBlock = LorebookPromptBlockFields & PromptBlockMetadata;
+export type HistoryPromptBlock = HistoryPromptBlockFields & PromptBlockMetadata;
+export type PromptBlock = MessagePromptBlock | LorebookPromptBlock | HistoryPromptBlock;
+
 export type WorkflowNode =
     | AgentNode
+    | FilterAgentPartsNode
+    | SelectVisiblePartsNode
+    | SelectLastTextPartNode
+    | ImageGenerationNode
+    | TTSNode
+    | STTNode
+    | GetHistoryNode
+    | SetHistoryNode
+    | GetImageAttachmentsNode
+    | SetImageAttachmentsNode
+    | GetAudioAttachmentsNode
+    | SetAudioAttachmentsNode
+    | GetTranslationNode
+    | SetTranslationNode
     | BooleanLogicNode
     | FileReadNode
     | FileWriteNode
@@ -50,6 +80,7 @@ export type WorkflowNode =
     | NumberCompareNode
     | NumberMathNode
     | OutputNode
+    | LogNode
     | SinkNode
     | StringConcatNode
     | StringIncludesNode
@@ -139,6 +170,10 @@ export interface OutputNode extends BaseNode {
     class: 'Output';
 }
 
+export interface LogNode extends BaseNode {
+    class: 'Log';
+}
+
 export interface SinkNode extends BaseNode {
     class: 'Sink';
 }
@@ -195,6 +230,66 @@ export interface StringReplaceNode extends BaseNode {
 export interface StringRegexReplaceNode extends BaseNode {
     class: 'StringRegexReplace';
     flags: string;
+}
+
+export interface FilterAgentPartsNode extends BaseNode {
+    class: 'FilterAgentParts';
+    includeText: boolean;
+    includeThought: boolean;
+    includeInlay: boolean;
+    includeToolCalls: boolean;
+}
+
+export interface SelectVisiblePartsNode extends BaseNode {
+    class: 'SelectVisibleParts';
+}
+
+export interface SelectLastTextPartNode extends BaseNode {
+    class: 'SelectLastTextPart';
+}
+
+export interface ImageGenerationNode extends BaseNode {
+    class: 'ImageGeneration';
+}
+
+export interface TTSNode extends BaseNode {
+    class: 'TTS';
+}
+
+export interface STTNode extends BaseNode {
+    class: 'STT';
+}
+
+export interface GetHistoryNode extends BaseNode {
+    class: 'GetHistory';
+}
+
+export interface SetHistoryNode extends BaseNode {
+    class: 'SetHistory';
+}
+
+export interface GetImageAttachmentsNode extends BaseNode {
+    class: 'GetImageAttachments';
+}
+
+export interface SetImageAttachmentsNode extends BaseNode {
+    class: 'SetImageAttachments';
+}
+
+export interface GetAudioAttachmentsNode extends BaseNode {
+    class: 'GetAudioAttachments';
+}
+
+export interface SetAudioAttachmentsNode extends BaseNode {
+    class: 'SetAudioAttachments';
+}
+
+export interface GetTranslationNode extends BaseNode {
+    class: 'GetTranslation';
+}
+
+export interface SetTranslationNode extends BaseNode {
+    class: 'SetTranslation';
 }
 
 export interface StringNode extends BaseNode {
@@ -273,6 +368,7 @@ export interface BaseNode {
     id: string;
     name: string;
     position: WorkflowNodePosition;
+    collapsed: boolean;
     inputs: Record<string, InputPort>;
     inputValues: Record<string, WorkflowValue>;
 }

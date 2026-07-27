@@ -7,7 +7,7 @@
 
 import type { PagedMessages } from '$lib/services/content/paged_messages';
 import type { Character, Chat, Persona, Lorebook } from '$lib/services';
-import { getTextContent, type LLMContentPart, type LLMMessage } from '../../llm/types';
+import type { LLMContentPart, LLMMessage } from '../../llm/types';
 import type { LLMRole, LLMTokenizer } from '$lib/types/models/llm';
 import { runPipeline } from '$lib/pipeline';
 import { runTemplate, createDryRunMacros, mergeLocalMacros } from '$lib/template';
@@ -16,15 +16,19 @@ import { TokenCounter } from '$lib/llm/tokenizer';
 import { AppError } from '$lib/types/errors';
 import type { Message } from '$lib/services/content/message';
 import { resolveLorebookEntries } from './lorebook';
-import { getLastContentText } from './llm';
-import { ToolCallService } from '$lib/services/content/tool';
+import {
+    agentPartsToLLMMessages,
+    deserializeAgentParts,
+    getLastTextPart,
+    getTextContent,
+    getVisibleParts,
+    type AgentPart
+} from './llm';
 import { resolveAgentTools } from './tool';
 import { toMessageContext, toRoleContext } from './context';
 import { compareSortOrder } from '$lib/utils/ordering';
 import type { RuntimeContext } from '$lib/types/context';
-import type { PromptBlock } from '../types';
-import { AssetService } from '$lib/services/asset';
-import { toBase64 } from '$lib/crypto';
+import type { LorebookPromptBlock, PromptBlock } from '../types';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
@@ -60,7 +64,6 @@ type PromptBudget = {
     memoryCap: number;
 };
 
-type LorebookPromptBlock = Extract<PromptBlock, { type: 'lorebook' }>;
 type LorebookBucketEntry = {
     order: number;
     message: LLMMessage;
@@ -134,16 +137,21 @@ async function buildFixedBlock(block: PromptBlock, input: PromptInput): Promise<
     const templateMacros = mergeLocalMacros(input.localMacros, createDryRunMacros());
 
     switch (block.type) {
-        case 'text':
-            messages = makeMessage(
-                block.role,
+        case 'message': {
+            const content = (
                 await runTemplate(
                     block.content,
                     toRoleContext(input.ctx, block.role),
                     templateMacros
                 )
+            ).trim();
+            messages = await agentPartsToLLMMessages(
+                deserializeAgentParts(content),
+                block.role,
+                input.chat
             );
             break;
+        }
 
         case 'history': {
             const start = await resolveHistoryIndex(
@@ -405,7 +413,7 @@ async function renderHistoryMessage(
     messageIndex: number,
     ctx: RuntimeContext,
     chat: Chat,
-    historyMode: 'last_content' | 'full_trace',
+    historyMode: 'last_text' | 'visible' | 'full_trace',
     format?: string,
     localMacros?: ReadonlyMap<string, Macro>
 ): Promise<LLMMessage[]> {
@@ -414,41 +422,21 @@ async function renderHistoryMessage(
 
     const messageCtx = toMessageContext(message, messageIndex, ctx);
     const templateMacros = mergeLocalMacros(localMacros, createDryRunMacros());
-
-    if (historyMode === 'last_content') {
-        const content = await renderHistoryText(
-            getLastContentText(activeSwipe.parts),
-            format,
-            messageCtx,
-            activeSwipe.speakerName,
-            templateMacros
+    let selectedParts: AgentPart[];
+    if (historyMode === 'last_text') {
+        const lastTextPart = getLastTextPart(activeSwipe.parts);
+        selectedParts = lastTextPart ? [lastTextPart] : [];
+    } else if (historyMode === 'visible') {
+        selectedParts = getVisibleParts(activeSwipe.parts).filter(
+            (part) => part.type === 'text' || part.type === 'inlay'
         );
-        return [
-            {
-                role: message.role,
-                content: await addAttachmentContent(content, activeSwipe.attachments, chat)
-            }
-        ];
+    } else {
+        selectedParts = activeSwipe.parts;
     }
+    const renderedParts: AgentPart[] = [];
 
-    const toolCallIds = activeSwipe.parts
-        .filter((part) => part.type === 'tool_call')
-        .map((part) => part.id);
-    const loadedToolCalls = await Promise.all(toolCallIds.map((id) => ToolCallService.get(id)));
-    const toolCalls = new Map(
-        toolCallIds.map((id, index) => [id, loadedToolCalls[index]] as const)
-    );
-    const messages: LLMMessage[] = [];
-    let content: LLMContentPart[] = [];
-    const flush = (): void => {
-        if (content.length === 0) return;
-        messages.push({ role: message.role, content });
-        content = [];
-    };
-
-    for (const part of activeSwipe.parts) {
-        if (part.type === 'thought') continue;
-        if (part.type === 'content') {
+    for (const part of selectedParts) {
+        if (part.type === 'text') {
             const rendered = await renderHistoryText(
                 part.text,
                 format,
@@ -456,49 +444,13 @@ async function renderHistoryMessage(
                 activeSwipe.speakerName,
                 templateMacros
             );
-            if (rendered) content.push({ type: 'text', text: rendered });
+            if (rendered) renderedParts.push({ type: 'text', text: rendered });
             continue;
         }
-
-        const toolCall = toolCalls.get(part.id);
-        if (!toolCall) {
-            content.push({
-                type: 'text',
-                text: `[Tool call: ${part.name} — ${part.status}; details unavailable]`
-            });
-            continue;
-        }
-
-        content.push({
-            type: 'tool_request',
-            callId: toolCall.call.callId,
-            name: toolCall.call.name,
-            args: toolCall.call.args
-        });
-        flush();
-        const response: LLMContentPart = {
-            type: 'tool_response',
-            callId: toolCall.call.callId,
-            name: toolCall.call.name,
-            content: toolCall.response ?? [{ type: 'text', text: 'Tool call did not complete.' }]
-        };
-        if (!toolCall.response || toolCall.status === 'error' || toolCall.status === 'rejected') {
-            response.isError = true;
-        }
-        messages.push({
-            role: 'user',
-            content: [response]
-        });
+        renderedParts.push(part);
     }
-    flush();
 
-    const attachmentParts = await loadAttachmentContent(activeSwipe.attachments, chat);
-    if (attachmentParts.length > 0) {
-        const target = messages.find((entry) => entry.role === message.role);
-        if (target) target.content.push(...attachmentParts);
-        else messages.unshift({ role: message.role, content: attachmentParts });
-    }
-    return messages;
+    return agentPartsToLLMMessages(renderedParts, message.role, chat);
 }
 
 async function renderHistoryText(
@@ -531,43 +483,6 @@ async function resolveHistoryIndex(
         );
     }
     return parsed;
-}
-
-async function addAttachmentContent(
-    content: string,
-    attachments: string[] | undefined,
-    chat: Chat
-): Promise<LLMContentPart[]> {
-    return [{ type: 'text', text: content }, ...(await loadAttachmentContent(attachments, chat))];
-}
-
-async function loadAttachmentContent(
-    attachments: string[] | undefined,
-    chat: Chat
-): Promise<LLMContentPart[]> {
-    if (!attachments?.length) return [];
-    const parts: LLMContentPart[] = [];
-    for (const attachmentId of attachments) {
-        const ref = chat.inlays.refs[attachmentId];
-        if (!ref) continue;
-
-        const bytes = await AssetService.readBytes({
-            scopeType: chat.scopeType,
-            scopeId: chat.scopeId,
-            ownerTable: 'chats',
-            ownerId: chat.id,
-            hash: ref.hash
-        });
-        if (!bytes) continue;
-
-        parts.push({
-            type: 'image',
-            mimeType: ref.mimeType,
-            data: toBase64(new Uint8Array(bytes))
-        });
-    }
-
-    return parts;
 }
 
 async function renderWithFormat(
@@ -620,8 +535,14 @@ function contentPartForTokenCount(part: LLMContentPart): string {
     switch (part.type) {
         case 'text':
             return part.text;
+        case 'thought':
+            return part.text;
         case 'image':
             return `[image:${part.mimeType}]`;
+        case 'audio':
+            return `[audio:${part.mimeType}]`;
+        case 'video':
+            return `[video:${part.mimeType}]`;
         case 'tool_request':
             return JSON.stringify({ name: part.name, arguments: part.args });
         case 'tool_response':

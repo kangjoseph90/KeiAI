@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MessageService } from '$lib/services/content/message';
 import type { MessageFields } from '$lib/services/content/message';
 import type { DataRecord } from '$lib/adapters/db/types';
-import { getLastContentText } from '$lib/workflow/agent/llm';
+import { getLastTextContent } from '$lib/workflow/agent/llm';
 
 // Mock all dependencies
 vi.mock('$lib/services/session', () => ({
@@ -82,7 +82,7 @@ function makeFields(content: string, role: MessageFields['role'] = 'user'): Mess
     return {
         role,
         swipes: {
-            s1: { id: 's1', parts: [{ type: 'content', text: content }], createdAt: 1000 }
+            s1: { id: 's1', parts: [{ type: 'text', text: content }], createdAt: 1000 }
         },
         activeSwipeId: 's1'
     };
@@ -165,7 +165,7 @@ describe('MessageService', () => {
             expect(result).not.toBeNull();
             expect(result?.id).toBe('msg-1');
             expect(result?.role).toBe('user');
-            expect(getLastContentText(result!.swipes[result!.activeSwipeId].parts)).toBe('Hello');
+            expect(getLastTextContent(result!.swipes[result!.activeSwipeId].parts)).toBe('Hello');
         });
     });
 
@@ -179,7 +179,7 @@ describe('MessageService', () => {
             expect(result.id).toBe('test-msg-id');
             expect(result.chatId).toBe('chat-1');
             expect(result.role).toBe('user');
-            expect(getLastContentText(result.swipes[result.activeSwipeId].parts)).toBe('Hi');
+            expect(getLastTextContent(result.swipes[result.activeSwipeId].parts)).toBe('Hi');
             expect(result.sortOrder).toBe('a0');
 
             expect(generateKeyBetween).toHaveBeenCalledWith(null, null);
@@ -237,13 +237,13 @@ describe('MessageService', () => {
                 swipes: {
                     s1: {
                         id: 's1',
-                        parts: [{ type: 'content', text: 'New content' }],
+                        parts: [{ type: 'text', text: 'New content' }],
                         createdAt: 2000
                     }
                 }
             });
 
-            expect(getLastContentText(result.swipes[result.activeSwipeId].parts)).toBe(
+            expect(getLastTextContent(result.swipes[result.activeSwipeId].parts)).toBe(
                 'New content'
             );
             expect(buffer.update).toHaveBeenCalledWith(
@@ -252,7 +252,7 @@ describe('MessageService', () => {
                         swipes: {
                             s1: {
                                 id: 's1',
-                                parts: [{ type: 'content', text: 'New content' }],
+                                parts: [{ type: 'text', text: 'New content' }],
                                 createdAt: 2000,
                                 translation: undefined
                             }

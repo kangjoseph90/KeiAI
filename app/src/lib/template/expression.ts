@@ -1,10 +1,10 @@
-import type { Template, TemplateNode } from './types';
+import type { BlockNode, MacroNode, Template } from './types';
 
 type Associativity = 'left' | 'right';
 
 export type ExprValue = string | number | boolean | null;
 
-type ValueNode = Exclude<TemplateNode, { type: 'text' }>;
+type ValueNode = MacroNode | BlockNode;
 type ResolveNode = (node: ValueNode) => Promise<string>;
 
 interface Operator {
@@ -109,12 +109,12 @@ const operators: Record<string, Operator> = {
     'u-': { precedence: 8, associativity: 'right', arity: 1, run: (a) => -toNumber(a) }
 };
 
-type Token =
-    | { type: 'literal'; value: ExprValue }
-    | { type: 'node'; node: ValueNode }
-    | { type: 'operator'; value: string }
-    | { type: 'leftParen' }
-    | { type: 'rightParen' };
+type LiteralToken = { type: 'literal'; value: ExprValue };
+type NodeToken = { type: 'node'; node: ValueNode };
+type OperatorToken = { type: 'operator'; value: string };
+type LeftParenToken = { type: 'leftParen' };
+type RightParenToken = { type: 'rightParen' };
+type Token = LiteralToken | NodeToken | OperatorToken | LeftParenToken | RightParenToken;
 
 const wordOperators: Record<string, string> = {
     and: '&&',
@@ -344,7 +344,7 @@ function readOperator(
 
 function toRPN(tokens: Token[]): Token[] {
     const output: Token[] = [];
-    const stack: Extract<Token, { type: 'operator' | 'leftParen' }>[] = [];
+    const stack: Array<OperatorToken | LeftParenToken> = [];
 
     for (const token of tokens) {
         if (token.type === 'literal' || token.type === 'node') {

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenAILLMStreamHandler } from '$lib/llm/handlers/openai';
 import { AnthropicLLMStreamHandler } from '$lib/llm/handlers/anthropic';
 import { GoogleLLMStreamHandler } from '$lib/llm/handlers/google';
-import type { LLMMessage } from '$lib/llm/types';
+import type { LLMMessage, LLMStreamContent } from '$lib/llm/types';
 
 const { mockFetch } = vi.hoisted(() => ({ mockFetch: vi.fn() }));
 
@@ -28,14 +28,17 @@ const config = {
     useProxy: false
 };
 
-async function collectContent(handler: {
-    stream: (
-        input: LLMMessage[],
-        signal: AbortSignal,
-        options: { stream: false }
-    ) => AsyncIterable<unknown>;
-}): Promise<void> {
-    for await (const _ of handler.stream(messages, new AbortController().signal, {
+async function collectContent(
+    handler: {
+        stream: (
+            input: LLMMessage[],
+            signal: AbortSignal,
+            options: { stream: false }
+        ) => AsyncIterable<unknown>;
+    },
+    input: LLMMessage[] = messages
+): Promise<void> {
+    for await (const _ of handler.stream(input, new AbortController().signal, {
         stream: false
     })) {
         // The request body is the assertion target.
@@ -119,5 +122,95 @@ describe('multimodal LLM handlers', () => {
                 ]
             }
         ]);
+    });
+
+    it('serializes OpenAI-compatible audio input', async () => {
+        mockFetch.mockResolvedValue(
+            new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }))
+        );
+        const input: LLMMessage[] = [
+            {
+                role: 'user',
+                content: [{ type: 'audio', mimeType: 'audio/mpeg', data: 'AQID' }]
+            }
+        ];
+
+        await collectContent(new OpenAILLMStreamHandler(config), input);
+
+        const body = JSON.parse(vi.mocked(mockFetch).mock.calls[0][1].body as string) as {
+            messages: Array<{ content: unknown }>;
+        };
+        expect(body.messages[0].content).toEqual([
+            { type: 'input_audio', input_audio: { data: 'AQID', format: 'mp3' } }
+        ]);
+    });
+
+    it('serializes Gemini audio and video as inline data', async () => {
+        mockFetch.mockResolvedValue(
+            new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }))
+        );
+        const input: LLMMessage[] = [
+            {
+                role: 'user',
+                content: [
+                    { type: 'audio', mimeType: 'audio/ogg', data: 'audio' },
+                    { type: 'video', mimeType: 'video/mp4', data: 'video' }
+                ]
+            }
+        ];
+
+        await collectContent(new GoogleLLMStreamHandler(config), input);
+
+        const body = JSON.parse(vi.mocked(mockFetch).mock.calls[0][1].body as string) as {
+            contents: Array<{ parts: unknown }>;
+        };
+        expect(body.contents[0].parts).toEqual([
+            { inlineData: { mimeType: 'audio/ogg', data: 'audio' } },
+            { inlineData: { mimeType: 'video/mp4', data: 'video' } }
+        ]);
+    });
+
+    it('preserves ordered text and generated media in Gemini output state', async () => {
+        mockFetch.mockResolvedValue(
+            new Response(
+                JSON.stringify({
+                    candidates: [
+                        {
+                            content: {
+                                parts: [
+                                    { text: 'Planning', thought: true },
+                                    { text: 'Before' },
+                                    {
+                                        inlineData: {
+                                            mimeType: 'image/png',
+                                            data: 'AQID'
+                                        }
+                                    },
+                                    { text: 'After' }
+                                ]
+                            }
+                        }
+                    ]
+                })
+            )
+        );
+
+        let result: LLMStreamContent | undefined;
+        for await (const state of new GoogleLLMStreamHandler(config).stream(
+            messages,
+            new AbortController().signal,
+            { stream: false }
+        )) {
+            result = state;
+        }
+
+        expect(result).toEqual({
+            parts: [
+                { type: 'thought', text: 'Planning' },
+                { type: 'text', text: 'Before' },
+                { type: 'image', mimeType: 'image/png', data: 'AQID' },
+                { type: 'text', text: 'After' }
+            ]
+        });
     });
 });

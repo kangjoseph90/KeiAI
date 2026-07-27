@@ -15,15 +15,15 @@
  */
 
 import {
-    getTextContent,
     type LLMStreamOptions,
     type LLMStreamContent,
     type LLMStreamHandler,
-    type LLMMessage
+    type LLMMessage,
+    type LLMToolRequestPart
 } from '../types';
+import { getTextContent } from '$lib/workflow/agent/llm';
 import { debounceStream } from '$lib/utils/stream';
 import { abortableSleep } from '$lib/utils/async';
-import type { ToolCallRequest } from '$lib/types/tools';
 
 export type MockBehavior = 'default' | 'echo' | 'markdown';
 
@@ -99,14 +99,21 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
 
     private getResponse(messages: LLMMessage[]): string {
         const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
-        const imageCount = lastUserMessage
-            ? lastUserMessage.content.filter((part) => part.type === 'image').length
-            : 0;
-        if (imageCount > 0) {
+        const mediaParts =
+            lastUserMessage?.content.filter(
+                (part) => part.type === 'image' || part.type === 'audio' || part.type === 'video'
+            ) ?? [];
+        if (mediaParts.length > 0) {
             const text = getTextContent(lastUserMessage!.content).trim();
-            const attachmentLabel = imageCount === 1 ? 'image attachment' : 'image attachments';
+            const summary = ['image', 'audio', 'video']
+                .map((type) => {
+                    const count = mediaParts.filter((part) => part.type === type).length;
+                    return count > 0 ? `${count} ${type}` : '';
+                })
+                .filter(Boolean)
+                .join(', ');
             return [
-                `[Mock vision] Received ${imageCount} ${attachmentLabel}.`,
+                `[Mock multimodal] Received ${summary} attachment${mediaParts.length === 1 ? '' : 's'}.`,
                 text ? `Text prompt: ${text}` : ''
             ]
                 .filter(Boolean)
@@ -132,13 +139,13 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
         signal: AbortSignal,
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
+        const thought = '질문을 분석하고 적절한 답변을 생성하는 중입니다...';
         const state: LLMStreamContent = {
-            content: '',
-            thought: ''
+            parts: [{ type: 'thought', text: thought }]
         };
+        let content = '';
 
         // 1. Simulate "Thought" phase (first 30%)
-        state.thought = '질문을 분석하고 적절한 답변을 생성하는 중입니다...';
         yield { ...state };
         await abortableSleep(this.chunkDelayMs * 10, signal);
 
@@ -148,7 +155,11 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
         for (let i = 0; i < words.length; i++) {
             if (signal.aborted) throw new DOMException('AbortError', 'AbortError');
 
-            state.content += (i === 0 ? '' : ' ') + words[i];
+            content += (i === 0 ? '' : ' ') + words[i];
+            state.parts = [
+                { type: 'thought', text: thought },
+                { type: 'text', text: content }
+            ];
             yield { ...state };
 
             await abortableSleep(this.chunkDelayMs, signal);
@@ -157,7 +168,7 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
         // 3. Simulate a file tool call when the latest user message asks for one.
         const toolCall = getMockToolCall(messages, options);
         if (toolCall) {
-            state.toolCalls = [toolCall];
+            state.parts = [...state.parts, toolCall];
             yield { ...state };
         }
     }
@@ -167,12 +178,14 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
         options: LLMStreamOptions
     ): AsyncIterable<LLMStreamContent> {
         const state: LLMStreamContent = {
-            content: this.getResponse(messages),
-            thought: '질문을 분석하고 적절한 답변을 생성했습니다.'
+            parts: [
+                { type: 'thought', text: '질문을 분석하고 적절한 답변을 생성했습니다.' },
+                { type: 'text', text: this.getResponse(messages) }
+            ]
         };
         const toolCall = getMockToolCall(messages, options);
         if (toolCall) {
-            state.toolCalls = [toolCall];
+            state.parts.push(toolCall);
         }
         yield state;
     }
@@ -181,7 +194,7 @@ export class MockLLMStreamHandler implements LLMStreamHandler {
 function getMockToolCall(
     messages: LLMMessage[],
     options: LLMStreamOptions
-): ToolCallRequest | null {
+): LLMToolRequestPart | null {
     const lastMessage = messages.at(-1);
     if (lastMessage?.role !== 'user') return null;
 
@@ -203,6 +216,7 @@ function getMockToolCall(
         })
     );
     return {
+        type: 'tool_request',
         callId: `mock_call_${Math.random().toString(36).slice(2, 9)}`,
         name: tool.name,
         args

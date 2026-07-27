@@ -78,6 +78,11 @@ export interface TranscribeResult {
     segments?: { text: string; start: number; end: number }[];
 }
 
+export interface SynthesizeResult {
+    audio: ArrayBuffer;
+    sampleRate: number;
+}
+
 // ─── Interface ───────────────────────────────────────────────────────────────
 
 export interface IInferenceAdapter {
@@ -94,9 +99,8 @@ export interface IInferenceAdapter {
     synthesize(
         spec: ModelSpec,
         text: string,
-        voiceId: string,
         options?: SynthesizeOptions
-    ): AsyncIterable<ArrayBuffer>;
+    ): AsyncIterable<SynthesizeResult>;
 
     /**
      * Generate text via an LLM.

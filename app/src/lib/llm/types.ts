@@ -5,7 +5,7 @@
  * All handlers (Mock, OpenAI, Claude, …) implement LLMStreamHandler.
  */
 
-import type { ToolCallRequest, ToolCallResponsePart, ToolDefinition } from '$lib/types/tools';
+import type { ToolCallResponsePart, ToolDefinition } from '$lib/types/tools';
 import type { RetryOptions } from '$lib/adapters/http/types';
 import type { LLMParameters, LLMRole } from '$lib/types/models/llm';
 
@@ -18,10 +18,30 @@ import type { LLMParameters, LLMRole } from '$lib/types/models/llm';
  * CONTRACT: Yields cumulative content (e.g. "1", "12", "123")
  * instead of individual chunks.
  */
+export type LLMTextPart = { type: 'text'; text: string };
+export type LLMThoughtPart = { type: 'thought'; text: string };
+export type LLMImagePart = { type: 'image'; mimeType: string; data: string };
+export type LLMAudioPart = { type: 'audio'; mimeType: string; data: string };
+export type LLMVideoPart = { type: 'video'; mimeType: string; data: string };
+export type LLMMediaPart = LLMImagePart | LLMAudioPart | LLMVideoPart;
+export type LLMToolRequestPart = {
+    type: 'tool_request';
+    callId: string;
+    name: string;
+    args: Record<string, unknown>;
+};
+export type LLMToolResponsePart = {
+    type: 'tool_response';
+    callId: string;
+    name: string;
+    content: ToolCallResponsePart[];
+    isError?: boolean;
+};
+
+export type LLMOutputPart = LLMTextPart | LLMThoughtPart | LLMMediaPart | LLMToolRequestPart;
+
 export type LLMStreamContent = {
-    content: string;
-    thought?: string;
-    toolCalls?: ToolCallRequest[];
+    parts: LLMOutputPart[];
 };
 
 export interface LLMStreamHandler {
@@ -34,25 +54,7 @@ export interface LLMStreamHandler {
 
 // ─── Chat Message ────────────────────────────────────────────────────────────
 
-export type LLMContentPart =
-    | { type: 'text'; text: string }
-    | { type: 'image'; mimeType: string; data: string }
-    | { type: 'tool_request'; callId: string; name: string; args: Record<string, unknown> }
-    | {
-          type: 'tool_response';
-          callId: string;
-          name: string;
-          content: ToolCallResponsePart[];
-          isError?: boolean;
-      };
-
-/** Returns only the text portions of a multimodal message. */
-export function getTextContent(content: LLMContentPart[]): string {
-    return content
-        .filter((part): part is Extract<LLMContentPart, { type: 'text' }> => part.type === 'text')
-        .map((part) => part.text)
-        .join('');
-}
+export type LLMContentPart = LLMOutputPart | LLMToolResponsePart;
 
 /** Provider-neutral multimodal message used throughout the app. */
 export interface LLMMessage {

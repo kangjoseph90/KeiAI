@@ -18,10 +18,13 @@
 <script lang="ts">
     import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
     import {
+        AudioLines,
         Bot,
         Braces,
+        Captions,
         CheckCircle2,
         ChevronDown,
+        ChevronRight,
         ChevronUp,
         CircleDot,
         FileInput,
@@ -30,8 +33,14 @@
         GitBranch,
         GitMerge,
         Hash,
+        History,
+        ImageIcon,
+        Images,
+        Languages,
         Plus,
-        TriangleAlert
+        ScrollText,
+        TriangleAlert,
+        Volume2
     } from 'lucide-svelte';
     import { WORKFLOW_NODE_DEFINITIONS, getWorkflowInputPortDefinition } from '$lib/workflow';
     import type { LLMType } from '$lib/types/models/llm';
@@ -50,6 +59,10 @@
         agent: {
             node: 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300',
             handle: '!bg-violet-500'
+        },
+        history: {
+            node: 'border-indigo-500/40 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300',
+            handle: '!bg-indigo-500'
         },
         string: {
             node: 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300',
@@ -88,12 +101,30 @@
     const inputEntries = $derived(Object.entries(data.node.inputs));
     const outputEntries = $derived(Object.entries(definition.outputs));
     const categoryStyle = $derived(CATEGORY_STYLES[definition.category]);
+    const collapsed = $derived(data.node.collapsed);
     const agentTools = listAgentTools();
+    const hasTopControls = $derived(
+        [
+            'Agent',
+            'String',
+            'Number',
+            'Boolean',
+            'NumberMath',
+            'NumberCompare',
+            'BooleanLogic',
+            'StringIncludes',
+            'FilterAgentParts',
+            'FileRead',
+            'FileWrite'
+        ].includes(data.node.class)
+    );
     let toolsExpanded = $state(false);
+    const nodeInternalsVersion = $derived(
+        `${Object.keys(data.node.inputs).join(',')}:${data.node.collapsed}`
+    );
 
     $effect(() => {
-        Object.keys(data.node.inputs);
-        updateNodeInternals(id);
+        if (nodeInternalsVersion) updateNodeInternals(id);
     });
 
     function updateInputValue(inputId: string, value: WorkflowValue) {
@@ -125,11 +156,45 @@
         : 'border-border/80'} {data.hasIssue ? 'ring-2 ring-destructive/30' : ''}"
 >
     <div
-        class="workflow-node-drag-handle flex cursor-grab items-center gap-2 rounded-t-xl border-b px-3 py-2 active:cursor-grabbing {categoryStyle.node}"
+        class="workflow-node-drag-handle relative flex cursor-grab items-center gap-2 px-3 py-2 active:cursor-grabbing {collapsed
+            ? 'rounded-xl'
+            : 'rounded-t-xl border-b'} {categoryStyle.node}"
     >
+        {#if collapsed}
+            {#each inputEntries as [inputId] (inputId)}
+                <Handle
+                    type="target"
+                    id={inputId}
+                    position={Position.Left}
+                    class="!left-0 !top-1/2 !size-3 !border-2 !border-card !bg-muted-foreground"
+                />
+            {/each}
+            {#each outputEntries as [outputId] (outputId)}
+                <Handle
+                    type="source"
+                    id={outputId}
+                    position={Position.Right}
+                    class="!right-0 !top-1/2 !size-3 !border-2 !border-card {categoryStyle.handle}"
+                />
+            {/each}
+        {/if}
         <div class="flex size-7 shrink-0 items-center justify-center rounded-md bg-background/70">
             {#if data.node.class === 'Agent'}
                 <Bot class="size-4" />
+            {:else if data.node.class === 'ImageGeneration'}
+                <ImageIcon class="size-4" />
+            {:else if data.node.class === 'TTS'}
+                <AudioLines class="size-4" />
+            {:else if data.node.class === 'STT'}
+                <Captions class="size-4" />
+            {:else if data.node.class === 'GetHistory' || data.node.class === 'SetHistory'}
+                <History class="size-4" />
+            {:else if data.node.class === 'GetImageAttachments' || data.node.class === 'SetImageAttachments'}
+                <Images class="size-4" />
+            {:else if data.node.class === 'GetAudioAttachments' || data.node.class === 'SetAudioAttachments'}
+                <Volume2 class="size-4" />
+            {:else if data.node.class === 'GetTranslation' || data.node.class === 'SetTranslation'}
+                <Languages class="size-4" />
             {:else if data.node.class === 'String'}
                 <Braces class="size-4" />
             {:else if definition.category === 'number'}
@@ -144,6 +209,8 @@
                 <FileInput class="size-4" />
             {:else if data.node.class === 'FileWrite'}
                 <FileOutput class="size-4" />
+            {:else if data.node.class === 'Log'}
+                <ScrollText class="size-4" />
             {:else if definition.category === 'variable'}
                 <Braces class="size-4" />
             {:else}
@@ -169,292 +236,351 @@
             </button>
         {/if}
         {#if data.hasIssue}<TriangleAlert class="size-4 shrink-0 text-destructive" />{/if}
+        <button
+            type="button"
+            class="nodrag flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-background/70"
+            title={collapsed ? 'Expand node' : 'Collapse node'}
+            aria-label={collapsed ? 'Expand node' : 'Collapse node'}
+            onclick={() => data.onUpdateNode(data.node.id, { collapsed: !collapsed })}
+        >
+            {#if collapsed}
+                <ChevronRight class="size-4" />
+            {:else}
+                <ChevronDown class="size-4" />
+            {/if}
+        </button>
     </div>
 
-    <div class="flex flex-col gap-3 p-3">
-        {#if data.node.class === 'Agent'}
-            <div class="grid grid-cols-2 gap-2 text-[10px]">
-                <label class="col-span-2 flex flex-col gap-1 text-muted-foreground">
-                    LLM Type
+    {#if !collapsed}
+        <div class="flex flex-col gap-3 p-3">
+            {#if data.node.class === 'Agent'}
+                <div class="grid grid-cols-2 gap-2 text-[10px]">
+                    <label class="col-span-2 flex flex-col gap-1 text-muted-foreground">
+                        LLM Type
+                        <input
+                            class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                            value={data.node.llmType}
+                            onchange={(event) =>
+                                data.onUpdateNode(data.node.id, {
+                                    llmType: event.currentTarget.value as LLMType
+                                })}
+                        />
+                    </label>
+                    <label class="flex flex-col gap-1 text-muted-foreground">
+                        Max Context
+                        <input
+                            type="number"
+                            class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                            value={data.node.maxContext}
+                            onchange={(event) =>
+                                updateNumber('maxContext', event.currentTarget.value)}
+                        />
+                    </label>
+                    <label class="flex flex-col gap-1 text-muted-foreground">
+                        Max Response
+                        <input
+                            type="number"
+                            class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                            value={data.node.maxResponse}
+                            onchange={(event) =>
+                                updateNumber('maxResponse', event.currentTarget.value)}
+                        />
+                    </label>
+                    <label class="flex flex-col gap-1 text-muted-foreground">
+                        Lorebook Ratio
+                        <input
+                            type="number"
+                            step="0.05"
+                            class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                            value={data.node.lorebookRatio}
+                            onchange={(event) =>
+                                updateNumber('lorebookRatio', event.currentTarget.value)}
+                        />
+                    </label>
+                    <label class="flex flex-col gap-1 text-muted-foreground">
+                        Memory Ratio
+                        <input
+                            type="number"
+                            step="0.05"
+                            class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                            value={data.node.memoryRatio}
+                            onchange={(event) =>
+                                updateNumber('memoryRatio', event.currentTarget.value)}
+                        />
+                    </label>
+                    <label class="col-span-2 flex flex-col gap-1 text-muted-foreground">
+                        Lorebook Scan Depth
+                        <input
+                            type="number"
+                            class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                            value={data.node.lorebookScanDepth}
+                            onchange={(event) =>
+                                updateNumber('lorebookScanDepth', event.currentTarget.value)}
+                        />
+                    </label>
+                    <div class="col-span-2 space-y-1.5">
+                        <button
+                            type="button"
+                            class="nodrag flex h-8 w-full items-center justify-between rounded-md px-2 text-xs text-muted-foreground hover:bg-muted/50"
+                            onclick={() => (toolsExpanded = !toolsExpanded)}
+                        >
+                            <span>Tools</span>
+                            {#if toolsExpanded}
+                                <ChevronUp class="size-3" />
+                            {:else}
+                                <ChevronDown class="size-3" />
+                            {/if}
+                        </button>
+                        {#if toolsExpanded}
+                            <div class="grid gap-4 rounded-lg border bg-muted/30 p-4">
+                                <div class="flex flex-wrap gap-x-5 gap-y-2">
+                                    {#each agentTools as tool (tool.id)}
+                                        <label class="nodrag flex items-center gap-2 text-xs">
+                                            <input
+                                                type="checkbox"
+                                                class="size-4 accent-primary"
+                                                checked={data.node.toolIds.includes(tool.id)}
+                                                onchange={(event) =>
+                                                    updateAgentTool(
+                                                        tool.id,
+                                                        event.currentTarget.checked
+                                                    )}
+                                            />
+                                            {tool.label}
+                                        </label>
+                                    {/each}
+                                </div>
+                            </div>
+                        {/if}
+                    </div>
+                </div>
+            {:else if data.node.class === 'String'}
+                <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                    Content
+                    <textarea
+                        class="nodrag min-h-20 resize-y rounded-md border bg-background p-2 text-xs leading-relaxed text-foreground"
+                        value={data.node.content}
+                        placeholder="Enter text..."
+                        onchange={(event) =>
+                            data.onUpdateNode(data.node.id, { content: event.currentTarget.value })}
+                    ></textarea>
+                </label>
+            {:else if data.node.class === 'Number'}
+                <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                    Value
                     <input
+                        type="number"
                         class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-                        value={data.node.llmType}
+                        value={data.node.value}
                         onchange={(event) =>
                             data.onUpdateNode(data.node.id, {
-                                llmType: event.currentTarget.value as LLMType
+                                value: Number(event.currentTarget.value)
                             })}
                     />
                 </label>
-                <label class="flex flex-col gap-1 text-muted-foreground">
-                    Max Context
+            {:else if data.node.class === 'Boolean'}
+                <label
+                    class="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5 text-xs text-muted-foreground"
+                >
+                    Value
                     <input
-                        type="number"
-                        class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-                        value={data.node.maxContext}
-                        onchange={(event) => updateNumber('maxContext', event.currentTarget.value)}
-                    />
-                </label>
-                <label class="flex flex-col gap-1 text-muted-foreground">
-                    Max Response
-                    <input
-                        type="number"
-                        class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-                        value={data.node.maxResponse}
-                        onchange={(event) => updateNumber('maxResponse', event.currentTarget.value)}
-                    />
-                </label>
-                <label class="flex flex-col gap-1 text-muted-foreground">
-                    Lorebook Ratio
-                    <input
-                        type="number"
-                        step="0.05"
-                        class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-                        value={data.node.lorebookRatio}
+                        type="checkbox"
+                        class="nodrag size-4"
+                        checked={data.node.value}
                         onchange={(event) =>
-                            updateNumber('lorebookRatio', event.currentTarget.value)}
+                            data.onUpdateNode(data.node.id, {
+                                value: event.currentTarget.checked
+                            })}
                     />
                 </label>
-                <label class="flex flex-col gap-1 text-muted-foreground">
-                    Memory Ratio
-                    <input
-                        type="number"
-                        step="0.05"
+            {:else if data.node.class === 'NumberMath'}
+                <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                    Operator
+                    <select
                         class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-                        value={data.node.memoryRatio}
-                        onchange={(event) => updateNumber('memoryRatio', event.currentTarget.value)}
-                    />
-                </label>
-                <label class="col-span-2 flex flex-col gap-1 text-muted-foreground">
-                    Lorebook Scan Depth
-                    <input
-                        type="number"
-                        class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-                        value={data.node.lorebookScanDepth}
+                        value={data.node.operator}
                         onchange={(event) =>
-                            updateNumber('lorebookScanDepth', event.currentTarget.value)}
-                    />
-                </label>
-                <div class="col-span-2 space-y-1.5">
-                    <button
-                        type="button"
-                        class="nodrag flex h-8 w-full items-center justify-between rounded-md px-2 text-xs text-muted-foreground hover:bg-muted/50"
-                        onclick={() => (toolsExpanded = !toolsExpanded)}
+                            data.onUpdateNode(data.node.id, {
+                                operator: event.currentTarget.value as typeof data.node.operator
+                            })}
                     >
-                        <span>Tools</span>
-                        {#if toolsExpanded}
-                            <ChevronUp class="size-3" />
-                        {:else}
-                            <ChevronDown class="size-3" />
-                        {/if}
-                    </button>
-                    {#if toolsExpanded}
-                        <div class="grid gap-4 rounded-lg border bg-muted/30 p-4">
-                            <div class="flex flex-wrap gap-x-5 gap-y-2">
-                                {#each agentTools as tool (tool.id)}
-                                    <label class="nodrag flex items-center gap-2 text-xs">
-                                        <input
-                                            type="checkbox"
-                                            class="size-4 accent-primary"
-                                            checked={data.node.toolIds.includes(tool.id)}
-                                            onchange={(event) =>
-                                                updateAgentTool(
-                                                    tool.id,
-                                                    event.currentTarget.checked
-                                                )}
-                                        />
-                                        {tool.label}
-                                    </label>
-                                {/each}
-                            </div>
-                        </div>
+                        <option value="add">add</option>
+                        <option value="subtract">subtract</option>
+                        <option value="multiply">multiply</option>
+                        <option value="divide">divide</option>
+                    </select>
+                </label>
+            {:else if data.node.class === 'NumberCompare'}
+                <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                    Operator
+                    <select
+                        class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                        value={data.node.operator}
+                        onchange={(event) =>
+                            data.onUpdateNode(data.node.id, {
+                                operator: event.currentTarget.value as typeof data.node.operator
+                            })}
+                    >
+                        <option value="equal">equal</option>
+                        <option value="notEqual">not equal</option>
+                        <option value="greaterThan">greater than</option>
+                        <option value="greaterThanOrEqual">greater than or equal</option>
+                        <option value="lessThan">less than</option>
+                        <option value="lessThanOrEqual">less than or equal</option>
+                    </select>
+                </label>
+            {:else if data.node.class === 'BooleanLogic'}
+                <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                    Operator
+                    <select
+                        class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                        value={data.node.operator}
+                        onchange={(event) =>
+                            data.onUpdateNode(data.node.id, {
+                                operator: event.currentTarget.value as typeof data.node.operator
+                            })}
+                    >
+                        <option value="and">and</option>
+                        <option value="or">or</option>
+                        <option value="xor">xor</option>
+                        <option value="nand">nand</option>
+                        <option value="nor">nor</option>
+                        <option value="xnor">xnor</option>
+                    </select>
+                </label>
+            {:else if data.node.class === 'StringIncludes'}
+                <label
+                    class="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5 text-xs text-muted-foreground"
+                >
+                    Case sensitive
+                    <input
+                        type="checkbox"
+                        class="nodrag size-4"
+                        checked={data.node.caseSensitive}
+                        onchange={(event) =>
+                            data.onUpdateNode(data.node.id, {
+                                caseSensitive: event.currentTarget.checked
+                            })}
+                    />
+                </label>
+            {:else if data.node.class === 'FilterAgentParts'}
+                <div class="grid grid-cols-2 gap-2 rounded-md border bg-background p-2">
+                    <label class="nodrag flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                            type="checkbox"
+                            class="size-4"
+                            checked={data.node.includeText}
+                            onchange={(event) =>
+                                data.onUpdateNode(data.node.id, {
+                                    includeText: event.currentTarget.checked
+                                })}
+                        />
+                        Text
+                    </label>
+                    <label class="nodrag flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                            type="checkbox"
+                            class="size-4"
+                            checked={data.node.includeThought}
+                            onchange={(event) =>
+                                data.onUpdateNode(data.node.id, {
+                                    includeThought: event.currentTarget.checked
+                                })}
+                        />
+                        Thought
+                    </label>
+                    <label class="nodrag flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                            type="checkbox"
+                            class="size-4"
+                            checked={data.node.includeInlay}
+                            onchange={(event) =>
+                                data.onUpdateNode(data.node.id, {
+                                    includeInlay: event.currentTarget.checked
+                                })}
+                        />
+                        Inlay
+                    </label>
+                    <label class="nodrag flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                            type="checkbox"
+                            class="size-4"
+                            checked={data.node.includeToolCalls}
+                            onchange={(event) =>
+                                data.onUpdateNode(data.node.id, {
+                                    includeToolCalls: event.currentTarget.checked
+                                })}
+                        />
+                        Tool calls
+                    </label>
+                </div>
+            {:else if data.node.class === 'FileRead' || data.node.class === 'FileWrite'}
+                <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                    Namespace
+                    <select
+                        class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
+                        value={data.node.namespace}
+                        onchange={(event) =>
+                            data.onUpdateNode(data.node.id, {
+                                namespace: event.currentTarget.value as 'global' | 'room' | 'chat'
+                            })}
+                    >
+                        <option value="global">global</option>
+                        <option value="room">room</option>
+                        <option value="chat">chat</option>
+                    </select>
+                </label>
+            {/if}
+
+            {#if inputEntries.length > 0}
+                <div class="flex flex-col gap-2 {hasTopControls ? 'border-t pt-2' : ''}">
+                    {#each inputEntries as [inputId, connection] (inputId)}
+                        {@const port = getWorkflowInputPortDefinition(data.node, inputId)}
+                        {@const hasLiteral = inputId in data.node.inputValues}
+                        <WorkflowInputRow
+                            node={data.node}
+                            {inputId}
+                            {connection}
+                            {port}
+                            {hasLiteral}
+                            onUpdateInputValue={updateInputValue}
+                            onRenameSlot={data.onRenameSlot}
+                            onDeleteSlot={data.onDeleteSlot}
+                        />
+                    {/each}
+                    {#if data.node.class === 'Agent'}
+                        <button
+                            class="nodrag flex h-6 items-center gap-1 self-start rounded px-1.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                            onclick={() => data.onAddSlot(data.node.id)}
+                            ><Plus class="size-3" /> Add input</button
+                        >
                     {/if}
                 </div>
-            </div>
-        {:else if data.node.class === 'String'}
-            <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                Content
-                <textarea
-                    class="nodrag min-h-20 resize-y rounded-md border bg-background p-2 text-xs leading-relaxed text-foreground"
-                    value={data.node.content}
-                    placeholder="Enter text..."
-                    onchange={(event) =>
-                        data.onUpdateNode(data.node.id, { content: event.currentTarget.value })}
-                ></textarea>
-            </label>
-        {:else if data.node.class === 'Number'}
-            <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                Value
-                <input
-                    type="number"
-                    class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-                    value={data.node.value}
-                    onchange={(event) =>
-                        data.onUpdateNode(data.node.id, {
-                            value: Number(event.currentTarget.value)
-                        })}
-                />
-            </label>
-        {:else if data.node.class === 'Boolean'}
-            <label
-                class="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5 text-xs text-muted-foreground"
-            >
-                Value
-                <input
-                    type="checkbox"
-                    class="nodrag size-4"
-                    checked={data.node.value}
-                    onchange={(event) =>
-                        data.onUpdateNode(data.node.id, {
-                            value: event.currentTarget.checked
-                        })}
-                />
-            </label>
-        {:else if data.node.class === 'NumberMath'}
-            <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                Operator
-                <select
-                    class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-                    value={data.node.operator}
-                    onchange={(event) =>
-                        data.onUpdateNode(data.node.id, {
-                            operator: event.currentTarget.value as typeof data.node.operator
-                        })}
+            {:else if data.node.class === 'Agent'}
+                <button
+                    class="nodrag flex h-7 items-center gap-1 self-start rounded px-1.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onclick={() => data.onAddSlot(data.node.id)}
+                    ><Plus class="size-3" /> Add input</button
                 >
-                    <option value="add">add</option>
-                    <option value="subtract">subtract</option>
-                    <option value="multiply">multiply</option>
-                    <option value="divide">divide</option>
-                </select>
-            </label>
-        {:else if data.node.class === 'NumberCompare'}
-            <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                Operator
-                <select
-                    class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-                    value={data.node.operator}
-                    onchange={(event) =>
-                        data.onUpdateNode(data.node.id, {
-                            operator: event.currentTarget.value as typeof data.node.operator
-                        })}
-                >
-                    <option value="equal">equal</option>
-                    <option value="notEqual">not equal</option>
-                    <option value="greaterThan">greater than</option>
-                    <option value="greaterThanOrEqual">greater than or equal</option>
-                    <option value="lessThan">less than</option>
-                    <option value="lessThanOrEqual">less than or equal</option>
-                </select>
-            </label>
-        {:else if data.node.class === 'BooleanLogic'}
-            <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                Operator
-                <select
-                    class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-                    value={data.node.operator}
-                    onchange={(event) =>
-                        data.onUpdateNode(data.node.id, {
-                            operator: event.currentTarget.value as typeof data.node.operator
-                        })}
-                >
-                    <option value="and">and</option>
-                    <option value="or">or</option>
-                    <option value="xor">xor</option>
-                    <option value="nand">nand</option>
-                    <option value="nor">nor</option>
-                    <option value="xnor">xnor</option>
-                </select>
-            </label>
-        {:else if data.node.class === 'StringIncludes'}
-            <label
-                class="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5 text-xs text-muted-foreground"
-            >
-                Case sensitive
-                <input
-                    type="checkbox"
-                    class="nodrag size-4"
-                    checked={data.node.caseSensitive}
-                    onchange={(event) =>
-                        data.onUpdateNode(data.node.id, {
-                            caseSensitive: event.currentTarget.checked
-                        })}
-                />
-            </label>
-        {:else if data.node.class === 'FileRead' || data.node.class === 'FileWrite'}
-            <label class="flex flex-col gap-1 text-[10px] text-muted-foreground">
-                Namespace
-                <select
-                    class="nodrag h-7 rounded-md border bg-background px-2 text-xs text-foreground"
-                    value={data.node.namespace}
-                    onchange={(event) =>
-                        data.onUpdateNode(data.node.id, {
-                            namespace: event.currentTarget.value as 'global' | 'room' | 'chat'
-                        })}
-                >
-                    <option value="global">global</option>
-                    <option value="room">room</option>
-                    <option value="chat">chat</option>
-                </select>
-            </label>
-        {/if}
+            {/if}
 
-        {#if inputEntries.length > 0}
-            <div class="flex flex-col gap-2 border-t pt-2">
-                <p class="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/70">
-                    Inputs
-                </p>
-                {#each inputEntries as [inputId, connection] (inputId)}
-                    {@const port = getWorkflowInputPortDefinition(data.node, inputId)}
-                    {@const hasLiteral = inputId in data.node.inputValues}
-                    <WorkflowInputRow
-                        node={data.node}
-                        {inputId}
-                        {connection}
-                        {port}
-                        {hasLiteral}
-                        onUpdateInputValue={updateInputValue}
-                        onRenameSlot={data.onRenameSlot}
-                        onDeleteSlot={data.onDeleteSlot}
-                    />
-                {/each}
-                {#if data.node.class === 'Agent'}
-                    <button
-                        class="nodrag flex h-6 items-center gap-1 self-start rounded px-1.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                        onclick={() => data.onAddSlot(data.node.id)}
-                        ><Plus class="size-3" /> Add input</button
-                    >
-                {/if}
-            </div>
-        {:else if data.node.class === 'Agent'}
-            <button
-                class="nodrag flex h-7 items-center gap-1 self-start rounded px-1.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                onclick={() => data.onAddSlot(data.node.id)}
-                ><Plus class="size-3" /> Add input</button
-            >
-        {/if}
-
-        {#if outputEntries.length > 0}
-            <div class="flex flex-col gap-1.5 border-t pt-2">
-                {#each outputEntries as [outputId, port] (outputId)}
-                    <div class="relative -mx-3 flex h-6 items-center justify-end px-3 text-xs">
-                        <span class="text-muted-foreground">{port.name}</span>
-                        <span class="ml-1 text-[9px] text-muted-foreground/50">{port.type}</span>
-                        <Handle
-                            type="source"
-                            id={outputId}
-                            position={Position.Right}
-                            class="!right-0 !size-3 !border-2 !border-card {categoryStyle.handle}"
-                        />
-                    </div>
-                {/each}
-            </div>
-        {:else}
-            <div class="border-t pt-2">
-                <p class="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-                    {definition.category === 'result'
-                        ? "Publishes the workflow's final string result."
-                        : 'Runs for its side effect and has no data output ports.'}
-                </p>
-            </div>
-        {/if}
-    </div>
+            {#if outputEntries.length > 0}
+                <div class="flex flex-col gap-1.5 border-t pt-2">
+                    {#each outputEntries as [outputId, port] (outputId)}
+                        <div class="relative -mx-3 flex h-6 items-center justify-end px-3 text-xs">
+                            <span class="text-muted-foreground">{port.name}</span>
+                            <span class="ml-1 text-[9px] text-muted-foreground/50">{port.type}</span
+                            >
+                            <Handle
+                                type="source"
+                                id={outputId}
+                                position={Position.Right}
+                                class="!right-0 !size-3 !border-2 !border-card {categoryStyle.handle}"
+                            />
+                        </div>
+                    {/each}
+                </div>
+            {/if}
+        </div>
+    {/if}
 </div>

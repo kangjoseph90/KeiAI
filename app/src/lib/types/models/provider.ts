@@ -41,6 +41,7 @@ export interface GoogleProviderConfig {
     };
     stt: {
         modelId: string;
+        languageCode: string;
     };
 }
 
@@ -64,6 +65,28 @@ export interface NovelAIProviderConfig {
         voiceId: string;
         version: string;
     };
+    imagegen: {
+        modelId: string;
+        width: number;
+        height: number;
+        sampler: string;
+        noiseSchedule: string;
+        steps: number;
+        scale: number;
+        cfgRescale: number;
+        vibeInformationExtracted: number;
+        vibeStrength: number;
+        referenceStrength: number;
+        referenceFidelity: number;
+    };
+}
+
+export interface ComfyUIProviderConfig {
+    imagegen: {
+        baseUrl: string;
+        workflow: string;
+        timeoutSeconds: number;
+    };
 }
 
 // ─── VoyageAI ─────────────────────────────────────────────────────────────────
@@ -83,6 +106,7 @@ export interface VoyageAIProviderConfig {
 export interface ElevenLabsProviderConfig {
     apiKey?: string;
     tts: {
+        modelId: string;
         voiceId: string;
     };
 }
@@ -96,6 +120,18 @@ export interface KokoroProviderConfig {
 }
 
 // ─── MiniLM ─────────────────────────────────────────────────────────────────
+
+export interface MockProviderConfig {
+    imagegen: {
+        modelId: string;
+    };
+    tts: {
+        modelId: string;
+    };
+    stt: {
+        modelId: string;
+    };
+}
 
 export interface MiniLMProviderConfig {
     embedding: {
@@ -120,7 +156,6 @@ export interface TransformersProviderConfig {
     };
     tts: {
         modelId: string;
-        voiceId: string;
     };
     stt: {
         modelId: string;

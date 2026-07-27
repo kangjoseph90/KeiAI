@@ -8,6 +8,53 @@ vi.mock('$lib/managers/chat', () => ({
 }));
 
 describe('WorkflowRuntime', () => {
+    it('filters serialized AgentParts by selected part types', async () => {
+        const workflow: WorkflowDefinition = {
+            nodes: {
+                source: {
+                    id: 'source',
+                    name: 'Source',
+                    class: 'String',
+                    position: { x: 0, y: 0 },
+                    collapsed: false,
+                    content:
+                        'before<|thought|>thinking<|/thought|><|inlay|>["image-1"]<|/inlay|><|tool_calls|>[{"id":"tool-1","name":"search","status":"success"}]<|/tool_calls|>after',
+                    inputs: {},
+                    inputValues: {}
+                },
+                filter: {
+                    id: 'filter',
+                    name: 'Filter Agent Parts',
+                    class: 'FilterAgentParts',
+                    position: { x: 0, y: 0 },
+                    collapsed: false,
+                    includeText: false,
+                    includeThought: true,
+                    includeInlay: true,
+                    includeToolCalls: false,
+                    inputs: {
+                        content: { sourceNode: 'source', sourcePort: 0 },
+                        stream: null
+                    },
+                    inputValues: { content: '', stream: false }
+                },
+                output: {
+                    id: 'output',
+                    name: 'Output',
+                    class: 'Output',
+                    position: { x: 0, y: 0 },
+                    collapsed: false,
+                    inputs: { content: { sourceNode: 'filter', sourcePort: 0 } },
+                    inputValues: {}
+                }
+            }
+        };
+
+        await expect(collectFinal(new WorkflowRuntime(workflow).run())).resolves.toBe(
+            '<|thought|>thinking<|/thought|><|inlay|>["image-1"]<|/inlay|>'
+        );
+    });
+
     it('uses literal input values and lets connected edges take precedence', async () => {
         const workflow: WorkflowDefinition = {
             nodes: {
@@ -16,6 +63,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'edge',
                     inputs: {},
                     inputValues: {}
@@ -25,6 +73,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Concat',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         a: { sourceNode: 'source', sourcePort: 0 },
                         b: null,
@@ -37,6 +86,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'concat', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -56,6 +106,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Hello',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'hello',
                     inputs: {},
                     inputValues: {}
@@ -65,6 +116,7 @@ describe('WorkflowRuntime', () => {
                     name: 'World',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'world',
                     inputs: {},
                     inputValues: {}
@@ -74,6 +126,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Concat',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         a: { sourceNode: 'hello', sourcePort: 0 },
                         b: { sourceNode: 'world', sourcePort: 0 },
@@ -86,6 +139,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'concat', sourcePort: 0 }
                     },
@@ -107,6 +161,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Count',
                     class: 'Number',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     value: 42,
                     inputs: {},
                     inputValues: {}
@@ -116,6 +171,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'count', sourcePort: 0 }
                     },
@@ -130,6 +186,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Enabled',
                     class: 'Boolean',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     value: true,
                     inputs: {},
                     inputValues: {}
@@ -139,6 +196,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'enabled', sourcePort: 0 }
                     },
@@ -161,6 +219,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Value',
                     class: 'Number',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     value: 5,
                     inputs: {},
                     inputValues: {}
@@ -170,6 +229,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Math',
                     class: 'NumberMath',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     operator: 'multiply',
                     inputs: {
                         a: { sourceNode: 'value', sourcePort: 0 },
@@ -185,6 +245,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Compare',
                     class: 'NumberCompare',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     operator: 'greaterThan',
                     inputs: {
                         a: { sourceNode: 'math', sourcePort: 0 },
@@ -200,6 +261,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Not',
                     class: 'BooleanNot',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         value: { sourceNode: 'compare', sourcePort: 0 }
                     },
@@ -212,6 +274,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'not', sourcePort: 0 }
                     },
@@ -231,6 +294,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Xor',
                     class: 'BooleanLogic',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     operator: 'xor',
                     inputs: {
                         a: null,
@@ -246,6 +310,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Nor',
                     class: 'BooleanLogic',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     operator: 'nor',
                     inputs: {
                         a: { sourceNode: 'xor', sourcePort: 0 },
@@ -261,6 +326,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'nor', sourcePort: 0 }
                     },
@@ -280,6 +346,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Condition',
                     class: 'Boolean',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     value: false,
                     inputs: {},
                     inputValues: {}
@@ -289,6 +356,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Gate',
                     class: 'Gate',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         condition: { sourceNode: 'condition', sourcePort: 0 },
                         value: null
@@ -303,6 +371,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Ungate',
                     class: 'Ungate',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         value: { sourceNode: 'gate', sourcePort: 0 },
                         fallback: null
@@ -317,6 +386,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'ungate', sourcePort: 0 }
                     },
@@ -338,6 +408,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Ok',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'ok',
                     inputs: {},
                     inputValues: {}
@@ -347,6 +418,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Broken Side Path',
                     class: 'NumberMath',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     operator: 'divide',
                     inputs: {
                         a: null,
@@ -362,6 +434,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'ok', sourcePort: 0 }
                     },
@@ -381,6 +454,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Ok',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'ok',
                     inputs: {},
                     inputValues: {}
@@ -392,6 +466,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Orphan',
                     class: 'ThrowIf',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { condition: null, value: null },
                     inputValues: { condition: true, value: 'never' }
                 },
@@ -400,6 +475,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'ok', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -417,6 +493,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'sink-driven',
                     inputs: {},
                     inputValues: {}
@@ -427,6 +504,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Sink',
                     class: 'Sink',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'source', sourcePort: 0 } },
                     inputValues: { content: '' }
                 }
@@ -445,6 +523,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Ok',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'ok',
                     inputs: {},
                     inputValues: {}
@@ -454,6 +533,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Condition',
                     class: 'Boolean',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     value: false,
                     inputs: {},
                     inputValues: {}
@@ -463,6 +543,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Gate',
                     class: 'Gate',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         condition: { sourceNode: 'condition', sourcePort: 0 },
                         value: null
@@ -476,6 +557,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Set Chat Var',
                     class: 'SetChatVar',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         name: null,
                         content: { sourceNode: 'gate', sourcePort: 0 }
@@ -487,6 +569,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'ok', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -509,6 +592,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Broken Output Path',
                     class: 'NumberMath',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     operator: 'divide',
                     inputs: {
                         a: null,
@@ -524,6 +608,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'broken', sourcePort: 0 }
                     },
@@ -545,6 +630,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'hello world',
                     inputs: {},
                     inputValues: {}
@@ -554,6 +640,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Length',
                     class: 'StringLength',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         value: { sourceNode: 'source', sourcePort: 0 }
                     },
@@ -566,6 +653,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'length', sourcePort: 0 }
                     },
@@ -580,6 +668,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Includes',
                     class: 'StringIncludes',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     caseSensitive: false,
                     inputs: {
                         text: null,
@@ -595,6 +684,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'includes', sourcePort: 0 }
                     },
@@ -617,6 +707,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'shared',
                     inputs: {},
                     inputValues: {}
@@ -626,6 +717,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Left',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         a: { sourceNode: 'source', sourcePort: 0 },
                         b: null,
@@ -638,6 +730,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Right',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         a: { sourceNode: 'source', sourcePort: 0 },
                         b: null,
@@ -650,6 +743,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'left', sourcePort: 0 }
                     },
@@ -670,6 +764,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'Translate to {{targetlang}}',
                     inputs: {},
                     inputValues: {}
@@ -679,6 +774,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'source', sourcePort: 0 }
                     },
@@ -710,6 +806,7 @@ describe('WorkflowRuntime', () => {
                     name: 'A',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         a: { sourceNode: 'b', sourcePort: 0 },
                         b: null,
@@ -722,6 +819,7 @@ describe('WorkflowRuntime', () => {
                     name: 'B',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         a: { sourceNode: 'a', sourcePort: 0 },
                         b: null,
@@ -734,6 +832,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'a', sourcePort: 0 }
                     },
@@ -755,6 +854,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'missing', sourcePort: 0 }
                     },
@@ -774,6 +874,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'text',
                     inputs: {},
                     inputValues: {}
@@ -787,6 +888,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'text',
                     inputs: {},
                     inputValues: {}
@@ -796,6 +898,7 @@ describe('WorkflowRuntime', () => {
                     name: 'First',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'source', sourcePort: 0 }
                     },
@@ -806,6 +909,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Second',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         content: { sourceNode: 'source', sourcePort: 0 }
                     },
@@ -829,6 +933,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: null },
                     inputValues: {}
                 }
@@ -849,6 +954,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Source',
                     class: 'String',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     content: 'abc',
                     inputs: {},
                     inputValues: {}
@@ -858,6 +964,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Concat',
                     class: 'Concat',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         a: { sourceNode: 'source', sourcePort: 0 },
                         b: null,
@@ -870,6 +977,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'concat', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -888,6 +996,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Condition',
                     class: 'Boolean',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     value: false,
                     inputs: {},
                     inputValues: {}
@@ -897,6 +1006,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Gate',
                     class: 'Gate',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { condition: { sourceNode: 'condition', sourcePort: 0 }, value: null },
                     inputValues: { condition: false, value: 'gated-value' }
                 },
@@ -905,6 +1015,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Ungate',
                     class: 'Ungate',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         value: { sourceNode: 'gate', sourcePort: 0 },
                         fallback: null
@@ -916,6 +1027,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'ungate', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -934,6 +1046,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Condition',
                     class: 'Boolean',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     value: true,
                     inputs: {},
                     inputValues: {}
@@ -943,6 +1056,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Gate',
                     class: 'Gate',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { condition: { sourceNode: 'condition', sourcePort: 0 }, value: null },
                     inputValues: { condition: false, value: 'gated-value' }
                 },
@@ -951,6 +1065,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'gate', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -970,6 +1085,7 @@ describe('WorkflowRuntime', () => {
                     name: 'ThrowIf',
                     class: 'ThrowIf',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { condition: null, value: null },
                     inputValues: { condition: false, value: 'safe-value' }
                 },
@@ -978,6 +1094,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'throwIf', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -995,6 +1112,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Guard',
                     class: 'ThrowIf',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { condition: null, value: null },
                     inputValues: { condition: true, value: 'safe-value' }
                 },
@@ -1003,6 +1121,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'throwIf', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -1022,6 +1141,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Guard',
                     class: 'ThrowIf',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { condition: null, value: null },
                     inputValues: { condition: true, value: 'safe-value' }
                 },
@@ -1030,6 +1150,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Catch',
                     class: 'Catch',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         value: { sourceNode: 'throwIf', sourcePort: 0 },
                         fallback: null
@@ -1041,6 +1162,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'catch', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -1058,6 +1180,7 @@ describe('WorkflowRuntime', () => {
                     name: 'ThrowIf',
                     class: 'ThrowIf',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { condition: null, value: null },
                     inputValues: { condition: false, value: 'safe-value' }
                 },
@@ -1066,6 +1189,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Catch',
                     class: 'Catch',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: {
                         value: { sourceNode: 'throwIf', sourcePort: 0 },
                         fallback: null
@@ -1077,6 +1201,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'catch', sourcePort: 0 } },
                     inputValues: {}
                 }
@@ -1094,6 +1219,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Broken Output Path',
                     class: 'NumberMath',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     operator: 'divide',
                     inputs: { a: null, b: null },
                     inputValues: { a: 1, b: 0 }
@@ -1103,6 +1229,7 @@ describe('WorkflowRuntime', () => {
                     name: 'Output',
                     class: 'Output',
                     position: { x: 0, y: 0 },
+                    collapsed: false,
                     inputs: { content: { sourceNode: 'broken', sourcePort: 0 } },
                     inputValues: {}
                 }

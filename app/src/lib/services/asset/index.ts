@@ -17,13 +17,27 @@ import { localDB, type DataRecord, type DataScope } from '$lib/adapters/db';
 import { clock } from '$lib/utils/clock';
 import { AppError } from '$lib/types/errors';
 import { canAccessScope } from '../session';
-import { CACHE_HIGH_WATERMARK, CACHE_LOW_WATERMARK, type AssetReadLocator } from './types';
+import {
+    CACHE_HIGH_WATERMARK,
+    CACHE_LOW_WATERMARK,
+    MAX_ASSET_SIZE_BY_MEDIA_TYPE,
+    type AssetReadLocator
+} from './types';
 import { decryptConvergentAsset, encryptConvergentAsset, fileToPlaintext } from './util';
 import { fetchAssetCiphertext } from './remote';
 import { sha256, type Bytes } from '$lib/crypto';
-import type { AssetEntries, AssetFields, AssetStatus } from '$lib/types/asset';
+import {
+    getAssetMediaType,
+    MEDIA_ASSET_MIME_TYPES,
+    type AssetEntries,
+    type AssetFields,
+    type AssetMediaType,
+    type AssetStatus
+} from '$lib/types/asset';
 
 export type { AssetLocator, AssetOwner, AssetReadLocator, AssetRegistryRecord } from './types';
+
+const SUPPORTED_MEDIA_TYPES: readonly AssetMediaType[] = ['image', 'audio', 'video'];
 
 async function updateOwnerEntryStatus(locator: AssetLocator, status: AssetStatus): Promise<void> {
     const record = await localDB.getRecord<DataRecord>(locator.ownerTable, locator.ownerId);
@@ -83,8 +97,43 @@ export class AssetService {
         );
     }
 
-    static async write(file: File, owner: AssetOwner): Promise<AssetFields> {
+    private static validateMimeType(
+        mimeType: string,
+        allowedMediaTypes: readonly AssetMediaType[] = SUPPORTED_MEDIA_TYPES
+    ): AssetMediaType {
+        const normalizedMimeType = mimeType.trim().toLowerCase();
+        if (!(MEDIA_ASSET_MIME_TYPES as readonly string[]).includes(normalizedMimeType)) {
+            throw new AppError(
+                'ASSET_ERROR',
+                `Unsupported asset format: ${mimeType || 'unknown'}.`
+            );
+        }
+
+        const mediaType = getAssetMediaType(normalizedMimeType);
+        if (!allowedMediaTypes.includes(mediaType)) {
+            throw new AppError(
+                'ASSET_ERROR',
+                `Expected ${allowedMediaTypes.join(' or ')} asset, but received ${mediaType}.`
+            );
+        }
+        return mediaType;
+    }
+
+    static async write(
+        file: File,
+        owner: AssetOwner,
+        allowedMediaTypes: readonly AssetMediaType[] = SUPPORTED_MEDIA_TYPES
+    ): Promise<AssetFields> {
         const { bytes, mimeType } = await fileToPlaintext(file);
+        const mediaType = AssetService.validateMimeType(mimeType, allowedMediaTypes);
+        const maxSize = MAX_ASSET_SIZE_BY_MEDIA_TYPE[mediaType];
+        if (bytes.byteLength > maxSize) {
+            throw new AppError(
+                'ASSET_ERROR',
+                `${file.name} exceeds the ${maxSize / (1024 * 1024)} MB ${mediaType} asset limit.`
+            );
+        }
+
         const encrypted = await encryptConvergentAsset(bytes);
         const fields: AssetFields = {
             name: file.name,

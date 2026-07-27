@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MockLLMStreamHandler } from '$lib/llm/handlers/mock';
+import { getTextContent } from '$lib/workflow/agent/llm';
 
 async function getCompleteResponse(messages: Parameters<MockLLMStreamHandler['stream']>[0]) {
     const handler = new MockLLMStreamHandler({ behavior: 'echo' });
@@ -25,8 +26,8 @@ describe('MockLLMStreamHandler multimodal input', () => {
             }
         ]);
 
-        expect(response?.content).toBe(
-            '[Mock vision] Received 2 image attachments.\n\nText prompt: Describe these images.'
+        expect(response && getTextContent(response.parts)).toBe(
+            '[Mock multimodal] Received 2 image attachments.\n\nText prompt: Describe these images.'
         );
     });
 
@@ -38,6 +39,8 @@ describe('MockLLMStreamHandler multimodal input', () => {
             }
         ]);
 
-        expect(response?.content).toBe('[Mock vision] Received 1 image attachment.');
+        expect(response && getTextContent(response.parts)).toBe(
+            '[Mock multimodal] Received 1 image attachment.'
+        );
     });
 });

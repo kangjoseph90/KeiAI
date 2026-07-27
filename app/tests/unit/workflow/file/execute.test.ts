@@ -73,6 +73,7 @@ describe('workflow file executors', () => {
                 name: 'Read',
                 class: 'FileRead',
                 position: { x: 0, y: 0 },
+                collapsed: false,
                 namespace: 'chat',
                 inputs: { path: { sourceNode: 'path', sourcePort: 0 } },
                 inputValues: { path: 'fallback.txt' }
@@ -99,6 +100,7 @@ describe('workflow file executors', () => {
                 name: 'Write',
                 class: 'FileWrite',
                 position: { x: 0, y: 0 },
+                collapsed: false,
                 namespace: 'room',
                 inputs: { path: null, content: { sourceNode: 'agent', sourcePort: 0 } },
                 inputValues: { path: 'result.txt', content: '' }
@@ -135,6 +137,7 @@ describe('workflow file executors', () => {
                 name: 'Write Global',
                 class: 'FileWrite',
                 position: { x: 0, y: 0 },
+                collapsed: false,
                 namespace: 'global',
                 inputs: { path: null, content: null },
                 inputValues: { path: 'memory.txt', content: 'remember this' }

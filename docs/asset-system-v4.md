@@ -47,7 +47,7 @@ interface AssetRef extends OrderedRef, AssetFields {}
 character.avatar?: AssetFields;
 character.assets: EntityListConfig<AssetRef>;
 chat.inlays: EntityListConfig<AssetRef>;
-message.attachments?: string[]; // chat.inlays ref id 목록
+message.swipes[*].parts: AgentPart[]; // inlay part가 chat.inlays ref id 목록을 소유
 ```
 
 `AssetRef.id`는 전역 asset id가 아니다. `EntityListConfig` 안에서 쓰는 레이아웃/참조 id다. 실제 바이너리 식별자는 `hash`이고, 복호화에는 `encKey`를 쓴다.
@@ -128,7 +128,7 @@ V4에서 inlay는 chat-owned asset이다. 모델 이미지 생성, 사용자 업
 
 ```ts
 chat.inlays: EntityListConfig<AssetRef>;
-message.attachments?: string[];
+message.swipes[*].parts: AgentPart[]; // { type: "inlay", ids: string[] }
 ```
 
 이 결정으로 inlay의 cascade delete 기준이 닫힌다. chat 삭제 시 `deleteOwnerAssets(chat)`로 해당 chat의 inlay registry/storage를 정리할 수 있다.
@@ -183,6 +183,33 @@ light export -> hash + encKey
 ```
 
 import 시 baked payload는 `File`로 materialize되어 `AssetService.write()`를 탄다. 따라서 로컬 바이너리와 registry가 새로 생기고, image preprocess도 이 경로에서 수행된다. light payload는 파일이 없으므로 `AssetFields`로 들어와 remote 참조로 기록된다.
+
+## Multimedia Extension
+
+Asset V4의 바이너리 저장 계약은 이미지에 한정되지 않는다. `AssetFields.mimeType`을
+canonical media discriminator로 사용하며, 런타임에서는 MIME top-level type을
+`image | audio | video | other`로 분류한다. 별도의 동기화 필드나 서버가 읽어야 하는
+media type은 추가하지 않는다.
+
+- 이미지: PNG/JPEG는 기존처럼 WebP 전처리를 적용하고, WebP/GIF는 원본 바이트를 유지한다.
+- 오디오/비디오: 원본 바이트와 MIME type을 유지한다.
+- 이름 기반 매크로: `asset`, `media`, `img`, `image`, `audio`, `video`는 실제 MIME type에
+  따라 `<img>`, `<audio controls>`, `<video controls>` 중 하나를 렌더한다.
+- inlay 매크로: `{{inlay::refId}}`도 같은 MIME 기반 렌더링 규칙을 사용한다.
+- 앱의 에셋 목록은 공용 `MediaGalleryDialog`를 사용한다. 선택한 항목을 크게 표시하고
+  이전/다음 버튼, 좌우 방향키, 하단 썸네일 목록으로 같은 owner context의 에셋을 탐색한다.
+- 채팅 프롬프트: attachment를 provider-neutral `image | audio | video` content part로
+  구성한다.
+- 모델 capability: `image_input`, `audio_input`, `video_input`을 독립적으로 광고한다.
+  지원하지 않는 part는 provider handler 호출 전에 명시적인 text marker로 변환한다.
+- Provider mapping:
+  - OpenAI-compatible: `image_url`, `input_audio`, `video_url`
+  - Google: `inlineData`
+  - Anthropic: image block만 직렬화하며 audio/video는 capability에서 unsupported로 둔다.
+
+`mimeType`이 없는 구형 resource locator는 표시 호환성을 위해 image로 간주한다. 반면
+프롬프트 첨부는 실제 `AssetRef.mimeType`이 image/audio/video로 분류되는 경우에만 포함해
+알 수 없는 바이너리가 모델 요청으로 전달되지 않도록 한다.
 
 ## Tradeoffs
 

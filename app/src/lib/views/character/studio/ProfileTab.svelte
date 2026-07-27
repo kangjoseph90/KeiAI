@@ -12,9 +12,12 @@
         CardDescription
     } from '$lib/components/ui/card';
     import AssetView from '$lib/components/AssetView.svelte';
+    import MediaGalleryDialog from '$lib/components/MediaGalleryDialog.svelte';
+    import type { MediaGalleryItem } from '$lib/components/MediaGalleryDialog.svelte';
     import type { Character, CharacterContent } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { getErrorMessage } from '$lib/types/errors';
+    import { IMAGE_ASSET_EXTENSIONS } from '$lib/types/asset';
     import { appDialog } from '$lib/adapters/dialog';
     import { appConfirm, toast } from '$lib/ui';
 
@@ -27,6 +30,26 @@
 
     let { character, onUpdate, onUpdateAvatar, onRemoveAvatar }: Props = $props();
     let avatarAction = $state<'upload' | 'remove' | null>(null);
+    let avatarGalleryOpen = $state(false);
+    let avatarGalleryItems = $derived<MediaGalleryItem[]>(
+        character.avatar
+            ? [
+                  {
+                      id: 'avatar',
+                      name: character.avatar.name,
+                      asset: {
+                          scopeType: character.scopeType,
+                          scopeId: character.scopeId,
+                          ownerTable: 'characters',
+                          ownerId: character.id,
+                          hash: character.avatar.hash,
+                          encKey: character.avatar.encKey,
+                          mimeType: character.avatar.mimeType
+                      }
+                  }
+              ]
+            : []
+    );
 
     async function handleAvatarUpload() {
         if (avatarAction) return;
@@ -35,7 +58,7 @@
         try {
             const file = await appDialog.openFile({
                 title: 'Upload Character Avatar',
-                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+                filters: [{ name: 'Images', extensions: [...IMAGE_ASSET_EXTENSIONS] }]
             });
             if (!file || character.id !== characterId) return;
             await onUpdateAvatar(characterId, file);
@@ -75,41 +98,38 @@
         </CardHeader>
         <CardContent class="space-y-6">
             <div class="flex items-center gap-4 sm:gap-6">
-                <div class="group relative shrink-0">
-                    <div
-                        class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted sm:size-24"
-                    >
-                        <AssetView
-                            asset={character.avatar
-                                ? {
-                                      scopeType: character.scopeType,
-                                      scopeId: character.scopeId,
-                                      ownerTable: 'characters',
-                                      ownerId: character.id,
-                                      hash: character.avatar.hash,
-                                      encKey: character.avatar.encKey
-                                  }
-                                : null}
-                            alt={character.name}
-                            class="size-full object-cover"
-                            fallback="none"
+                <div class="shrink-0">
+                    {#if character.avatar}
+                        <button
+                            type="button"
+                            class="size-20 cursor-zoom-in overflow-hidden rounded-full border-2 border-primary/20 bg-muted transition hover:border-primary/50 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:size-24"
+                            aria-label={`View ${character.name} avatar`}
+                            title="View avatar"
+                            onclick={() => (avatarGalleryOpen = true)}
                         >
-                            {#if !character.avatar}
+                            <AssetView
+                                asset={avatarGalleryItems[0]?.asset}
+                                alt={character.name}
+                                class="size-full object-cover"
+                                fallback="none"
+                            />
+                        </button>
+                    {:else}
+                        <div
+                            class="size-20 overflow-hidden rounded-full border-2 border-primary/20 bg-muted sm:size-24"
+                        >
+                            <AssetView
+                                asset={null}
+                                alt={character.name}
+                                class="size-full object-cover"
+                                fallback="none"
+                            >
                                 <div class="flex size-full items-center justify-center">
                                     <User class="size-10 text-muted-foreground/50" />
                                 </div>
-                            {/if}
-                        </AssetView>
-                    </div>
-                    <button
-                        class="absolute inset-0 flex items-center justify-center rounded-full bg-transparent transition-opacity lg:bg-black/40 lg:text-white lg:opacity-0 lg:group-hover:opacity-100"
-                        disabled={avatarAction !== null}
-                        aria-busy={avatarAction === 'upload'}
-                        aria-label="Upload character avatar"
-                        onclick={handleAvatarUpload}
-                    >
-                        <Upload class="hidden size-6 lg:block" />
-                    </button>
+                            </AssetView>
+                        </div>
+                    {/if}
                 </div>
                 <div class="min-w-0 flex-1 space-y-4">
                     <div class="grid gap-1.5">
@@ -172,3 +192,9 @@
         </CardContent>
     </Card>
 </section>
+
+<MediaGalleryDialog
+    bind:open={avatarGalleryOpen}
+    items={avatarGalleryItems}
+    title="Character avatar"
+/>

@@ -15,7 +15,7 @@ import {
     setTranslationTaskError
 } from '$lib/stores/tasks/translation';
 import { WorkflowRuntime } from '$lib/workflow';
-import { deserializeAgentParts, getLastContentText } from '$lib/workflow/agent/llm';
+import { deserializeAgentParts, getLastTextContent } from '$lib/workflow/agent/llm';
 import { toMessageContext } from '$lib/workflow/agent/context';
 
 export interface RunTranslationOptions {
@@ -45,7 +45,7 @@ export async function runTranslation(
     const activeSwipe = message.swipes[message.activeSwipeId];
     if (!activeSwipe) throw new AppError('INVALID_INPUT', 'Message has no active swipe');
 
-    const source = getLastContentText(activeSwipe.parts);
+    const source = getLastTextContent(activeSwipe.parts);
     if (!source.trim()) throw new AppError('INVALID_INPUT', 'Translation source is empty');
 
     const targetLanguage = settings.translation.targetLanguage.trim();
@@ -83,7 +83,7 @@ export async function runTranslation(
 
         let finalContent = '';
         for await (const output of runtime.run()) {
-            finalContent = getLastContentText(deserializeAgentParts(output));
+            finalContent = getLastTextContent(deserializeAgentParts(output));
             if (!(await saveTranslationText(message.id, swipeId, sourceHash, finalContent))) {
                 throw new AppError('INVALID_INPUT', 'Translation source changed');
             }

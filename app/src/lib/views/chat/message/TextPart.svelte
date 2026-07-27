@@ -22,7 +22,7 @@
     import type { RuntimeContext } from '$lib/types/context';
     import { eventButtons, externalLinks } from '$lib/ui';
 
-    export interface ContentPartRenderContext {
+    export interface TextPartRenderContext {
         ctx: RuntimeContext;
         chatId: string;
         messageScope: string;
@@ -38,7 +38,7 @@
         isUser
     }: {
         text: string;
-        renderContext: ContentPartRenderContext;
+        renderContext: TextPartRenderContext;
         isUser: boolean;
     } = $props();
 
@@ -56,7 +56,7 @@
 
     interface RenderRequest {
         text: string;
-        context: ContentPartRenderContext;
+        context: TextPartRenderContext;
     }
 
     const morphHtml: Action<HTMLElement, string> = (node, html) => {

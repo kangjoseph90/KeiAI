@@ -126,6 +126,12 @@ export class PagedMessages {
         return this.slice();
     }
 
+    invalidate(index: number): void {
+        const resolved = normalizeIndex(index, this.length);
+        if (resolved === null) return;
+        this.pages.delete(Math.floor(resolved / this.pageSize));
+    }
+
     clear(): void {
         this.pages.clear();
     }

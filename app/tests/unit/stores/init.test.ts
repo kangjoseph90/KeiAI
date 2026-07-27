@@ -95,19 +95,41 @@ describe('Init Store', () => {
             expect(selectPreset).toHaveBeenCalledWith('preset-1');
         });
 
-        it('should initialize the default translation workflow', async () => {
+        it('should initialize the default task workflows', async () => {
             await initDefaultContents();
 
-            expect(updateSettings).toHaveBeenCalledWith({
-                translation: {
-                    workflow: expect.objectContaining({
-                        nodes: expect.objectContaining({
-                            translation_agent: expect.objectContaining({ class: 'Agent' }),
-                            translation_output: expect.objectContaining({ class: 'Output' })
+            expect(updateSettings).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    translation: {
+                        workflow: expect.objectContaining({
+                            nodes: expect.objectContaining({
+                                translation_agent: expect.objectContaining({ class: 'Agent' }),
+                                translation_output: expect.objectContaining({ class: 'Output' })
+                            })
                         })
-                    })
-                }
-            });
+                    },
+                    imageGeneration: {
+                        workflow: expect.objectContaining({
+                            nodes: expect.objectContaining({
+                                image_generation: expect.objectContaining({
+                                    class: 'ImageGeneration'
+                                }),
+                                image_generation_output: expect.objectContaining({
+                                    class: 'Output'
+                                })
+                            })
+                        })
+                    },
+                    tts: {
+                        workflow: expect.objectContaining({
+                            nodes: expect.objectContaining({
+                                tts: expect.objectContaining({ class: 'TTS' }),
+                                tts_output: expect.objectContaining({ class: 'Output' })
+                            })
+                        })
+                    }
+                })
+            );
         });
 
         it('should propagate errors from persona creation', async () => {

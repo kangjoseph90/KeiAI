@@ -10,7 +10,6 @@ export interface PrepareNextSwipeInput {
     variables: Record<string, string>;
     speakerId?: string;
     speakerName?: string;
-    attachments?: string[];
     replaceActiveSwipe?: boolean;
 }
 
@@ -22,8 +21,6 @@ function buildSwipeFields(input: PrepareNextSwipeInput): MessageSwipeFields {
 
     if (input.speakerId !== undefined) fields.speakerId = input.speakerId;
     if (input.speakerName !== undefined) fields.speakerName = input.speakerName;
-    if (input.attachments?.length) fields.attachments = Array.from(input.attachments);
-
     return fields;
 }
 

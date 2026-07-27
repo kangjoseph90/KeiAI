@@ -11,6 +11,9 @@ import type { ImageGenProvider } from '$lib/types/models/imagegen';
 import { OpenAIImageGenHandler } from './handlers/openai';
 import { StabilityImageGenHandler } from './handlers/stability';
 import { GoogleImageGenHandler } from './handlers/google';
+import { NovelAIImageGenHandler } from './handlers/novelai';
+import { ComfyUIImageGenHandler } from './handlers/comfyui';
+import { MockImageGenHandler, type MockImageGenBehavior } from './handlers/mock';
 
 export function selectImageGenHandler(
     provider: ImageGenProvider,
@@ -36,8 +39,26 @@ export function selectImageGenHandler(
         case 'google': {
             return new GoogleImageGenHandler({
                 apiKey: settings.google.apiKey,
-                baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+                baseUrl: 'https://generativelanguage.googleapis.com/v1',
                 modelId: settings.google.imagegen.modelId
+            });
+        }
+
+        case 'novelai': {
+            return new NovelAIImageGenHandler({
+                apiKey: settings.novelai.apiKey,
+                baseUrl: 'https://image.novelai.net',
+                ...settings.novelai.imagegen
+            });
+        }
+
+        case 'comfyui': {
+            return new ComfyUIImageGenHandler(settings.comfyui.imagegen);
+        }
+
+        case 'mock': {
+            return new MockImageGenHandler({
+                behavior: settings.mock.imagegen.modelId as MockImageGenBehavior
             });
         }
     }

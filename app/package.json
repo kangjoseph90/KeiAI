@@ -82,6 +82,7 @@
         "fractional-indexing": "^3.2.0",
         "highlight.js": "^11.11.1",
         "json5": "^2.2.3",
+        "kokoro-js": "^1.2.1",
         "lucide-svelte": "^0.576.0",
         "marked": "^17.0.4",
         "minidenticons": "^4.2.1",

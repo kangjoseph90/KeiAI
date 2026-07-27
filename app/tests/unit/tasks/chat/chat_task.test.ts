@@ -8,6 +8,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { runChat, stopChat, dismissChat } from '$lib/tasks/chat';
 import type { LLMStreamHandler, LLMStreamContent } from '$lib/llm/types';
 
+function textState(text: string): LLMStreamContent {
+    return { parts: [{ type: 'text', text }] };
+}
+
 // ─── Mock all dependencies ───────────────────────────────────────────────────
 
 vi.mock('$lib/stores/tasks/chat', () => ({
@@ -277,7 +281,7 @@ describe('Chat Pipeline', () => {
         vi.mocked(selectLLMHandler).mockReturnValue({
             handler: {
                 stream: vi.fn(async function* () {
-                    yield { content: 'Response' };
+                    yield textState('Response');
                 })
             },
             unsupported: []
@@ -310,7 +314,7 @@ describe('Chat Pipeline', () => {
             swipes: {
                 'swipe-new': {
                     id: 'swipe-new',
-                    parts: [{ type: 'content', text: 'Hello world' }],
+                    parts: [{ type: 'text', text: 'Hello world' }],
                     createdAt: Date.now(),
                     variables: {}
                 }
@@ -331,8 +335,8 @@ describe('Chat Pipeline', () => {
     it('should run a successful chat generation', async () => {
         const mockHandler: LLMStreamHandler = {
             stream: vi.fn(async function* () {
-                yield { content: 'Hello' };
-                yield { content: 'Hello world' };
+                yield textState('Hello');
+                yield textState('Hello world');
             })
         };
 
@@ -344,7 +348,7 @@ describe('Chat Pipeline', () => {
                     swipes: {
                         'swipe-new': {
                             id: 'swipe-new',
-                            parts: [{ type: 'content', text: 'Hello world' }],
+                            parts: [{ type: 'text', text: 'Hello world' }],
                             createdAt: Date.now(),
                             variables: {}
                         }
@@ -426,7 +430,7 @@ describe('Chat Pipeline', () => {
         ]);
         const mockHandler: LLMStreamHandler = {
             stream: vi.fn(async function* () {
-                yield { content: 'Fallback response' };
+                yield textState('Fallback response');
             })
         };
         vi.mocked(selectLLMHandler).mockReturnValue({
@@ -442,7 +446,7 @@ describe('Chat Pipeline', () => {
                     role: 'user',
                     content: [
                         { type: 'text', text: 'Describe this' },
-                        { type: 'text', text: '[Image omitted]' }
+                        { type: 'text', text: '[Image omitted: unsupported by model]' }
                     ]
                 }
             ],
@@ -454,7 +458,7 @@ describe('Chat Pipeline', () => {
     it('should prevent duplicate runs for the same chat', async () => {
         const foreverHandler: LLMStreamHandler = {
             stream: vi.fn(async function* (_msgs, signal) {
-                yield { content: '' };
+                yield { parts: [] };
                 if (signal.aborted) return;
                 await new Promise((resolve) => {
                     signal.addEventListener('abort', resolve, { once: true });
@@ -553,7 +557,7 @@ describe('Chat Pipeline', () => {
     it('should cleanup on abort', async () => {
         const mockHandler: LLMStreamHandler = {
             stream: vi.fn(async function* () {
-                yield { content: 'Partial' };
+                yield textState('Partial');
                 throw new DOMException('Aborted', 'AbortError');
             })
         };
@@ -569,7 +573,7 @@ describe('Chat Pipeline', () => {
     it('should surface handler errors', async () => {
         const mockHandler: LLMStreamHandler = {
             stream: vi.fn(async function* () {
-                yield { content: '' };
+                yield { parts: [] };
                 throw new Error('Network fail');
             })
         };
@@ -585,7 +589,7 @@ describe('Chat Pipeline', () => {
     it('selects handler from preset when no override', async () => {
         const mockHandler: LLMStreamHandler = {
             stream: vi.fn(async function* () {
-                yield { content: 'Preset response' };
+                yield textState('Preset response');
             })
         };
 
@@ -607,7 +611,7 @@ describe('Chat Pipeline', () => {
             swipes: {
                 'swipe-new': {
                     id: 'swipe-new',
-                    parts: [{ type: 'content', text: 'Old content' }],
+                    parts: [{ type: 'text', text: 'Old content' }],
                     createdAt: 1000
                 }
             },
@@ -642,7 +646,7 @@ describe('Chat Pipeline', () => {
         it('should add a new swipe for reroll', async () => {
             const mockHandler: LLMStreamHandler = {
                 stream: vi.fn(async function* () {
-                    yield { content: 'New content' };
+                    yield textState('New content');
                 })
             };
 
@@ -657,7 +661,7 @@ describe('Chat Pipeline', () => {
                         ...mockExistingMessage.swipes,
                         'swipe-new': {
                             id: 'swipe-new',
-                            parts: [{ type: 'content', text: 'New content' }],
+                            parts: [{ type: 'text', text: 'New content' }],
                             createdAt: Date.now()
                         }
                     },
@@ -684,7 +688,7 @@ describe('Chat Pipeline', () => {
         it('should replace the active swipe when previous swipes are not kept', async () => {
             const mockHandler: LLMStreamHandler = {
                 stream: vi.fn(async function* () {
-                    yield { content: 'Replacement' };
+                    yield textState('Replacement');
                 })
             };
 
@@ -702,7 +706,7 @@ describe('Chat Pipeline', () => {
                 swipes: {
                     'swipe-new': {
                         id: 'swipe-new',
-                        parts: [{ type: 'content', text: 'Replacement' }],
+                        parts: [{ type: 'text', text: 'Replacement' }],
                         createdAt: Date.now()
                     }
                 },

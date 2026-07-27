@@ -1,14 +1,14 @@
 /**
- * Google Imagen Handler — KeiAI
+ * Google Native Image Generation Handler — KeiAI
  *
- * Implements ImageGenHandler for Google's Imagen API via
- * the generativelanguage endpoint.
+ * Uses Gemini Nano Banana models through generateContent.
  */
 
-import type { ImageGenResult, ImageGenHandler } from '../types';
+import type { ImageGenImage, ImageGenRequest, ImageGenHandler } from '../types';
 import { appHttp } from '$lib/adapters/http';
 import { buildUrl } from '$lib/utils/url';
 import { AppError } from '$lib/types/errors';
+import { toBase64 } from '$lib/crypto';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -16,8 +16,6 @@ export interface GoogleImageGenConfig {
     apiKey?: string;
     modelId: string;
     baseUrl: string;
-    /** Number of images to generate */
-    n?: number;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -29,13 +27,40 @@ export class GoogleImageGenHandler implements ImageGenHandler {
         this.config = config;
     }
 
-    async generate(prompt: string, signal?: AbortSignal): Promise<ImageGenResult> {
-        const modelName = this.config.modelId.startsWith('models/')
-            ? this.config.modelId
-            : `models/${this.config.modelId}`;
+    async generate(request: ImageGenRequest, signal?: AbortSignal): Promise<ImageGenImage> {
+        const modelId = this.config.modelId.replace(/^models\//, '');
+        const negativePrompt = request.negativePrompt?.trim();
+        const prompt = negativePrompt
+            ? `${request.prompt}\n\nAvoid the following: ${negativePrompt}`
+            : request.prompt;
+        const parts: GeminiRequestPart[] = [{ text: prompt }];
+
+        if (request.referenceImages.length > 0) {
+            parts.push({ text: 'Use the following images as content and subject references.' });
+            for (const image of request.referenceImages) {
+                parts.push({
+                    inlineData: {
+                        data: toBase64(image.data),
+                        mimeType: image.mimeType
+                    }
+                });
+            }
+        }
+
+        if (request.styleImages.length > 0) {
+            parts.push({ text: 'Use the following images as style references.' });
+            for (const image of request.styleImages) {
+                parts.push({
+                    inlineData: {
+                        data: toBase64(image.data),
+                        mimeType: image.mimeType
+                    }
+                });
+            }
+        }
 
         const response = await appHttp.fetch(
-            buildUrl(this.config.baseUrl, `/${modelName}:predict`),
+            buildUrl(this.config.baseUrl, `/models/${modelId}:generateContent`),
             {
                 method: 'POST',
                 headers: {
@@ -43,9 +68,9 @@ export class GoogleImageGenHandler implements ImageGenHandler {
                     ...(this.config.apiKey ? { 'x-goog-api-key': this.config.apiKey } : {})
                 },
                 body: JSON.stringify({
-                    instances: [{ prompt }],
-                    parameters: {
-                        sampleCount: this.config.n ?? 1
+                    contents: [{ parts }],
+                    generationConfig: {
+                        responseModalities: ['IMAGE']
                     }
                 }),
                 signal
@@ -60,11 +85,40 @@ export class GoogleImageGenHandler implements ImageGenHandler {
             );
         }
 
-        const json = await response.json();
-        const images = (json.predictions ?? []).map((p: { bytesBase64Encoded?: string }) => ({
-            base64: p.bytesBase64Encoded
-        }));
+        const json = (await response.json()) as GeminiImageResponse;
+        for (const candidate of json.candidates ?? []) {
+            for (const part of candidate.content?.parts ?? []) {
+                const inlineData = part.inlineData;
+                if (!inlineData?.data || !inlineData.mimeType?.startsWith('image/')) continue;
+                return {
+                    base64: inlineData.data,
+                    mimeType: inlineData.mimeType
+                };
+            }
+        }
 
-        return { images };
+        throw new AppError('NETWORK_ERROR', 'Google ImageGen returned no image');
     }
 }
+
+interface GeminiImageResponse {
+    candidates?: Array<{
+        content?: {
+            parts?: Array<{
+                inlineData?: {
+                    data?: string;
+                    mimeType?: string;
+                };
+            }>;
+        };
+    }>;
+}
+
+type GeminiRequestPart =
+    | { text: string }
+    | {
+          inlineData: {
+              data: string;
+              mimeType: string;
+          };
+      };

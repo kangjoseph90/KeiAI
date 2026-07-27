@@ -37,7 +37,13 @@
     let busyAction = $state<string | null>(null);
 
     const handlers: LLMHandler[] = ['openai_compatible', 'anthropic', 'google'];
-    const capabilities: LLMCapability[] = ['image_input', 'streaming', 'tool_call'];
+    const capabilities: LLMCapability[] = [
+        'image_input',
+        'audio_input',
+        'video_input',
+        'streaming',
+        'tool_call'
+    ];
 
     const tokenizers: LLMTokenizer[] = [
         'o200k_base',

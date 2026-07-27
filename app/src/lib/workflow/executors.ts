@@ -1,6 +1,20 @@
 import { executeAgentNode } from './agent/execute';
+import { executeImageGenerationNode } from './agent/image';
+import { executeTTSNode } from './agent/tts';
+import { executeSTTNode } from './agent/stt';
+import {
+    executeGetAudioAttachmentsNode,
+    executeGetHistoryNode,
+    executeGetImageAttachmentsNode,
+    executeGetTranslationNode,
+    executeSetAudioAttachmentsNode,
+    executeSetHistoryNode,
+    executeSetImageAttachmentsNode,
+    executeSetTranslationNode
+} from './history/execute';
 import { executeFileReadNode, executeFileWriteNode } from './file/execute';
 import {
+    executeFilterAgentPartsNode,
     executeBooleanLogicNode,
     executeBooleanNode,
     executeBooleanNotNode,
@@ -9,6 +23,8 @@ import {
     executeGateNode,
     executeGetChatVarNode,
     executeGetToggleNode,
+    executeSelectLastTextPartNode,
+    executeLogNode,
     executeNumberCompareNode,
     executeNumberMathNode,
     executeNumberNode,
@@ -23,7 +39,8 @@ import {
     executeThrowIfNode,
     executeToBooleanNode,
     executeToNumberNode,
-    executeUngateNode
+    executeUngateNode,
+    executeSelectVisiblePartsNode
 } from './operator/execute';
 import { AppError } from '$lib/types/errors';
 import type {
@@ -48,6 +65,7 @@ const WORKFLOW_NODE_EXECUTORS = {
     GetChatVar: executeGetChatVarNode,
     SetChatVar: executeSetChatVarNode,
     Sink: executeSinkNode,
+    Log: executeLogNode,
     ToBoolean: executeToBooleanNode,
     ToNumber: executeToNumberNode,
     Catch: executeCatchNode,
@@ -57,6 +75,20 @@ const WORKFLOW_NODE_EXECUTORS = {
     StringIncludes: executeStringIncludesNode,
     StringReplace: executeStringReplaceNode,
     StringRegexReplace: executeStringRegexReplaceNode,
+    FilterAgentParts: executeFilterAgentPartsNode,
+    SelectVisibleParts: executeSelectVisiblePartsNode,
+    SelectLastTextPart: executeSelectLastTextPartNode,
+    ImageGeneration: executeImageGenerationNode,
+    TTS: executeTTSNode,
+    STT: executeSTTNode,
+    GetHistory: executeGetHistoryNode,
+    SetHistory: executeSetHistoryNode,
+    GetImageAttachments: executeGetImageAttachmentsNode,
+    SetImageAttachments: executeSetImageAttachmentsNode,
+    GetAudioAttachments: executeGetAudioAttachmentsNode,
+    SetAudioAttachments: executeSetAudioAttachmentsNode,
+    GetTranslation: executeGetTranslationNode,
+    SetTranslation: executeSetTranslationNode,
     NumberMath: executeNumberMathNode,
     NumberCompare: executeNumberCompareNode,
     BooleanLogic: executeBooleanLogicNode,

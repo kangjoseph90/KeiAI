@@ -10,12 +10,11 @@ import type { AppSettings } from '$lib/services';
 import type { TTSProvider } from '$lib/types/models/tts';
 import { OpenAITTSStreamHandler } from './handlers/openai';
 import { TransformersTTSStreamHandler } from './handlers/transformers';
+import { KokoroTTSStreamHandler } from './handlers/kokoro';
 import { GoogleTTSStreamHandler } from './handlers/google';
 import { ElevenLabsTTSStreamHandler } from './handlers/elevenlabs';
 import { NovelAITTSStreamHandler } from './handlers/novelai';
-import { createLogger } from '$lib/adapters/logger';
-
-const logger = createLogger('tts:handler');
+import { MockTTSStreamHandler, type MockTTSBehavior } from './handlers/mock';
 
 export function selectTTSHandler(
     provider: TTSProvider,
@@ -35,6 +34,7 @@ export function selectTTSHandler(
             return new ElevenLabsTTSStreamHandler({
                 apiKey: settings.elevenlabs?.apiKey,
                 baseUrl: 'https://api.elevenlabs.io/v1',
+                modelId: settings.elevenlabs.tts.modelId,
                 voiceId: settings.elevenlabs.tts.voiceId
             });
         }
@@ -57,11 +57,21 @@ export function selectTTSHandler(
             });
         }
 
-        case 'kokoro':
+        case 'kokoro': {
+            return new KokoroTTSStreamHandler({
+                voiceId: settings.kokoro.tts.voiceId
+            });
+        }
+
         case 'transformers': {
             return new TransformersTTSStreamHandler({
-                modelId: settings.transformers.tts.modelId,
-                voiceId: settings.transformers.tts.voiceId
+                modelId: settings.transformers.tts.modelId
+            });
+        }
+
+        case 'mock': {
+            return new MockTTSStreamHandler({
+                behavior: settings.mock.tts.modelId as MockTTSBehavior
             });
         }
     }
