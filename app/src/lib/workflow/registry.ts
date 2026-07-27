@@ -24,6 +24,7 @@ import type {
     StringRegexReplaceNode,
     StringReplaceNode,
     TemplateNode,
+    TTSNode,
     ThrowIfNode,
     ToBooleanNode,
     ToNumberNode,
@@ -446,6 +447,24 @@ export const IMAGE_GENERATION_NODE_DEFINITION: WorkflowNodeDefinition<ImageGener
     })
 };
 
+export const TTS_NODE_DEFINITION: WorkflowNodeDefinition<TTSNode> = {
+    class: 'TTS',
+    label: 'Text to Speech',
+    category: 'agent',
+    inputs: {
+        text: { name: 'Text', type: 'string', required: true }
+    },
+    outputs: { 0: { name: 'audio', type: 'string' } },
+    createDefault: (id) => ({
+        id,
+        name: 'Text to Speech',
+        class: 'TTS',
+        position: { x: 0, y: 0 },
+        inputs: { text: null },
+        inputValues: { text: '' }
+    })
+};
+
 export const NUMBER_MATH_NODE_DEFINITION: WorkflowNodeDefinition<NumberMathNode> = {
     class: 'NumberMath',
     label: 'Number Math',
@@ -685,6 +704,7 @@ export const WORKFLOW_NODE_DEFINITIONS = {
     StringRegexReplace: STRING_REGEX_REPLACE_NODE_DEFINITION,
     AgentPartFilter: AGENT_PART_FILTER_NODE_DEFINITION,
     ImageGeneration: IMAGE_GENERATION_NODE_DEFINITION,
+    TTS: TTS_NODE_DEFINITION,
     NumberMath: NUMBER_MATH_NODE_DEFINITION,
     NumberCompare: NUMBER_COMPARE_NODE_DEFINITION,
     BooleanLogic: BOOLEAN_LOGIC_NODE_DEFINITION,

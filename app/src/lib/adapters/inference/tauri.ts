@@ -13,6 +13,7 @@ import type {
     GenerateOptions,
     TranscribeOptions,
     TranscribeResult,
+    SynthesizeResult,
     RerankOptions
 } from './types';
 
@@ -24,12 +25,11 @@ export class TauriInferenceAdapter implements IInferenceAdapter {
     async *synthesize(
         _spec: ModelSpec,
         _text: string,
-        _voiceId: string,
         _options?: SynthesizeOptions
-    ): AsyncIterable<ArrayBuffer> {
+    ): AsyncIterable<SynthesizeResult> {
         // Throw before any yield — the unreachable yield satisfies the async generator return type.
         throw new Error('Native inference not yet implemented. Use remote TTS providers.');
-        yield new ArrayBuffer(0);
+        yield { audio: new ArrayBuffer(0), sampleRate: 0 };
     }
 
     async *generate(

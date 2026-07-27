@@ -18,6 +18,7 @@
 <script lang="ts">
     import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
     import {
+        AudioLines,
         Bot,
         Braces,
         CheckCircle2,
@@ -133,6 +134,8 @@
                 <Bot class="size-4" />
             {:else if data.node.class === 'ImageGeneration'}
                 <ImageIcon class="size-4" />
+            {:else if data.node.class === 'TTS'}
+                <AudioLines class="size-4" />
             {:else if data.node.class === 'String'}
                 <Braces class="size-4" />
             {:else if definition.category === 'number'}

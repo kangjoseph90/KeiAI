@@ -1,13 +1,28 @@
 /**
  * Google Gemini TTS Stream Handler — KeiAI
  *
- * Implements the TTSStreamHandler interface for Google's Gemini-based TTS (e.g., gemini-2.5-flash-preview-tts).
+ * Implements the TTSStreamHandler interface for Google's Gemini-based TTS.
  */
 
 import type { TTSStreamHandler, TTSStreamChunk } from '../types';
 import { AppError } from '$lib/types/errors';
 import { appHttp } from '$lib/adapters/http';
 import { buildUrl } from '$lib/utils/url';
+import { fromBase64 } from '$lib/crypto';
+import { pcm16ToWav } from '$lib/utils/audio';
+
+interface GoogleTTSResponse {
+    candidates?: {
+        content?: {
+            parts?: {
+                inlineData?: {
+                    data?: string;
+                    mimeType?: string;
+                };
+            }[];
+        };
+    }[];
+}
 
 export interface GoogleTTSConfig {
     apiKey?: string;
@@ -68,20 +83,23 @@ export class GoogleTTSStreamHandler implements TTSStreamHandler {
             );
         }
 
-        const data = await response.json();
-        const base64Audio = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        const data = (await response.json()) as GoogleTTSResponse;
+        const inlineData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+        const base64Audio = inlineData?.data;
 
         if (!base64Audio) {
             throw new AppError('NETWORK_ERROR', 'Google TTS API returned no audio data');
         }
 
-        // Convert Base64 back to ArrayBuffer
-        const binaryStr = atob(base64Audio);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-        }
-
-        yield { audio: bytes.buffer };
+        const pcm = fromBase64(base64Audio);
+        const sampleRate = parseSampleRate(inlineData.mimeType) ?? 24000;
+        yield { data: pcm16ToWav(pcm, sampleRate), mimeType: 'audio/wav' };
     }
+}
+
+function parseSampleRate(mimeType?: string): number | undefined {
+    const value = mimeType?.match(/(?:^|;)\s*rate=(\d+)/i)?.[1];
+    if (!value) return undefined;
+    const sampleRate = Number(value);
+    return Number.isFinite(sampleRate) && sampleRate > 0 ? sampleRate : undefined;
 }

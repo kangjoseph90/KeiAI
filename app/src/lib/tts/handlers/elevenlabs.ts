@@ -12,6 +12,7 @@ import { buildUrl } from '$lib/utils/url';
 export interface ElevenLabsTTSConfig {
     apiKey?: string;
     baseUrl: string;
+    modelId: string;
     voiceId: string;
 }
 
@@ -25,7 +26,10 @@ export class ElevenLabsTTSStreamHandler implements TTSStreamHandler {
     async *synthesize(text: string, signal?: AbortSignal): AsyncIterable<TTSStreamChunk> {
         if (!text.trim()) return;
 
-        const url = buildUrl(this.config.baseUrl, `/text-to-speech/${this.config.voiceId}/stream`);
+        const url = buildUrl(
+            this.config.baseUrl,
+            `/text-to-speech/${this.config.voiceId}/stream?output_format=mp3_44100_128`
+        );
 
         const response = await appHttp.fetch(
             url,
@@ -37,7 +41,7 @@ export class ElevenLabsTTSStreamHandler implements TTSStreamHandler {
                 },
                 body: JSON.stringify({
                     text,
-                    model_id: 'eleven_multilingual_v2', // Or parameterized from model config
+                    model_id: this.config.modelId,
                     voice_settings: {
                         stability: 0.5,
                         similarity_boost: 0.75
@@ -65,13 +69,7 @@ export class ElevenLabsTTSStreamHandler implements TTSStreamHandler {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                // value is a Uint8Array. Use its backing ArrayBuffer for the chunk.
-                // Slice is used to safely pass isolated ArrayBuffer in case of boundary issues.
-                const buffer = value.buffer.slice(
-                    value.byteOffset,
-                    value.byteOffset + value.byteLength
-                );
-                yield { audio: buffer };
+                yield { data: Uint8Array.from(value), mimeType: 'audio/mpeg' };
             }
         } finally {
             reader.releaseLock();

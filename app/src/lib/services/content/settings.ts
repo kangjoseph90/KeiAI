@@ -116,8 +116,8 @@ export const defaultSettings: AppSettings = {
     google: {
         apiKey: '',
         tts: {
-            modelId: 'gemini-2.5-flash-preview-tts',
-            voiceId: 'zephyr'
+            modelId: 'gemini-3.1-flash-tts-preview',
+            voiceId: 'Zephyr'
         },
         embedding: {
             modelId: 'gemini-embedding-2-preview'
@@ -181,8 +181,7 @@ export const defaultSettings: AppSettings = {
             modelId: 'onnx-community/Qwen3-Embedding-0.6B-ONNX'
         },
         tts: {
-            modelId: 'onnx-community/Kokoro-82M-v1.0-ONNX',
-            voiceId: 'af_heart'
+            modelId: 'Xenova/mms-tts-eng'
         },
         stt: {
             modelId: 'onnx-community/whisper-tiny'
@@ -194,6 +193,7 @@ export const defaultSettings: AppSettings = {
     elevenlabs: {
         apiKey: '',
         tts: {
+            modelId: 'eleven_multilingual_v2',
             voiceId: ''
         }
     },

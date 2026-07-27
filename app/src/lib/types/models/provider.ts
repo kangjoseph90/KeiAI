@@ -105,6 +105,7 @@ export interface VoyageAIProviderConfig {
 export interface ElevenLabsProviderConfig {
     apiKey?: string;
     tts: {
+        modelId: string;
         voiceId: string;
     };
 }
@@ -142,7 +143,6 @@ export interface TransformersProviderConfig {
     };
     tts: {
         modelId: string;
-        voiceId: string;
     };
     stt: {
         modelId: string;

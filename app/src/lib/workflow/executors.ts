@@ -1,5 +1,6 @@
 import { executeAgentNode } from './agent/execute';
 import { executeImageGenerationNode } from './agent/image';
+import { executeTTSNode } from './agent/tts';
 import { executeFileReadNode, executeFileWriteNode } from './file/execute';
 import {
     executeAgentPartFilterNode,
@@ -61,6 +62,7 @@ const WORKFLOW_NODE_EXECUTORS = {
     StringRegexReplace: executeStringRegexReplaceNode,
     AgentPartFilter: executeAgentPartFilterNode,
     ImageGeneration: executeImageGenerationNode,
+    TTS: executeTTSNode,
     NumberMath: executeNumberMathNode,
     NumberCompare: executeNumberCompareNode,
     BooleanLogic: executeBooleanLogicNode,

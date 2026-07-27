@@ -19,7 +19,7 @@
     import { getImageGenProviderName, type ImageGenProvider } from '$lib/types/models/imagegen';
     import { getRerankerProviderName, type RerankerProvider } from '$lib/types/models/reranker';
     import { getSTTProviderName, type STTProvider } from '$lib/types/models/stt';
-    import { getTTSProviderName, type TTSProvider } from '$lib/types/models/tts';
+    import { getTTSProviderName, KOKORO_VOICE_IDS, type TTSProvider } from '$lib/types/models/tts';
     import { getErrorMessage } from '$lib/types/errors';
     import { toast } from '$lib/ui';
 
@@ -55,6 +55,7 @@
         secret?: boolean;
         multiline?: boolean;
         help?: string;
+        options?: readonly string[];
         number?: {
             min?: number;
             max?: number;
@@ -438,7 +439,7 @@
                                 'modelId',
                                 'Model',
                                 settings.google.tts.modelId,
-                                'gemini-2.5-flash-preview-tts'
+                                'gemini-3.1-flash-tts-preview'
                             ),
                             configField(
                                 'google',
@@ -446,12 +447,20 @@
                                 'voiceId',
                                 'Voice',
                                 settings.google.tts.voiceId,
-                                'zephyr'
+                                'Zephyr'
                             )
                         ];
                     case 'elevenlabs':
                         return [
                             apiKeyField(settings, 'elevenlabs'),
+                            configField(
+                                'elevenlabs',
+                                'tts',
+                                'modelId',
+                                'Model',
+                                settings.elevenlabs.tts.modelId,
+                                'eleven_multilingual_v2'
+                            ),
                             configField(
                                 'elevenlabs',
                                 'tts',
@@ -483,14 +492,17 @@
                         ];
                     case 'kokoro':
                         return [
-                            configField(
-                                'kokoro',
-                                'tts',
-                                'voiceId',
-                                'Voice',
-                                settings.kokoro.tts.voiceId,
-                                'af_heart'
-                            )
+                            {
+                                ...configField(
+                                    'kokoro',
+                                    'tts',
+                                    'voiceId',
+                                    'Voice',
+                                    settings.kokoro.tts.voiceId,
+                                    'af_heart'
+                                ),
+                                options: KOKORO_VOICE_IDS
+                            }
                         ];
                     case 'transformers':
                         return [
@@ -500,15 +512,7 @@
                                 'modelId',
                                 'Model',
                                 settings.transformers.tts.modelId,
-                                'Model ID'
-                            ),
-                            configField(
-                                'transformers',
-                                'tts',
-                                'voiceId',
-                                'Voice',
-                                settings.transformers.tts.voiceId,
-                                'af_heart'
+                                'Xenova/mms-tts-eng'
                             )
                         ];
                 }
@@ -848,6 +852,19 @@
                                             {/if}
                                         </Button>
                                     </div>
+                                {:else if field.options}
+                                    <select
+                                        id={field.id}
+                                        class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        value={field.value}
+                                        disabled={saving}
+                                        onchange={(event) =>
+                                            updateField(field, event.currentTarget.value)}
+                                    >
+                                        {#each field.options as option (option)}
+                                            <option value={option}>{option}</option>
+                                        {/each}
+                                    </select>
                                 {:else if field.multiline}
                                     <Textarea
                                         id={field.id}
