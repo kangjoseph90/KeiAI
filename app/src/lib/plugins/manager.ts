@@ -11,6 +11,9 @@ import type {
     LLMTypeDefinition,
     PluginLLMModel
 } from '$lib/types/models/llm';
+import type { PluginImageGenModel } from '$lib/types/models/imagegen';
+import type { PluginTTSModel } from '$lib/types/models/tts';
+import type { PluginSTTModel } from '$lib/types/models/stt';
 import type { LLMMessage } from '$lib/llm/types';
 import { callLLM, streamLLM } from '$lib/managers/llm';
 import {
@@ -37,6 +40,9 @@ export interface PluginInstance {
     eventListeners: Map<string, string[]>;
     macroHandlers: Map<string, { fnId: string; recursive?: boolean }>;
     llmProviders: Map<string, { fnId: string; model: PluginLLMModel }>;
+    imageGenProviders: Map<string, { fnId: string; model: PluginImageGenModel }>;
+    ttsProviders: Map<string, { fnId: string; model: PluginTTSModel }>;
+    sttProviders: Map<string, { fnId: string; model: PluginSTTModel }>;
     llmTypes: Map<string, LLMTypeDefinition>;
     unloadHandlers: string[];
 }
@@ -132,6 +138,9 @@ export class PluginManager {
                 eventListeners: new Map(),
                 macroHandlers: new Map(),
                 llmProviders: new Map(),
+                imageGenProviders: new Map(),
+                ttsProviders: new Map(),
+                sttProviders: new Map(),
                 llmTypes: new Map(),
                 unloadHandlers: []
             };
@@ -299,6 +308,72 @@ export class PluginManager {
             const current = instance.llmProviders.get(mId);
             if (current && current.fnId === String(fnId)) {
                 instance.llmProviders.delete(mId);
+            }
+        });
+
+        broker.expose(
+            'core.addImageGenProvider',
+            (modelId: unknown, fnId: unknown, opts: unknown) => {
+                const id = String(modelId);
+                const options = (opts || {}) as { name?: string };
+                instance.imageGenProviders.set(id, {
+                    fnId: String(fnId),
+                    model: {
+                        id: `plugin::${id}`,
+                        modelId: id,
+                        name: options.name || id,
+                        provider: 'plugin'
+                    }
+                });
+            }
+        );
+
+        broker.expose('core.removeImageGenProvider', (modelId: unknown, fnId: unknown) => {
+            const id = String(modelId);
+            if (instance.imageGenProviders.get(id)?.fnId === String(fnId)) {
+                instance.imageGenProviders.delete(id);
+            }
+        });
+
+        broker.expose('core.addTTSProvider', (modelId: unknown, fnId: unknown, opts: unknown) => {
+            const id = String(modelId);
+            const options = (opts || {}) as { name?: string };
+            instance.ttsProviders.set(id, {
+                fnId: String(fnId),
+                model: {
+                    id: `plugin::${id}`,
+                    modelId: id,
+                    name: options.name || id,
+                    provider: 'plugin'
+                }
+            });
+        });
+
+        broker.expose('core.removeTTSProvider', (modelId: unknown, fnId: unknown) => {
+            const id = String(modelId);
+            if (instance.ttsProviders.get(id)?.fnId === String(fnId)) {
+                instance.ttsProviders.delete(id);
+            }
+        });
+
+        broker.expose('core.addSTTProvider', (modelId: unknown, fnId: unknown, opts: unknown) => {
+            const id = String(modelId);
+            const options = (opts || {}) as { name?: string };
+            instance.sttProviders.set(id, {
+                fnId: String(fnId),
+                model: {
+                    id: `plugin::${id}`,
+                    modelId: id,
+                    name: options.name || id,
+                    provider: 'plugin'
+                }
+            });
+        });
+
+        broker.expose('core.removeSTTProvider', (modelId: unknown, fnId: unknown) => {
+            const id = String(modelId);
+            if (instance.sttProviders.get(id)?.fnId === String(fnId)) {
+                instance.sttProviders.delete(id);
             }
         });
 

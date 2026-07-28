@@ -12,6 +12,8 @@ import { OpenAISTTHandler } from './handlers/openai';
 import { GoogleSTTHandler } from './handlers/google';
 import { TransformersSTTHandler } from './handlers/transformers';
 import { MockSTTHandler, type MockSTTBehavior } from './handlers/mock';
+import { pluginManager } from '$lib/plugins';
+import { PluginSTTHandler } from './handlers/plugin';
 
 export function selectSTTHandler(
     provider: STTProvider,
@@ -54,5 +56,18 @@ export function selectSTTHandler(
                 behavior: settings.mock.stt.modelId as MockSTTBehavior
             });
         }
+        case 'plugin': {
+            return selectPluginHandler(settings.plugin.stt.modelId);
+        }
     }
+}
+
+function selectPluginHandler(modelId: string): STTHandlerType | null {
+    for (const instance of pluginManager.getInstances()) {
+        const definition = instance.sttProviders.get(modelId);
+        if (definition) {
+            return new PluginSTTHandler(instance, definition.fnId);
+        }
+    }
+    return null;
 }

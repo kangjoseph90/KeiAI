@@ -238,7 +238,7 @@ export const guestSDK = String.raw`
     const broker = new RPCBroker(new GuestTransport());
     const registrations = [];
     const activeMacros = new Map();
-    
+
     window.KeiAPI = {
         log: (...args) => broker.fire('core.log', args),
         getArg: (key) => broker.invoke('core.getArg', [key]),
@@ -311,6 +311,63 @@ export const guestSDK = String.raw`
             return async () => {
                 try {
                     await broker.invoke('core.removeLLMProvider', [modelId, fnId]);
+                } catch (e) {
+                    // Ignore transport errors during unload
+                } finally {
+                    broker.unexpose(fnId);
+                }
+            };
+        },
+        addImageGenProvider: (modelId, fn, opts = {}) => {
+            const fnId = 'imagegen_' + Date.now() + '_' + Math.random();
+            broker.expose(fnId, fn);
+            const registration = broker.invoke('core.addImageGenProvider', [
+                modelId,
+                fnId,
+                { name: opts.name }
+            ]);
+            registrations.push(registration);
+            return async () => {
+                try {
+                    await broker.invoke('core.removeImageGenProvider', [modelId, fnId]);
+                } catch (e) {
+                    // Ignore transport errors during unload
+                } finally {
+                    broker.unexpose(fnId);
+                }
+            };
+        },
+        addTTSProvider: (modelId, fn, opts = {}) => {
+            const fnId = 'tts_' + Date.now() + '_' + Math.random();
+            broker.expose(fnId, fn);
+            const registration = broker.invoke('core.addTTSProvider', [
+                modelId,
+                fnId,
+                { name: opts.name }
+            ]);
+            registrations.push(registration);
+            return async () => {
+                try {
+                    await broker.invoke('core.removeTTSProvider', [modelId, fnId]);
+                } catch (e) {
+                    // Ignore transport errors during unload
+                } finally {
+                    broker.unexpose(fnId);
+                }
+            };
+        },
+        addSTTProvider: (modelId, fn, opts = {}) => {
+            const fnId = 'stt_' + Date.now() + '_' + Math.random();
+            broker.expose(fnId, fn);
+            const registration = broker.invoke('core.addSTTProvider', [
+                modelId,
+                fnId,
+                { name: opts.name }
+            ]);
+            registrations.push(registration);
+            return async () => {
+                try {
+                    await broker.invoke('core.removeSTTProvider', [modelId, fnId]);
                 } catch (e) {
                     // Ignore transport errors during unload
                 } finally {

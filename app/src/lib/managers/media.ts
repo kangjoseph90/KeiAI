@@ -223,9 +223,22 @@ async function createGeneratedInlay(
 }
 
 async function resolveGeneratedImage(
-    image: { base64?: string; url?: string; mimeType?: string },
+    image: {
+        data?: Uint8Array<ArrayBuffer>;
+        base64?: string;
+        url?: string;
+        mimeType?: string;
+    },
     signal: AbortSignal
 ): Promise<MediaData> {
+    if (image.data) {
+        const mimeType = normalizeMimeType(image.mimeType ?? 'image/png');
+        validateMediaType(mimeType, 'image', 'generated image');
+        return {
+            data: image.data,
+            mimeType
+        };
+    }
     if (image.base64) {
         const mimeType = normalizeMimeType(image.mimeType ?? 'image/png');
         validateMediaType(mimeType, 'image', 'generated image');

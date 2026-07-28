@@ -15,6 +15,8 @@ import { GoogleTTSStreamHandler } from './handlers/google';
 import { ElevenLabsTTSStreamHandler } from './handlers/elevenlabs';
 import { NovelAITTSStreamHandler } from './handlers/novelai';
 import { MockTTSStreamHandler, type MockTTSBehavior } from './handlers/mock';
+import { pluginManager } from '$lib/plugins';
+import { PluginTTSStreamHandler } from './handlers/plugin';
 
 export function selectTTSHandler(
     provider: TTSProvider,
@@ -74,5 +76,18 @@ export function selectTTSHandler(
                 behavior: settings.mock.tts.modelId as MockTTSBehavior
             });
         }
+        case 'plugin': {
+            return selectPluginHandler(settings.plugin.tts.modelId);
+        }
     }
+}
+
+function selectPluginHandler(modelId: string): TTSStreamHandler | null {
+    for (const instance of pluginManager.getInstances()) {
+        const definition = instance.ttsProviders.get(modelId);
+        if (definition) {
+            return new PluginTTSStreamHandler(instance, definition.fnId);
+        }
+    }
+    return null;
 }

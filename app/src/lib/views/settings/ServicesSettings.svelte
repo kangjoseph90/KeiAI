@@ -16,17 +16,33 @@
     import type { AppSettings } from '$lib/services';
     import type { DeepPartial } from '$lib/utils/defaults';
     import { getEmbeddingProviderName, type EmbeddingProvider } from '$lib/types/models/embedding';
-    import { getImageGenProviderName, type ImageGenProvider } from '$lib/types/models/imagegen';
+    import {
+        getImageGenProviderName,
+        type ImageGenProvider,
+        type PluginImageGenModel
+    } from '$lib/types/models/imagegen';
     import { getRerankerProviderName, type RerankerProvider } from '$lib/types/models/reranker';
-    import { getSTTProviderName, type STTProvider } from '$lib/types/models/stt';
-    import { getTTSProviderName, KOKORO_VOICE_IDS, type TTSProvider } from '$lib/types/models/tts';
+    import {
+        getSTTProviderName,
+        type PluginSTTModel,
+        type STTProvider
+    } from '$lib/types/models/stt';
+    import {
+        getTTSProviderName,
+        KOKORO_VOICE_IDS,
+        type PluginTTSModel,
+        type TTSProvider
+    } from '$lib/types/models/tts';
     import { getErrorMessage } from '$lib/types/errors';
     import { toast } from '$lib/ui';
     import type { WorkflowDefinition, WorkflowEditResult, WorkflowPatch } from '$lib/workflow';
     import WorkflowEditorModal from '$lib/views/workflow/WorkflowEditorModal.svelte';
     import WorkflowPromptTab from '$lib/views/workflow/WorkflowPromptTab.svelte';
+    import { pluginManager } from '$lib/plugins';
 
     type Feature = 'imagegen' | 'tts' | 'stt' | 'embedding' | 'reranker';
+    type MediaFeature = 'imagegen' | 'tts' | 'stt';
+    type PluginMediaModel = PluginImageGenModel | PluginTTSModel | PluginSTTModel;
     type ServiceProvider =
         | ImageGenProvider
         | TTSProvider
@@ -94,7 +110,8 @@
         'novelai',
         'comfyui',
         'stability',
-        'mock'
+        'mock',
+        'plugin'
     ];
     const TTS_PROVIDERS: TTSProvider[] = [
         'openai',
@@ -103,9 +120,17 @@
         'novelai',
         'kokoro',
         'transformers',
-        'mock'
+        'mock',
+        'plugin'
     ];
-    const STT_PROVIDERS: STTProvider[] = ['openai', 'google', 'groq', 'transformers', 'mock'];
+    const STT_PROVIDERS: STTProvider[] = [
+        'openai',
+        'google',
+        'groq',
+        'transformers',
+        'mock',
+        'plugin'
+    ];
     const EMBEDDING_PROVIDERS: EmbeddingProvider[] = [
         'openai',
         'google',
@@ -203,6 +228,21 @@
             case 'reranker':
                 return getRerankerProviderName(provider as RerankerProvider);
         }
+    }
+
+    function getPluginModels(selectedFeature: MediaFeature): PluginMediaModel[] {
+        return pluginManager.getInstances().flatMap((instance) => {
+            switch (selectedFeature) {
+                case 'imagegen':
+                    return [...instance.imageGenProviders.values()].map(
+                        (provider) => provider.model
+                    );
+                case 'tts':
+                    return [...instance.ttsProviders.values()].map((provider) => provider.model);
+                case 'stt':
+                    return [...instance.sttProviders.values()].map((provider) => provider.model);
+            }
+        });
     }
 
     function apiKeyField(settings: AppSettings, provider: ProviderSettingsKey): SettingsField {
@@ -445,6 +485,8 @@
                                 options: MOCK_IMAGEGEN_MODELS
                             }
                         ];
+                    case 'plugin':
+                        return [];
                 }
                 return [];
             }
@@ -569,6 +611,8 @@
                                 options: MOCK_TTS_MODELS
                             }
                         ];
+                    case 'plugin':
+                        return [];
                 }
                 return [];
             }
@@ -643,6 +687,8 @@
                                 options: MOCK_STT_MODELS
                             }
                         ];
+                    case 'plugin':
+                        return [];
                 }
                 return [];
             }
@@ -828,6 +874,15 @@
         void save({ [key]: provider } as DeepPartial<AppSettings>);
     }
 
+    function updatePluginModel(modelId: string): void {
+        if (!isMediaFeature(activeFeature)) return;
+        void save({ plugin: { [activeFeature]: { modelId } } } as DeepPartial<AppSettings>);
+    }
+
+    function isMediaFeature(value: Feature): value is MediaFeature {
+        return value === 'imagegen' || value === 'tts' || value === 'stt';
+    }
+
     function updateField(field: SettingsField, value: string): void {
         const [provider, section, key] = field.path;
         const fieldValue = field.number ? Number(value) : value.trim();
@@ -904,99 +959,127 @@
                         </select>
                     </div>
 
-                    <div class="border-t pt-6">
-                        <div class="grid gap-4 sm:grid-cols-2">
-                            {#each fields as field (field.id)}
-                                <div
-                                    class="space-y-2 {field.id.endsWith('api-key') ||
-                                    field.path[2] === 'baseUrl' ||
-                                    field.multiline
-                                        ? 'sm:col-span-2'
-                                        : ''}"
-                                >
-                                    <Label for={field.id} class="flex items-center justify-between">
-                                        {field.secret
-                                            ? `${getProviderName(activeFeature, activeProvider)} API Key`
-                                            : field.label}
+                    {#if activeProvider === 'plugin' && isMediaFeature(activeFeature)}
+                        <div class="space-y-2 border-t pt-6">
+                            <Label for="plugin-model">Model</Label>
+                            <select
+                                id="plugin-model"
+                                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                value={$appSettings?.plugin[activeFeature].modelId ?? ''}
+                                disabled={saving}
+                                onchange={(event) => updatePluginModel(event.currentTarget.value)}
+                            >
+                                <option value="">Select a model...</option>
+                                {#each getPluginModels(activeFeature) as model (model.id)}
+                                    <option value={model.modelId}>{model.name}</option>
+                                {/each}
+                            </select>
+                        </div>
+                    {/if}
+
+                    {#if fields.length > 0}
+                        <div class="border-t pt-6">
+                            <div class="grid gap-4 sm:grid-cols-2">
+                                {#each fields as field (field.id)}
+                                    <div
+                                        class="space-y-2 {field.id.endsWith('api-key') ||
+                                        field.path[2] === 'baseUrl' ||
+                                        field.multiline
+                                            ? 'sm:col-span-2'
+                                            : ''}"
+                                    >
+                                        <Label
+                                            for={field.id}
+                                            class="flex items-center justify-between"
+                                        >
+                                            {field.secret
+                                                ? `${getProviderName(activeFeature, activeProvider)} API Key`
+                                                : field.label}
+                                            {#if field.secret}
+                                                <span
+                                                    class="text-[10px] font-normal uppercase text-muted-foreground"
+                                                    >Settings</span
+                                                >
+                                            {/if}
+                                        </Label>
                                         {#if field.secret}
-                                            <span
-                                                class="text-[10px] font-normal uppercase text-muted-foreground"
-                                                >Settings</span
-                                            >
-                                        {/if}
-                                    </Label>
-                                    {#if field.secret}
-                                        <div class="flex items-center gap-2">
-                                            <Input
+                                            <div class="flex items-center gap-2">
+                                                <Input
+                                                    id={field.id}
+                                                    type={showSecrets ? 'text' : 'password'}
+                                                    value={field.value}
+                                                    placeholder="Enter API Key"
+                                                    disabled={saving}
+                                                    class="font-mono"
+                                                    onchange={(event) =>
+                                                        updateField(
+                                                            field,
+                                                            event.currentTarget.value
+                                                        )}
+                                                />
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    class="shrink-0"
+                                                    onclick={() => (showSecrets = !showSecrets)}
+                                                    aria-label={showSecrets
+                                                        ? 'Hide API key'
+                                                        : 'Show API key'}
+                                                >
+                                                    {#if showSecrets}
+                                                        <EyeOff class="size-4" />
+                                                    {:else}
+                                                        <Eye class="size-4" />
+                                                    {/if}
+                                                </Button>
+                                            </div>
+                                        {:else if field.options}
+                                            <select
                                                 id={field.id}
-                                                type={showSecrets ? 'text' : 'password'}
+                                                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                                 value={field.value}
-                                                placeholder="Enter API Key"
                                                 disabled={saving}
-                                                class="font-mono"
+                                                onchange={(event) =>
+                                                    updateField(field, event.currentTarget.value)}
+                                            >
+                                                {#each field.options as option (option)}
+                                                    <option value={option}>{option}</option>
+                                                {/each}
+                                            </select>
+                                        {:else if field.multiline}
+                                            <Textarea
+                                                id={field.id}
+                                                value={field.value}
+                                                placeholder={field.placeholder}
+                                                disabled={saving}
+                                                class="min-h-48 font-mono text-xs"
                                                 onchange={(event) =>
                                                     updateField(field, event.currentTarget.value)}
                                             />
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                class="shrink-0"
-                                                onclick={() => (showSecrets = !showSecrets)}
-                                                aria-label={showSecrets
-                                                    ? 'Hide API key'
-                                                    : 'Show API key'}
-                                            >
-                                                {#if showSecrets}
-                                                    <EyeOff class="size-4" />
-                                                {:else}
-                                                    <Eye class="size-4" />
-                                                {/if}
-                                            </Button>
-                                        </div>
-                                    {:else if field.options}
-                                        <select
-                                            id={field.id}
-                                            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                            value={field.value}
-                                            disabled={saving}
-                                            onchange={(event) =>
-                                                updateField(field, event.currentTarget.value)}
-                                        >
-                                            {#each field.options as option (option)}
-                                                <option value={option}>{option}</option>
-                                            {/each}
-                                        </select>
-                                    {:else if field.multiline}
-                                        <Textarea
-                                            id={field.id}
-                                            value={field.value}
-                                            placeholder={field.placeholder}
-                                            disabled={saving}
-                                            class="min-h-48 font-mono text-xs"
-                                            onchange={(event) =>
-                                                updateField(field, event.currentTarget.value)}
-                                        />
-                                    {:else}
-                                        <Input
-                                            id={field.id}
-                                            type={field.number ? 'number' : 'text'}
-                                            value={field.value}
-                                            placeholder={field.placeholder}
-                                            min={field.number?.min}
-                                            max={field.number?.max}
-                                            step={field.number?.step}
-                                            disabled={saving}
-                                            onchange={(event) =>
-                                                updateField(field, event.currentTarget.value)}
-                                        />
-                                    {/if}
-                                    {#if field.help}
-                                        <p class="text-xs text-muted-foreground">{field.help}</p>
-                                    {/if}
-                                </div>
-                            {/each}
+                                        {:else}
+                                            <Input
+                                                id={field.id}
+                                                type={field.number ? 'number' : 'text'}
+                                                value={field.value}
+                                                placeholder={field.placeholder}
+                                                min={field.number?.min}
+                                                max={field.number?.max}
+                                                step={field.number?.step}
+                                                disabled={saving}
+                                                onchange={(event) =>
+                                                    updateField(field, event.currentTarget.value)}
+                                            />
+                                        {/if}
+                                        {#if field.help}
+                                            <p class="text-xs text-muted-foreground">
+                                                {field.help}
+                                            </p>
+                                        {/if}
+                                    </div>
+                                {/each}
+                            </div>
                         </div>
-                    </div>
+                    {/if}
                 </CardContent>
             </Card>
 

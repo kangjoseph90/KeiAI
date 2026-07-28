@@ -5,7 +5,7 @@
  * and stored directly in provider config (no model registry needed).
  */
 
-export type TTSProvider =
+export type BuiltInTTSProvider =
     | 'openai'
     | 'elevenlabs'
     | 'google'
@@ -13,6 +13,14 @@ export type TTSProvider =
     | 'kokoro'
     | 'transformers'
     | 'mock';
+export type TTSProvider = BuiltInTTSProvider | 'plugin';
+
+export interface PluginTTSModel {
+    id: string;
+    name: string;
+    modelId: string;
+    provider: 'plugin';
+}
 
 export const KOKORO_VOICE_IDS = [
     'af_heart',
@@ -58,9 +66,10 @@ const providerNames: Record<TTSProvider, string> = {
     novelai: 'NovelAI',
     kokoro: 'Kokoro',
     transformers: 'Transformers',
-    mock: 'Mock'
+    mock: 'Mock',
+    plugin: 'Plugin'
 };
 
 export function getTTSProviderName(provider: TTSProvider): string {
-    return providerNames[provider] || provider;
+    return providerNames[provider];
 }
