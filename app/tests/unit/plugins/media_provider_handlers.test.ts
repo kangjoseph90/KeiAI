@@ -1,0 +1,104 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { selectImageGenHandler } from '$lib/imagegen';
+import { selectSTTHandler } from '$lib/stt';
+import { selectTTSHandler } from '$lib/tts';
+import type { PluginInstance } from '$lib/plugins/manager';
+
+const mocks = vi.hoisted(() => ({
+    instances: [] as PluginInstance[],
+    invoke: vi.fn(),
+    invokeStream: vi.fn()
+}));
+
+vi.mock('$lib/plugins', () => ({
+    pluginManager: {
+        getInstances: () => mocks.instances
+    }
+}));
+
+const settings = {
+    plugin: {
+        imagegen: { modelId: 'images' },
+        tts: { modelId: 'speech' },
+        stt: { modelId: 'transcription' }
+    }
+} as Parameters<typeof selectImageGenHandler>[1];
+
+describe('plugin media provider handlers', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        const provider = (id: `plugin::${string}`, modelId: string, fnId: string) => ({
+            fnId,
+            model: {
+                id,
+                modelId,
+                name: modelId,
+                provider: 'plugin' as const
+            }
+        });
+        mocks.instances = [
+            {
+                imageGenProviders: new Map([
+                    ['images', provider('plugin::images', 'images', 'image-fn')]
+                ]),
+                ttsProviders: new Map([['speech', provider('plugin::speech', 'speech', 'tts-fn')]]),
+                sttProviders: new Map([
+                    ['transcription', provider('plugin::transcription', 'transcription', 'stt-fn')]
+                ]),
+                broker: {
+                    invoke: mocks.invoke,
+                    invokeStream: mocks.invokeStream
+                }
+            } as unknown as PluginInstance
+        ];
+    });
+
+    it('routes image, speech synthesis, and transcription through plugin RPC', async () => {
+        const signal = new AbortController().signal;
+        const imageRequest = {
+            prompt: 'portrait',
+            referenceImages: [],
+            styleImages: []
+        };
+        mocks.invoke
+            .mockResolvedValueOnce({
+                data: new Uint8Array([1]),
+                mimeType: 'image/png'
+            })
+            .mockResolvedValueOnce({ text: 'transcribed' });
+        const speech = (async function* () {
+            yield { data: new Uint8Array([2]), mimeType: 'audio/wav' };
+        })();
+        mocks.invokeStream.mockReturnValue(speech);
+
+        await expect(
+            selectImageGenHandler('plugin', settings)?.generate(imageRequest, signal)
+        ).resolves.toEqual({
+            data: new Uint8Array([1]),
+            mimeType: 'image/png'
+        });
+        const ttsChunks = [];
+        for await (const chunk of selectTTSHandler('plugin', settings)!.synthesize(
+            'hello',
+            signal
+        )) {
+            ttsChunks.push(chunk);
+        }
+        expect(ttsChunks).toEqual([{ data: new Uint8Array([2]), mimeType: 'audio/wav' }]);
+        await expect(
+            selectSTTHandler('plugin', settings)?.transcribe(
+                new Blob([new Uint8Array([3])], { type: 'audio/wav' }),
+                signal
+            )
+        ).resolves.toEqual({ text: 'transcribed' });
+
+        expect(mocks.invoke).toHaveBeenNthCalledWith(1, 'image-fn', [imageRequest], signal);
+        expect(mocks.invokeStream).toHaveBeenCalledWith('tts-fn', ['hello'], signal);
+        expect(mocks.invoke).toHaveBeenNthCalledWith(
+            2,
+            'stt-fn',
+            [{ data: new Uint8Array([3]), mimeType: 'audio/wav' }],
+            signal
+        );
+    });
+});

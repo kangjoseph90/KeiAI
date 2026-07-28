@@ -26,6 +26,9 @@ function createInstance(): PluginInstance {
         eventListeners: new Map(),
         macroHandlers: new Map(),
         llmProviders: new Map(),
+        imageGenProviders: new Map(),
+        ttsProviders: new Map(),
+        sttProviders: new Map(),
         llmTypes: new Map(),
         unloadHandlers: []
     };
@@ -33,12 +36,13 @@ function createInstance(): PluginInstance {
 
 describe('plugin media APIs', () => {
     const exposed = new Map<string, (...args: unknown[]) => unknown>();
+    let instance: PluginInstance;
 
     beforeEach(() => {
         vi.clearAllMocks();
         exposed.clear();
         const manager = new PluginManager();
-        const instance = createInstance();
+        instance = createInstance();
         vi.mocked(instance.broker.expose).mockImplementation((name, handler) => {
             exposed.set(name, handler);
         });
@@ -47,6 +51,38 @@ describe('plugin media APIs', () => {
                 bindHostAPIs: (value: PluginInstance) => void;
             }
         ).bindHostAPIs(instance);
+    });
+
+    it('registers and removes media providers', () => {
+        exposed.get('core.addImageGenProvider')!('images', 'image-fn', {
+            name: 'Plugin Images'
+        });
+        exposed.get('core.addTTSProvider')!('speech', 'tts-fn', { name: 'Plugin Speech' });
+        exposed.get('core.addSTTProvider')!('transcription', 'stt-fn', {
+            name: 'Plugin Transcription'
+        });
+
+        expect(instance.imageGenProviders.get('images')).toEqual({
+            fnId: 'image-fn',
+            model: {
+                id: 'plugin::images',
+                modelId: 'images',
+                name: 'Plugin Images',
+                provider: 'plugin'
+            }
+        });
+        expect(instance.ttsProviders.get('speech')?.model.id).toBe('plugin::speech');
+        expect(instance.sttProviders.get('transcription')?.model.id).toBe('plugin::transcription');
+
+        exposed.get('core.removeImageGenProvider')!('images', 'other-fn');
+        expect(instance.imageGenProviders.has('images')).toBe(true);
+
+        exposed.get('core.removeImageGenProvider')!('images', 'image-fn');
+        exposed.get('core.removeTTSProvider')!('speech', 'tts-fn');
+        exposed.get('core.removeSTTProvider')!('transcription', 'stt-fn');
+        expect(instance.imageGenProviders.size).toBe(0);
+        expect(instance.ttsProviders.size).toBe(0);
+        expect(instance.sttProviders.size).toBe(0);
     });
 
     it('passes raw media and cancellation to the configured handlers', async () => {

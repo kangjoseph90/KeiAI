@@ -46,14 +46,53 @@ export class PluginLLMStreamHandler implements LLMStreamHandler {
             tools: options.tools
         };
 
-        const rpcStream = this.instance.broker.invokeStream<LLMStreamContent>(
+        const rpcStream = this.instance.broker.invokeStream<unknown>(
             this.fnId,
             [requestMessages, streamConfig],
             signal
         );
 
         for await (const chunk of rpcStream) {
+            if (!isLLMStreamContent(chunk)) {
+                throw new Error('Plugin LLM provider returned invalid content');
+            }
             yield chunk;
         }
     }
+}
+
+function isLLMStreamContent(value: unknown): value is LLMStreamContent {
+    if (!value || typeof value !== 'object' || !('parts' in value)) return false;
+    if (!Array.isArray(value.parts)) return false;
+
+    return value.parts.every((part: unknown) => {
+        if (!part || typeof part !== 'object' || !('type' in part)) return false;
+        switch (part.type) {
+            case 'text':
+            case 'thought':
+                return 'text' in part && typeof part.text === 'string';
+            case 'image':
+            case 'audio':
+            case 'video':
+                return (
+                    'mimeType' in part &&
+                    typeof part.mimeType === 'string' &&
+                    'data' in part &&
+                    typeof part.data === 'string'
+                );
+            case 'tool_request':
+                return (
+                    'callId' in part &&
+                    typeof part.callId === 'string' &&
+                    'name' in part &&
+                    typeof part.name === 'string' &&
+                    'args' in part &&
+                    !!part.args &&
+                    typeof part.args === 'object' &&
+                    !Array.isArray(part.args)
+                );
+            default:
+                return false;
+        }
+    });
 }

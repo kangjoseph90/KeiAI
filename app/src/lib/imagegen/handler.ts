@@ -14,6 +14,8 @@ import { GoogleImageGenHandler } from './handlers/google';
 import { NovelAIImageGenHandler } from './handlers/novelai';
 import { ComfyUIImageGenHandler } from './handlers/comfyui';
 import { MockImageGenHandler, type MockImageGenBehavior } from './handlers/mock';
+import { pluginManager } from '$lib/plugins';
+import { PluginImageGenHandler } from './handlers/plugin';
 
 export function selectImageGenHandler(
     provider: ImageGenProvider,
@@ -61,5 +63,19 @@ export function selectImageGenHandler(
                 behavior: settings.mock.imagegen.modelId as MockImageGenBehavior
             });
         }
+
+        case 'plugin': {
+            return selectPluginHandler(settings.plugin.imagegen.modelId);
+        }
     }
+}
+
+function selectPluginHandler(modelId: string): ImageGenHandlerType | null {
+    for (const instance of pluginManager.getInstances()) {
+        const definition = instance.imageGenProviders.get(modelId);
+        if (definition) {
+            return new PluginImageGenHandler(instance, definition.fnId);
+        }
+    }
+    return null;
 }

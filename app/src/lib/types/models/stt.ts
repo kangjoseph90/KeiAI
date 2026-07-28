@@ -5,7 +5,15 @@
  * in provider config (no model registry needed for built-ins).
  */
 
-export type STTProvider = 'openai' | 'google' | 'groq' | 'transformers' | 'mock';
+export type BuiltInSTTProvider = 'openai' | 'google' | 'groq' | 'transformers' | 'mock';
+export type STTProvider = BuiltInSTTProvider | 'plugin';
+
+export interface PluginSTTModel {
+    id: string;
+    name: string;
+    modelId: string;
+    provider: 'plugin';
+}
 
 // ─── Display Helpers ────────────────────────────────────────────────────────
 
@@ -14,9 +22,10 @@ const providerNames: Record<STTProvider, string> = {
     google: 'Google',
     groq: 'Groq',
     transformers: 'Transformers',
-    mock: 'Mock'
+    mock: 'Mock',
+    plugin: 'Plugin'
 };
 
 export function getSTTProviderName(provider: STTProvider): string {
-    return providerNames[provider] || provider;
+    return providerNames[provider];
 }
