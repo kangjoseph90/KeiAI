@@ -5,17 +5,19 @@
  * - If allowLowLevel=false → notify the user and reject the call
  */
 
-import type { QuickJSAsyncContext } from 'quickjs-emscripten';
+import type { QuickJSAsyncContext, QuickJSHandle } from 'quickjs-emscripten';
 import type { CharJSInstance } from './types';
 import { createLogger } from '$lib/adapters/logger';
 import { emitEvent } from '$lib/events';
 import { callLLM } from '$lib/managers/llm';
 import {
     generateImageInlay,
+    listInlays,
     synthesizeSpeechInlay,
     transcribeSpeechInlay
 } from '$lib/managers/media';
 import { getChatVariable, setChatVariable } from '$lib/managers/chat';
+import { getChat, getMessage, getRoom } from '$lib/stores';
 import { generateId } from '$lib/utils/id';
 import type { LLMMessage } from '$lib/llm/types';
 import { toast } from '$lib/ui';
@@ -202,6 +204,63 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
         return promise.handle;
     }
 
+    function createValuePromise(operation: () => Promise<unknown>) {
+        const promise = ctx.newPromise();
+        operation()
+            .then((value) => {
+                const handle = jsonToHandle(ctx, value);
+                if (!handle) {
+                    promise.reject(ctx.newString('Failed to serialize API result'));
+                    return;
+                }
+                promise.resolve(handle);
+            })
+            .catch((error: unknown) => {
+                promise.reject(ctx.newString(getErrorMessage(error)));
+            });
+        return promise.handle;
+    }
+
+    const getRoomFn = ctx.newFunction('getRoom', (roomIdHandle) => {
+        const roomId = ctx.getString(roomIdHandle);
+        return createValuePromise(async () => {
+            await requirePermission();
+            return getRoom(roomId);
+        });
+    });
+    ctx.setProp(keiObj, 'getRoom', getRoomFn);
+    getRoomFn.dispose();
+
+    const getChatFn = ctx.newFunction('getChat', (chatIdHandle) => {
+        const chatId = ctx.getString(chatIdHandle);
+        return createValuePromise(async () => {
+            await requirePermission();
+            return getChat(chatId);
+        });
+    });
+    ctx.setProp(keiObj, 'getChat', getChatFn);
+    getChatFn.dispose();
+
+    const getMessageFn = ctx.newFunction('getMessage', (messageIdHandle) => {
+        const messageId = ctx.getString(messageIdHandle);
+        return createValuePromise(async () => {
+            await requirePermission();
+            return getMessage(messageId);
+        });
+    });
+    ctx.setProp(keiObj, 'getMessage', getMessageFn);
+    getMessageFn.dispose();
+
+    const listInlaysFn = ctx.newFunction('listInlays', (chatIdHandle) => {
+        const chatId = ctx.getString(chatIdHandle);
+        return createValuePromise(async () => {
+            await requirePermission();
+            return listInlays(chatId);
+        });
+    });
+    ctx.setProp(keiObj, 'listInlays', listInlaysFn);
+    listInlaysFn.dispose();
+
     const callLLMFn = ctx.newFunction('callLLM', (typeHandle, messagesHandle, optionsHandle) => {
         const options = readLLMCallOptions(optionsHandle ? ctx.dump(optionsHandle) : undefined);
         const type = options.type ?? ctx.getString(typeHandle) ?? DEFAULT_AUX_LLM_TYPE;
@@ -277,6 +336,21 @@ export function injectKeiAPI(ctx: QuickJSAsyncContext, instance: CharJSInstance)
     // ── Mount to global ────────────────────────────────────────
     ctx.setProp(ctx.global, 'KeiAPI', keiObj);
     keiObj.dispose();
+}
+
+function jsonToHandle(ctx: QuickJSAsyncContext, value: unknown): QuickJSHandle | null {
+    const stringHandle = ctx.newString(JSON.stringify(value));
+    const json = ctx.getProp(ctx.global, 'JSON');
+    const parse = ctx.getProp(json, 'parse');
+    const result = ctx.callFunction(parse, json, stringHandle);
+    stringHandle.dispose();
+    parse.dispose();
+    json.dispose();
+    if (result.error) {
+        result.error.dispose();
+        return null;
+    }
+    return result.value;
 }
 
 function readLLMCallOptions(value: unknown): { type?: string; maxResponse?: number } {

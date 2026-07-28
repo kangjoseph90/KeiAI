@@ -17,14 +17,18 @@ import type { PluginSTTModel } from '$lib/types/models/stt';
 import type { LLMMessage } from '$lib/llm/types';
 import { callLLM, streamLLM } from '$lib/managers/llm';
 import {
+    createInlay,
     generateImage,
     generateImageInlay,
+    listInlays,
+    readInlay,
     synthesizeSpeech,
     synthesizeSpeechInlay,
     transcribeSpeech,
     transcribeSpeechInlay,
     type MediaData
 } from '$lib/managers/media';
+import { getChat, getMessage, getRoom } from '$lib/stores';
 
 const logger = createLogger('plugins:manager');
 const PLUGIN_READY_TIMEOUT_MS = 5_000;
@@ -271,6 +275,17 @@ export class PluginManager {
                 logger.error(`Plugin event emit failed:`, error);
             });
         });
+
+        broker.expose('core.getRoom', (roomId: unknown) => getRoom(String(roomId)));
+        broker.expose('core.getChat', (chatId: unknown) => getChat(String(chatId)));
+        broker.expose('core.getMessage', (messageId: unknown) => getMessage(String(messageId)));
+        broker.expose('core.listInlays', (chatId: unknown) => listInlays(String(chatId)));
+        broker.expose('core.readInlay', (chatId: unknown, inlayId: unknown) =>
+            readInlay(String(chatId), String(inlayId))
+        );
+        broker.expose('core.createInlay', (chatId: unknown, input: unknown) =>
+            createInlay(String(chatId), readCreateInlayInput(input))
+        );
 
         broker.expose('core.addLLMProvider', (modelId: unknown, fnId: unknown, opts: unknown) => {
             const mId = String(modelId);
@@ -569,6 +584,29 @@ function readMediaData(value: unknown, name: string): MediaData {
     return {
         data: new Uint8Array(record.data),
         mimeType: record.mimeType
+    };
+}
+
+function readCreateInlayInput(value: unknown): {
+    name: string;
+    mimeType: string;
+    data: Uint8Array<ArrayBuffer>;
+} {
+    if (!value || typeof value !== 'object') {
+        throw new Error('inlay must contain a name, mimeType, and Uint8Array data');
+    }
+    const record = value as Record<string, unknown>;
+    if (
+        typeof record.name !== 'string' ||
+        typeof record.mimeType !== 'string' ||
+        !(record.data instanceof Uint8Array)
+    ) {
+        throw new Error('inlay must contain a name, mimeType, and Uint8Array data');
+    }
+    return {
+        name: record.name,
+        mimeType: record.mimeType,
+        data: new Uint8Array(record.data)
     };
 }
 
